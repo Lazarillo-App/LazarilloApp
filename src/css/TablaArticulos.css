@@ -1,0 +1,113 @@
+.tabla-articulos-container {
+  width: 95vw;
+  display: flex;
+  flex-direction: row;
+  background-color: #f9f9f9;
+  padding: 20px;
+}
+
+.tabla-content {
+  flex: 1;
+  margin-left: 20px;
+}
+
+h1 {
+  font-size: 26px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.filtros-fechas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.filtros-fechas label {
+  font-weight: bold;
+  color: #555;
+}
+
+.filtros-fechas input[type="date"] {
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.filtros-fechas button {
+  padding: 6px 12px;
+  background-color: #2196f3;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.filtros-fechas button:hover {
+  background-color: #1976d2;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+thead th {
+  background-color: #2196f3;
+  color: #fff;
+  padding: 12px 8px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  border-radius: 6px 6px 0 0;
+}
+
+tbody tr {
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+}
+
+tbody td {
+  padding: 10px 8px;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+}
+
+tbody tr:hover {
+  background-color: #f1faff;
+}
+
+input[type="number"] {
+  padding: 4px 6px;
+  width: 70px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: right;
+}
+
+input[type="number"]:focus {
+  border-color: #2196f3;
+  outline: none;
+}
+
+.no-datos {
+  text-align: center;
+  padding: 20px;
+  color: #999;
+  font-style: italic;
+}
+
+/* Añadir estilo para la fila de rubro */
+.rubro-row {
+  background-color: #f4f4f4;
+  font-weight: bold;
+}
+
+.rubro-row td {
+  text-align: center;
+  font-size: 1.2em;
+}
