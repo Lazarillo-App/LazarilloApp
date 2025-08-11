@@ -9,10 +9,11 @@ import EditIcon from '@mui/icons-material/Edit';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import axios from 'axios';
 
+
 const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
   const [todosArticulos, setTodosArticulos] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
+  const [seleccionIds, setSeleccionIds] = useState([]); // IDs, no objetos
   const [searchQuery, setSearchQuery] = useState('');
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
@@ -22,44 +23,61 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
     const fetchData = async () => {
       const token = await obtenerToken();
       const articulos = await obtenerArticulos(token);
-      setTodosArticulos(articulos);
+      setTodosArticulos(Array.isArray(articulos) ? articulos : []);
     };
     fetchData();
   }, []);
 
   const handleAgregarArticulos = (agrupacion) => {
-    setAgrupacionSeleccionada(agrupacion);
+    setAgrupacionSeleccionada({
+      ...agrupacion,
+      articulos: Array.isArray(agrupacion.articulos) ? agrupacion.articulos : []
+    });
+    setSeleccionIds([]);
     setModalOpen(true);
   };
 
-  const handleSelectArticulo = (articulo) => {
-    setArticulosSeleccionados((prev) =>
-      prev.includes(articulo)
-        ? prev.filter((item) => item !== articulo)
-        : [...prev, articulo]
+  const handleSelectArticulo = (articuloId) => {
+    setSeleccionIds(prev =>
+      prev.includes(articuloId)
+        ? prev.filter(id => id !== articuloId)
+        : [...prev, articuloId]
     );
   };
 
   const filterArticulos = (articulos) => {
-    return articulos.filter((articulo) =>
-      articulo.nombre.toLowerCase().includes(searchQuery.toLowerCase())
+    const list = Array.isArray(articulos) ? articulos : [];
+    return list.filter(a =>
+      (a.nombre || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   };
 
   const agregarArticulosAGrupacion = async () => {
-    if (!agrupacionSeleccionada) return;
+    if (!agrupacionSeleccionada || seleccionIds.length === 0) return;
 
     try {
-      await axios.put(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${agrupacionSeleccionada.id}`, {
-        articulos: articulosSeleccionados.map((a) => ({
+      // armamos payload completo (id, nombre, categoria, subrubro, precio)
+      const mapa = new Map(todosArticulos.map(a => [a.id, a]));
+      const payload = seleccionIds
+        .map(id => mapa.get(id))
+        .filter(Boolean)
+        .map(a => ({
           id: a.id,
-          precio: a.precio || 0
-        }))
-      });
+          nombre: a.nombre || '',
+          categoria: a.categoria || 'Sin categoría',
+          subrubro: a.subrubro || 'Sin subrubro',
+          precio: a.precio ?? 0
+        }));
+
+      // usar la ruta específica de agregar artículos, no la que reemplaza todo
+      await axios.put(
+        `${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${agrupacionSeleccionada.id}/articulos`,
+        { articulos: payload }
+      );
 
       setModalOpen(false);
-      setArticulosSeleccionados([]);
-      onActualizar(); // refrescar agrupaciones en el padre
+      setSeleccionIds([]);
+      onActualizar(); // refresca lista en el padre
     } catch (error) {
       console.error("Error agregando artículos:", error);
     }
@@ -68,14 +86,14 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
   const handleEliminarAgrupacion = async (id) => {
     try {
       await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${id}`);
-      onActualizar(); // refrescar agrupaciones en el padre
+      onActualizar();
     } catch (error) {
       console.error("Error al eliminar agrupación:", error);
     }
   };
 
   const manejarGuardar = async (id) => {
-    const nuevoNombre = nombresEditados[id]?.trim();
+    const nuevoNombre = (nombresEditados[id] ?? '').trim();
     if (!nuevoNombre) return;
 
     try {
@@ -83,7 +101,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
         nombre: nuevoNombre
       });
       setEditandoId(null);
-      setNombresEditados((prev) => ({ ...prev, [id]: '' }));
+      setNombresEditados(prev => ({ ...prev, [id]: '' }));
       onActualizar();
     } catch (error) {
       console.error("Error al actualizar nombre:", error);
@@ -93,19 +111,17 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
   return (
     <div style={{ padding: '20px' }}>
       <h2>Agrupaciones Creadas</h2>
-      {agrupaciones.map((agrupacion) => (
+
+      {(Array.isArray(agrupaciones) ? agrupaciones : []).map((agrupacion) => (
         <Accordion key={agrupacion.id}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box display="flex" alignItems="center" width="100%" justifyContent="space-between">
               {editandoId === agrupacion.id ? (
                 <>
                   <TextField
-                    value={nombresEditados[agrupacion.id] || agrupacion.nombre}
+                    value={nombresEditados[agrupacion.id] ?? agrupacion.nombre ?? ''}
                     onChange={(e) =>
-                      setNombresEditados((prev) => ({
-                        ...prev,
-                        [agrupacion.id]: e.target.value,
-                      }))
+                      setNombresEditados(prev => ({ ...prev, [agrupacion.id]: e.target.value }))
                     }
                     size="small"
                     autoFocus
@@ -130,20 +146,18 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
               )}
             </Box>
           </AccordionSummary>
+
           <AccordionDetails>
             <Box display="flex" justifyContent="space-between" sx={{ mb: 2 }}>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => handleAgregarArticulos(agrupacion)}
-              >
+              <Button variant="contained" size="small" onClick={() => handleAgregarArticulos(agrupacion)}>
                 Agregar Artículos
               </Button>
             </Box>
-            {agrupacion.articulos?.length > 0 ? (
+
+            {(Array.isArray(agrupacion.articulos) && agrupacion.articulos.length > 0) ? (
               agrupacion.articulos.map((art) => (
                 <Box key={art.id} display="flex" alignItems="center" sx={{ mb: 1 }}>
-                  <Typography>{art.nombre}</Typography>
+                  <Typography>{art.nombre || 'Sin nombre'}</Typography>
                 </Box>
               ))
             ) : (
@@ -184,15 +198,15 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
 
           <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1, mb: 2 }}>
             {filterArticulos(todosArticulos).map((articulo) => {
-              if (agrupacionSeleccionada?.articulos.some((a) => a.id === articulo.id)) {
-                return null;
-              }
+              // ocultar los que ya están en la agrupación
+              const yaEsta = (agrupacionSeleccionada?.articulos || []).some(a => a.id === articulo.id);
+              if (yaEsta) return null;
 
               return (
                 <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2, mb: 1 }}>
                   <Checkbox
-                    checked={articulosSeleccionados.includes(articulo)}
-                    onChange={() => handleSelectArticulo(articulo)}
+                    checked={seleccionIds.includes(articulo.id)}
+                    onChange={() => handleSelectArticulo(articulo.id)}
                     sx={{ mr: 1 }}
                   />
                   <Typography>{articulo.nombre}</Typography>
@@ -208,7 +222,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
               variant="contained"
               color="success"
               onClick={agregarArticulosAGrupacion}
-              disabled={articulosSeleccionados.length === 0}
+              disabled={seleccionIds.length === 0}
             >
               Agregar artículos
             </Button>

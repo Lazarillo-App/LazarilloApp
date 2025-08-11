@@ -1,16 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import SidebarCategorias from './SidebarCategorias';
 import '../css/TablaArticulos.css';
 
 const TablaArticulos = ({
-  filtroBusqueda,
-  setFiltroBusqueda,
-  agrupacionSeleccionada,
-  setAgrupacionSeleccionada,
-  agrupaciones,
-  categoriaSeleccionada,
-  setCategoriaSeleccionada,
+  filtroBusqueda, setFiltroBusqueda,
+  agrupacionSeleccionada, setAgrupacionSeleccionada,
+  agrupaciones, categoriaSeleccionada, setCategoriaSeleccionada,
 }) => {
   const [categorias, setCategorias] = useState([]);
   const [objetivos, setObjetivos] = useState({});
@@ -33,39 +29,61 @@ const TablaArticulos = ({
         console.error('Error al cargar los datos:', error);
       }
     };
-
     cargarDatos();
   }, [fechaDesde, fechaHasta]);
+
+  const baseById = useMemo(() => {
+    const list = categorias.flatMap(c =>
+      c.subrubros.flatMap(s => s.articulos)
+    );
+    return new Map(list.map(a => [a.id, a]));
+  }, [categorias]);
 
   let articulosAMostrar = [];
 
   if (categoriaSeleccionada && agrupacionSeleccionada) {
     articulosAMostrar = categoriaSeleccionada.subrubros
-      .flatMap(subrubro => subrubro.articulos)
-      .filter(art => agrupacionSeleccionada.articulos.some(a => a.id === art.id));
+      .flatMap(sub => sub.articulos)
+      .filter(art => (agrupacionSeleccionada.articulos || []).some(a => a.id === art.id));
   } else if (categoriaSeleccionada) {
-    articulosAMostrar = categoriaSeleccionada.subrubros.flatMap(subrubro => subrubro.articulos);
+    articulosAMostrar = categoriaSeleccionada.subrubros.flatMap(sub => sub.articulos);
   } else if (agrupacionSeleccionada) {
-    articulosAMostrar = agrupacionSeleccionada.articulos || [];
+    // 🔥 Hidratar artículos de la agrupación con el maestro
+    const arr = agrupacionSeleccionada.articulos || [];
+    articulosAMostrar = arr.map(a => {
+      const b = baseById.get(a.id) || {};
+      return {
+        ...b, ...a,
+        nombre: a.nombre || b.nombre || `#${a.id}`,
+        categoria: a.categoria || b.categoria || 'Sin categoría',
+        subrubro: a.subrubro || b.subrubro || 'Sin subrubro',
+        precio: Number(a.precio ?? b.precio ?? 0),
+        costo: Number(a.costo ?? b.costo ?? 0),
+      };
+    });
   } else {
-    articulosAMostrar = categorias.flatMap(categoria =>
-      categoria.subrubros.flatMap(subrubro => subrubro.articulos)
+    articulosAMostrar = categorias.flatMap(c =>
+      c.subrubros.flatMap(s => s.articulos)
     );
   }
 
   const articulosFiltrados = filtroBusqueda
-    ? articulosAMostrar.filter((articulo) =>
-      articulo.nombre.toLowerCase().includes(filtroBusqueda.toLowerCase())
+    ? articulosAMostrar.filter((art) =>
+      (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase())
     )
     : articulosAMostrar;
 
-  const calcularCostoPorcentaje = (articulo) => {
-    return articulo.precio > 0 ? ((articulo.costo / articulo.precio) * 100).toFixed(2) : 0;
+  const calcularCostoPorcentaje = (art) => {
+    const precio = Number(art.precio) || 0;
+    const costo = Number(art.costo) || 0;
+    return precio > 0 ? ((costo / precio) * 100).toFixed(2) : 0;
   };
 
-  const calcularSugerido = (articulo) => {
-    const objetivo = objetivos[articulo.id] || 0;
-    return articulo.costo * (100 / (100 - objetivo));
+  const calcularSugerido = (art) => {
+    const objetivo = Number(objetivos[art.id]) || 0; // %
+    const costo = Number(art.costo) || 0;
+    const den = 100 - objetivo;
+    return den > 0 ? costo * (100 / den) : 0;
   };
 
   const handleObjetivoChange = (id, value) => {

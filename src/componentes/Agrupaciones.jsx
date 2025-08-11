@@ -28,9 +28,8 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agrupaciones, setAgrupaciones] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  console.log(setSearchQuery);
-
+  const [searchQuery, setSearchQuery] = useState("");   
+  console.log(setSearchQuery)
   // Snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState('');
@@ -42,6 +41,16 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
     setSnackbarOpen(true);
   };
 
+  const cargarAgrupaciones = async () => {
+    try {
+      const agrupacionesRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
+      setAgrupaciones(Array.isArray(agrupacionesRes.data) ? agrupacionesRes.data : []);
+    } catch (error) {
+      console.error("Error al cargar agrupaciones:", error);
+      mostrarSnackbar("Error al cargar agrupaciones", 'error');
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -50,8 +59,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         setTodosArticulos(articulos);
         setLoading(false);
 
-        const agrupacionesRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
-        setAgrupaciones(agrupacionesRes.data);
+        await cargarAgrupaciones();
       } catch (error) {
         console.error("Error al cargar los datos:", error);
         setLoading(false);
@@ -64,7 +72,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 
   const isArticuloSeleccionado = (articulo) => {
     return agrupaciones.some(agr =>
-      agr.articulos?.some(a => a.id === articulo.id)
+      Array.isArray(agr.articulos) && agr.articulos.some(a => a.id === articulo.id)
     );
   };
 
@@ -98,15 +106,18 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
     }
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`, {
+      await axios.post(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`, {
         nombre: rubro,
         articulos: articulosSeleccionados.map((art) => ({
           id: art.id,
-          precio: art.precio || 0
+          nombre: art.nombre || '',
+          categoria: art.categoria || 'Sin categoría',
+          subrubro: art.subrubro || 'Sin subrubro',
+          precio: art.precio ?? 0
         }))
       });
 
-      setAgrupaciones(prev => [...prev, response.data]);
+      await cargarAgrupaciones();
       setRubro("");
       setArticulosSeleccionados([]);
       setCategoriasSeleccionadas([]);
@@ -191,7 +202,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
           className="mb-4"
         />
 
-        <Button onClick={() => setModalOpen(true)} variant="contained"style={{backgroundColor: '#285a73'}}>
+        <Button onClick={() => setModalOpen(true)} variant="contained" style={{backgroundColor: '#285a73'}}>
           Buscar
         </Button>
 

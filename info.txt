@@ -1,0 +1,9 @@
+Nombre-de-host=dpg-d2d45qumcj7s73a700i0-a
+Puerto=5432
+DB=lazarillo_app
+usuario=lazarillo_app_user
+Contraseña=qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc
+URL=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qumcj7s73a700i0-a/lazarillo_app
+URL-interna=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qumcj7s73a700i0-a/lazarillo_app
+URL-Externa=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com/lazarillo_app
+Comando-PSQL=PGPASSWORD=qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc psql -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -U lazarillo_app_user lazarillo_app
