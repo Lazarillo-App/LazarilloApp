@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
   Button, Modal, Typography, TextField, Checkbox,
-  Accordion, AccordionSummary, AccordionDetails, Box
+  Accordion, AccordionSummary, AccordionDetails, Box,
+  Snackbar, Alert
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
@@ -19,7 +20,7 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloSele
   };
 };
 
-const Agrupaciones = ({actualizarAgrupaciones}) => {
+const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [rubro, setRubro] = useState("");
   const [todosArticulos, setTodosArticulos] = useState([]);
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
@@ -29,6 +30,17 @@ const Agrupaciones = ({actualizarAgrupaciones}) => {
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   console.log(setSearchQuery);
+
+  // Snackbar
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMensaje, setSnackbarMensaje] = useState('');
+  const [snackbarTipo, setSnackbarTipo] = useState('success'); // 'success' | 'error' | 'info'
+
+  const mostrarSnackbar = (mensaje, tipo = 'success') => {
+    setSnackbarMensaje(mensaje);
+    setSnackbarTipo(tipo);
+    setSnackbarOpen(true);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,6 +55,7 @@ const Agrupaciones = ({actualizarAgrupaciones}) => {
       } catch (error) {
         console.error("Error al cargar los datos:", error);
         setLoading(false);
+        mostrarSnackbar("Error al cargar datos", 'error');
       }
     };
 
@@ -80,7 +93,7 @@ const Agrupaciones = ({actualizarAgrupaciones}) => {
 
   const crearAgrupacion = async () => {
     if (!rubro.trim() || articulosSeleccionados.length === 0) {
-      alert("Debes ingresar un nombre y seleccionar artículos");
+      mostrarSnackbar("Debes ingresar un nombre y seleccionar artículos", 'error');
       return;
     }
 
@@ -99,9 +112,10 @@ const Agrupaciones = ({actualizarAgrupaciones}) => {
       setCategoriasSeleccionadas([]);
       actualizarAgrupaciones();
       setModalOpen(false);
+      mostrarSnackbar(`Agrupación "${rubro}" creada correctamente`);
     } catch (error) {
       console.error("Error al crear agrupación:", error);
-      alert("Error al crear agrupación");
+      mostrarSnackbar("Error al crear agrupación", 'error');
     }
   };
 
@@ -155,132 +169,140 @@ const Agrupaciones = ({actualizarAgrupaciones}) => {
   };
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold">Crear Agrupación</h2>
-      <TextField
-        label="Nombre del Rubro"
-        value={rubro}
-        onChange={(e) => setRubro(e.target.value)}
-        fullWidth
-        className="mb-4"
-      />
+    <>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarTipo} sx={{ width: '100%' }}>
+          {snackbarMensaje}
+        </Alert>
+      </Snackbar>
 
-      <Button onClick={() => setModalOpen(true)} variant="contained" color="primary" className="mt-4">
-        Buscar
-      </Button>
+      <div className="p-4">
+        <h2 className="text-xl font-bold">Crear Agrupación</h2>
+        <TextField
+          label="Nombre del Rubro"
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          fullWidth
+          className="mb-4"
+        />
 
-      <Button onClick={crearAgrupacion} variant="contained" color="success" className="mt-4">
-        Guardar
-      </Button>
+        <Button onClick={() => setModalOpen(true)} variant="contained"style={{backgroundColor: '#285a73'}}>
+          Buscar
+        </Button>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
-        <Box
-          sx={{
-            overflowY: 'auto',
-            maxHeight: '80vh',
-            width: '90%',
-            maxWidth: 700,
-            margin: '50px auto',
-            padding: 3,
-            backgroundColor: 'white',
-            borderRadius: 2,
-            boxShadow: 24,
-          }}
-        >
-          <Typography variant="h6" fontWeight="bold" gutterBottom>
-            Selecciona Categorías y Artículos
-          </Typography>
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+          <Box
+            sx={{
+              overflowY: 'auto',
+              maxHeight: '80vh',
+              width: '90%',
+              maxWidth: 700,
+              margin: '50px auto',
+              padding: 3,
+              backgroundColor: 'white',
+              borderRadius: 2,
+              boxShadow: 24,
+            }}
+          >
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              Selecciona Categorías y Artículos
+            </Typography>
 
-          {loading ? (
-            <Typography>Cargando artículos...</Typography>
-          ) : (
-            <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
-              {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
-                const subrubroArticulosDisponibles = subrubro.rubros.flatMap(rubro =>
-                  rubro.articulos.filter(art => !isArticuloSeleccionado(art))
-                );
+            {loading ? (
+              <Typography>Cargando artículos...</Typography>
+            ) : (
+              <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
+                {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
+                  const subrubroArticulosDisponibles = subrubro.rubros.flatMap(rubro =>
+                    rubro.articulos.filter(art => !isArticuloSeleccionado(art))
+                  );
 
-                const { checked: subrubroChecked, indeterminate: subrubroIndeterminado } = evaluarCheckboxEstado(
-                  subrubroArticulosDisponibles,
-                  articulosSeleccionados,
-                  isArticuloSeleccionado
-                );
+                  const { checked: subrubroChecked, indeterminate: subrubroIndeterminado } = evaluarCheckboxEstado(
+                    subrubroArticulosDisponibles,
+                    articulosSeleccionados,
+                    isArticuloSeleccionado
+                  );
 
-                return (
-                  <Accordion key={index}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Checkbox
-                        checked={subrubroChecked}
-                        indeterminate={subrubroIndeterminado}
-                        onChange={() => handleSelectSubrubro(subrubro)}
-                        sx={{ mr: 1 }}
-                      />
-                      <Typography fontWeight="bold">{subrubro.nombre}</Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      {subrubro.rubros.map((rubro, idx) => {
-                        const { checked: rubroChecked, indeterminate: rubroIndeterminado } = evaluarCheckboxEstado(
-                          rubro.articulos,
-                          articulosSeleccionados,
-                          isArticuloSeleccionado
-                        );
+                  return (
+                    <Accordion key={index}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Checkbox
+                          checked={subrubroChecked}
+                          indeterminate={subrubroIndeterminado}
+                          onChange={() => handleSelectSubrubro(subrubro)}
+                          sx={{ mr: 1 }}
+                        />
+                        <Typography fontWeight="bold">{subrubro.nombre}</Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        {subrubro.rubros.map((rubro, idx) => {
+                          const { checked: rubroChecked, indeterminate: rubroIndeterminado } = evaluarCheckboxEstado(
+                            rubro.articulos,
+                            articulosSeleccionados,
+                            isArticuloSeleccionado
+                          );
 
-                        return (
-                          <Accordion key={idx} sx={{ mb: 1 }}>
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                              <Checkbox
-                                checked={rubroChecked}
-                                indeterminate={rubroIndeterminado}
-                                onChange={() => handleSelectCategoria(rubro.nombre, rubro.articulos)}
-                                sx={{ mr: 1 }}
-                              />
-                              <Typography>{rubro.nombre}</Typography>
-                            </AccordionSummary>
-                            <AccordionDetails>
-                              {filterArticulos(rubro.articulos).map((articulo) => (
-                                <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2 }}>
-                                  <Checkbox
-                                    checked={articulosSeleccionados.includes(articulo)}
-                                    onChange={() => handleSelectArticulo(articulo)}
-                                    sx={{ mr: 1 }}
-                                    disabled={isArticuloSeleccionado(articulo)}
-                                  />
-                                  <Typography>{articulo.nombre}</Typography>
-                                </Box>
-                              ))}
-                            </AccordionDetails>
-                          </Accordion>
-                        );
-                      })}
-                    </AccordionDetails>
-                  </Accordion>
-                );
-              })}
+                          return (
+                            <Accordion key={idx} sx={{ mb: 1 }}>
+                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                <Checkbox
+                                  checked={rubroChecked}
+                                  indeterminate={rubroIndeterminado}
+                                  onChange={() => handleSelectCategoria(rubro.nombre, rubro.articulos)}
+                                  sx={{ mr: 1 }}
+                                />
+                                <Typography>{rubro.nombre}</Typography>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                {filterArticulos(rubro.articulos).map((articulo) => (
+                                  <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2 }}>
+                                    <Checkbox
+                                      checked={articulosSeleccionados.includes(articulo)}
+                                      onChange={() => handleSelectArticulo(articulo)}
+                                      sx={{ mr: 1 }}
+                                      disabled={isArticuloSeleccionado(articulo)}
+                                    />
+                                    <Typography>{articulo.nombre}</Typography>
+                                  </Box>
+                                ))}
+                              </AccordionDetails>
+                            </Accordion>
+                          );
+                        })}
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
+              </Box>
+            )}
+
+            <Box display="flex" justifyContent="flex-end" mt={3}>
+              <Button
+                onClick={crearAgrupacion}
+                variant="contained"
+                color="success"
+                disabled={!rubro.trim() || articulosSeleccionados.length === 0}
+              >
+                Guardar Agrupación
+              </Button>
             </Box>
-          )}
-
-          <Box display="flex" justifyContent="flex-end" mt={3}>
-            <Button onClick={() => setModalOpen(false)} variant="contained" color="secondary">
-              Crear
-            </Button>
           </Box>
-        </Box>
-      </Modal>
+        </Modal>
 
-      <AgrupacionesList
-        agrupaciones={agrupaciones}
-        onEliminar={(index) => {
-          const nuevas = [...agrupaciones];
-          nuevas.splice(index, 1);
-          setAgrupaciones(nuevas);
-        }}
-        onEditarNombre={(id, nuevoNombre) => {
-          setAgrupaciones((prev) =>
-            prev.map((agr) => (agr.id === id ? { ...agr, rubro: nuevoNombre } : agr))
-          );
-        }}
-      />
-    </div>
+        <AgrupacionesList
+          agrupaciones={agrupaciones}
+          onActualizar={() => {
+            actualizarAgrupaciones();
+            mostrarSnackbar("Agrupación actualizada");
+          }}
+        />
+      </div>
+    </>
   );
 };
 

@@ -4,12 +4,18 @@ import Navbar from './componentes/Navbar';
 import TablaArticulos from './componentes/TablaArticulos';
 import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
+import { obtenerToken, obtenerArticulos } from './servicios/apiMaxiRest';
 
 const App = () => {
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+  const [categorias, setCategorias] = useState([]); 
+
+  const sugerencias = categorias
+  .flatMap(cat => cat.subrubros.flatMap(sub => sub.articulos))
+  .map(art => art.nombre);
 
   const recargarAgrupaciones = async () => {
     try {
@@ -21,15 +27,28 @@ const App = () => {
     }
   };
 
+  const cargarCategorias = async () => {
+    try {
+      const token = await obtenerToken();
+      const data = await obtenerArticulos(token, '2025-01-01', '2025-04-01');
+      setCategorias(data);
+    } catch (error) {
+      console.error('Error al cargar artículos:', error);
+    }
+  };
+
   useEffect(() => {
     recargarAgrupaciones();
-  }, [])
+    cargarCategorias();
+  }, []);
 
- return (
+  return (
     <>
       <Navbar
+        filtroBusqueda={filtroBusqueda}
         setFiltroBusqueda={setFiltroBusqueda}
         setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+        sugerencias={sugerencias}
       />
       <Routes>
         <Route
@@ -48,9 +67,7 @@ const App = () => {
         />
         <Route
           path="/agrupaciones"
-          element={
-            <Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />
-          }
+          element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
         />
         <Route
           path="/agrupacioneslist"

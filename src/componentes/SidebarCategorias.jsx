@@ -9,8 +9,8 @@ const SidebarCategorias = ({
   agrupacionSeleccionada,
   setAgrupacionSeleccionada,
   setFiltroBusqueda,
+  setBusqueda, // ✅ importante para limpiar el input del buscador
 }) => {
-
   const categoriasFiltradas = agrupacionSeleccionada
     ? categorias.filter(categoria =>
         categoria.subrubros.some(subrubro =>
@@ -26,14 +26,21 @@ const SidebarCategorias = ({
 
     if (nombreSeleccionado === '') {
       setAgrupacionSeleccionada(null);
-      setFiltroBusqueda && setFiltroBusqueda('');
+      setFiltroBusqueda('');
     } else {
       const seleccionada = agrupaciones.find(a => a.nombre === nombreSeleccionado) || null;
       setAgrupacionSeleccionada(seleccionada);
-      setFiltroBusqueda && setFiltroBusqueda('');
+      setFiltroBusqueda('');
     }
 
-    setCategoriaSeleccionada(null); 
+    setCategoriaSeleccionada(null);
+    setBusqueda(''); // ✅ limpia el input de búsqueda
+  };
+
+  const handleCategoriaClick = (categoria) => {
+    setCategoriaSeleccionada(categoria);
+    setFiltroBusqueda('');
+    setBusqueda(''); // ✅ limpia el input de búsqueda también al seleccionar categoría
   };
 
   return (
@@ -59,7 +66,7 @@ const SidebarCategorias = ({
         {categoriasFiltradas.map((categoria) => (
           <li
             key={categoria.id}
-            onClick={() => setCategoriaSeleccionada(categoria)}
+            onClick={() => handleCategoriaClick(categoria)}
           >
             <p className="icono" /> {categoria.nombre}
           </li>

@@ -46,7 +46,7 @@ h1 {
 }
 
 .filtros-fechas button:hover {
-  background-color: #1976d2;
+  background-color: #25353d;
 }
 
 table {
@@ -56,10 +56,10 @@ table {
 }
 
 thead th {
-  background-color: #2196f3;
+  background-color: #37474F;
   color: #fff;
   padding: 12px 8px;
-  text-align: center;
+  text-align: left;
   position: sticky;
   top: 0;
   border-radius: 6px 6px 0 0;
@@ -73,7 +73,7 @@ tbody tr {
 
 tbody td {
   padding: 10px 8px;
-  text-align: center;
+  text-align: left;
   border-bottom: 1px solid #eee;
 }
 
@@ -90,7 +90,7 @@ input[type="number"] {
 }
 
 input[type="number"]:focus {
-  border-color: #2196f3;
+  border-color: #243741;
   outline: none;
 }
 

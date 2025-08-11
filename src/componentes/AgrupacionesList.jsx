@@ -84,7 +84,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
       });
       setEditandoId(null);
       setNombresEditados((prev) => ({ ...prev, [id]: '' }));
-      onActualizar(); // refrescar agrupaciones
+      onActualizar();
     } catch (error) {
       console.error("Error al actualizar nombre:", error);
     }
@@ -92,50 +92,44 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h1>Agrupaciones Creadas</h1>
+      <h2>Agrupaciones Creadas</h2>
       {agrupaciones.map((agrupacion) => (
         <Accordion key={agrupacion.id}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            {editandoId === agrupacion.id ? (
-              <TextField
-                value={nombresEditados[agrupacion.id] || agrupacion.nombre}
-                onChange={(e) =>
-                  setNombresEditados((prev) => ({
-                    ...prev,
-                    [agrupacion.id]: e.target.value,
-                  }))
-                }
-                onBlur={() => manejarGuardar(agrupacion.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') manejarGuardar(agrupacion.id);
-                }}
-                autoFocus
-                size="small"
-                sx={{ mr: 2 }}
-              />
-            ) : (
-              <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                {agrupacion.nombre}
-              </Typography>
-            )}
-            <Box display="flex" alignItems="center">
-              <IconButton
-                onClick={() => setEditandoId(agrupacion.id)}
-                color="primary"
-                size="small"
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                onClick={() => handleEliminarAgrupacion(agrupacion.id)}
-                color="error"
-                size="small"
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+            <Box display="flex" alignItems="center" width="100%" justifyContent="space-between">
+              {editandoId === agrupacion.id ? (
+                <>
+                  <TextField
+                    value={nombresEditados[agrupacion.id] || agrupacion.nombre}
+                    onChange={(e) =>
+                      setNombresEditados((prev) => ({
+                        ...prev,
+                        [agrupacion.id]: e.target.value,
+                      }))
+                    }
+                    size="small"
+                    autoFocus
+                    sx={{ mr: 2, flexGrow: 1 }}
+                  />
+                  <IconButton onClick={() => manejarGuardar(agrupacion.id)} color="success" size="small">
+                    <span role="img" aria-label="Guardar">💾</span>
+                  </IconButton>
+                </>
+              ) : (
+                <>
+                  <Typography variant="h6">{agrupacion.nombre}</Typography>
+                  <Box>
+                    <IconButton onClick={() => setEditandoId(agrupacion.id)} color="primary" size="small">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton onClick={() => handleEliminarAgrupacion(agrupacion.id)} color="error" size="small">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </>
+              )}
             </Box>
           </AccordionSummary>
-
           <AccordionDetails>
             <Box display="flex" justifyContent="space-between" sx={{ mb: 2 }}>
               <Button
@@ -146,7 +140,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar }) => {
                 Agregar Artículos
               </Button>
             </Box>
-            {agrupacion.articulos.length > 0 ? (
+            {agrupacion.articulos?.length > 0 ? (
               agrupacion.articulos.map((art) => (
                 <Box key={art.id} display="flex" alignItems="center" sx={{ mb: 1 }}>
                   <Typography>{art.nombre}</Typography>

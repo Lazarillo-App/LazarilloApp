@@ -2,7 +2,8 @@
   width: 250px;
   padding: 1rem;
   border-right: 1px solid #ccc;
-  background-color: #f7f7f7;
+  background-color: #37474F;
+  color: white;
 }
 
 .sidebar h2 {
@@ -16,7 +17,8 @@
 }
 
 .sidebar li {
-  margin-bottom: 0.5rem;
+  padding: 10px;
+  margin-bottom: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -24,7 +26,8 @@
 
 .sidebar li:hover {
   font-weight: bold;
-  color: #007bff;
+  background-color: #285a73;
+  border-radius: 10px;
 }
 
 .icono {

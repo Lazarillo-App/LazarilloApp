@@ -55,8 +55,8 @@ const TablaArticulos = ({
 
   const articulosFiltrados = filtroBusqueda
     ? articulosAMostrar.filter((articulo) =>
-        articulo.nombre.toLowerCase().includes(filtroBusqueda.toLowerCase())
-      )
+      articulo.nombre.toLowerCase().includes(filtroBusqueda.toLowerCase())
+    )
     : articulosAMostrar;
 
   const calcularCostoPorcentaje = (articulo) => {
@@ -114,9 +114,11 @@ const TablaArticulos = ({
         setAgrupacionSeleccionada={setAgrupacionSeleccionada}
         setFiltroBusqueda={setFiltroBusqueda}
         categoriaSeleccionada={categoriaSeleccionada}
+        setBusqueda={setFiltroBusqueda}
       />
+
       <div className="tabla-content">
-        <h1>Gestión de Artículos</h1>
+        <h2>Gestión de Artículos</h2>
 
         <div className="filtros-fechas">
           <label>Desde:</label>

@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import '../css/Navbar.css';
 import Buscador from './Buscador';
 
-const Navbar = ({ setFiltroBusqueda, setAgrupacionSeleccionada }) => {
-  const [busqueda, setBusqueda] = useState('');
+const Navbar = ({ filtroBusqueda, setFiltroBusqueda, setAgrupacionSeleccionada, sugerencias = [] }) => {
 
   const handleBuscar = (valor) => {
-    setBusqueda(valor);
-    if (setFiltroBusqueda) setFiltroBusqueda(valor);
-    if (setAgrupacionSeleccionada) setAgrupacionSeleccionada(null); // Limpiar agrupación al buscar
+    setFiltroBusqueda(valor);
+    setAgrupacionSeleccionada?.(null);
   };
 
   return (
@@ -20,7 +18,11 @@ const Navbar = ({ setFiltroBusqueda, setAgrupacionSeleccionada }) => {
         <Link to="/agrupaciones" className="nav-link">Agrupaciones</Link>
       </div>
       <div className="navbar-actions">
-        <Buscador value={busqueda} setFiltroBusqueda={handleBuscar} />
+        <Buscador
+          value={filtroBusqueda} 
+          setFiltroBusqueda={handleBuscar}
+          opciones={sugerencias}
+        />
       </div>
     </nav>
   );
