@@ -2,6 +2,9 @@ import React from 'react';
 import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import '../css/SidebarCategorias.css';
 
+// Helper: normaliza IDs sin importar si vienen como id/articuloId/codigo y si son string/number
+const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
+
 const SidebarCategorias = ({
   categorias,
   setCategoriaSeleccionada,
@@ -9,13 +12,14 @@ const SidebarCategorias = ({
   agrupacionSeleccionada,
   setAgrupacionSeleccionada,
   setFiltroBusqueda,
-  setBusqueda, // ✅ importante para limpiar el input del buscador
+  setBusqueda, // limpia el input del buscador
 }) => {
+
   const categoriasFiltradas = agrupacionSeleccionada
     ? categorias.filter(categoria =>
         categoria.subrubros.some(subrubro =>
           subrubro.articulos.some(articulo =>
-            agrupacionSeleccionada.articulos.some(a => a.id === articulo.id)
+            (agrupacionSeleccionada?.articulos || []).some(a => getId(a) === getId(articulo))
           )
         )
       )
@@ -34,13 +38,13 @@ const SidebarCategorias = ({
     }
 
     setCategoriaSeleccionada(null);
-    setBusqueda(''); // ✅ limpia el input de búsqueda
+    setBusqueda('');
   };
 
   const handleCategoriaClick = (categoria) => {
     setCategoriaSeleccionada(categoria);
     setFiltroBusqueda('');
-    setBusqueda(''); // ✅ limpia el input de búsqueda también al seleccionar categoría
+    setBusqueda('');
   };
 
   return (
@@ -64,10 +68,7 @@ const SidebarCategorias = ({
       <h2>Categorías</h2>
       <ul>
         {categoriasFiltradas.map((categoria) => (
-          <li
-            key={categoria.id}
-            onClick={() => handleCategoriaClick(categoria)}
-          >
+          <li key={categoria.id} onClick={() => handleCategoriaClick(categoria)}>
             <p className="icono" /> {categoria.nombre}
           </li>
         ))}

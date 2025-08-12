@@ -3,6 +3,10 @@ import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import SidebarCategorias from './SidebarCategorias';
 import '../css/TablaArticulos.css';
 
+// Helpers
+const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
+const num   = (v) => Number(v ?? 0);
+
 const TablaArticulos = ({
   filtroBusqueda, setFiltroBusqueda,
   agrupacionSeleccionada, setAgrupacionSeleccionada,
@@ -19,11 +23,16 @@ const TablaArticulos = ({
       try {
         const token = await obtenerToken();
         const articulosData = await obtenerArticulos(token, fechaDesde, fechaHasta);
+
         const categoriasData = articulosData.map((categoria) => ({
           id: categoria.id,
           nombre: categoria.nombre,
-          subrubros: categoria.subrubros,
+          subrubros: categoria.subrubros.map(s => ({
+            ...s,
+            articulos: s.articulos.map(a => ({ ...a, id: getId(a) })), // normaliza id
+          })),
         }));
+
         setCategorias(categoriasData);
       } catch (error) {
         console.error('Error al cargar los datos:', error);
@@ -32,11 +41,10 @@ const TablaArticulos = ({
     cargarDatos();
   }, [fechaDesde, fechaHasta]);
 
+  // Índice maestro por id
   const baseById = useMemo(() => {
-    const list = categorias.flatMap(c =>
-      c.subrubros.flatMap(s => s.articulos)
-    );
-    return new Map(list.map(a => [a.id, a]));
+    const list = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
+    return new Map(list.map(a => [getId(a), a]));
   }, [categorias]);
 
   let articulosAMostrar = [];
@@ -44,44 +52,44 @@ const TablaArticulos = ({
   if (categoriaSeleccionada && agrupacionSeleccionada) {
     articulosAMostrar = categoriaSeleccionada.subrubros
       .flatMap(sub => sub.articulos)
-      .filter(art => (agrupacionSeleccionada.articulos || []).some(a => a.id === art.id));
+      .filter(art => (agrupacionSeleccionada.articulos || []).some(a => getId(a) === getId(art)));
   } else if (categoriaSeleccionada) {
     articulosAMostrar = categoriaSeleccionada.subrubros.flatMap(sub => sub.articulos);
   } else if (agrupacionSeleccionada) {
-    // 🔥 Hidratar artículos de la agrupación con el maestro
+    // Hidratar artículos de la agrupación con el maestro
     const arr = agrupacionSeleccionada.articulos || [];
     articulosAMostrar = arr.map(a => {
-      const b = baseById.get(a.id) || {};
+      const id = getId(a);
+      const b  = baseById.get(id) || {};
       return {
         ...b, ...a,
-        nombre: a.nombre || b.nombre || `#${a.id}`,
-        categoria: a.categoria || b.categoria || 'Sin categoría',
-        subrubro: a.subrubro || b.subrubro || 'Sin subrubro',
-        precio: Number(a.precio ?? b.precio ?? 0),
-        costo: Number(a.costo ?? b.costo ?? 0),
+        id,
+        nombre: a.nombre ?? b.nombre ?? `#${id}`,
+        categoria: a.categoria ?? b.categoria ?? 'Sin categoría',
+        subrubro: a.subrubro ?? b.subrubro ?? 'Sin subrubro',
+        precio: num(a.precio ?? b.precio),
+        costo:  num(a.costo  ?? b.costo),
       };
     });
   } else {
-    articulosAMostrar = categorias.flatMap(c =>
-      c.subrubros.flatMap(s => s.articulos)
-    );
+    articulosAMostrar = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
   }
 
   const articulosFiltrados = filtroBusqueda
     ? articulosAMostrar.filter((art) =>
-      (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase())
-    )
+        (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase())
+      )
     : articulosAMostrar;
 
   const calcularCostoPorcentaje = (art) => {
-    const precio = Number(art.precio) || 0;
-    const costo = Number(art.costo) || 0;
+    const precio = num(art.precio);
+    const costo  = num(art.costo);
     return precio > 0 ? ((costo / precio) * 100).toFixed(2) : 0;
   };
 
   const calcularSugerido = (art) => {
-    const objetivo = Number(objetivos[art.id]) || 0; // %
-    const costo = Number(art.costo) || 0;
+    const objetivo = num(objetivos[getId(art)]) || 0; // %
+    const costo = num(art.costo);
     const den = 100 - objetivo;
     return den > 0 ? costo * (100 / den) : 0;
   };
@@ -94,29 +102,27 @@ const TablaArticulos = ({
     setManuales({ ...manuales, [id]: value });
   };
 
+  // Agrupar por rubro/subrubro usando el maestro
   const agruparPorRubroYSubrubro = (articulos) => {
     const agrupados = {};
-
     articulos.forEach((articulo) => {
-      const categoria = categorias.find(categoria =>
-        categoria.subrubros.some(subrubro =>
-          subrubro.articulos.some(a => a.id === articulo.id)
+      const categoria = categorias.find(cat =>
+        cat.subrubros.some(sub =>
+          sub.articulos.some(a => getId(a) === getId(articulo))
         )
       );
 
       if (categoria) {
         const rubro = categoria.nombre;
-        const subrubro = categoria.subrubros.find(subrubro =>
-          subrubro.articulos.some(a => a.id === articulo.id)
+        const subrubro = categoria.subrubros.find(sub =>
+          sub.articulos.some(a => getId(a) === getId(articulo))
         )?.nombre || 'Sin subrubro';
 
         if (!agrupados[rubro]) agrupados[rubro] = {};
         if (!agrupados[rubro][subrubro]) agrupados[rubro][subrubro] = [];
-
         agrupados[rubro][subrubro].push(articulo);
       }
     });
-
     return agrupados;
   };
 
@@ -172,17 +178,17 @@ const TablaArticulos = ({
                         <td colSpan="9"><strong>{rubro} - {subrubro}</strong></td>
                       </tr>
                       {articulosAgrupados[rubro][subrubro].map((articulo) => (
-                        <tr key={articulo.id}>
-                          <td>{articulo.id}</td>
+                        <tr key={getId(articulo)}>
+                          <td>{getId(articulo)}</td>
                           <td>{articulo.nombre}</td>
-                          <td>${articulo.precio}</td>
-                          <td>${articulo.costo}</td>
+                          <td>${num(articulo.precio)}</td>
+                          <td>${num(articulo.costo)}</td>
                           <td>{calcularCostoPorcentaje(articulo)}%</td>
                           <td>
                             <input
                               type="number"
-                              value={objetivos[articulo.id] || ''}
-                              onChange={(e) => handleObjetivoChange(articulo.id, e.target.value)}
+                              value={objetivos[getId(articulo)] || ''}
+                              onChange={(e) => handleObjetivoChange(getId(articulo), e.target.value)}
                               style={{ width: '60px' }}
                             />
                           </td>
@@ -190,8 +196,8 @@ const TablaArticulos = ({
                           <td>
                             <input
                               type="number"
-                              value={manuales[articulo.id] || ''}
-                              onChange={(e) => handleManualChange(articulo.id, e.target.value)}
+                              value={manuales[getId(articulo)] || ''}
+                              onChange={(e) => handleManualChange(getId(articulo), e.target.value)}
                               style={{ width: '80px' }}
                             />
                           </td>
