@@ -6,11 +6,9 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import axios from 'axios';
-
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import AgrupacionesList from "./AgrupacionesList";
 import AgrupacionesInsumos from "./AgrupacionesInsumos";
-
 // (Opcional) si querés garantizar que exista el grupo TODO en el backend.
 // Si tu backend ya lo crea, podés borrar esto y las 2 líneas que lo usan.
 import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
@@ -33,7 +31,6 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agrupaciones, setAgrupaciones] = useState([]);
-
   // Snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState('');

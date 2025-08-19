@@ -16,6 +16,7 @@ const SidebarCategorias = ({
   idsVisibles, // <- NUEVO: Set<number> con IDs de artículos actualmente visibles en la tabla
 }) => {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
+
   const agrupacionesArray = Array.isArray(agrupaciones) ? agrupaciones : [];
 
   // Calcula qué categorías mostrar:
@@ -49,10 +50,8 @@ const SidebarCategorias = ({
         }).filter(sr => (sr.articulos || []).length > 0);
         return { ...cat, subrubros: sub };
       }).filter(cat => (cat.subrubros || []).length > 0);
-
       return recortadas.length ? recortadas : categoriasSafe;
     }
-
     // 3) Sin filtros: todas
     return categoriasSafe;
   }, [categoriasSafe, idsVisibles, agrupacionSeleccionada]);
