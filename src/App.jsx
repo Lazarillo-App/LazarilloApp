@@ -1,29 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
+
 import Navbar from './componentes/Navbar';
 import TablaArticulos from './componentes/TablaArticulos';
 import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
+import Insumos from './componentes/Insumos';
+
 import { obtenerToken, obtenerArticulos } from './servicios/apiMaxiRest';
+import { SearchProvider, useSearch } from './servicios/searchContext';
+
+// Bridge para pasar el search global a tu TablaArticulos actual
+function TablaArticulosBridge(props) {
+  const { query, setQuery } = useSearch();
+  return (
+    <TablaArticulos
+      {...props}
+      filtroBusqueda={query}
+      setFiltroBusqueda={setQuery}
+    />
+  );
+}
 
 const App = () => {
-  const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
-  const [categorias, setCategorias] = useState([]); 
+  const [categorias, setCategorias] = useState([]);
 
-  const sugerencias = categorias
-  .flatMap(cat => cat.subrubros.flatMap(sub => sub.articulos))
-  .map(art => art.nombre);
+  // sugerencias para el autocompletado (de artículos por ahora)
+  const sugerencias = (Array.isArray(categorias) ? categorias : [])
+    .flatMap(cat => (cat?.subrubros || []).flatMap(sub => sub?.articulos || []))
+    .map(art => art?.nombre)
+    .filter(Boolean);
 
   const recargarAgrupaciones = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
-      const data = await response.json();
-      setAgrupaciones(data);
-    } catch (error) {
-      console.error('Error al cargar agrupaciones:', error);
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setAgrupaciones(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error al cargar agrupaciones:', e);
+      setAgrupaciones([]); // 👈 evita crash
     }
   };
 
@@ -31,9 +50,10 @@ const App = () => {
     try {
       const token = await obtenerToken();
       const data = await obtenerArticulos(token, '2025-01-01', '2025-04-01');
-      setCategorias(data);
-    } catch (error) {
-      console.error('Error al cargar artículos:', error);
+      setCategorias(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error al cargar artículos:', e);
+      setCategorias([]); // 👈 defensivo
     }
   };
 
@@ -43,20 +63,18 @@ const App = () => {
   }, []);
 
   return (
-    <>
+    <SearchProvider>
+      {/* Navbar usa el buscador global internamente (sin props de búsqueda) */}
       <Navbar
-        filtroBusqueda={filtroBusqueda}
-        setFiltroBusqueda={setFiltroBusqueda}
         setAgrupacionSeleccionada={setAgrupacionSeleccionada}
         sugerencias={sugerencias}
       />
+
       <Routes>
         <Route
           path="/"
           element={
-            <TablaArticulos
-              filtroBusqueda={filtroBusqueda}
-              setFiltroBusqueda={setFiltroBusqueda}
+            <TablaArticulosBridge
               agrupacionSeleccionada={agrupacionSeleccionada}
               setAgrupacionSeleccionada={setAgrupacionSeleccionada}
               agrupaciones={agrupaciones}
@@ -73,8 +91,9 @@ const App = () => {
           path="/agrupacioneslist"
           element={<AgrupacionesList agrupaciones={agrupaciones} />}
         />
+        <Route path="/insumos" element={<Insumos />} />
       </Routes>
-    </>
+    </SearchProvider>
   );
 };
 

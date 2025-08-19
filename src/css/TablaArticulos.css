@@ -17,11 +17,26 @@ h1 {
   color: #333;
 }
 
+.filtros-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center !important;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.css-1tlcqt-MuiAutocomplete-root {
+  display: flex;
+  margin-left: 15px;
+}
+
 .filtros-fechas {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-left: 15px;
 }
 
 .filtros-fechas label {

@@ -39,3 +39,4 @@ export const obtenerArticulos = async (token, fechaInicio, fechaFin) => {
     throw new Error("Error al obtener artículos: " + data.resultDescription);
   }
 };
+

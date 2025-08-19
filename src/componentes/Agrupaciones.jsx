@@ -1,19 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Button, Modal, Typography, TextField, Checkbox,
   Accordion, AccordionSummary, AccordionDetails, Box,
   Snackbar, Alert
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
-import AgrupacionesList from "./AgrupacionesList";
 import axios from 'axios';
 
-const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloSeleccionado) => {
-  const disponibles = articulos.filter(art => !isArticuloSeleccionado(art));
+import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
+import AgrupacionesList from "./AgrupacionesList";
+import AgrupacionesInsumos from "./AgrupacionesInsumos";
+
+// (Opcional) si querés garantizar que exista el grupo TODO en el backend.
+// Si tu backend ya lo crea, podés borrar esto y las 2 líneas que lo usan.
+import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
+
+const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
+  const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
   const total = disponibles.length;
   const seleccionados = disponibles.filter(art => articulosSeleccionados.includes(art)).length;
-
   return {
     checked: total > 0 && seleccionados === total,
     indeterminate: seleccionados > 0 && seleccionados < total
@@ -22,18 +27,17 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloSele
 
 const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [rubro, setRubro] = useState("");
-  const [todosArticulos, setTodosArticulos] = useState([]);
+  const [todosArticulos, setTodosArticulos] = useState([]); // [{id, nombre, subrubros:[...]} por categoría]
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agrupaciones, setAgrupaciones] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");   
-  console.log(setSearchQuery)
+
   // Snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState('');
-  const [snackbarTipo, setSnackbarTipo] = useState('success'); // 'success' | 'error' | 'info'
+  const [snackbarTipo, setSnackbarTipo] = useState('success');
 
   const mostrarSnackbar = (mensaje, tipo = 'success') => {
     setSnackbarMensaje(mensaje);
@@ -43,8 +47,8 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 
   const cargarAgrupaciones = async () => {
     try {
-      const agrupacionesRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
-      setAgrupaciones(Array.isArray(agrupacionesRes.data) ? agrupacionesRes.data : []);
+      const { data } = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
+      setAgrupaciones(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error al cargar agrupaciones:", error);
       mostrarSnackbar("Error al cargar agrupaciones", 'error');
@@ -54,11 +58,16 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // 1) Maxi
         const token = await obtenerToken();
         const articulos = await obtenerArticulos(token);
         setTodosArticulos(articulos);
         setLoading(false);
 
+        // 2) (Opcional) Garantizar que exista TODO
+        try { await ensureTodo(); } catch (_) {}
+
+        // 3) Agrupaciones
         await cargarAgrupaciones();
       } catch (error) {
         console.error("Error al cargar los datos:", error);
@@ -66,36 +75,41 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         mostrarSnackbar("Error al cargar datos", 'error');
       }
     };
-
     fetchData();
   }, []);
 
-  const isArticuloSeleccionado = (articulo) => {
-    return agrupaciones.some(agr =>
-      Array.isArray(agr.articulos) && agr.articulos.some(a => a.id === articulo.id)
-    );
-  };
+  // IDs asignados a alguna agrupación (EXCEPTO la agrupación llamada "TODO")
+  const assignedIds = useMemo(() => {
+    const set = new Set();
+    (agrupaciones || [])
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => (g.articulos || []).forEach(a => set.add(String(a.id))));
+    return set;
+  }, [agrupaciones]);
 
-  const handleSelectCategoria = (categoria, articulos) => {
-    const nuevosArticulos = articulos.filter(a => !isArticuloSeleccionado(a));
-    setCategoriasSeleccionadas((prevState) =>
-      prevState.includes(categoria)
-        ? prevState.filter((item) => item !== categoria)
-        : [...prevState, categoria]
+  // Artículo bloqueado = ya pertenece a alguna agrupación (excepto TODO)
+  const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
+
+  const handleSelectCategoria = (_categoriaNombre, articulos) => {
+    const candidatos = articulos.filter(a => !isArticuloBloqueado(a));
+    setCategoriasSeleccionadas((prev) =>
+      prev.includes(_categoriaNombre)
+        ? prev.filter((x) => x !== _categoriaNombre)
+        : [...prev, _categoriaNombre]
     );
-    setArticulosSeleccionados((prevState) =>
-      prevState.some(art => nuevosArticulos.includes(art))
-        ? prevState.filter(art => !nuevosArticulos.includes(art))
-        : [...prevState, ...nuevosArticulos]
+    setArticulosSeleccionados((prev) =>
+      candidatos.some(a => prev.includes(a))
+        ? prev.filter(a => !candidatos.includes(a))
+        : [...prev, ...candidatos]
     );
   };
 
   const handleSelectArticulo = (articulo) => {
-    if (isArticuloSeleccionado(articulo)) return;
-    setArticulosSeleccionados((prevState) =>
-      prevState.includes(articulo)
-        ? prevState.filter((item) => item !== articulo)
-        : [...prevState, articulo]
+    if (isArticuloBloqueado(articulo)) return; // ya tomado por otra agrupación
+    setArticulosSeleccionados((prev) =>
+      prev.includes(articulo)
+        ? prev.filter((x) => x !== articulo)
+        : [...prev, articulo]
     );
   };
 
@@ -104,7 +118,6 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
       mostrarSnackbar("Debes ingresar un nombre y seleccionar artículos", 'error');
       return;
     }
-
     try {
       await axios.post(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`, {
         nombre: rubro,
@@ -121,7 +134,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
       setRubro("");
       setArticulosSeleccionados([]);
       setCategoriasSeleccionadas([]);
-      actualizarAgrupaciones();
+      actualizarAgrupaciones?.();
       setModalOpen(false);
       mostrarSnackbar(`Agrupación "${rubro}" creada correctamente`);
     } catch (error) {
@@ -130,53 +143,19 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
     }
   };
 
-  const filterArticulos = (articulos) => {
-    return articulos.filter(articulo =>
-      articulo.nombre.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  };
-
   const agruparPorSubrubro = (data) => {
     const agrupado = {};
     data.forEach(rubro => {
       rubro.subrubros.forEach(subrubro => {
         const subrubroNombre = subrubro.nombre;
-        if (!agrupado[subrubroNombre]) {
-          agrupado[subrubroNombre] = [];
-        }
+        if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
         agrupado[subrubroNombre].push({
           nombre: rubro.nombre,
           articulos: subrubro.articulos
         });
       });
     });
-
-    return Object.entries(agrupado).map(([nombre, rubros]) => ({
-      nombre,
-      rubros
-    }));
-  };
-
-  const handleSelectSubrubro = (subrubro) => {
-    const todasCategorias = subrubro.rubros.map(r => r.nombre);
-    const todosArticulos = subrubro.rubros.flatMap(r => r.articulos).filter(a => !isArticuloSeleccionado(a));
-
-    const estaSeleccionado = todasCategorias.every(cat => categoriasSeleccionadas.includes(cat)) &&
-      todosArticulos.every(art => articulosSeleccionados.includes(art));
-
-    const nuevasCategorias = new Set(categoriasSeleccionadas);
-    const nuevosArticulos = new Set(articulosSeleccionados);
-
-    if (estaSeleccionado) {
-      todasCategorias.forEach(cat => nuevasCategorias.delete(cat));
-      todosArticulos.forEach(art => nuevosArticulos.delete(art));
-    } else {
-      todasCategorias.forEach(cat => nuevasCategorias.add(cat));
-      todosArticulos.forEach(art => nuevosArticulos.add(art));
-    }
-
-    setCategoriasSeleccionadas(Array.from(nuevasCategorias));
-    setArticulosSeleccionados(Array.from(nuevosArticulos));
+    return Object.entries(agrupado).map(([nombre, rubros]) => ({ nombre, rubros }));
   };
 
   return (
@@ -221,7 +200,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
             }}
           >
             <Typography variant="h6" fontWeight="bold" gutterBottom>
-              Selecciona Categorías y Artículos
+              Selecciona Categorías y Artículos (solo los que aún están libres)
             </Typography>
 
             {loading ? (
@@ -229,34 +208,42 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
             ) : (
               <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
                 {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
-                  const subrubroArticulosDisponibles = subrubro.rubros.flatMap(rubro =>
-                    rubro.articulos.filter(art => !isArticuloSeleccionado(art))
+                  // Solo contamos como “seleccionables” los que no están ya asignados
+                  const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
+                    r.articulos.filter(a => !isArticuloBloqueado(a))
                   );
 
-                  const { checked: subrubroChecked, indeterminate: subrubroIndeterminado } = evaluarCheckboxEstado(
+                  const { checked, indeterminate } = evaluarCheckboxEstado(
                     subrubroArticulosDisponibles,
                     articulosSeleccionados,
-                    isArticuloSeleccionado
+                    isArticuloBloqueado
                   );
 
                   return (
                     <Accordion key={index}>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Checkbox
-                          checked={subrubroChecked}
-                          indeterminate={subrubroIndeterminado}
-                          onChange={() => handleSelectSubrubro(subrubro)}
+                          checked={checked}
+                          indeterminate={indeterminate}
+                          onChange={() => {
+                            // toggle todos los disponibles de este subrubro
+                            const disponibles = subrubro.rubros.flatMap(r =>
+                              r.articulos.filter(a => !isArticuloBloqueado(a))
+                            );
+                            setArticulosSeleccionados(prev =>
+                              disponibles.some(a => prev.includes(a))
+                                ? prev.filter(a => !disponibles.includes(a))
+                                : [...prev, ...disponibles]
+                            );
+                          }}
                           sx={{ mr: 1 }}
                         />
                         <Typography fontWeight="bold">{subrubro.nombre}</Typography>
                       </AccordionSummary>
                       <AccordionDetails>
-                        {subrubro.rubros.map((rubro, idx) => {
-                          const { checked: rubroChecked, indeterminate: rubroIndeterminado } = evaluarCheckboxEstado(
-                            rubro.articulos,
-                            articulosSeleccionados,
-                            isArticuloSeleccionado
-                          );
+                        {subrubro.rubros.map((rubroCat, idx) => {
+                          const { checked: rubroChecked, indeterminate: rubroIndeterminado } =
+                            evaluarCheckboxEstado(rubroCat.articulos, articulosSeleccionados, isArticuloBloqueado);
 
                           return (
                             <Accordion key={idx} sx={{ mb: 1 }}>
@@ -264,23 +251,29 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
                                 <Checkbox
                                   checked={rubroChecked}
                                   indeterminate={rubroIndeterminado}
-                                  onChange={() => handleSelectCategoria(rubro.nombre, rubro.articulos)}
+                                  onChange={() => handleSelectCategoria(rubroCat.nombre, rubroCat.articulos)}
                                   sx={{ mr: 1 }}
                                 />
-                                <Typography>{rubro.nombre}</Typography>
+                                <Typography>{rubroCat.nombre}</Typography>
                               </AccordionSummary>
                               <AccordionDetails>
-                                {filterArticulos(rubro.articulos).map((articulo) => (
-                                  <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2 }}>
-                                    <Checkbox
-                                      checked={articulosSeleccionados.includes(articulo)}
-                                      onChange={() => handleSelectArticulo(articulo)}
-                                      sx={{ mr: 1 }}
-                                      disabled={isArticuloSeleccionado(articulo)}
-                                    />
-                                    <Typography>{articulo.nombre}</Typography>
-                                  </Box>
-                                ))}
+                                {rubroCat.articulos.map((articulo) => {
+                                  const bloqueado = isArticuloBloqueado(articulo);
+                                  const seleccionado = articulosSeleccionados.includes(articulo);
+                                  return (
+                                    <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1 }}>
+                                      <Checkbox
+                                        checked={seleccionado}
+                                        onChange={() => handleSelectArticulo(articulo)}
+                                        sx={{ mr: 1 }}
+                                        disabled={bloqueado}
+                                      />
+                                      <Typography>
+                                        {articulo.nombre} {bloqueado && '(ya asignado)'}
+                                      </Typography>
+                                    </Box>
+                                  );
+                                })}
                               </AccordionDetails>
                             </Accordion>
                           );
@@ -308,10 +301,15 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         <AgrupacionesList
           agrupaciones={agrupaciones}
           onActualizar={() => {
-            actualizarAgrupaciones();
+            actualizarAgrupaciones?.();
+            cargarAgrupaciones();
             mostrarSnackbar("Agrupación actualizada");
           }}
+          // Podés pasar el id de TODO si querés identificarlo, pero ya no se usa para exclusiones
+          todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
         />
+
+        <AgrupacionesInsumos />
       </div>
     </>
   );
