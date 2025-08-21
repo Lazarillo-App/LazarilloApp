@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import axios from 'axios';
+import { BASE } from '../servicios/apiBase';
+import VentasCell from './VentasCell';
 import Buscador from './Buscador';
 import SidebarCategorias from './SidebarCategorias';
 import '../css/TablaArticulos.css';
@@ -11,10 +13,10 @@ import { IconButton, Snackbar, Alert } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
-// Exclusiones / TODO
 import {
   ensureTodo, getExclusiones, addExclusiones, removeExclusiones
-} from '../servicios/apiAgrupacionesTodo';
+} from '../servicios/apiAgrupacionesTodo.js';
+
 
 // Helpers
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
@@ -31,6 +33,9 @@ const TablaArticulos = ({
   const [manuales, setManuales] = useState({});
   const [fechaDesde, setFechaDesde] = useState('2025-01-01');
   const [fechaHasta, setFechaHasta] = useState('2025-04-01');
+
+  // 💡 Totales de ventas por artículo (para sort por "ventas")
+  const [ventasTotals, setVentasTotals] = useState({}); // { [id]: number }
 
   // TODO + exclusiones
   const [todoGroupId, setTodoGroupId] = useState(null);
@@ -217,7 +222,7 @@ const TablaArticulos = ({
     // 1) Dentro de una agrupación (no TODO): quitar de la agrupación => queda en TODO
     if (agrupacionSeleccionada && agrupacionSeleccionada.id !== todoGroupId) {
       try {
-        await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${agrupacionSeleccionada.id}/articulos/${id}`);
+        await axios.delete(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos/${id}`);
         // a) sacar de la UI local
         setAgrupacionSeleccionada(prev =>
           prev
@@ -241,7 +246,7 @@ const TablaArticulos = ({
       );
       if (grupo) {
         try {
-          await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${grupo.id}/articulos/${id}`);
+          await axios.delete(`${BASE}/agrupaciones/${grupo.id}/articulos/${id}`);
           if (typeof refetchAgrupaciones === 'function') refetchAgrupaciones();
           openSnack(`Artículo #${id} movido a TODO (quitado de ${grupo.nombre}).`);
         } catch (e) {
@@ -277,64 +282,73 @@ const TablaArticulos = ({
     }
   };
 
- // ------------------ Ordenar Columnas  ------------------
-const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
-const [sortDir, setSortDir] = useState('asc');    // 'asc' | 'desc'
+  // ------------------ Ordenar Columnas  ------------------
+  const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'ventas'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
+  const [sortDir, setSortDir] = useState('asc');    // 'asc' | 'desc'
 
-const toggleSort = (key) => {
-  if (sortBy === key) {
-    setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-  } else {
-    setSortBy(key);
-    setSortDir('asc');
-  }
-};
-
-// valor usado para ordenar por cada columna
-const getSortValue = (art) => {
-  const id = getId(art);
-  switch (sortBy) {
-    case 'codigo':   return id;                         // number
-    case 'nombre':   return art?.nombre ?? '';          // string
-    case 'precio':   return num(art?.precio);
-    case 'costo':    return num(art?.costo);
-    case 'costoPct': {
-      const p = num(art?.precio), c = num(art?.costo);
-      return p > 0 ? (c / p) * 100 : -Infinity;
+  const toggleSort = (key) => {
+    if (sortBy === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortDir('asc');
     }
-    case 'objetivo': return num(objetivos[id]) || 0;
-    case 'sugerido': {
-      const objetivo = num(objetivos[id]) || 0;
-      const costo = num(art?.costo);
-      const den = 100 - objetivo;
-      return den > 0 ? costo * (100 / den) : Infinity;
+  };
+
+  // valor usado para ordenar por cada columna
+  const getSortValue = (art) => {
+    const id = getId(art);
+    switch (sortBy) {
+      case 'codigo': return id;                         // number
+      case 'nombre': return art?.nombre ?? '';          // string
+      case 'ventas': return Number(ventasTotals[id] ?? 0);
+      case 'precio': return num(art?.precio);
+      case 'costo': return num(art?.costo);
+      case 'costoPct': {
+        const p = num(art?.precio), c = num(art?.costo);
+        return p > 0 ? (c / p) * 100 : -Infinity;
+      }
+      case 'objetivo': return num(objetivos[id]) || 0;
+      case 'sugerido': {
+        const objetivo = num(objetivos[id]) || 0;
+        const costo = num(art?.costo);
+        const den = 100 - objetivo;
+        return den > 0 ? costo * (100 / den) : Infinity;
+      }
+      case 'manual': return num(manuales[id]) || 0;
+      default: return null;
     }
-    case 'manual':   return num(manuales[id]) || 0;
-    default:         return null;
-  }
-};
+  };
 
-// comparador estable que maneja números/strings y acentos
-const cmp = (a, b) => {
-  if (!sortBy) return 0;
-  const va = getSortValue(a);
-  const vb = getSortValue(b);
+  // comparador estable que maneja números/strings y acentos
+  const cmp = (a, b) => {
+    if (!sortBy) return 0;
+    const va = getSortValue(a);
+    const vb = getSortValue(b);
 
-  // strings con locale español y números “naturales”
-  if (typeof va === 'string' || typeof vb === 'string') {
-    const sa = String(va ?? '');
-    const sb = String(vb ?? '');
-    const r = sa.localeCompare(sb, 'es', { sensitivity: 'base', numeric: true });
-    return sortDir === 'asc' ? r : -r;
-  }
+    // strings con locale español y números “naturales”
+    if (typeof va === 'string' || typeof vb === 'string') {
+      const sa = String(va ?? '');
+      const sb = String(vb ?? '');
+      const r = sa.localeCompare(sb, 'es', { sensitivity: 'base', numeric: true });
+      return sortDir === 'asc' ? r : -r;
+    }
 
-  // números
-  const na = Number(va ?? 0);
-  const nb = Number(vb ?? 0);
-  if (na < nb) return sortDir === 'asc' ? -1 : 1;
-  if (na > nb) return sortDir === 'asc' ? 1 : -1;
-  return 0;
-};
+    // números
+    const na = Number(va ?? 0);
+    const nb = Number(vb ?? 0);
+    if (na < nb) return sortDir === 'asc' ? -1 : 1;
+    if (na > nb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  };
+
+  // callback para que VentasCell eleve el total y podamos ordenar por "ventas"
+  const handleTotalVentasChange = (articuloId, total) => {
+    setVentasTotals(prev => {
+      if (prev[articuloId] === total) return prev;
+      return { ...prev, [articuloId]: total };
+    });
+  };
 
   return (
     <div className="tabla-articulos-container">
@@ -365,7 +379,7 @@ const cmp = (a, b) => {
             <Buscador
               value={filtroBusqueda}
               setFiltroBusqueda={setFiltroBusqueda}
-              opciones={sugerencias}   // <<— usamos las sugerencias locales
+              opciones={sugerencias}
               placeholder="Buscar por código o nombre…"
             />
           </div>
@@ -384,6 +398,9 @@ const cmp = (a, b) => {
                 </th>
                 <th onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
                   Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => toggleSort('ventas')} style={{ cursor: 'pointer' }}>
+                  Ventas {sortBy === 'ventas' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
                 <th onClick={() => toggleSort('precio')} style={{ cursor: 'pointer' }}>
                   Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
@@ -414,15 +431,27 @@ const cmp = (a, b) => {
                   {Object.keys(articulosAgrupados[rubro]).map((subrubro) => (
                     <React.Fragment key={subrubro}>
                       <tr className="rubro-row">
-                        <td colSpan="9"><strong>{rubro} - {subrubro}</strong></td>
+                        {/* 👉 Aumentamos colSpan a 10 por la nueva columna "Ventas" */}
+                        <td colSpan="10"><strong>{rubro} - {subrubro}</strong></td>
                       </tr>
-                     {[...articulosAgrupados[rubro][subrubro]].sort(cmp).map((articulo) => {
+                      {[...articulosAgrupados[rubro][subrubro]].sort(cmp).map((articulo) => {
                         const id = getId(articulo);
                         const isExcluded = excludedIds.has(id);
                         return (
                           <tr key={id}>
                             <td>{id}</td>
                             <td>{articulo.nombre}</td>
+
+                            {/* NUEVA COLUMNA: Ventas */}
+                            <td>
+                              <VentasCell
+                                articuloId={id}
+                                articuloNombre={articulo.nombre}
+                                onTotalChange={(artId, total) => handleTotalVentasChange(artId, total)}
+                              />
+
+                            </td>
+
                             <td>${num(articulo.precio)}</td>
                             <td>${num(articulo.costo)}</td>
                             <td>{calcularCostoPorcentaje(articulo)}%</td>

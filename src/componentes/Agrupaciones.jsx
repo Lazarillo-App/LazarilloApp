@@ -28,6 +28,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [todosArticulos, setTodosArticulos] = useState([]); // [{id, nombre, subrubros:[...]} por categoría]
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
+  console.log(categoriasSeleccionadas);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agrupaciones, setAgrupaciones] = useState([]);
@@ -62,7 +63,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         setLoading(false);
 
         // 2) (Opcional) Garantizar que exista TODO
-        try { await ensureTodo(); } catch (_) {}
+        try { await ensureTodo(); } catch { /* noop */ }
 
         // 3) Agrupaciones
         await cargarAgrupaciones();
@@ -178,7 +179,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
           className="mb-4"
         />
 
-        <Button onClick={() => setModalOpen(true)} variant="contained" style={{backgroundColor: '#285a73'}}>
+        <Button onClick={() => setModalOpen(true)} variant="contained" style={{ backgroundColor: '#285a73' }}>
           Buscar
         </Button>
 

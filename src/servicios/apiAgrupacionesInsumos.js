@@ -1,15 +1,14 @@
 // src/servicios/apiAgrupacionesInsumos.js
-const RAW = import.meta?.env?.VITE_BACKEND_URL;
-const API = (RAW && RAW !== 'undefined' ? RAW : '/api').replace(/\/$/, '');
+import { BASE } from './apiBase';
 
 export async function obtenerAgrupacionesInsumos() {
-  const r = await fetch(`${API}/agrupaciones-insumos`);
+  const r = await fetch(`${BASE}/agrupaciones-insumos`);
   if (!r.ok) throw new Error('Error al obtener agrupaciones de insumos');
   return r.json();
 }
 
 export async function crearAgrupacionInsumos({ nombre, insumos }) {
-  const r = await fetch(`${API}/agrupaciones-insumos`, {
+  const r = await fetch(`${BASE}/agrupaciones-insumos`, {
     method:'POST',
     headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify({ nombre, insumos })
@@ -19,7 +18,7 @@ export async function crearAgrupacionInsumos({ nombre, insumos }) {
 }
 
 export async function eliminarAgrupacionInsumos(id) {
-  const r = await fetch(`${API}/agrupaciones-insumos/${id}`, { method:'DELETE' });
+  const r = await fetch(`${BASE}/agrupaciones-insumos/${id}`, { method:'DELETE' });
   if (!r.ok) throw new Error('Error al eliminar agrupación de insumos');
   return r.json();
 }

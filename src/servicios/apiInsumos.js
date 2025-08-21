@@ -1,16 +1,15 @@
-const RAW = import.meta?.env?.VITE_BACKEND_URL;
-const BASE_URL = (RAW && RAW !== 'undefined' ? RAW : '/api').replace(/\/$/, '');
+// src/servicios/apiInsumos.js
+import { BASE } from './apiBase';
 
-// --- Insumos (backend: /api/insumos)
 export const insumosList = async (params = {}) => {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${BASE_URL}/insumos${qs ? `?${qs}` : ""}`);
+  const res = await fetch(`${BASE}/insumos${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Error al listar insumos");
-  return await res.json(); // { ok, data, pagination }
+  return await res.json();
 };
 
 export const insumoCreate = async (payload) => {
-  const res = await fetch(`${BASE_URL}/insumos`, {
+  const res = await fetch(`${BASE}/insumos`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -19,7 +18,7 @@ export const insumoCreate = async (payload) => {
 };
 
 export const insumoUpdate = async (id, payload) => {
-  const res = await fetch(`${BASE_URL}/insumos/${id}`, {
+  const res = await fetch(`${BASE}/insumos/${id}`, {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
@@ -28,14 +27,13 @@ export const insumoUpdate = async (id, payload) => {
 };
 
 export const insumoDelete = async (id) => {
-  const res = await fetch(`${BASE_URL}/insumos/${id}`, { method: "DELETE" });
+  const res = await fetch(`${BASE}/insumos/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Error al eliminar insumo");
   return await res.json();
 };
 
-// --- Bulk
 export const insumosBulkJSON = async (items) => {
-  const res = await fetch(`${BASE_URL}/insumos/bulk`, {
+  const res = await fetch(`${BASE}/insumos/bulk`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(items),
   });
@@ -46,7 +44,7 @@ export const insumosBulkJSON = async (items) => {
 export const insumosBulkCSV = async (file) => {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${BASE_URL}/insumos/bulk-csv`, {
+  const res = await fetch(`${BASE}/insumos/bulk-csv`, {
     method: "POST", body: fd,
   });
   if (!res.ok) throw new Error("Error en bulk CSV");
@@ -54,7 +52,7 @@ export const insumosBulkCSV = async (file) => {
 };
 
 export const insumosCleanup = async () => {
-  const res = await fetch(`${BASE_URL}/insumos/admin/cleanup-null`, { method: "POST" });
+  const res = await fetch(`${BASE}/insumos/admin/cleanup-null`, { method: "POST" });
   if (!res.ok) throw new Error("Error en cleanup");
   return await res.json();
 };

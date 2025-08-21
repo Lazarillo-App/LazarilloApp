@@ -6,10 +6,10 @@ import TablaArticulos from './componentes/TablaArticulos';
 import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './componentes/Insumos';
-
 import { obtenerToken, obtenerArticulos } from './servicios/apiMaxiRest';
+import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
 import { SearchProvider, useSearch } from './servicios/searchContext';
-
+import { obtenerVentas } from './servicios/apiVentas';
 // Bridge para pasar el search global a tu TablaArticulos actual
 function TablaArticulosBridge(props) {
   const { query, setQuery } = useSearch();
@@ -21,6 +21,7 @@ function TablaArticulosBridge(props) {
     />
   );
 }
+window.apiVentas = { obtenerVentas }
 
 const App = () => {
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
@@ -36,14 +37,12 @@ const App = () => {
 
   const recargarAgrupaciones = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setAgrupaciones(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error('Error al cargar agrupaciones:', e);
-      setAgrupaciones([]); // 👈 evita crash
-    }
+      const data = await apiObtenerAgrupaciones();
+       setAgrupaciones(Array.isArray(data) ? data : []);
+     } catch (e) {
+       console.error('Error al cargar agrupaciones:', e);
+       setAgrupaciones([]); // 👈 evita crash
+     }
   };
 
   const cargarCategorias = async () => {
