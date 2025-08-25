@@ -1,4 +1,3 @@
-// src/servicios/apiAgrupacionesTodo.js
 import { BASE } from './apiBase';
 
 async function parseJsonSafe(res) {
@@ -14,17 +13,20 @@ async function httpJson(url, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// ---------- EXPORTS ÚNICOS: en la declaración ----------
+// Asegura que exista la agrupación "TODO"
 export async function ensureTodo() {
   // 1) PUT idempotente
   try {
-    const { ok, data } = await httpJson(`${BASE}/agrupaciones/todo`, { method: 'PUT' });
+    const { ok, data, status } = await httpJson(`${BASE}/agrupaciones/todo`, { method: 'PUT' });
     if (ok && data?.id) return data;
-  } catch (e) { /* noop: seguimos al fallback */ }
+    if (!ok && data?.error) throw new Error(data.error || `ensureTodo PUT status ${status}`);
+  } catch (_e) {
+    // seguimos al fallback
+  }
 
   // 2) Fallback: listar y buscar por nombre
   const { ok, status, data } = await httpJson(`${BASE}/agrupaciones`);
-  if (!ok) throw new Error(`No se pudieron listar agrupaciones (status ${status})`);
+  if (!ok) throw new Error((data && data.error) || `No se pudieron listar agrupaciones (status ${status})`);
 
   const list = Array.isArray(data) ? data : (data?.data || []);
   const todo = list.find(g => g?.nombre === 'TODO');
@@ -33,6 +35,7 @@ export async function ensureTodo() {
   throw new Error('No se pudo asegurar la agrupación TODO');
 }
 
+// Exclusiones
 export async function getExclusiones(grupoId) {
   const { ok, status, data } = await httpJson(`${BASE}/agrupaciones/${grupoId}/exclusiones`);
   if (status === 404) return [];

@@ -26,6 +26,10 @@ h1 {
     gap: 20px;
 }
 
+.filtros-container .MuiIconButton-root {
+  margin-right: 4px;
+}
+
 .css-1tlcqt-MuiAutocomplete-root {
   display: flex;
   margin-left: 15px;

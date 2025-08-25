@@ -8,10 +8,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import axios from 'axios';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import AgrupacionesList from "./AgrupacionesList";
-import AgrupacionesInsumos from "./AgrupacionesInsumos";
-// (Opcional) si querés garantizar que exista el grupo TODO en el backend.
-// Si tu backend ya lo crea, podés borrar esto y las 2 líneas que lo usan.
 import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
+import { BASE } from '../servicios/apiBase';
 
 const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
   const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
@@ -45,7 +43,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 
   const cargarAgrupaciones = async () => {
     try {
-      const { data } = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`);
+      const { data } = await axios.get(`${BASE}/agrupaciones`);
       setAgrupaciones(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error al cargar agrupaciones:", error);
@@ -117,7 +115,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
       return;
     }
     try {
-      await axios.post(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones`, {
+      await axios.post(`${BASE}/agrupaciones`, {
         nombre: rubro,
         articulos: articulosSeleccionados.map((art) => ({
           id: art.id,
@@ -306,8 +304,6 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
           // Podés pasar el id de TODO si querés identificarlo, pero ya no se usa para exclusiones
           todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
         />
-
-        <AgrupacionesInsumos />
       </div>
     </>
   );

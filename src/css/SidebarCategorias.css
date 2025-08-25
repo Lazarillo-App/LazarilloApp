@@ -4,6 +4,7 @@
   border-right: 1px solid #ccc;
   background-color: #37474F;
   color: white;
+  min-height: 100vh;
 }
 
 .sidebar h2 {

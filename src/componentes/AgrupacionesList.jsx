@@ -9,6 +9,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import axios from 'axios';
+import { BASE } from '../servicios/apiBase';
+
+// 👇 Helper: detecta el grupo TODO por id o por nombre
+const esTodoGroup = (g, todoGroupId) => {
+  const nombre = String(g?.nombre || '').trim().toUpperCase();
+  return g?.id === todoGroupId || nombre === 'TODO' || nombre === 'SIN AGRUPACIÓN';
+};
 
 const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
   const [todosArticulos, setTodosArticulos] = useState([]);
@@ -52,12 +59,12 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
   const assignedIds = useMemo(() => {
     const s = new Set();
     (agrupaciones || [])
-      .filter(g => g.nombre !== 'TODO' && g.id !== todoGroupId)
+      .filter(g => !esTodoGroup(g, todoGroupId)) // 👈 ignoramos TODO por id/nombre
       .forEach(g => (g.articulos || []).forEach(a => s.add(Number(a.id))));
     return s;
   }, [agrupaciones, todoGroupId]);
 
-  // Artículos “libres” que deben mostrarse dentro del acordeón TODO
+  // Artículos “libres” que deben mostrarse dentro del acordeón Sin Agrupación (ex-TODO)
   const libresEnTODO = useMemo(
     () => maxiAll.filter(a => !assignedIds.has(a.id)),
     [maxiAll, assignedIds]
@@ -83,7 +90,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
   };
 
   const filterArticulos = (articulos) => {
-    const list = Array.isArray(articulos) ? articulos : [];
+    const list = Array.isArray(articulos) ? articulos : articulos;
     return list.filter(a =>
       (a.nombre || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -113,8 +120,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
           precio: a.precio ?? 0
         }));
 
-      await axios.put(
-        `${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${agrupacionSeleccionada.id}/articulos`,
+      await axios.put(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos`,
         { articulos: payload }
       );
 
@@ -128,7 +134,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
 
   const handleEliminarAgrupacion = async (id) => {
     try {
-      await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${id}`);
+      await axios.delete(`${BASE}/agrupaciones/${id}`);
       onActualizar?.();
     } catch (error) {
       console.error("Error al eliminar agrupación:", error);
@@ -140,7 +146,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
     if (!nuevoNombre) return;
 
     try {
-      await axios.put(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${id}`, {
+      await axios.put(`${BASE}/agrupaciones/${id}`, {
         nombre: nuevoNombre
       });
       setEditandoId(null);
@@ -151,10 +157,10 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
     }
   };
 
-  // Quitar un artículo de un grupo normal (vuelve a quedar “libre” → visible en TODO)
+  // Quitar un artículo de un grupo normal (vuelve a quedar “libre” → visible en Sin Agrupación)
   const quitarDeAgrupacion = async (grupoId, articuloId) => {
     try {
-      await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/agrupaciones/${grupoId}/articulos/${articuloId}`);
+      await axios.delete(`${BASE}/agrupaciones/${grupoId}/articulos/${articuloId}`);
       onActualizar?.();
     } catch (e) {
       console.error("No se pudo quitar el artículo", e);
@@ -166,7 +172,8 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
       <h2>Agrupaciones Creadas</h2>
 
       {(Array.isArray(agrupaciones) ? agrupaciones : []).map((agrupacion) => {
-        const isTodo = agrupacion.nombre === 'TODO' || agrupacion.id === todoGroupId;
+        const isTodo = esTodoGroup(agrupacion, todoGroupId);
+        const displayName = isTodo ? 'Sin Agrupación' : (agrupacion.nombre || '');
 
         return (
           <Accordion key={agrupacion.id}>
@@ -190,7 +197,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
                 ) : (
                   <>
                     <Typography variant="h6">
-                      {agrupacion.nombre} {isTodo && '🔒'}
+                      {displayName} {isTodo && '🔒'}
                     </Typography>
                     <Box>
                       {!isTodo && (
@@ -217,7 +224,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
                   </Button>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
-                    TODO contiene los artículos que aún no pertenecen a ninguna agrupación.
+                    Sin Agrupación contiene los artículos que aún no pertenecen a ninguna agrupación.
                   </Typography>
                 )}
               </Box>
@@ -233,7 +240,7 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
                       color="warning"
                       onClick={()=>quitarDeAgrupacion(agrupacion.id, art.id)}
                     >
-                      Quitar de {agrupacion.nombre}
+                      Quitar de {displayName}
                     </Button>
                   </Box>
                 ))
@@ -242,10 +249,10 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
                   No hay artículos en esta agrupación
                 </Typography>
               ) : (
-                // Vista de TODO: mostramos los “libres”
+                // Vista de Sin Agrupación (ex TODO): mostramos los “libres”
                 <>
                   <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                    {libresEnTODO.length} artículo(s) en TODO
+                    {libresEnTODO.length} artículo(s) en Sin Agrupación
                   </Typography>
                   {libresEnTODO.slice(0, 100).map(a => (
                     <Box key={a.id} sx={{ display:'flex', gap:1, mb:.5 }}>
@@ -298,7 +305,6 @@ const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
                 (cat.subrubros || []).flatMap(sr => (sr.articulos || []))
               )
             ).map((articulo) => {
-              // ocultar los que ya están en la agrupación
               const yaEsta = (agrupacionSeleccionada?.articulos || []).some(a => a.id === articulo.id);
               if (yaEsta) return null;
 

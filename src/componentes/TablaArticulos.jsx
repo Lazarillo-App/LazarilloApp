@@ -1,54 +1,57 @@
 // src/componentes/TablaArticulos.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
-import axios from 'axios';
-import { BASE } from '../servicios/apiBase';
-import VentasCell from './VentasCell';
 import Buscador from './Buscador';
+import SubrubroAccionesMenu from './SubrubroAccionesMenu';
 import SidebarCategorias from './SidebarCategorias';
+import ArticuloAccionesMenu from './ArticuloAccionesMenu';
 import '../css/TablaArticulos.css';
-
-// MUI
-import { IconButton, Snackbar, Alert } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-
-import {
-  ensureTodo, getExclusiones, addExclusiones, removeExclusiones
-} from '../servicios/apiAgrupacionesTodo.js';
-
+import { Snackbar, Alert } from '@mui/material';
+import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo.js';
 
 // Helpers
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const num = (v) => Number(v ?? 0);
+const fmt = (v, decimals = 0) =>
+  Number(v ?? 0).toLocaleString('es-CL', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+
+const esTodoGroup = (g, todoGroupId) => {
+  const n = String(g?.nombre || '').trim().toUpperCase();
+  return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN' || n === 'SIN AGRUPACION';
+};
 
 const TablaArticulos = ({
   filtroBusqueda, setFiltroBusqueda,
   agrupacionSeleccionada, setAgrupacionSeleccionada,
   agrupaciones, categoriaSeleccionada, setCategoriaSeleccionada,
-  refetchAgrupaciones
+  refetchAgrupaciones,
+  fechaDesdeProp,
+  fechaHastaProp,
+  calendarSlot,
 }) => {
+  // Fechas efectivas (fallback)
+  const fechaDesde = fechaDesdeProp || '2025-01-01';
+  const fechaHasta = fechaHastaProp || '2025-04-01';
+
   const [categorias, setCategorias] = useState([]);
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
-  const [fechaDesde, setFechaDesde] = useState('2025-01-01');
-  const [fechaHasta, setFechaHasta] = useState('2025-04-01');
 
-  // 💡 Totales de ventas por artículo (para sort por "ventas")
-  const [ventasTotals, setVentasTotals] = useState({}); // { [id]: number }
-
-  // TODO + exclusiones
+  // TODO + exclusiones (para “Sin Agrupación”)
   const [todoGroupId, setTodoGroupId] = useState(null);
-  const [excludedIds, setExcludedIds] = useState(new Set()); // ids excluidos de TODO
+  const [excludedIds, setExcludedIds] = useState(new Set());
 
   // UI feedback
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const openSnack = (msg, type = 'success') => setSnack({ open: true, msg, type });
 
+  // Cargar artículos + exclusiones
   useEffect(() => {
     const cargarDatos = async () => {
       try {
-        // 1) Maxi SIEMPRE
         const token = await obtenerToken();
         const articulosData = await obtenerArticulos(token, fechaDesde, fechaHasta);
 
@@ -62,7 +65,6 @@ const TablaArticulos = ({
         }));
         setCategorias(categoriasData);
 
-        // 2) Exclusiones (NO BLOQUEANTE)
         try {
           const todo = await ensureTodo();
           if (todo?.id) {
@@ -88,49 +90,84 @@ const TablaArticulos = ({
     return new Map(list.map(a => [getId(a), a]));
   }, [categorias]);
 
+// Todos los artículos de Maxi
+const allMaxi = useMemo(
+  () => categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos)),
+  [categorias]
+);
+
+// IDs asignados a agrupaciones reales (no TODO / Sin Agrupación)
+const idsEnOtras = useMemo(() => new Set(
+  (agrupaciones || [])
+    .filter(g => !esTodoGroup(g, todoGroupId))
+    .flatMap(g => (g.articulos || []).map(getId))
+), [agrupaciones, todoGroupId]);
+
+// IDs “libres” para Sin Agrupación (no asignados ni excluidos)
+const idsSinAgrup = useMemo(() => new Set(
+  allMaxi.map(getId).filter(id => !idsEnOtras.has(id) && !excludedIds.has(id))
+), [allMaxi, idsEnOtras, excludedIds]);
+
+// ✅ Set de IDs activos del grupo actual (SIEMPRE)
+const activeIdsGroup = useMemo(() => {
+  if (!agrupacionSeleccionada) return null;
+  return esTodoGroup(agrupacionSeleccionada, todoGroupId)
+    ? idsSinAgrup
+    : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+}, [agrupacionSeleccionada, todoGroupId, idsSinAgrup]);
+
   // ------------------ Qué artículos mostrar ------------------
   let articulosAMostrar = [];
 
   if (categoriaSeleccionada && agrupacionSeleccionada) {
-    // Filtrar por categoría + agrupación
+    // ✅ Si la agrupación es “Sin Agrupación”, usamos idsSinAgrup (libres).
+    //    Si es una agrupación real, usamos sus propios artículos.
+    const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
+      ? idsSinAgrup
+      : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+
     articulosAMostrar = categoriaSeleccionada.subrubros
       .flatMap(sub => sub.articulos)
-      .filter(art =>
-        (agrupacionSeleccionada.articulos || []).some(
-          a => getId(a) === getId(art)
-        )
-      );
-
+      .filter(a => idsFiltro.has(getId(a)));
   } else if (categoriaSeleccionada) {
-    // Solo categoría
-    articulosAMostrar = categoriaSeleccionada.subrubros.flatMap(
-      sub => sub.articulos
-    );
+    articulosAMostrar = categoriaSeleccionada.subrubros.flatMap(sub => sub.articulos);
 
   } else if (agrupacionSeleccionada) {
-    const esTodo =
-      agrupacionSeleccionada.nombre === "TODO" ||
-      (todoGroupId && agrupacionSeleccionada.id === todoGroupId);
+    const esTodo = esTodoGroup(agrupacionSeleccionada, todoGroupId);
 
     if (esTodo) {
-      // TODO: todo lo de Maxi que NO esté en otra agrupación y NO esté excluido
-      const allMaxi = categorias.flatMap(c =>
-        c.subrubros.flatMap(s => s.articulos)
-      );
+      const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
 
-      const idsEnOtras = new Set(
-        (agrupaciones || [])
-          .filter(g => g.id !== todoGroupId && g.nombre !== "TODO")
-          .flatMap(g => (g.articulos || []).map(getId))
-      );
-
-      articulosAMostrar = allMaxi.filter(a => {
-        const id = getId(a);
-        return !idsEnOtras.has(id) && !excludedIds.has(id);
-      });
-
+      if (arr.length > 0) {
+        articulosAMostrar = arr.map(a => {
+          const id = getId(a);
+          const b = baseById.get(id) || {};
+          return {
+            ...b,
+            ...a,
+            id,
+            nombre: a.nombre ?? b.nombre ?? `#${id}`,
+            categoria: a.categoria ?? b.categoria ?? "Sin categoría",
+            subrubro: a.subrubro ?? b.subrubro ?? "Sin subrubro",
+            precio: num(a.precio ?? b.precio),
+            costo: num(a.costo ?? b.costo),
+          };
+        });
+      } else {
+        // Fallback: “libres” (no están en otras agrupaciones ni excluidos)
+        const allMaxi = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
+        const idsEnOtras = new Set(
+          (agrupaciones || [])
+            .filter(g => !esTodoGroup(g, todoGroupId))
+            .flatMap(g => (g.articulos || []).map(getId))
+        );
+        articulosAMostrar = allMaxi.filter(a => {
+          const id = getId(a);
+          return !idsEnOtras.has(id) && !excludedIds.has(id);
+        });
+      }
     } else {
-      // Agrupación “real”: hidratar con maestro
+      // Agrupación real
       const arr = agrupacionSeleccionada.articulos || [];
       articulosAMostrar = arr.map(a => {
         const id = getId(a);
@@ -147,18 +184,18 @@ const TablaArticulos = ({
         };
       });
     }
+
   } else {
-    // Vista general: todo Maxi
+    // Vista general
     articulosAMostrar = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
   }
 
-  // ids visibles (para Sidebar si lo necesitás)
   const idsVisibles = useMemo(
     () => new Set(articulosAMostrar.map(a => getId(a))),
     [articulosAMostrar]
   );
 
-  // Filtro por buscador
+  // Filtro buscador
   const articulosFiltrados = filtroBusqueda
     ? articulosAMostrar.filter((art) =>
       (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
@@ -166,7 +203,7 @@ const TablaArticulos = ({
     )
     : articulosAMostrar;
 
-  // Sugerencias para el Buscador (por lo visible)
+  // Sugerencias
   const sugerencias = useMemo(() => {
     const uniq = new Map();
     for (const a of articulosAMostrar) {
@@ -191,7 +228,6 @@ const TablaArticulos = ({
     return den > 0 ? costo * (100 / den) : 0;
   };
 
-  // Agrupar por rubro/subrubro usando el maestro
   const agruparPorRubroYSubrubro = (articulos) => {
     const agrupados = {};
     articulos.forEach((articulo) => {
@@ -215,93 +251,20 @@ const TablaArticulos = ({
 
   const articulosAgrupados = agruparPorRubroYSubrubro(articulosFiltrados);
 
-  // ------------------ Toggle mover a TODO / exclusiones ------------------
-  const toggleArticulo = async (art) => {
-    const id = getId(art);
-
-    // 1) Dentro de una agrupación (no TODO): quitar de la agrupación => queda en TODO
-    if (agrupacionSeleccionada && agrupacionSeleccionada.id !== todoGroupId) {
-      try {
-        await axios.delete(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos/${id}`);
-        // a) sacar de la UI local
-        setAgrupacionSeleccionada(prev =>
-          prev
-            ? { ...prev, articulos: (prev.articulos || []).filter(a => getId(a) !== id) }
-            : prev
-        );
-        // b) refrescar agrupaciones globales
-        if (typeof refetchAgrupaciones === 'function') refetchAgrupaciones();
-        openSnack(`Artículo #${id} movido a TODO (quitado de ${agrupacionSeleccionada.nombre}).`);
-      } catch (e) {
-        console.error(e);
-        openSnack('No se pudo quitar el artículo de la agrupación', 'error');
-      }
-      return;
-    }
-
-    // 2) Sin agrupación seleccionada: detectar a cuál pertenece y quitarlo
-    if (!agrupacionSeleccionada) {
-      const grupo = (agrupaciones || []).find(g =>
-        g.id !== todoGroupId && Array.isArray(g.articulos) && g.articulos.some(a => getId(a) === id)
-      );
-      if (grupo) {
-        try {
-          await axios.delete(`${BASE}/agrupaciones/${grupo.id}/articulos/${id}`);
-          if (typeof refetchAgrupaciones === 'function') refetchAgrupaciones();
-          openSnack(`Artículo #${id} movido a TODO (quitado de ${grupo.nombre}).`);
-        } catch (e) {
-          console.error(e);
-          openSnack('No se pudo quitar el artículo de la agrupación', 'error');
-        }
-        return;
-      }
-    }
-
-    // 3) En TODO: usar exclusiones para ocultarlo de TODO (opcional)
-    if (agrupacionSeleccionada && agrupacionSeleccionada.id === todoGroupId) {
-      try {
-        if (!todoGroupId) {
-          const todo = await ensureTodo();
-          if (todo?.id) setTodoGroupId(todo.id);
-          else throw new Error('No se pudo obtener grupo TODO');
-        }
-        const isExcluded = excludedIds.has(id);
-        if (isExcluded) {
-          await removeExclusiones(todoGroupId, [{ scope: 'articulo', ref_id: String(id) }]);
-          const copy = new Set(excludedIds); copy.delete(id); setExcludedIds(copy);
-          openSnack(`Artículo #${id} habilitado en TODO.`);
-        } else {
-          await addExclusiones(todoGroupId, [{ scope: 'articulo', ref_id: String(id) }]);
-          const copy = new Set(excludedIds); copy.add(id); setExcludedIds(copy);
-          openSnack(`Artículo #${id} oculto de TODO.`);
-        }
-      } catch (e) {
-        console.error(e);
-        openSnack('No se pudo actualizar el estado del artículo en TODO', 'error');
-      }
-    }
-  };
-
-  // ------------------ Ordenar Columnas  ------------------
-  const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'ventas'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
-  const [sortDir, setSortDir] = useState('asc');    // 'asc' | 'desc'
+  // ------------------ Ordenar (sin "ventas") ------------------
+  const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
+  const [sortDir, setSortDir] = useState('asc');
 
   const toggleSort = (key) => {
-    if (sortBy === key) {
-      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortBy(key);
-      setSortDir('asc');
-    }
+    if (sortBy === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
   };
 
-  // valor usado para ordenar por cada columna
   const getSortValue = (art) => {
     const id = getId(art);
     switch (sortBy) {
-      case 'codigo': return id;                         // number
-      case 'nombre': return art?.nombre ?? '';          // string
-      case 'ventas': return Number(ventasTotals[id] ?? 0);
+      case 'codigo': return id;
+      case 'nombre': return art?.nombre ?? '';
       case 'precio': return num(art?.precio);
       case 'costo': return num(art?.costo);
       case 'costoPct': {
@@ -320,13 +283,11 @@ const TablaArticulos = ({
     }
   };
 
-  // comparador estable que maneja números/strings y acentos
   const cmp = (a, b) => {
     if (!sortBy) return 0;
     const va = getSortValue(a);
     const vb = getSortValue(b);
 
-    // strings con locale español y números “naturales”
     if (typeof va === 'string' || typeof vb === 'string') {
       const sa = String(va ?? '');
       const sb = String(vb ?? '');
@@ -334,21 +295,15 @@ const TablaArticulos = ({
       return sortDir === 'asc' ? r : -r;
     }
 
-    // números
-    const na = Number(va ?? 0);
-    const nb = Number(vb ?? 0);
+    const na = Number(va ?? 0), nb = Number(vb ?? 0);
     if (na < nb) return sortDir === 'asc' ? -1 : 1;
     if (na > nb) return sortDir === 'asc' ? 1 : -1;
     return 0;
   };
 
-  // callback para que VentasCell eleve el total y podamos ordenar por "ventas"
-  const handleTotalVentasChange = (articuloId, total) => {
-    setVentasTotals(prev => {
-      if (prev[articuloId] === total) return prev;
-      return { ...prev, [articuloId]: total };
-    });
-  };
+  const isTodo = agrupacionSeleccionada ? esTodoGroup(agrupacionSeleccionada, todoGroupId) : false;
+  const showAcciones = !!agrupacionSeleccionada;
+  const rubroColSpan = showAcciones ? 9 : 8; // sin "
 
   return (
     <div className="tabla-articulos-container">
@@ -362,19 +317,16 @@ const TablaArticulos = ({
         categoriaSeleccionada={categoriaSeleccionada}
         setBusqueda={setFiltroBusqueda}
         idsVisibles={idsVisibles}
+        activeIds={activeIdsGroup}
       />
 
       <div className="tabla-content">
         <h2>Gestión de Artículos</h2>
 
         <div className='filtros-container' style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="filtros-fechas" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label>Desde:</label>
-            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
-            <label>Hasta:</label>
-            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {calendarSlot || null}
           </div>
-
           <div style={{ flex: 1, minWidth: 260 }}>
             <Buscador
               value={filtroBusqueda}
@@ -399,9 +351,7 @@ const TablaArticulos = ({
                 <th onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
                   Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('ventas')} style={{ cursor: 'pointer' }}>
-                  Ventas {sortBy === 'ventas' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
+                {/* 👉 Quitamos la columna “Ventas” */}
                 <th onClick={() => toggleSort('precio')} style={{ cursor: 'pointer' }}>
                   Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
@@ -420,75 +370,97 @@ const TablaArticulos = ({
                 <th onClick={() => toggleSort('manual')} style={{ cursor: 'pointer' }}>
                   Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th style={{ width: 70, textAlign: 'center' }}>
-                  Estado
-                </th>
+                {showAcciones && <th style={{ width: 64, textAlign: 'center' }}>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {Object.keys(articulosAgrupados).map((rubro) => (
                 <React.Fragment key={rubro}>
-                  {Object.keys(articulosAgrupados[rubro]).map((subrubro) => (
-                    <React.Fragment key={subrubro}>
-                      <tr className="rubro-row">
-                        {/* 👉 Aumentamos colSpan a 10 por la nueva columna "Ventas" */}
-                        <td colSpan="10"><strong>{rubro} - {subrubro}</strong></td>
-                      </tr>
-                      {[...articulosAgrupados[rubro][subrubro]].sort(cmp).map((articulo) => {
-                        const id = getId(articulo);
-                        const isExcluded = excludedIds.has(id);
-                        return (
-                          <tr key={id}>
-                            <td>{id}</td>
-                            <td>{articulo.nombre}</td>
+                  {Object.keys(articulosAgrupados[rubro]).map((subrubro) => {
+                    const itemsSubrubro = [...articulosAgrupados[rubro][subrubro]];
+                    const articuloIdsSubrubro = itemsSubrubro.map(a => getId(a));
 
-                            {/* NUEVA COLUMNA: Ventas */}
-                            <td>
-                              <VentasCell
-                                articuloId={id}
-                                articuloNombre={articulo.nombre}
-                                onTotalChange={(artId, total) => handleTotalVentasChange(artId, total)}
-                              />
+                    return (
+                      <React.Fragment key={subrubro}>
+                        <tr className="rubro-row">
+                          <td colSpan={rubroColSpan}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <strong>{rubro} - {subrubro}</strong>
 
-                            </td>
+                              {/* Menú de acciones del SUBRUBRO (bloque) */}
+                              {showAcciones && (
+                                <SubrubroAccionesMenu
+                                  // contexto
+                                  isTodo={isTodo}
+                                  agrupaciones={agrupaciones}
+                                  agrupacionSeleccionada={agrupacionSeleccionada}
+                                  todoGroupId={todoGroupId}
+                                  // datos del bloque
+                                  articuloIds={articuloIdsSubrubro}
+                                  // feedback/refresh
+                                  onRefetch={refetchAgrupaciones}
+                                  notify={(m, t = 'success') => openSnack(m, t)}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
 
-                            <td>${num(articulo.precio)}</td>
-                            <td>${num(articulo.costo)}</td>
-                            <td>{calcularCostoPorcentaje(articulo)}%</td>
-                            <td>
-                              <input
-                                type="number"
-                                value={objetivos[id] || ''}
-                                onChange={(e) => setObjetivos({ ...objetivos, [id]: e.target.value })}
-                                style={{ width: '60px' }}
-                              />
-                            </td>
-                            <td>${calcularSugerido(articulo).toFixed(2)}</td>
-                            <td>
-                              <input
-                                type="number"
-                                value={manuales[id] || ''}
-                                onChange={(e) => setManuales({ ...manuales, [id]: e.target.value })}
-                                style={{ width: '80px' }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <IconButton
-                                size="small"
-                                onClick={() => toggleArticulo(articulo)}
-                                title={isExcluded
-                                  ? 'Oculto en TODO (click para habilitar)'
-                                  : 'Visible en TODO (click para ocultar)'
-                                }
-                              >
-                                {isExcluded ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                              </IconButton>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
+                        {itemsSubrubro.sort(cmp).map((articulo) => {
+                          const id = getId(articulo);
+                          const artHydrated = {
+                            ...articulo,
+                            id,
+                            nombre: articulo.nombre,
+                            categoria: articulo.categoria,
+                            subrubro: articulo.subrubro,
+                            precio: num(articulo.precio)
+                          };
+
+                          return (
+                            <tr key={id}>
+                              <td>{id}</td>
+                              <td>{articulo.nombre}</td>
+                              <td>${fmt(articulo.precio, 0)}</td>
+                              <td>${fmt(articulo.costo, 0)}</td>
+                              <td>{calcularCostoPorcentaje(articulo)}%</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={objetivos[id] || ''}
+                                  onChange={(e) => setObjetivos({ ...objetivos, [id]: e.target.value })}
+                                  style={{ width: '60px' }}
+                                />
+                              </td>
+                              <td>${fmt(calcularSugerido(articulo), 2)}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={manuales[id] || ''}
+                                  onChange={(e) => setManuales({ ...manuales, [id]: e.target.value })}
+                                  style={{ width: '80px' }}
+                                />
+                              </td>
+
+                              {showAcciones && (
+                                <td style={{ textAlign: 'center' }}>
+                                  <ArticuloAccionesMenu
+                                    articulo={artHydrated}
+                                    agrupaciones={agrupaciones}
+                                    agrupacionSeleccionada={agrupacionSeleccionada}
+                                    todoGroupId={todoGroupId}
+                                    isTodo={isTodo}                 // 👈 para que el menú sepa el contexto
+                                    onRefetch={refetchAgrupaciones}
+                                    notify={(m, t) => openSnack(m, t)}
+                                  />
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
                 </React.Fragment>
               ))}
             </tbody>

@@ -1,4 +1,3 @@
-// src/servicios/apiAgrupaciones.js
 import { BASE } from './apiBase';
 
 // ---- Helpers genéricos ----
@@ -22,16 +21,19 @@ async function httpJson(path, options = {}) {
 // Lista todas las agrupaciones
 export async function obtenerAgrupaciones() {
   const { ok, status, data } = await httpJson(`/agrupaciones`);
-  if (!ok) throw new Error(`No se pudieron obtener agrupaciones (status ${status})`);
-  // backend puede devolver array plano o {data:[]}
+  if (!ok) {
+    throw new Error((data && data.error) || `No se pudieron obtener agrupaciones (status ${status})`);
+  }
+  // backend devuelve array plano
   return Array.isArray(data) ? data : (data?.data || []);
 }
 
-// Obtiene una agrupación por id
+// Obtiene una agrupación por id (vía lista, porque el backend no expone GET /agrupaciones/:id)
 export async function obtenerAgrupacion(id) {
-  const { ok, status, data } = await httpJson(`/agrupaciones/${id}`);
-  if (!ok) throw new Error(`No se pudo obtener la agrupación #${id} (status ${status})`);
-  return data;
+  const list = await obtenerAgrupaciones();
+  const g = list.find(x => Number(x?.id) === Number(id));
+  if (!g) throw new Error(`Agrupación #${id} no encontrada`);
+  return g;
 }
 
 // Crea una agrupación
@@ -46,8 +48,7 @@ export async function crearAgrupacion(payload) {
   return data;
 }
 
-// Actualiza nombre / metadatos de una agrupación
-// payload: { nombre?: string, ... }
+// Actualiza nombre / o REEMPLAZA todos los artículos (si mandás { articulos })
 export async function actualizarAgrupacion(id, payload) {
   const { ok, status, data } = await httpJson(`/agrupaciones/${id}`, {
     method: 'PUT',
@@ -69,23 +70,18 @@ export async function eliminarAgrupacion(id) {
 //                          ARTÍCULOS EN GRUPO
 // ===================================================================
 
-// Reemplaza completamente los artículos de una agrupación
+// Reemplaza COMPLETAMENTE los artículos de una agrupación
 // items: [{ id|codigo|articuloId, ... }]
 export async function setArticulosEnAgrupacion(id, items) {
-  const { ok, status, data } = await httpJson(`/agrupaciones/${id}/articulos`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ articulos: items }),
-  });
-  if (!ok) throw new Error(data?.error || `No se pudo setear artículos en #${id} (status ${status})`);
-  return data;
+  // Tu backend reemplaza enviando { articulos } por PUT /agrupaciones/:id
+  return actualizarAgrupacion(id, { articulos: items });
 }
 
-// Agrega artículos a la agrupación (sin duplicar)
+// Agrega artículos (append SIN duplicar) → backend lo hace con PUT /agrupaciones/:id/articulos
 // items: [{ id|codigo|articuloId, ... }]
 export async function agregarArticulos(id, items) {
   const { ok, status, data } = await httpJson(`/agrupaciones/${id}/articulos`, {
-    method: 'POST',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ articulos: items }),
   });
@@ -102,17 +98,8 @@ export async function quitarArticulo(id, articuloId) {
   return data;
 }
 
-// Reordenamiento (si tu backend soporta orden)
-// orden: [{ articuloId, pos }] o array de ids
-export async function reordenarArticulos(id, orden) {
-  const { ok, status, data } = await httpJson(`/agrupaciones/${id}/articulos/reordenar`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orden }),
-  });
-  if (!ok) throw new Error(data?.error || `No se pudo reordenar artículos en #${id} (status ${status})`);
-  return data;
-}
+// Reordenamiento: tu backend aún no lo expone.
+// export async function reordenarArticulos(id, orden) { ... }
 
 // ===================================================================
 //                           UTILIDADES

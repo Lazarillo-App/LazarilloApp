@@ -1,27 +1,23 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
-import TablaArticulos from './componentes/TablaArticulos';
 import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './componentes/Insumos';
+
 import { obtenerToken, obtenerArticulos } from './servicios/apiMaxiRest';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
-import { SearchProvider, useSearch } from './servicios/searchContext';
+
+import { SearchProvider } from './servicios/searchContext';
+
+// 🔹 nuevo contenedor con el calendario arriba y paso de fechas a la tabla
+import ArticulosMain from './paginas/ArticulosMain';
+
+// (Opcional) si querés tener a mano funciones en consola:
 import { obtenerVentas } from './servicios/apiVentas';
-// Bridge para pasar el search global a tu TablaArticulos actual
-function TablaArticulosBridge(props) {
-  const { query, setQuery } = useSearch();
-  return (
-    <TablaArticulos
-      {...props}
-      filtroBusqueda={query}
-      setFiltroBusqueda={setQuery}
-    />
-  );
-}
-window.apiVentas = { obtenerVentas }
+window.apiVentas = { obtenerVentas };
 
 const App = () => {
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
@@ -29,7 +25,7 @@ const App = () => {
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [categorias, setCategorias] = useState([]);
 
-  // sugerencias para el autocompletado (de artículos por ahora)
+  // Sugerencias para el autocompletado (basadas en artículos visibles)
   const sugerencias = (Array.isArray(categorias) ? categorias : [])
     .flatMap(cat => (cat?.subrubros || []).flatMap(sub => sub?.articulos || []))
     .map(art => art?.nombre)
@@ -38,11 +34,11 @@ const App = () => {
   const recargarAgrupaciones = async () => {
     try {
       const data = await apiObtenerAgrupaciones();
-       setAgrupaciones(Array.isArray(data) ? data : []);
-     } catch (e) {
-       console.error('Error al cargar agrupaciones:', e);
-       setAgrupaciones([]); // 👈 evita crash
-     }
+      setAgrupaciones(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Error al cargar agrupaciones:', e);
+      setAgrupaciones([]); // defensivo
+    }
   };
 
   const cargarCategorias = async () => {
@@ -52,7 +48,7 @@ const App = () => {
       setCategorias(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error('Error al cargar artículos:', e);
-      setCategorias([]); // 👈 defensivo
+      setCategorias([]); // defensivo
     }
   };
 
@@ -63,17 +59,18 @@ const App = () => {
 
   return (
     <SearchProvider>
-      {/* Navbar usa el buscador global internamente (sin props de búsqueda) */}
+      {/* Navbar usa el buscador global internamente */}
       <Navbar
         setAgrupacionSeleccionada={setAgrupacionSeleccionada}
         sugerencias={sugerencias}
       />
 
       <Routes>
+        {/* 🟩 Página principal: calendario arriba + tabla dentro */}
         <Route
           path="/"
           element={
-            <TablaArticulosBridge
+            <ArticulosMain
               agrupacionSeleccionada={agrupacionSeleccionada}
               setAgrupacionSeleccionada={setAgrupacionSeleccionada}
               agrupaciones={agrupaciones}
@@ -82,6 +79,7 @@ const App = () => {
             />
           }
         />
+
         <Route
           path="/agrupaciones"
           element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
