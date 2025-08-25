@@ -8,6 +8,7 @@ import ArticuloAccionesMenu from './ArticuloAccionesMenu';
 import '../css/TablaArticulos.css';
 import { Snackbar, Alert } from '@mui/material';
 import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo.js';
+import VentasCell from '../componentes/VentasCell';
 
 // Helpers
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
@@ -28,13 +29,17 @@ const TablaArticulos = ({
   agrupacionSeleccionada, setAgrupacionSeleccionada,
   agrupaciones, categoriaSeleccionada, setCategoriaSeleccionada,
   refetchAgrupaciones,
+  // 👇 vienen desde ArticulosMain (30 días por defecto allí)
   fechaDesdeProp,
   fechaHastaProp,
   calendarSlot,
+  // ventas pre-computadas por agrupación (opcional)
+  ventasPorArticulo,   // Map<number, number>
+  ventasLoading,
 }) => {
-  // Fechas efectivas (fallback)
-  const fechaDesde = fechaDesdeProp || '2025-01-01';
-  const fechaHasta = fechaHastaProp || '2025-04-01';
+  // Usamos las fechas provistas por el contenedor
+  const fechaDesde = fechaDesdeProp;
+  const fechaHasta = fechaHastaProp;
 
   const [categorias, setCategorias] = useState([]);
   const [objetivos, setObjetivos] = useState({});
@@ -53,6 +58,7 @@ const TablaArticulos = ({
     const cargarDatos = async () => {
       try {
         const token = await obtenerToken();
+        // si tu obtenerArticulos ignora el rango, no pasa nada
         const articulosData = await obtenerArticulos(token, fechaDesde, fechaHasta);
 
         const categoriasData = articulosData.map((categoria) => ({
@@ -90,31 +96,31 @@ const TablaArticulos = ({
     return new Map(list.map(a => [getId(a), a]));
   }, [categorias]);
 
-// Todos los artículos de Maxi
-const allMaxi = useMemo(
-  () => categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos)),
-  [categorias]
-);
+  // Todos los artículos de Maxi
+  const allMaxi = useMemo(
+    () => categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos)),
+    [categorias]
+  );
 
-// IDs asignados a agrupaciones reales (no TODO / Sin Agrupación)
-const idsEnOtras = useMemo(() => new Set(
-  (agrupaciones || [])
-    .filter(g => !esTodoGroup(g, todoGroupId))
-    .flatMap(g => (g.articulos || []).map(getId))
-), [agrupaciones, todoGroupId]);
+  // IDs asignados a agrupaciones reales (no TODO / Sin Agrupación)
+  const idsEnOtras = useMemo(() => new Set(
+    (agrupaciones || [])
+      .filter(g => !esTodoGroup(g, todoGroupId))
+      .flatMap(g => (g.articulos || []).map(getId))
+  ), [agrupaciones, todoGroupId]);
 
-// IDs “libres” para Sin Agrupación (no asignados ni excluidos)
-const idsSinAgrup = useMemo(() => new Set(
-  allMaxi.map(getId).filter(id => !idsEnOtras.has(id) && !excludedIds.has(id))
-), [allMaxi, idsEnOtras, excludedIds]);
+  // IDs “libres” para Sin Agrupación (no asignados ni excluidos)
+  const idsSinAgrup = useMemo(() => new Set(
+    allMaxi.map(getId).filter(id => !idsEnOtras.has(id) && !excludedIds.has(id))
+  ), [allMaxi, idsEnOtras, excludedIds]);
 
-// ✅ Set de IDs activos del grupo actual (SIEMPRE)
-const activeIdsGroup = useMemo(() => {
-  if (!agrupacionSeleccionada) return null;
-  return esTodoGroup(agrupacionSeleccionada, todoGroupId)
-    ? idsSinAgrup
-    : new Set((agrupacionSeleccionada.articulos || []).map(getId));
-}, [agrupacionSeleccionada, todoGroupId, idsSinAgrup]);
+  // ✅ Set de IDs activos del grupo actual (SIEMPRE)
+  const activeIdsGroup = useMemo(() => {
+    if (!agrupacionSeleccionada) return null;
+    return esTodoGroup(agrupacionSeleccionada, todoGroupId)
+      ? idsSinAgrup
+      : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+  }, [agrupacionSeleccionada, todoGroupId, idsSinAgrup]);
 
   // ------------------ Qué artículos mostrar ------------------
   let articulosAMostrar = [];
@@ -155,15 +161,15 @@ const activeIdsGroup = useMemo(() => {
         });
       } else {
         // Fallback: “libres” (no están en otras agrupaciones ni excluidos)
-        const allMaxi = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
-        const idsEnOtras = new Set(
+        const all = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
+        const enOtras = new Set(
           (agrupaciones || [])
             .filter(g => !esTodoGroup(g, todoGroupId))
             .flatMap(g => (g.articulos || []).map(getId))
         );
-        articulosAMostrar = allMaxi.filter(a => {
+        articulosAMostrar = all.filter(a => {
           const id = getId(a);
-          return !idsEnOtras.has(id) && !excludedIds.has(id);
+          return !enOtras.has(id) && !excludedIds.has(id);
         });
       }
     } else {
@@ -198,9 +204,9 @@ const activeIdsGroup = useMemo(() => {
   // Filtro buscador
   const articulosFiltrados = filtroBusqueda
     ? articulosAMostrar.filter((art) =>
-      (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
-      String(getId(art)).includes(String(filtroBusqueda).trim())
-    )
+        (art.nombre || '').toLowerCase().includes(filtroBusqueda.toLowerCase()) ||
+        String(getId(art)).includes(String(filtroBusqueda).trim())
+      )
     : articulosAMostrar;
 
   // Sugerencias
@@ -251,7 +257,7 @@ const activeIdsGroup = useMemo(() => {
 
   const articulosAgrupados = agruparPorRubroYSubrubro(articulosFiltrados);
 
-  // ------------------ Ordenar (sin "ventas") ------------------
+  // ------------------ Ordenar (sin "ventas" por ahora) ------------------
   const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
   const [sortDir, setSortDir] = useState('asc');
 
@@ -303,7 +309,9 @@ const activeIdsGroup = useMemo(() => {
 
   const isTodo = agrupacionSeleccionada ? esTodoGroup(agrupacionSeleccionada, todoGroupId) : false;
   const showAcciones = !!agrupacionSeleccionada;
-  const rubroColSpan = showAcciones ? 9 : 8; // sin "
+
+  // 👉 Con columna "Ventas" sumamos +1 al colSpan
+  const rubroColSpan = showAcciones ? 10 : 9;
 
   return (
     <div className="tabla-articulos-container">
@@ -351,7 +359,12 @@ const activeIdsGroup = useMemo(() => {
                 <th onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
                   Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                {/* 👉 Quitamos la columna “Ventas” */}
+
+                {/* ✅ Columna Ventas (no ordenamos por ahora) */}
+                <th>
+                  Ventas {ventasLoading ? '…' : ''}
+                </th>
+
                 <th onClick={() => toggleSort('precio')} style={{ cursor: 'pointer' }}>
                   Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
@@ -373,6 +386,7 @@ const activeIdsGroup = useMemo(() => {
                 {showAcciones && <th style={{ width: 64, textAlign: 'center' }}>Acciones</th>}
               </tr>
             </thead>
+
             <tbody>
               {Object.keys(articulosAgrupados).map((rubro) => (
                 <React.Fragment key={rubro}>
@@ -421,6 +435,19 @@ const activeIdsGroup = useMemo(() => {
                             <tr key={id}>
                               <td>{id}</td>
                               <td>{articulo.nombre}</td>
+
+                              {/* ✅ Celda Ventas */}
+                              <td>
+                                <VentasCell
+                                  articuloId={id}
+                                  articuloNombre={articulo.nombre}
+                                  from={fechaDesde}
+                                  to={fechaHasta}
+                                  defaultGroupBy="day"
+                                  totalOverride={ventasPorArticulo?.get(Number(id))}
+                                />
+                              </td>
+
                               <td>${fmt(articulo.precio, 0)}</td>
                               <td>${fmt(articulo.costo, 0)}</td>
                               <td>{calcularCostoPorcentaje(articulo)}%</td>
@@ -449,7 +476,7 @@ const activeIdsGroup = useMemo(() => {
                                     agrupaciones={agrupaciones}
                                     agrupacionSeleccionada={agrupacionSeleccionada}
                                     todoGroupId={todoGroupId}
-                                    isTodo={isTodo}                 // 👈 para que el menú sepa el contexto
+                                    isTodo={isTodo}
                                     onRefetch={refetchAgrupaciones}
                                     notify={(m, t) => openSnack(m, t)}
                                   />

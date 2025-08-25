@@ -1,4 +1,3 @@
-// src/componentes/VentasCell.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { obtenerVentas } from '../servicios/apiVentas';
 import VentasMiniGraficoModal from './VentasMiniGraficoModal';
@@ -14,45 +13,40 @@ import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
 // Cache en memoria: `${articuloId}|${from}|${to}|${groupBy}` -> { total, items }
 const cache = new Map();
 
-/**
- * VentasCell (refactor)
- * - No tiene calendario propio.
- * - Usa from/to provistos por el contenedor (global).
- * - Muestra el total pasado por props (totalOverride) o, si no hay, el de la serie cuando se cargue.
- */
 export default function VentasCell({
   articuloId,
   articuloNombre,
-  from,             // YYYY-MM-DD (global)
-  to,               // YYYY-MM-DD (global)
-  defaultGroupBy = 'day', // 'day'|'week'|'month'
-  totalOverride,    // opcional: número (ej. del Map de ventas por agrupación)
-  onTotalChange,    // opcional: para ordenar por ventas desde el padre
+  from,                 // YYYY-MM-DD
+  to,                   // YYYY-MM-DD
+  defaultGroupBy = 'day',
+  totalOverride,        // si viene, mostramos eso y NO auto-fetch
+  onTotalChange,        // opcional: reportar total al padre
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState({ total: 0, items: [] });
   const [openModal, setOpenModal] = useState(false);
 
-  // Total que se muestra en la celda:
   const totalToShow = Number.isFinite(Number(totalOverride))
     ? Number(totalOverride)
     : Number(data?.total ?? 0);
 
-  // Elevar total al padre solo si no tenemos override
+  // clave de cache
+  const cacheKey = useMemo(
+    () => `${articuloId}|${from}|${to}|${groupBy}`,
+    [articuloId, from, to, groupBy]
+  );
+
+  // eleva total si no hay override
   useEffect(() => {
     if (typeof onTotalChange === 'function' && !Number.isFinite(Number(totalOverride))) {
       onTotalChange(articuloId, Number(data?.total ?? 0));
     }
   }, [data?.total, articuloId, onTotalChange, totalOverride]);
 
-  const cacheKey = useMemo(
-    () => `${articuloId}|${from}|${to}|${groupBy}`,
-    [articuloId, from, to, groupBy]
-  );
-
   async function fetchVentas(opts = {}) {
-    // Si ya está cacheado con el groupBy actual, usamos cache
+    if (!articuloId || !from || !to) { opts.done?.(); return; }
+
     if (cache.has(cacheKey)) {
       setData(cache.get(cacheKey));
       opts.done?.();
@@ -69,9 +63,16 @@ export default function VentasCell({
     }
   }
 
+  // 👇 Auto-fetch al montar / cambiar rango si NO hay totalOverride
+  useEffect(() => {
+    if (!Number.isFinite(Number(totalOverride))) {
+      fetchVentas();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey, totalOverride]);
+
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120 }}>
-      {/* Total */}
       {loading ? (
         <CircularProgress size={18} />
       ) : (
@@ -80,13 +81,11 @@ export default function VentasCell({
         </Typography>
       )}
 
-      {/* Modal gráfico */}
       <Tooltip title="Ver gráfico">
         <IconButton
           size="small"
           onClick={() => {
             setOpenModal(true);
-            // si no hay serie, traemos
             if (!data?.items?.length) fetchVentas();
           }}
         >
@@ -94,7 +93,6 @@ export default function VentasCell({
         </IconButton>
       </Tooltip>
 
-      {/* Modal MUI + Recharts */}
       <VentasMiniGraficoModal
         open={openModal}
         onClose={() => setOpenModal(false)}
@@ -106,7 +104,6 @@ export default function VentasCell({
         onChangeGroupBy={async (gb) => {
           if (!gb || gb === groupBy) return;
           setGroupBy(gb);
-          // Al cambiar agrupador, pedimos nuevamente
           await fetchVentas();
         }}
       />
