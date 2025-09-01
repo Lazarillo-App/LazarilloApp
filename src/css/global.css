@@ -1,0 +1,15 @@
+:root{
+  --brand-primary:#0ea5e9;
+  --brand-secondary:#94a3b8;
+  --brand-bg:#ffffff;
+  --brand-text:#111827;
+  --brand-font:Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+}
+html, body {
+  background: var(--brand-bg);
+  color: var(--brand-text);
+  font-family: var(--brand-font);
+}
+.btn-primary { background: var(--brand-primary); color:#fff; }
+.link        { color: var(--brand-primary); }
+.badge       { background: var(--brand-secondary); color:#fff; }

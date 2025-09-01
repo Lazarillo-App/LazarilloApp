@@ -1,119 +1,138 @@
+// src/servicios/apiVentas.js
 import axios from 'axios';
 import { BASE } from './apiBase';
 
-// 🔧 toggle fast-path (dejalo en false hasta que exista el endpoint backend)
-const FASTPATH_VENTAS_AGRUP = false;
+// --- Auth headers centralizados (Bearer + x-business-id) ---
+function authHeaders() {
+  const token = localStorage.getItem('token') || '';
+  const bid   = localStorage.getItem('activeBusinessId') || '';
+  const h = {};
+  if (token) h.Authorization = `Bearer ${token}`;
+  if (bid)   h['x-business-id'] = bid;
+  return h;
+}
 
-/** Cache por artículo/rango para estabilizar fallback (y ahorrar requests) */
-const ventasCache = new Map(); // key: `${id}|${from}|${to}|${groupBy}` -> { total, items }
+// --- Cache con TTL ---
+const ventasCache = new Map();
+const TTL_MS = 10 * 60 * 1000; // 10m
+const now = () => Date.now();
 
-/** delay util */
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function cacheGet(key) {
+  const entry = ventasCache.get(key);
+  if (!entry) return null;
+  if (now() - entry.at > TTL_MS) {
+    ventasCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+function cacheSet(key, data) {
+  ventasCache.set(key, { at: now(), data });
+}
+export function clearVentasCache() {
+  ventasCache.clear();
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Obtiene ventas SOLO del artículo indicado, agrupadas por day|week|month.
- * Añade: cache + reintentos para estabilizar resultados.
- * @param {{articuloId:number|string, from:string, to:string, groupBy?:'day'|'week'|'month'}} params
+ * Obtiene ventas del artículo o código o búsqueda por nombre, agrupadas por día.
+ * Backend devuelve shape:
+ *  { totals:{qty,amount}, data:[{date, qty, amount}] }
+ * Devolvemos shape compatible con tus componentes: { total, items:[{label, qty}] }
+ *
+ * @param {{
+ *   articuloId?: number|string,
+ *   codigo?: string,
+ *   q?: string,
+ *   from: string,
+ *   to: string,
+ *   groupBy?: 'day',
+ *   ignoreZero?: boolean
+ * }}
  * @returns {{ total:number, items: {label:string, qty:number}[] }}
  */
-export async function obtenerVentas({ articuloId, from, to, groupBy = 'day' }) {
-  if (!articuloId || !from || !to) return { total: 0, items: [] };
+export async function obtenerVentas({
+  articuloId,
+  codigo,
+  q,
+  from,
+  to,
+  groupBy = 'day',
+  ignoreZero = true,
+}) {
+  if ((!articuloId && !codigo && !q) || !from || !to) {
+    return { total: 0, items: [] };
+  }
 
-  const key = `${articuloId}|${from}|${to}|${groupBy}`;
-  if (ventasCache.has(key)) return ventasCache.get(key);
+  const bid = localStorage.getItem('activeBusinessId') || '';
+  const key = `${bid}|${articuloId ?? ''}|${codigo ?? ''}|${q ?? ''}|${from}|${to}|${groupBy}|${ignoreZero ? 1 : 0}`;
+
+  const cached = cacheGet(key);
+  if (cached) return cached;
 
   const params = new URLSearchParams({
-    articuloId: String(articuloId),
+    ...(articuloId ? { articuloId: String(articuloId) } : {}),
+    ...(codigo ? { codigo: String(codigo) } : {}),
+    ...(q ? { q: String(q) } : {}),
     from,
     to,
-    groupBy
+    groupBy,
+    ignoreZero: ignoreZero ? 'true' : 'false',
   });
 
-  // Reintentos suaves por si el backend se estresa
   const MAX_RETRIES = 2;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const { data } = await axios.get(`${BASE}/ventas?${params.toString()}`, { timeout: 15000 });
+      const { data } = await axios.get(`${BASE}/ventas?${params.toString()}`, {
+        timeout: 20000,
+        headers: authHeaders(),
+      });
 
-      const total = Number(data?.total ?? 0);
-      const items = Array.isArray(data?.items)
-        ? data.items.map(it => ({ label: String(it.label), qty: Number(it.qty || 0) }))
+      // Backend nuevo:
+      // data.totals.qty -> total unidades
+      // data.data -> [{date, qty, amount}]
+      const total = Number(data?.totals?.qty ?? 0);
+      const items = Array.isArray(data?.data)
+        ? data.data.map((d) => ({
+            label: String(d.date),
+            qty: Number(d.qty || 0),
+          }))
         : [];
 
       const res = { total, items };
-      ventasCache.set(key, res);
+      cacheSet(key, res);
       return res;
     } catch (err) {
       if (attempt < MAX_RETRIES) {
-        await sleep(150 * (attempt + 1)); // backoff cortito
+        await sleep(150 * (attempt + 1));
         continue;
       }
       console.warn('[apiVentas.obtenerVentas] error:', err?.message || err);
-      // Si teníamos algo previo en cache, preferimos eso antes que 0
-      if (ventasCache.has(key)) return ventasCache.get(key);
+      const last = cacheGet(key);
+      if (last) return last;
       return { total: 0, items: [] };
     }
   }
 }
 
-/* ========================== Ventas por Agrupación ========================== */
+/* ========================== Ventas por Agrupación (fallback) ========================== */
 /**
- * Obtiene ventas agregadas por agrupación.
- * Fast-path: GET /ventas/agrupacion (si existe en tu backend).
- * Fallback: suma por artículo usando obtenerVentas() (con cache + retries).
+ * Suma ventas por cada artículo de la agrupación en paralelo moderado.
+ * Devuelve también un Map(articuloId -> total) para ordenar/mostrar.
  */
 export async function obtenerVentasAgrupacion({
   agrupacionId,
   from,
   to,
   articuloIds = [],
-  groupBy = 'day'
+  groupBy = 'day',
+  ignoreZero = true,
 }) {
-  if (!agrupacionId || !from || !to) {
+  if (!agrupacionId || !from || !to || !articuloIds.length) {
     return { total: 0, items: [], mapa: new Map(), from, to };
   }
 
-  // ---------- Fast-path (desactivado hasta tener backend) ----------
-  if (FASTPATH_VENTAS_AGRUP) {
-    try {
-      const params = new URLSearchParams({
-        agrupacionId: String(agrupacionId),
-        from,
-        to,
-        groupBy
-      });
-
-      const { data } = await axios.get(`${BASE}/ventas/agrupacion?${params.toString()}`, { timeout: 20000 });
-
-      const arr = Array.isArray(data?.items) ? data.items : [];
-      const items = arr
-        .map(it => ({
-          articuloId: Number(it.articuloId ?? it.id ?? it.articulo_id),
-          cantidad: Number(it.cantidad ?? it.qty ?? it.total ?? 0)
-        }))
-        .filter(x => Number.isFinite(x.articuloId));
-
-      const mapa = new Map(items.map(it => [it.articuloId, it.cantidad]));
-      const total = Number.isFinite(Number(data?.total))
-        ? Number(data.total)
-        : items.reduce((acc, it) => acc + (it.cantidad || 0), 0);
-
-      return { total, items, mapa, from, to };
-    } catch (err) {
-      const status = err?.response?.status;
-      if (!status || status !== 404) {
-        console.warn('[apiVentas.obtenerVentasAgrupacion] fast-path falló:', status, err?.message || err);
-      }
-      // cae a fallback
-    }
-  }
-
-  // ---------- Fallback: sumar por artículo (concurrency + cache + retries) ----------
-  if (!articuloIds.length) {
-    return { total: 0, items: [], mapa: new Map(), from, to };
-  }
-
-  // Concurrencia baja para no saturar; ya tenemos cache y reintentos
   const chunk = (arr, size = 3) => {
     const out = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -125,8 +144,17 @@ export async function obtenerVentasAgrupacion({
 
   try {
     for (const grupo of chunk(articuloIds, 3)) {
-      const reqs = grupo.map(id => obtenerVentas({ articuloId: id, from, to, groupBy }));
-      const resps = await Promise.all(reqs);
+      const resps = await Promise.all(
+        grupo.map((id) =>
+          obtenerVentas({
+            articuloId: id,
+            from,
+            to,
+            groupBy,
+            ignoreZero,
+          })
+        )
+      );
       grupo.forEach((id, idx) => {
         const t = Number(resps[idx]?.total ?? 0);
         mapa.set(Number(id), t);
@@ -137,6 +165,9 @@ export async function obtenerVentasAgrupacion({
     console.warn('[apiVentas.obtenerVentasAgrupacion] fallback error:', err?.message || err);
   }
 
-  const items = [...mapa.entries()].map(([articuloId, cantidad]) => ({ articuloId, cantidad }));
+  const items = Array.from(mapa.entries()).map(([articuloId, cantidad]) => ({
+    articuloId,
+    cantidad,
+  }));
   return { total, items, mapa, from, to };
 }

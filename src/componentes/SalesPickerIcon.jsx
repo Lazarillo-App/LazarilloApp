@@ -1,8 +1,7 @@
-// src/componentes/SalesPickerIcon.jsx
 import React, { useMemo } from 'react';
 import { IconButton, Tooltip, Popover, Box, Stack, TextField, Button } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import { lastNDaysLocal, daysByMode } from '../utils/fechas';
+import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 
 export default function SalesPickerIcon({ value, onChange }) {
   const { mode, from, to } = value;
@@ -12,18 +11,18 @@ export default function SalesPickerIcon({ value, onChange }) {
   const handleOpen = (e) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
-  // Rango “efectivo” para mostrar en inputs (si no hay custom cargado)
+  // Rango “efectivo” para mostrar (si no hay custom cargado)
   const computed = useMemo(() => {
     if (mode === 'custom' && from && to) return { from, to };
     const n = daysByMode(mode);
-    return lastNDaysLocal(n);
+    return lastNDaysUntilYesterday(n);
   }, [mode, from, to]);
 
-  // 👉 ahora el preset setea también from/to explícitos (congelados)
+  // Preset: congela from/to explícitos (hasta AYER)
   const setPreset = (days) => {
-    const r = lastNDaysLocal(days);
+    const r = lastNDaysUntilYesterday(days);
     onChange({ mode: String(days), from: r.from, to: r.to });
-    setTimeout(handleClose, 0); // cerrar inmediato
+    setTimeout(handleClose, 0);
   };
 
   const applyRange = () => {
@@ -56,7 +55,7 @@ export default function SalesPickerIcon({ value, onChange }) {
                 variant={mode==='custom'?'contained':'outlined'}
                 size="small"
                 onClick={() => {
-                  const r = lastNDaysLocal(daysByMode(mode));
+                  const r = lastNDaysUntilYesterday(daysByMode(mode));
                   onChange({ mode: 'custom', from: r.from, to: r.to });
                 }}
               >
