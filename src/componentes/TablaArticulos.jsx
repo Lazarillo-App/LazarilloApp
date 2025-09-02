@@ -29,15 +29,17 @@ const TablaArticulos = ({
   agrupacionSeleccionada, setAgrupacionSeleccionada,
   agrupaciones, categoriaSeleccionada, setCategoriaSeleccionada,
   refetchAgrupaciones,
-  // 👇 vienen desde ArticulosMain (30 días por defecto allí)
+
+  // fechas (vienen del contenedor)
   fechaDesdeProp,
   fechaHastaProp,
   calendarSlot,
+
   // ventas pre-computadas por agrupación (opcional)
   ventasPorArticulo,   // Map<number, number>
   ventasLoading,
 }) => {
-  // Usamos las fechas provistas por el contenedor
+  // Usamos las fechas provistas
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
@@ -58,7 +60,6 @@ const TablaArticulos = ({
     const cargarDatos = async () => {
       try {
         const token = await obtenerToken();
-        // si tu obtenerArticulos ignora el rango, no pasa nada
         const articulosData = await obtenerArticulos(token, fechaDesde, fechaHasta);
 
         const categoriasData = articulosData.map((categoria) => ({
@@ -257,7 +258,7 @@ const TablaArticulos = ({
 
   const articulosAgrupados = agruparPorRubroYSubrubro(articulosFiltrados);
 
-  // ------------------ Ordenar (sin "ventas" por ahora) ------------------
+  // ------------------ Ordenar (local) ------------------
   const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
   const [sortDir, setSortDir] = useState('asc');
 
@@ -313,6 +314,10 @@ const TablaArticulos = ({
   // 👉 Con columna "Ventas" sumamos +1 al colSpan
   const rubroColSpan = showAcciones ? 10 : 9;
 
+  // estilos rápidos de header/nums (si querés, mover a CSS)
+  const thSticky = { position: 'sticky', top: 0, zIndex: 2, background: '#fff', cursor: 'pointer', userSelect: 'none' };
+  const tdNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
   return (
     <div className="tabla-articulos-container">
       <SidebarCategorias
@@ -353,37 +358,37 @@ const TablaArticulos = ({
           <table>
             <thead>
               <tr>
-                <th onClick={() => toggleSort('codigo')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('codigo')} style={thSticky}>
                   Código {sortBy === 'codigo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('nombre')} style={thSticky}>
                   Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
 
                 {/* ✅ Columna Ventas (no ordenamos por ahora) */}
-                <th>
+                <th style={thSticky}>
                   Ventas {ventasLoading ? '…' : ''}
                 </th>
 
-                <th onClick={() => toggleSort('precio')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('precio')} style={{ ...thSticky, ...tdNum }}>
                   Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('costo')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('costo')} style={{ ...thSticky, ...tdNum }}>
                   Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('costoPct')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('costoPct')} style={{ ...thSticky, ...tdNum }}>
                   Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('objetivo')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('objetivo')} style={{ ...thSticky, ...tdNum }}>
                   Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('sugerido')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('sugerido')} style={{ ...thSticky, ...tdNum }}>
                   Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('manual')} style={{ cursor: 'pointer' }}>
+                <th onClick={() => toggleSort('manual')} style={{ ...thSticky, ...tdNum }}>
                   Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                {showAcciones && <th style={{ width: 64, textAlign: 'center' }}>Acciones</th>}
+                {showAcciones && <th style={{ ...thSticky, width: 64, textAlign: 'center' }}>Acciones</th>}
               </tr>
             </thead>
 
@@ -448,10 +453,10 @@ const TablaArticulos = ({
                                 />
                               </td>
 
-                              <td>${fmt(articulo.precio, 0)}</td>
-                              <td>${fmt(articulo.costo, 0)}</td>
-                              <td>{calcularCostoPorcentaje(articulo)}%</td>
-                              <td>
+                              <td style={tdNum}>${fmt(articulo.precio, 0)}</td>
+                              <td style={tdNum}>${fmt(articulo.costo, 0)}</td>
+                              <td style={tdNum}>{calcularCostoPorcentaje(articulo)}%</td>
+                              <td style={tdNum}>
                                 <input
                                   type="number"
                                   value={objetivos[id] || ''}
@@ -459,8 +464,8 @@ const TablaArticulos = ({
                                   style={{ width: '60px' }}
                                 />
                               </td>
-                              <td>${fmt(calcularSugerido(articulo), 2)}</td>
-                              <td>
+                              <td style={tdNum}>${fmt(calcularSugerido(articulo), 2)}</td>
+                              <td style={tdNum}>
                                 <input
                                   type="number"
                                   value={manuales[id] || ''}
@@ -510,3 +515,4 @@ const TablaArticulos = ({
 };
 
 export default TablaArticulos;
+

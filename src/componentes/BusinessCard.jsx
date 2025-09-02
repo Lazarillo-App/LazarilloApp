@@ -38,7 +38,7 @@ export default function BusinessCard({ biz, activeId, onSetActive, onEdit, onDel
       </div>
 
       <style>{`
-        .biz-card{border:2px solid #e6e6e6;border-radius:14px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+        .biz-card{width:300px;border:2px solid #e6e6e6;border-radius:14px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
         .banner{height:110px;display:grid;place-items:center;border-bottom:2px solid;position:relative}
         .logo{width:88px;height:88px;object-fit:cover;border-radius:14px;border:2px solid #fff;box-shadow:0 4px 20px #0003}
         .avatar{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:28px}

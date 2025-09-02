@@ -75,7 +75,7 @@ table {
 }
 
 thead th {
-  background-color: #37474F;
+  background-color: #37474F !important;
   color: #fff;
   padding: 12px 8px;
   text-align: left;
