@@ -143,11 +143,11 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
       <style>{`
         .modal-overlay{position:fixed;inset:0;background:#0006;display:grid;place-items:center;z-index:10000}
-        .modal-card{width:min(820px,96vw);background:#1f5a68;color:#fff;border-radius:14px;padding:20px 20px 16px;box-shadow:0 20px 60px #0007}
+        .modal-card{width:min(870px,96vw);background:#1f5a68;color:#fff;border-radius:14px;padding:50px 20px 16px;box-shadow:0 20px 60px #0007}
         .form-grid{display:grid;gap:12px}
         .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .group label{display:block;font-size:.9rem;margin-bottom:6px;font-weight:600}
-        input{width:100%;padding:10px;border-radius:8px;border:2px solid #dfe3e6;background:#f7f8f9;color:#222}
+        input{width:95%;padding:10px;border-radius:8px;border:2px solid #dfe3e6;background:#f7f8f9;color:#222}
         input[type="color"]{padding:0;height:40px}
         hr{border:none;border-top:1px solid #ffffff33;margin:2px 0 8px}
         h2{margin:0 0 12px} h3{margin:8px 0}

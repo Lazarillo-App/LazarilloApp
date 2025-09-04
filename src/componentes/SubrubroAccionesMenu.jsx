@@ -7,8 +7,10 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import axios from 'axios';
 import { BASE } from '../servicios/apiBase';
+import GestorAgrupacionesModal from './GestorAgrupacionesModal';
 
 export default function SubrubroAccionesMenu({
   articuloIds = [],
@@ -16,11 +18,13 @@ export default function SubrubroAccionesMenu({
   agrupacionSeleccionada,
   isTodo,
   onRefetch,
-  notify
+  notify,
+  todoGroupId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgOpen, setDlgOpen] = useState(false);
   const [destId, setDestId] = useState('');
+  const [crearOpen, setCrearOpen] = useState(false);
 
   const open = Boolean(anchorEl);
   const gruposDestino = useMemo(
@@ -33,6 +37,7 @@ export default function SubrubroAccionesMenu({
 
   const openMover = () => { setDlgOpen(true); handleClose(); };
   const closeMover = () => setDlgOpen(false);
+  const openCrear = () => { setCrearOpen(true); handleClose(); };
 
   async function moverBloque() {
     if (!destId || !articuloIds.length) return;
@@ -94,6 +99,10 @@ export default function SubrubroAccionesMenu({
             <ListItemText> Quitar de {agrupacionSeleccionada?.nombre} </ListItemText>
           </MenuItem>
         )}
+        <MenuItem onClick={openCrear}>
+          <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
+          <ListItemText> Crear agrupación… </ListItemText>
+        </MenuItem>
       </Menu>
 
       {/* Diálogo seleccionar destino */}
@@ -120,6 +129,15 @@ export default function SubrubroAccionesMenu({
           <Button onClick={moverBloque} variant="contained" disabled={!destId}>Mover</Button>
         </DialogActions>
       </Dialog>
+      <GestorAgrupacionesModal
+        open={crearOpen}
+        onClose={() => setCrearOpen(false)}
+        preselectIds={articuloIds}
+        agrupaciones={agrupaciones}
+        todoGroupId={todoGroupId}
+        notify={notify}
+        onRefetch={onRefetch}
+      />
     </>
   );
 }

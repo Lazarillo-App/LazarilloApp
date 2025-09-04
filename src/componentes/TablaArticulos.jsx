@@ -3,10 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import Buscador from './Buscador';
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
-import SidebarCategorias from './SidebarCategorias';
 import ArticuloAccionesMenu from './ArticuloAccionesMenu';
 import '../css/TablaArticulos.css';
-import { Snackbar, Alert } from '@mui/material';
+import { Snackbar, Alert, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo.js';
 import VentasCell from '../componentes/VentasCell';
 
@@ -24,22 +23,26 @@ const esTodoGroup = (g, todoGroupId) => {
   return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN' || n === 'SIN AGRUPACION';
 };
 
+const labelAgrup = (g) => {
+  const n = String(g?.nombre || '').trim().toUpperCase();
+  return n === 'TODO' ? 'Sin Agrupación' : (g?.nombre || '');
+};
+
 const TablaArticulos = ({
   filtroBusqueda, setFiltroBusqueda,
   agrupacionSeleccionada, setAgrupacionSeleccionada,
   agrupaciones, categoriaSeleccionada, setCategoriaSeleccionada,
   refetchAgrupaciones,
 
-  // fechas (vienen del contenedor)
+  // fechas
   fechaDesdeProp,
   fechaHastaProp,
   calendarSlot,
 
-  // ventas pre-computadas por agrupación (opcional)
+  // ventas
   ventasPorArticulo,   // Map<number, number>
   ventasLoading,
 }) => {
-  // Usamos las fechas provistas
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
@@ -47,7 +50,7 @@ const TablaArticulos = ({
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
 
-  // TODO + exclusiones (para “Sin Agrupación”)
+  // TODO + exclusiones
   const [todoGroupId, setTodoGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
 
@@ -91,44 +94,43 @@ const TablaArticulos = ({
     cargarDatos();
   }, [fechaDesde, fechaHasta]);
 
-  // Índice maestro por id
+  // Índices útiles
   const baseById = useMemo(() => {
     const list = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
     return new Map(list.map(a => [getId(a), a]));
   }, [categorias]);
 
-  // Todos los artículos de Maxi
+  const categoriasByNombre = useMemo(
+    () => new Map(categorias.map(c => [c.nombre, c])),
+    [categorias]
+  );
+
   const allMaxi = useMemo(
     () => categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos)),
     [categorias]
   );
 
-  // IDs asignados a agrupaciones reales (no TODO / Sin Agrupación)
   const idsEnOtras = useMemo(() => new Set(
     (agrupaciones || [])
       .filter(g => !esTodoGroup(g, todoGroupId))
       .flatMap(g => (g.articulos || []).map(getId))
   ), [agrupaciones, todoGroupId]);
 
-  // IDs “libres” para Sin Agrupación (no asignados ni excluidos)
   const idsSinAgrup = useMemo(() => new Set(
     allMaxi.map(getId).filter(id => !idsEnOtras.has(id) && !excludedIds.has(id))
   ), [allMaxi, idsEnOtras, excludedIds]);
 
-  // ✅ Set de IDs activos del grupo actual (SIEMPRE)
-  const activeIdsGroup = useMemo(() => {
-    if (!agrupacionSeleccionada) return null;
-    return esTodoGroup(agrupacionSeleccionada, todoGroupId)
-      ? idsSinAgrup
-      : new Set((agrupacionSeleccionada.articulos || []).map(getId));
-  }, [agrupacionSeleccionada, todoGroupId, idsSinAgrup]);
+  // const activeIdsGroup = useMemo(() => {
+  //   if (!agrupacionSeleccionada) return null;
+  //   return esTodoGroup(agrupacionSeleccionada, todoGroupId)
+  //     ? idsSinAgrup
+  //     : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+  // }, [agrupacionSeleccionada, todoGroupId, idsSinAgrup]);
 
   // ------------------ Qué artículos mostrar ------------------
   let articulosAMostrar = [];
 
   if (categoriaSeleccionada && agrupacionSeleccionada) {
-    // ✅ Si la agrupación es “Sin Agrupación”, usamos idsSinAgrup (libres).
-    //    Si es una agrupación real, usamos sus propios artículos.
     const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
       ? idsSinAgrup
       : new Set((agrupacionSeleccionada.articulos || []).map(getId));
@@ -144,15 +146,12 @@ const TablaArticulos = ({
 
     if (esTodo) {
       const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
-
       if (arr.length > 0) {
         articulosAMostrar = arr.map(a => {
           const id = getId(a);
           const b = baseById.get(id) || {};
           return {
-            ...b,
-            ...a,
-            id,
+            ...b, ...a, id,
             nombre: a.nombre ?? b.nombre ?? `#${id}`,
             categoria: a.categoria ?? b.categoria ?? "Sin categoría",
             subrubro: a.subrubro ?? b.subrubro ?? "Sin subrubro",
@@ -161,7 +160,6 @@ const TablaArticulos = ({
           };
         });
       } else {
-        // Fallback: “libres” (no están en otras agrupaciones ni excluidos)
         const all = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
         const enOtras = new Set(
           (agrupaciones || [])
@@ -174,15 +172,12 @@ const TablaArticulos = ({
         });
       }
     } else {
-      // Agrupación real
       const arr = agrupacionSeleccionada.articulos || [];
       articulosAMostrar = arr.map(a => {
         const id = getId(a);
         const b = baseById.get(id) || {};
         return {
-          ...b,
-          ...a,
-          id,
+          ...b, ...a, id,
           nombre: a.nombre ?? b.nombre ?? `#${id}`,
           categoria: a.categoria ?? b.categoria ?? "Sin categoría",
           subrubro: a.subrubro ?? b.subrubro ?? "Sin subrubro",
@@ -191,16 +186,15 @@ const TablaArticulos = ({
         };
       });
     }
-
   } else {
     // Vista general
     articulosAMostrar = categorias.flatMap(c => c.subrubros.flatMap(s => s.articulos));
   }
 
-  const idsVisibles = useMemo(
-    () => new Set(articulosAMostrar.map(a => getId(a))),
-    [articulosAMostrar]
-  );
+  // const idsVisibles = useMemo(
+  //   () => new Set(articulosAMostrar.map(a => getId(a))),
+  //   [articulosAMostrar]
+  // );
 
   // Filtro buscador
   const articulosFiltrados = filtroBusqueda
@@ -235,9 +229,9 @@ const TablaArticulos = ({
     return den > 0 ? costo * (100 / den) : 0;
   };
 
-  const agruparPorRubroYSubrubro = (articulos) => {
+  const agruparPorRubroYSubrubro = (arts) => {
     const agrupados = {};
-    articulos.forEach((articulo) => {
+    arts.forEach((articulo) => {
       const categoria = categorias.find(cat =>
         cat.subrubros.some(sub =>
           sub.articulos.some(a => getId(a) === getId(articulo))
@@ -259,7 +253,7 @@ const TablaArticulos = ({
   const articulosAgrupados = agruparPorRubroYSubrubro(articulosFiltrados);
 
   // ------------------ Ordenar (local) ------------------
-  const [sortBy, setSortBy] = useState(null);      // 'codigo'|'nombre'|'precio'|'costo'|'costoPct'|'objetivo'|'sugerido'|'manual'
+  const [sortBy, setSortBy] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
   const toggleSort = (key) => {
@@ -311,27 +305,31 @@ const TablaArticulos = ({
   const isTodo = agrupacionSeleccionada ? esTodoGroup(agrupacionSeleccionada, todoGroupId) : false;
   const showAcciones = !!agrupacionSeleccionada;
 
-  // 👉 Con columna "Ventas" sumamos +1 al colSpan
-  const rubroColSpan = showAcciones ? 10 : 9;
+  // Con columna "Ventas" sumamos +1 al colSpan; ahora tenemos, además, la nueva 1ª columna (sticky)
+  const restColsSpan = showAcciones ? 10 : 9;
 
-  // estilos rápidos de header/nums (si querés, mover a CSS)
-  const thSticky = { position: 'sticky', top: 0, zIndex: 2, background: '#fff', cursor: 'pointer', userSelect: 'none' };
+  // estilos (extra para sticky left)
+  const thStickyTop = { position: 'sticky', top: 0, zIndex: 2, background: '#fff', cursor: 'pointer', userSelect: 'none' };
   const tdNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
+  // handler del Select (movido del sidebar)
+  const handleAgrupacionChange = (event) => {
+    const value = event.target.value; // '' o id
+    if (value === '') {
+      setAgrupacionSeleccionada?.(null);
+      setFiltroBusqueda?.('');
+    } else {
+      const idSel = Number(value);
+      const seleccionada = (agrupaciones || []).find(a => Number(a?.id) === idSel) || null;
+      setAgrupacionSeleccionada?.(seleccionada);
+      setFiltroBusqueda?.('');
+    }
+    setCategoriaSeleccionada?.(null);
+  };
 
   return (
     <div className="tabla-articulos-container">
-      <SidebarCategorias
-        categorias={categorias}
-        setCategoriaSeleccionada={setCategoriaSeleccionada}
-        agrupaciones={agrupaciones}
-        agrupacionSeleccionada={agrupacionSeleccionada}
-        setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-        setFiltroBusqueda={setFiltroBusqueda}
-        categoriaSeleccionada={categoriaSeleccionada}
-        setBusqueda={setFiltroBusqueda}
-        idsVisibles={idsVisibles}
-        activeIds={activeIdsGroup}
-      />
+      {/* sidebar REMOVIDO */}
 
       <div className="tabla-content">
         <h2>Gestión de Artículos</h2>
@@ -358,37 +356,55 @@ const TablaArticulos = ({
           <table>
             <thead>
               <tr>
-                <th onClick={() => toggleSort('codigo')} style={thSticky}>
+                {/* NUEVA primera columna: Select de Agrupaciones */}
+                <th className="sticky-left" style={{ ...thStickyTop, minWidth: 260 }}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Agrupaciones</InputLabel>
+                    <Select
+                      label="Agrupaciones"
+                      value={agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : ''}
+                      onChange={handleAgrupacionChange}
+                    >
+                      <MenuItem value="">Ver todas</MenuItem>
+                      {(agrupaciones || []).map((g) => (
+                        <MenuItem key={g.id} value={Number(g.id)}>
+                          {labelAgrup(g)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </th>
+
+                <th onClick={() => toggleSort('codigo')} style={thStickyTop}>
                   Código {sortBy === 'codigo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('nombre')} style={thSticky}>
+                <th onClick={() => toggleSort('nombre')} style={thStickyTop}>
                   Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
 
-                {/* ✅ Columna Ventas (no ordenamos por ahora) */}
-                <th style={thSticky}>
+                <th style={thStickyTop}>
                   Ventas {ventasLoading ? '…' : ''}
                 </th>
 
-                <th onClick={() => toggleSort('precio')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('precio')} style={{ ...thStickyTop, ...tdNum }}>
                   Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('costo')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('costo')} style={{ ...thStickyTop, ...tdNum }}>
                   Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('costoPct')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('costoPct')} style={{ ...thStickyTop, ...tdNum }}>
                   Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('objetivo')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('objetivo')} style={{ ...thStickyTop, ...tdNum }}>
                   Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('sugerido')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('sugerido')} style={{ ...thStickyTop, ...tdNum }}>
                   Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th onClick={() => toggleSort('manual')} style={{ ...thSticky, ...tdNum }}>
+                <th onClick={() => toggleSort('manual')} style={{ ...thStickyTop, ...tdNum }}>
                   Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                {showAcciones && <th style={{ ...thSticky, width: 64, textAlign: 'center' }}>Acciones</th>}
+                {showAcciones && <th style={{ ...thStickyTop, width: 64, textAlign: 'center' }}>Acciones</th>}
               </tr>
             </thead>
 
@@ -399,24 +415,37 @@ const TablaArticulos = ({
                     const itemsSubrubro = [...articulosAgrupados[rubro][subrubro]];
                     const articuloIdsSubrubro = itemsSubrubro.map(a => getId(a));
 
+                    const handleClickCategoria = () => {
+                      const catObj = categoriasByNombre.get(rubro) || null;
+                      setCategoriaSeleccionada?.((prev) =>
+                        prev?.id === catObj?.id ? null : catObj
+                      );
+                      setFiltroBusqueda?.('');
+                    };
+
                     return (
                       <React.Fragment key={subrubro}>
+                        {/* Fila de encabezado de bloque */}
                         <tr className="rubro-row">
-                          <td colSpan={rubroColSpan}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <strong>{rubro} - {subrubro}</strong>
+                          {/* 1ª columna sticky: CATEGORÍA (clickeable) */}
+                          <td className="sticky-left categoria-cell">
+                            <button className="categoria-badge" onClick={handleClickCategoria} title="Filtrar por categoría">
+                              {rubro}
+                            </button>
+                          </td>
 
-                              {/* Menú de acciones del SUBRUBRO (bloque) */}
+                          {/* resto de columnas del bloque */}
+                          <td colSpan={restColsSpan}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <strong>{subrubro}</strong>
+
                               {showAcciones && (
                                 <SubrubroAccionesMenu
-                                  // contexto
                                   isTodo={isTodo}
                                   agrupaciones={agrupaciones}
                                   agrupacionSeleccionada={agrupacionSeleccionada}
                                   todoGroupId={todoGroupId}
-                                  // datos del bloque
                                   articuloIds={articuloIdsSubrubro}
-                                  // feedback/refresh
                                   onRefetch={refetchAgrupaciones}
                                   notify={(m, t = 'success') => openSnack(m, t)}
                                 />
@@ -425,6 +454,7 @@ const TablaArticulos = ({
                           </td>
                         </tr>
 
+                        {/* Filas de artículos */}
                         {itemsSubrubro.sort(cmp).map((articulo) => {
                           const id = getId(articulo);
                           const artHydrated = {
@@ -438,10 +468,12 @@ const TablaArticulos = ({
 
                           return (
                             <tr key={id}>
+                              {/* 1ª columna sticky: vacía para alinear */}
+                              <td className="sticky-left" />
+
                               <td>{id}</td>
                               <td>{articulo.nombre}</td>
 
-                              {/* ✅ Celda Ventas */}
                               <td>
                                 <VentasCell
                                   articuloId={id}
@@ -515,4 +547,3 @@ const TablaArticulos = ({
 };
 
 export default TablaArticulos;
-

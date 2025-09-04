@@ -2,7 +2,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  AppBar, Toolbar, IconButton, Typography, Menu, MenuItem, Box, Container, Avatar, Tooltip, Button
+  AppBar, Toolbar, IconButton, Typography, Menu, MenuItem, Box, Container, Avatar, Tooltip, Button, Divider
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import BusinessSwitcher from './BusinessSwitcher';
@@ -40,11 +40,9 @@ export default function Navbar() {
               transformOrigin={{ vertical: 'top', horizontal: 'left' }}
               sx={{ display: { xs: 'block', md: 'none' } }}
             >
-              {[
-                <MenuItem key="home" component={NavLink} to="/" onClick={()=>setNavEl(null)}>Inicio</MenuItem>,
-                <MenuItem key="agr" component={NavLink} to="/agrupaciones" onClick={()=>setNavEl(null)}>Agrupaciones</MenuItem>,
-                <MenuItem key="ins" component={NavLink} to="/insumos" onClick={()=>setNavEl(null)}>Insumos</MenuItem>,
-              ]}
+              <MenuItem component={NavLink} to="/" onClick={()=>setNavEl(null)}>Inicio</MenuItem>
+              <MenuItem component={NavLink} to="/agrupaciones" onClick={()=>setNavEl(null)}>Agrupaciones</MenuItem>
+              <MenuItem component={NavLink} to="/insumos" onClick={()=>setNavEl(null)}>Insumos</MenuItem>
             </Menu>
           </Box>
 
@@ -55,13 +53,11 @@ export default function Navbar() {
             <Button color="inherit" component={NavLink} to="/insumos">Insumos</Button>
           </Box>
 
-          {/* Lado derecho */}
-          {logged && <BusinessSwitcher className="mr-2" onSwitched={()=>window.location.reload()} />}
-
+          {/* Lado derecho: avatar con menú (incluye el selector de local adentro) */}
           <Box sx={{ flexGrow: 0 }}>
             <Tooltip title="Cuenta">
               <IconButton onClick={(e)=>setUserEl(e.currentTarget)} sx={{ p: 0 }}>
-                <Avatar></Avatar>
+                <Avatar />
               </IconButton>
             </Tooltip>
             <Menu
@@ -72,14 +68,35 @@ export default function Navbar() {
               anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
               transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             >
-              {logged
-                ? [
-                    <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={()=>setUserEl(null)}>Perfil</MenuItem>,
-                    <MenuItem key="logout" onClick={logout}>Salir</MenuItem>,
-                  ]
-                : [
-                    <MenuItem key="login" component={NavLink} to="/login" onClick={()=>setUserEl(null)}>Login</MenuItem>,
-                  ]}
+              {logged ? (
+                <>
+                  <MenuItem component={NavLink} to="/perfil" onClick={()=>setUserEl(null)}>
+                    Perfil
+                  </MenuItem>
+
+                  {/* Bloque de LOCAL dentro del menú */}
+                  <Box sx={{ px: 2, py: 1, width: 280 }}>
+                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                      Local
+                    </Typography>
+                    {/* BusinessSwitcher renderizado inline; al cambiar, cerramos el menú y refrescamos */}
+                    <BusinessSwitcher
+                      fullWidth
+                      onSwitched={() => {
+                        setUserEl(null);
+                        window.location.reload();
+                      }}
+                    />
+                  </Box>
+
+                  <Divider sx={{ my: 0.5 }} />
+                  <MenuItem onClick={logout}>Salir</MenuItem>
+                </>
+              ) : (
+                <MenuItem component={NavLink} to="/login" onClick={()=>setUserEl(null)}>
+                  Login
+                </MenuItem>
+              )}
             </Menu>
           </Box>
         </Toolbar>
