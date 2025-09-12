@@ -2,13 +2,18 @@
   position: sticky;
   top: 0;
   z-index: 1000;
-  height: 56px;
+  height: 76px;
   padding: 0 16px;
   background: #285a73;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.css-ptdwpq-MuiPaper-root-MuiAppBar-root {
+    height: 80px;
+    justify-content: center;
 }
 
 /* Logo */

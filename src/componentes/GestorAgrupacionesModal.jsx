@@ -6,9 +6,9 @@ import {
   CircularProgress
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import axios from 'axios';
 import { BASE } from '../servicios/apiBase';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
 
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const esTodoGroup = (g, todoGroupId) => {
@@ -16,36 +16,70 @@ const esTodoGroup = (g, todoGroupId) => {
   return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN';
 };
 
+// ✅ árbol desde filas planas de BD (con fallback a row.data)
+function buildTreeFromDB(items = []) {
+  const flat = items.map(row => {
+    const raw = row?.raw || {};
+    const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+    return {
+      id,
+      nombre   : String(row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`).trim(),
+      categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría').trim() || 'Sin categoría',
+      subrubro : String(row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro').trim()  || 'Sin subrubro',
+      precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+    };
+  }).filter(a => Number.isFinite(a.id));
+
+  const byCat = new Map();
+  for (const a of flat) {
+    if (!byCat.has(a.categoria)) byCat.set(a.categoria, new Map());
+    const bySr = byCat.get(a.categoria);
+    if (!bySr.has(a.subrubro)) bySr.set(a.subrubro, []);
+    bySr.get(a.subrubro).push({ id: a.id, nombre: a.nombre, precio: a.precio });
+  }
+
+  return Array.from(byCat, ([catNombre, bySr]) => ({
+    nombre: catNombre,
+    subrubros: Array.from(bySr, ([srNombre, articulos]) => ({ nombre: srNombre, articulos })),
+  }));
+}
+
 export default function GestorAgrupacionesModal({
   open,
   onClose,
-  preselectIds = [],          // ids preseleccionados (opcional)
-  agrupaciones = [],          // todas las agrupaciones actuales (para bloquear duplicados)
+  preselectIds = [],
+  agrupaciones = [],
   todoGroupId,
-  notify,                     // (msg, type)
-  onRefetch,                  // refrescar listado después de crear
+  notify,
+  onRefetch,
 }) {
-  // estado y catálogo
   const [loading, setLoading] = useState(false);
   const [todosArticulos, setTodosArticulos] = useState([]);
   const [search, setSearch] = useState('');
   const [seleccionIds, setSeleccionIds] = useState(preselectIds.map(Number));
   const [nombreAgr, setNombreAgr] = useState('');
 
-  // cargar catálogo al abrir
+  // cargar catálogo al abrir — **desde BD**
   useEffect(() => {
     if (!open) return;
     setSeleccionIds(preselectIds.map(Number));
     setNombreAgr('');
     setSearch('');
+
     (async () => {
       try {
         setLoading(true);
-        const token = await obtenerToken();
-        const data = await obtenerArticulos(token);
-        setTodosArticulos(Array.isArray(data) ? data : []);
+        const activeBizId = localStorage.getItem('activeBusinessId');
+        if (!activeBizId) throw new Error('No hay negocio activo');
+
+        const res = await BusinessesAPI.articlesFromDB(activeBizId);
+        const items = Array.isArray(res?.items) ? res.items : [];
+        const tree = buildTreeFromDB(items);
+        setTodosArticulos(tree);
       } catch (e) {
-        console.error('CrearAgrupacionModal: cargar catálogo', e);
+        console.error('GestorAgrupacionesModal: cargar catálogo BD', e);
+        notify?.('No se pudo cargar el catálogo desde la base', 'error');
+        setTodosArticulos([]);
       } finally {
         setLoading(false);
       }
@@ -53,7 +87,7 @@ export default function GestorAgrupacionesModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // maestro (id -> datos) para el payload
+  // maestro (id -> datos) para el payload de creación
   const maestro = useMemo(() => {
     const out = [];
     (todosArticulos || []).forEach(cat => {
@@ -72,7 +106,7 @@ export default function GestorAgrupacionesModal({
     return new Map(out.map(a => [a.id, a]));
   }, [todosArticulos]);
 
-  // artículos ya asignados a alguna agrupación real (no TODO/Sin Agrupación) -> para no duplicar
+  // artículos ya asignados a alguna agrupación real → para bloquear duplicados
   const destinos = useMemo(
     () => (agrupaciones || []).filter(g => !esTodoGroup(g, todoGroupId)),
     [agrupaciones, todoGroupId]
@@ -82,11 +116,9 @@ export default function GestorAgrupacionesModal({
     destinos.forEach(g => (g.articulos || []).forEach(a => s.add(getId(a))));
     return s;
   }, [destinos]);
-
   const isBloqueado = (id) => assignedIds.has(Number(id));
 
-  /* ===================== Árbol 3 niveles ===================== */
-  // Estructura: [{ nombre: categoria, subrubros: [{ nombre, articulos: [...] }] }]
+  /* ===================== Árbol filtrado por búsqueda ===================== */
   const arbolCategorias = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (todosArticulos || [])
@@ -156,7 +188,7 @@ export default function GestorAgrupacionesModal({
     setSeleccionIds(all);
   };
 
-  /* ===================== Acción: crear ===================== */
+  /* ===================== Crear agrupación ===================== */
   const crearAgrupacion = async () => {
     if (!nombreAgr.trim() || seleccionIds.length === 0) return;
     try {
@@ -225,7 +257,7 @@ export default function GestorAgrupacionesModal({
 
                 return (
                   <Accordion key={`cat-${iCat}`} sx={{ mb: 1 }}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                       <Checkbox
                         checked={estCat.checked}
                         indeterminate={estCat.indeterminate}
@@ -242,7 +274,7 @@ export default function GestorAgrupacionesModal({
 
                         return (
                           <Accordion key={`sr-${iCat}-${iSr}`} sx={{ mb: 1 }}>
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                               <Checkbox
                                 checked={estSr.checked}
                                 indeterminate={estSr.indeterminate}

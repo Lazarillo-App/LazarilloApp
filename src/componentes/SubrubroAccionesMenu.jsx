@@ -1,4 +1,3 @@
-// src/componentes/SubrubroAccionesMenu.jsx
 import React, { useMemo, useState } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -12,70 +11,105 @@ import axios from 'axios';
 import { BASE } from '../servicios/apiBase';
 import GestorAgrupacionesModal from './GestorAgrupacionesModal';
 
+const getNum = (v) => Number(v ?? 0);
+
 export default function SubrubroAccionesMenu({
-  articuloIds = [],
+  isTodo = false,                      // si estás en "Sin agrupación"
   agrupaciones = [],
-  agrupacionSeleccionada,
-  isTodo,
-  onRefetch,
-  notify,
+  agrupacionSeleccionada,              // puede venir null
   todoGroupId,
+  articuloIds = [],                    // TODOS los ids del subrubro
+  onRefetch,
+  notify
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
-  const [dlgOpen, setDlgOpen] = useState(false);
+  const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
-  const [crearOpen, setCrearOpen] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
+  const [openGestor, setOpenGestor] = useState(false);
 
   const open = Boolean(anchorEl);
-  const gruposDestino = useMemo(
-    () => (agrupaciones || []).filter(g => g?.id && g.id !== agrupacionSeleccionada?.id),
-    [agrupaciones, agrupacionSeleccionada?.id]
-  );
-
   const handleOpen = (e) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
-  const openMover = () => { setDlgOpen(true); handleClose(); };
-  const closeMover = () => setDlgOpen(false);
-  const openCrear = () => { setCrearOpen(true); handleClose(); };
+  const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
-  async function moverBloque() {
-    if (!destId || !articuloIds.length) return;
+  const gruposDestino = useMemo(
+    () => (agrupaciones || [])
+      .filter(g => g?.id)
+      .filter(g => Number(g.id) !== currentGroupId)
+      .filter(g => Number(g.id) !== Number(todoGroupId)),
+    [agrupaciones, currentGroupId, todoGroupId]
+  );
 
+  const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
+  const closeMover = () => setDlgMoverOpen(false);
+
+  async function mover() {
+    if (!destId) return;
+    const ids = articuloIds.map(getNum).filter(Boolean);
+    if (!ids.length) return;
+
+    const fromId = (!isTodo && currentGroupId) ? Number(currentGroupId) : null;
+    const toId = Number(destId);
+
+    setIsMoving(true);
     try {
-      // 1) agregar en destino (PUT con array)
-      const payload = articuloIds.map(id => ({ id: Number(id) }));
-      await axios.put(`${BASE}/agrupaciones/${destId}/articulos`, { articulos: payload });
+      if (fromId) {
+        // intento con endpoint masivo (si existe en tu API)
+        try {
+          await axios.post(`${BASE}/agrupaciones/${fromId}/move-items`, { toId, ids });
+        } catch (e) {
+          // fallback: add en destino y luego delete del origen
+          await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids })
+            .catch(e2 => {
+              const s = e2?.response?.status;
+              const tx = JSON.stringify(e2?.response?.data || {});
+              const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
+              if (!dup) throw e2;
+            });
 
-      // 2) si venimos de una agrupación real, debemos quitar de la actual
-      if (!isTodo && agrupacionSeleccionada?.id) {
-        for (const id of articuloIds) {
-          await axios.delete(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos/${id}`);
+          // quitamos del origen uno x uno (si no tenés endpoint masivo)
+          for (const id of ids) {
+            try { await axios.delete(`${BASE}/agrupaciones/${fromId}/articulos/${id}`); }
+            catch { /* no detengas todo si alguno falla */ }
+          }
         }
+      } else {
+        // venimos de 'Sin agrupación' o sin selección → solo agregamos
+        await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids })
+          .catch(e2 => {
+            const s = e2?.response?.status;
+            const tx = JSON.stringify(e2?.response?.data || {});
+            const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
+            if (!dup) throw e2;
+          });
       }
 
-      notify?.(`Movidos ${articuloIds.length} artículos`, 'success');
+      notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
       onRefetch?.();
     } catch (e) {
-      console.error(e);
-      notify?.('No se pudo mover el bloque', 'error');
+      console.error('MOVER_SUBRUBRO_ERROR', e?.response || e);
+      notify?.('No se pudo mover el subrubro', 'error');
     } finally {
+      setIsMoving(false);
       closeMover();
     }
   }
 
   async function quitarDeActual() {
-    // Solo tiene sentido si estamos en agrupación real
-    if (isTodo || !agrupacionSeleccionada?.id) return;
+    if (isTodo || !currentGroupId) return;
+    const ids = articuloIds.map(getNum).filter(Boolean);
     try {
-      for (const id of articuloIds) {
-        await axios.delete(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos/${id}`);
+      for (const id of ids) {
+        try { await axios.delete(`${BASE}/agrupaciones/${currentGroupId}/articulos/${id}`); }
+        catch { /* continuar */ }
       }
-      notify?.(`Quitados ${articuloIds.length} artículos de ${agrupacionSeleccionada.nombre}`, 'success');
+      notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
       onRefetch?.();
     } catch (e) {
       console.error(e);
-      notify?.('No se pudo quitar el bloque', 'error');
+      notify?.('No se pudo quitar el subrubro', 'error');
     } finally {
       handleClose();
     }
@@ -83,30 +117,31 @@ export default function SubrubroAccionesMenu({
 
   return (
     <>
-      <IconButton size="small" onClick={handleOpen}>
+      <IconButton size="small" onClick={handleOpen} title="Acciones de subrubro">
         <MoreVertIcon fontSize="small" />
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
         <MenuItem onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
-          <ListItemText> Mover todo a… </ListItemText>
+          <ListItemText>Mover subrubro a…</ListItemText>
         </MenuItem>
 
         {!isTodo && (
           <MenuItem onClick={quitarDeActual}>
             <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
-            <ListItemText> Quitar de {agrupacionSeleccionada?.nombre} </ListItemText>
+            <ListItemText>Quitar del grupo actual</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={openCrear}>
+
+        <MenuItem onClick={() => { handleClose(); setOpenGestor(true); }}>
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
-          <ListItemText> Crear agrupación… </ListItemText>
+          <ListItemText>Crear agrupación con este subrubro…</ListItemText>
         </MenuItem>
       </Menu>
 
-      {/* Diálogo seleccionar destino */}
-      <Dialog open={dlgOpen} onClose={closeMover}>
+      {/* diálogo mover */}
+      <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {articuloIds.length} artículo(s) a…</DialogTitle>
         <DialogContent>
           <TextField
@@ -125,14 +160,18 @@ export default function SubrubroAccionesMenu({
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeMover}>Cancelar</Button>
-          <Button onClick={moverBloque} variant="contained" disabled={!destId}>Mover</Button>
+          <Button onClick={closeMover} disabled={isMoving}>Cancelar</Button>
+          <Button onClick={mover} variant="contained" disabled={!destId || isMoving}>
+            {isMoving ? 'Moviendo…' : 'Mover'}
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* modal crear agrupación con preselección de este subrubro */}
       <GestorAgrupacionesModal
-        open={crearOpen}
-        onClose={() => setCrearOpen(false)}
-        preselectIds={articuloIds}
+        open={openGestor}
+        onClose={() => setOpenGestor(false)}
+        preselectIds={articuloIds.map(getNum)}
         agrupaciones={agrupaciones}
         todoGroupId={todoGroupId}
         notify={notify}

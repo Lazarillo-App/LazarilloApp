@@ -1,9 +1,11 @@
 // src/paginas/Perfil.jsx
 import React, { useEffect, useState } from 'react';
+import { Grid } from '@mui/material';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
+import AdminActionsSidebar from '../componentes/AdminActionsSidebar';
 
 export default function Perfil() {
   const [items, setItems] = useState([]); // siempre array
@@ -28,7 +30,12 @@ export default function Perfil() {
       await BusinessesAPI.select(id);
       localStorage.setItem('activeBusinessId', id);
       setActiveId(id);
-    } catch (e) { console.error(e); alert('No se pudo activar.'); }
+      // Si querés refrescar inmediatamente la UI del perfil:
+      await load();
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo activar.');
+    }
   };
 
   const onDelete = async (biz) => {
@@ -40,7 +47,10 @@ export default function Perfil() {
         localStorage.removeItem('activeBusinessId');
         setActiveId('');
       }
-    } catch (e) { console.error(e); alert('No se pudo eliminar.'); }
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo eliminar.');
+    }
   };
 
   const onCreateComplete = (biz) => {
@@ -55,39 +65,49 @@ export default function Perfil() {
   };
 
   return (
-    <div className="perfil">
-      <div className="hdr">
-        <h1>Mi perfil</h1>
-        <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
-      </div>
+    <Grid container spacing={2}>
+      {/* Sidebar de Acciones (sincronización, etc.) */}
+      <Grid item xs={12} md={3}>
+        <AdminActionsSidebar onSynced={load} />
+      </Grid>
 
-      <h2 className="sub">Mis locales</h2>
-      <div className="grid">
-        {(items).map(biz => (
-          <BusinessCard
-            key={biz.id}
-            biz={biz}
-            activeId={activeId}
-            onSetActive={onSetActive}
-            onEdit={setEditing}
-            onDelete={onDelete}
+      {/* Contenido principal (tus locales) */}
+      <Grid item xs={12} md={9}>
+        <div className="perfil">
+          <div className="hdr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h1>Mi perfil</h1>
+            <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
+          </div>
+
+          <h2 className="sub">Mis locales</h2>
+          <div className="grid">
+            {items.map(biz => (
+              <BusinessCard
+                key={biz.id}
+                biz={biz}
+                activeId={activeId}
+                onSetActive={onSetActive}
+                onEdit={setEditing}
+                onDelete={onDelete}
+              />
+            ))}
+            {!items.length && <div className="empty">Aún no tenés locales. Creá el primero.</div>}
+          </div>
+
+          <BusinessCreateModal
+            open={showCreate}
+            onClose={() => setShowCreate(false)}
+            onCreateComplete={onCreateComplete}
           />
-        ))}
-        {!items.length && <div className="empty">Aún no tenés locales. Creá el primero.</div>}
-      </div>
 
-      <BusinessCreateModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreateComplete={onCreateComplete}
-      />
-
-      <BusinessEditModal
-        open={!!editing}
-        business={editing}
-        onClose={() => setEditing(null)}
-        onSaved={onSaved}
-      />
-    </div>
+          <BusinessEditModal
+            open={!!editing}
+            business={editing}
+            onClose={() => setEditing(null)}
+            onSaved={onSaved}
+          />
+        </div>
+      </Grid>
+    </Grid>
   );
 }

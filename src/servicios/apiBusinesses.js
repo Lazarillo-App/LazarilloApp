@@ -9,7 +9,7 @@ export function authHeaders(extra = {}) {
   if (bid && !h['X-Business-Id']) h['X-Business-Id'] = bid;
   return h;
 }
-
+// src/servicios/apiBusinesses.js
 async function http(path, { method='GET', body } = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -18,14 +18,15 @@ async function http(path, { method='GET', body } = {}) {
   });
   const txt = await res.text();
   let data; try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
-  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const msg = data?.detail ? `${data.error}: ${data.detail}` : (data?.error || `HTTP ${res.status}`);
+    throw new Error(msg);
+  }
   return data;
 }
 
 export const BusinessesAPI = {
-  // ← SIEMPRE array
   listMine : async () => (await http('/businesses'))?.items ?? [],
-
   get      : (id) => http(`/businesses/${id}`),
   create   : (payload) => http('/businesses', { method: 'POST', body: payload }),
   update   : (id, body) => http(`/businesses/${id}`, { method: 'PATCH', body }),
@@ -35,7 +36,20 @@ export const BusinessesAPI = {
   maxiStatus : (id) => http(`/businesses/${id}/maxi-status`),
   maxiSave   : (id, creds) => http(`/businesses/${id}/maxi-credentials`, { method: 'POST', body: creds }),
 
-  // ← NUEVO
-  maxiArticles : (id, { from, to }) =>
-    http(`/businesses/${id}/maxi-articles?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  // DB-first
+  articlesFromDB : (id) => http(`/businesses/${id}/articles`),
+
+  salesSummary   : (id, { from, to }) =>
+    http(`/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+
+  salesSeries    : (id, articuloId, { from, to, groupBy='day' }) =>
+    http(`/businesses/${id}/sales/${articuloId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`),
+
+  syncNow        : (id, body) => http(`/businesses/${id}/sync`, { method: 'POST', body }),
+
+  // --- Aliases opcionales de compatibilidad (podés borrarlos si ya migraste) ---
+  maxiArticles : (id) => http(`/businesses/${id}/articles`),
+  salesFromDB  : (id, { from, to }) =>
+    http(`/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 };
+

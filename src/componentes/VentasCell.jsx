@@ -1,11 +1,10 @@
-// VentasCell.jsx (solo dif: sin auto-fetch en useEffect)
+// src/componentes/VentasCell.jsx
 import React, { useMemo, useState } from 'react';
-import { obtenerVentas } from '../servicios/apiVentas';
-import VentasMiniGraficoModal from './VentasMiniGraficoModal';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
 import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
-
-const cache = new Map();
+import VentasMiniGraficoModal from './VentasMiniGraficoModal';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { ventasCache } from '../servicios/ventasCache';
 
 export default function VentasCell({
   articuloId,
@@ -13,28 +12,43 @@ export default function VentasCell({
   from,
   to,
   defaultGroupBy = 'day',
-  totalOverride,                 // ← pasa este desde el padre (ventasMap)
+  totalOverride,
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState({ total: 0, items: [] });
   const [openModal, setOpenModal] = useState(false);
 
+  const activeBizId = localStorage.getItem('activeBusinessId');
   const totalToShow = Number(totalOverride ?? 0);
 
   const cacheKey = useMemo(
-    () => `${articuloId}|${from}|${to}|${groupBy}`,
-    [articuloId, from, to, groupBy]
+    () => `${activeBizId}|${articuloId}|${from}|${to}|${groupBy}`,
+    [activeBizId, articuloId, from, to, groupBy]
   );
 
-  async function fetchVentas() {
-    if (!articuloId || !from || !to) return;
-    if (cache.has(cacheKey)) { setData(cache.get(cacheKey)); return; }
+  async function fetchVentas(nextGroupBy) {
+    if (!activeBizId || !articuloId || !from || !to) return;
+    const gb = nextGroupBy || groupBy;
+    const key = `${activeBizId}|${articuloId}|${from}|${to}|${gb}`;
+
+    if (ventasCache.has(key)) { setData(ventasCache.get(key)); return; }
+
     setLoading(true);
     try {
-      const res = await obtenerVentas({ articuloId, from, to, groupBy, ignoreZero: true });
-      cache.set(cacheKey, res);
-      setData(res);
+      const res = await BusinessesAPI.salesSeries(activeBizId, articuloId, { from, to, groupBy: gb });
+      const serie = (res?.items || []).map(r => ({
+        date: String(r.bucket).slice(0, 10),
+        qty: Number(r.qty || 0),
+        amount: Number(r.amount || 0),
+      }));
+      const total = serie.reduce((acc, x) => acc + x.qty, 0);
+      const payload = { total, items: serie };
+      ventasCache.set(key, payload);
+      setData(payload);
+    } catch (e) {
+      console.error('fetchVentas error', e);
+      setData({ total: 0, items: [] });
     } finally {
       setLoading(false);
     }
@@ -45,13 +59,23 @@ export default function VentasCell({
       {loading ? (
         <CircularProgress size={18} />
       ) : (
-        <Typography variant="body2" sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <Typography
+          variant="body2"
+          sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+          title={String(totalToShow)}
+        >
           {totalToShow}
         </Typography>
       )}
 
       <Tooltip title="Ver gráfico">
-        <IconButton size="small" onClick={async () => { setOpenModal(true); await fetchVentas(); }}>
+        <IconButton
+          size="small"
+          onClick={async () => {
+            setOpenModal(true);
+            await fetchVentas();
+          }}
+        >
           <InsertChartOutlinedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
@@ -67,7 +91,7 @@ export default function VentasCell({
         onChangeGroupBy={async (gb) => {
           if (!gb || gb === groupBy) return;
           setGroupBy(gb);
-          await fetchVentas();
+          await fetchVentas(gb);
         }}
       />
     </Stack>

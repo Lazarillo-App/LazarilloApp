@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
@@ -38,21 +38,13 @@ const App = () => {
     localStorage.getItem('activeBusinessId') || ''
   );
 
-  // sincroniza activeBusinessId si lo cambian desde el switcher
+  // Mantener sincronizado el business activo si lo cambian desde otro tab o el switcher
   useEffect(() => {
     const sync = () => setActiveBusinessId(localStorage.getItem('activeBusinessId') || '');
     window.addEventListener('storage', sync);
-    const i = setInterval(sync, 1000); // simple, sin context por ahora
+    const i = setInterval(sync, 1000);
     return () => { window.removeEventListener('storage', sync); clearInterval(i); };
   }, []);
-
-  // Sugerencias para autocompletado
-  const sugerencias = useMemo(() => (
-    (Array.isArray(categorias) ? categorias : [])
-      .flatMap(cat => (cat?.subrubros || []).flatMap(sub => sub?.articulos || []))
-      .map(art => art?.nombre)
-      .filter(Boolean)
-  ), [categorias]);
 
   const recargarAgrupaciones = async () => {
     try {
@@ -64,14 +56,13 @@ const App = () => {
     }
   };
 
+  // Carga catálogo desde tu BD (endpoint /api/businesses/:id/articles)
   const cargarCategorias = async () => {
     try {
       const bid = localStorage.getItem('activeBusinessId');
       if (!bid) { setCategorias([]); return; }
 
-      // fechas de ejemplo; luego vas a tomar las reales del calendario
-      const from = '2025-01-01', to = '2025-04-01';
-      const { items } = await BusinessesAPI.maxiArticles(bid, { from, to });
+      const { items } = await BusinessesAPI.articlesFromDB(bid);
       setCategorias(Array.isArray(items) ? items : []);
     } catch (e) {
       console.error('Error al cargar artículos (backend):', e);
@@ -94,12 +85,7 @@ const App = () => {
   return (
     <SearchProvider>
       <ThemeProvider>
-        {isLogged && (
-          <Navbar
-            setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-            sugerencias={sugerencias}
-          />
-        )}
+        {isLogged && <Navbar />}
 
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -109,13 +95,15 @@ const App = () => {
               <Route
                 path="/"
                 element={
-                  <RequireMaxi onReady={() => { }}>
+                  <RequireMaxi onReady={() => {}}>
                     <ArticulosMain
                       agrupacionSeleccionada={agrupacionSeleccionada}
                       setAgrupacionSeleccionada={setAgrupacionSeleccionada}
                       agrupaciones={agrupaciones}
                       categoriaSeleccionada={categoriaSeleccionada}
                       setCategoriaSeleccionada={setCategoriaSeleccionada}
+                      // si más adelante usás categorías en la UI, ya las tenés acá
+                      categorias={categorias}
                       onBusinessSwitched={onBusinessSwitched}
                     />
                   </RequireMaxi>

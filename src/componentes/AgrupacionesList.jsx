@@ -1,342 +1,351 @@
-// src/componentes/AgrupacionesList.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
-  Accordion, AccordionSummary, AccordionDetails, Typography,
-  IconButton, Button, Modal, Checkbox, TextField, Box, Divider
-} from '@mui/material';
+  Button, Modal, Typography, TextField, Checkbox,
+  Accordion, AccordionSummary, AccordionDetails, Box,
+  Snackbar, Alert
+} from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import axios from 'axios';
+import AgrupacionesList from "./AgrupacionesList";
+import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 import { BASE } from '../servicios/apiBase';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
 
-// 👇 Helper: detecta el grupo TODO por id o por nombre
-const esTodoGroup = (g, todoGroupId) => {
-  const nombre = String(g?.nombre || '').trim().toUpperCase();
-  return g?.id === todoGroupId || nombre === 'TODO' || nombre === 'SIN AGRUPACIÓN';
+const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
+  const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
+  const total = disponibles.length;
+  const seleccionados = disponibles.filter(art => articulosSeleccionados.includes(art)).length;
+  return {
+    checked: total > 0 && seleccionados === total,
+    indeterminate: seleccionados > 0 && seleccionados < total
+  };
 };
 
-const AgrupacionesList = ({ agrupaciones, onActualizar, todoGroupId }) => {
-  const [todosArticulos, setTodosArticulos] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [seleccionIds, setSeleccionIds] = useState([]); // IDs, no objetos
-  const [searchQuery, setSearchQuery] = useState('');
-  const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
-  const [editandoId, setEditandoId] = useState(null);
-  const [nombresEditados, setNombresEditados] = useState({});
+// ✅ Mapea una fila de BD (plana) a artículo
+const mapRowToArticle = (row) => {
+  const raw = row?.raw || {};
+  const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+  return {
+    id,
+    nombre   : row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`,
+    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría',
+    subrubro : row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro',
+    precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+  };
+};
 
-  // Cargar catálogo de Maxi (para agregar artículos y para calcular “libres”)
+// Construye el árbol categoría → subrubro → artículos
+const buildTree = (flatList = []) => {
+  const cats = new Map();
+  for (const a of flatList) {
+    if (!Number.isFinite(a.id)) continue;
+    const cat = a.categoria || 'Sin categoría';
+    const sr  = a.subrubro  || 'Sin subrubro';
+    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
+    const catObj = cats.get(cat);
+    let srObj = catObj.subrubros.find(s => s.nombre === sr);
+    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
+    srObj.articulos.push({
+      id: a.id,
+      nombre: a.nombre,
+      categoria: cat,
+      subrubro: sr,
+      precio: a.precio
+    });
+  }
+  return Array.from(cats.values());
+};
+
+const Agrupaciones = ({ actualizarAgrupaciones }) => {
+  const [rubro, setRubro] = useState("");
+  const [todosArticulos, setTodosArticulos] = useState([]); // árbol categoría/subrubro
+  const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
+  const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [agrupaciones, setAgrupaciones] = useState([]);
+
+  // Snackbar
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMensaje, setSnackbarMensaje] = useState('');
+  const [snackbarTipo, setSnackbarTipo] = useState('success');
+  const mostrarSnackbar = (mensaje, tipo = 'success') => {
+    setSnackbarMensaje(mensaje);
+    setSnackbarTipo(tipo);
+    setSnackbarOpen(true);
+  };
+
+  const cargarAgrupaciones = async () => {
+    try {
+      const { data } = await axios.get(`${BASE}/agrupaciones`);
+      setAgrupaciones(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error al cargar agrupaciones:", error);
+      mostrarSnackbar("Error al cargar agrupaciones", 'error');
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const token = await obtenerToken();
-      const articulos = await obtenerArticulos(token);
-      setTodosArticulos(Array.isArray(articulos) ? articulos : []);
-    };
-    fetchData();
+    (async () => {
+      try {
+        // 1) Artículos desde **nuestra BD**
+        const bizId = localStorage.getItem('activeBusinessId');
+        if (!bizId) {
+          setTodosArticulos([]);
+          setLoading(false);
+          mostrarSnackbar("Seleccioná un local activo primero", 'warning');
+          return;
+        }
+
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        setTodosArticulos(buildTree(flat));
+        setLoading(false);
+
+        // 2) (Opcional) Garantizar TODO
+        try { await ensureTodo(); } catch {}
+
+        // 3) Agrupaciones
+        await cargarAgrupaciones();
+      } catch (error) {
+        console.error("Error al cargar los datos:", error);
+        setLoading(false);
+        mostrarSnackbar("Error al cargar datos", 'error');
+      }
+    })();
   }, []);
 
-  // Aplanado maestro de artículos Maxi
-  const maxiAll = useMemo(() => {
-    const out = [];
-    (todosArticulos || []).forEach(cat => {
-      (cat.subrubros || []).forEach(sr => {
-        (sr.articulos || []).forEach(a => {
-          out.push({
-            id: Number(a.id),
-            nombre: a.nombre || '',
-            categoria: cat.nombre,
-            subrubro: sr.nombre,
-            precio: a.precio ?? 0,
-          });
-        });
-      });
-    });
-    return out;
-  }, [todosArticulos]);
-
-  // IDs ya asignados a alguna agrupación distinta de TODO
+  // IDs asignados a alguna agrupación (EXCEPTO la agrupación llamada "TODO")
   const assignedIds = useMemo(() => {
-    const s = new Set();
+    const set = new Set();
     (agrupaciones || [])
-      .filter(g => !esTodoGroup(g, todoGroupId)) // 👈 ignoramos TODO por id/nombre
-      .forEach(g => (g.articulos || []).forEach(a => s.add(Number(a.id))));
-    return s;
-  }, [agrupaciones, todoGroupId]);
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => (g.articulos || []).forEach(a => set.add(String(a.id))));
+    return set;
+  }, [agrupaciones]);
 
-  // Artículos “libres” que deben mostrarse dentro del acordeón Sin Agrupación (ex-TODO)
-  const libresEnTODO = useMemo(
-    () => maxiAll.filter(a => !assignedIds.has(a.id)),
-    [maxiAll, assignedIds]
-  );
+  // Artículo bloqueado = ya pertenece a alguna agrupación (excepto TODO)
+  const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
 
-  // --- UI/acciones ---
-
-  const handleAgregarArticulos = (agrupacion) => {
-    setAgrupacionSeleccionada({
-      ...agrupacion,
-      articulos: Array.isArray(agrupacion.articulos) ? agrupacion.articulos : []
-    });
-    setSeleccionIds([]);
-    setModalOpen(true);
-  };
-
-  const handleSelectArticulo = (articuloId) => {
-    setSeleccionIds(prev =>
-      prev.includes(articuloId)
-        ? prev.filter(id => id !== articuloId)
-        : [...prev, articuloId]
+  const handleSelectCategoria = (_categoriaNombre, articulos) => {
+    const candidatos = articulos.filter(a => !isArticuloBloqueado(a));
+    setCategoriasSeleccionadas((prev) =>
+      prev.includes(_categoriaNombre)
+        ? prev.filter((x) => x !== _categoriaNombre)
+        : [...prev, _categoriaNombre]
+    );
+    setArticulosSeleccionados((prev) =>
+      candidatos.some(a => prev.includes(a))
+        ? prev.filter(a => !candidatos.includes(a))
+        : [...prev, ...candidatos]
     );
   };
 
-  const filterArticulos = (articulos) => {
-    const list = Array.isArray(articulos) ? articulos : articulos;
-    return list.filter(a =>
-      (a.nombre || '').toLowerCase().includes(searchQuery.toLowerCase())
+  const handleSelectArticulo = (articulo) => {
+    if (isArticuloBloqueado(articulo)) return; // ya tomado por otra agrupación
+    setArticulosSeleccionados((prev) =>
+      prev.includes(articulo)
+        ? prev.filter((x) => x !== articulo)
+        : [...prev, articulo]
     );
   };
 
-  const agregarArticulosAGrupacion = async () => {
-    if (!agrupacionSeleccionada || seleccionIds.length === 0) return;
-
+  const crearAgrupacion = async () => {
+    if (!rubro.trim() || articulosSeleccionados.length === 0) {
+      mostrarSnackbar("Debes ingresar un nombre y seleccionar artículos", 'error');
+      return;
+    }
     try {
-      const mapa = new Map();
-      (todosArticulos || []).forEach(cat => {
-        (cat.subrubros || []).forEach(sr => {
-          (sr.articulos || []).forEach(a =>
-            mapa.set(Number(a.id), { ...a, categoria: cat.nombre, subrubro: sr.nombre })
-          );
+      await axios.post(`${BASE}/agrupaciones`, {
+        nombre: rubro,
+        articulos: articulosSeleccionados.map((art) => ({
+          id: art.id,
+          nombre: art.nombre || '',
+          categoria: art.categoria || 'Sin categoría',
+          subrubro: art.subrubro || 'Sin subrubro',
+          precio: art.precio ?? 0
+        }))
+      });
+
+      await cargarAgrupaciones();
+      setRubro("");
+      setArticulosSeleccionados([]);
+      setCategoriasSeleccionadas([]);
+      actualizarAgrupaciones?.();
+      setModalOpen(false);
+      mostrarSnackbar(`Agrupación "${rubro}" creada correctamente`);
+    } catch (error) {
+      console.error("Error al crear agrupación:", error);
+      mostrarSnackbar("Error al crear agrupación", 'error');
+    }
+  };
+
+  // Agrupar por subrubro (solo UI)
+  const agruparPorSubrubro = (data) => {
+    const agrupado = {};
+    data.forEach(rubro => {
+      rubro.subrubros.forEach(subrubro => {
+        const subrubroNombre = subrubro.nombre;
+        if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
+        agrupado[subrubroNombre].push({
+          nombre: rubro.nombre,
+          articulos: subrubro.articulos
         });
       });
-
-      const payload = seleccionIds
-        .map(id => mapa.get(Number(id)))
-        .filter(Boolean)
-        .map(a => ({
-          id: a.id,
-          nombre: a.nombre || '',
-          categoria: a.categoria || 'Sin categoría',
-          subrubro: a.subrubro || 'Sin subrubro',
-          precio: a.precio ?? 0
-        }));
-
-      await axios.put(`${BASE}/agrupaciones/${agrupacionSeleccionada.id}/articulos`,
-        { articulos: payload }
-      );
-
-      setModalOpen(false);
-      setSeleccionIds([]);
-      onActualizar?.();
-    } catch (error) {
-      console.error("Error agregando artículos:", error);
-    }
-  };
-
-  const handleEliminarAgrupacion = async (id) => {
-    try {
-      await axios.delete(`${BASE}/agrupaciones/${id}`);
-      onActualizar?.();
-    } catch (error) {
-      console.error("Error al eliminar agrupación:", error);
-    }
-  };
-
-  const manejarGuardar = async (id) => {
-    const nuevoNombre = (nombresEditados[id] ?? '').trim();
-    if (!nuevoNombre) return;
-
-    try {
-      await axios.put(`${BASE}/agrupaciones/${id}`, {
-        nombre: nuevoNombre
-      });
-      setEditandoId(null);
-      setNombresEditados(prev => ({ ...prev, [id]: '' }));
-      onActualizar?.();
-    } catch (error) {
-      console.error("Error al actualizar nombre:", error);
-    }
-  };
-
-  // Quitar un artículo de un grupo normal (vuelve a quedar “libre” → visible en Sin Agrupación)
-  const quitarDeAgrupacion = async (grupoId, articuloId) => {
-    try {
-      await axios.delete(`${BASE}/agrupaciones/${grupoId}/articulos/${articuloId}`);
-      onActualizar?.();
-    } catch (e) {
-      console.error("No se pudo quitar el artículo", e);
-    }
+    });
+    return Object.entries(agrupado).map(([nombre, rubros]) => ({ nombre, rubros }));
   };
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h2>Agrupaciones Creadas</h2>
+    <>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarTipo} sx={{ width: '100%' }}>
+          {snackbarMensaje}
+        </Alert>
+      </Snackbar>
 
-      {(Array.isArray(agrupaciones) ? agrupaciones : []).map((agrupacion) => {
-        const isTodo = esTodoGroup(agrupacion, todoGroupId);
-        const displayName = isTodo ? 'Sin Agrupación' : (agrupacion.nombre || '');
+      <div className="p-4">
+        <h2 className="text-xl font-bold">Crear Agrupación</h2>
+        <TextField
+          label="Nombre del Rubro"
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          fullWidth
+          className="mb-4"
+        />
 
-        return (
-          <Accordion key={agrupacion.id}>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box display="flex" alignItems="center" width="100%" justifyContent="space-between">
-                {editandoId === agrupacion.id && !isTodo ? (
-                  <>
-                    <TextField
-                      value={nombresEditados[agrupacion.id] ?? agrupacion.nombre ?? ''}
-                      onChange={(e) =>
-                        setNombresEditados(prev => ({ ...prev, [agrupacion.id]: e.target.value }))
-                      }
-                      size="small"
-                      autoFocus
-                      sx={{ mr: 2, flexGrow: 1 }}
-                    />
-                    <IconButton onClick={() => manejarGuardar(agrupacion.id)} color="success" size="small">
-                      <span role="img" aria-label="Guardar">💾</span>
-                    </IconButton>
-                  </>
-                ) : (
-                  <>
-                    <Typography variant="h6">
-                      {displayName} {isTodo && '🔒'}
-                    </Typography>
-                    <Box>
-                      {!isTodo && (
-                        <>
-                          <IconButton onClick={() => setEditandoId(agrupacion.id)} color="primary" size="small">
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton onClick={() => handleEliminarAgrupacion(agrupacion.id)} color="error" size="small">
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </>
-                      )}
-                    </Box>
-                  </>
-                )}
+        <Button onClick={() => setModalOpen(true)} variant="contained" style={{ backgroundColor: '#285a73' }}>
+          Buscar
+        </Button>
+
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+          <Box
+            sx={{
+              overflowY: 'auto',
+              maxHeight: '80vh',
+              width: '90%',
+              maxWidth: 700,
+              margin: '50px auto',
+              padding: 3,
+              backgroundColor: 'white',
+              borderRadius: 2,
+              boxShadow: 24,
+            }}
+          >
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              Selecciona Categorías y Artículos (solo los que aún están libres)
+            </Typography>
+
+            {loading ? (
+              <Typography>Cargando artículos...</Typography>
+            ) : (
+              <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
+                {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
+                  const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
+                    r.articulos.filter(a => !isArticuloBloqueado(a))
+                  );
+
+                  const { checked, indeterminate } = evaluarCheckboxEstado(
+                    subrubroArticulosDisponibles,
+                    articulosSeleccionados,
+                    isArticuloBloqueado
+                  );
+
+                  return (
+                    <Accordion key={index}>
+                      <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
+                        <Checkbox
+                          checked={checked}
+                          indeterminate={indeterminate}
+                          onChange={() => {
+                            const disponibles = subrubro.rubros.flatMap(r =>
+                              r.articulos.filter(a => !isArticuloBloqueado(a))
+                            );
+                            setArticulosSeleccionados(prev =>
+                              disponibles.some(a => prev.includes(a))
+                                ? prev.filter(a => !disponibles.includes(a))
+                                : [...prev, ...disponibles]
+                            );
+                          }}
+                          sx={{ mr: 1 }}
+                        />
+                        <Typography fontWeight="bold">{subrubro.nombre}</Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        {subrubro.rubros.map((rubroCat, idx) => {
+                          const { checked: rubroChecked, indeterminate: rubroIndeterminado } =
+                            evaluarCheckboxEstado(rubroCat.articulos, articulosSeleccionados, isArticuloBloqueado);
+
+                          return (
+                            <Accordion key={idx} sx={{ mb: 1 }}>
+                              <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
+                                <Checkbox
+                                  checked={rubroChecked}
+                                  indeterminate={rubroIndeterminado}
+                                  onChange={() => handleSelectCategoria(rubroCat.nombre, rubroCat.articulos)}
+                                  sx={{ mr: 1 }}
+                                />
+                                <Typography>{rubroCat.nombre}</Typography>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                {rubroCat.articulos.map((articulo) => {
+                                  const bloqueado = isArticuloBloqueado(articulo);
+                                  const seleccionado = articulosSeleccionados.includes(articulo);
+                                  return (
+                                    <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1 }}>
+                                      <Checkbox
+                                        checked={seleccionado}
+                                        onChange={() => handleSelectArticulo(articulo)}
+                                        sx={{ mr: 1 }}
+                                        disabled={bloqueado}
+                                      />
+                                      <Typography>
+                                        {articulo.nombre} {bloqueado && '(ya asignado)'}
+                                      </Typography>
+                                    </Box>
+                                  );
+                                })}
+                              </AccordionDetails>
+                            </Accordion>
+                          );
+                        })}
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
               </Box>
-            </AccordionSummary>
+            )}
 
-            <AccordionDetails>
-              <Box display="flex" justifyContent="space-between" sx={{ mb: 2 }}>
-                {!isTodo ? (
-                  <Button variant="contained" size="small" onClick={() => handleAgregarArticulos(agrupacion)}>
-                    Agregar Artículos
-                  </Button>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    Sin Agrupación contiene los artículos que aún no pertenecen a ninguna agrupación.
-                  </Typography>
-                )}
-              </Box>
+            <Box display="flex" justifyContent="flex-end" mt={3}>
+              <Button
+                onClick={crearAgrupacion}
+                variant="contained"
+                color="success"
+                disabled={!rubro.trim() || articulosSeleccionados.length === 0}
+              >
+                Guardar Agrupación
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
 
-              {/* Lista de artículos para grupos normales */}
-              {!isTodo && (Array.isArray(agrupacion.articulos) && agrupacion.articulos.length > 0) ? (
-                agrupacion.articulos.map((art) => (
-                  <Box key={art.id} display="flex" alignItems="center" sx={{ mb: 1, gap: 1 }}>
-                    <Typography sx={{ flexGrow: 1 }}>{art.nombre || 'Sin nombre'}</Typography>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="warning"
-                      onClick={()=>quitarDeAgrupacion(agrupacion.id, art.id)}
-                    >
-                      Quitar de {displayName}
-                    </Button>
-                  </Box>
-                ))
-              ) : !isTodo ? (
-                <Typography variant="body2" color="textSecondary">
-                  No hay artículos en esta agrupación
-                </Typography>
-              ) : (
-                // Vista de Sin Agrupación (ex TODO): mostramos los “libres”
-                <>
-                  <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                    {libresEnTODO.length} artículo(s) en Sin Agrupación
-                  </Typography>
-                  {libresEnTODO.slice(0, 100).map(a => (
-                    <Box key={a.id} sx={{ display:'flex', gap:1, mb:.5 }}>
-                      <Typography sx={{ flex: 1 }}>#{a.id} — {a.nombre}</Typography>
-                      <Typography variant="caption">{a.categoria} / {a.subrubro}</Typography>
-                    </Box>
-                  ))}
-                  {libresEnTODO.length > 100 && (
-                    <Typography variant="caption" color="text.secondary">
-                      (+{libresEnTODO.length - 100} más…)
-                    </Typography>
-                  )}
-                </>
-              )}
-            </AccordionDetails>
-          </Accordion>
-        );
-      })}
-
-      {/* Modal para agregar artículos */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
-        <Box
-          sx={{
-            overflowY: 'auto',
-            maxHeight: '80vh',
-            width: '90%',
-            maxWidth: 700,
-            margin: '50px auto',
-            padding: 3,
-            backgroundColor: 'white',
-            borderRadius: 2,
-            boxShadow: 24,
+        <AgrupacionesList
+          agrupaciones={agrupaciones}
+          onActualizar={() => {
+            actualizarAgrupaciones?.();
+            cargarAgrupaciones();
+            mostrarSnackbar("Agrupación actualizada");
           }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Agregar artículos a: {agrupacionSeleccionada?.nombre}
-          </Typography>
-
-          <TextField
-            label="Buscar artículos"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-
-          <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1, mb: 2 }}>
-            {filterArticulos(
-              (todosArticulos || []).flatMap(cat =>
-                (cat.subrubros || []).flatMap(sr => (sr.articulos || []))
-              )
-            ).map((articulo) => {
-              const yaEsta = (agrupacionSeleccionada?.articulos || []).some(a => a.id === articulo.id);
-              if (yaEsta) return null;
-
-              return (
-                <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2, mb: 1 }}>
-                  <Checkbox
-                    checked={seleccionIds.includes(articulo.id)}
-                    onChange={() => handleSelectArticulo(articulo.id)}
-                    sx={{ mr: 1 }}
-                  />
-                  <Typography>{articulo.nombre}</Typography>
-                </Box>
-              );
-            })}
-          </Box>
-
-          <Divider sx={{ mb: 2 }} />
-
-          <Box display="flex" justifyContent="flex-end">
-            <Button
-              variant="contained"
-              color="success"
-              onClick={agregarArticulosAGrupacion}
-              disabled={seleccionIds.length === 0}
-            >
-              Agregar artículos
-            </Button>
-          </Box>
-        </Box>
-      </Modal>
-    </div>
+          todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
+        />
+      </div>
+    </>
   );
 };
 
-export default AgrupacionesList;
+export default Agrupaciones;

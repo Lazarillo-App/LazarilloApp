@@ -6,10 +6,10 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import axios from 'axios';
-import { obtenerToken, obtenerArticulos } from '../servicios/apiMaxiRest';
 import AgrupacionesList from "./AgrupacionesList";
 import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 import { BASE } from '../servicios/apiBase';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
 
 const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
   const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
@@ -21,20 +21,54 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloq
   };
 };
 
+// ✅ Mapea una fila de BD (plana) a artículo
+const mapRowToArticle = (row) => {
+  const raw = row?.raw || {};
+  const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+  return {
+    id,
+    nombre   : row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`,
+    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría',
+    subrubro : row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro',
+    precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+  };
+};
+
+// Construye el árbol categoría → subrubro → artículos
+const buildTree = (flatList = []) => {
+  const cats = new Map();
+  for (const a of flatList) {
+    if (!Number.isFinite(a.id)) continue;
+    const cat = a.categoria || 'Sin categoría';
+    const sr  = a.subrubro  || 'Sin subrubro';
+    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
+    const catObj = cats.get(cat);
+    let srObj = catObj.subrubros.find(s => s.nombre === sr);
+    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
+    srObj.articulos.push({
+      id: a.id,
+      nombre: a.nombre,
+      categoria: cat,
+      subrubro: sr,
+      precio: a.precio
+    });
+  }
+  return Array.from(cats.values());
+};
+
 const Agrupaciones = ({ actualizarAgrupaciones }) => {
   const [rubro, setRubro] = useState("");
-  const [todosArticulos, setTodosArticulos] = useState([]); // [{id, nombre, subrubros:[...]} por categoría]
+  const [todosArticulos, setTodosArticulos] = useState([]); // árbol categoría/subrubro
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
-  console.log(categoriasSeleccionadas);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agrupaciones, setAgrupaciones] = useState([]);
+
   // Snackbar
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState('');
   const [snackbarTipo, setSnackbarTipo] = useState('success');
-
   const mostrarSnackbar = (mensaje, tipo = 'success') => {
     setSnackbarMensaje(mensaje);
     setSnackbarTipo(tipo);
@@ -52,16 +86,24 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       try {
-        // 1) Maxi
-        const token = await obtenerToken();
-        const articulos = await obtenerArticulos(token);
-        setTodosArticulos(articulos);
+        // 1) Artículos desde **nuestra BD**
+        const bizId = localStorage.getItem('activeBusinessId');
+        if (!bizId) {
+          setTodosArticulos([]);
+          setLoading(false);
+          mostrarSnackbar("Seleccioná un local activo primero", 'warning');
+          return;
+        }
+
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        setTodosArticulos(buildTree(flat));
         setLoading(false);
 
-        // 2) (Opcional) Garantizar que exista TODO
-        try { await ensureTodo(); } catch { /* noop */ }
+        // 2) (Opcional) Garantizar TODO
+        try { await ensureTodo(); } catch {}
 
         // 3) Agrupaciones
         await cargarAgrupaciones();
@@ -70,8 +112,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         setLoading(false);
         mostrarSnackbar("Error al cargar datos", 'error');
       }
-    };
-    fetchData();
+    })();
   }, []);
 
   // IDs asignados a alguna agrupación (EXCEPTO la agrupación llamada "TODO")
@@ -139,6 +180,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
     }
   };
 
+  // Agrupar por subrubro (solo UI)
   const agruparPorSubrubro = (data) => {
     const agrupado = {};
     data.forEach(rubro => {
@@ -204,7 +246,6 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
             ) : (
               <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
                 {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
-                  // Solo contamos como “seleccionables” los que no están ya asignados
                   const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
                     r.articulos.filter(a => !isArticuloBloqueado(a))
                   );
@@ -217,12 +258,11 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 
                   return (
                     <Accordion key={index}>
-                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                         <Checkbox
                           checked={checked}
                           indeterminate={indeterminate}
                           onChange={() => {
-                            // toggle todos los disponibles de este subrubro
                             const disponibles = subrubro.rubros.flatMap(r =>
                               r.articulos.filter(a => !isArticuloBloqueado(a))
                             );
@@ -243,7 +283,7 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 
                           return (
                             <Accordion key={idx} sx={{ mb: 1 }}>
-                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                              <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                                 <Checkbox
                                   checked={rubroChecked}
                                   indeterminate={rubroIndeterminado}
@@ -301,7 +341,6 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
             cargarAgrupaciones();
             mostrarSnackbar("Agrupación actualizada");
           }}
-          // Podés pasar el id de TODO si querés identificarlo, pero ya no se usa para exclusiones
           todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
         />
       </div>
@@ -310,3 +349,4 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
 };
 
 export default Agrupaciones;
+

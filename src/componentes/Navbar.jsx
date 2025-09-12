@@ -23,8 +23,8 @@ export default function Navbar() {
     <AppBar position="static" color="primary">
       <Container maxWidth="xl">
         <Toolbar disableGutters>
-          <Typography variant="h6" sx={{ mr: 2, display: { xs: 'none', md: 'block' } }}>
-            LOGO
+          <Typography variant="h4" sx={{ mr: 2, display: { xs: 'none', md: 'block', marginRight: '50px' } }}>
+            LAZARILLO
           </Typography>
 
           {/* Menú hamburguesa (mobile) */}
@@ -53,7 +53,7 @@ export default function Navbar() {
             <Button color="inherit" component={NavLink} to="/insumos">Insumos</Button>
           </Box>
 
-          {/* Lado derecho: avatar con menú (incluye el selector de local adentro) */}
+          {/* Lado derecho: avatar con menú */}
           <Box sx={{ flexGrow: 0 }}>
             <Tooltip title="Cuenta">
               <IconButton onClick={(e)=>setUserEl(e.currentTarget)} sx={{ p: 0 }}>
@@ -68,35 +68,35 @@ export default function Navbar() {
               anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
               transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             >
-              {logged ? (
-                <>
-                  <MenuItem component={NavLink} to="/perfil" onClick={()=>setUserEl(null)}>
-                    Perfil
-                  </MenuItem>
+              {logged
+                ? [
+                    <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={()=>setUserEl(null)}>
+                      Perfil
+                    </MenuItem>,
 
-                  {/* Bloque de LOCAL dentro del menú */}
-                  <Box sx={{ px: 2, py: 1, width: 280 }}>
-                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                      Local
-                    </Typography>
-                    {/* BusinessSwitcher renderizado inline; al cambiar, cerramos el menú y refrescamos */}
-                    <BusinessSwitcher
-                      fullWidth
-                      onSwitched={() => {
-                        setUserEl(null);
-                        window.location.reload();
-                      }}
-                    />
-                  </Box>
+                    <Box key="switcher" sx={{ px: 2, py: 1, width: 280 }}>
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        Local
+                      </Typography>
+                      <BusinessSwitcher
+                        fullWidth
+                        onSwitched={() => {
+                          setUserEl(null);
+                          window.location.reload();
+                        }}
+                      />
+                    </Box>,
 
-                  <Divider sx={{ my: 0.5 }} />
-                  <MenuItem onClick={logout}>Salir</MenuItem>
-                </>
-              ) : (
-                <MenuItem component={NavLink} to="/login" onClick={()=>setUserEl(null)}>
-                  Login
-                </MenuItem>
-              )}
+                    <Divider key="div1" sx={{ my: 0.5 }} />,
+
+                    <MenuItem key="logout" onClick={logout}>Salir</MenuItem>,
+                  ]
+                : [
+                    <MenuItem key="login" component={NavLink} to="/login" onClick={()=>setUserEl(null)}>
+                      Login
+                    </MenuItem>
+                  ]
+              }
             </Menu>
           </Box>
         </Toolbar>
