@@ -1,4 +1,3 @@
-// src/componentes/Navbar.jsx (MUI)
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
@@ -20,7 +19,7 @@ export default function Navbar() {
   };
 
   return (
-    <AppBar position="static" color="primary">
+    <AppBar position="static">
       <Container maxWidth="xl">
         <Toolbar disableGutters>
           <Typography variant="h4" sx={{ mr: 2, display: { xs: 'none', md: 'block', marginRight: '50px' } }}>
@@ -82,7 +81,8 @@ export default function Navbar() {
                         fullWidth
                         onSwitched={() => {
                           setUserEl(null);
-                          window.location.reload();
+                          // 👇 en lugar de recargar la página:
+                          window.dispatchEvent(new CustomEvent('business:switched'));
                         }}
                       />
                     </Box>,

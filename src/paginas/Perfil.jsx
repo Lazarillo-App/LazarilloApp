@@ -8,14 +8,14 @@ import BusinessEditModal from '../componentes/BusinessEditModal';
 import AdminActionsSidebar from '../componentes/AdminActionsSidebar';
 
 export default function Perfil() {
-  const [items, setItems] = useState([]); // siempre array
+  const [items, setItems] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState(null);
 
   const load = async () => {
     try {
-      const list = await BusinessesAPI.listMine(); // ← ya es array
+      const list = await BusinessesAPI.listMine();
       setItems(list);
     } catch (e) {
       console.error(e);
@@ -30,8 +30,8 @@ export default function Perfil() {
       await BusinessesAPI.select(id);
       localStorage.setItem('activeBusinessId', id);
       setActiveId(id);
-      // Si querés refrescar inmediatamente la UI del perfil:
       await load();
+      window.dispatchEvent(new CustomEvent('business:switched'));
     } catch (e) {
       console.error(e);
       alert('No se pudo activar.');
@@ -39,18 +39,42 @@ export default function Perfil() {
   };
 
   const onDelete = async (biz) => {
-    if (!confirm(`Eliminar "${biz.name}"? Esta acción no se puede deshacer.`)) return;
+    const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
+    const typed = window.prompt(
+      `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\n` +
+      `Para confirmar, escribí EXACTAMENTE el nombre del negocio:`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== nombre) {
+      alert('El texto no coincide. Operación cancelada.');
+      return;
+    }
+
     try {
       await BusinessesAPI.remove(biz.id);
-      setItems(prev => prev.filter(i => String(i.id) !== String(biz.id)));
-      if (String(activeId) === String(biz.id)) {
-        localStorage.removeItem('activeBusinessId');
-        setActiveId('');
-      }
     } catch (e) {
-      console.error(e);
-      alert('No se pudo eliminar.');
+      if (String(e?.message).toLowerCase().includes('not_found')) {
+        console.warn('Negocio ya no existe en backend, limpiando UI igual.');
+      } else {
+        console.error(e);
+        alert(e?.message || 'No se pudo eliminar.');
+        return;
+      }
     }
+
+    setItems(prev => prev.filter(i => String(i.id) !== String(biz.id)));
+
+    if (String(localStorage.getItem('activeBusinessId')) === String(biz.id)) {
+      localStorage.removeItem('activeBusinessId');
+      setActiveId('');
+      window.dispatchEvent(new CustomEvent('business:switched'));
+    }
+
+    try {
+      const restantes = await BusinessesAPI.listMine();
+      setItems(restantes || []);
+    } catch { }
+    alert('Negocio eliminado.');
   };
 
   const onCreateComplete = (biz) => {
@@ -59,26 +83,29 @@ export default function Perfil() {
     onSetActive(biz.id);
   };
 
-  const onSaved = (saved) => {
-    setItems(prev => prev.map(i => String(i.id) === String(saved.id) ? saved : i));
+  const onSaved = (savedOrPartial) => {
+    // merge defensivo por si backend devuelve parcial
+    const merged = { ...editing, ...savedOrPartial };
+    if (editing?.props?.branding && savedOrPartial?.props?.branding) {
+      merged.props = { ...editing.props, ...savedOrPartial.props };
+    }
+    setItems(prev => prev.map(i => String(i.id) === String(merged.id) ? merged : i));
     setEditing(null);
   };
 
+
   return (
-    <Grid container spacing={2}>
-      {/* Sidebar de Acciones (sincronización, etc.) */}
-      <Grid item xs={12} md={3}>
+    <Grid container spacing={4} sx={{ mb: 4 }}>
+      <Grid item xs={18} md={3}>
         <AdminActionsSidebar onSynced={load} />
       </Grid>
 
-      {/* Contenido principal (tus locales) */}
       <Grid item xs={12} md={9}>
         <div className="perfil">
-          <div className="hdr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h1>Mi perfil</h1>
-            <button className="btn" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
-          </div>
-
+           <div className="hdr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+               <h1 style={{ margin: 0, color: 'var(--color-fg)' }}>Mi perfil</h1>
+               <button className="btn btn-brand" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
+             </div>
           <h2 className="sub">Mis locales</h2>
           <div className="grid">
             {items.map(biz => (

@@ -1,13 +1,11 @@
 // src/componentes/BusinessSwitcher.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
-import BusinessFormModal from './BusinessCreateModal';
 
 export default function BusinessSwitcher({ onSwitched, className = '' }) {
   const [items, setItems] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [open, setOpen] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
   const ref = useRef(null);
 
   const hasToken = useMemo(() => !!localStorage.getItem('token'), []);
@@ -35,13 +33,6 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  // permitir abrir desde afuera: window.dispatchEvent(new CustomEvent('open-create-business'))
-  useEffect(() => {
-    const f = () => setShowCreate(true);
-    window.addEventListener('open-create-business', f);
-    return () => window.removeEventListener('open-create-business', f);
-  }, []);
-
   const current = items.find(b => String(b.id) === String(activeId));
 
   const pick = async (id) => {
@@ -55,16 +46,6 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
       console.error(e);
       alert('No se pudo cambiar de local');
     }
-  };
-
-  const handleCreateComplete = (biz) => {
-    // actualizar lista y activar
-    setItems(prev => [biz, ...prev]);
-    setActiveId(biz.id);
-    localStorage.setItem('activeBusinessId', biz.id);
-    setShowCreate(false);
-    setOpen(false);
-    onSwitched?.(biz.id);
   };
 
   if (!hasToken) return null;
@@ -90,18 +71,8 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
               </button>
             ))}
           </div>
-          <div className="sep" />
-          <button className="item new" onClick={() => { setShowCreate(true); }}>
-            + Nuevo local
-          </button>
         </div>
       )}
-
-      <BusinessFormModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreateComplete={handleCreateComplete}
-      />
 
       <style>{`
         .btn{background:transparent;border:0;padding:0;cursor:pointer}

@@ -1,36 +1,10 @@
-.sidebar {
-  width: 250px;
-  padding: 1rem;
-  border-right: 1px solid #ccc;
-  background-color: #37474F;
-  color: white;
-  min-height: 100vh;
-}
+/* src/css/SidebarCategorias.css */
+/* Estilos específicos del listado de categorías.
+   El contenedor .sidebar y sus colores ya están en theme-layout.css. */
 
-.sidebar h2 {
-  font-size: 1.2rem;
-  margin-bottom: 0.5rem;
-}
+.sidebar .categoria-activa{
 
-.sidebar ul {
-  list-style: none;
-  padding: 0;
-}
-
-.sidebar li {
-  padding: 10px;
-  margin-bottom: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.sidebar li:hover {
-  font-weight: bold;
-  background-color: #285a73;
+  font-weight: 700;
   border-radius: 10px;
 }
-
-.icono {
-  margin-right: 0.5rem;
-}
+.sidebar .icono{ opacity:.8; }

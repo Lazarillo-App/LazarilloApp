@@ -1,351 +1,244 @@
-import React, { useState, useEffect, useMemo } from "react";
+// src/componentes/AgrupacionesList.jsx
+import React, { useMemo, useState } from "react";
 import {
-  Button, Modal, Typography, TextField, Checkbox,
-  Accordion, AccordionSummary, AccordionDetails, Box,
-  Snackbar, Alert
+  Box, Card, CardContent, CardActions,
+  Typography, IconButton, TextField, Button,
+  Checkbox, FormControl, InputLabel, Select, MenuItem,
+  Tooltip, Divider, Stack
 } from "@mui/material";
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import axios from 'axios';
-import AgrupacionesList from "./AgrupacionesList";
-import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
-import { BASE } from '../servicios/apiBase';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+import SaveIcon from "@mui/icons-material/Save";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 
-const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
-  const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
-  const total = disponibles.length;
-  const seleccionados = disponibles.filter(art => articulosSeleccionados.includes(art)).length;
-  return {
-    checked: total > 0 && seleccionados === total,
-    indeterminate: seleccionados > 0 && seleccionados < total
-  };
-};
+import {
+  actualizarAgrupacion,
+  eliminarAgrupacion,
+  quitarArticulo
+} from "../servicios/apiAgrupaciones";
+import { httpBiz } from "../servicios/apiBusinesses";
 
-// ✅ Mapea una fila de BD (plana) a artículo
-const mapRowToArticle = (row) => {
-  const raw = row?.raw || {};
-  const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
-  return {
-    id,
-    nombre   : row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`,
-    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría',
-    subrubro : row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro',
-    precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
-  };
-};
+const AgrupacionesList = ({ agrupaciones = [], onActualizar, todoGroupId }) => {
+  // edición de nombre por grupo
+  const [editing, setEditing] = useState({}); // { [groupId]: true }
+  const [nameDraft, setNameDraft] = useState({}); // { [groupId]: 'nuevo nombre' }
 
-// Construye el árbol categoría → subrubro → artículos
-const buildTree = (flatList = []) => {
-  const cats = new Map();
-  for (const a of flatList) {
-    if (!Number.isFinite(a.id)) continue;
-    const cat = a.categoria || 'Sin categoría';
-    const sr  = a.subrubro  || 'Sin subrubro';
-    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
-    const catObj = cats.get(cat);
-    let srObj = catObj.subrubros.find(s => s.nombre === sr);
-    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
-    srObj.articulos.push({
-      id: a.id,
-      nombre: a.nombre,
-      categoria: cat,
-      subrubro: sr,
-      precio: a.precio
-    });
-  }
-  return Array.from(cats.values());
-};
+  // selección de artículos por grupo para mover
+  const [selectedByGroup, setSelectedByGroup] = useState({}); // { [groupId]: Set<number> }
+  const [targetByGroup, setTargetByGroup] = useState({}); // { [groupId]: targetId }
 
-const Agrupaciones = ({ actualizarAgrupaciones }) => {
-  const [rubro, setRubro] = useState("");
-  const [todosArticulos, setTodosArticulos] = useState([]); // árbol categoría/subrubro
-  const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
-  const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [agrupaciones, setAgrupaciones] = useState([]);
+  const groupsSorted = useMemo(
+    () => [...agrupaciones].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre))),
+    [agrupaciones]
+  );
 
-  // Snackbar
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMensaje, setSnackbarMensaje] = useState('');
-  const [snackbarTipo, setSnackbarTipo] = useState('success');
-  const mostrarSnackbar = (mensaje, tipo = 'success') => {
-    setSnackbarMensaje(mensaje);
-    setSnackbarTipo(tipo);
-    setSnackbarOpen(true);
+  const articleCount = (g) => Array.isArray(g.articulos) ? g.articulos.length : 0;
+
+  const startEdit = (g) => {
+    setEditing((s) => ({ ...s, [g.id]: true }));
+    setNameDraft((s) => ({ ...s, [g.id]: g.nombre || "" }));
   };
 
-  const cargarAgrupaciones = async () => {
-    try {
-      const { data } = await axios.get(`${BASE}/agrupaciones`);
-      setAgrupaciones(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Error al cargar agrupaciones:", error);
-      mostrarSnackbar("Error al cargar agrupaciones", 'error');
-    }
-  };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        // 1) Artículos desde **nuestra BD**
-        const bizId = localStorage.getItem('activeBusinessId');
-        if (!bizId) {
-          setTodosArticulos([]);
-          setLoading(false);
-          mostrarSnackbar("Seleccioná un local activo primero", 'warning');
-          return;
-        }
-
-        const res = await BusinessesAPI.articlesFromDB(bizId);
-        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
-        setTodosArticulos(buildTree(flat));
-        setLoading(false);
-
-        // 2) (Opcional) Garantizar TODO
-        try { await ensureTodo(); } catch {}
-
-        // 3) Agrupaciones
-        await cargarAgrupaciones();
-      } catch (error) {
-        console.error("Error al cargar los datos:", error);
-        setLoading(false);
-        mostrarSnackbar("Error al cargar datos", 'error');
-      }
-    })();
-  }, []);
-
-  // IDs asignados a alguna agrupación (EXCEPTO la agrupación llamada "TODO")
-  const assignedIds = useMemo(() => {
-    const set = new Set();
-    (agrupaciones || [])
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => (g.articulos || []).forEach(a => set.add(String(a.id))));
-    return set;
-  }, [agrupaciones]);
-
-  // Artículo bloqueado = ya pertenece a alguna agrupación (excepto TODO)
-  const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
-
-  const handleSelectCategoria = (_categoriaNombre, articulos) => {
-    const candidatos = articulos.filter(a => !isArticuloBloqueado(a));
-    setCategoriasSeleccionadas((prev) =>
-      prev.includes(_categoriaNombre)
-        ? prev.filter((x) => x !== _categoriaNombre)
-        : [...prev, _categoriaNombre]
-    );
-    setArticulosSeleccionados((prev) =>
-      candidatos.some(a => prev.includes(a))
-        ? prev.filter(a => !candidatos.includes(a))
-        : [...prev, ...candidatos]
-    );
-  };
-
-  const handleSelectArticulo = (articulo) => {
-    if (isArticuloBloqueado(articulo)) return; // ya tomado por otra agrupación
-    setArticulosSeleccionados((prev) =>
-      prev.includes(articulo)
-        ? prev.filter((x) => x !== articulo)
-        : [...prev, articulo]
-    );
-  };
-
-  const crearAgrupacion = async () => {
-    if (!rubro.trim() || articulosSeleccionados.length === 0) {
-      mostrarSnackbar("Debes ingresar un nombre y seleccionar artículos", 'error');
+  const saveName = async (g) => {
+    const nuevo = String(nameDraft[g.id] ?? "").trim();
+    if (!nuevo || nuevo === g.nombre) {
+      setEditing((s) => ({ ...s, [g.id]: false }));
       return;
     }
-    try {
-      await axios.post(`${BASE}/agrupaciones`, {
-        nombre: rubro,
-        articulos: articulosSeleccionados.map((art) => ({
-          id: art.id,
-          nombre: art.nombre || '',
-          categoria: art.categoria || 'Sin categoría',
-          subrubro: art.subrubro || 'Sin subrubro',
-          precio: art.precio ?? 0
-        }))
-      });
-
-      await cargarAgrupaciones();
-      setRubro("");
-      setArticulosSeleccionados([]);
-      setCategoriasSeleccionadas([]);
-      actualizarAgrupaciones?.();
-      setModalOpen(false);
-      mostrarSnackbar(`Agrupación "${rubro}" creada correctamente`);
-    } catch (error) {
-      console.error("Error al crear agrupación:", error);
-      mostrarSnackbar("Error al crear agrupación", 'error');
-    }
+    await actualizarAgrupacion(g.id, { nombre: nuevo });
+    setEditing((s) => ({ ...s, [g.id]: false }));
+    onActualizar?.();
   };
 
-  // Agrupar por subrubro (solo UI)
-  const agruparPorSubrubro = (data) => {
-    const agrupado = {};
-    data.forEach(rubro => {
-      rubro.subrubros.forEach(subrubro => {
-        const subrubroNombre = subrubro.nombre;
-        if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
-        agrupado[subrubroNombre].push({
-          nombre: rubro.nombre,
-          articulos: subrubro.articulos
-        });
-      });
+  const removeGroup = async (g) => {
+    if (g.id === todoGroupId) return; // no borrar TODO
+    if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
+    await eliminarAgrupacion(g.id);
+    onActualizar?.();
+  };
+
+  const toggleArticle = (groupId, artId) => {
+    setSelectedByGroup((prev) => {
+      const set = new Set(prev[groupId] || []);
+      set.has(artId) ? set.delete(artId) : set.add(artId);
+      return { ...prev, [groupId]: set };
     });
-    return Object.entries(agrupado).map(([nombre, rubros]) => ({ nombre, rubros }));
+  };
+
+  const selectAllInGroup = (g) => {
+    const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
+    setSelectedByGroup((prev) => {
+      const cur = prev[g.id] || new Set();
+      const every = allIds.every((id) => cur.has(id));
+      return { ...prev, [g.id]: new Set(every ? [] : allIds) };
+    });
+  };
+
+  const removeOne = async (groupId, articuloId) => {
+    await quitarArticulo(groupId, articuloId);
+    onActualizar?.();
+  };
+
+  const moveSelected = async (fromId) => {
+    const ids = Array.from(selectedByGroup[fromId] || []);
+    const toId = Number(targetByGroup[fromId]);
+    if (!ids.length || !Number.isFinite(toId) || toId === fromId) return;
+    await httpBiz(`/agrupaciones/${fromId}/move-items`, {
+      method: "POST",
+      body: { toId, ids }
+    });
+    // limpiar selección del origen
+    setSelectedByGroup((s) => ({ ...s, [fromId]: new Set() }));
+    onActualizar?.();
   };
 
   return (
-    <>
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarTipo} sx={{ width: '100%' }}>
-          {snackbarMensaje}
-        </Alert>
-      </Snackbar>
+    <Stack spacing={2} sx={{ mt: 3 }}>
+      {groupsSorted.map((g) => {
+        const isTodo = g.id === todoGroupId;
+        const selected = selectedByGroup[g.id] || new Set();
+        const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
+        const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
+        const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
-      <div className="p-4">
-        <h2 className="text-xl font-bold">Crear Agrupación</h2>
-        <TextField
-          label="Nombre del Rubro"
-          value={rubro}
-          onChange={(e) => setRubro(e.target.value)}
-          fullWidth
-          className="mb-4"
-        />
+        return (
+          <Card key={g.id} variant="outlined">
+            <CardContent>
+              <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+                <Box display="flex" alignItems="center" gap={1}>
+                  {!editing[g.id] ? (
+                    <>
+                      <Typography variant="h6" sx={{ mr: 1 }}>
+                        {g.nombre}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        ({articleCount(g)} artículo{articleCount(g) === 1 ? "" : "s"})
+                      </Typography>
+                    </>
+                  ) : (
+                    <TextField
+                      size="small"
+                      value={nameDraft[g.id] ?? ""}
+                      onChange={(e) => setNameDraft((s) => ({ ...s, [g.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && saveName(g)}
+                    />
+                  )}
+                </Box>
 
-        <Button onClick={() => setModalOpen(true)} variant="contained" style={{ backgroundColor: '#285a73' }}>
-          Buscar
-        </Button>
+                <Box>
+                  {!editing[g.id] ? (
+                    <>
+                      <Tooltip title={isTodo ? "No se puede renombrar/borrar TODO" : "Renombrar"}>
+                        <span>
+                          <IconButton onClick={() => startEdit(g)} disabled={isTodo}>
+                            <EditIcon />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title={isTodo ? "No se puede eliminar TODO" : "Eliminar"}>
+                        <span>
+                          <IconButton color="error" onClick={() => removeGroup(g)} disabled={isTodo}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <IconButton color="primary" onClick={() => saveName(g)}>
+                      <SaveIcon />
+                    </IconButton>
+                  )}
+                </Box>
+              </Box>
 
-        <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
-          <Box
-            sx={{
-              overflowY: 'auto',
-              maxHeight: '80vh',
-              width: '90%',
-              maxWidth: 700,
-              margin: '50px auto',
-              padding: 3,
-              backgroundColor: 'white',
-              borderRadius: 2,
-              boxShadow: 24,
-            }}
-          >
-            <Typography variant="h6" fontWeight="bold" gutterBottom>
-              Selecciona Categorías y Artículos (solo los que aún están libres)
-            </Typography>
+              <Divider sx={{ my: 1.5 }} />
 
-            {loading ? (
-              <Typography>Cargando artículos...</Typography>
-            ) : (
-              <Box sx={{ maxHeight: '60vh', overflowY: 'auto', pr: 1 }}>
-                {agruparPorSubrubro(todosArticulos).map((subrubro, index) => {
-                  const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
-                    r.articulos.filter(a => !isArticuloBloqueado(a))
-                  );
+              {/* Selector de todos en el grupo */}
+              <Box display="flex" alignItems="center" mb={1}>
+                <Checkbox
+                  checked={allChecked}
+                  indeterminate={someChecked}
+                  onChange={() => selectAllInGroup(g)}
+                />
+                <Typography variant="body2">Seleccionar todos</Typography>
+              </Box>
 
-                  const { checked, indeterminate } = evaluarCheckboxEstado(
-                    subrubroArticulosDisponibles,
-                    articulosSeleccionados,
-                    isArticuloBloqueado
-                  );
-
+              {/* Lista de artículos del grupo */}
+              <Stack spacing={0.5}>
+                {(g.articulos || []).map((a) => {
+                  const checked = selected.has(Number(a.id));
                   return (
-                    <Accordion key={index}>
-                      <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
+                    <Box
+                      key={a.id}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      sx={{ px: 1, py: 0.5, borderRadius: 1, "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" } }}
+                    >
+                      <Box display="flex" alignItems="center" gap={1}>
                         <Checkbox
+                          size="small"
                           checked={checked}
-                          indeterminate={indeterminate}
-                          onChange={() => {
-                            const disponibles = subrubro.rubros.flatMap(r =>
-                              r.articulos.filter(a => !isArticuloBloqueado(a))
-                            );
-                            setArticulosSeleccionados(prev =>
-                              disponibles.some(a => prev.includes(a))
-                                ? prev.filter(a => !disponibles.includes(a))
-                                : [...prev, ...disponibles]
-                            );
-                          }}
-                          sx={{ mr: 1 }}
+                          onChange={() => toggleArticle(g.id, Number(a.id))}
                         />
-                        <Typography fontWeight="bold">{subrubro.nombre}</Typography>
-                      </AccordionSummary>
-                      <AccordionDetails>
-                        {subrubro.rubros.map((rubroCat, idx) => {
-                          const { checked: rubroChecked, indeterminate: rubroIndeterminado } =
-                            evaluarCheckboxEstado(rubroCat.articulos, articulosSeleccionados, isArticuloBloqueado);
-
-                          return (
-                            <Accordion key={idx} sx={{ mb: 1 }}>
-                              <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
-                                <Checkbox
-                                  checked={rubroChecked}
-                                  indeterminate={rubroIndeterminado}
-                                  onChange={() => handleSelectCategoria(rubroCat.nombre, rubroCat.articulos)}
-                                  sx={{ mr: 1 }}
-                                />
-                                <Typography>{rubroCat.nombre}</Typography>
-                              </AccordionSummary>
-                              <AccordionDetails>
-                                {rubroCat.articulos.map((articulo) => {
-                                  const bloqueado = isArticuloBloqueado(articulo);
-                                  const seleccionado = articulosSeleccionados.includes(articulo);
-                                  return (
-                                    <Box key={articulo.id} display="flex" alignItems="center" sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1 }}>
-                                      <Checkbox
-                                        checked={seleccionado}
-                                        onChange={() => handleSelectArticulo(articulo)}
-                                        sx={{ mr: 1 }}
-                                        disabled={bloqueado}
-                                      />
-                                      <Typography>
-                                        {articulo.nombre} {bloqueado && '(ya asignado)'}
-                                      </Typography>
-                                    </Box>
-                                  );
-                                })}
-                              </AccordionDetails>
-                            </Accordion>
-                          );
-                        })}
-                      </AccordionDetails>
-                    </Accordion>
+                        <Typography variant="body2">
+                          {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
+                        </Typography>
+                      </Box>
+                      <Tooltip title={isTodo ? "No se quita desde TODO" : "Quitar del grupo"}>
+                        <span>
+                          <Button
+                            size="small"
+                            color="error"
+                            variant="text"
+                            onClick={() => removeOne(g.id, Number(a.id))}
+                            disabled={isTodo}
+                          >
+                            Quitar
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    </Box>
                   );
                 })}
-              </Box>
-            )}
+              </Stack>
+            </CardContent>
 
-            <Box display="flex" justifyContent="flex-end" mt={3}>
+            {/* Acciones: mover seleccionados */}
+            <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel>Mover seleccionados a…</InputLabel>
+                <Select
+                  label="Mover seleccionados a…"
+                  value={targetByGroup[g.id] ?? ""}
+                  onChange={(e) => setTargetByGroup((s) => ({ ...s, [g.id]: e.target.value }))}
+                >
+                  {groupsSorted
+                    .filter((x) => x.id !== g.id)
+                    .map((x) => (
+                      <MenuItem key={x.id} value={x.id}>
+                        {x.nombre}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+
               <Button
-                onClick={crearAgrupacion}
+                size="small"
                 variant="contained"
-                color="success"
-                disabled={!rubro.trim() || articulosSeleccionados.length === 0}
+                endIcon={<ArrowForwardIcon />}
+                onClick={() => moveSelected(g.id)}
+                disabled={!(selectedByGroup[g.id]?.size) || !Number.isFinite(Number(targetByGroup[g.id]))}
+                sx={{ textTransform: "none" }}
               >
-                Guardar Agrupación
+                Mover
               </Button>
-            </Box>
-          </Box>
-        </Modal>
-
-        <AgrupacionesList
-          agrupaciones={agrupaciones}
-          onActualizar={() => {
-            actualizarAgrupaciones?.();
-            cargarAgrupaciones();
-            mostrarSnackbar("Agrupación actualizada");
-          }}
-          todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
-        />
-      </div>
-    </>
+            </CardActions>
+          </Card>
+        );
+      })}
+    </Stack>
   );
 };
 
-export default Agrupaciones;
+export default AgrupacionesList;

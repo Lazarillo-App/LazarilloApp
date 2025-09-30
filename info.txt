@@ -7,3 +7,82 @@ URL=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qu
 URL-interna=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qumcj7s73a700i0-a/lazarillo_app
 URL-Externa=postgresql://lazarillo_app_user:qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc@dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com/lazarillo_app
 Comando-PSQL=PGPASSWORD=qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc psql -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -U lazarillo_app_user lazarillo_app
+
+
+Conexion a DB en Consola (admin)
+$env:PGPASSWORD = "qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -p 5432 -U lazarillo_app_user -d lazarillo_app -v sslmode=require
+
+
+\set biz 13
+\encoding UTF8
+set PGCLIENTENCODING=utf8;
+
+-- ¿Hay artículos cargados para el negocio 13?
+SELECT COUNT(*) FROM public.maxi_articles WHERE business_id = :biz;
+
+-- ¿Cómo están los rubros/subrubros?
+SELECT subrubro, categoria, COUNT(*)
+FROM public.maxi_articles
+WHERE business_id = :biz
+GROUP BY subrubro, categoria
+ORDER BY subrubro, categoria;
+
+-- ¿Hay menú crudo en cache para el 13?
+SELECT left(payload::text, 400) AS sample, length(payload::text) AS bytes, updated_at
+FROM public.maxi_menu_cache
+WHERE business_id = :biz
+ORDER BY updated_at DESC
+LIMIT 1;
+
+
+\set biz 13
+\encoding UTF8
+set PGCLIENTENCODING=utf8;
+
+BEGIN;
+
+WITH raw AS (
+  SELECT payload
+  FROM maxi_menu_cache
+  WHERE business_id = :biz
+  ORDER BY updated_at DESC
+  LIMIT 1
+),
+rubros AS (
+  SELECT jsonb_array_elements(payload) AS r
+  FROM raw
+),
+subs AS (
+  SELECT (r->'raw'->>'nombre')::text AS categoria,
+         jsonb_array_elements(r->'raw'->'subrubros') AS s
+  FROM rubros
+),
+arts AS (
+  SELECT categoria,
+         (s->>'nombre')::text AS subrubro,
+         jsonb_array_elements(s->'articulos') AS a
+  FROM subs
+),
+map AS (
+  SELECT (a->>'id')::int AS articulo_id,
+         NULLIF(btrim(categoria), '') AS categoria,
+         NULLIF(btrim(subrubro),  '') AS subrubro
+  FROM arts
+)
+UPDATE public.maxi_articles m
+SET
+  categoria = COALESCE(map.categoria, m.categoria),
+  subrubro  = COALESCE(map.subrubro,  m.subrubro)
+FROM map
+WHERE m.business_id = :biz
+  AND m.articulo_id = map.articulo_id;
+
+COMMIT;
+
+
+SELECT subrubro, categoria, COUNT(*)
+FROM public.maxi_articles
+WHERE business_id = :biz
+GROUP BY subrubro, categoria
+ORDER BY subrubro, categoria;

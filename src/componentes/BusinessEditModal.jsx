@@ -1,31 +1,46 @@
 import React, { useEffect, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { useBizTheme } from '../tema/ThemeProviderNegocio';
 
 export default function BusinessEditModal({ open, business, onClose, onSaved }) {
   const [name, setName] = useState('');
-  const [primary, setPrimary] = useState('#000000');
-  const [secondary, setSecondary] = useState('#ffffff');
+  const [primary, setPrimary] = useState('#3b82f6');
+  const [secondary, setSecondary] = useState('#6366f1');
   const [background, setBackground] = useState('#ffffff');
   const [font, setFont] = useState('Inter, system-ui, sans-serif');
   const [logoUrl, setLogoUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  // aplicar tema en vivo
+  const { setPaletteForBiz } = useBizTheme?.() || { setPaletteForBiz: () => {} };
+
   useEffect(() => {
-    if (open && business) {
-      const b = business;
-      const br = b?.props?.branding || {};
-      setName(b?.name || '');
-      setPrimary(br.primary || '#000000');
-      setSecondary(br.secondary || '#ffffff');
-      setBackground(br.background || '#ffffff');
-      setFont(br.font || 'Inter, system-ui, sans-serif');
-      setLogoUrl(br.logo_url || '');
-      setErr('');
-    }
+    if (!open || !business) return;
+    const br = business?.props?.branding || business?.branding || {};
+    setName(business?.name || '');
+    setPrimary(br.primary ?? '#3b82f6');
+    setSecondary(br.secondary ?? '#6366f1');
+    setBackground(br.background ?? '#ffffff');
+    setFont(br.font ?? 'Inter, system-ui, sans-serif');
+    setLogoUrl(br.logo_url ?? '');
+    setErr('');
   }, [open, business]);
 
   if (!open) return null;
+
+  const brandingToPalette = (br) => ({
+    name: 'Custom',
+    primary: br.primary,
+    secondary: br.secondary,
+    bg: br.background,
+    surface: '#f8fafc',
+    border: '#e2e8f0',
+    fg: br.fg || br.primary || '#1a4f67',
+    hover: 'rgba(40,90,115,.10)',
+    font: br.font,
+    logo_url: br.logo_url || null,
+  });
 
   const save = async (e) => {
     e.preventDefault();
@@ -33,14 +48,36 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     try {
       const payload = {
         name,
-        branding: { primary, secondary, background, font, logo_url: logoUrl || null }
+        props: {
+          ...(business?.props || {}),
+          branding: {
+            primary,
+            secondary,
+            background,
+            font,
+            logo_url: logoUrl || null,
+            fg: primary,
+          },
+        },
       };
-      const { business: saved } = await BusinessesAPI.update(business.id, payload);
+
+      const res = await BusinessesAPI.update(business.id, payload); // (admin, sin X-Business-Id)
+      const saved = res?.business ?? res ?? { ...business, ...payload };
+
+      // aplica tema al vuelo y persiste en localStorage
+      setPaletteForBiz(brandingToPalette(payload.props.branding), { persist: true });
+
+      // notifica arriba y cierra
       onSaved?.(saved);
       onClose?.();
-    } catch (e) {
-      console.error(e);
-      setErr(e?.message || 'No se pudo guardar.');
+
+      // broadcast opcional por si otras vistas escuchan
+      window.dispatchEvent(new CustomEvent('business:branding-updated', {
+        detail: { businessId: business.id, branding: payload.props.branding }
+      }));
+    } catch (e2) {
+      console.error(e2);
+      setErr(e2?.message || 'No se pudo guardar.');
     } finally {
       setBusy(false);
     }
@@ -60,17 +97,17 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
             <div><label>Fondo</label><input type="color" value={background} onChange={e=>setBackground(e.target.value)} /></div>
           </div>
 
-          <label>Fuente</label>
-          <input value={font} onChange={e=>setFont(e.target.value)} />
+          <label>Fuente (CSS font-family)</label>
+          <input value={font} onChange={e=>setFont(e.target.value)} placeholder='Inter, system-ui, sans-serif' />
 
           <label>Logo (URL)</label>
-          <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} />
+          <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://..." />
 
           {!!err && <div className="error">{err}</div>}
 
           <div className="actions">
             <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
-            <button type="submit" className="btn" disabled={busy}>{busy?'Guardando…':'Guardar'}</button>
+            <button type="submit" className="btn" disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
           </div>
         </form>
       </div>
@@ -90,3 +127,4 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
-// src/componentes/BusinessCreateModal.jsx
 import React, { useEffect, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { useBizTheme } from '../tema/ThemeProviderNegocio';
 
 export default function BusinessCreateModal({ open, onClose, onCreateComplete }) {
   const [name, setName] = useState('');
@@ -19,18 +19,39 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  // Para aplicar tema al vuelo
+   const { setPaletteForBiz } = useBizTheme?.() || { setPaletteForBiz: () => {} };
+
   useEffect(() => {
     if (!open) {
-      setName(''); setPrimary('#000000'); setSecondary('#ffffff'); setBackground('#003b4a');
-      setFont('Inter, system-ui, sans-serif'); setLogoUrl('');
-      setMxEmail(''); setMxPass(''); setMxCod(''); setShowPass(false);
+      setName('');
+      setPrimary('#000000');
+      setSecondary('#ffffff');
+      setBackground('#003b4a');
+      setFont('Inter, system-ui, sans-serif');
+      setLogoUrl('');
+      setMxEmail(''); setMxPass(''); setMxCod('');
+      setShowPass(false);
       setBusy(false); setErr('');
     }
   }, [open]);
 
   if (!open) return null;
 
-  const submit = async (e) => {
+ const brandingToPalette = (br) => ({
+    name: 'Custom',
+    primary  : br.primary,
+    secondary: br.secondary,
+    bg       : br.background,
+    surface  : '#f8fafc',
+    border   : '#e2e8f0',
+    fg       : '#1a4f67',           
+    hover    : undefined,           
+    font     : br.font,
+    logo_url : br.logo_url || null,
+  });
+
+   const submit = async (e) => {
     e.preventDefault();
     setErr('');
     if (!name.trim()) return setErr('Ingresá un nombre para el local.');
@@ -38,19 +59,26 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
     setBusy(true);
     try {
-      // 1) crear negocio con BRANDING en props
-      const resp = await BusinessesAPI.create({
+      // ✅ 1) crear negocio con branding TOP-LEVEL (consistente con edit)
+      const payload = {
         name: name.trim(),
         branding: { primary, secondary, background, font, logo_url: logoUrl || null },
-      });
-      const biz = resp?.business;
+      };
+      const resp = await BusinessesAPI.create(payload);
+      const biz = resp?.business ?? resp;
       if (!biz?.id) throw new Error('No se pudo crear el local');
 
       // 2) guardar credenciales Maxi
       await BusinessesAPI.maxiSave(biz.id, { email: mxEmail, password: mxPass, codcli: mxCod });
 
-      // 3) setear activo y notificar arriba
+      // 3) marcar activo y avisar
       localStorage.setItem('activeBusinessId', biz.id);
+      window.dispatchEvent(new CustomEvent('business:switched'));
+
+      // 4) aplicar tema y persistir
+      setPaletteForBiz(brandingToPalette(payload.branding), { persist: true });
+
+      // 5) notificar arriba y cerrar
       onCreateComplete?.(biz);
       onClose?.();
     } catch (e2) {
@@ -64,7 +92,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h2>Nuevo local</h2>
+        <h3>Nuevo local</h3>
 
         <form onSubmit={submit} className="form-grid">
           {/* ===== Datos del local ===== */}
@@ -143,7 +171,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
       <style>{`
         .modal-overlay{position:fixed;inset:0;background:#0006;display:grid;place-items:center;z-index:10000}
-        .modal-card{width:min(870px,96vw);background:#1f5a68;color:#fff;border-radius:14px;padding:50px 20px 16px;box-shadow:0 20px 60px #0007}
+        .modal-card{width:min(870px,96vw);background:#1a4f67;color:#fff;border-radius:14px;padding:50px 20px 16px;box-shadow:0 20px 60px #0007}
         .form-grid{display:grid;gap:12px}
         .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .group label{display:block;font-size:.9rem;margin-bottom:6px;font-weight:600}
@@ -158,4 +186,5 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
         @media (max-width:640px){ .row{grid-template-columns:1fr} }
       `}</style>
     </div>
-  );}
+  );
+}

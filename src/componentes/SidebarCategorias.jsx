@@ -1,16 +1,15 @@
+// src/componentes/SidebarCategorias.jsx
 import React, { useMemo } from 'react';
 import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import '../css/SidebarCategorias.css';
 
-const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
-
-// Etiqueta amigable: TODO -> "Sin Agrupación"
 const labelAgrup = (g) => {
   const n = String(g?.nombre || '').trim().toUpperCase();
   return n === 'TODO' ? 'Sin Agrupación' : (g?.nombre || '');
 };
 
-const SidebarCategorias = ({
+export default function SidebarCategorias({
+  // Estructura: [{ subrubro, categorias: [{ categoria, articulos: [] }] }]
   categorias = [],
   setCategoriaSeleccionada,
   agrupaciones = [],
@@ -18,65 +17,49 @@ const SidebarCategorias = ({
   setAgrupacionSeleccionada,
   setFiltroBusqueda,
   setBusqueda,
-  idsVisibles,
   categoriaSeleccionada,
-  activeIds,
-}) => {
+}) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const agrupacionesArray = Array.isArray(agrupaciones) ? agrupaciones : [];
+  const loading = categoriasSafe.length === 0;
 
-  const filterByAgrupacion = (cats) => {
-    if (!agrupacionSeleccionada) return cats;
-    const idsAgr = new Set((agrupacionSeleccionada.articulos || []).map(a => getId(a)));
+  // ids activos de la agrupación seleccionada (si hay)
+  const activeIds = useMemo(() => {
+    const g = agrupacionSeleccionada;
+    if (!g || !Array.isArray(g.articulos)) return null;
+    const s = new Set();
+    g.articulos.forEach(a => s.add(Number(a.id)));
+    return s;
+  }, [agrupacionSeleccionada]);
 
-    const recortadas = cats.map(cat => {
-      const sub = (cat.subrubros || []).map(sr => {
-        const arts = (sr.articulos || []).filter(a => idsAgr.has(getId(a)));
-        return { ...sr, articulos: arts };
-      }).filter(sr => (sr.articulos || []).length > 0);
-      return { ...cat, subrubros: sub };
-    }).filter(cat => (cat.subrubros || []).length > 0);
+  // Aplica filtro por agrupación: si hay selección, mostramos solo subrubros/categorías con artículos del set
+  const categoriasParaMostrar = useMemo(() => {
+    if (!activeIds) return categoriasSafe;
 
-    return recortadas.length ? recortadas : cats;
-  };
+    // Para cada subrubro, quedarnos solo con las categorías/arts que intersectan con activeIds
+    const pruned = categoriasSafe.map(sub => {
+      const keepCategorias = (sub.categorias || []).map(c => {
+        const arts = (c.articulos || []).filter(a => activeIds.has(Number(a.id)));
+        return { ...c, articulos: arts };
+      }).filter(c => (c.articulos?.length || 0) > 0);
 
-  const filterByIdsVisibles = (cats) => {
-    if (!idsVisibles || !idsVisibles.size) return cats;
-    const recortadas = cats.map(cat => {
-      const sub = (cat.subrubros || []).map(sr => {
-        const arts = (sr.articulos || []).filter(a => idsVisibles.has(getId(a)));
-        return { ...sr, articulos: arts };
-      }).filter(sr => (sr.articulos || []).length > 0);
-      return { ...cat, subrubros: sub };
-    }).filter(cat => (cat.subrubros || []).length > 0);
-    return recortadas.length ? recortadas : cats;
-  };
+      return {
+        ...sub,
+        categorias: keepCategorias,
+      };
+    }).filter(sub => (sub.categorias?.reduce((acc, c) => acc + (c.articulos?.length || 0), 0) > 0));
 
- const categoriasParaMostrar = useMemo(() => {
-    if (!activeIds || activeIds.size === 0) return categoriasSafe;
-
-    const rec = categoriasSafe.map(cat => {
-      const sub = (cat.subrubros || []).map(sr => ({
-        ...sr,
-        articulos: (sr.articulos || []).filter(a =>
-          activeIds.has(Number(a?.id ?? a?.articuloId ?? a?.codigo ?? a?.codigoArticulo))
-        ),
-      })).filter(sr => (sr.articulos || []).length > 0);
-
-      return { ...cat, subrubros: sub };
-    }).filter(cat => (cat.subrubros || []).length > 0);
-
-    return rec.length ? rec : categoriasSafe;
-  }, [categoriasSafe, activeIds, idsVisibles, agrupacionSeleccionada]);
+    return pruned;
+  }, [categoriasSafe, activeIds]);
 
   const handleAgrupacionChange = (event) => {
-    const value = event.target.value; // '' o id
+    const value = event.target.value; // '' | id
     if (value === '') {
       setAgrupacionSeleccionada?.(null);
       setFiltroBusqueda?.('');
     } else {
       const idSel = Number(value);
-      const seleccionada = agrupacionesArray.find(a => Number(a?.id) === idSel) || null;
+      const seleccionada = agrupacionesArray.find((a) => Number(a?.id) === idSel) || null;
       setAgrupacionSeleccionada?.(seleccionada);
       setFiltroBusqueda?.('');
     }
@@ -84,15 +67,20 @@ const SidebarCategorias = ({
     setBusqueda?.('');
   };
 
-  const handleCategoriaClick = (categoria) => {
-    if (categoriaSeleccionada?.id === categoria?.id) {
+  const handleCategoriaClick = (subItem) => {
+    if (categoriaSeleccionada?.subrubro === subItem?.subrubro) {
       setCategoriaSeleccionada?.(null);
     } else {
-      setCategoriaSeleccionada?.(categoria);
+      setCategoriaSeleccionada?.(subItem);
     }
     setFiltroBusqueda?.('');
     setBusqueda?.('');
   };
+
+  const countArticulosSub = (sub) =>
+    (sub?.categorias || []).reduce((acc, c) => acc + (c?.articulos?.length || 0), 0);
+
+  const countArticulosAgrup = (g) => Array.isArray(g?.articulos) ? g.articulos.length : 0;
 
   return (
     <div className="sidebar">
@@ -100,35 +88,42 @@ const SidebarCategorias = ({
         <InputLabel>Agrupaciones</InputLabel>
         <Select
           label="Agrupaciones"
-          value={agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : ''} // usa id
+          sx={{ fontWeight: '600' }}
+          value={agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : ''}
           onChange={handleAgrupacionChange}
         >
           <MenuItem value="">Ver todas</MenuItem>
           {agrupacionesArray.map((g) => (
             <MenuItem key={g.id} value={Number(g.id)}>
-              {labelAgrup(g)}
+              {labelAgrup(g)} {countArticulosAgrup(g) ? `(${countArticulosAgrup(g)})` : ''}
             </MenuItem>
           ))}
         </Select>
       </FormControl>
 
-      <h2>Categorías</h2>
+      <h3>Subrubros</h3>
       <ul>
-        {categoriasParaMostrar.map((categoria) => {
-          const active = categoriaSeleccionada?.id === categoria?.id;
-          return (
-            <li
-              key={categoria?.id ?? categoria?.nombre}
-              onClick={() => handleCategoriaClick(categoria)}
-              className={active ? 'categoria-activa' : undefined}
-            >
-              <p className="icono" /> {categoria?.nombre}
-            </li>
-          );
-        })}
+        {loading && <li style={{ opacity: 0.7 }}>Cargando subrubros…</li>}
+        {!loading &&
+          categoriasParaMostrar.map((sub) => {
+            const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
+            return (
+              <li
+                key={sub?.subrubro || '(sin subrubro)'}
+                onClick={() => handleCategoriaClick(sub)}
+                className={active ? 'categoria-activa' : undefined}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 8, cursor: 'pointer' }}
+                title={sub?.subrubro || 'Sin subrubro'}
+              >
+                <span><span className="icono" /> {sub?.subrubro || 'Sin subrubro'}</span>
+                <small style={{ opacity: 0.65 }}>{countArticulosSub(sub)}</small>
+              </li>
+            );
+          })}
+        {!loading && categoriasParaMostrar.length === 0 && (
+          <li style={{ opacity: 0.7 }}>No hay artículos en esta agrupación.</li>
+        )}
       </ul>
     </div>
   );
-};
-
-export default SidebarCategorias;
+}
