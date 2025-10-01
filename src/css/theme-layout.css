@@ -197,76 +197,106 @@ background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
 .articulos-sidebar,
 .sidebar {
   position: sticky !important;
-  top: var(--navbar-height);
   align-self: start;
   min-height: calc(100vh - var(--navbar-height) - 16px);
   overflow: auto;
-  background: var(--color-primary) !important;
-  color: var(--on-primary) !important;
+  background: var(--color-bg) !important;
+  color: var(--color-fg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 13px;
-  top: 0px;
+  padding: 0; 
 }
 
+.css-trm6af-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input.MuiSelect-select {
+    min-height: 2.78em;
+}
+
+/* Franja superior del sidebar (cinta roja) */
 .sidebar-header {
   position: sticky;
   top: 0;
-  background: inherit;
-  padding-bottom: 8px;
   z-index: 2;
+
+  background: var(--color-primary);
+  color: var(--on-primary);
+
+  padding: 10px 12px;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+
+  /* línea sutil que separa header del cuerpo */
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--on-primary) 20%, transparent);
 }
 
+/* Cuerpo del sidebar (select + lista) */
+.sidebar-body {
+  padding: 12px;
+}
+
+/* Títulos dentro del header para que no “salten” */
 .sidebar h2 {
-  font-size: 1.2rem;
-  margin-bottom: .5rem;
-}
-
-.sidebar ul {
-  list-style: none;
-  padding: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
   margin: 0;
 }
 
+/* Lista de subrubros: más respiro */
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0 0;
+}
+
 .sidebar li {
-  padding: 10px;
-  margin-bottom: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   border-radius: var(--radius-md);
+
+  /* chip suave en hover */
+  transition: background .15s ease, font-weight .15s ease;
 }
 
 .sidebar li:hover {
   font-weight: 600;
-  background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
 }
 
+/* contador/ícono separado si lo usás */
 .icono {
   margin-right: .5rem;
+  opacity: .8;
 }
 
 /* Select dentro del sidebar */
 .agrupaciones-select {
   display: grid;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .agrupaciones-select select {
   width: 100%;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
   border: 1px solid var(--color-border);
   background: var(--color-bg);
   color: var(--color-fg);
 }
 
-/* Columna derecha (tabla) – único scroll principal */
-.articulos-main {
-  overflow: auto;
+/* Opcional: que el select quede pegado bajo la franja al scrollear */
+.agrupaciones-select--sticky {
+  position: sticky;
+  top: 0; /* queda justo debajo de .sidebar-header */
+  z-index: 1;
   background: var(--color-bg);
-  border-radius: var(--radius-lg);
+  padding-top: 8px;
+  padding-bottom: 8px;
+  box-shadow:
+    0 -1px 0 0 var(--color-border) inset,
+    0  1px 0 0 var(--color-border) inset;
 }
 
 /* ===========================
@@ -283,48 +313,88 @@ background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
   margin-left: 0;
 }
 
+/* Hover sutil (antes muy intenso) */
+tbody tr:hover {
+  background: color-mix(in srgb, var(--color-secondary) 10%, var(--color-bg));
+}
+
+/* Inputs dentro de celdas: más cómodos */
+input[type="number"] {
+  padding: 6px 8px;
+  width: 84px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  text-align: right;
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* Fila de rubro: barra separadora real */
+.rubro-row {
+  background: var(--color-surface);
+  font-weight: 700;
+}
+
+.rubro-row td {
+  text-align: left;
+  font-size: 0.95rem;
+  color: color-mix(in srgb, var(--color-fg) 85%, black);
+}
+
+/* ===========================
+   Filtros de la tabla
+   =========================== */
+
 .filtros-container {
   display: flex;
   flex-direction: row;
-  justify-content: flex-start;
   align-items: center !important;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 12px 16px; /* más compacto */
 }
 
 .filtros-fechas {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  margin-left: 15px;
+  margin-left: 8px;
 }
 
 .filtros-fechas label {
   font-weight: 600;
-  color: #555;
+  color: color-mix(in srgb, var(--color-fg) 70%, black);
 }
 
 .filtros-fechas input[type="date"] {
-  padding: 5px;
+  padding: 6px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--color-bg);
   color: var(--color-fg);
 }
 
 .filtros-fechas button {
-  padding: 6px 12px;
+  padding: 8px 12px;
   background: var(--color-primary);
   color: var(--on-primary);
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: filter .2s ease;
+  transition: filter .2s ease, transform .02s ease-in;
 }
 
 .filtros-fechas button:hover {
-  filter: brightness(.95);
+  filter: brightness(.96);
+}
+
+.filtros-fechas button:active {
+  transform: translateY(1px);
 }
 
 /* Tabla */
@@ -336,9 +406,9 @@ table {
 
 thead th {
   background: var(--color-primary) !important;
-  color: var(--on-primary) !important;
+  color: var(--on-secondary);
   box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--color-secondary) 45%, transparent);
-  padding: 12px 8px;
+  padding: 20px 10px;
   text-align: left;
   top: 0;
   border-radius: 6px 6px 0 0;
@@ -356,6 +426,7 @@ tbody td {
   padding: 10px 8px;
   text-align: left;
   border-bottom: 1px solid #eee;
+  color: black;
 }
 
 tbody tr:hover {
@@ -399,7 +470,6 @@ input[type="number"]:focus {
 
 .biz-label {
   font-size: 12px;
-  color: #64748b;
 }
 
 .biz-select {

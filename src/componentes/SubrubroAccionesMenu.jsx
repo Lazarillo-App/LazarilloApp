@@ -7,18 +7,17 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import axios from 'axios';
-import { BASE } from '../servicios/apiBase';
+import { httpBiz } from '../servicios/apiBusinesses';
 import GestorAgrupacionesModal from './GestorAgrupacionesModal';
 
 const getNum = (v) => Number(v ?? 0);
 
 export default function SubrubroAccionesMenu({
-  isTodo = false,                      // si estás en "Sin agrupación"
+  isTodo = false,
   agrupaciones = [],
-  agrupacionSeleccionada,              // puede venir null
+  agrupacionSeleccionada,
   todoGroupId,
-  articuloIds = [],                    // TODOS los ids del subrubro
+  articuloIds = [],
   onRefetch,
   notify
 }) {
@@ -56,40 +55,26 @@ export default function SubrubroAccionesMenu({
     setIsMoving(true);
     try {
       if (fromId) {
-        // intento con endpoint masivo (si existe en tu API)
+        // intento con endpoint masivo
         try {
-          await axios.post(`${BASE}/agrupaciones/${fromId}/move-items`, { toId, ids });
-        } catch (e) {
-          // fallback: add en destino y luego delete del origen
-          await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids })
-            .catch(e2 => {
-              const s = e2?.response?.status;
-              const tx = JSON.stringify(e2?.response?.data || {});
-              const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
-              if (!dup) throw e2;
-            });
-
-          // quitamos del origen uno x uno (si no tenés endpoint masivo)
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+        } catch {
+          // fallback
+          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
+          // quitar del origen uno por uno
           for (const id of ids) {
-            try { await axios.delete(`${BASE}/agrupaciones/${fromId}/articulos/${id}`); }
-            catch { /* no detengas todo si alguno falla */ }
+            try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {}
           }
         }
       } else {
-        // venimos de 'Sin agrupación' o sin selección → solo agregamos
-        await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids })
-          .catch(e2 => {
-            const s = e2?.response?.status;
-            const tx = JSON.stringify(e2?.response?.data || {});
-            const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
-            if (!dup) throw e2;
-          });
+        // desde Sin agrupación
+        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
       }
 
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
       onRefetch?.();
     } catch (e) {
-      console.error('MOVER_SUBRUBRO_ERROR', e?.response || e);
+      console.error('MOVER_SUBRUBRO_ERROR', e);
       notify?.('No se pudo mover el subrubro', 'error');
     } finally {
       setIsMoving(false);
@@ -102,8 +87,8 @@ export default function SubrubroAccionesMenu({
     const ids = articuloIds.map(getNum).filter(Boolean);
     try {
       for (const id of ids) {
-        try { await axios.delete(`${BASE}/agrupaciones/${currentGroupId}/articulos/${id}`); }
-        catch { /* continuar */ }
+        try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); }
+        catch {}
       }
       notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
       onRefetch?.();
@@ -140,7 +125,6 @@ export default function SubrubroAccionesMenu({
         </MenuItem>
       </Menu>
 
-      {/* diálogo mover */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {articuloIds.length} artículo(s) a…</DialogTitle>
         <DialogContent>
@@ -167,13 +151,10 @@ export default function SubrubroAccionesMenu({
         </DialogActions>
       </Dialog>
 
-      {/* modal crear agrupación con preselección de este subrubro */}
       <GestorAgrupacionesModal
         open={openGestor}
         onClose={() => setOpenGestor(false)}
         preselectIds={articuloIds.map(getNum)}
-        agrupaciones={agrupaciones}
-        todoGroupId={todoGroupId}
         notify={notify}
         onRefetch={onRefetch}
       />

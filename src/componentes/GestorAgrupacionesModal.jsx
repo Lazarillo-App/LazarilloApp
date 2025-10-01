@@ -6,17 +6,11 @@ import {
   CircularProgress
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import axios from 'axios';
-import { BASE } from '../servicios/apiBase';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { httpBiz } from '../servicios/apiBusinesses';
 
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
-const esTodoGroup = (g, todoGroupId) => {
-  const n = String(g?.nombre || '').trim().toUpperCase();
-  return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN';
-};
 
-// ✅ árbol desde filas planas de BD (con fallback a row.data)
 function buildTreeFromDB(items = []) {
   const flat = items.map(row => {
     const raw = row?.raw || {};
@@ -48,8 +42,6 @@ export default function GestorAgrupacionesModal({
   open,
   onClose,
   preselectIds = [],
-  agrupaciones = [],
-  todoGroupId,
   notify,
   onRefetch,
 }) {
@@ -59,7 +51,6 @@ export default function GestorAgrupacionesModal({
   const [seleccionIds, setSeleccionIds] = useState(preselectIds.map(Number));
   const [nombreAgr, setNombreAgr] = useState('');
 
-  // cargar catálogo al abrir — **desde BD**
   useEffect(() => {
     if (!open) return;
     setSeleccionIds(preselectIds.map(Number));
@@ -87,7 +78,7 @@ export default function GestorAgrupacionesModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // maestro (id -> datos) para el payload de creación
+  // maestro (id -> datos) para payload
   const maestro = useMemo(() => {
     const out = [];
     (todosArticulos || []).forEach(cat => {
@@ -106,19 +97,7 @@ export default function GestorAgrupacionesModal({
     return new Map(out.map(a => [a.id, a]));
   }, [todosArticulos]);
 
-  // artículos ya asignados a alguna agrupación real → para bloquear duplicados
-  const destinos = useMemo(
-    () => (agrupaciones || []).filter(g => !esTodoGroup(g, todoGroupId)),
-    [agrupaciones, todoGroupId]
-  );
-  const assignedIds = useMemo(() => {
-    const s = new Set();
-    destinos.forEach(g => (g.articulos || []).forEach(a => s.add(getId(a))));
-    return s;
-  }, [destinos]);
-  const isBloqueado = (id) => assignedIds.has(Number(id));
-
-  /* ===================== Árbol filtrado por búsqueda ===================== */
+  /* ================= filtrado por búsqueda ================= */
   const arbolCategorias = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (todosArticulos || [])
@@ -139,60 +118,42 @@ export default function GestorAgrupacionesModal({
   const idsDeSubrubro = (sr) => (sr.articulos || []).map(getId);
   const idsDeCategoria = (cat) => (cat.subrubros || []).flatMap(idsDeSubrubro);
 
-  const idsVisibles = useMemo(() => {
-    const set = new Set();
-    arbolCategorias.forEach(cat => {
-      cat.subrubros.forEach(sr => idsDeSubrubro(sr).forEach(id => set.add(id)));
-    });
-    return set;
-  }, [arbolCategorias]);
-
-  const totalSeleccionablesVisibles = useMemo(() => {
-    let n = 0;
-    idsVisibles.forEach(id => { if (!isBloqueado(id)) n += 1; });
-    return n;
-  }, [idsVisibles, assignedIds]);
-
+  // Estado de check (ahora NO bloqueamos por estar en otra agrupación)
   const estadoDeIds = (ids) => {
-    const disponibles = ids.filter(id => !isBloqueado(id));
-    const marcados = disponibles.filter(id => seleccionIds.includes(id)).length;
+    const marcados = ids.filter(id => seleccionIds.includes(id)).length;
     return {
-      checked: disponibles.length > 0 && marcados === disponibles.length,
-      indeterminate: marcados > 0 && marcados < disponibles.length,
+      checked: ids.length > 0 && marcados === ids.length,
+      indeterminate: marcados > 0 && marcados < ids.length,
     };
   };
 
-  // toggles
-  const toggleUno = (id) => {
-    if (isBloqueado(id)) return;
+  // toggles (sin bloqueos)
+  const toggleUno = (id) =>
     setSeleccionIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
+
   const toggleSubrubro = (sr) => {
-    const disponibles = idsDeSubrubro(sr).filter(id => !isBloqueado(id));
+    const ids = idsDeSubrubro(sr);
     setSeleccionIds(prev =>
-      disponibles.some(id => prev.includes(id))
-        ? prev.filter(id => !disponibles.includes(id))
-        : [...prev, ...disponibles.filter(id => !prev.includes(id))]
+      ids.some(id => prev.includes(id))
+        ? prev.filter(id => !ids.includes(id))
+        : [...prev, ...ids.filter(id => !prev.includes(id))]
     );
   };
+
   const toggleCategoria = (cat) => {
-    const disponibles = idsDeCategoria(cat).filter(id => !isBloqueado(id));
+    const ids = idsDeCategoria(cat);
     setSeleccionIds(prev =>
-      disponibles.some(id => prev.includes(id))
-        ? prev.filter(id => !disponibles.includes(id))
-        : [...prev, ...disponibles.filter(id => !prev.includes(id))]
+      ids.some(id => prev.includes(id))
+        ? prev.filter(id => !ids.includes(id))
+        : [...prev, ...ids.filter(id => !prev.includes(id))]
     );
-  };
-  const seleccionarTodoVisible = () => {
-    const all = Array.from(idsVisibles).filter(id => !isBloqueado(id));
-    setSeleccionIds(all);
   };
 
   /* ===================== Crear agrupación ===================== */
   const crearAgrupacion = async () => {
     if (!nombreAgr.trim() || seleccionIds.length === 0) return;
     try {
-      const payload = seleccionIds.map(id => {
+      const articulos = seleccionIds.map(id => {
         const a = maestro.get(id) || {};
         return {
           id,
@@ -203,9 +164,10 @@ export default function GestorAgrupacionesModal({
         };
       });
 
-      await axios.post(`${BASE}/agrupaciones`, {
-        nombre: nombreAgr.trim(),
-        articulos: payload
+      // Scoped por negocio
+      await httpBiz('/agrupaciones', {
+        method: 'POST',
+        body: { nombre: nombreAgr.trim(), articulos }
       });
 
       notify?.(`Agrupación “${nombreAgr.trim()}” creada con ${seleccionIds.length} artículo(s).`, 'success');
@@ -229,22 +191,12 @@ export default function GestorAgrupacionesModal({
               value={nombreAgr}
               onChange={e => setNombreAgr(e.target.value)}
             />
-            <Stack direction="row" spacing={1} alignItems="center">
-              <TextField
-                label="Buscar artículos"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-              />
-              <Button
-                variant="outlined"
-                onClick={seleccionarTodoVisible}
-                disabled={totalSeleccionablesVisibles === 0}
-              >
-                Seleccionar todo ({totalSeleccionablesVisibles})
-              </Button>
-            </Stack>
+            <TextField
+              label="Buscar artículos"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              size="small"
+            />
           </Box>
 
           {loading ? (
@@ -287,24 +239,15 @@ export default function GestorAgrupacionesModal({
                             <AccordionDetails>
                               {sr.articulos.map(a => {
                                 const id = getId(a);
-                                const bloqueado = isBloqueado(id);
                                 const sel = seleccionIds.includes(id);
                                 return (
-                                  <Box
-                                    key={id}
-                                    display="flex"
-                                    alignItems="center"
-                                    sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1, mb: .5 }}
-                                  >
+                                  <Box key={id} display="flex" alignItems="center" sx={{ pl: 2, mb: .5 }}>
                                     <Checkbox
                                       checked={sel}
                                       onChange={() => toggleUno(id)}
-                                      disabled={bloqueado}
                                       sx={{ mr: 1 }}
                                     />
-                                    <Typography>
-                                      #{id} — {a.nombre} {bloqueado && '(ya en otra agrupación)'}
-                                    </Typography>
+                                    <Typography>#{id} — {a.nombre}</Typography>
                                   </Box>
                                 );
                               })}

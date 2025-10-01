@@ -1,4 +1,3 @@
-// src/componentes/ArticuloAccionesMenu.jsx
 import React, { useMemo, useState } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -8,8 +7,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import axios from 'axios';
-import { BASE } from '../servicios/apiBase';
+import { httpBiz } from '../servicios/apiBusinesses';
 import GestorAgrupacionesModal from './GestorAgrupacionesModal';
 
 const getNum = (v) => Number(v ?? 0);
@@ -18,8 +16,8 @@ export default function ArticuloAccionesMenu({
   articulo,
   agrupaciones = [],
   agrupacionSeleccionada,
-  todoGroupId,            // id del grupo "TODO" (Sin agrupación)
-  isTodo = false,         // si estás en "Sin agrupación" no mostramos "Quitar de..."
+  todoGroupId,
+  isTodo = false,
   onRefetch,
   notify
 }) {
@@ -38,17 +36,12 @@ export default function ArticuloAccionesMenu({
   const gruposDestino = useMemo(
     () => (agrupaciones || [])
       .filter(g => g?.id)
-      .filter(g => Number(g.id) !== currentGroupId)     // no el mismo grupo
-      .filter(g => Number(g.id) !== Number(todoGroupId)) // no el TODO
-    ,
+      .filter(g => Number(g.id) !== currentGroupId)
+      .filter(g => Number(g.id) !== Number(todoGroupId)),
     [agrupaciones, currentGroupId, todoGroupId]
   );
 
-  const openMover = () => {
-    handleClose();
-    setTimeout(() => setDlgMoverOpen(true), 0); // deja que el foco salga del Menu
-  };
-
+  const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
   const closeMover = () => setDlgMoverOpen(false);
 
   async function mover() {
@@ -57,63 +50,39 @@ export default function ArticuloAccionesMenu({
     const toId = Number(destId);
     const fromId = (!isTodo && currentGroupId) ? Number(currentGroupId) : null;
 
-    // Evitar mover al mismo destino
     if (fromId && fromId === toId) {
       notify?.('El artículo ya está en esa agrupación', 'info');
       return closeMover();
     }
 
-    // mover({ idNum, fromId, toId })
-setIsMoving(true);
-try {
-  if (fromId) {
+    setIsMoving(true);
     try {
-      await axios.post(`${BASE}/agrupaciones/${fromId}/move-items`, { toId, ids:[idNum] });
+      if (fromId) {
+        try {
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids:[idNum] } });
+        } catch {
+          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
+          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch {}
+        }
+      } else {
+        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
+      }
+
+      notify?.(`Artículo #${idNum} movido`, 'success');
+      onRefetch?.();
     } catch (e) {
-      const st = e?.response?.status;
-      const canFallback = st === 404 || st === 405 || st === 500;
-      if (!canFallback) throw e;
-
-      await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids:[idNum] })
-        .catch(e2 => {
-          const s = e2?.response?.status;
-          const tx = JSON.stringify(e2?.response?.data || {});
-          const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
-          if (!dup) throw e2;
-        });
-
-      try { await axios.delete(`${BASE}/agrupaciones/${fromId}/articulos/${idNum}`); }
-      catch { notify?.('Agregado al destino, pero no se pudo quitar del origen', 'warning'); }
+      console.error('MOVER_ERROR', e);
+      notify?.('No se pudo mover el artículo', 'error');
+    } finally {
+      setIsMoving(false);
+      closeMover();
     }
-  } else {
-    await axios.put(`${BASE}/agrupaciones/${toId}/articulos`, { ids:[idNum] })
-      .catch(e2 => {
-        const s = e2?.response?.status;
-        const tx = JSON.stringify(e2?.response?.data || {});
-        const dup = s === 409 || /duplicate|1062|23505/i.test(tx);
-        if (!dup) throw e2;
-      });
   }
-
-  notify?.(`Artículo #${idNum} movido`, 'success');
-  onRefetch?.();
-} catch (e) {
-  console.error('MOVER_ERROR', {
-    status: e?.response?.status,
-    data: e?.response?.data,
-    url: e?.config?.url, method: e?.config?.method
-  });
-  notify?.('No se pudo mover el artículo', 'error');
-} finally {
-  setIsMoving(false);
-  closeMover();
-}
-  };
 
   async function quitarDeActual() {
     if (isTodo || !currentGroupId) return;
     try {
-      await axios.delete(`${BASE}/agrupaciones/${currentGroupId}/articulos/${getNum(articulo.id)}`);
+      await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${getNum(articulo.id)}`, { method: 'DELETE' });
       notify?.(`Artículo #${articulo.id} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');
       onRefetch?.();
     } catch (e) {
@@ -143,14 +112,12 @@ try {
           </MenuItem>
         )}
 
-        {/* NUEVO: abre el modal completo mover/crear */}
         <MenuItem onClick={() => { handleClose(); setOpenGestor(true); }}>
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Crear agrupación…</ListItemText>
         </MenuItem>
       </Menu>
 
-      {/* Diálogo simple para "Mover a…" con select nativo */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>
         <DialogContent>
@@ -177,13 +144,10 @@ try {
         </DialogActions>
       </Dialog>
 
-      {/* Modal gestor para mover/crear en bloque (con artículo preseleccionado) */}
       <GestorAgrupacionesModal
         open={openGestor}
         onClose={() => setOpenGestor(false)}
         preselectIds={[getNum(articulo.id)]}
-        agrupaciones={agrupaciones}
-        todoGroupId={todoGroupId}
         notify={notify}
         onRefetch={onRefetch}
       />
