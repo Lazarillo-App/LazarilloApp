@@ -32,15 +32,15 @@ export default function TablaArticulos({
   fechaHastaProp,
   ventasPorArticulo,
   ventasLoading,
-  onCategoriasLoaded, 
-  onIdsVisibleChange, 
+  onCategoriasLoaded,
+  onIdsVisibleChange,
   activeBizId,
-  reloadKey = 0,     
+  reloadKey = 0,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
-  const [categorias, setCategorias] = useState([]); 
+  const [categorias, setCategorias] = useState([]);
   const [todoGroupId, setTodoGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
   const [objetivos, setObjetivos] = useState({});
@@ -49,13 +49,45 @@ export default function TablaArticulos({
   const openSnack = (msg, type = 'success') => setSnack({ open: true, msg, type });
   const loadReqId = useRef(0);
 
+  // ✅ fuerza refetch “en vivo” sin F5
   const [reloadTick, setReloadTick] = useState(0);
   const refetchLocal = async () => {
-    // 1) que el padre refresque agrupaciones (para que cambie la prop)
-    try { await refetchAgrupaciones?.(); } catch {}
-    // 2) y además forzamos a esta tabla a reconsultar su data base (tree)
-    setReloadTick(t => t + 1);
+    try { await refetchAgrupaciones?.(); } catch { }
+    setReloadTick((t) => t + 1); // re-consulta articlesTree
   };
+
+
+  // helper local para armar tree desde items planos
+  function buildTreeFromFlat(items = []) {
+    const flat = items
+      .map(row => {
+        const raw = row?.raw || {};
+        const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+        return {
+          id,
+          nombre: String(row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`),
+          categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría'),
+          subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro'),
+          precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+          costo: Number(row?.costo ?? raw?.costo ?? 0),
+        };
+      })
+      .filter(a => Number.isFinite(a.id));
+
+    // subrubro → categorias → articulos
+    const bySub = new Map(); // subrubro => Map(categoria => articulos[])
+    for (const a of flat) {
+      if (!bySub.has(a.subrubro)) bySub.set(a.subrubro, new Map());
+      const byCat = bySub.get(a.subrubro);
+      if (!byCat.has(a.categoria)) byCat.set(a.categoria, []);
+      byCat.get(a.categoria).push(a);
+    }
+
+    return Array.from(bySub, ([subrubro, byCat]) => ({
+      subrubro,
+      categorias: Array.from(byCat, ([categoria, articulos]) => ({ categoria, articulos })),
+    }));
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -73,13 +105,29 @@ export default function TablaArticulos({
           return;
         }
 
-        // ⚠️ pedimos artículos en formato árbol
-        const { tree = [] } = await BusinessesAPI.articlesTree(bizId);
-        if (!cancel && myId === loadReqId.current) {
-          setCategorias(tree);
-          onCategoriasLoaded?.(tree);
+        // 1) intento principal
+        try {
+          const { tree = [] } = await BusinessesAPI.articlesTree(bizId);
+          if (!cancel && myId === loadReqId.current) {
+            setCategorias(tree);
+            onCategoriasLoaded?.(tree);
+          }
+        } catch (e) {
+          // 2) fallback: plano → tree
+          try {
+            const { items = [] } = await BusinessesAPI.articlesFromDB(bizId);
+            const tree = buildTreeFromFlat(items);
+            if (!cancel && myId === loadReqId.current) {
+              setCategorias(tree);
+              onCategoriasLoaded?.(tree);
+            }
+            openSnack('Catálogo cargado por fallback', 'info');
+          } catch (e2) {
+            throw e2; // si también falla, mostramos error general abajo
+          }
         }
 
+        // TODO + exclusiones (como ya lo tenías)
         try {
           const todo = await ensureTodo();
           if (todo?.id && !cancel && myId === loadReqId.current) {
@@ -105,8 +153,7 @@ export default function TablaArticulos({
     })();
 
     return () => { cancel = true; };
-  // 👇 añadimos reloadTick a dependencias (además de lo que ya tenías)
-  }, [activeBizId, reloadKey, reloadTick, onCategoriasLoaded]);
+  }, [activeBizId, reloadKey, reloadTick]);
 
   // Derivados
   const allArticulos = useMemo(
@@ -194,12 +241,12 @@ export default function TablaArticulos({
   // Buscador
   const articulosFiltrados = filtroBusqueda
     ? articulosAMostrar.filter(
-        (a) =>
-          (a.nombre || '')
-            .toLowerCase()
-            .includes(String(filtroBusqueda).toLowerCase()) ||
-          String(getId(a)).includes(String(filtroBusqueda).trim())
-      )
+      (a) =>
+        (a.nombre || '')
+          .toLowerCase()
+          .includes(String(filtroBusqueda).toLowerCase()) ||
+        String(getId(a)).includes(String(filtroBusqueda).trim())
+    )
     : articulosAMostrar;
 
   // Reportar ids visibles
@@ -350,7 +397,7 @@ export default function TablaArticulos({
                                 agrupacionSeleccionada={agrupacionSeleccionada}
                                 todoGroupId={todoGroupId}
                                 articuloIds={sr.arts.map(getId)}
-                                onRefetch={refetchLocal}     
+                                onRefetch={refetchLocal}
                                 notify={(m, t = 'success') => openSnack(m, t)}
                               />
                             </div>
@@ -405,7 +452,7 @@ export default function TablaArticulos({
                                   agrupacionSeleccionada={agrupacionSeleccionada}
                                   todoGroupId={todoGroupId}
                                   isTodo={isTodo}
-                                  onRefetch={refetchLocal}    
+                                  onRefetch={refetchLocal}
                                   notify={(m, t) => openSnack(m, t)}
                                 />
                               </td>
