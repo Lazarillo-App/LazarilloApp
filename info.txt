@@ -86,3 +86,5 @@ FROM public.maxi_articles
 WHERE business_id = :biz
 GROUP BY subrubro, categoria
 ORDER BY subrubro, categoria;
+
+

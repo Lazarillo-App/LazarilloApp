@@ -10,7 +10,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, C
 import { format } from 'date-fns';
 
 export default function VentasMiniGraficoModal({
-  open, onClose, articuloNombre, rango, data, // data = { total, items: [{label, qty}] }
+  open, onClose, articuloNombre, rango, data, 
   groupBy, onChangeGroupBy, loading
 }) {
   const chartData = useMemo(() => {
@@ -19,7 +19,6 @@ export default function VentasMiniGraficoModal({
       label: it.label,
       qty: Number(it.qty || 0)
     }));
-    // Línea acumulada (opcional)
     let acc = 0;
     return arr.map(d => ({ ...d, acc: (acc += d.qty) }));
   }, [data]);

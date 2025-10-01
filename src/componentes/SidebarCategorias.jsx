@@ -1,5 +1,5 @@
 // src/componentes/SidebarCategorias.jsx
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import '../css/SidebarCategorias.css';
 
@@ -18,6 +18,10 @@ export default function SidebarCategorias({
   setFiltroBusqueda,
   setBusqueda,
   categoriaSeleccionada,
+
+  /* ✅ NUEVO (opcional): mapa { [agrupacionId:number]: countSinAgrup } para mostrar
+     el conteo real de "Sin Agrupación" aunque g.articulos esté vacío (TODO). */
+  todoCountOverride = {}, // ej: { [todoGroupId]: 123 }
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const agrupacionesArray = Array.isArray(agrupaciones) ? agrupaciones : [];
@@ -52,6 +56,18 @@ export default function SidebarCategorias({
     return pruned;
   }, [categoriasSafe, activeIds]);
 
+  // ✅ Si la categoría seleccionada quedó sin artículos visibles luego de un refetch, la des-seleccionamos
+  useEffect(() => {
+    if (!categoriaSeleccionada) return;
+    const stillVisible = categoriasParaMostrar.some(
+      sub => sub?.subrubro === categoriaSeleccionada?.subrubro
+          && (sub?.categorias || []).some(c => (c?.articulos?.length || 0) > 0)
+    );
+    if (!stillVisible) {
+      setCategoriaSeleccionada?.(null);
+    }
+  }, [categoriasParaMostrar, categoriaSeleccionada, setCategoriaSeleccionada]);
+
   const handleAgrupacionChange = (event) => {
     const value = event.target.value; // '' | id
     if (value === '') {
@@ -80,7 +96,15 @@ export default function SidebarCategorias({
   const countArticulosSub = (sub) =>
     (sub?.categorias || []).reduce((acc, c) => acc + (c?.articulos?.length || 0), 0);
 
-  const countArticulosAgrup = (g) => Array.isArray(g?.articulos) ? g.articulos.length : 0;
+  // ✅ Usa override si corresponde (ej. para “Sin Agrupación”)
+  const countArticulosAgrup = (g) => {
+    const id = Number(g?.id);
+    const override = todoCountOverride && typeof todoCountOverride[id] === 'number'
+      ? Number(todoCountOverride[id])
+      : null;
+    if (override != null && !Number.isNaN(override)) return override;
+    return Array.isArray(g?.articulos) ? g.articulos.length : 0;
+  };
 
   return (
     <div className="sidebar">

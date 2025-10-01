@@ -8,7 +8,7 @@ import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import { httpBiz } from '../servicios/apiBusinesses';
-import GestorAgrupacionesModal from './GestorAgrupacionesModal';
+import ModalSeleccionArticulos from './ModalSeleccionArticulos';
 
 const getNum = (v) => Number(v ?? 0);
 
@@ -25,7 +25,9 @@ export default function SubrubroAccionesMenu({
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
-  const [openGestor, setOpenGestor] = useState(false);
+
+  // nuevo: modal reutilizable para crear y mover
+  const [openCrearAgr, setOpenCrearAgr] = useState(false);
 
   const open = Boolean(anchorEl);
   const handleOpen = (e) => setAnchorEl(e.currentTarget);
@@ -55,19 +57,15 @@ export default function SubrubroAccionesMenu({
     setIsMoving(true);
     try {
       if (fromId) {
-        // intento con endpoint masivo
         try {
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
         } catch {
-          // fallback
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
-          // quitar del origen uno por uno
           for (const id of ids) {
             try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {}
           }
         }
       } else {
-        // desde Sin agrupación
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
       }
 
@@ -119,12 +117,13 @@ export default function SubrubroAccionesMenu({
           </MenuItem>
         )}
 
-        <MenuItem onClick={() => { handleClose(); setOpenGestor(true); }}>
+        <MenuItem onClick={() => { handleClose(); setOpenCrearAgr(true); }}>
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Crear agrupación con este subrubro…</ListItemText>
         </MenuItem>
       </Menu>
 
+      {/* Diálogo "Mover a" existente */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {articuloIds.length} artículo(s) a…</DialogTitle>
         <DialogContent>
@@ -151,12 +150,22 @@ export default function SubrubroAccionesMenu({
         </DialogActions>
       </Dialog>
 
-      <GestorAgrupacionesModal
-        open={openGestor}
-        onClose={() => setOpenGestor(false)}
+      {/* Modal reutilizable: crear agrupación y mover */}
+      <ModalSeleccionArticulos
+        open={openCrearAgr}
+        onClose={() => setOpenCrearAgr(false)}
+        title="Crear agrupación y mover subrubro"
         preselectIds={articuloIds.map(getNum)}
+        assignedIds={[]}  // permitimos selección completa; el backend hace el traspaso
         notify={notify}
-        onRefetch={onRefetch}
+        onSubmit={async ({ nombre, ids }) => {
+          await httpBiz('/agrupaciones/create-or-move', {
+            method: 'POST',
+            body: { nombre, ids }
+          });
+          notify?.(`“${nombre}” lista. Movidos ${ids.length} artículo(s).`, 'success');
+          onRefetch?.();
+        }}
       />
     </>
   );

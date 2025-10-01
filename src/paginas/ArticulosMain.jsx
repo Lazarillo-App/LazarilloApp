@@ -14,8 +14,8 @@ export default function ArticulosMain(props) {
   const { syncVersion = 0 } = props;
 
   // Estado compartido
-  const [categorias, setCategorias] = useState([]); // subrubro → categorias → articulos
-  const [agrupaciones] = useState(props.agrupaciones || []);
+  const [categorias, setCategorias] = useState([]);
+  const [agrupaciones, setAgrupaciones] = useState(props.agrupaciones || []); // 👈 ahora reactivo a cambios
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
@@ -25,9 +25,14 @@ export default function ArticulosMain(props) {
   // Para forzar reload de TablaArticulos tras sync
   const [reloadKey, setReloadKey] = useState(0);
 
+  // ✅ cuando cambian las agrupaciones que vienen del padre, actualizamos estado local
+  useEffect(() => {
+    setAgrupaciones(props.agrupaciones || []);
+  }, [props.agrupaciones]);
+
   useEffect(() => {
     const onBizSwitched = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
-    const onBizSynced = () => setReloadKey((k) => k + 1); // fuerza refetch de la tabla
+    const onBizSynced = () => setReloadKey((k) => k + 1);
     onBizSwitched();
     window.addEventListener('business:switched', onBizSwitched);
     window.addEventListener('business:synced', onBizSynced);
@@ -36,7 +41,6 @@ export default function ArticulosMain(props) {
       window.removeEventListener('business:synced', onBizSynced);
     };
   }, []);
-
 
   // Reset mínimos al cambiar agrupación
   useEffect(() => {
@@ -131,9 +135,12 @@ export default function ArticulosMain(props) {
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
+  /* ✅ Recibimos info de la Tabla para mostrar contador real en “Sin Agrupación” */
+  const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Header: SIN el botón de sincronizar */}
+      {/* Header */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
         <h2 style={{ margin: 0 }}>Gestión de ventas</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -151,7 +158,7 @@ export default function ArticulosMain(props) {
         </div>
       </div>
 
-      {/* Body: Sidebar + Tabla (igual) */}
+      {/* Body: Sidebar + Tabla */}
       <div style={{
         display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
         minHeight: '60vh', borderRadius: 12, overflow: 'hidden',
@@ -171,6 +178,10 @@ export default function ArticulosMain(props) {
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             setFiltroBusqueda={setFiltroBusqueda}
             setBusqueda={setFiltroBusqueda}
+            // 👇 pasa conteo real de “Sin Agrupación” (si lo conocemos)
+            todoCountOverride={
+              todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
+            }
           />
         </div>
 
@@ -189,9 +200,10 @@ export default function ArticulosMain(props) {
             ventasLoading={ventasLoading}
             onCategoriasLoaded={(tree) => setCategorias(tree)}
             onIdsVisibleChange={setActiveIds}
-            key={(activeBizId || 'no-biz') + '|' + reloadKey} // ← re-mount tras sync
+            key={(activeBizId || 'no-biz') + '|' + reloadKey}
             activeBizId={activeBizId}
             reloadKey={reloadKey}
+            onTodoInfo={setTodoInfo}
           />
         </div>
       </div>

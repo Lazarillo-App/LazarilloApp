@@ -84,7 +84,6 @@ export default function Perfil() {
   };
 
   const onSaved = (savedOrPartial) => {
-    // merge defensivo por si backend devuelve parcial
     const merged = { ...editing, ...savedOrPartial };
     if (editing?.props?.branding && savedOrPartial?.props?.branding) {
       merged.props = { ...editing.props, ...savedOrPartial.props };

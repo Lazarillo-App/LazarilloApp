@@ -19,7 +19,6 @@ export default function Register() {
     try {
       await AuthAPI.register({ name: name.trim(), email: email.trim(), password });
       setOk(true);
-      // si el back devuelve token, ya quedás logueada; mandamos al perfil
       setTimeout(() => nav('/perfil', { replace: true }), 600);
     } catch (e) {
       setErr(e.message || 'No se pudo registrar');

@@ -7,7 +7,6 @@ import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import '../css/TablaArticulos.css';
 
-/* ------------ helpers ------------ */
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const num = (v) => Number(v ?? 0);
 const fmt = (v, d = 0) =>
@@ -23,7 +22,6 @@ const esTodoGroup = (g, todoGroupId) => {
 const tipoDesdeRubro = (rubro = '') =>
   rubro.toUpperCase().includes('BEBIDA') ? 'Bebida' : 'Comida';
 
-/* ------------ componente ------------ */
 export default function TablaArticulos({
   filtroBusqueda = '',
   agrupacionSeleccionada,
@@ -34,15 +32,15 @@ export default function TablaArticulos({
   fechaHastaProp,
   ventasPorArticulo,
   ventasLoading,
-  onCategoriasLoaded, // 🔗 devuelve categorias al padre (para Sidebar)
-  onIdsVisibleChange, // 🔗 reporta ids visibles a Sidebar
+  onCategoriasLoaded, 
+  onIdsVisibleChange, 
   activeBizId,
-  reloadKey = 0,       // 👈 NUEVO: cambia tras sincronizar para forzar refetch
+  reloadKey = 0,     
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
-  const [categorias, setCategorias] = useState([]); // ahora viene del backend como tree
+  const [categorias, setCategorias] = useState([]); 
   const [todoGroupId, setTodoGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
   const [objetivos, setObjetivos] = useState({});
@@ -50,6 +48,14 @@ export default function TablaArticulos({
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const openSnack = (msg, type = 'success') => setSnack({ open: true, msg, type });
   const loadReqId = useRef(0);
+
+  const [reloadTick, setReloadTick] = useState(0);
+  const refetchLocal = async () => {
+    // 1) que el padre refresque agrupaciones (para que cambie la prop)
+    try { await refetchAgrupaciones?.(); } catch {}
+    // 2) y además forzamos a esta tabla a reconsultar su data base (tree)
+    setReloadTick(t => t + 1);
+  };
 
   useEffect(() => {
     let cancel = false;
@@ -98,11 +104,9 @@ export default function TablaArticulos({
       }
     })();
 
-    return () => {
-      cancel = true;
-    };
-  // 👇 agrego reloadKey a dependencias para re-consultar tras sync
-  }, [activeBizId, reloadKey]);
+    return () => { cancel = true; };
+  // 👇 añadimos reloadTick a dependencias (además de lo que ya tenías)
+  }, [activeBizId, reloadKey, reloadTick, onCategoriasLoaded]);
 
   // Derivados
   const allArticulos = useMemo(
@@ -112,6 +116,7 @@ export default function TablaArticulos({
       ),
     [categorias]
   );
+
   const baseById = useMemo(
     () => new Map(allArticulos.map((a) => [getId(a), a])),
     [allArticulos]
@@ -274,7 +279,7 @@ export default function TablaArticulos({
   const calcularCostoPct = (a) => {
     const p = num(a.precio), c = num(a.costo);
     return p > 0 ? ((c / p) * 100).toFixed(2) : 0;
-    };
+  };
   const calcularSugerido = (a) => {
     const o = num(objetivos[getId(a)]) || 0;
     const c = num(a.costo);
@@ -345,7 +350,7 @@ export default function TablaArticulos({
                                 agrupacionSeleccionada={agrupacionSeleccionada}
                                 todoGroupId={todoGroupId}
                                 articuloIds={sr.arts.map(getId)}
-                                onRefetch={refetchAgrupaciones}
+                                onRefetch={refetchLocal}     
                                 notify={(m, t = 'success') => openSnack(m, t)}
                               />
                             </div>
@@ -400,7 +405,7 @@ export default function TablaArticulos({
                                   agrupacionSeleccionada={agrupacionSeleccionada}
                                   todoGroupId={todoGroupId}
                                   isTodo={isTodo}
-                                  onRefetch={refetchAgrupaciones}
+                                  onRefetch={refetchLocal}    
                                   notify={(m, t) => openSnack(m, t)}
                                 />
                               </td>

@@ -18,7 +18,6 @@ export default function Login() {
     setBusy(true);
     try {
       await AuthAPI.login(email.trim(), password);
-      // a donde venía o al perfil
       const to = loc.state?.from || '/perfil';
       nav(to, { replace: true });
     } catch (e) {
