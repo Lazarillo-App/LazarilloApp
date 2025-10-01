@@ -14,13 +14,13 @@ const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArti
 function buildTreeFromDB(items = []) {
   const flat = items.map(row => {
     const raw = row?.raw || {};
-    const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+    const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
     return {
       id,
-      nombre   : String(row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`).trim(),
-      categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría').trim() || 'Sin categoría',
-      subrubro : String(row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro').trim()  || 'Sin subrubro',
-      precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+      nombre: String(row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`).trim(),
+      categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría').trim() || 'Sin categoría',
+      subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro').trim() || 'Sin subrubro',
+      precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
     };
   }).filter(a => Number.isFinite(a.id));
 
@@ -46,6 +46,7 @@ export default function GestorAgrupacionesModal({
   onRefetch,
 }) {
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [todosArticulos, setTodosArticulos] = useState([]);
   const [search, setSearch] = useState('');
   const [seleccionIds, setSeleccionIds] = useState(preselectIds.map(Number));
@@ -149,33 +150,26 @@ export default function GestorAgrupacionesModal({
     );
   };
 
-  /* ===================== Crear agrupación ===================== */
+  /* ===================== Crear o MOVER agrupación ===================== */
   const crearAgrupacion = async () => {
-    if (!nombreAgr.trim() || seleccionIds.length === 0) return;
+    const nombre = nombreAgr.trim();
+    if (!nombre || seleccionIds.length === 0 || submitting) return;
     try {
-      const articulos = seleccionIds.map(id => {
-        const a = maestro.get(id) || {};
-        return {
-          id,
-          nombre: a.nombre || '',
-          categoria: a.categoria || 'Sin categoría',
-          subrubro: a.subrubro || 'Sin subrubro',
-          precio: a.precio ?? 0
-        };
-      });
-
-      // Scoped por negocio
-      await httpBiz('/agrupaciones', {
+      setSubmitting(true);
+      // Ligero: mandamos solo IDs (el backend ya hace merge/move)
+      await httpBiz('/agrupaciones/create-or-move', {
         method: 'POST',
-        body: { nombre: nombreAgr.trim(), articulos }
+        body: { nombre: nombreAgr.trim(), ids: seleccionIds }
       });
-
-      notify?.(`Agrupación “${nombreAgr.trim()}” creada con ${seleccionIds.length} artículo(s).`, 'success');
-      onRefetch?.();
-      onClose?.();
+      notify?.(`“${nombre}” lista. Se movieron ${seleccionIds.length} artículo(s).`, 'success');
+      onRefetch?.();   // refetch de agrupaciones  tabla
+      onClose?.();     // cerramos modal
     } catch (e) {
-      console.error('crearAgrupacion error', e);
-      notify?.('No se pudo crear la agrupación', 'error');
+      console.error('create-or-move error', e);
+      const msg = e?.response?.data?.error || e.message || 'No se pudo crear/mover';
+      notify?.(msg, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -274,9 +268,10 @@ export default function GestorAgrupacionesModal({
         <Button
           onClick={crearAgrupacion}
           variant="contained"
-          disabled={!nombreAgr.trim() || seleccionIds.length === 0}
+          disabled={!nombreAgr.trim() || seleccionIds.length === 0 || submitting}
         >
           Crear agrupación
+          {submitting ? 'Procesando…' : 'Crear agrupación'}
         </Button>
       </DialogActions>
     </Dialog>

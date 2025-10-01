@@ -50,9 +50,19 @@ export async function quitarArticulo(id, articuloId, overrideBizId) {
   }, overrideBizId);
 }
 
-// Búsqueda simple (si backend soporta ?q=)
+// Búsqueda simple
 export async function buscarAgrupaciones(q, overrideBizId) {
   const qs = new URLSearchParams({ q }).toString();
   const data = await httpBiz(`/agrupaciones?${qs}`, {}, overrideBizId);
   return Array.isArray(data) ? data : (data?.data || []);
 }
+
+// ➕ Crea (si no existe) y MUEVE artículos a la agrupación destino por nombre.
+// Body admite { nombre, articulos:[{id, precio}], o ids:[number] }
+export async function createOrMoveAgrupacion(payload, overrideBizId) {
+  return await httpBiz('/agrupaciones/create-or-move', {
+    method: 'POST',
+    body: payload,
+  }, overrideBizId);
+}
+

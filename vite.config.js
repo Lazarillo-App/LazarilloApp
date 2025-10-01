@@ -1,17 +1,13 @@
 // vite.config.js
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: '/LazarilloApp/',   // ← nombre EXACTO del repo
   plugins: [react()],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-         base: 'Lazarillo-App',
-        // rewrite: p => p, // si tu back ya tiene /api
-      },
-    },
-  },
-});
+      '/api': { target: 'http://localhost:4000', changeOrigin: true }
+    }
+  }
+})
