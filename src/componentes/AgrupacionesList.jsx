@@ -101,20 +101,20 @@ const AgrupacionesList = ({
   };
 
   // ✅ versión segura y memoizada
-const isArticuloBloqueadoForAppend = React.useMemo(() => {
-  const gid = appendForGroup?.id;
-  if (!gid) return () => false;
+  const isArticuloBloqueadoForAppend = React.useMemo(() => {
+    const gid = appendForGroup?.id;
+    if (!gid) return () => false;
 
-  const assigned = new Set();
-  (agrupaciones || [])
-    .filter(g => g && g.id != null)                                
-    .filter(g => String(g.id) !== String(gid))                   
-    .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')    
-    .forEach(g => (g.articulos || [])
-      .forEach(a => a && assigned.add(String(a.id))));          
+    const assigned = new Set();
+    (agrupaciones || [])
+      .filter(g => g && g.id != null)
+      .filter(g => String(g.id) !== String(gid))
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => (g.articulos || [])
+        .forEach(a => a && assigned.add(String(a.id))));
 
-  return (art) => assigned.has(String(art?.id));
-}, [agrupaciones, appendForGroup?.id]);
+    return (art) => assigned.has(String(art?.id));
+  }, [agrupaciones, appendForGroup?.id]);
 
 
   return (
@@ -125,9 +125,9 @@ const isArticuloBloqueadoForAppend = React.useMemo(() => {
           onClose={() => setAppendForGroup(null)}
           mode="append"
           groupId={appendForGroup.id}
-          groupName={appendForGroup.nombre}
-          todosArticulos={todosArticulos}
-          loading={loading}
+          groupName={appendForGroup.nombre || ''}
+          todosArticulos={todosArticulos || []}
+          loading={!!loading}
           isArticuloBloqueado={isArticuloBloqueadoForAppend}
           onAppended={async () => {
             setAppendForGroup(null);
