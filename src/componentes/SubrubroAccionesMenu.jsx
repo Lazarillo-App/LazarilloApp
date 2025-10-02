@@ -41,6 +41,7 @@ const buildTree = (flatList = []) => {
 };
 
 export default function SubrubroAccionesMenu({
+  articulo,
   isTodo = false,
   agrupaciones = [],
   agrupacionSeleccionada,
@@ -223,6 +224,7 @@ export default function SubrubroAccionesMenu({
 
       {/* Modal: crear agrupación */}
       <AgrupacionCreateModal
+      initialSelectedIds={[Number(articulo.id)]}
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
         mode="create"

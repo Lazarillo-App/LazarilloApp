@@ -220,6 +220,7 @@ export default function ArticuloAccionesMenu({
 
       {/* Modal: crear agrupación */}
       <AgrupacionCreateModal
+      initialSelectedIds={[Number(articulo.id)]}
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
         mode="create"

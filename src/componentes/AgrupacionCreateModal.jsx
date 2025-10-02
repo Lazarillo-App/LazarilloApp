@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Modal, Box, Typography, Checkbox, Accordion, AccordionSummary,
   AccordionDetails, Button, TextField, Snackbar, Alert
@@ -49,9 +49,23 @@ export default function AgrupacionCreateModal({
   onAppended,
   saveButtonLabel
 }) {
-  const [rubro, setRubro] = useState("");
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
+  useEffect(() => {
+    if (Array.isArray(initialSelectedIds) && initialSelectedIds.length) {
+      // tomamos del árbol los artículos cuyo id está en initialSelectedIds
+      const byId = new Map();
+      (props.todosArticulos || []).forEach(cat =>
+        cat.subrubros.forEach(sr =>
+          sr.articulos.forEach(a => byId.set(Number(a.id), a))
+        )
+      );
+      setArticulosSeleccionados(
+        initialSelectedIds.map(Number).map(id => byId.get(id)).filter(Boolean)
+      );
+    }
+  }, [initialSelectedIds, props.todosArticulos]);
 
+  const [rubro, setRubro] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
   const [snackbarTipo, setSnackbarTipo] = useState("success");
@@ -119,16 +133,10 @@ export default function AgrupacionCreateModal({
       return;
     }
     try {
-      await httpBiz(`/agrupaciones/${groupId}/add-items`, {
-        method: "POST",
+      await httpBiz(`/agrupaciones/${groupId}/articulos`, {
+        method: "PUT",
         body: {
-          items: articulosSeleccionados.map((art) => ({
-            id: art.id,
-            nombre: art.nombre || "",
-            categoria: art.categoria || "Sin categoría",
-            subrubro: art.subrubro || "Sin subrubro",
-            precio: art.precio ?? 0,
-          })),
+          ids: articulosSeleccionados.map(a => Number(a.id)),
         },
       });
       const n = articulosSeleccionados.length;
@@ -257,13 +265,13 @@ export default function AgrupacionCreateModal({
                                     key={articulo.id}
                                     display="flex"
                                     alignItems="center"
-                                    sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1 }}
+                                    sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1, pointerEvents: bloqueado ? 'none' : 'auto' }}
                                   >
                                     <Checkbox
                                       checked={seleccionado}
                                       onChange={() => handleSelectArticulo(articulo)}
                                       sx={{ mr: 1 }}
-                                      disabled={bloqueado}
+                                     disabled={bloqueado}
                                     />
                                     <Typography>
                                       {articulo.nombre} {bloqueado && "(ya asignado)"}

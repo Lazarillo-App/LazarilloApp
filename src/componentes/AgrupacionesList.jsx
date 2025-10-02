@@ -100,30 +100,32 @@ const AgrupacionesList = ({
     onActualizar?.();
   };
 
-  // === bloqueo de artículos para APPEND ===
-  // Queremos bloquear los artículos ya asignados a CUALQUIER grupo excepto TODO y (cuando se agrega) excepto el grupo actual.
-  // Esta función se re-crea por grupo al abrir modal.
-  const makeIsArticuloBloqueadoForAppend = (currentGroupId) => {
+  // memoizamos la función de bloqueo según agrupaciones y el id actual del modal
+  const isArticuloBloqueadoForAppend = React.useMemo(() => {
+    if (!appendForGroup?.id) return () => false;
     const assigned = new Set();
     (agrupaciones || [])
-      .filter(g => g.id !== currentGroupId && (g?.nombre || "").toUpperCase() !== "TODO")
+      .filter(g =>
+        String(g.id) !== String(appendForGroup.id) &&
+        (g?.nombre || '').toUpperCase() !== 'TODO'
+      )
       .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
     return (art) => assigned.has(String(art.id));
-  };
+  }, [agrupaciones, appendForGroup?.id]);
+
 
   return (
     <>
-      {/* Modal de agregar artículos a un grupo existente */}
       {appendForGroup && (
         <AgrupacionCreateModal
-          open={!!appendForGroup}
+          open
           onClose={() => setAppendForGroup(null)}
           mode="append"
           groupId={appendForGroup.id}
           groupName={appendForGroup.nombre}
           todosArticulos={todosArticulos}
           loading={loading}
-          isArticuloBloqueado={makeIsArticuloBloqueadoForAppend(appendForGroup.id)}
+          isArticuloBloqueado={isArticuloBloqueadoForAppend}
           onAppended={async () => {
             setAppendForGroup(null);
             await onActualizar?.();
@@ -131,7 +133,6 @@ const AgrupacionesList = ({
           saveButtonLabel="Agregar a la agrupación"
         />
       )}
-
       <Stack spacing={2} sx={{ mt: 3 }}>
         {groupsSorted.map((g) => {
           const isTodo = g.id === todoGroupId;
