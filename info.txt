@@ -88,3 +88,4 @@ GROUP BY subrubro, categoria
 ORDER BY subrubro, categoria;
 
 
+

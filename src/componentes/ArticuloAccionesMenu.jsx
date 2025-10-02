@@ -1,3 +1,4 @@
+// src/componentes/ArticuloAccionesMenu.jsx
 import React, { useMemo, useState } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -7,8 +8,9 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
+
 import { httpBiz } from '../servicios/apiBusinesses';
-import ModalSeleccionArticulos from './ModalSeleccionArticulos';
+import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
 
@@ -19,14 +21,18 @@ export default function ArticuloAccionesMenu({
   todoGroupId,
   isTodo = false,
   onRefetch,
-  notify
+  onAfterMutation,
+  notify,
+
+  // 🔹 NUEVOS: para usar el modal reutilizable
+  todosArticulos = [],
+  loading = false,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
 
-  // nuevo: modal reutilizable para crear y mover
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
 
   const open = Boolean(anchorEl);
@@ -35,12 +41,12 @@ export default function ArticuloAccionesMenu({
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
+  // ✅ destinos posibles (incluye TODO si existe; solo excluye el grupo actual)
   const gruposDestino = useMemo(
     () => (agrupaciones || [])
       .filter(g => g?.id)
-      .filter(g => Number(g.id) !== currentGroupId)
-      .filter(g => Number(g.id) !== Number(todoGroupId)),
-    [agrupaciones, currentGroupId, todoGroupId]
+      .filter(g => Number(g.id) !== currentGroupId),
+    [agrupaciones, currentGroupId]
   );
 
   const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
@@ -54,23 +60,28 @@ export default function ArticuloAccionesMenu({
 
     if (fromId && fromId === toId) {
       notify?.('El artículo ya está en esa agrupación', 'info');
+      onAfterMutation?.([idNum]);
       return closeMover();
     }
 
     setIsMoving(true);
     try {
       if (fromId) {
+        // intento optimizado
         try {
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids:[idNum] } });
         } catch {
+          // fallback
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
           try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch {}
         }
       } else {
+        // desde TODO/sin agrupación
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
       }
 
       notify?.(`Artículo #${idNum} movido`, 'success');
+      onAfterMutation?.([idNum]); // optimista
       onRefetch?.();
     } catch (e) {
       console.error('MOVER_ERROR', e);
@@ -83,9 +94,11 @@ export default function ArticuloAccionesMenu({
 
   async function quitarDeActual() {
     if (isTodo || !currentGroupId) return;
+    const idNum = getNum(articulo.id);
     try {
-      await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${getNum(articulo.id)}`, { method: 'DELETE' });
+      await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${idNum}`, { method: 'DELETE' });
       notify?.(`Artículo #${articulo.id} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');
+      onAfterMutation?.([idNum]); // optimista
       onRefetch?.();
     } catch (e) {
       console.error(e);
@@ -94,6 +107,15 @@ export default function ArticuloAccionesMenu({
       handleClose();
     }
   }
+
+  // 🔒 Bloqueo para el modal "crear": artículos ya asignados a cualquier agrupación ≠ TODO
+  const isArticuloBloqueadoCreate = useMemo(() => {
+    const assigned = new Set();
+    (agrupaciones || [])
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
+    return (art) => assigned.has(String(art.id));
+  }, [agrupaciones]);
 
   return (
     <>
@@ -120,7 +142,7 @@ export default function ArticuloAccionesMenu({
         </MenuItem>
       </Menu>
 
-      {/* Diálogo "Mover a" existente */}
+      {/* Diálogo "Mover a" */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>
         <DialogContent>
@@ -147,22 +169,21 @@ export default function ArticuloAccionesMenu({
         </DialogActions>
       </Dialog>
 
-      {/* Modal reutilizable: crear agrupación y mover */}
-      <ModalSeleccionArticulos
+      {/* Modal: crear agrupación (reutilizable) */}
+      <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
-        title="Crear agrupación y mover"
-        preselectIds={[getNum(articulo.id)]}
-        assignedIds={[]}  // permitimos seleccionar aunque esté en otra; el backend hará el traspaso
-        notify={notify}
-        onSubmit={async ({ nombre, ids }) => {
-          await httpBiz('/agrupaciones/create-or-move', {
-            method: 'POST',
-            body: { nombre, ids }
-          });
-          notify?.(`“${nombre}” lista. Movidos ${ids.length} artículo(s).`, 'success');
+        mode="create"
+        todosArticulos={todosArticulos}
+        loading={loading}
+        isArticuloBloqueado={isArticuloBloqueadoCreate}
+        onCreated={async (nombreCreado) => {
+          // ✅ La creación ya guarda los artículos elegidos en la nueva agrupación.
+          // Si el usuario eligió el artículo actual, ya quedó movido.
+          notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
           onRefetch?.();
         }}
+        // (Opcional) saveButtonLabel="Crear y mover"
       />
     </>
   );

@@ -38,13 +38,7 @@ function buildTreeFromDB(items = []) {
   }));
 }
 
-export default function GestorAgrupacionesModal({
-  open,
-  onClose,
-  preselectIds = [],
-  notify,
-  onRefetch,
-}) {
+export default function GestorAgrupacionesModal({ open, onClose, preselectIds = [], notify, onRefetch, onAfterCreate }) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [todosArticulos, setTodosArticulos] = useState([]);
@@ -162,6 +156,7 @@ export default function GestorAgrupacionesModal({
         body: { nombre: nombreAgr.trim(), ids: seleccionIds }
       });
       notify?.(`“${nombre}” lista. Se movieron ${seleccionIds.length} artículo(s).`, 'success');
+      onAfterCreate?.(seleccionIds); 
       onRefetch?.();   // refetch de agrupaciones  tabla
       onClose?.();     // cerramos modal
     } catch (e) {

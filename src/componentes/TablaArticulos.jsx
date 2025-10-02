@@ -56,6 +56,19 @@ export default function TablaArticulos({
     setReloadTick((t) => t + 1); // re-consulta articlesTree
   };
 
+  const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
+  useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
+
+  const afterMutation = (removedIds = []) => {
+    if (!agrupSelView?.id) { refetchLocal(); return; }
+    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
+    if (isTodo) { refetchLocal(); return; }
+    const rem = new Set(removedIds.map(Number));
+    const actual = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
+    const next = actual.filter(a => !rem.has(getId(a)));
+    setAgrupSelView({ ...agrupSelView, articulos: next });
+    refetchLocal();
+  };
 
   // helper local para armar tree desde items planos
   function buildTreeFromFlat(items = []) {
@@ -191,7 +204,7 @@ export default function TablaArticulos({
 
   // Filtro principal
   let articulosAMostrar = [];
-  if (categoriaSeleccionada && agrupacionSeleccionada) {
+  if (categoriaSeleccionada && agrupSelView) {
     const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
       ? idsSinAgrup
       : new Set((agrupacionSeleccionada.articulos || []).map(getId));
@@ -202,11 +215,9 @@ export default function TablaArticulos({
     articulosAMostrar = (categoriaSeleccionada.categorias || []).flatMap(
       (c) => c.articulos || []
     );
-  } else if (agrupacionSeleccionada) {
-    const esTodo = esTodoGroup(agrupacionSeleccionada, todoGroupId);
-    const arr = Array.isArray(agrupacionSeleccionada.articulos)
-      ? agrupacionSeleccionada.articulos
-      : [];
+  } else if (agrupSelView) {
+    const esTodo = esTodoGroup(agrupSelView, todoGroupId);
+    const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
     if (esTodo && arr.length === 0) {
       const enOtras = new Set(
         (agrupaciones || [])
@@ -312,7 +323,7 @@ export default function TablaArticulos({
     return sortDir === 'asc' ? na - nb : nb - na;
   };
 
-  const isTodo = agrupacionSeleccionada ? esTodoGroup(agrupacionSeleccionada, todoGroupId) : false;
+  const isTodo = agrupSelView ? esTodoGroup(agrupSelView, todoGroupId) : false;
 
   // Estilos mínimos
   const thStickyTop = {
@@ -398,6 +409,7 @@ export default function TablaArticulos({
                                 todoGroupId={todoGroupId}
                                 articuloIds={sr.arts.map(getId)}
                                 onRefetch={refetchLocal}
+                                onAfterMutation={afterMutation}
                                 notify={(m, t = 'success') => openSnack(m, t)}
                               />
                             </div>
@@ -453,6 +465,7 @@ export default function TablaArticulos({
                                   todoGroupId={todoGroupId}
                                   isTodo={isTodo}
                                   onRefetch={refetchLocal}
+                                  onAfterMutation={afterMutation}
                                   notify={(m, t) => openSnack(m, t)}
                                 />
                               </td>

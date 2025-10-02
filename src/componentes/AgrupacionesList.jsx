@@ -1,11 +1,10 @@
-// src/componentes/AgrupacionesList.jsx
 import React, { useMemo, useState } from "react";
 import {
-  Box, Card, CardContent, CardActions,
-  Typography, IconButton, TextField, Button,
-  Checkbox, FormControl, InputLabel, Select, MenuItem,
-  Tooltip, Divider, Stack
+  Box, Card, CardContent, CardActions, Accordion, AccordionSummary, AccordionDetails,
+  Typography, IconButton, TextField, Button, Checkbox, FormControl, InputLabel,
+  Select, MenuItem, Tooltip, Divider, Stack
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
@@ -17,8 +16,15 @@ import {
   quitarArticulo
 } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
+import AgrupacionCreateModal from "./AgrupacionCreateModal";
 
-const AgrupacionesList = ({ agrupaciones = [], onActualizar, todoGroupId }) => {
+const AgrupacionesList = ({
+  agrupaciones = [],
+  onActualizar,
+  todoGroupId,
+  todosArticulos = [],
+  loading = false
+}) => {
   // edición de nombre por grupo
   const [editing, setEditing] = useState({}); // { [groupId]: true }
   const [nameDraft, setNameDraft] = useState({}); // { [groupId]: 'nuevo nombre' }
@@ -26,6 +32,9 @@ const AgrupacionesList = ({ agrupaciones = [], onActualizar, todoGroupId }) => {
   // selección de artículos por grupo para mover
   const [selectedByGroup, setSelectedByGroup] = useState({}); // { [groupId]: Set<number> }
   const [targetByGroup, setTargetByGroup] = useState({}); // { [groupId]: targetId }
+
+  // modal de "agregar artículos" (append)
+  const [appendForGroup, setAppendForGroup] = useState(null); // { id, nombre } | null
 
   const groupsSorted = useMemo(
     () => [...agrupaciones].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre))),
@@ -87,158 +96,209 @@ const AgrupacionesList = ({ agrupaciones = [], onActualizar, todoGroupId }) => {
       method: "POST",
       body: { toId, ids }
     });
-    // limpiar selección del origen
     setSelectedByGroup((s) => ({ ...s, [fromId]: new Set() }));
     onActualizar?.();
   };
 
+  // === bloqueo de artículos para APPEND ===
+  // Queremos bloquear los artículos ya asignados a CUALQUIER grupo excepto TODO y (cuando se agrega) excepto el grupo actual.
+  // Esta función se re-crea por grupo al abrir modal.
+  const makeIsArticuloBloqueadoForAppend = (currentGroupId) => {
+    const assigned = new Set();
+    (agrupaciones || [])
+      .filter(g => g.id !== currentGroupId && (g?.nombre || "").toUpperCase() !== "TODO")
+      .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
+    return (art) => assigned.has(String(art.id));
+  };
+
   return (
-    <Stack spacing={2} sx={{ mt: 3 }}>
-      {groupsSorted.map((g) => {
-        const isTodo = g.id === todoGroupId;
-        const selected = selectedByGroup[g.id] || new Set();
-        const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
-        const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
-        const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
+    <>
+      {/* Modal de agregar artículos a un grupo existente */}
+      {appendForGroup && (
+        <AgrupacionCreateModal
+          open={!!appendForGroup}
+          onClose={() => setAppendForGroup(null)}
+          mode="append"
+          groupId={appendForGroup.id}
+          groupName={appendForGroup.nombre}
+          todosArticulos={todosArticulos}
+          loading={loading}
+          isArticuloBloqueado={makeIsArticuloBloqueadoForAppend(appendForGroup.id)}
+          onAppended={async () => {
+            setAppendForGroup(null);
+            await onActualizar?.();
+          }}
+          saveButtonLabel="Agregar a la agrupación"
+        />
+      )}
 
-        return (
-          <Card key={g.id} variant="outlined">
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
-                <Box display="flex" alignItems="center" gap={1}>
-                  {!editing[g.id] ? (
-                    <>
-                      <Typography variant="h6" sx={{ mr: 1 }}>
-                        {g.nombre}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        ({articleCount(g)} artículo{articleCount(g) === 1 ? "" : "s"})
-                      </Typography>
-                    </>
-                  ) : (
-                    <TextField
-                      size="small"
-                      value={nameDraft[g.id] ?? ""}
-                      onChange={(e) => setNameDraft((s) => ({ ...s, [g.id]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && saveName(g)}
-                    />
-                  )}
-                </Box>
+      <Stack spacing={2} sx={{ mt: 3 }}>
+        {groupsSorted.map((g) => {
+          const isTodo = g.id === todoGroupId;
+          const selected = selectedByGroup[g.id] || new Set();
+          const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
+          const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
+          const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
-                <Box>
-                  {!editing[g.id] ? (
-                    <>
-                      <Tooltip title={isTodo ? "No se puede renombrar/borrar TODO" : "Renombrar"}>
-                        <span>
-                          <IconButton onClick={() => startEdit(g)} disabled={isTodo}>
-                            <EditIcon />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Tooltip title={isTodo ? "No se puede eliminar TODO" : "Eliminar"}>
-                        <span>
-                          <IconButton color="error" onClick={() => removeGroup(g)} disabled={isTodo}>
-                            <DeleteIcon />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <IconButton color="primary" onClick={() => saveName(g)}>
-                      <SaveIcon />
-                    </IconButton>
-                  )}
-                </Box>
-              </Box>
-
-              <Divider sx={{ my: 1.5 }} />
-
-              {/* Selector de todos en el grupo */}
-              <Box display="flex" alignItems="center" mb={1}>
-                <Checkbox
-                  checked={allChecked}
-                  indeterminate={someChecked}
-                  onChange={() => selectAllInGroup(g)}
-                />
-                <Typography variant="body2">Seleccionar todos</Typography>
-              </Box>
-
-              {/* Lista de artículos del grupo */}
-              <Stack spacing={0.5}>
-                {(g.articulos || []).map((a) => {
-                  const checked = selected.has(Number(a.id));
-                  return (
-                    <Box
-                      key={a.id}
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="space-between"
-                      sx={{ px: 1, py: 0.5, borderRadius: 1, "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" } }}
-                    >
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Checkbox
-                          size="small"
-                          checked={checked}
-                          onChange={() => toggleArticle(g.id, Number(a.id))}
-                        />
-                        <Typography variant="body2">
-                          {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
+          return (
+            <Accordion key={g.id} disableGutters>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2} flexWrap="wrap">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    {!editing[g.id] ? (
+                      <>
+                        <Typography variant="h6" sx={{ mr: 1 }}>
+                          {g.nombre}
                         </Typography>
-                      </Box>
-                      <Tooltip title={isTodo ? "No se quita desde TODO" : "Quitar del grupo"}>
-                        <span>
-                          <Button
-                            size="small"
-                            color="error"
-                            variant="text"
-                            onClick={() => removeOne(g.id, Number(a.id))}
-                            disabled={isTodo}
-                          >
-                            Quitar
-                          </Button>
-                        </span>
-                      </Tooltip>
+                        <Typography variant="body2" color="text.secondary">
+                          ({articleCount(g)} artículo{articleCount(g) === 1 ? "" : "s"})
+                        </Typography>
+                      </>
+                    ) : (
+                      <TextField
+                        size="small"
+                        value={nameDraft[g.id] ?? ""}
+                        onChange={(e) => setNameDraft((s) => ({ ...s, [g.id]: e.target.value }))}
+                        onKeyDown={(e) => e.key === "Enter" && saveName(g)}
+                      />
+                    )}
+                  </Box>
+
+                  <Box>
+                    {!editing[g.id] ? (
+                      <>
+                        <Tooltip title={isTodo ? "No se puede renombrar/borrar TODO" : "Renombrar"}>
+                          <span>
+                            <IconButton onClick={() => startEdit(g)} disabled={isTodo}>
+                              <EditIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title={isTodo ? "No se puede eliminar TODO" : "Eliminar"}>
+                          <span>
+                            <IconButton color="error" onClick={() => removeGroup(g)} disabled={isTodo}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title={isTodo ? "No se agrega en TODO" : "Agregar artículos"}>
+                          <span>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => !isTodo && setAppendForGroup({ id: g.id, nombre: g.nombre })}
+                              disabled={isTodo}
+                              sx={{ ml: 1, textTransform: "none" }}
+                            >
+                              Agregar
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      </>
+                    ) : (
+                      <IconButton color="primary" onClick={() => saveName(g)}>
+                        <SaveIcon />
+                      </IconButton>
+                    )}
+                  </Box>
+                </Box>
+              </AccordionSummary>
+
+              <AccordionDetails>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Divider sx={{ mb: 1.5 }} />
+
+                    {/* Selector de todos en el grupo */}
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <Checkbox
+                        checked={allChecked}
+                        indeterminate={someChecked}
+                        onChange={() => selectAllInGroup(g)}
+                      />
+                      <Typography variant="body2">Seleccionar todos</Typography>
                     </Box>
-                  );
-                })}
-              </Stack>
-            </CardContent>
 
-            {/* Acciones: mover seleccionados */}
-            <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <InputLabel>Mover seleccionados a…</InputLabel>
-                <Select
-                  label="Mover seleccionados a…"
-                  value={targetByGroup[g.id] ?? ""}
-                  onChange={(e) => setTargetByGroup((s) => ({ ...s, [g.id]: e.target.value }))}
-                >
-                  {groupsSorted
-                    .filter((x) => x.id !== g.id)
-                    .map((x) => (
-                      <MenuItem key={x.id} value={x.id}>
-                        {x.nombre}
-                      </MenuItem>
-                    ))}
-                </Select>
-              </FormControl>
+                    {/* Lista de artículos del grupo */}
+                    <Stack spacing={0.5}>
+                      {(g.articulos || []).map((a) => {
+                        const checked = selected.has(Number(a.id));
+                        return (
+                          <Box
+                            key={a.id}
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="space-between"
+                            sx={{ px: 1, py: 0.5, borderRadius: 1, "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" } }}
+                          >
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Checkbox
+                                size="small"
+                                checked={checked}
+                                onChange={() => toggleArticle(g.id, Number(a.id))}
+                              />
+                              <Typography variant="body2">
+                                {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
+                              </Typography>
+                            </Box>
+                            <Tooltip title={isTodo ? "No se quita desde TODO" : "Quitar del grupo"}>
+                              <span>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  variant="text"
+                                  onClick={() => removeOne(g.id, Number(a.id))}
+                                  disabled={isTodo}
+                                >
+                                  Quitar
+                                </Button>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </CardContent>
 
-              <Button
-                size="small"
-                variant="contained"
-                endIcon={<ArrowForwardIcon />}
-                onClick={() => moveSelected(g.id)}
-                disabled={!(selectedByGroup[g.id]?.size) || !Number.isFinite(Number(targetByGroup[g.id]))}
-                sx={{ textTransform: "none" }}
-              >
-                Mover
-              </Button>
-            </CardActions>
-          </Card>
-        );
-      })}
-    </Stack>
+                  {/* Acciones: mover seleccionados */}
+                  <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
+                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                      <InputLabel>Mover seleccionados a…</InputLabel>
+                      <Select
+                        label="Mover seleccionados a…"
+                        value={targetByGroup[g.id] ?? ""}
+                        onChange={(e) => setTargetByGroup((s) => ({ ...s, [g.id]: e.target.value }))}
+                      >
+                        {groupsSorted
+                          .filter((x) => x.id !== g.id)
+                          .map((x) => (
+                            <MenuItem key={x.id} value={x.id}>
+                              {x.nombre}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+
+                    <Button
+                      size="small"
+                      variant="contained"
+                      endIcon={<ArrowForwardIcon />}
+                      onClick={() => moveSelected(g.id)}
+                      disabled={!(selectedByGroup[g.id]?.size) || !Number.isFinite(Number(targetByGroup[g.id]))}
+                      sx={{ textTransform: "none" }}
+                    >
+                      Mover
+                    </Button>
+                  </CardActions>
+                </Card>
+              </AccordionDetails>
+            </Accordion>
+          );
+        })}
+      </Stack>
+    </>
   );
 };
 
 export default AgrupacionesList;
+

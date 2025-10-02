@@ -1,3 +1,4 @@
+// src/componentes/SubrubroAccionesMenu.jsx
 import React, { useMemo, useState } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -7,8 +8,9 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
+
 import { httpBiz } from '../servicios/apiBusinesses';
-import ModalSeleccionArticulos from './ModalSeleccionArticulos';
+import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
 
@@ -17,33 +19,36 @@ export default function SubrubroAccionesMenu({
   agrupaciones = [],
   agrupacionSeleccionada,
   todoGroupId,
-  articuloIds = [],
+  articuloIds = [],          // IDs de los artículos del subrubro
   onRefetch,
-  notify
+  notify,
+  onAfterMutation,           // refresco optimista en la tabla
+
+  // 🔹 NUEVOS: para usar el modal reutilizable
+  todosArticulos = [],
+  loading = false,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
-
-  // nuevo: modal reutilizable para crear y mover
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
 
   const open = Boolean(anchorEl);
-  const handleOpen = (e) => setAnchorEl(e.currentTarget);
+  const handleOpen  = (e) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
+  // ✅ Permitimos mover a TODO: solo excluimos el grupo actual
   const gruposDestino = useMemo(
     () => (agrupaciones || [])
       .filter(g => g?.id)
-      .filter(g => Number(g.id) !== currentGroupId)
-      .filter(g => Number(g.id) !== Number(todoGroupId)),
-    [agrupaciones, currentGroupId, todoGroupId]
+      .filter(g => Number(g.id) !== currentGroupId),
+    [agrupaciones, currentGroupId]
   );
 
-  const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
+  const openMover  = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
   const closeMover = () => setDlgMoverOpen(false);
 
   async function mover() {
@@ -52,7 +57,13 @@ export default function SubrubroAccionesMenu({
     if (!ids.length) return;
 
     const fromId = (!isTodo && currentGroupId) ? Number(currentGroupId) : null;
-    const toId = Number(destId);
+    const toId   = Number(destId);
+
+    if (fromId && fromId === toId) {
+      notify?.('Ya está en esa agrupación', 'info');
+      onAfterMutation?.(ids);
+      return closeMover();
+    }
 
     setIsMoving(true);
     try {
@@ -66,10 +77,12 @@ export default function SubrubroAccionesMenu({
           }
         }
       } else {
+        // desde TODO / sin agrupación
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
       }
 
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
+      onAfterMutation?.(ids);    // ✅ optimista
       onRefetch?.();
     } catch (e) {
       console.error('MOVER_SUBRUBRO_ERROR', e);
@@ -89,6 +102,7 @@ export default function SubrubroAccionesMenu({
         catch {}
       }
       notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
+      onAfterMutation?.(ids);    // ✅ optimista
       onRefetch?.();
     } catch (e) {
       console.error(e);
@@ -97,6 +111,15 @@ export default function SubrubroAccionesMenu({
       handleClose();
     }
   }
+
+  // 🔒 Bloqueo para el modal "crear": artículos ya asignados a cualquier agrupación ≠ TODO
+  const isArticuloBloqueadoCreate = useMemo(() => {
+    const assigned = new Set();
+    (agrupaciones || [])
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
+    return (art) => assigned.has(String(art.id));
+  }, [agrupaciones]);
 
   return (
     <>
@@ -123,7 +146,7 @@ export default function SubrubroAccionesMenu({
         </MenuItem>
       </Menu>
 
-      {/* Diálogo "Mover a" existente */}
+      {/* Diálogo "Mover a" */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {articuloIds.length} artículo(s) a…</DialogTitle>
         <DialogContent>
@@ -149,21 +172,15 @@ export default function SubrubroAccionesMenu({
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Modal reutilizable: crear agrupación y mover */}
-      <ModalSeleccionArticulos
+      <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
-        title="Crear agrupación y mover subrubro"
-        preselectIds={articuloIds.map(getNum)}
-        assignedIds={[]}  // permitimos selección completa; el backend hace el traspaso
-        notify={notify}
-        onSubmit={async ({ nombre, ids }) => {
-          await httpBiz('/agrupaciones/create-or-move', {
-            method: 'POST',
-            body: { nombre, ids }
-          });
-          notify?.(`“${nombre}” lista. Movidos ${ids.length} artículo(s).`, 'success');
+        mode="create"
+        todosArticulos={todosArticulos}
+        loading={loading}
+        isArticuloBloqueado={isArticuloBloqueadoCreate}
+        onCreated={async (nombreCreado) => {
+          notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
           onRefetch?.();
         }}
       />

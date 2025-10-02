@@ -1,26 +1,62 @@
-// src/componentes/Agrupaciones.jsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
 
 import AgrupacionesList from "./AgrupacionesList";
-import ModalSeleccionArticulos from "./ModalSeleccionArticulos";
+import AgrupacionCreateModal from "./AgrupacionCreateModal";
+
 import { ensureTodo } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "../servicios/apiBusinesses";
 import { obtenerAgrupaciones } from "../servicios/apiAgrupaciones";
-import { httpBiz } from "../servicios/apiBusinesses";
 
-const Agrupaciones = ({ actualizarAgrupaciones }) => {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+// === Helpers de mapeo/árbol (idénticos a tu versión) ===
+const mapRowToArticle = (row) => {
+  const raw = row?.raw || {};
+  const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+  return {
+    id,
+    nombre: row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`,
+    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro ?? "Sin categoría",
+    subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? "Sin subrubro",
+    precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+  };
+};
+
+const buildTree = (flatList = []) => {
+  const cats = new Map();
+  for (const a of flatList) {
+    if (!Number.isFinite(a.id)) continue;
+    const cat = a.categoria || "Sin categoría";
+    const sr = a.subrubro || "Sin subrubro";
+    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
+    const catObj = cats.get(cat);
+    let srObj = catObj.subrubros.find(s => s.nombre === sr);
+    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
+    srObj.articulos.push({
+      id: a.id,
+      nombre: a.nombre,
+      categoria: cat,
+      subrubro: sr,
+      precio: a.precio
+    });
+  }
+  return Array.from(cats.values());
+};
+
+export default function Agrupaciones({ actualizarAgrupaciones }) {
+  const [todosArticulos, setTodosArticulos] = useState([]);   // árbol categoría/subrubro
   const [agrupaciones, setAgrupaciones] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Snackbar
+  // Modal
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Snackbar general (de lista/acciones externas)
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMensaje, setSnackbarMensaje] = useState('');
-  const [snackbarTipo, setSnackbarTipo] = useState('success');
-  const mostrarSnackbar = (mensaje, tipo = 'success') => {
-    setSnackbarMensaje(mensaje);
-    setSnackbarTipo(tipo);
+  const [snackbarMensaje, setSnackbarMensaje] = useState("");
+  const [snackbarTipo, setSnackbarTipo] = useState("success");
+  const showSnack = (msg, type = "success") => {
+    setSnackbarMensaje(msg);
+    setSnackbarTipo(type);
     setSnackbarOpen(true);
   };
 
@@ -30,42 +66,51 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
       setAgrupaciones(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error al cargar agrupaciones:", error);
-      mostrarSnackbar("Error al cargar agrupaciones", 'error');
+      showSnack("Error al cargar agrupaciones", "error");
     }
   };
 
   useEffect(() => {
     (async () => {
       try {
-        // Garantizar negocio activo (solo para UX)
-        const bizId = localStorage.getItem('activeBusinessId');
+        const bizId = localStorage.getItem("activeBusinessId");
         if (!bizId) {
+          setTodosArticulos([]);
           setLoading(false);
-          mostrarSnackbar("Seleccioná un local activo primero", 'warning');
+          showSnack("Seleccioná un local activo primero", "warning");
           return;
         }
 
-        // Garantizar TODO
-        try { await ensureTodo(); } catch {}
-        // Cargar agrupaciones
+        // Artículos desde nuestra BD
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        setTodosArticulos(buildTree(flat));
+        setLoading(false);
+
+        // Garantizar TODO (idempotente)
+        try { await ensureTodo(); } catch { }
+
+        // Agrupaciones
         await cargarAgrupaciones();
       } catch (error) {
         console.error("Error al cargar los datos:", error);
-        mostrarSnackbar("Error al cargar datos", 'error');
-      } finally {
         setLoading(false);
+        showSnack("Error al cargar datos", "error");
       }
     })();
   }, []);
 
-  // IDs asignados a alguna agrupación (excepto TODO) para bloquear en el modal
+  // IDs asignados a alguna agrupación (EXCEPTO "TODO")
   const assignedIds = useMemo(() => {
     const set = new Set();
     (agrupaciones || [])
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => (g.articulos || []).forEach(a => set.add(Number(a.id))));
+      .filter(g => (g?.nombre || "").toUpperCase() !== "TODO")
+      .forEach(g => (g.articulos || []).forEach(a => set.add(String(a.id))));
     return set;
   }, [agrupaciones]);
+
+  // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)
+  const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
 
   return (
     <>
@@ -73,58 +118,49 @@ const Agrupaciones = ({ actualizarAgrupaciones }) => {
         open={snackbarOpen}
         autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
-        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarTipo} sx={{ width: '100%' }}>
+        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarTipo} sx={{ width: "100%" }}>
           {snackbarMensaje}
         </Alert>
       </Snackbar>
 
       <div className="p-4">
-        <h2 className="text-xl font-bold">Crear Agrupación</h2>
+        <h2 className="text-xl font-bold">Agrupaciones</h2>
 
         <Button
           onClick={() => setModalOpen(true)}
           variant="contained"
-          style={{ backgroundColor: '#285a73' }}
-          disabled={loading}
+          style={{ backgroundColor: "#285a73", marginTop: 8, marginBottom: 16 }}
         >
-          Abrir selector
+          Nueva agrupación
         </Button>
 
-        {/* Modal reutilizable */}
-        <ModalSeleccionArticulos
+        {/* MODAL REUTILIZABLE con toda la lógica de creación */}
+        <AgrupacionCreateModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          title="Crear nueva agrupación y mover artículos"
-          preselectIds={[]}
-          assignedIds={assignedIds}                // bloquea los que ya pertenecen a otra agrupación (no-TODO)
-          notify={(m, t) => mostrarSnackbar(m, t)}
-          onSubmit={async ({ nombre, ids }) => {
-            // create-or-move (traspaso)
-            await httpBiz('/agrupaciones/create-or-move', {
-              method: 'POST',
-              body: { nombre, ids }
-            });
+          onCreated={async (nombreCreado) => {
             await cargarAgrupaciones();
             actualizarAgrupaciones?.();
+            showSnack(`Agrupación "${nombreCreado}" creada correctamente`);
           }}
+          todosArticulos={todosArticulos}
+          loading={loading}
+          isArticuloBloqueado={isArticuloBloqueado}
         />
-
-        <div style={{ marginTop: 16 }}>
-          <AgrupacionesList
-            agrupaciones={agrupaciones}
-            onActualizar={async () => {
-              await cargarAgrupaciones();
-              actualizarAgrupaciones?.();
-              mostrarSnackbar("Agrupación actualizada");
-            }}
-            todoGroupId={(agrupaciones.find(g => (g?.nombre || '').toUpperCase() === 'TODO') || {}).id}
-          />
-        </div>
+        <AgrupacionesList
+          agrupaciones={agrupaciones}
+          onActualizar={async () => {
+            await cargarAgrupaciones();
+            actualizarAgrupaciones?.();
+            showSnack("Agrupación actualizada");
+          }}
+          todoGroupId={(agrupaciones.find(g => (g?.nombre || "").toUpperCase() === "TODO") || {}).id}
+          todosArticulos={todosArticulos}
+          loading={loading}
+        />
       </div>
     </>
   );
-};
-
-export default Agrupaciones;
+}
