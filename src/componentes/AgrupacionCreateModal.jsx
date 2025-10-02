@@ -48,23 +48,33 @@ export default function AgrupacionCreateModal({
   onCreated,
   onAppended,
   saveButtonLabel,
-  initialSelectedIds
+  initialSelectedIds = [],
 }) {
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
+
   useEffect(() => {
-    if (Array.isArray(initialSelectedIds) && initialSelectedIds.length) {
-      // tomamos del árbol los artículos cuyo id está en initialSelectedIds
-      const byId = new Map();
-      (props.todosArticulos || []).forEach(cat =>
-        cat.subrubros.forEach(sr =>
-          sr.articulos.forEach(a => byId.set(Number(a.id), a))
-        )
-      );
-      setArticulosSeleccionados(
-        initialSelectedIds.map(Number).map(id => byId.get(id)).filter(Boolean)
-      );
+    if (!open) return; 
+    if (!Array.isArray(initialSelectedIds) || initialSelectedIds.length === 0) {
+      setArticulosSeleccionados([]); 
+      return;
     }
-  }, [initialSelectedIds, props.todosArticulos]);
+
+    // construir índice por id desde el árbol recibido
+    const byId = new Map();
+    (todosArticulos || []).forEach(cat =>
+      (cat?.subrubros || []).forEach(sr =>
+        (sr?.articulos || []).forEach(a => byId.set(Number(a?.id), a))
+      )
+    );
+
+    const preload = initialSelectedIds
+      .map(Number)
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .filter(a => !isArticuloBloqueado(a)); // no preseleccionar bloqueados
+
+    setArticulosSeleccionados(preload);
+  }, [open, initialSelectedIds, todosArticulos, isArticuloBloqueado]);
 
   const [rubro, setRubro] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
