@@ -100,18 +100,21 @@ const AgrupacionesList = ({
     onActualizar?.();
   };
 
-  // memoizamos la función de bloqueo según agrupaciones y el id actual del modal
-  const isArticuloBloqueadoForAppend = React.useMemo(() => {
-    if (!appendForGroup?.id) return () => false;
-    const assigned = new Set();
-    (agrupaciones || [])
-      .filter(g =>
-        String(g.id) !== String(appendForGroup.id) &&
-        (g?.nombre || '').toUpperCase() !== 'TODO'
-      )
-      .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
-    return (art) => assigned.has(String(art.id));
-  }, [agrupaciones, appendForGroup?.id]);
+  // ✅ versión segura y memoizada
+const isArticuloBloqueadoForAppend = React.useMemo(() => {
+  const gid = appendForGroup?.id;
+  if (!gid) return () => false;
+
+  const assigned = new Set();
+  (agrupaciones || [])
+    .filter(g => g && g.id != null)                                
+    .filter(g => String(g.id) !== String(gid))                   
+    .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')    
+    .forEach(g => (g.articulos || [])
+      .forEach(a => a && assigned.add(String(a.id))));          
+
+  return (art) => assigned.has(String(art?.id));
+}, [agrupaciones, appendForGroup?.id]);
 
 
   return (
