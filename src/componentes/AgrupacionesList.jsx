@@ -100,14 +100,11 @@ const AgrupacionesList = ({
     onActualizar?.();
   };
 
-  const isArticuloBloqueadoForAppend = React.useMemo(() => {
-    const gid = appendForGroup?.id;
-    if (!gid) return () => false;
-
+  // 🔒 Bloqueo para "Agregar": bloquea artículos asignados a cualquier agrupación (incluida la actual), excepto TODO.
+  const isArticuloBloqueadoForAppend = useMemo(() => {
     const assigned = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter(g => String(g?.id) !== String(gid))
       .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
       .forEach(g => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
@@ -116,9 +113,8 @@ const AgrupacionesList = ({
           if (Number.isFinite(id)) assigned.add(String(id));
         });
       });
-
     return (art) => assigned.has(String(art?.id));
-  }, [agrupaciones, appendForGroup?.id]);
+  }, [agrupaciones]);
 
   return (
     <>
@@ -139,6 +135,7 @@ const AgrupacionesList = ({
           saveButtonLabel="Agregar a la agrupación"
         />
       )}
+
       <Stack spacing={2} sx={{ mt: 3 }}>
         {groupsSorted.map((g) => {
           const isTodo = g.id === todoGroupId;
@@ -308,4 +305,3 @@ const AgrupacionesList = ({
 };
 
 export default AgrupacionesList;
-

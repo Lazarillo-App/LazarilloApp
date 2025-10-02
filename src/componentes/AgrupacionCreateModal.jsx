@@ -8,11 +8,11 @@ import { crearAgrupacion } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
 
 // === Helpers ===
-const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloqueado) => {
-  const disponibles = articulos.filter(art => !isArticuloBloqueado(art));
+const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isBlocked) => {
+  const disponibles = (articulos || []).filter(art => !isBlocked(art));
   const total = disponibles.length;
   const seleccionados = disponibles.filter(art =>
-    articulosSeleccionados.some(s => Number(s.id) === Number(art.id))
+    articulosSeleccionados.some(s => Number(s?.id) === Number(art?.id))
   ).length;
   return {
     checked: total > 0 && seleccionados === total,
@@ -20,16 +20,21 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloq
   };
 };
 
+const safeId = (x) => {
+  const n = Number(x?.id);
+  return Number.isFinite(n) ? n : null;
+};
+
 // subrubro → rubro(categoría) → artículos
-const agruparPorSubrubro = (data) => {
+const agruparPorSubrubro = (data = []) => {
   const agrupado = {};
-  data.forEach(rubro => {
-    rubro.subrubros.forEach(subrubro => {
-      const subrubroNombre = subrubro.nombre;
+  (data || []).forEach(rubro => {
+    (rubro?.subrubros || []).forEach(subrubro => {
+      const subrubroNombre = subrubro?.nombre ?? 'Sin subrubro';
       if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
       agrupado[subrubroNombre].push({
-        nombre: rubro.nombre,
-        articulos: subrubro.articulos
+        nombre: rubro?.nombre ?? 'Sin categoría',
+        articulos: (subrubro?.articulos || []),
       });
     });
   });
@@ -41,7 +46,7 @@ export default function AgrupacionCreateModal({
   onClose,
   todosArticulos = [],
   loading = false,
-  isArticuloBloqueado = () => false,
+  isArticuloBloqueado = () => false, // 👈 nombre de prop consistente con el padre
   mode = "create",
   groupId,
   groupName,
@@ -49,7 +54,6 @@ export default function AgrupacionCreateModal({
   onAppended,
   saveButtonLabel
 }) {
-
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   const [rubro, setRubro] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -61,23 +65,33 @@ export default function AgrupacionCreateModal({
     setSnackbarOpen(true);
   };
 
+  // Wrapper seguro del bloqueo (nunca revienta con datos sucios)
+  const isBlocked = useMemo(() => {
+    return (art) => {
+      const id = safeId(art);
+      if (id == null) return true;           // artículos sin id → bloqueados
+      try { return !!isArticuloBloqueado(art); } catch { return false; }
+    };
+  }, [isArticuloBloqueado]);
+
   const handleSelectCategoria = (_categoriaNombre, articulos) => {
-    const candidatos = articulos.filter(a => !isArticuloBloqueado(a));
+    const candidatos = (articulos || []).filter(a => !isBlocked(a));
     setArticulosSeleccionados((prev) => {
-      const yaTieneAlguno = candidatos.some(a => prev.some(p => Number(p.id) === Number(a.id)));
+      const yaTieneAlguno = candidatos.some(a => prev.some(p => safeId(p) === safeId(a)));
       return yaTieneAlguno
-        ? prev.filter(p => !candidatos.some(a => Number(a.id) === Number(p.id)))
+        ? prev.filter(p => !candidatos.some(a => safeId(a) === safeId(p)))
         : [...prev, ...candidatos];
     });
   };
 
   const handleSelectArticulo = (articulo) => {
-    if (isArticuloBloqueado(articulo)) return;
-    setArticulosSeleccionados((prev) =>
-      prev.some(x => Number(x.id) === Number(articulo.id))
-        ? prev.filter((x) => Number(x.id) !== Number(articulo.id))
-        : [...prev, articulo]
-    );
+    if (isBlocked(articulo)) return;
+    setArticulosSeleccionados((prev) => {
+      const id = safeId(articulo);
+      return prev.some(x => safeId(x) === id)
+        ? prev.filter((x) => safeId(x) !== id)
+        : [...prev, articulo];
+    });
   };
 
   const guardar = async () => {
@@ -90,11 +104,11 @@ export default function AgrupacionCreateModal({
         await crearAgrupacion({
           nombre: rubro,
           articulos: articulosSeleccionados.map((art) => ({
-            id: art.id,
-            nombre: art.nombre || "",
-            categoria: art.categoria || "Sin categoría",
-            subrubro: art.subrubro || "Sin subrubro",
-            precio: art.precio ?? 0,
+            id: safeId(art),
+            nombre: art?.nombre || "",
+            categoria: art?.categoria || "Sin categoría",
+            subrubro: art?.subrubro || "Sin subrubro",
+            precio: art?.precio ?? 0,
           })),
         });
         const nombreCreado = rubro;
@@ -108,24 +122,23 @@ export default function AgrupacionCreateModal({
         }, 600);
       } catch (err) {
         console.error("Error al crear agrupación:", err);
-        showSnack("Error al crear agrupación", "error");
+        showSnack("Error al crear agrupupación", "error");
       }
       return;
     }
 
     // mode === "append"
-    if (!Number.isFinite(Number(groupId)) || articulosSeleccionados.length === 0) {
+    const ids = articulosSeleccionados.map(safeId).filter(Number.isFinite);
+    if (!Number.isFinite(Number(groupId)) || ids.length === 0) {
       showSnack("Seleccioná al menos un artículo", "error");
       return;
     }
     try {
       await httpBiz(`/agrupaciones/${groupId}/articulos`, {
         method: "PUT",
-        body: {
-          ids: articulosSeleccionados.map(a => Number(a.id)),
-        },
+        body: { ids },
       });
-      const n = articulosSeleccionados.length;
+      const n = ids.length;
       setArticulosSeleccionados([]);
       onAppended?.(groupId, n);
       showSnack(`Se agregaron ${n} artículo${n === 1 ? "" : "s"} a "${groupName}"`);
@@ -139,7 +152,7 @@ export default function AgrupacionCreateModal({
     }
   };
 
-  const uiSubrubros = useMemo(() => agruparPorSubrubro(todosArticulos), [todosArticulos]);
+  const uiSubrubros = useMemo(() => agruparPorSubrubro(todosArticulos || []), [todosArticulos]);
   const isCreate = mode === "create";
 
   return (
@@ -179,7 +192,6 @@ export default function AgrupacionCreateModal({
               value={rubro}
               onChange={(e) => setRubro(e.target.value)}
               fullWidth
-              className="mb-4"
               sx={{ mb: 2 }}
             />
           )}
@@ -192,75 +204,82 @@ export default function AgrupacionCreateModal({
             <Typography>Cargando artículos...</Typography>
           ) : (
             <Box sx={{ maxHeight: "60vh", overflowY: "auto", pr: 1 }}>
-              {uiSubrubros.map((subrubro, index) => {
-                const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
-                  r.articulos.filter(a => !isArticuloBloqueado(a))
+              {(uiSubrubros || []).map((subrubro, index) => {
+                const rubrosSafe = (subrubro?.rubros || []).filter(Boolean);
+
+                const subrubroArticulosDisponibles = rubrosSafe.flatMap(r =>
+                  (r?.articulos || []).filter(Boolean).filter(a => !isBlocked(a))
                 );
 
                 const { checked, indeterminate } = evaluarCheckboxEstado(
                   subrubroArticulosDisponibles,
                   articulosSeleccionados,
-                  isArticuloBloqueado
+                  isBlocked
                 );
 
                 return (
-                  <Accordion key={index}>
+                  <Accordion key={subrubro?.nombre ?? `sr-${index}`}>
                     <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                       <Checkbox
                         checked={checked}
                         indeterminate={indeterminate}
                         onChange={() => {
-                          const disponibles = subrubro.rubros.flatMap(r =>
-                            r.articulos.filter(a => !isArticuloBloqueado(a))
+                          const disponibles = rubrosSafe.flatMap(r =>
+                            (r?.articulos || []).filter(Boolean).filter(a => !isBlocked(a))
                           );
                           setArticulosSeleccionados(prev => {
-                            const tieneAlguno = disponibles.some(a => prev.some(p => Number(p.id) === Number(a.id)));
+                            const tieneAlguno = disponibles.some(a =>
+                              prev.some(p => safeId(p) === safeId(a))
+                            );
                             return tieneAlguno
-                              ? prev.filter(p => !disponibles.some(a => Number(a.id) === Number(p.id)))
+                              ? prev.filter(p => !disponibles.some(a => safeId(a) === safeId(p)))
                               : [...prev, ...disponibles];
                           });
                         }}
                         sx={{ mr: 1 }}
                       />
-                      <Typography fontWeight="bold">{subrubro.nombre}</Typography>
+                      <Typography fontWeight="bold">{subrubro?.nombre ?? 'Sin subrubro'}</Typography>
                     </AccordionSummary>
 
                     <AccordionDetails>
-                      {subrubro.rubros.map((rubroCat, idx) => {
+                      {rubrosSafe.map((rubroCat, idx) => {
+                        const artsSafe = (rubroCat?.articulos || []).filter(Boolean);
+
                         const { checked: rubroChecked, indeterminate: rubroIndeterminado } =
-                          evaluarCheckboxEstado(rubroCat.articulos, articulosSeleccionados, isArticuloBloqueado);
+                          evaluarCheckboxEstado(artsSafe, articulosSeleccionados, isBlocked);
 
                         return (
-                          <Accordion key={idx} sx={{ mb: 1 }}>
+                          <Accordion key={`${subrubro?.nombre ?? 'sr'}-${rubroCat?.nombre ?? idx}`} sx={{ mb: 1 }}>
                             <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                               <Checkbox
                                 checked={rubroChecked}
                                 indeterminate={rubroIndeterminado}
-                                onChange={() => handleSelectCategoria(rubroCat.nombre, rubroCat.articulos)}
+                                onChange={() => handleSelectCategoria(rubroCat?.nombre, artsSafe)}
                                 sx={{ mr: 1 }}
                               />
-                              <Typography>{rubroCat.nombre}</Typography>
+                              <Typography>{rubroCat?.nombre ?? 'Sin categoría'}</Typography>
                             </AccordionSummary>
 
                             <AccordionDetails>
-                              {rubroCat.articulos.map((articulo) => {
-                                const bloqueado = isArticuloBloqueado(articulo);
-                                const seleccionado = articulosSeleccionados.some(a => Number(a.id) === Number(articulo.id));
+                              {artsSafe.map((articulo, i) => {
+                                const idNum = safeId(articulo);
+                                const bloqueado = isBlocked(articulo);
+                                const seleccionado = articulosSeleccionados.some(a => safeId(a) === idNum);
                                 return (
                                   <Box
-                                    key={articulo.id}
+                                    key={idNum ?? `art-${i}`}
                                     display="flex"
                                     alignItems="center"
                                     sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1, pointerEvents: bloqueado ? 'none' : 'auto' }}
                                   >
                                     <Checkbox
-                                      checked={seleccionado}
+                                      checked={!!seleccionado}
                                       onChange={() => handleSelectArticulo(articulo)}
                                       sx={{ mr: 1 }}
-                                     disabled={bloqueado}
+                                      disabled={bloqueado}
                                     />
                                     <Typography>
-                                      {articulo.nombre} {bloqueado && "(ya asignado)"}
+                                      {articulo?.nombre ?? '—'} {bloqueado && "(ya asignado)"}
                                     </Typography>
                                   </Box>
                                 );
@@ -284,9 +303,12 @@ export default function AgrupacionCreateModal({
               onClick={guardar}
               variant="contained"
               color="success"
-              disabled={(!isCreate && articulosSeleccionados.length === 0) || (isCreate && (!rubro.trim() || articulosSeleccionados.length === 0))}
+              disabled={
+                (mode === "create" && (!rubro.trim() || articulosSeleccionados.length === 0)) ||
+                (mode !== "create" && articulosSeleccionados.length === 0)
+              }
             >
-              {saveButtonLabel ?? (isCreate ? "Guardar Agrupación" : "Agregar a la agrupación")}
+              {saveButtonLabel ?? (mode === "create" ? "Guardar Agrupación" : "Agregar a la agrupación")}
             </Button>
           </Box>
         </Box>
@@ -294,4 +316,3 @@ export default function AgrupacionCreateModal({
     </>
   );
 }
-

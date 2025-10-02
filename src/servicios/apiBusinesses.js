@@ -18,11 +18,12 @@ export function authHeaders(extra = {}, opts = { withBusinessId: true }) {
 
 /**
  * Wrapper HTTP con manejo de 401 y parseo JSON seguro.
+ * BASE debe incluir el prefijo /api si tu backend lo requiere (p.ej. https://.../api).
  */
-async function http(path, { method = 'GET', body, withBusinessId = true } = {}) {
+export async function http(path, { method = 'GET', body, withBusinessId = true, headers } = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: authHeaders({}, { withBusinessId }),
+    headers: authHeaders(headers, { withBusinessId }),
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -30,28 +31,24 @@ async function http(path, { method = 'GET', body, withBusinessId = true } = {}) 
     try { console.warn('Auth 401', await res.clone().json()); } catch {}
     localStorage.removeItem('token');
     localStorage.removeItem('activeBusinessId');
+    // redirigí si aplica en tu app
     window.location.href = '/';
     throw new Error('invalid_token');
   }
 
-  const txt = await res.text();
-  let data;
-  try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  const text = await res.text().catch(() => '');
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* queda como texto */ }
 
   if (!res.ok) {
-    const msg =
-      (data && (data.error || data.message || data.detail)) ||
-      `HTTP ${res.status}`;
+    const msg = (data && (data.error || data.message || data.detail)) || text || res.statusText || `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data;
 }
 
-export { http };
+/* =============== Helpers multi-negocio =============== */
 
-/* =============== Helpers multi-negocio (nuevo) =============== */
-
-/** Devuelve el businessId activo (string o null) */
 export const getActiveBusinessId = () => localStorage.getItem('activeBusinessId');
 
 /**
@@ -62,7 +59,7 @@ export const getActiveBusinessId = () => localStorage.getItem('activeBusinessId'
 export function httpBiz(path, options = {}, overrideBizId) {
   const bizId = Number(overrideBizId ?? getActiveBusinessId());
   if (!Number.isFinite(bizId)) throw new Error('businessId activo no definido');
-  const p = path.startsWith('/') ? path : `/${path}`;
+  const p = String(path || '').startsWith('/') ? path : `/${path}`;
   return http(`/businesses/${bizId}${p}`, { ...options, withBusinessId: true });
 }
 
