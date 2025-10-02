@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Modal, Box, Typography, Checkbox, Accordion, AccordionSummary,
   AccordionDetails, Button, TextField, Snackbar, Alert
@@ -20,15 +20,16 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloq
   };
 };
 
-const agruparPorSubrubro = (data = []) => {
+// subrubro → rubro(categoría) → artículos
+const agruparPorSubrubro = (data) => {
   const agrupado = {};
-  (data || []).filter(Boolean).forEach(rubro => {
-    (rubro?.subrubros || []).filter(Boolean).forEach(subrubro => {
-      const subrubroNombre = subrubro?.nombre ?? 'Sin subrubro';
+  data.forEach(rubro => {
+    rubro.subrubros.forEach(subrubro => {
+      const subrubroNombre = subrubro.nombre;
       if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
       agrupado[subrubroNombre].push({
-        nombre: rubro?.nombre ?? 'Sin categoría',
-        articulos: (subrubro?.articulos || []).filter(Boolean),
+        nombre: rubro.nombre,
+        articulos: subrubro.articulos
       });
     });
   });
@@ -46,31 +47,10 @@ export default function AgrupacionCreateModal({
   groupName,
   onCreated,
   onAppended,
-  saveButtonLabel,
-  initialSelectedIds = [],
+  saveButtonLabel
 }) {
+
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!Array.isArray(initialSelectedIds) || initialSelectedIds.length === 0) {
-      setArticulosSeleccionados([]);
-      return;
-    }
-    const byId = new Map();
-    (todosArticulos || []).forEach(cat =>
-      (cat?.subrubros || []).forEach(sr =>
-        (sr?.articulos || []).forEach(a => byId.set(Number(a?.id), a))
-      )
-    );
-    const preload = initialSelectedIds
-      .map(Number)
-      .map(id => byId.get(id))
-      .filter(Boolean)
-      .filter(a => !isArticuloBloqueado(a));
-    setArticulosSeleccionados(preload);
-  }, [open, initialSelectedIds, todosArticulos, isArticuloBloqueado]);
-
   const [rubro, setRubro] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
@@ -212,13 +192,9 @@ export default function AgrupacionCreateModal({
             <Typography>Cargando artículos...</Typography>
           ) : (
             <Box sx={{ maxHeight: "60vh", overflowY: "auto", pr: 1 }}>
-              {(uiSubrubros || []).filter(Boolean).map((subrubro, index) => {
-                const rubrosSafe = (subrubro?.rubros || []).filter(Boolean);
-
-                const subrubroArticulosDisponibles = rubrosSafe.flatMap(r =>
-                  (r?.articulos || [])
-                    .filter(Boolean)
-                    .filter(a => !isArticuloBloqueado(a))
+              {uiSubrubros.map((subrubro, index) => {
+                const subrubroArticulosDisponibles = subrubro.rubros.flatMap(r =>
+                  r.articulos.filter(a => !isArticuloBloqueado(a))
                 );
 
                 const { checked, indeterminate } = evaluarCheckboxEstado(
@@ -228,70 +204,63 @@ export default function AgrupacionCreateModal({
                 );
 
                 return (
-                  <Accordion key={subrubro?.nombre ?? `sr-${index}`}>
+                  <Accordion key={index}>
                     <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                       <Checkbox
                         checked={checked}
                         indeterminate={indeterminate}
                         onChange={() => {
-                          const disponibles = rubrosSafe.flatMap(r =>
-                            (r?.articulos || [])
-                              .filter(Boolean)
-                              .filter(a => !isArticuloBloqueado(a))
+                          const disponibles = subrubro.rubros.flatMap(r =>
+                            r.articulos.filter(a => !isArticuloBloqueado(a))
                           );
                           setArticulosSeleccionados(prev => {
-                            const tieneAlguno = disponibles.some(a =>
-                              prev.some(p => Number(p?.id) === Number(a?.id))
-                            );
+                            const tieneAlguno = disponibles.some(a => prev.some(p => Number(p.id) === Number(a.id)));
                             return tieneAlguno
-                              ? prev.filter(p => !disponibles.some(a => Number(a?.id) === Number(p?.id)))
+                              ? prev.filter(p => !disponibles.some(a => Number(a.id) === Number(p.id)))
                               : [...prev, ...disponibles];
                           });
                         }}
                         sx={{ mr: 1 }}
                       />
-                      <Typography fontWeight="bold">{subrubro?.nombre ?? 'Sin subrubro'}</Typography>
+                      <Typography fontWeight="bold">{subrubro.nombre}</Typography>
                     </AccordionSummary>
 
                     <AccordionDetails>
-                      {rubrosSafe.map((rubroCat, idx) => {
-                        const artsSafe = (rubroCat?.articulos || []).filter(Boolean);
-
+                      {subrubro.rubros.map((rubroCat, idx) => {
                         const { checked: rubroChecked, indeterminate: rubroIndeterminado } =
-                          evaluarCheckboxEstado(artsSafe, articulosSeleccionados, isArticuloBloqueado);
+                          evaluarCheckboxEstado(rubroCat.articulos, articulosSeleccionados, isArticuloBloqueado);
 
                         return (
-                          <Accordion key={`${subrubro?.nombre ?? 'sr'}-${rubroCat?.nombre ?? idx}`} sx={{ mb: 1 }}>
+                          <Accordion key={idx} sx={{ mb: 1 }}>
                             <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                               <Checkbox
                                 checked={rubroChecked}
                                 indeterminate={rubroIndeterminado}
-                                onChange={() => handleSelectCategoria(rubroCat?.nombre, artsSafe)}
+                                onChange={() => handleSelectCategoria(rubroCat.nombre, rubroCat.articulos)}
                                 sx={{ mr: 1 }}
                               />
-                              <Typography>{rubroCat?.nombre ?? 'Sin categoría'}</Typography>
+                              <Typography>{rubroCat.nombre}</Typography>
                             </AccordionSummary>
 
                             <AccordionDetails>
-                              {artsSafe.map((articulo, i) => {
-                                const idNum = Number(articulo?.id);
+                              {rubroCat.articulos.map((articulo) => {
                                 const bloqueado = isArticuloBloqueado(articulo);
-                                const seleccionado = articulosSeleccionados.some(a => Number(a?.id) === idNum);
+                                const seleccionado = articulosSeleccionados.some(a => Number(a.id) === Number(articulo.id));
                                 return (
                                   <Box
-                                    key={Number.isFinite(idNum) ? idNum : `art-${i}`}
+                                    key={articulo.id}
                                     display="flex"
                                     alignItems="center"
                                     sx={{ pl: 2, opacity: bloqueado ? 0.5 : 1, pointerEvents: bloqueado ? 'none' : 'auto' }}
                                   >
                                     <Checkbox
-                                      checked={!!seleccionado}
+                                      checked={seleccionado}
                                       onChange={() => handleSelectArticulo(articulo)}
                                       sx={{ mr: 1 }}
-                                      disabled={bloqueado}
+                                     disabled={bloqueado}
                                     />
                                     <Typography>
-                                      {articulo?.nombre ?? '—'} {bloqueado && "(ya asignado)"}
+                                      {articulo.nombre} {bloqueado && "(ya asignado)"}
                                     </Typography>
                                   </Box>
                                 );
