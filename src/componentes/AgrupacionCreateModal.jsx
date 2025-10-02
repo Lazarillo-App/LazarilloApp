@@ -47,7 +47,8 @@ export default function AgrupacionCreateModal({
   groupName,
   onCreated,
   onAppended,
-  saveButtonLabel
+  saveButtonLabel,
+  initialSelectedIds
 }) {
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   useEffect(() => {
