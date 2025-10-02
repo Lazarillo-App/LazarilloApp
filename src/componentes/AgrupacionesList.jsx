@@ -100,22 +100,25 @@ const AgrupacionesList = ({
     onActualizar?.();
   };
 
-  // ✅ versión segura y memoizada
   const isArticuloBloqueadoForAppend = React.useMemo(() => {
     const gid = appendForGroup?.id;
     if (!gid) return () => false;
 
     const assigned = new Set();
-    (agrupaciones || [])
-      .filter(g => g && g.id != null)
-      .filter(g => String(g.id) !== String(gid))
+    (Array.isArray(agrupaciones) ? agrupaciones : [])
+      .filter(Boolean)
+      .filter(g => String(g?.id) !== String(gid))
       .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => (g.articulos || [])
-        .forEach(a => a && assigned.add(String(a.id))));
+      .forEach(g => {
+        const arts = Array.isArray(g?.articulos) ? g.articulos : [];
+        arts.filter(Boolean).forEach(a => {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) assigned.add(String(id));
+        });
+      });
 
     return (art) => assigned.has(String(art?.id));
   }, [agrupaciones, appendForGroup?.id]);
-
 
   return (
     <>

@@ -100,13 +100,19 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     })();
   }, []);
 
-  // IDs asignados a alguna agrupación (EXCEPTO "TODO")
   const assignedIds = useMemo(() => {
-    const set = new Set();
-    (agrupaciones || [])
-      .filter(g => (g?.nombre || "").toUpperCase() !== "TODO")
-      .forEach(g => (g.articulos || []).forEach(a => set.add(String(a.id))));
-    return set;
+    const s = new Set();
+    (Array.isArray(agrupaciones) ? agrupaciones : [])
+      .filter(Boolean)
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach(g => {
+        const arts = Array.isArray(g?.articulos) ? g.articulos : [];
+        arts.filter(Boolean).forEach(a => {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) s.add(String(id));
+        });
+      });
+    return s;
   }, [agrupaciones]);
 
   // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)

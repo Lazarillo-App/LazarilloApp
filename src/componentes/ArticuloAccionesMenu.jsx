@@ -16,13 +16,13 @@ const getNum = (v) => Number(v ?? 0);
 // === Helpers locales para mapear y armar árbol ===
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
-  const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+  const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
   return {
     id,
-    nombre   : row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`,
-    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría',
-    subrubro : row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro',
-    precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+    nombre: row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`,
+    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría',
+    subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro',
+    precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
 };
 const buildTree = (flatList = []) => {
@@ -30,7 +30,7 @@ const buildTree = (flatList = []) => {
   for (const a of flatList) {
     if (!Number.isFinite(a.id)) continue;
     const cat = a.categoria || 'Sin categoría';
-    const sr  = a.subrubro  || 'Sin subrubro';
+    const sr = a.subrubro || 'Sin subrubro';
     if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
     const catObj = cats.get(cat);
     let srObj = catObj.subrubros.find(s => s.nombre === sr);
@@ -66,7 +66,7 @@ export default function ArticuloAccionesMenu({
   const [loadingLocal, setLoadingLocal] = useState(false);
 
   const haveExternalTree = Array.isArray(todosArticulos);
-  const effectiveTree    = haveExternalTree ? todosArticulos : treeLocal;
+  const effectiveTree = haveExternalTree ? todosArticulos : treeLocal;
   const effectiveLoading = haveExternalTree ? !!loading : loadingLocal;
 
   const open = Boolean(anchorEl);
@@ -101,13 +101,13 @@ export default function ArticuloAccionesMenu({
     try {
       if (fromId) {
         try {
-          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids:[idNum] } });
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
-          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
-          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch {}
+          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
+          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
         }
       } else {
-        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids:[idNum] } });
+        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
       }
 
       notify?.(`Artículo #${idNum} movido`, 'success');
@@ -138,14 +138,21 @@ export default function ArticuloAccionesMenu({
     }
   }
 
-  // 🔒 bloquea artículos ya asignados ≠ TODO
   const isArticuloBloqueadoCreate = useMemo(() => {
     const assigned = new Set();
-    (agrupaciones || [])
+    (Array.isArray(agrupaciones) ? agrupaciones : [])
+      .filter(Boolean)
       .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => (g.articulos || []).forEach(a => assigned.add(String(a.id))));
-    return (art) => assigned.has(String(art.id));
+      .forEach(g => {
+        const arts = Array.isArray(g?.articulos) ? g.articulos : [];
+        arts.filter(Boolean).forEach(a => {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) assigned.add(String(id));
+        });
+      });
+    return (art) => assigned.has(String(art?.id));
   }, [agrupaciones]);
+
 
   // 🧠 Carga perezosa: si abrís "Crear agrupación…" y no vino el árbol, lo traemos acá
   useEffect(() => {
@@ -155,8 +162,8 @@ export default function ArticuloAccionesMenu({
       try {
         setLoadingLocal(true);
         const bizId = localStorage.getItem('activeBusinessId');
-        const res   = await BusinessesAPI.articlesFromDB(bizId);
-        const flat  = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
         setTreeLocal(buildTree(flat));
       } catch (e) {
         console.error('LOAD_TREE_ERROR', e);
@@ -220,7 +227,7 @@ export default function ArticuloAccionesMenu({
 
       {/* Modal: crear agrupación */}
       <AgrupacionCreateModal
-      initialSelectedIds={[Number(articulo.id)]}
+        initialSelectedIds={[Number(articulo.id)]}
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
         mode="create"
