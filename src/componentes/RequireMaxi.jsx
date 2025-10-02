@@ -14,6 +14,7 @@ export default function RequireMaxi({ children }) {
       const s = await BusinessesAPI.maxiStatus(activeId);
       setStatus({ loading:false, configured: !!s?.configured });
       setShow(!s?.configured);
+    // eslint-disable-next-line no-unused-vars
     } catch (e) {
       setStatus({ loading:false, configured:false });
       setShow(true);

@@ -52,6 +52,7 @@ export default function TablaArticulos({
   // ✅ fuerza refetch “en vivo” sin F5
   const [reloadTick, setReloadTick] = useState(0);
   const refetchLocal = async () => {
+    // eslint-disable-next-line no-empty
     try { await refetchAgrupaciones?.(); } catch { }
     setReloadTick((t) => t + 1); // re-consulta articlesTree
   };
@@ -125,8 +126,10 @@ export default function TablaArticulos({
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
+        // eslint-disable-next-line no-unused-vars
         } catch (e) {
           // 2) fallback: plano → tree
+          // eslint-disable-next-line no-useless-catch
           try {
             const { items = [] } = await BusinessesAPI.articlesFromDB(bizId);
             const tree = buildTreeFromFlat(items);

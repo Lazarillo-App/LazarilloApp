@@ -88,6 +88,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         setLoading(false);
 
         // Garantizar TODO (idempotente)
+        // eslint-disable-next-line no-empty
         try { await ensureTodo(); } catch { }
 
         // Agrupaciones

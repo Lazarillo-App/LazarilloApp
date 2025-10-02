@@ -44,6 +44,7 @@ export default function ArticuloAccionesMenu({
   articulo,
   agrupaciones = [],
   agrupacionSeleccionada,
+  // eslint-disable-next-line no-unused-vars
   todoGroupId,
   isTodo = false,
   onRefetch,
@@ -104,6 +105,7 @@ export default function ArticuloAccionesMenu({
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
+          // eslint-disable-next-line no-empty
           try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
         }
       } else {

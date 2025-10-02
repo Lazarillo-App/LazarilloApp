@@ -74,6 +74,7 @@ export default function GestorAgrupacionesModal({ open, onClose, preselectIds = 
   }, [open]);
 
   // maestro (id -> datos) para payload
+  // eslint-disable-next-line no-unused-vars
   const maestro = useMemo(() => {
     const out = [];
     (todosArticulos || []).forEach(cat => {

@@ -22,6 +22,7 @@ export default function VentasCell({
   const activeBizId = localStorage.getItem('activeBusinessId');
   const totalToShow = Number(totalOverride ?? 0);
 
+  // eslint-disable-next-line no-unused-vars
   const cacheKey = useMemo(
     () => `${activeBizId}|${articuloId}|${from}|${to}|${groupBy}`,
     [activeBizId, articuloId, from, to, groupBy]

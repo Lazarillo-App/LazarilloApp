@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/servicios/apiBusinesses.js
 import { BASE } from './apiBase';
 

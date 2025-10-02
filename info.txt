@@ -36,6 +36,7 @@ ORDER BY updated_at DESC
 LIMIT 1;
 
 
+
 \set biz 13
 \encoding UTF8
 set PGCLIENTENCODING=utf8;
@@ -79,6 +80,8 @@ WHERE m.business_id = :biz
   AND m.articulo_id = map.articulo_id;
 
 COMMIT;
+
+
 
 
 SELECT subrubro, categoria, COUNT(*)

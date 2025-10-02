@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/paginas/Perfil.jsx
 import React, { useEffect, useState } from 'react';
 import { Grid } from '@mui/material';

@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -44,6 +45,7 @@ export default function SubrubroAccionesMenu({
   isTodo = false,
   agrupaciones = [],
   agrupacionSeleccionada,
+  // eslint-disable-next-line no-unused-vars
   todoGroupId,
   articuloIds = [],          // IDs de los artículos del subrubro
   onRefetch,
