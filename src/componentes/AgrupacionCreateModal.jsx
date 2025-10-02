@@ -20,16 +20,15 @@ const evaluarCheckboxEstado = (articulos, articulosSeleccionados, isArticuloBloq
   };
 };
 
-// subrubro → rubro(categoría) → artículos
-const agruparPorSubrubro = (data) => {
+const agruparPorSubrubro = (data = []) => {
   const agrupado = {};
-  data.forEach(rubro => {
-    rubro.subrubros.forEach(subrubro => {
-      const subrubroNombre = subrubro.nombre;
+  (data || []).forEach(rubro => {
+    (rubro?.subrubros || []).forEach(subrubro => {
+      const subrubroNombre = subrubro?.nombre ?? 'Sin subrubro';
       if (!agrupado[subrubroNombre]) agrupado[subrubroNombre] = [];
       agrupado[subrubroNombre].push({
-        nombre: rubro.nombre,
-        articulos: subrubro.articulos
+        nombre: rubro?.nombre ?? 'Sin categoría',
+        articulos: (subrubro?.articulos || []),
       });
     });
   });
