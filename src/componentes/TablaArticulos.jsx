@@ -60,63 +60,16 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-const afterMutation = (evt) => {
-
-  if (Array.isArray(evt)) {
-    evt = { type: 'remove', removedIds: evt };
-  }
-
-  const currentId = agrupSelView?.id ?? null;
-  const idNum = (x) => Number(x);
-
-  const removeByIds = (idsSet) =>
-    setAgrupSelView((g) => ({
-      ...g,
-      articulos: (Array.isArray(g?.articulos) ? g.articulos : []).filter(
-        (a) => !idsSet.has(getId(a))
-      ),
-    }));
-
-  const addByIds = (idsArr) => {
-    const toAdd = idsArr
-      .map((id) => baseById.get(Number(id)))
-      .filter(Boolean)
-      .map((a) => ({
-        id: Number(a.id),
-        nombre: a.nombre,
-        categoria: a.categoria,
-        subrubro: a.subrubro,
-        precio: Number(a.precio || 0),
-        costo: Number(a.costo || 0),
-      }));
-
-    setAgrupSelView((g) => ({
-      ...g,
-      articulos: [ ...(Array.isArray(g?.articulos) ? g.articulos : []), ...toAdd ],
-    }));
+  const afterMutation = (removedIds = []) => {
+    if (!agrupSelView?.id) { refetchLocal(); return; }
+    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
+    if (isTodo) { refetchLocal(); return; }
+    const rem = new Set(removedIds.map(Number));
+    const actual = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
+    const next = actual.filter(a => !rem.has(getId(a)));
+    setAgrupSelView({ ...agrupSelView, articulos: next });
+    refetchLocal();
   };
-
-  if (evt?.type === 'move') {
-    const { fromGroupId, toGroupId, articleIds = [] } = evt;
-    const idsSet = new Set(articleIds.map(idNum));
-
-    if (currentId && fromGroupId && currentId === fromGroupId) {
-      removeByIds(idsSet);
-    }
-    if (currentId && currentId === toGroupId) {
-      addByIds(articleIds);
-    }
-  } else if (evt?.type === 'remove') {
-    const idsSet = new Set((evt.removedIds || []).map(idNum));
-    if (currentId) removeByIds(idsSet);
-  } else if (evt?.type === 'add') {
-    if (currentId && currentId === evt.toGroupId) addByIds(evt.addedIds || []);
-  }
-
-  refetchLocal();
-};
-
-
 
   // helper local para armar tree desde items planos
   function buildTreeFromFlat(items = []) {
@@ -173,7 +126,7 @@ const afterMutation = (evt) => {
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
-          // eslint-disable-next-line no-unused-vars
+        // eslint-disable-next-line no-unused-vars
         } catch (e) {
           // 2) fallback: plano → tree
           // eslint-disable-next-line no-useless-catch

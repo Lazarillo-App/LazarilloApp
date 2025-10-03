@@ -1,4 +1,3 @@
-/* eslint-disable no-empty */
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -95,6 +94,7 @@ export default function ArticuloAccionesMenu({
 
     if (fromId && fromId === toId) {
       notify?.('El artículo ya está en esa agrupación', 'info');
+      onAfterMutation?.([idNum]);
       return closeMover();
     }
 
@@ -102,39 +102,19 @@ export default function ArticuloAccionesMenu({
     try {
       if (fromId) {
         try {
-          await httpBiz(`/agrupaciones/${fromId}/move-items`, {
-            method: 'POST',
-            body: { toId, ids: [idNum] }
-          });
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
-          await httpBiz(`/agrupaciones/${toId}/articulos`, {
-            method: 'PUT',
-            body: { ids: [idNum] }
-          });
-          try {
-            await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' });
-          } catch { }
+          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
+          // eslint-disable-next-line no-empty
+          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
         }
       } else {
-        // desde TODO / sin agrupación
-        await httpBiz(`/agrupaciones/${toId}/articulos`, {
-          method: 'PUT',
-          body: { ids: [idNum] }
-        });
+        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
       }
 
-      // ✅ Update optimista con contexto completo
-      onAfterMutation?.({
-        type: 'move',
-        fromGroupId: fromId,      // puede ser null si venía de TODO
-        toGroupId: toId,
-        articleIds: [idNum],
-        removedIds: [idNum],
-        addedIds: [idNum],
-      });
-
       notify?.(`Artículo #${idNum} movido`, 'success');
-      onRefetch?.(); // mantenemos el refetch para confirmar con servidor
+      onAfterMutation?.([idNum]);
+      onRefetch?.();
     } catch (e) {
       console.error('MOVER_ERROR', e);
       notify?.('No se pudo mover el artículo', 'error');
