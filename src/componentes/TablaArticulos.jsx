@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Snackbar, Alert } from '@mui/material';
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
@@ -6,6 +7,22 @@ import VentasCell from './VentasCell';
 import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import '../css/TablaArticulos.css';
+
+const clean = (s) => String(s ?? '').trim();
+const isSin = (s) => {
+  const v = clean(s).toLowerCase();
+  return v === '' || v === 'sin categoría' || v === 'sin categoria' || v === 'sin subrubro';
+};
+const prefer = (...vals) => {
+  for (const v of vals) {
+    if (!isSin(v)) return clean(v);
+  }
+  return clean(vals[0] ?? '');
+};
+const getDisplayCategoria = (a) =>
+  prefer(a?.categoria, a?.raw?.categoria, a?.raw?.raw?.categoria);
+const getDisplaySubrubro = (a) =>
+  prefer(a?.subrubro, a?.raw?.subrubro, a?.raw?.raw?.subrubro);
 
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const num = (v) => Number(v ?? 0);
@@ -54,7 +71,7 @@ export default function TablaArticulos({
   const refetchLocal = async () => {
     // eslint-disable-next-line no-empty
     try { await refetchAgrupaciones?.(); } catch { }
-    setReloadTick((t) => t + 1); // re-consulta articlesTree
+    setReloadTick((t) => t * 1); // re-consulta articlesTree
   };
 
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
@@ -105,7 +122,7 @@ export default function TablaArticulos({
 
   useEffect(() => {
     let cancel = false;
-    const myId = ++loadReqId.current;
+    const myId = loadReqId.current;
 
     (async () => {
       try {
@@ -126,7 +143,7 @@ export default function TablaArticulos({
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
-        // eslint-disable-next-line no-unused-vars
+          // eslint-disable-next-line no-unused-vars
         } catch (e) {
           // 2) fallback: plano → tree
           // eslint-disable-next-line no-useless-catch
@@ -143,7 +160,7 @@ export default function TablaArticulos({
           }
         }
 
-        // TODO + exclusiones (como ya lo tenías)
+        // TODO  exclusiones (como ya lo tenías)
         try {
           const todo = await ensureTodo();
           if (todo?.id && !cancel && myId === loadReqId.current) {
@@ -171,14 +188,26 @@ export default function TablaArticulos({
     return () => { cancel = true; };
   }, [activeBizId, reloadKey, reloadTick]);
 
-  // Derivados
-  const allArticulos = useMemo(
-    () =>
-      categorias.flatMap((s) =>
-        (s?.categorias || []).flatMap((c) => c.articulos || [])
-      ),
-    [categorias]
-  );
+  const allArticulos = useMemo(() => {
+    const out = [];
+    for (const sub of categorias || []) {
+      const subrubroNombre =
+        String(sub?.subrubro ?? sub?.nombre ?? 'Sin subrubro');
+      for (const cat of sub?.categorias || []) {
+        const categoriaNombre =
+          String(cat?.categoria ?? cat?.nombre ?? 'Sin categoría');
+        for (const a of cat?.articulos || []) {
+          out.push({
+            ...a,
+            // si el artículo ya traía estos campos, respetamos; si no, heredamos del árbol
+            subrubro: a?.subrubro ?? subrubroNombre,
+            categoria: a?.categoria ?? categoriaNombre,
+          });
+        }
+      }
+    }
+    return out;
+  }, [categorias]);
 
   const baseById = useMemo(
     () => new Map(allArticulos.map((a) => [getId(a), a])),
@@ -269,21 +298,22 @@ export default function TablaArticulos({
     onIdsVisibleChange?.(ids);
   }, [onIdsVisibleChange, articulosFiltrados]);
 
-  // Agrupar Rubro → Subrubro
-  const agrupados = useMemo(() => {
-    const out = new Map();
+  const bloques = useMemo(() => {
+    const byCat = new Map();
     for (const a of articulosFiltrados) {
-      const rub = String(a.categoria || 'Sin categoría');
-      const sr = String(a.subrubro || 'Sin subrubro');
-      if (!out.has(rub)) out.set(rub, new Map());
-      const bySr = out.get(rub);
+      const cat = getDisplayCategoria(a) || 'Sin categoría';
+      const sr = getDisplaySubrubro(a) || 'Sin subrubro';
+      if (!byCat.has(cat)) byCat.set(cat, new Map());
+      const bySr = byCat.get(cat);
       if (!bySr.has(sr)) bySr.set(sr, []);
       bySr.get(sr).push(a);
     }
-    return out;
+    return Array.from(byCat, ([categoria, mapSr]) => ({
+      categoria,
+      subrubros: Array.from(mapSr, ([subrubro, arts]) => ({ subrubro, arts })),
+    }));
   }, [articulosFiltrados]);
 
-  // Orden
   const [sortBy, setSortBy] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const toggleSort = (k) => {
@@ -351,7 +381,7 @@ export default function TablaArticulos({
   return (
     <div className="tabla-articulos-container">
       <div className="tabla-content">
-        {agrupados.size === 0 ? (
+        {bloques.size === 0 ? (
           <p style={{ marginTop: '2rem', fontSize: '1.2rem', color: '#777' }}>
             Cargando artículos.
           </p>
@@ -391,39 +421,39 @@ export default function TablaArticulos({
                 </th>
               </tr>
             </thead>
-
             <tbody>
-              {Array.from(agrupados, ([rubro, mapSR]) => {
-                const subrubros = Array.from(mapSR, ([nombre, arts]) => ({ nombre, arts }));
-                return (
-                  <React.Fragment key={rubro}>
-                    {subrubros.map((sr) => (
-                      <React.Fragment key={`${rubro}|${sr.nombre}`}>
-                        <tr className="rubro-row">
+              {bloques.map((blq) => (
+                <React.Fragment key={`cat:${blq.categoria}`}>
+                  {blq.subrubros.map((par) => {
+                    const headerCat = blq.categoria || 'Sin categoría';
+                    const headerSr = par.subrubro || 'Sin subrubro';
+                    const artsOrdenados = par.arts.slice().sort(cmp);
+                    const articuloIdsDeLaPareja = artsOrdenados.map(getId);
+                    return (
+                      <React.Fragment key={`cat:${headerCat}|sr:${headerSr}`}>
+                        <tr className="pair-header-row">
                           <td colSpan={10}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <strong style={{ textTransform: 'uppercase' }}>
-                                {sr.nombre} - {tipoDesdeRubro(rubro)}
-                              </strong>
+                              <strong>{headerCat} - {headerSr}</strong>
                               <SubrubroAccionesMenu
                                 isTodo={isTodo}
                                 agrupaciones={agrupaciones}
                                 agrupacionSeleccionada={agrupacionSeleccionada}
                                 todoGroupId={todoGroupId}
-                                articuloIds={sr.arts.map(getId)}
+                                articuloIds={articuloIdsDeLaPareja}
                                 onRefetch={refetchLocal}
                                 onAfterMutation={afterMutation}
                                 notify={(m, t = 'success') => openSnack(m, t)}
+                                categoriaSeleccionada={{ subrubro: headerSr }}
                               />
                             </div>
                           </td>
                         </tr>
-
-                        {sr.arts.slice().sort(cmp).map((a) => {
+                        {artsOrdenados.map((a) => {
                           const id = getId(a);
                           const artHydrated = { ...a, id, precio: num(a.precio), costo: num(a.costo) };
                           return (
-                            <tr key={id}>
+                            <tr key={`row:${headerCat}|${headerSr}|${id}`}>
                               <td>{id}</td>
                               <td>{a.nombre}</td>
                               <td>
@@ -443,9 +473,7 @@ export default function TablaArticulos({
                                 <input
                                   type="number"
                                   value={objetivos[id] || ''}
-                                  onChange={(e) =>
-                                    setObjetivos({ ...objetivos, [id]: e.target.value })
-                                  }
+                                  onChange={(e) => setObjetivos({ ...objetivos, [id]: e.target.value })}
                                   style={{ width: 64 }}
                                 />
                               </td>
@@ -454,9 +482,7 @@ export default function TablaArticulos({
                                 <input
                                   type="number"
                                   value={manuales[id] || ''}
-                                  onChange={(e) =>
-                                    setManuales({ ...manuales, [id]: e.target.value })
-                                  }
+                                  onChange={(e) => setManuales({ ...manuales, [id]: e.target.value })}
                                   style={{ width: 84 }}
                                 />
                               </td>
@@ -476,15 +502,14 @@ export default function TablaArticulos({
                           );
                         })}
                       </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                );
-              })}
+                    );
+                  })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         )}
       </div>
-
       <Snackbar
         open={snack.open}
         autoHideDuration={2600}
