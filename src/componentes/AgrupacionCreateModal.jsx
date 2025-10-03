@@ -140,7 +140,7 @@ export default function AgrupacionCreateModal({
       });
       const n = ids.length;
       setArticulosSeleccionados([]);
-      onAppended?.(groupId, n);
+      onAppended?.(groupId, ids.length);
       showSnack(`Se agregaron ${n} artículo${n === 1 ? "" : "s"} a "${groupName}"`);
       setTimeout(() => {
         setSnackbarOpen(false);
