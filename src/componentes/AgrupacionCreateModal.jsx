@@ -128,20 +128,32 @@ export default function AgrupacionCreateModal({
     }
 
     // mode === "append"
-    const ids = articulosSeleccionados.map(safeId).filter(Number.isFinite);
-    if (!Number.isFinite(Number(groupId)) || ids.length === 0) {
+    const articulos = articulosSeleccionados
+      .map(a => ({
+        id: safeId(a),
+        nombre: a?.nombre || "",
+        categoria: a?.categoria || "Sin categoría",
+        subrubro: a?.subrubro || "Sin subrubro",
+        precio: a?.precio ?? 0,
+      }))
+      .filter(x => Number.isFinite(x.id)); // sólo válidos
+
+    if (!Number.isFinite(Number(groupId)) || articulos.length === 0) {
       showSnack("Seleccioná al menos un artículo", "error");
       return;
     }
+
     try {
       await httpBiz(`/agrupaciones/${groupId}/articulos`, {
         method: "PUT",
-        body: { ids },
+        body: { articulos }, // 👈 en vez de { ids }
       });
-      const n = ids.length;
+
+      const n = articulos.length;
       setArticulosSeleccionados([]);
-      onAppended?.(groupId, ids.length);
+      onAppended?.(groupId, n);
       showSnack(`Se agregaron ${n} artículo${n === 1 ? "" : "s"} a "${groupName}"`);
+
       setTimeout(() => {
         setSnackbarOpen(false);
         onClose?.();
@@ -150,6 +162,7 @@ export default function AgrupacionCreateModal({
       console.error("Error al agregar artículos:", err);
       showSnack("Error al agregar artículos", "error");
     }
+
   };
 
   const uiSubrubros = useMemo(() => agruparPorSubrubro(todosArticulos || []), [todosArticulos]);
