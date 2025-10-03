@@ -1,3 +1,4 @@
+// src/componentes/AgrupacionesList.jsx
 import React, { useMemo, useState } from "react";
 import {
   Box, Card, CardContent, CardActions, Accordion, AccordionSummary, AccordionDetails,
@@ -23,7 +24,9 @@ const AgrupacionesList = ({
   onActualizar,
   todoGroupId,
   todosArticulos = [],
-  loading = false
+  loading = false,
+  // 👇 NUEVO: contador real de “Sin agrupación” (idsSinAgrup.size)
+  todoCountOverride = null,
 }) => {
   // edición de nombre por grupo
   const [editing, setEditing] = useState({}); // { [groupId]: true }
@@ -37,11 +40,16 @@ const AgrupacionesList = ({
   const [appendForGroup, setAppendForGroup] = useState(null); // { id, nombre } | null
 
   const groupsSorted = useMemo(
-    () => [...agrupaciones].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre))),
+    () => [...(agrupaciones || [])].sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''))),
     [agrupaciones]
   );
 
-  const articleCount = (g) => Array.isArray(g.articulos) ? g.articulos.length : 0;
+  const articleCount = (g) => {
+    if (g?.id === todoGroupId && Number.isFinite(Number(todoCountOverride))) {
+      return Number(todoCountOverride);
+    }
+    return Array.isArray(g?.articulos) ? g.articulos.length : 0;
+  };
 
   const startEdit = (g) => {
     setEditing((s) => ({ ...s, [g.id]: true }));
@@ -213,12 +221,20 @@ const AgrupacionesList = ({
                   <CardContent>
                     <Divider sx={{ mb: 1.5 }} />
 
+                    {isTodo && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Esta agrupación es <strong>virtual</strong>: muestra todos los artículos que aún no pertenecen a ninguna agrupación.
+                        No admite edición desde aquí.
+                      </Typography>
+                    )}
+
                     {/* Selector de todos en el grupo */}
                     <Box display="flex" alignItems="center" mb={1}>
                       <Checkbox
                         checked={allChecked}
                         indeterminate={someChecked}
-                        onChange={() => selectAllInGroup(g)}
+                        onChange={() => !isTodo && selectAllInGroup(g)}
+                        disabled={isTodo}
                       />
                       <Typography variant="body2">Seleccionar todos</Typography>
                     </Box>
@@ -240,6 +256,7 @@ const AgrupacionesList = ({
                                 size="small"
                                 checked={checked}
                                 onChange={() => toggleArticle(g.id, Number(a.id))}
+                                disabled={isTodo}
                               />
                               <Typography variant="body2">
                                 {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
@@ -266,7 +283,7 @@ const AgrupacionesList = ({
 
                   {/* Acciones: mover seleccionados */}
                   <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
-                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                    <FormControl size="small" sx={{ minWidth: 220 }} disabled={isTodo}>
                       <InputLabel>Mover seleccionados a…</InputLabel>
                       <Select
                         label="Mover seleccionados a…"
@@ -288,7 +305,11 @@ const AgrupacionesList = ({
                       variant="contained"
                       endIcon={<ArrowForwardIcon />}
                       onClick={() => moveSelected(g.id)}
-                      disabled={!(selectedByGroup[g.id]?.size) || !Number.isFinite(Number(targetByGroup[g.id]))}
+                      disabled={
+                        isTodo ||
+                        !(selectedByGroup[g.id]?.size) ||
+                        !Number.isFinite(Number(targetByGroup[g.id]))
+                      }
                       sx={{ textTransform: "none" }}
                     >
                       Mover
@@ -305,3 +326,4 @@ const AgrupacionesList = ({
 };
 
 export default AgrupacionesList;
+

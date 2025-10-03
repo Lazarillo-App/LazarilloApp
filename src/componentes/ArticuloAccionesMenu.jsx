@@ -9,6 +9,7 @@ import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
+import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
@@ -125,8 +126,23 @@ export default function ArticuloAccionesMenu({
   }
 
   async function quitarDeActual() {
-    if (isTodo || !currentGroupId) return;
     const idNum = getNum(articulo.id);
+    if (isTodo && todoGroupId) {
+      try {
+        await addExclusiones(todoGroupId, [{ scope: 'articulo', ref_id: idNum }]);
+        notify?.(`Artículo #${idNum} ocultado de TODO`, 'success');
+        onAfterMutation?.([idNum]);
+        onRefetch?.();
+      } catch (e) {
+        console.error('EXCLUIR_TODO_ERROR', e);
+        notify?.('No se pudo ocultar de TODO', 'error');
+      } finally {
+        handleClose();
+      }
+      return;
+    }
+
+    if (!currentGroupId) return;
     try {
       await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${idNum}`, { method: 'DELETE' });
       notify?.(`Artículo #${articulo.id} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');

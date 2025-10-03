@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/servicios/apiAgrupacionesTodo.js
 import { httpBiz } from './apiBusinesses';
 

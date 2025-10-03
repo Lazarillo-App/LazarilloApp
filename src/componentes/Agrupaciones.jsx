@@ -1,14 +1,15 @@
+// src/componentes/Agrupaciones.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
 
 import AgrupacionesList from "./AgrupacionesList";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
 
-import { ensureTodo } from "../servicios/apiAgrupacionesTodo";
+import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "../servicios/apiBusinesses";
 import { obtenerAgrupaciones } from "../servicios/apiAgrupaciones";
 
-// === Helpers de mapeo/árbol (idénticos a tu versión) ===
+// === Helpers de mapeo/árbol ===
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
   const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
@@ -29,28 +30,34 @@ const buildTree = (flatList = []) => {
     const sr = a.subrubro || "Sin subrubro";
     if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
     const catObj = cats.get(cat);
-    let srObj = catObj.subrubros.find(s => s.nombre === sr);
-    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
+    let srObj = catObj.subrubros.find((s) => s.nombre === sr);
+    if (!srObj) {
+      srObj = { nombre: sr, articulos: [] };
+      catObj.subrubros.push(srObj);
+    }
     srObj.articulos.push({
       id: a.id,
       nombre: a.nombre,
       categoria: cat,
       subrubro: sr,
-      precio: a.precio
+      precio: a.precio,
     });
   }
   return Array.from(cats.values());
 };
 
 export default function Agrupaciones({ actualizarAgrupaciones }) {
-  const [todosArticulos, setTodosArticulos] = useState([]);   // árbol categoría/subrubro
+  const [todosArticulos, setTodosArticulos] = useState([]); // árbol categoría/subrubro
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal
+  const [todoGroupId, setTodoGroupId] = useState(null);
+  const [excludedIds, setExcludedIds] = useState(new Set()); // exclusiones de TODO
+
+  // Modal crear agrupación
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Snackbar general (de lista/acciones externas)
+  // Snackbar general
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
   const [snackbarTipo, setSnackbarTipo] = useState("success");
@@ -83,13 +90,29 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
 
         // Artículos desde nuestra BD
         const res = await BusinessesAPI.articlesFromDB(bizId);
-        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        const flat = (res?.items || []).map(mapRowToArticle).filter((a) => Number.isFinite(a.id));
         setTodosArticulos(buildTree(flat));
         setLoading(false);
 
-        // Garantizar TODO (idempotente)
-        // eslint-disable-next-line no-empty
-        try { await ensureTodo(); } catch { }
+        // Garantizar TODO + exclusiones
+        try {
+          const todo = await ensureTodo();
+          if (todo?.id) {
+            setTodoGroupId(todo.id);
+            try {
+              const ex = await getExclusiones(todo.id);
+              const ids = (ex || [])
+                .filter((e) => e.scope === "articulo")
+                .map((e) => Number(e.ref_id))
+                .filter(Boolean);
+              setExcludedIds(new Set(ids));
+            } catch {
+              setExcludedIds(new Set());
+            }
+          }
+        } catch {
+          // si falla, seguimos sin TODO virtual pero sin romper UI
+        }
 
         // Agrupaciones
         await cargarAgrupaciones();
@@ -101,23 +124,64 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     })();
   }, []);
 
+  // ids asignados a otras agrupaciones (excepto TODO)
   const assignedIds = useMemo(() => {
     const s = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => {
+      .filter((g) => (g?.nombre || "").toUpperCase() !== "TODO")
+      .forEach((g) => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
-        arts.filter(Boolean).forEach(a => {
-          const id = Number(a?.id);
-          if (Number.isFinite(id)) s.add(String(id));
-        });
+        arts
+          .filter(Boolean)
+          .forEach((a) => {
+            const id = Number(a?.id);
+            if (Number.isFinite(id)) s.add(String(id));
+          });
       });
     return s;
   }, [agrupaciones]);
 
   // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)
   const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
+
+  // Flatten de ids desde el árbol para contar TODO virtual
+  const allIds = useMemo(() => {
+    const out = [];
+    for (const cat of todosArticulos || []) {
+      for (const sr of cat?.subrubros || []) {
+        for (const a of sr?.articulos || []) {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) out.push(id);
+        }
+      }
+    }
+    return out;
+  }, [todosArticulos]);
+
+  // ids asignados a otras agrupaciones (numérico)
+  const idsEnOtras = useMemo(() => {
+    const s = new Set();
+    (agrupaciones || [])
+      .filter(Boolean)
+      .filter((g) => (g?.nombre || "").toUpperCase() !== "TODO")
+      .forEach((g) =>
+        (g?.articulos || []).forEach((a) => {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) s.add(id);
+        })
+      );
+    return s;
+  }, [agrupaciones]);
+
+  // Conteo real de "sin agrupación" = todos - (asignados + excluidos)
+  const todoCount = useMemo(() => {
+    let count = 0;
+    for (const id of allIds) {
+      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count++; // 👈 importante!
+    }
+    return count;
+  }, [allIds, idsEnOtras, excludedIds]);
 
   return (
     <>
@@ -156,16 +220,14 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
           loading={loading}
           isArticuloBloqueado={isArticuloBloqueado}
         />
+
         <AgrupacionesList
           agrupaciones={agrupaciones}
-          onActualizar={async () => {
-            await cargarAgrupaciones();
-            actualizarAgrupaciones?.();
-            showSnack("Agrupación actualizada");
-          }}
-          todoGroupId={(agrupaciones.find(g => (g?.nombre || "").toUpperCase() === "TODO") || {}).id}
-          todosArticulos={todosArticulos}
+          onActualizar={cargarAgrupaciones}     // ← refetch local
+          todoGroupId={todoGroupId}             // ← id real de TODO
+          todosArticulos={todosArticulos}       // ← árbol para modal "append"
           loading={loading}
+          todoCountOverride={todoCount}         // ← contador real de TODO virtual
         />
       </div>
     </>

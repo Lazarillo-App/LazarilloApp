@@ -53,6 +53,7 @@ export default function TablaArticulos({
   onIdsVisibleChange,
   activeBizId,
   reloadKey = 0,
+  onTodoInfo,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -226,13 +227,27 @@ export default function TablaArticulos({
 
   const idsSinAgrup = useMemo(
     () =>
-      new Set(
-        allArticulos
-          .map(getId)
-          .filter((id) => !idsEnOtras.has(id) && !excludedIds.has(id))
-      ),
+      allArticulos
+        .map(getId)
+        .filter((id) => idsEnOtras.has(id) === false && excludedIds.has(id) === false),
     [allArticulos, idsEnOtras, excludedIds]
   );
+
+  useEffect(() => {
+    if (!onTodoInfo) return;
+    onTodoInfo({
+      todoGroupId,
+      idsSinAgrupCount: idsSinAgrup.size,
+    });
+  }, [onTodoInfo, todoGroupId, idsSinAgrup]);
+
+  useEffect(() => {
+    if (!onTodoInfo) return;
+    onTodoInfo({
+      todoGroupId,
+      idsSinAgrupCount: idsSinAgrup.size,
+    });
+  }, [onTodoInfo, todoGroupId, idsSinAgrup]);
 
   // Filtro principal
   let articulosAMostrar = [];
