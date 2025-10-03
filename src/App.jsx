@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
@@ -11,6 +12,7 @@ import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
 
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
+import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
 
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
@@ -30,7 +32,7 @@ import './css/global.css';
 import './css/theme-layout.css';
 
 export default function App() {
-  const [bootReady, setBootReady] = useState(false);           // ⬅️ clave: no renderizar hasta estar listos
+  const [bootReady, setBootReady] = useState(false); // no renderizar hasta resolver negocio activo
   const [isLogged, setIsLogged] = useState(!!localStorage.getItem('token'));
 
   const [activeBusinessId, setActiveBusinessId] = useState(
@@ -43,7 +45,7 @@ export default function App() {
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
 
-  // ---- BOOT: asegurar token y negocio activo antes de pintar datos ----
+  // ---------- BOOT ----------
   useEffect(() => {
     (async () => {
       try {
@@ -51,44 +53,37 @@ export default function App() {
         setIsLogged(!!token);
         if (!token) { setBootReady(true); return; } // irá a login
 
-        // Asegurar activeBusinessId: si no hay, elegir el primero del usuario
-        let bid = localStorage.getItem('activeBusinessId');
-        if (!bid) {
-          const mine = await BusinessesAPI.listMine(); // withBusinessId:false
-          const first = mine?.[0]?.id;
-          if (first) {
-            await BusinessesAPI.select(first);        // fija negocio activo en back
-            bid = String(first);
-            localStorage.setItem('activeBusinessId', bid);
-            // avisar a componentes que escuchan
-            window.dispatchEvent(new Event('business:switched'));
-          }
-        }
-        setActiveBusinessId(bid || '');
-      } catch (e) {
-        // token inválido: limpieza suave
-        localStorage.removeItem('token');
-        localStorage.removeItem('activeBusinessId');
-        setIsLogged(false);
-        setActiveBusinessId('');
+        // restaura (o decide) negocio activo
+        const id = await ensureActiveBusiness();
+        setActiveBusinessId(id ? String(id) : '');
       } finally {
         setBootReady(true);
       }
     })();
   }, []);
 
-  // Mantener sync si otro componente cambia el negocio
+  // Escuchar cambios externos del negocio (storage y eventos internos)
   useEffect(() => {
     const sync = () => setActiveBusinessId(localStorage.getItem('activeBusinessId') || '');
     window.addEventListener('storage', sync);
     window.addEventListener('business:switched', sync);
+
+    // si tu flujo de login dispara un evento, lo enganchamos aquí
+    const onLogin = async () => {
+      setIsLogged(true);
+      const id = await ensureActiveBusiness();
+      setActiveBusinessId(id ? String(id) : '');
+    };
+    window.addEventListener('auth:login', onLogin);
+
     return () => {
       window.removeEventListener('storage', sync);
       window.removeEventListener('business:switched', sync);
+      window.removeEventListener('auth:login', onLogin);
     };
   }, []);
 
-  // Cargas de datos (solo cuando ya tenemos negocio activo)
+  // ---------- Carga de datos (depende del negocio activo) ----------
   const recargarAgrupaciones = async () => {
     try {
       const data = await apiObtenerAgrupaciones();
@@ -113,7 +108,7 @@ export default function App() {
 
   useEffect(() => {
     if (!bootReady || !isLogged || !activeBusinessId) {
-      // si cambiamos de negocio o salimos, limpiamos vista
+      // si no hay negocio activo, limpiamos
       setAgrupaciones([]);
       setCategorias([]);
       return;
@@ -123,18 +118,15 @@ export default function App() {
   }, [bootReady, isLogged, activeBusinessId]);
 
   const onBusinessSwitched = () => {
+    // util cuando un hijo cambia el negocio y queremos refrescar sin esperar listeners
     setActiveBusinessId(localStorage.getItem('activeBusinessId') || '');
     recargarAgrupaciones();
     cargarCategorias();
   };
 
-  // Splash muy simple mientras resolvemos negocio activo
+  // ---------- Splash mientras resolvemos negocio activo ----------
   if (!bootReady) {
-    return (
-      <div style={{ padding: 24 }}>
-        Cargando…
-      </div>
-    );
+    return <div style={{ padding: 24 }}>Cargando…</div>;
   }
 
   return (

@@ -107,6 +107,10 @@ export const BusinessesAPI = {
       { withBusinessId: true }
     ),
 
+    getActive : () => http('/businesses/active', { withBusinessId: false }),
+  setActive : (businessId) =>
+    http('/businesses/active', { method: 'PATCH', body: { businessId }, withBusinessId: false }),
+
   salesSeries    : (id, articuloId, { from, to, groupBy = 'day' }) =>
     http(
       `/businesses/${id}/sales/${articuloId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,

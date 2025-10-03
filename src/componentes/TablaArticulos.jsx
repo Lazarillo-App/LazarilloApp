@@ -60,16 +60,46 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-  const afterMutation = (removedIds = []) => {
-    if (!agrupSelView?.id) { refetchLocal(); return; }
-    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
-    if (isTodo) { refetchLocal(); return; }
-    const rem = new Set(removedIds.map(Number));
-    const actual = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
-    const next = actual.filter(a => !rem.has(getId(a)));
-    setAgrupSelView({ ...agrupSelView, articulos: next });
+  // en TablaArticulos.jsx
+  // ...
+  const afterMutation = (evt, payload = {}) => {
+      console.log('[afterMutation]', evt);
+    // payload: { type, fromGroupId, toGroupId, removedIds?:number[], addedIds?:number[], articleIds?:number[] }
+    // Siempre pedimos refetch para quedar consistentes
     refetchLocal();
+
+    const removed = new Set((payload.removedIds || payload.articleIds || []).map(Number));
+    const added = new Set((payload.addedIds || payload.articleIds || []).map(Number));
+    const fromId = Number(payload.fromGroupId);
+    const toId = Number(payload.toGroupId);
+
+    setAgrupSelView(prev => {
+      if (!prev) return prev;
+      let arts = Array.isArray(prev.articulos) ? prev.articulos.slice() : [];
+
+      // 1) Si estoy viendo la agrupación origen (o “Sin agrupación” y salió de ahí): saco los ids
+      const viendoOrigen = Number(prev.id) === fromId || esTodoGroup(prev, todoGroupId);
+      if (viendoOrigen && removed.size) {
+        arts = arts.filter(a => !removed.has(getId(a)));
+      }
+
+      // 2) Si estoy viendo la agrupación destino: agrego los ids usando baseById para hidratar
+      const viendoDestino = Number(prev.id) === toId;
+      if (viendoDestino && added.size) {
+        const toAdd = Array.from(added)
+          .map(id => baseById.get(id))
+          .filter(Boolean)
+          .map(a => ({ ...a, id: getId(a), precio: num(a.precio), costo: num(a.costo) }));
+
+        // de-dup
+        const dedup = new Map([...arts, ...toAdd].map(x => [getId(x), x]));
+        arts = Array.from(dedup.values());
+      }
+
+      return { ...prev, articulos: arts };
+    });
   };
+
 
   // helper local para armar tree desde items planos
   function buildTreeFromFlat(items = []) {
@@ -126,7 +156,7 @@ export default function TablaArticulos({
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
-        // eslint-disable-next-line no-unused-vars
+          // eslint-disable-next-line no-unused-vars
         } catch (e) {
           // 2) fallback: plano → tree
           // eslint-disable-next-line no-useless-catch

@@ -17,13 +17,13 @@ const getNum = (v) => Number(v ?? 0);
 // Helpers locales para árbol
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
-  const id  = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+  const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
   return {
     id,
-    nombre   : row?.nombre    ?? raw?.nombre    ?? raw?.descripcion ?? `#${id}`,
-    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro       ?? 'Sin categoría',
-    subrubro : row?.subrubro  ?? raw?.subrubro  ?? raw?.subRubro    ?? 'Sin subrubro',
-    precio   : Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+    nombre: row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`,
+    categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría',
+    subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro',
+    precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
 };
 const buildTree = (flatList = []) => {
@@ -31,7 +31,7 @@ const buildTree = (flatList = []) => {
   for (const a of flatList) {
     if (!Number.isFinite(a.id)) continue;
     const cat = a.categoria || 'Sin categoría';
-    const sr  = a.subrubro  || 'Sin subrubro';
+    const sr = a.subrubro || 'Sin subrubro';
     if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
     const catObj = cats.get(cat);
     let srObj = catObj.subrubros.find(s => s.nombre === sr);
@@ -45,14 +45,13 @@ export default function SubrubroAccionesMenu({
   isTodo = false,
   agrupaciones = [],
   agrupacionSeleccionada,
+  articulo,
   // eslint-disable-next-line no-unused-vars
   todoGroupId,
-  articuloIds = [],          // IDs de los artículos del subrubro
+  articuloIds = [],          
   onRefetch,
   notify,
-  onAfterMutation,           // optimista
-
-  // si el padre los pasa, los usamos; si no, cargamos acá
+  onAfterMutation,           
   todosArticulos = [],
   loading = false,
 }) {
@@ -67,11 +66,11 @@ export default function SubrubroAccionesMenu({
   const [loadingLocal, setLoadingLocal] = useState(false);
 
   const haveExternalTree = Array.isArray(todosArticulos) && todosArticulos.length > 0;
-  const effectiveTree    = haveExternalTree ? todosArticulos : treeLocal;
+  const effectiveTree = haveExternalTree ? todosArticulos : treeLocal;
   const effectiveLoading = haveExternalTree ? !!loading : loadingLocal;
 
   const open = Boolean(anchorEl);
-  const handleOpen  = (e) => setAnchorEl(e.currentTarget);
+  const handleOpen = (e) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
   const loadedRef = useRef(false);
@@ -86,20 +85,17 @@ export default function SubrubroAccionesMenu({
     [agrupaciones, currentGroupId]
   );
 
-  const openMover  = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
+  const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
   const closeMover = () => setDlgMoverOpen(false);
 
   async function mover() {
     if (!destId) return;
-    const ids = articuloIds.map(getNum).filter(Boolean);
-    if (!ids.length) return;
-
+    const idNum = getNum(articulo.id);
+    const toId = Number(destId);
     const fromId = (!isTodo && currentGroupId) ? Number(currentGroupId) : null;
-    const toId   = Number(destId);
 
     if (fromId && fromId === toId) {
-      notify?.('Ya está en esa agrupación', 'info');
-      onAfterMutation?.(ids);
+      notify?.('El artículo ya está en esa agrupación', 'info');
       return closeMover();
     }
 
@@ -107,23 +103,42 @@ export default function SubrubroAccionesMenu({
     try {
       if (fromId) {
         try {
-          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, {
+            method: 'POST',
+            body: { toId, ids: [idNum] }
+          });
         } catch {
-          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
-          for (const id of ids) {
-            try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {}
-          }
+          await httpBiz(`/agrupaciones/${toId}/articulos`, {
+            method: 'PUT',
+            body: { ids: [idNum] }
+          });
+          try {
+            await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' });
+          } catch { }
         }
       } else {
-        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
+        // desde TODO / sin agrupación
+        await httpBiz(`/agrupaciones/${toId}/articulos`, {
+          method: 'PUT',
+          body: { ids: [idNum] }
+        });
       }
 
-      notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
-      onAfterMutation?.(ids);
-      onRefetch?.();
+      // ✅ Update optimista con contexto completo
+      onAfterMutation?.({
+        type: 'move',
+        fromGroupId: fromId,      // puede ser null si venía de TODO
+        toGroupId: toId,
+        articleIds: [idNum],
+        removedIds: [idNum],
+        addedIds: [idNum],
+      });
+
+      notify?.(`Artículo #${idNum} movido`, 'success');
+      onRefetch?.(); // mantenemos el refetch para confirmar con servidor
     } catch (e) {
-      console.error('MOVER_SUBRUBRO_ERROR', e);
-      notify?.('No se pudo mover el subrubro', 'error');
+      console.error('MOVER_ERROR', e);
+      notify?.('No se pudo mover el artículo', 'error');
     } finally {
       setIsMoving(false);
       closeMover();
@@ -135,7 +150,7 @@ export default function SubrubroAccionesMenu({
     const ids = articuloIds.map(getNum).filter(Boolean);
     try {
       for (const id of ids) {
-        try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch {}
+        try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch { }
       }
       notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
       onAfterMutation?.(ids);
@@ -160,35 +175,35 @@ export default function SubrubroAccionesMenu({
     return (art) => assigned.has(String(art?.id));
   }, [agrupaciones]);
 
- useEffect(() => {
-  if (!openCrearAgr) return;
-  if (haveExternalTree || loading || loadedRef.current) return;
+  useEffect(() => {
+    if (!openCrearAgr) return;
+    if (haveExternalTree || loading || loadedRef.current) return;
 
-  let alive = true;
-  (async () => {
-    try {
-      setLoadingLocal(true);
-      const bizId = localStorage.getItem('activeBusinessId');
-      if (!bizId) {
-        setTreeLocal([]);
-        return;
+    let alive = true;
+    (async () => {
+      try {
+        setLoadingLocal(true);
+        const bizId = localStorage.getItem('activeBusinessId');
+        if (!bizId) {
+          setTreeLocal([]);
+          return;
+        }
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
+        if (alive) {
+          setTreeLocal(buildTree(flat));
+          loadedRef.current = true;
+        }
+      } catch (e) {
+        console.error('LOAD_TREE_ERROR', e);
+        if (alive) setTreeLocal([]);
+      } finally {
+        if (alive) setLoadingLocal(false);
       }
-      const res  = await BusinessesAPI.articlesFromDB(bizId);
-      const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
-      if (alive) {
-        setTreeLocal(buildTree(flat));
-        loadedRef.current = true;
-      }
-    } catch (e) {
-      console.error('LOAD_TREE_ERROR', e);
-      if (alive) setTreeLocal([]);
-    } finally {
-      if (alive) setLoadingLocal(false);
-    }
-  })();
+    })();
 
-  return () => { alive = false; };
-}, [openCrearAgr, haveExternalTree, loading]);
+    return () => { alive = false; };
+  }, [openCrearAgr, haveExternalTree, loading]);
 
   return (
     <>
