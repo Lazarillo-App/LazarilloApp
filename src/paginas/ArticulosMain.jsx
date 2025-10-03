@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
@@ -138,6 +139,45 @@ export default function ArticulosMain(props) {
   /* ✅ Recibimos info de la Tabla para mostrar contador real en “Sin Agrupación” */
   const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
 
+  /* ---------- NUEVO: opciones del Buscador por NOMBRE (y código) ---------- */
+  // Mapa id -> nombre (desde el árbol `categorias`)
+  const nameById = useMemo(() => {
+    const m = new Map();
+    (categorias || []).forEach((sub) =>
+      (sub.categorias || []).forEach((cat) =>
+        (cat.articulos || []).forEach((a) => {
+          const id = Number(a.id ?? a.articulo_id ?? a.codigo);
+          if (Number.isFinite(id)) {
+            m.set(id, String(a.nombre ?? a.descripcion ?? `#${id}`));
+          }
+        })
+      )
+    );
+    return m;
+  }, [categorias]);
+
+  const opcionesBuscador = useMemo(() => {
+    const ids = activeIds?.size ? Array.from(activeIds) : Array.from(nameById.keys());
+    return ids.slice(0, 300).map((id) => ({
+      id,
+      label: `${nameById.get(id) || `#${id}`} · ${id}`, // se ve el nombre y también el código
+      value: nameById.get(id) || String(id),
+    }));
+  }, [activeIds, nameById]);
+
+  const labelById = useMemo(() => {
+    const m = new Map();
+    (categorias || []).forEach(sub =>
+      (sub.categorias || []).forEach(cat =>
+        (cat.articulos || []).forEach(a =>
+          m.set(Number(a.id), String(a.nombre || '').trim())
+        )
+      )
+    );
+    return m;
+  }, [categorias]);
+
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
@@ -149,11 +189,22 @@ export default function ArticulosMain(props) {
             <Buscador
               value={filtroBusqueda}
               setFiltroBusqueda={setFiltroBusqueda}
-              opciones={Array.from(activeIds)
-                .slice(0, 300)
-                .map((id) => ({ id, label: String(id), value: String(id) }))}
+              opciones={useMemo(() => {
+                const out = [];
+                for (const id of activeIds) {
+                  const code = Number(id);
+                  const name = labelById.get(code) || '';
+                  out.push({
+                    id: code,
+                    value: String(code),               
+                    label: name ? `${code} · ${name}` : String(code),
+                  });
+                }
+                return out.slice(0, 300);
+              }, [activeIds, labelById])}
               placeholder="Buscar por código o nombre…"
             />
+
           </div>
         </div>
       </div>

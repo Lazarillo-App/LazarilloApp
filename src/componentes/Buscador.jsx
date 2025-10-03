@@ -58,10 +58,12 @@ export default function Buscador({
 
   const seleccionar = (opt) => {
     setQ(opt.label);
-    setFiltroBusqueda?.(opt.label);
+    // ⬇️ Enviar el "valor crudo" (código), si existe.
+    setFiltroBusqueda?.(opt.value ?? opt.label);
     setOpen(false);
     setCursor(-1);
   };
+
 
   const onKeyDown = (e) => {
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
