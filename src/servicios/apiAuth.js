@@ -4,7 +4,7 @@ import { BASE } from './apiBase';
 // --- Helpers de sesión ---
 function saveSession(data) {
   if (data?.token) localStorage.setItem('token', data.token);
-  if (data?.user)  localStorage.setItem('user', JSON.stringify(data.user));
+  if (data?.user) localStorage.setItem('user', JSON.stringify(data.user));
 
   const bid = data?.user?.active_business_id;
   if (bid != null) localStorage.setItem('activeBusinessId', bid);
@@ -84,6 +84,22 @@ export const AuthAPI = {
       }
     }
     return data;
+  },
+
+  // Solicitar enlace de reseteo
+  requestPasswordReset: async (email) => {
+    return await http('/auth/forgot-password', {
+      method: 'POST',
+      body: { email: String(email).trim() }
+    });
+  },
+
+  // Aplicar nueva contraseña (con token del email)
+  resetPassword: async ({ token, password }) => {
+    return await http('/auth/reset-password', {
+      method: 'POST',
+      body: { token, password }
+    });
   },
 
   logout: () => {

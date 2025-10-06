@@ -10,6 +10,8 @@ import Insumos from './componentes/Insumos';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
+import ForgotPassword from './paginas/ForgotPassword';
+import ResetPassword from './paginas/ResetPassword';
 
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
@@ -137,13 +139,15 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<OnboardingGuard />}>
               <Route
                 path="/"
                 element={
-                  <RequireMaxi onReady={() => {}}>
+                  <RequireMaxi onReady={() => { }}>
                     <ArticulosMain
                       agrupacionSeleccionada={agrupacionSeleccionada}
                       setAgrupacionSeleccionada={setAgrupacionSeleccionada}
