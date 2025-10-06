@@ -25,8 +25,8 @@ const AgrupacionesList = ({
   todoGroupId,
   todosArticulos = [],
   loading = false,
-  // 👇 NUEVO: contador real de “Sin agrupación” (idsSinAgrup.size)
   todoCountOverride = null,
+  todoVirtualArticulos = [],
 }) => {
   // edición de nombre por grupo
   const [editing, setEditing] = useState({}); // { [groupId]: true }
@@ -113,7 +113,7 @@ const AgrupacionesList = ({
     const assigned = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .filter(g => (g?.nombre || '').toUpperCase() !== 'Sin Agrupación')
       .forEach(g => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
         arts.filter(Boolean).forEach(a => {
@@ -148,7 +148,8 @@ const AgrupacionesList = ({
         {groupsSorted.map((g) => {
           const isTodo = g.id === todoGroupId;
           const selected = selectedByGroup[g.id] || new Set();
-          const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
+          const itemsForGroup = isTodo ? (todoVirtualArticulos || []) : (g.articulos || []);
+          const allIds = itemsForGroup.map((a) => Number(a.id)).filter(Boolean);
           const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
@@ -179,21 +180,21 @@ const AgrupacionesList = ({
                   <Box>
                     {!editing[g.id] ? (
                       <>
-                        <Tooltip title={isTodo ? "No se puede renombrar/borrar TODO" : "Renombrar"}>
+                        <Tooltip title={isTodo ? "No se puede renombrar/borrar Sin Agrupación" : "Renombrar"}>
                           <span>
                             <IconButton onClick={() => startEdit(g)} disabled={isTodo}>
                               <EditIcon />
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Tooltip title={isTodo ? "No se puede eliminar TODO" : "Eliminar"}>
+                        <Tooltip title={isTodo ? "No se puede eliminar Sin Agrupación" : "Eliminar"}>
                           <span>
                             <IconButton color="error" onClick={() => removeGroup(g)} disabled={isTodo}>
                               <DeleteIcon />
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Tooltip title={isTodo ? "No se agrega en TODO" : "Agregar artículos"}>
+                        <Tooltip title={isTodo ? "No se agrega en Sin Agrupación" : "Agregar artículos"}>
                           <span>
                             <Button
                               size="small"
@@ -241,7 +242,7 @@ const AgrupacionesList = ({
 
                     {/* Lista de artículos del grupo */}
                     <Stack spacing={0.5}>
-                      {(g.articulos || []).map((a) => {
+                      {itemsForGroup.map((a) => {
                         const checked = selected.has(Number(a.id));
                         return (
                           <Box
@@ -262,7 +263,7 @@ const AgrupacionesList = ({
                                 {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
                               </Typography>
                             </Box>
-                            <Tooltip title={isTodo ? "No se quita desde TODO" : "Quitar del grupo"}>
+                            <Tooltip title={isTodo ? "No se quita desde Sin Agrupación" : "Quitar del grupo"}>
                               <span>
                                 <Button
                                   size="small"

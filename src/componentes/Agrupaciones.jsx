@@ -94,7 +94,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         setTodosArticulos(buildTree(flat));
         setLoading(false);
 
-        // Garantizar TODO + exclusiones
+        // Garantizar TODO  exclusiones
         try {
           const todo = await ensureTodo();
           if (todo?.id) {
@@ -129,7 +129,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     const s = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter((g) => (g?.nombre || "").toUpperCase() !== "TODO")
+      .filter((g) => (g?.nombre || "").toUpperCase() !== "Sin Agrupación")
       .forEach((g) => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
         arts
@@ -164,7 +164,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     const s = new Set();
     (agrupaciones || [])
       .filter(Boolean)
-      .filter((g) => (g?.nombre || "").toUpperCase() !== "TODO")
+      .filter((g) => (g?.nombre || "").toUpperCase() !== "Sin Agrupación")
       .forEach((g) =>
         (g?.articulos || []).forEach((a) => {
           const id = Number(a?.id);
@@ -174,11 +174,32 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     return s;
   }, [agrupaciones]);
 
-  // Conteo real de "sin agrupación" = todos - (asignados + excluidos)
+  const todoVirtualArticulos = useMemo(() => {
+    const out = [];
+    for (const cat of todosArticulos || []) {
+      for (const sr of cat?.subrubros || []) {
+        for (const a of sr?.articulos || []) {
+          const id = Number(a?.id);
+          if (!Number.isFinite(id)) continue;
+          if (idsEnOtras.has(id) || excludedIds.has(id)) continue;
+          out.push({
+            id,
+            nombre: a?.nombre ?? `#${id}`,
+            categoria: a?.categoria ?? cat?.nombre ?? "Sin categoría",
+            subrubro: a?.subrubro ?? sr?.nombre ?? "Sin subrubro",
+            precio: a?.precio ?? 0,
+          });
+        }
+      }
+    }
+    return out;
+  }, [todosArticulos, idsEnOtras, excludedIds]);
+
+  // Conteo real de "sin agrupación" = todos - (asignados  excluidos)
   const todoCount = useMemo(() => {
     let count = 0;
     for (const id of allIds) {
-      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count++; // 👈 importante!
+      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count; // 👈 importante!
     }
     return count;
   }, [allIds, idsEnOtras, excludedIds]);
@@ -223,11 +244,12 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
 
         <AgrupacionesList
           agrupaciones={agrupaciones}
-          onActualizar={cargarAgrupaciones}     // ← refetch local
-          todoGroupId={todoGroupId}             // ← id real de TODO
-          todosArticulos={todosArticulos}       // ← árbol para modal "append"
+          onActualizar={cargarAgrupaciones}     
+          todoGroupId={todoGroupId}             
+          todosArticulos={todosArticulos}       
           loading={loading}
-          todoCountOverride={todoCount}         // ← contador real de TODO virtual
+          todoCountOverride={todoCount}        
+          todoVirtualArticulos={todoVirtualArticulos}
         />
       </div>
     </>
