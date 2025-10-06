@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { useAuth } from './AuthContext';

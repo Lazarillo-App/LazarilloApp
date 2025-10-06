@@ -255,13 +255,45 @@ export default function TablaArticulos({
     const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
       ? idsSinAgrup
       : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+
+    // Hidratar con categoría/subrubro heredados del árbol  baseById
     articulosAMostrar = (categoriaSeleccionada.categorias || [])
-      .flatMap((c) => c.articulos || [])
+      .flatMap((c) =>
+        (c.articulos || []).map((a) => {
+          const id = getId(a);
+          const b = baseById.get(id) || {};
+          return {
+            ...b,
+            ...a,
+            id,
+            nombre: a?.nombre ?? b?.nombre ?? `#${id}`,
+            categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría",
+            subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro",
+            precio: num(a?.precio ?? b?.precio),
+            costo: num(a?.costo ?? b?.costo),
+          };
+        })
+      )
       .filter((a) => idsFiltro.has(getId(a)));
   } else if (categoriaSeleccionada) {
-    articulosAMostrar = (categoriaSeleccionada.categorias || []).flatMap(
-      (c) => c.articulos || []
-    );
+    // Sin filtro de agrupación, pero igual hidratamos
+    articulosAMostrar = (categoriaSeleccionada.categorias || [])
+      .flatMap((c) =>
+        (c.articulos || []).map((a) => {
+          const id = getId(a);
+          const b = baseById.get(id) || {};
+          return {
+            ...b,
+            ...a,
+            id,
+            nombre: a?.nombre ?? b?.nombre ?? `#${id}`,
+            categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría",
+            subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro",
+            precio: num(a?.precio ?? b?.precio),
+            costo: num(a?.costo ?? b?.costo),
+          };
+        })
+      );
   } else if (agrupSelView) {
     const esTodo = esTodoGroup(agrupSelView, todoGroupId);
     const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
