@@ -428,7 +428,7 @@ export default function TablaArticulos({
   return (
     <div className="tabla-articulos-container">
       <div className="tabla-content">
-        {bloques.size === 0 ? (
+        {bloques.length  === 0 ? (
           <p style={{ marginTop: '2rem', fontSize: '1.2rem', color: '#777' }}>
             Cargando artículos.
           </p>

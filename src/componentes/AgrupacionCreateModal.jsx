@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+/* eslint-disable no-empty */
+// src/componentes/AgrupacionCreateModal.jsx
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Modal, Box, Typography, Checkbox, Accordion, AccordionSummary,
   AccordionDetails, Button, TextField, Snackbar, Alert
@@ -46,13 +48,15 @@ export default function AgrupacionCreateModal({
   onClose,
   todosArticulos = [],
   loading = false,
-  isArticuloBloqueado = () => false, // 👈 nombre de prop consistente con el padre
+  isArticuloBloqueado = () => false,
   mode = "create",
   groupId,
   groupName,
   onCreated,
   onAppended,
-  saveButtonLabel
+  saveButtonLabel,
+  // 👇 NUEVO: ids a preseleccionar + reglas
+  preselect = null, // { articleIds:number[], fromGroupId:number|null, allowAssigned:boolean }
 }) {
   const [articulosSeleccionados, setArticulosSeleccionados] = useState([]);
   const [rubro, setRubro] = useState("");
@@ -65,14 +69,51 @@ export default function AgrupacionCreateModal({
     setSnackbarOpen(true);
   };
 
-  // Wrapper seguro del bloqueo (nunca revienta con datos sucios)
+  const uiSubrubros = useMemo(() => agruparPorSubrubro(todosArticulos || []), [todosArticulos]);
+  const preselectedIds = useMemo(
+    () => new Set((preselect?.articleIds || []).map(n => Number(n)).filter(Number.isFinite)),
+    [preselect]
+  );
+
+  // Wrapper de bloqueo con excepción: si viene como preseleccionado y allowAssigned=true, NO bloquear
   const isBlocked = useMemo(() => {
     return (art) => {
       const id = safeId(art);
-      if (id == null) return true;           // artículos sin id → bloqueados
+      if (id == null) return true; // artículos sin id → bloqueados
+      if (preselect?.allowAssigned && preselectedIds.has(id)) return false;
       try { return !!isArticuloBloqueado(art); } catch { return false; }
     };
-  }, [isArticuloBloqueado]);
+  }, [isArticuloBloqueado, preselect, preselectedIds]);
+
+  // Auto-preselección al abrir (y sugerir nombre)
+  useEffect(() => {
+    if (!open) return;
+    // Si hay preselect, seleccionamos por id
+    if (preselectedIds.size > 0) {
+      const seleccion = [];
+      let suggestedSubrubro = '';
+      for (const sr of uiSubrubros) {
+        for (const rc of (sr?.rubros || [])) {
+          for (const a of (rc?.articulos || [])) {
+            const id = safeId(a);
+            if (id != null && preselectedIds.has(id)) {
+              seleccion.push(a);
+              if (!suggestedSubrubro) suggestedSubrubro = sr?.nombre || '';
+            }
+          }
+        }
+      }
+      if (seleccion.length) setArticulosSeleccionados(seleccion);
+      // si es creación y no hay nombre aún, sugerimos por subrubro (o groupName si vino)
+      if (mode === 'create' && !rubro.trim()) {
+        setRubro(groupName || suggestedSubrubro || rubro);
+      }
+    } else {
+      // limpiar selección si no hay preselect
+      setArticulosSeleccionados([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, preselectedIds, uiSubrubros, mode]);
 
   const handleSelectCategoria = (_categoriaNombre, articulos) => {
     const candidatos = (articulos || []).filter(a => !isBlocked(a));
@@ -101,8 +142,8 @@ export default function AgrupacionCreateModal({
         return;
       }
       try {
-        await crearAgrupacion({
-          nombre: rubro,
+        const payload = {
+          nombre: rubro.trim(),
           articulos: articulosSeleccionados.map((art) => ({
             id: safeId(art),
             nombre: art?.nombre || "",
@@ -110,11 +151,23 @@ export default function AgrupacionCreateModal({
             subrubro: art?.subrubro || "Sin subrubro",
             precio: art?.precio ?? 0,
           })),
-        });
-        const nombreCreado = rubro;
+        };
+        const nuevo = await crearAgrupacion(payload); // { id, nombre, ... }
+        const newGroupId = Number(nuevo?.id);
+
+        // Si venimos de otra agrupación, quitamos del origen para evitar duplicados
+        const fromId = Number(preselect?.fromGroupId);
+        if (Number.isFinite(fromId)) {
+          const ids = payload.articulos.map(a => a.id).filter(Number.isFinite);
+          for (const id of ids) {
+            try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {}
+          }
+        }
+
+        const nombreCreado = payload.nombre;
         setRubro("");
         setArticulosSeleccionados([]);
-        onCreated?.(nombreCreado);
+        onCreated?.(nombreCreado, newGroupId);
         showSnack(`Agrupación "${nombreCreado}" creada correctamente`);
         setTimeout(() => {
           setSnackbarOpen(false);
@@ -122,7 +175,7 @@ export default function AgrupacionCreateModal({
         }, 600);
       } catch (err) {
         console.error("Error al crear agrupación:", err);
-        showSnack("Error al crear agrupupación", "error");
+        showSnack("Error al crear agrupación", "error");
       }
       return;
     }
@@ -136,7 +189,7 @@ export default function AgrupacionCreateModal({
         subrubro: a?.subrubro || "Sin subrubro",
         precio: a?.precio ?? 0,
       }))
-      .filter(x => Number.isFinite(x.id)); // sólo válidos
+      .filter(x => Number.isFinite(x.id));
 
     if (!Number.isFinite(Number(groupId)) || articulos.length === 0) {
       showSnack("Seleccioná al menos un artículo", "error");
@@ -146,7 +199,7 @@ export default function AgrupacionCreateModal({
     try {
       await httpBiz(`/agrupaciones/${groupId}/articulos`, {
         method: "PUT",
-        body: { articulos }, // 👈 en vez de { ids }
+        body: { articulos }, // acepta objetos con metadata
       });
 
       const n = articulos.length;
@@ -162,10 +215,8 @@ export default function AgrupacionCreateModal({
       console.error("Error al agregar artículos:", err);
       showSnack("Error al agregar artículos", "error");
     }
-
   };
 
-  const uiSubrubros = useMemo(() => agruparPorSubrubro(todosArticulos || []), [todosArticulos]);
   const isCreate = mode === "create";
 
   return (
@@ -210,7 +261,7 @@ export default function AgrupacionCreateModal({
           )}
 
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-            Selecciona Categorías y Artículos (solo los que aún están libres)
+            Seleccioná Categorías y Artículos
           </Typography>
 
           {loading ? (

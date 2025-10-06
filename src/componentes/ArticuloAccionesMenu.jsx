@@ -59,6 +59,7 @@ export default function ArticuloAccionesMenu({
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
+  const [preselect, setPreselect] = useState(null);
 
   // Fallback de árbol local
   const [treeLocal, setTreeLocal] = useState([]);
@@ -219,7 +220,17 @@ export default function ArticuloAccionesMenu({
           </MenuItem>
         )}
 
-        <MenuItem onClick={() => { handleClose(); setOpenCrearAgr(true); }}>
+        <MenuItem onClick={() => {
+          handleClose();
+          const idNum = Number(articulo?.id);
+          if (!Number.isFinite(idNum)) return;
+          setPreselect({
+            articleIds: [idNum],
+            fromGroupId: (!isTodo && currentGroupId) ? Number(currentGroupId) : null,
+            allowAssigned: true, 
+          });
+          setOpenCrearAgr(true);
+        }}>
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Crear agrupación…</ListItemText>
         </MenuItem>
@@ -256,6 +267,7 @@ export default function ArticuloAccionesMenu({
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
         mode="create"
+        preselect={preselect}
         todosArticulos={effectiveTree}
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}

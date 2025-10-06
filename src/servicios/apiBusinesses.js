@@ -21,28 +21,45 @@ export function authHeaders(extra = {}, opts = { withBusinessId: true }) {
  * Wrapper HTTP con manejo de 401 y parseo JSON seguro.
  * BASE debe incluir el prefijo /api si tu backend lo requiere (p.ej. https://.../api).
  */
-export async function http(path, { method = 'GET', body, withBusinessId = true, headers } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+export async function http(
+  path,
+  {
+    method = 'GET',
+    body,
+    withBusinessId = true,
+    headers,
+    noAuthRedirect,                      // 👈 NUEVO
+  } = {}
+) {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
     method,
     headers: authHeaders(headers, { withBusinessId }),
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401) {
+  // Detecta rutas públicas de auth
+  const isAuthPublic = String(path || '').startsWith('/auth/');
+
+  if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
     try { console.warn('Auth 401', await res.clone().json()); } catch {}
     localStorage.removeItem('token');
     localStorage.removeItem('activeBusinessId');
-    // redirigí si aplica en tu app
-    window.location.href = '/';
+    // Redirigí a login (ajustá si usás basename)
+    window.location.href = '/login';
     throw new Error('invalid_token');
   }
 
   const text = await res.text().catch(() => '');
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { /* queda como texto */ }
+  try { data = text ? JSON.parse(text) : null; } catch {}
 
   if (!res.ok) {
-    const msg = (data && (data.error || data.message || data.detail)) || text || res.statusText || `HTTP ${res.status}`;
+    const msg =
+      (data && (data.error || data.message || data.detail)) ||
+      text ||
+      res.statusText ||
+      `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data;

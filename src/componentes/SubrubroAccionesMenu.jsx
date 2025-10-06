@@ -62,6 +62,7 @@ export default function SubrubroAccionesMenu({
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
+  const [preselect, setPreselect] = useState(null);
 
   // Fallback de árbol local
   const [treeLocal, setTreeLocal] = useState([]);
@@ -228,7 +229,16 @@ export default function SubrubroAccionesMenu({
           </MenuItem>
         )}
 
-        <MenuItem onClick={() => { handleClose(); setOpenCrearAgr(true); }}>
+        <MenuItem onClick={() => {
+          handleClose();
+          const ids = (articuloIds || []).map(getNum).filter(Boolean);
+          setPreselect({
+            articleIds: ids,
+            fromGroupId: (!isTodo && currentGroupId) ? Number(currentGroupId) : null,
+            allowAssigned: true,
+          });
+          setOpenCrearAgr(true);
+        }}>
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Crear agrupación con este subrubro…</ListItemText>
         </MenuItem>
@@ -265,6 +275,7 @@ export default function SubrubroAccionesMenu({
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
         mode="create"
+        preselect={preselect}
         todosArticulos={effectiveTree}
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
