@@ -99,7 +99,7 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     let canceled = false;
-    const myId = reqId.current;
+    const myId = ++reqId.current;
 
     async function fetchTotales() {
       const bid = localStorage.getItem('activeBusinessId');
@@ -148,7 +148,16 @@ export default function ArticulosMain(props) {
 
     fetchTotales();
     return () => { canceled = true; };
-  }, [activeBizId, periodo.from, periodo.to, syncVersion]);
+  }, [activeBizId, periodo.from, periodo.to, syncVersion, activeIds]); // 👈 ids visibles también
+
+  // Permite que el modal “empuje” su total a la tabla en caliente
+  const handleTotalResolved = (id, total) => {
+    setVentasMap(prev => {
+      const m = new Map(prev);
+      m.set(Number(id), Number(total || 0));
+      return m;
+    });
+  };
 
   const ventasMapFiltrado = useMemo(() => {
     if (!agrupacionSeleccionada?.id) return ventasMap;
@@ -279,6 +288,7 @@ export default function ArticulosMain(props) {
             activeBizId={activeBizId}
             reloadKey={reloadKey}
             onTodoInfo={setTodoInfo}
+            onTotalResolved={handleTotalResolved}
           />
         </div>
       </div>

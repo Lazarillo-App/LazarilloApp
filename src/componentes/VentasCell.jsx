@@ -12,6 +12,7 @@ export default function VentasCell({
   to,
   defaultGroupBy = 'day',
   totalOverride,
+  onTotalResolved,
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [loading, setLoading] = useState(false);
@@ -40,6 +41,9 @@ export default function VentasCell({
         ignoreZero: false,  // que venga el rango completo
       });
       setData(res);
+      if (typeof onTotalResolved === 'function') {
+        onTotalResolved(articuloId, Number(res?.total || 0));  // 👈 actualiza la celda sin cerrar
+      }
     } catch (e) {
       console.error('fetchVentas error', e);
       setData({ total: 0, items: [] });

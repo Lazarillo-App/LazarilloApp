@@ -54,6 +54,7 @@ export default function TablaArticulos({
   activeBizId,
   reloadKey = 0,
   onTodoInfo,
+  onTotalResolved
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -511,6 +512,7 @@ export default function TablaArticulos({
                                   to={fechaHasta}
                                   defaultGroupBy="day"
                                   totalOverride={ventasPorArticulo?.get(id)}
+                                  onTotalResolved={onTotalResolved}
                                 />
                               </td>
                               <td style={tdNum}>${fmt(a.precio, 0)}</td>
