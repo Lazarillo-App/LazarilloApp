@@ -10,7 +10,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, C
 import { format } from 'date-fns';
 
 export default function VentasMiniGraficoModal({
-  open, onClose, articuloNombre, rango, data, 
+  open, onClose, articuloNombre, rango, data,
   groupBy, onChangeGroupBy, loading
 }) {
   const chartData = useMemo(() => {
@@ -44,8 +44,8 @@ export default function VentasMiniGraficoModal({
             size="small"
           >
             <ToggleButton value="day">Día</ToggleButton>
-            <ToggleButton value="week">Semana</ToggleButton>
-            <ToggleButton value="month">Mes</ToggleButton>
+            <ToggleButton value="week" disabled>Semana</ToggleButton>
+            <ToggleButton value="month" disabled>Mes</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
 

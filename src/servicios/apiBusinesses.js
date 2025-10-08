@@ -2,12 +2,7 @@
 // src/servicios/apiBusinesses.js
 import { BASE } from './apiBase';
 
-/**
- * Construye headers de autenticación.
- * @param {Object} extra - Headers extra.
- * @param {Object} opts  - Opciones.
- * @param {boolean} opts.withBusinessId - Si agrega X-Business-Id (default: true).
- */
+/** Headers comunes (Bearer + X-Business-Id opcional) */
 export function authHeaders(extra = {}, opts = { withBusinessId: true }) {
   const token = localStorage.getItem('token') || '';
   const bid   = localStorage.getItem('activeBusinessId') || '';
@@ -17,19 +12,10 @@ export function authHeaders(extra = {}, opts = { withBusinessId: true }) {
   return h;
 }
 
-/**
- * Wrapper HTTP con manejo de 401 y parseo JSON seguro.
- * BASE debe incluir el prefijo /api si tu backend lo requiere (p.ej. https://.../api).
- */
+/** fetch con parseo seguro y manejo de 401 */
 export async function http(
   path,
-  {
-    method = 'GET',
-    body,
-    withBusinessId = true,
-    headers,
-    noAuthRedirect,                      // 👈 NUEVO
-  } = {}
+  { method = 'GET', body, withBusinessId = true, headers, noAuthRedirect } = {}
 ) {
   const url = `${BASE}${path}`;
   const res = await fetch(url, {
@@ -38,14 +24,12 @@ export async function http(
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  // Detecta rutas públicas de auth
   const isAuthPublic = String(path || '').startsWith('/auth/');
 
   if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
     try { console.warn('Auth 401', await res.clone().json()); } catch {}
     localStorage.removeItem('token');
     localStorage.removeItem('activeBusinessId');
-    // Redirigí a login (ajustá si usás basename)
     window.location.href = '/login';
     throw new Error('invalid_token');
   }
@@ -57,23 +41,14 @@ export async function http(
   if (!res.ok) {
     const msg =
       (data && (data.error || data.message || data.detail)) ||
-      text ||
-      res.statusText ||
-      `HTTP ${res.status}`;
+      text || res.statusText || `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data;
 }
 
-/* =============== Helpers multi-negocio =============== */
-
+/* Helpers multi-negocio */
 export const getActiveBusinessId = () => localStorage.getItem('activeBusinessId');
-
-/**
- * httpBiz: wrapea `http` agregando `/businesses/:bizId` al path.
- * - Usa `overrideBizId` si viene; si no, toma el activo de localStorage.
- * - Siempre envía `X-Business-Id` (withBusinessId: true).
- */
 export function httpBiz(path, options = {}, overrideBizId) {
   const bizId = Number(overrideBizId ?? getActiveBusinessId());
   if (!Number.isFinite(bizId)) throw new Error('businessId activo no definido');
@@ -82,11 +57,6 @@ export function httpBiz(path, options = {}, overrideBizId) {
 }
 
 /* ======================= API Businesses ======================= */
-/**
- * Regla:
- *  - Endpoints ADMIN (crear/listar/seleccionar/get/update/remove/credenciales) => withBusinessId: false
- *  - Endpoints de DATOS (artículos/ventas/sync) => withBusinessId: true
- */
 export const BusinessesAPI = {
   // ----- ADMIN (sin X-Business-Id)
   listMine : async () =>
@@ -107,33 +77,29 @@ export const BusinessesAPI = {
     http(`/businesses/${id}/maxi-status`, { withBusinessId: false }),
   maxiSave   : (id, creds) =>
     http(`/businesses/${id}/maxi-credentials`, {
-      method: 'POST',
-      body: creds,
-      withBusinessId: false,
+      method: 'POST', body: creds, withBusinessId: false,
     }),
 
   // ----- DATOS (con X-Business-Id)
-  articlesFromDB : (id) =>
-    http(`/businesses/${id}/articles`, { withBusinessId: true }),
-  articlesTree   : (id) =>
-    http(`/businesses/${id}/articles/tree`, { withBusinessId: true }),
+  // Catálogo
+  articlesFromDB : (id) => http(`/businesses/${id}/articles`,       { withBusinessId: true }),
+  articlesTree   : (id) => http(`/businesses/${id}/articles/tree`,  { withBusinessId: true }),
 
-  salesSummary   : (id, { from, to }) =>
-    http(
-      `/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      { withBusinessId: true }
-    ),
+  // Ventas: usamos tu backend /api/ventas (peek & series)
+  salesSummary   : (_id, { from, to, limit = 500 }) =>
+    http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
+         { withBusinessId: true }),
 
-    getActive : () => http('/businesses/active', { withBusinessId: false }),
+  salesSeries    : (_id, articuloId, { from, to, groupBy = 'day' }) =>
+    http(`/ventas?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
+         { withBusinessId: true }),
+
+  // Negocio activo (bootstrap después de login / F5)
+  getActive : () => http('/businesses/active', { withBusinessId: false }),
   setActive : (businessId) =>
     http('/businesses/active', { method: 'PATCH', body: { businessId }, withBusinessId: false }),
 
-  salesSeries    : (id, articuloId, { from, to, groupBy = 'day' }) =>
-    http(
-      `/businesses/${id}/sales/${articuloId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
-      { withBusinessId: true }
-    ),
-
+  // Sync
   syncNow        : (id, body) =>
     http(`/businesses/${id}/sync`, { method: 'POST', body, withBusinessId: true }),
 };

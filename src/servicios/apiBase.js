@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/servicios/apiBase.js
 
 // === BASE del backend por entorno (Vite) ===
@@ -6,10 +7,11 @@
 const RAW = import.meta.env.VITE_BACKEND_URL || '';
 export const BASE = RAW.replace(/\/+$/, ''); // sin barra final
 
-// === Basename del frontend (para ruteo/redirects correctos: gh-pages vs raíz) ===
+// === Basename del frontend (routing) ===
 // DEV/PROD raíz:    VITE_BASE=/
 // GH Pages:         VITE_BASE=/LazarilloApp/
-export const APP_BASENAME = (import.meta.env.VITE_BASE || '/').replace(/\/+$/, '') || '/';
+export const APP_BASENAME =
+  (import.meta.env.VITE_BASE || '/').replace(/\/+$/, '') || '/';
 
 // === Sesión/Contexto ===
 export const getSession = () => ({
@@ -39,29 +41,57 @@ export function qs(params = {}) {
   return s ? `?${s}` : '';
 }
 
-// === Cliente HTTP central (simple) ===
-// Nota: si ya usás el wrapper `http` de apiBusinesses.js, este `api()` queda para usos puntuales.
-export async function api(path, { method = 'GET', body, headers } = {}) {
-  // Permitir path absoluto o relativo a BASE
+// === Cliente HTTP central (liviano) ===
+// Úsalo para llamadas simples. Para endpoints de businesses/ventas
+// preferí el wrapper http() de apiBusinesses.js.
+export async function api(
+  path,
+  {
+    method = 'GET',
+    body,
+    headers,
+    timeout = 45000,         // ⏱️ evita cuelgues si Render está lento
+    redirectOn401 = true,    // 🔐 igual que http() de apiBusinesses
+  } = {}
+) {
   const url = path.startsWith('http') ? path : `${BASE}${path}`;
 
   const { token, activeBusinessId } = getSession();
   const h = { 'Content-Type': 'application/json', ...(headers || {}) };
   if (token) h.Authorization = `Bearer ${token}`;
-  if (activeBusinessId) h['X-Business-Id'] = activeBusinessId; // 👈 header normalizado
+  if (activeBusinessId) h['X-Business-Id'] = activeBusinessId; // header esperado por el backend
 
-  const res = await fetch(url, {
-    method,
-    headers: h,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: h,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
+
+  // Manejo de 401 (opcional)
+  if (res.status === 401 && redirectOn401) {
+    try { await res.clone().json(); } catch {}
+    clearSession();
+    // si usás basename distinto, el Router lo resuelve
+    window.location.href = `${APP_BASENAME || ''}/login`;
+    throw new Error('invalid_token');
+  }
 
   const text = await res.text().catch(() => '');
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text || null; }
 
   if (!res.ok) {
-    const msg = (data && (data.error || data.message || data.detail)) || res.statusText || `HTTP ${res.status}`;
+    const msg = (data && (data.error || data.message || data.detail)) ||
+                res.statusText || `HTTP ${res.status}`;
     const err = new Error(msg);
     err.status = res.status;
     err.data = data;

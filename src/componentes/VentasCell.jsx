@@ -3,8 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
 import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
 import VentasMiniGraficoModal from './VentasMiniGraficoModal';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
-import { ventasCache } from '../servicios/ventasCache';
+import { obtenerVentas } from '../servicios/apiVentas';
 
 export default function VentasCell({
   articuloId,
@@ -31,22 +30,16 @@ export default function VentasCell({
   async function fetchVentas(nextGroupBy) {
     if (!activeBizId || !articuloId || !from || !to) return;
     const gb = nextGroupBy || groupBy;
-    const key = `${activeBizId}|${articuloId}|${from}|${to}|${gb}`;
-
-    if (ventasCache.has(key)) { setData(ventasCache.get(key)); return; }
-
     setLoading(true);
     try {
-      const res = await BusinessesAPI.salesSeries(activeBizId, articuloId, { from, to, groupBy: gb });
-      const serie = (res?.items || []).map(r => ({
-        date: String(r.bucket).slice(0, 10),
-        qty: Number(r.qty || 0),
-        amount: Number(r.amount || 0),
-      }));
-      const total = serie.reduce((acc, x) => acc + x.qty, 0);
-      const payload = { total, items: serie };
-      ventasCache.set(key, payload);
-      setData(payload);
+      const res = await obtenerVentas({
+        articuloId,
+        from,
+        to,
+        groupBy: gb,        // hoy sólo 'day', pero dejamos el prop
+        ignoreZero: false,  // que venga el rango completo
+      });
+      setData(res);
     } catch (e) {
       console.error('fetchVentas error', e);
       setData({ total: 0, items: [] });

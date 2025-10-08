@@ -6,6 +6,7 @@ import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import Buscador from '../componentes/Buscador';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { ensureActiveBusiness } from '../servicios/ensureBusiness';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -25,6 +26,17 @@ export default function ArticulosMain(props) {
 
   // Para forzar reload de TablaArticulos tras sync
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const bid = await ensureActiveBusiness();
+        setActiveBizId(String(bid)); // dispara los effects que traen ventas
+      } catch (e) {
+        console.error('No se pudo fijar negocio activo', e);
+      }
+    })();
+  }, []);
 
   // ✅ cuando cambian las agrupaciones que vienen del padre, actualizamos estado local
   useEffect(() => {
@@ -61,9 +73,11 @@ export default function ArticulosMain(props) {
   // Rango de fechas
   const [rango, setRango] = useState({ mode: '30', from: '', to: '' });
   useEffect(() => {
-    setRango((r) =>
-      r.from && r.to ? r : { ...r, ...lastNDaysUntilYesterday(daysByMode(r.mode || '30')) }
-    );
+    setRango(r => {
+      if (r.from && r.to) return r;
+      const def = lastNDaysUntilYesterday(daysByMode(r.mode || '30'));
+      return { ...r, ...def };
+    });
   }, []);
   const periodo = useMemo(() => {
     if (rango.from && rango.to) return { from: rango.from, to: rango.to };
@@ -85,7 +99,7 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     let canceled = false;
-    const myId = ++reqId.current;
+    const myId = reqId.current;
 
     async function fetchTotales() {
       const bid = localStorage.getItem('activeBusinessId');
@@ -93,6 +107,8 @@ export default function ArticulosMain(props) {
         setVentasMap(new Map());
         return;
       }
+
+      const idsList = Array.from(activeIds || []);
 
       const cacheKey = `${bid}|${periodo.from}|${periodo.to}`;
       if (totalesCache.has(cacheKey) && syncVersion === 0) {
@@ -103,28 +119,36 @@ export default function ArticulosMain(props) {
 
       setVentasLoading(true);
       try {
-        const { items } = await BusinessesAPI.salesSummary(bid, {
-          from: periodo.from,
-          to: periodo.to,
-        });
-        const totals = new Map(
-          (items || []).map((r) => [Number(r.articulo_id), Number(r.qty || 0)])
-        );
+        // 1) Intento SIEMPRE de summary (no necesita ids visibles)
+        const { peek = [] } = await BusinessesAPI.salesSummary(bid, { from: periodo.from, to: periodo.to });
+        const totals = new Map(peek.map(r => [Number(r.articuloId), Number(r.qty || 0)]));
         totalesCache.set(cacheKey, totals);
         if (!canceled && myId === reqId.current) setVentasMap(totals);
       } catch (e) {
-        console.error('ventas summary fetch error', e);
-        if (!canceled && myId === reqId.current) setVentasMap(new Map());
+        // 2) Fallback por artículos visibles (si todavía no hay ids, esperamos a que la tabla los reporte)
+        if (idsList.length === 0) { setVentasLoading(false); return; }
+        const { obtenerVentasAgrupacion } = await import('../servicios/apiVentas');
+        // si hay agrupación seleccionada, usamos sus ids; si no, usamos los visibles
+        const idsAgrup = (agrupacionSeleccionada?.articulos || [])
+          .map(a => Number(a?.id ?? a?.articuloId)).filter(Boolean);
+        const baseIds = idsAgrup.length ? idsAgrup : idsList;
+        const resp = await obtenerVentasAgrupacion({
+          agrupacionId: agrupacionSeleccionada?.id || 0,
+          from: periodo.from,
+          to: periodo.to,
+          articuloIds: baseIds,
+        });
+        const totals = resp.items.reduce((m, it) => m.set(Number(it.articuloId), Number(it.cantidad || 0)), new Map());
+        totalesCache.set(cacheKey, totals);
+        if (!canceled && myId === reqId.current) setVentasMap(totals);
       } finally {
         if (!canceled && myId === reqId.current) setVentasLoading(false);
       }
     }
 
     fetchTotales();
-    return () => {
-      canceled = true;
-    };
-  }, [periodo.from, periodo.to, syncVersion]);
+    return () => { canceled = true; };
+  }, [activeBizId, periodo.from, periodo.to, syncVersion]);
 
   const ventasMapFiltrado = useMemo(() => {
     if (!agrupacionSeleccionada?.id) return ventasMap;
@@ -196,7 +220,7 @@ export default function ArticulosMain(props) {
                   const name = labelById.get(code) || '';
                   out.push({
                     id: code,
-                    value: String(code),               
+                    value: String(code),
                     label: name ? `${code} · ${name}` : String(code),
                   });
                 }
@@ -209,7 +233,7 @@ export default function ArticulosMain(props) {
         </div>
       </div>
 
-      {/* Body: Sidebar + Tabla */}
+      {/* Body: Sidebar  Tabla */}
       <div style={{
         display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
         minHeight: '60vh', borderRadius: 12, overflow: 'hidden',
@@ -251,7 +275,7 @@ export default function ArticulosMain(props) {
             ventasLoading={ventasLoading}
             onCategoriasLoaded={(tree) => setCategorias(tree)}
             onIdsVisibleChange={setActiveIds}
-            key={(activeBizId || 'no-biz') + '|' + reloadKey}
+            key={[activeBizId || 'no-biz', reloadKey].join('|')}
             activeBizId={activeBizId}
             reloadKey={reloadKey}
             onTodoInfo={setTodoInfo}

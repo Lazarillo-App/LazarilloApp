@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
@@ -46,6 +47,24 @@ export default function App() {
 
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return; // irá a /login por rutas protegidas
+      let bid = localStorage.getItem('activeBusinessId');
+      if (!bid) {
+        try {
+          const a = await BusinessesAPI.getActive();
+          if (a?.businessId) {
+            localStorage.setItem('activeBusinessId', String(a.businessId));
+            // notificar a toda la app
+            window.dispatchEvent(new Event('business:switched'));
+          }
+        } catch {}
+      }
+    })();
+  }, []);
 
   // ---------- BOOT ----------
   useEffect(() => {

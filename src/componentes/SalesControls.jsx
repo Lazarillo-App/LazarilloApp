@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { FormControl, InputLabel, Select, MenuItem, TextField, Stack } from '@mui/material';
 
 const PRESETS = [
-  { key: '7',  label: 'Últimos 7 días',  days: 7 },
+  { key: '7', label: 'Últimos 7 días', days: 7 },
   { key: '30', label: 'Últimos 30 días', days: 30 },
   { key: '90', label: 'Últimos 90 días', days: 90 },
   { key: 'custom', label: 'Personalizado', days: null },
 ];
 
-function fmt(d) { return d.toISOString().slice(0,10); }
+function fmt(d) { return d.toISOString().slice(0, 10); }
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + days); return d; }
 
 export default function SalesControls({ value, onChange }) {
@@ -17,14 +17,16 @@ export default function SalesControls({ value, onChange }) {
   const computed = useMemo(() => {
     if (mode === 'custom') return { from, to };
     const today = new Date();
-    const end = fmt(today);
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() - 1); // AYER
+    const end = fmt(endDate);
     const preset = PRESETS.find(p => p.key === mode) ?? PRESETS[1];
     const start = fmt(addDays(today, -preset.days));
     return { from: start, to: end };
   }, [mode, from, to]);
 
   return (
-    <Stack direction={{ xs:'column', sm:'row' }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
       <FormControl size="small" sx={{ minWidth: 180 }}>
         <InputLabel>Rango</InputLabel>
         <Select

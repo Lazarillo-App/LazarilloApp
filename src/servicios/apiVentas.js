@@ -5,10 +5,10 @@ import { BASE } from './apiBase';
 // --- Auth headers centralizados (Bearer + x-business-id) ---
 function authHeaders() {
   const token = localStorage.getItem('token') || '';
-  const bid   = localStorage.getItem('activeBusinessId') || '';
+  const bid = localStorage.getItem('activeBusinessId') || '';
   const h = {};
   if (token) h.Authorization = `Bearer ${token}`;
-  if (bid)   h['x-business-id'] = bid;
+  if (bid) h['x-business-id'] = bid;
   return h;
 }
 
@@ -36,22 +36,12 @@ export function clearVentasCache() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Obtiene ventas del artículo o código o búsqueda por nombre, agrupadas por día.
- * Backend devuelve shape:
- *  { totals:{qty,amount}, data:[{date, qty, amount}] }
- * Devolvemos shape compatible con tus componentes: { total, items:[{label, qty}] }
- *
- * @param {{
- *   articuloId?: number|string,
- *   codigo?: string,
- *   q?: string,
- *   from: string,
- *   to: string,
- *   groupBy?: 'day',
- *   ignoreZero?: boolean
- * }}
- * @returns {{ total:number, items: {label:string, qty:number}[] }}
+ * Serie de ventas (por artículo / código / búsqueda), agrupada (day).
+ * Back: { totals:{qty,amount}, data:[{date, qty, amount}] }
+ * Front: { total, items:[{label, qty}] }
  */
+
+const TIMEOUT_MS = 200000; 
 export async function obtenerVentas({
   articuloId,
   codigo,
@@ -82,22 +72,20 @@ export async function obtenerVentas({
   });
 
   const MAX_RETRIES = 2;
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const { data } = await axios.get(`${BASE}/ventas?${params.toString()}`, {
-        timeout: 20000,
+        timeout: TIMEOUT_MS,
         headers: authHeaders(),
       });
 
-      // Backend nuevo:
-      // data.totals.qty -> total unidades
-      // data.data -> [{date, qty, amount}]
       const total = Number(data?.totals?.qty ?? 0);
       const items = Array.isArray(data?.data)
         ? data.data.map((d) => ({
-            label: String(d.date),
-            qty: Number(d.qty || 0),
-          }))
+          label: String(d.date),
+          qty: Number(d.qty || 0),
+        }))
         : [];
 
       const res = { total, items };
@@ -116,11 +104,37 @@ export async function obtenerVentas({
   }
 }
 
+// --- Peek (ranking de artículos en el rango) ---
+// GET /api/ventas?peek=true&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=100
+export async function obtenerPeek({ from, to, limit = 100 }) {
+  const bid = localStorage.getItem('activeBusinessId') || '';
+  const key = `peek|${bid}|${from}|${to}|${limit}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const params = new URLSearchParams({ peek: 'true', from, to, limit: String(limit) });
+  try {
+    const { data } = await axios.get(`${BASE}/ventas?${params.toString()}`, {
+      timeout: TIMEOUT_MS,
+      headers: authHeaders(),     // ✅ faltaba esto
+    });
+
+    const items = Array.isArray(data?.peek) ? data.peek : [];
+    const res = {
+      count: Number(data?.count ?? items.length),
+      items,                           // [{ articuloId, qty }]
+      from: data?.rango?.from,
+      to: data?.rango?.to,
+    };
+    cacheSet(key, res);
+    return res;
+  } catch (err) {
+    console.warn('[apiVentas.obtenerPeek] error:', err?.message || err);
+    return { count: 0, items: [], from, to };
+  }
+}
+
 /* ========================== Ventas por Agrupación (fallback) ========================== */
-/**
- * Suma ventas por cada artículo de la agrupación en paralelo moderado.
- * Devuelve también un Map(articuloId -> total) para ordenar/mostrar.
- */
 export async function obtenerVentasAgrupacion({
   agrupacionId,
   from,

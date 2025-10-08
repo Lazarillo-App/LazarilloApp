@@ -28,6 +28,7 @@ export default function SalesPickerIcon({ value, onChange }) {
   const applyRange = () => {
     if (!from || !to) return;
     if (new Date(from) > new Date(to)) return;
+    onChange({ mode: 'custom', from, to });
     setTimeout(handleClose, 0);
   };
 
@@ -48,11 +49,11 @@ export default function SalesPickerIcon({ value, onChange }) {
         <Box sx={{ p: 2, width: 280 }}>
           <Stack spacing={1.2}>
             <Stack direction="row" spacing={1}>
-              <Button variant={mode==='7'?'contained':'outlined'}  size="small" onClick={() => setPreset(7)}>7D</Button>
-              <Button variant={mode==='30'?'contained':'outlined'} size="small" onClick={() => setPreset(30)}>30D</Button>
-              <Button variant={mode==='90'?'contained':'outlined'} size="small" onClick={() => setPreset(90)}>90D</Button>
+              <Button variant={mode === '7' ? 'contained' : 'outlined'} size="small" onClick={() => setPreset(7)}>7D</Button>
+              <Button variant={mode === '30' ? 'contained' : 'outlined'} size="small" onClick={() => setPreset(30)}>30D</Button>
+              <Button variant={mode === '90' ? 'contained' : 'outlined'} size="small" onClick={() => setPreset(90)}>90D</Button>
               <Button
-                variant={mode==='custom'?'contained':'outlined'}
+                variant={mode === 'custom' ? 'contained' : 'outlined'}
                 size="small"
                 onClick={() => {
                   const r = lastNDaysUntilYesterday(daysByMode(mode));
