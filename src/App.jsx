@@ -1,5 +1,4 @@
 /* eslint-disable no-empty */
-/* eslint-disable no-unused-vars */
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
@@ -26,6 +25,9 @@ import Login from './paginas/Login';
 import Register from './paginas/Register';
 import Perfil from './paginas/Perfil';
 import ProtectedRoute from './componentes/ProtectedRoute';
+
+// Admin
+import AdminApp from './admin/AdminApp';
 
 // (Opcional) consola
 import { obtenerVentas } from './servicios/apiVentas';
@@ -61,7 +63,7 @@ export default function App() {
             // notificar a toda la app
             window.dispatchEvent(new Event('business:switched'));
           }
-        } catch {}
+        } catch { }
       }
     })();
   }, []);
@@ -161,7 +163,13 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
 
+          {/* 🔒 Rutas autenticadas */}
           <Route element={<ProtectedRoute />}>
+
+            {/* ✅ Admin NO depende de Maxi ni del negocio activo */}
+            <Route path="/admin/*" element={<AdminApp />} />
+
+            {/* ✅ El resto SÍ requiere Maxi/negocio activo */}
             <Route element={<OnboardingGuard />}>
               <Route
                 path="/"
@@ -179,15 +187,8 @@ export default function App() {
                   </RequireMaxi>
                 }
               />
-
-              <Route
-                path="/agrupaciones"
-                element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
-              />
-              <Route
-                path="/agrupacioneslist"
-                element={<AgrupacionesList agrupaciones={agrupaciones} />}
-              />
+              <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
+              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
               <Route path="/insumos" element={<Insumos />} />
               <Route path="/perfil" element={<Perfil />} />
             </Route>
