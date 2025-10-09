@@ -6,7 +6,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const [name, setName] = useState('');
   const [primary, setPrimary] = useState('#000000');
   const [secondary, setSecondary] = useState('#ffffff');
-  const [background, setBackground] = useState('#6c6c6cff');
+  const [background, setBackground] = useState('#003b4a');
   const [font, setFont] = useState('Inter, system-ui, sans-serif');
   const [logoUrl, setLogoUrl] = useState('');
 
