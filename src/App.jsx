@@ -12,7 +12,6 @@ import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
-import { HashRouter as Router } from 'react-router-dom';
 
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
@@ -154,52 +153,50 @@ export default function App() {
   }
 
   return (
-    <Router basename="/LazarilloApp">
-      <SearchProvider>
-        <ThemeProviderNegocio activeBizId={activeBusinessId}>
-          {isLogged && <Navbar />}
+    <SearchProvider>
+      <ThemeProviderNegocio activeBizId={activeBusinessId}>
+        {isLogged && <Navbar />}
 
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* 🔒 Rutas autenticadas */}
-            <Route element={<ProtectedRoute />}>
+          {/* 🔒 Rutas autenticadas */}
+          <Route element={<ProtectedRoute />}>
 
-              {/* ✅ Admin NO depende de Maxi ni del negocio activo */}
-              <Route path="/admin/*" element={<AdminApp />} />
+            {/* ✅ Admin NO depende de Maxi ni del negocio activo */}
+            <Route path="/admin/*" element={<AdminApp />} />
 
-              {/* ✅ El resto SÍ requiere Maxi/negocio activo */}
-              <Route element={<OnboardingGuard />}>
-                <Route
-                  path="/"
-                  element={
-                    <RequireMaxi onReady={() => { }}>
-                      <ArticulosMain
-                        agrupacionSeleccionada={agrupacionSeleccionada}
-                        setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-                        categoriaSeleccionada={categoriaSeleccionada}
-                        setCategoriaSeleccionada={setCategoriaSeleccionada}
-                        agrupaciones={agrupaciones}
-                        categorias={categorias}
-                        onBusinessSwitched={onBusinessSwitched}
-                      />
-                    </RequireMaxi>
-                  }
-                />
-                <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
-                <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
-                <Route path="/insumos" element={<Insumos />} />
-                <Route path="/perfil" element={<Perfil />} />
-              </Route>
+            {/* ✅ El resto SÍ requiere Maxi/negocio activo */}
+            <Route element={<OnboardingGuard />}>
+              <Route
+                path="/"
+                element={
+                  <RequireMaxi onReady={() => { }}>
+                    <ArticulosMain
+                      agrupacionSeleccionada={agrupacionSeleccionada}
+                      setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+                      categoriaSeleccionada={categoriaSeleccionada}
+                      setCategoriaSeleccionada={setCategoriaSeleccionada}
+                      agrupaciones={agrupaciones}
+                      categorias={categorias}
+                      onBusinessSwitched={onBusinessSwitched}
+                    />
+                  </RequireMaxi>
+                }
+              />
+              <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
+              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
+              <Route path="/insumos" element={<Insumos />} />
+              <Route path="/perfil" element={<Perfil />} />
             </Route>
+          </Route>
 
-            <Route path="*" element={<Login />} />
-          </Routes>
-        </ThemeProviderNegocio>
-      </SearchProvider>
-    </Router>
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </ThemeProviderNegocio>
+    </SearchProvider>
   );
 }
