@@ -30,7 +30,7 @@ export default function RequireMaxi({ children }) {
         <EmptyState onConnect={() => setShow(true)} />
         <MaxiSetupModal
           open={show}
-          businessId={activeId}
+          activeBusinessId={activeId}
           onDone={() => { setShow(false); check(); }}
           onCancel={() => setShow(false)}
         />

@@ -105,7 +105,7 @@ export default function AdminActionsSidebar({ onSynced }) {
         cacheHash: resp?.cacheHash || null,
       });
       // notificar al resto de la app
-      window.dispatchEvent(new CustomEvent('business:synced', { detail: { businessId: bizId } }));
+      window.dispatchEvent(new CustomEvent('business:synced', { detail: { activeBusinessId: bizId } }));
       onSynced?.(resp);
       if (!silent) alert(`Sync OK. Artículos actualizados: ${resp?.upserted ?? 0}. Mapeos categoría/subrubro: ${resp?.mapped ?? 0}.`);
     } catch (e) {

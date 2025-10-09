@@ -122,8 +122,8 @@ export const BusinessesAPI = {
 
   // Negocio activo (bootstrap después de login / F5)
   getActive : () => http('/businesses/active', { withBusinessId: false }),
-  setActive : (businessId) =>
-    http('/businesses/active', { method: 'PATCH', body: { businessId }, withBusinessId: false }),
+  setActive : (activeBusinessId) =>
+    http('/businesses/active', { method: 'PATCH', body: { activeBusinessId }, withBusinessId: false }),
 
   // Sync
   syncNow        : (id, body) =>

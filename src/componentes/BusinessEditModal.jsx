@@ -73,7 +73,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
 
       // broadcast opcional por si otras vistas escuchan
       window.dispatchEvent(new CustomEvent('business:branding-updated', {
-        detail: { businessId: business.id, branding: payload.props.branding }
+        detail: { activeBusinessId: business.id, branding: payload.props.branding }
       }));
     } catch (e2) {
       console.error(e2);

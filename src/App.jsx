@@ -58,11 +58,11 @@ export default function App() {
       if (!bid) {
         try {
           const a = await BusinessesAPI.getActive();
-          if (a?.businessId) {
-            localStorage.setItem('activeBusinessId', String(a.businessId));
-            // notificar a toda la app
+          if (a?.activeBusinessId) {
+            localStorage.setItem('activeBusinessId', String(a.activeBusinessId));
             window.dispatchEvent(new Event('business:switched'));
           }
+
         } catch { }
       }
     })();
