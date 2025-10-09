@@ -3,28 +3,53 @@
 import { BASE } from './apiBase';
 
 /** Headers comunes (Bearer + X-Business-Id opcional) */
-export function authHeaders(extra = {}, opts = { withBusinessId: true }) {
+export function authHeaders(
+  extra = {},
+  opts = { withBusinessId: true, includeAuth: true }
+) {
   const token = localStorage.getItem('token') || '';
   const bid   = localStorage.getItem('activeBusinessId') || '';
   const h = { 'Content-Type': 'application/json', ...extra };
-  if (token) h.Authorization = `Bearer ${token}`;
+  if (opts.includeAuth && token) h.Authorization = `Bearer ${token}`;
   if (opts.withBusinessId && bid) h['X-Business-Id'] = bid;
   return h;
 }
 
-/** fetch con parseo seguro y manejo de 401 */
+/** fetch con parseo seguro, timeout y manejo de 401 */
 export async function http(
   path,
-  { method = 'GET', body, withBusinessId = true, headers, noAuthRedirect } = {}
+  {
+    method = 'GET',
+    body,
+    withBusinessId = true,
+    headers,
+    noAuthRedirect,
+    timeoutMs = 20000, // opcional
+  } = {}
 ) {
   const url = `${BASE}${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: authHeaders(headers, { withBusinessId }),
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const isAuthPublic = String(path || '').startsWith('/auth/'); // /api/auth/*
 
-  const isAuthPublic = String(path || '').startsWith('/auth/');
+  // Para endpoints públicos: NO Bearer, NO X-Business-Id
+  const hdrs = isAuthPublic
+    ? authHeaders(headers, { withBusinessId: false, includeAuth: false })
+    : authHeaders(headers, { withBusinessId, includeAuth: true });
+
+  // Timeout
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: hdrs,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
 
   if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
     try { console.warn('Auth 401', await res.clone().json()); } catch {}
@@ -39,9 +64,11 @@ export async function http(
   try { data = text ? JSON.parse(text) : null; } catch {}
 
   if (!res.ok) {
+    // Mensaje más claro para 404s
+    const is404 = res.status === 404;
     const msg =
       (data && (data.error || data.message || data.detail)) ||
-      text || res.statusText || `HTTP ${res.status}`;
+      (is404 ? `not_found: ${path}` : (text || res.statusText || `HTTP ${res.status}`));
     throw new Error(msg);
   }
   return data;
@@ -85,11 +112,10 @@ export const BusinessesAPI = {
   articlesFromDB : (id) => http(`/businesses/${id}/articles`,       { withBusinessId: true }),
   articlesTree   : (id) => http(`/businesses/${id}/articles/tree`,  { withBusinessId: true }),
 
-  // Ventas: usamos tu backend /api/ventas (peek & series)
+  // Ventas: backend /api/ventas (peek & series)
   salesSummary   : (_id, { from, to, limit = 500 }) =>
     http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
          { withBusinessId: true }),
-
   salesSeries    : (_id, articuloId, { from, to, groupBy = 'day' }) =>
     http(`/ventas?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
          { withBusinessId: true }),
@@ -102,4 +128,17 @@ export const BusinessesAPI = {
   // Sync
   syncNow        : (id, body) =>
     http(`/businesses/${id}/sync`, { method: 'POST', body, withBusinessId: true }),
+};
+
+/* ======================= API Admin (sin X-Business-Id, con Bearer) ======================= */
+export const AdminAPI = {
+  overview: () => http('/admin/overview', { withBusinessId: false }),
+  users:    ({ q='', page=1, pageSize=20 } = {}) =>
+    http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`, { withBusinessId: false }),
+  updateUser: (id, body) =>
+    http(`/admin/users/${id}`, { method:'PATCH', body, withBusinessId: false }),
+  deleteUser: (id) =>
+    http(`/admin/users/${id}`, { method:'DELETE', withBusinessId: false }),
+  resetPassword: (id) =>
+    http(`/admin/users/${id}/reset-password`, { method:'POST', withBusinessId: false }),
 };

@@ -1,31 +1,47 @@
+/* eslint-disable no-empty */
 // src/servicios/apiAuth.js
 import { http } from './apiBusinesses';
 
 function saveSession(data) {
-  if (data?.token) localStorage.setItem('token', data.token);
-  if (data?.user) localStorage.setItem('user', JSON.stringify(data.user));
-  const bid = data?.user?.active_business_id;
-  if (bid != null) localStorage.setItem('activeBusinessId', bid);
+  try {
+    if (data?.token) localStorage.setItem('token', data.token);
+    if (data?.user)  localStorage.setItem('user', JSON.stringify(data.user));
+
+    const bid = data?.user?.active_business_id ?? data?.active_business_id;
+    if (bid !== undefined && bid !== null && bid !== '') {
+      localStorage.setItem('activeBusinessId', String(bid));
+    }
+  } catch {}
 }
+
 export function clearSession() {
   localStorage.removeItem('token');
   localStorage.removeItem('activeBusinessId');
   localStorage.removeItem('user');
 }
 
+export function getUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null'); }
+  catch { return null; }
+}
+
+export function getToken() {
+  return localStorage.getItem('token') || '';
+}
+
 export const AuthAPI = {
-  login: async (email, password) => {
+  async login(email, password) {
     const data = await http('/auth/login', {
       method: 'POST',
       body: { email: String(email).trim(), password },
-      withBusinessId: false,      // 👈 importante
-      noAuthRedirect: true,       // 👈 evita redirect en 401
+      withBusinessId: false,  // 👈 público
+      noAuthRedirect: true,   // 👈 no redirigir en 401 de login
     });
     saveSession(data);
     return data;
   },
 
-  register: async ({ name, email, password }) => {
+  async register({ name, email, password }) {
     const data = await http('/auth/register', {
       method: 'POST',
       body: { name: String(name).trim(), email: String(email).trim(), password },
@@ -36,32 +52,33 @@ export const AuthAPI = {
     return data;
   },
 
-  me: async () => {
+  async me() {
     const data = await http('/auth/me', {
       withBusinessId: false,
       noAuthRedirect: true,
     });
     if (data) {
       localStorage.setItem('user', JSON.stringify(data));
-      if (data?.active_business_id != null) {
-        localStorage.setItem('activeBusinessId', data.active_business_id);
+      const bid = data?.active_business_id;
+      if (bid !== undefined && bid !== null && bid !== '') {
+        localStorage.setItem('activeBusinessId', String(bid));
       }
     }
     return data;
   },
 
   async requestPasswordReset(email) {
-    const base = import.meta.env.VITE_BACKEND_URL || '';
-    const r = await fetch(`${base}/auth/forgot-password`, {
+    // usamos http() para heredar BASE y manejo de errores
+    const res = await http('/auth/forgot-password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: { email: String(email).trim() },
+      withBusinessId: false,
+      noAuthRedirect: true,
     });
-    if (!r.ok) throw new Error('Error solicitando enlace');
-    return r.json(); // <-- importante: devolver el JSON (ok, previewUrl)
+    return res; // { ok, (token_preview|previewUrl) según tu back }
   },
 
-  resetPassword: async ({ token, password }) => {
+  async resetPassword({ token, password }) {
     return await http('/auth/reset-password', {
       method: 'POST',
       body: { token, password },
@@ -70,5 +87,7 @@ export const AuthAPI = {
     });
   },
 
-  logout: () => clearSession(),
+  logout() {
+    clearSession();
+  },
 };
