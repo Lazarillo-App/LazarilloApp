@@ -8,7 +8,7 @@ export function authHeaders(
   opts = { withBusinessId: true, includeAuth: true }
 ) {
   const token = localStorage.getItem('token') || '';
-  const bid   = localStorage.getItem('activeBusinessId') || '';
+  const bid = localStorage.getItem('activeBusinessId') || '';
   const h = { 'Content-Type': 'application/json', ...extra };
   if (opts.includeAuth && token) h.Authorization = `Bearer ${token}`;
   if (opts.withBusinessId && bid) h['X-Business-Id'] = bid;
@@ -52,7 +52,7 @@ export async function http(
   }
 
   if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
-    try { console.warn('Auth 401', await res.clone().json()); } catch {}
+    try { console.warn('Auth 401', await res.clone().json()); } catch { }
     localStorage.removeItem('token');
     localStorage.removeItem('activeBusinessId');
     window.location.href = '/login';
@@ -61,7 +61,7 @@ export async function http(
 
   const text = await res.text().catch(() => '');
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch {}
+  try { data = text ? JSON.parse(text) : null; } catch { }
 
   if (!res.ok) {
     // Mensaje más claro para 404s
@@ -86,59 +86,59 @@ export function httpBiz(path, options = {}, overrideBizId) {
 /* ======================= API Businesses ======================= */
 export const BusinessesAPI = {
   // ----- ADMIN (sin X-Business-Id)
-  listMine : async () =>
+  listMine: async () =>
     (await http('/businesses', { withBusinessId: false }))?.items ?? [],
-  create   : (payload) =>
+  create: (payload) =>
     http('/businesses', { method: 'POST', body: payload, withBusinessId: false }),
-  select   : (id) =>
+  select: (id) =>
     http(`/businesses/${id}/select`, { method: 'POST', withBusinessId: false }),
-  get      : (id) =>
+  get: (id) =>
     http(`/businesses/${id}`, { withBusinessId: false }),
-  update   : (id, body) =>
+  update: (id, body) =>
     http(`/businesses/${id}`, { method: 'PATCH', body, withBusinessId: false }),
-  remove   : (id) =>
+  remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
 
   // Credenciales / estado de Maxi
-  maxiStatus : (id) =>
+  maxiStatus: (id) =>
     http(`/businesses/${id}/maxi-status`, { withBusinessId: false }),
-  maxiSave   : (id, creds) =>
+  maxiSave: (id, creds) =>
     http(`/businesses/${id}/maxi-credentials`, {
       method: 'POST', body: creds, withBusinessId: false,
     }),
 
   // ----- DATOS (con X-Business-Id)
   // Catálogo
-  articlesFromDB : (id) => http(`/businesses/${id}/articles`,       { withBusinessId: true }),
-  articlesTree   : (id) => http(`/businesses/${id}/articles/tree`,  { withBusinessId: true }),
+  articlesFromDB: (id) => http(`/businesses/${id}/articles`, { withBusinessId: true }),
+  articlesTree: (id) => http(`/businesses/${id}/articles/tree`, { withBusinessId: true }),
 
   // Ventas: backend /api/ventas (peek & series)
-  salesSummary   : (_id, { from, to, limit = 500 }) =>
+  salesSummary: (_id, { from, to, limit = 500 }) =>
     http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
-         { withBusinessId: true }),
-  salesSeries    : (_id, articuloId, { from, to, groupBy = 'day' }) =>
+      { withBusinessId: true }),
+  salesSeries: (_id, articuloId, { from, to, groupBy = 'day' }) =>
     http(`/ventas?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
-         { withBusinessId: true }),
+      { withBusinessId: true }),
 
   // Negocio activo (bootstrap después de login / F5)
-  getActive : () => http('/businesses/active', { withBusinessId: false }),
-  setActive : (activeBusinessId) =>
-    http('/businesses/active', { method: 'PATCH', body: { activeBusinessId }, withBusinessId: false }),
-
+  getActive: () => http('/businesses/active', { withBusinessId: false }),
+  setActive: (businessId) =>
+    http('/businesses/active', { method: 'PATCH', body: { businessId }, withBusinessId: false }),
+  
   // Sync
-  syncNow        : (id, body) =>
+  syncNow: (id, body) =>
     http(`/businesses/${id}/sync`, { method: 'POST', body, withBusinessId: true }),
 };
 
 /* ======================= API Admin (sin X-Business-Id, con Bearer) ======================= */
 export const AdminAPI = {
   overview: () => http('/admin/overview', { withBusinessId: false }),
-  users:    ({ q='', page=1, pageSize=20 } = {}) =>
+  users: ({ q = '', page = 1, pageSize = 20 } = {}) =>
     http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`, { withBusinessId: false }),
   updateUser: (id, body) =>
-    http(`/admin/users/${id}`, { method:'PATCH', body, withBusinessId: false }),
+    http(`/admin/users/${id}`, { method: 'PATCH', body, withBusinessId: false }),
   deleteUser: (id) =>
-    http(`/admin/users/${id}`, { method:'DELETE', withBusinessId: false }),
+    http(`/admin/users/${id}`, { method: 'DELETE', withBusinessId: false }),
   resetPassword: (id) =>
-    http(`/admin/users/${id}/reset-password`, { method:'POST', withBusinessId: false }),
+    http(`/admin/users/${id}/reset-password`, { method: 'POST', withBusinessId: false }),
 };

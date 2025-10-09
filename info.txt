@@ -14,7 +14,7 @@ $env:PGPASSWORD = "qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc"
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -p 5432 -U lazarillo_app_user -d lazarillo_app -v sslmode=require
 
 
-\set biz 13
+\set biz 24
 \encoding UTF8
 set PGCLIENTENCODING=utf8;
 
@@ -37,7 +37,7 @@ LIMIT 1;
 
 
 
-\set biz 13
+\set biz 24
 \encoding UTF8
 set PGCLIENTENCODING=utf8;
 
