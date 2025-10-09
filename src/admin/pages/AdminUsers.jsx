@@ -69,7 +69,12 @@ export default function AdminUsers() {
                   }}>
                     <RestartAltIcon />
                   </IconButton>
-                  <IconButton color="error" title="Eliminar" onClick={() => setConfirmDel(u)}>
+                  <IconButton
+                    color="error"
+                    title={u.role === 'admin' ? 'No se puede eliminar un admin' : 'Eliminar'}
+                    disabled={u.role === 'admin'}
+                    onClick={() => setConfirmDel(u)}
+                  >
                     <DeleteOutlineIcon />
                   </IconButton>
                 </td>
@@ -101,22 +106,29 @@ export default function AdminUsers() {
             value={edit?.name || ''}
             onChange={(e) => setEdit({ ...edit, name: e.target.value })}
           />
+
           <TextField
             label="Rol"
             select
             value={edit?.role || 'owner'}
             onChange={(e) => setEdit({ ...edit, role: e.target.value })}
+            disabled={edit?.role === 'admin'}
+            helperText={edit?.role === 'admin' ? 'El rol del administrador no se puede modificar' : ''}
           >
             {roles.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
           </TextField>
+
           <TextField
             label="Estado"
             select
             value={edit?.status || 'active'}
             onChange={(e) => setEdit({ ...edit, status: e.target.value })}
+            disabled={edit?.role === 'admin'}
+            helperText={edit?.role === 'admin' ? 'El estado del administrador no se puede modificar' : ''}
           >
             {statuses.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
           </TextField>
+
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEdit(null)}>Cancelar</Button>
@@ -127,7 +139,6 @@ export default function AdminUsers() {
           }}>Guardar</Button>
         </DialogActions>
       </Dialog>
-
       {/* Delete confirm */}
       <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)}>
         <DialogTitle>Eliminar usuario</DialogTitle>
