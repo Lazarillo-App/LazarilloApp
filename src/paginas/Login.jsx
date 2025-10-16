@@ -17,8 +17,14 @@ export default function Login() {
     setErr('');
     setBusy(true);
     try {
-      await AuthAPI.login(email.trim(), password);
-      const to = loc.state?.from || '/perfil';
+      const data = await AuthAPI.login(email.trim(), password);
+
+      // rol desde la respuesta o desde localStorage
+      const role =
+        data?.user?.role ??
+        (JSON.parse(localStorage.getItem('user') || 'null') || {}).role;
+
+      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/');
       nav(to, { replace: true });
     } catch (e) {
       setErr(e.message || 'Error de inicio de sesión');
@@ -48,7 +54,7 @@ export default function Login() {
         <div style={{ marginTop: 12, textAlign: 'center' }}>
           <Link to="/forgot-password" className="auth-link">¿Olvidaste tu contraseña?</Link>
         </div>
-        
+
         <div className="auth-foot">
           ¿No tenés cuenta? <Link to="/register" className="auth-link">Crear cuenta</Link>
         </div>

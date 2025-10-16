@@ -1,7 +1,7 @@
 // src/componentes/RequireMaxi.jsx
 import React, { useEffect, useState } from 'react';
 import MaxiSetupModal from './BusinessCreateModal';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
 export default function RequireMaxi({ children }) {
   const [status, setStatus] = useState({ loading:true, configured:false });

@@ -1,6 +1,6 @@
 // src/componentes/BusinessSwitcher.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
 export default function BusinessSwitcher({ onSwitched, className = '' }) {
   const [items, setItems] = useState([]);

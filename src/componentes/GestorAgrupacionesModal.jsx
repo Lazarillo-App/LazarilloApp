@@ -6,7 +6,7 @@ import {
   CircularProgress
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { httpBiz } from '../servicios/apiBusinesses';
 
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);

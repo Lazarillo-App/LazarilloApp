@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable no-empty */
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 
@@ -11,7 +13,7 @@ const DEFAULTS = {
   success:  '#10b981',
   warning:  '#f59e0b',
   error:    '#ef4444',
-  fg:       '#1a4f67',   // texto general
+  fg:       '#1a4f67',
   bg:       '#ffffff',
   surface:  '#f8fafc',
   border:   '#e2e8f0',
@@ -32,31 +34,25 @@ const contrast = (a,b) => {
   const [hi,lo] = L1>L2 ? [L1,L2] : [L2,L1];
   return (hi+.05)/(lo+.05);
 };
-const bestOn = (bgHex) => contrast(hexToRgb(bgHex), [255,255,255]) >= contrast(hexToRgb(bgHex), [0,0,0]) ? '#fff' : '#000';
+const bestOn = (bgHex) =>
+  contrast(hexToRgb(bgHex), [255,255,255]) >= contrast(hexToRgb(bgHex), [0,0,0]) ? '#fff' : '#000';
 
 function applyCssVars(p) {
   const t = { ...DEFAULTS, ...(p||{}) };
   const root = document.documentElement;
-
   root.style.setProperty('--color-primary',   t.primary);
   root.style.setProperty('--color-secondary', t.secondary);
   root.style.setProperty('--color-success',   t.success);
   root.style.setProperty('--color-warning',   t.warning);
   root.style.setProperty('--color-error',     t.error);
-
   root.style.setProperty('--color-fg',        t.fg);
   root.style.setProperty('--color-bg',        t.bg);
   root.style.setProperty('--color-surface',   t.surface);
   root.style.setProperty('--color-border',    t.border);
-
-  // textos automáticos sobre colores de marca
-  root.style.setProperty('--on-primary',   bestOn(t.primary));
-  root.style.setProperty('--on-secondary', bestOn(t.secondary));
-
-  // hover derivado del secondary
-  root.style.setProperty('--color-hover', `color-mix(in srgb, ${t.secondary} 18%, transparent)`);
-
-  root.style.setProperty('--app-font', t.font);
+  root.style.setProperty('--on-primary',      bestOn(t.primary));
+  root.style.setProperty('--on-secondary',    bestOn(t.secondary));
+  root.style.setProperty('--color-hover',     `color-mix(in srgb, ${t.secondary} 18%, transparent)`);
+  root.style.setProperty('--app-font',        t.font);
 }
 
 const brandingToPalette = (br = {}) => ({
@@ -66,15 +62,20 @@ const brandingToPalette = (br = {}) => ({
   bg       : br.background?? DEFAULTS.bg,
   surface  : DEFAULTS.surface,
   border   : DEFAULTS.border,
-  fg       : br.fg        ?? DEFAULTS.fg,   // texto general estable
-  hover    : undefined,                     // lo calcula applyCssVars
+  fg       : br.fg        ?? DEFAULTS.fg,
+  hover    : undefined,
   font     : br.font      ?? DEFAULTS.font,
   logo_url : br.logo_url  ?? null,
 });
 
+// helper para saber rol desde localStorage
+function getRole() {
+  try { return (JSON.parse(localStorage.getItem('user') || 'null') || {}).role || null; }
+  catch { return null; }
+}
 
 export function ThemeProviderNegocio({ children, activeBizId }) {
-  // 1) hidratar desde localStorage ANTES de la primera pintura
+  // hidratar paleta inicial desde LS (evita “flash”)
   const initialFromLS = (() => {
     try { return JSON.parse(localStorage.getItem('bizTheme') || 'null') || DEFAULTS; }
     catch { return DEFAULTS; }
@@ -82,53 +83,60 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
 
   const [palette, setPalette] = useState(initialFromLS);
 
-  // aplicar inmediatamente la paleta inicial (evita “flash” de tema)
- useEffect(() => { applyCssVars(palette); }, [palette]);
+  // aplicar cualquier cambio de paleta al DOM
+  useEffect(() => { applyCssVars(palette); }, [palette]);
 
-  // util para setear y persistir
   const setPaletteForBiz = (p, { persist = false } = {}) => {
     setPalette(p);
-    applyCssVars(p); // aplicamos ya mismo
+    applyCssVars(p);
     if (persist) {
       try { localStorage.setItem('bizTheme', JSON.stringify(p)); } catch {}
     }
   };
 
-  // 2) cuando cambia el negocio activo, traemos su branding y lo aplicamos
+  /* Cargar branding SOLO si hay token y NO es app_admin */
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      const token = localStorage.getItem('token');
+      if (!token) return; // sin sesión, no llames al back
+
+      const role = getRole();
+      if (role === 'app_admin') { // admin no usa tema de negocio
+        setPaletteForBiz(DEFAULTS, { persist: true });
+        return;
+      }
+
       const id = activeBizId || localStorage.getItem('activeBusinessId');
       if (!id) return;
+
       try {
-        const biz = await BusinessesAPI.get(id); // admin (sin X-Business-Id)
+        const biz = await BusinessesAPI.get(id); // /businesses/:id (sin X-Business-Id)
         const br  = biz?.props?.branding || biz?.branding || null;
-        if (!cancelled && br) {
-          const pal = brandingToPalette(br);
-          setPaletteForBiz(pal, { persist: true });
-        }
-      } catch (e) {
-        // si falla, mantenemos la del LS
-        // console.warn('No se pudo cargar tema del negocio', e);
-      }
+        if (!cancelled && br) setPaletteForBiz(brandingToPalette(br), { persist: true });
+      } catch {}
     }
     load();
     return () => { cancelled = true; };
   }, [activeBizId]);
 
-  // 3) escuchar cambios globales
+  /* Reaplicar al cambiar de local (también chequear token/rol) */
   useEffect(() => {
-    const onSwitch = () => {
+    const onSwitch = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const role = getRole();
+      if (role === 'app_admin') return;
+
       const id = localStorage.getItem('activeBusinessId');
       if (!id) return;
-      // re-trigger effect de arriba sin cambiar prop:
-      (async () => {
-        try {
-          const biz = await BusinessesAPI.get(id);
-          const br  = biz?.props?.branding || biz?.branding || null;
-          if (br) setPaletteForBiz(brandingToPalette(br), { persist: true });
-        } catch {}
-      })();
+
+      try {
+        const biz = await BusinessesAPI.get(id);
+        const br  = biz?.props?.branding || biz?.branding || null;
+        if (br) setPaletteForBiz(brandingToPalette(br), { persist: true });
+      } catch {}
     };
     window.addEventListener('business:switched', onSwitch);
     window.addEventListener('business:branding-updated', onSwitch);

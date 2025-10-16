@@ -5,7 +5,7 @@ import SidebarCategorias from '../componentes/SidebarCategorias';
 import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import Buscador from '../componentes/Buscador';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { ensureActiveBusiness } from '../servicios/ensureBusiness';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -120,8 +120,10 @@ export default function ArticulosMain(props) {
       setVentasLoading(true);
       try {
         // 1) Intento SIEMPRE de summary (no necesita ids visibles)
-        const { peek = [] } = await BusinessesAPI.salesSummary(bid, { from: periodo.from, to: periodo.to });
-        const totals = new Map(peek.map(r => [Number(r.articuloId), Number(r.qty || 0)]));
+        // 1) Intento principal: ranking últimos 30 días desde DB
+        const { items = [] } = await BusinessesAPI.topArticulos(bid, { limit: 1000 });
+        // items: [{ article_id, qty }]
+        const totals = new Map(items.map(r => [Number(r.article_id), Number(r.qty || 0)]));
         totalesCache.set(cacheKey, totals);
         if (!canceled && myId === reqId.current) setVentasMap(totals);
       } catch (e) {
@@ -262,7 +264,6 @@ export default function ArticulosMain(props) {
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             setFiltroBusqueda={setFiltroBusqueda}
             setBusqueda={setFiltroBusqueda}
-            // 👇 pasa conteo real de “Sin Agrupación” (si lo conocemos)
             todoCountOverride={
               todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
             }

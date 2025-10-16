@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { useBizTheme } from '../tema/ThemeProviderNegocio';
 
 export default function BusinessEditModal({ open, business, onClose, onSaved }) {

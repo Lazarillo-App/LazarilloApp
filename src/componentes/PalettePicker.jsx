@@ -3,7 +3,7 @@ import React from 'react';
 import { Stack, Chip, Tooltip } from '@mui/material';
 import { DEFAULT_PALETTES } from '../tema/paletas';
 import { useBizTheme } from '../tema/ThemeProviderNegocio';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
 export default function PalettePicker() {
   const { palette, setPaletteForBiz } = useBizTheme();

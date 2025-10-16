@@ -7,21 +7,42 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 
 export default function VentasMiniGraficoModal({
   open, onClose, articuloNombre, rango, data,
   groupBy, onChangeGroupBy, loading
 }) {
   const chartData = useMemo(() => {
-    const arr = (data?.items ?? []).map((it, i) => ({
-      idx: i + 1,
-      label: it.label,
-      qty: Number(it.qty || 0)
-    }));
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    if (groupBy !== 'day') {
+      // Para week/month (cuando lo habilites), no completamos calendario.
+      let acc = 0;
+      return items.map((it, i) => {
+        const qty = Number(it.qty || 0);
+        acc += qty;
+        return { idx: i + 1, label: it.label, qty, acc };
+      });
+    }
+
+    // --- completar calendario día a día (YYYY-MM-DD) ---
+    const map = new Map(items.map(it => [String(it.label), Number(it.qty || 0)]));
+    const from = new Date(rango.from + 'T00:00:00Z');
+    const to   = new Date(rango.to   + 'T00:00:00Z');
+
+    const seq = [];
+    for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
+      const label = d.toISOString().slice(0, 10);
+      seq.push({ label, qty: map.get(label) || 0 });
+    }
+
     let acc = 0;
-    return arr.map(d => ({ ...d, acc: (acc += d.qty) }));
-  }, [data]);
+    return seq.map((d, i) => {
+      acc += d.qty;
+      return { idx: i + 1, label: d.label, qty: d.qty, acc };
+    });
+  }, [data, groupBy, rango.from, rango.to]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>

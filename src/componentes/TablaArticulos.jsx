@@ -5,7 +5,7 @@ import SubrubroAccionesMenu from './SubrubroAccionesMenu';
 import ArticuloAccionesMenu from './ArticuloAccionesMenu';
 import VentasCell from './VentasCell';
 import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import '../css/TablaArticulos.css';
 
 const clean = (s) => String(s ?? '').trim();
@@ -145,7 +145,6 @@ export default function TablaArticulos({
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
-          // eslint-disable-next-line no-unused-vars
         } catch (e) {
           // 2) fallback: plano → tree
           // eslint-disable-next-line no-useless-catch

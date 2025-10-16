@@ -5,7 +5,7 @@ import {
   Paper, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
   Button, Chip, Divider, CircularProgress, Tooltip
 } from '@mui/material';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
 // AdminActionsSidebar.jsx
 function normalizeMaxiStatus(res = {}) {

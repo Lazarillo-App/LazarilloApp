@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
 export default function MaxiCredsCard() {
   const [bid, setBid] = useState(localStorage.getItem('activeBusinessId') || '');

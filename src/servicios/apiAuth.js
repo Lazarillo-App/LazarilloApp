@@ -7,8 +7,12 @@ function saveSession(data) {
     if (data?.token) localStorage.setItem('token', data.token);
     if (data?.user)  localStorage.setItem('user', JSON.stringify(data.user));
 
-    const bid = data?.user?.active_business_id ?? data?.active_business_id;
-    if (bid !== undefined && bid !== null && bid !== '') {
+    const role = data?.user?.role;
+    const bid  = data?.user?.active_business_id ?? data?.active_business_id;
+
+    if (role === 'app_admin') {
+      localStorage.removeItem('activeBusinessId');       // ⛔ nada de negocio para admin
+    } else if (bid !== undefined && bid !== null && bid !== '') {
       localStorage.setItem('activeBusinessId', String(bid));
     }
   } catch {}
@@ -34,11 +38,13 @@ export const AuthAPI = {
     const data = await http('/auth/login', {
       method: 'POST',
       body: { email: String(email).trim(), password },
-      withBusinessId: false,  // 👈 público
-      noAuthRedirect: true,   // 👈 no redirigir en 401 de login
+      withBusinessId: false,   // público
+      noAuthRedirect: true,    // no redirigir en 401 de login
     });
     saveSession(data);
-    return data;
+    // notificar a la app
+    try { window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user })); } catch {}
+    return data.user;          // 👈 devolvemos el usuario directamente
   },
 
   async register({ name, email, password }) {
@@ -49,7 +55,8 @@ export const AuthAPI = {
       noAuthRedirect: true,
     });
     saveSession(data);
-    return data;
+    try { window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user })); } catch {}
+    return data.user;          // consistencia con login()
   },
 
   async me() {
@@ -58,24 +65,27 @@ export const AuthAPI = {
       noAuthRedirect: true,
     });
     if (data) {
-      localStorage.setItem('user', JSON.stringify(data));
-      const bid = data?.active_business_id;
+      // preservar role si /me no lo trae
+      const prev = getUser() || {};
+      const merged = { ...prev, ...data, role: prev.role ?? data.role };
+      localStorage.setItem('user', JSON.stringify(merged));
+
+      const bid = merged?.active_business_id;
       if (bid !== undefined && bid !== null && bid !== '') {
         localStorage.setItem('activeBusinessId', String(bid));
       }
+      return merged;
     }
-    return data;
+    return null;
   },
 
   async requestPasswordReset(email) {
-    // usamos http() para heredar BASE y manejo de errores
-    const res = await http('/auth/forgot-password', {
+    return await http('/auth/forgot-password', {
       method: 'POST',
       body: { email: String(email).trim() },
       withBusinessId: false,
       noAuthRedirect: true,
     });
-    return res; // { ok, (token_preview|previewUrl) según tu back }
   },
 
   async resetPassword({ token, password }) {
@@ -89,5 +99,7 @@ export const AuthAPI = {
 
   logout() {
     clearSession();
+    try { window.dispatchEvent(new Event('auth:logout')); } catch {}
   },
 };
+

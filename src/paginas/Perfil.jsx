@@ -2,11 +2,12 @@
 // src/paginas/Perfil.jsx
 import React, { useEffect, useState } from 'react';
 import { Grid } from '@mui/material';
-import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import AdminActionsSidebar from '../componentes/AdminActionsSidebar';
+import SalesSyncPanel from '../componentes/SalesSyncPanel';
 
 export default function Perfil() {
   const [items, setItems] = useState([]);
@@ -96,16 +97,21 @@ export default function Perfil() {
 
   return (
     <Grid container spacing={4} sx={{ mb: 4 }}>
-      <Grid item xs={18} md={3}>
-        <AdminActionsSidebar onSynced={load} />
+      <Grid item xs={12} md={3}>
+        <div className="space-y-4">
+          <AdminActionsSidebar onSynced={load} />
+          <SalesSyncPanel
+            businessId={Number(activeId) || Number(localStorage.getItem('activeBusinessId')) || null}
+            onAfterSync={load}
+          />
+        </div>
       </Grid>
-
       <Grid item xs={12} md={9}>
         <div className="perfil">
-           <div className="hdr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-               <h1 style={{ margin: 0, color: 'var(--color-fg)' }}>Mi perfil</h1>
-               <button className="btn btn-brand" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
-             </div>
+          <div className="hdr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h1 style={{ margin: 0, color: 'var(--color-fg)' }}>Mi perfil</h1>
+            <button className="btn btn-brand" onClick={() => setShowCreate(true)}>+ Nuevo local</button>
+          </div>
           <h2 className="sub">Mis locales</h2>
           <div className="grid">
             {items.map(biz => (
@@ -126,7 +132,6 @@ export default function Perfil() {
             onClose={() => setShowCreate(false)}
             onCreateComplete={onCreateComplete}
           />
-
           <BusinessEditModal
             open={!!editing}
             business={editing}
