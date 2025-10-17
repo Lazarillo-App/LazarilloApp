@@ -1,58 +1,82 @@
 // src/servicios/apiInsumos.js
 import { BASE } from './apiBase';
 
+function authHeaders() {
+  const token = localStorage.getItem('token') || '';
+  const bid = localStorage.getItem('activeBusinessId') || '';
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h.Authorization = `Bearer ${token}`;
+  if (bid) h['X-Business-Id'] = bid;
+  return h;
+}
+
 export const insumosList = async (params = {}) => {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${BASE}/insumos${qs ? `?${qs}` : ""}`);
-  if (!res.ok) throw new Error("Error al listar insumos");
+  const res = await fetch(`${BASE}/insumos${qs ? `?${qs}` : ''}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Error al listar insumos');
   return await res.json();
 };
 
 export const insumoCreate = async (payload) => {
   const res = await fetch(`${BASE}/insumos`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: authHeaders(),
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Error al crear insumo");
+  if (!res.ok) throw new Error('Error al crear insumo');
   return await res.json();
 };
 
 export const insumoUpdate = async (id, payload) => {
   const res = await fetch(`${BASE}/insumos/${id}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" },
+    method: 'PUT',
+    headers: authHeaders(),
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Error al actualizar insumo");
+  if (!res.ok) throw new Error('Error al actualizar insumo');
   return await res.json();
 };
 
 export const insumoDelete = async (id) => {
-  const res = await fetch(`${BASE}/insumos/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Error al eliminar insumo");
+  const res = await fetch(`${BASE}/insumos/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Error al eliminar insumo');
   return await res.json();
 };
 
 export const insumosBulkJSON = async (items) => {
   const res = await fetch(`${BASE}/insumos/bulk`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: authHeaders(),
     body: JSON.stringify(items),
   });
-  if (!res.ok) throw new Error("Error en bulk JSON");
+  if (!res.ok) throw new Error('Error en bulk JSON');
   return await res.json();
 };
 
 export const insumosBulkCSV = async (file) => {
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append('file', file);
+  const headers = authHeaders();
+  delete headers['Content-Type']; // importante: FormData pone el boundary solo
   const res = await fetch(`${BASE}/insumos/bulk-csv`, {
-    method: "POST", body: fd,
+    method: 'POST',
+    headers,
+    body: fd,
   });
-  if (!res.ok) throw new Error("Error en bulk CSV");
+  if (!res.ok) throw new Error('Error en bulk CSV');
   return await res.json();
 };
 
 export const insumosCleanup = async () => {
-  const res = await fetch(`${BASE}/insumos/admin/cleanup-null`, { method: "POST" });
-  if (!res.ok) throw new Error("Error en cleanup");
+  const res = await fetch(`${BASE}/insumos/admin/cleanup-null`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Error en cleanup');
   return await res.json();
 };

@@ -1,6 +1,11 @@
+/* eslint-disable no-empty */
+/* eslint-disable no-useless-catch */
 /* eslint-disable no-unused-vars */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useEffect, useMemo, useRef, useState, useCallback, useDeferredValue,
+} from 'react';
 import { Snackbar, Alert } from '@mui/material';
+
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
 import ArticuloAccionesMenu from './ArticuloAccionesMenu';
 import VentasCell from './VentasCell';
@@ -8,37 +13,92 @@ import { ensureTodo, getExclusiones } from '../servicios/apiAgrupacionesTodo';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import '../css/TablaArticulos.css';
 
+/* ---------------- utils ---------------- */
 const clean = (s) => String(s ?? '').trim();
 const isSin = (s) => {
   const v = clean(s).toLowerCase();
   return v === '' || v === 'sin categoría' || v === 'sin categoria' || v === 'sin subrubro';
 };
-const prefer = (...vals) => {
-  for (const v of vals) {
-    if (!isSin(v)) return clean(v);
-  }
-  return clean(vals[0] ?? '');
-};
-const getDisplayCategoria = (a) =>
-  prefer(a?.categoria, a?.raw?.categoria, a?.raw?.raw?.categoria);
-const getDisplaySubrubro = (a) =>
-  prefer(a?.subrubro, a?.raw?.subrubro, a?.raw?.raw?.subrubro);
+const prefer = (...vals) => { for (const v of vals) if (!isSin(v)) return clean(v); return clean(vals[0] ?? ''); };
+const getDisplayCategoria = (a) => prefer(a?.categoria, a?.raw?.categoria, a?.raw?.raw?.categoria);
+const getDisplaySubrubro = (a) => prefer(a?.subrubro, a?.raw?.subrubro, a?.raw?.raw?.subrubro);
 
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const num = (v) => Number(v ?? 0);
-const fmt = (v, d = 0) =>
-  Number(v ?? 0).toLocaleString('es-AR', {
-    minimumFractionDigits: d,
-    maximumFractionDigits: d,
-  });
-
+const fmt = (v, d = 0) => Number(v ?? 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const esTodoGroup = (g, todoGroupId) => {
   const n = String(g?.nombre || '').trim().toUpperCase();
   return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN' || n === 'SIN AGRUPACION';
 };
-const tipoDesdeRubro = (rubro = '') =>
-  rubro.toUpperCase().includes('BEBIDA') ? 'Bebida' : 'Comida';
 
+/* ---------------- VirtualList simple (sin librerías) ---------------- */
+function VirtualList({
+  rows = [],
+  rowHeight = 44,
+  height = 400,
+  overscan = 6,
+  onVisibleItemsIds,          // (ids:number[]) => void
+  renderRow,                  // ({ row, index, style }) => JSX
+  getRowId,                   // (row) => number | null
+}) {
+  const scrollRef = useRef(null);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const totalHeight = rows.length * rowHeight;
+
+  const { startIdx, endIdx } = useMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+    const visibleCount = Math.ceil(height / rowHeight) + overscan * 2;
+    const end = Math.min(rows.length - 1, start + visibleCount);
+    return { startIdx: start, endIdx: end };
+  }, [scrollTop, rowHeight, height, overscan, rows.length]);
+
+  const offsetY = startIdx * rowHeight;
+  const visibleRows = rows.slice(startIdx, endIdx + 1);
+
+  // reportar ids visibles (solo items), SIN depender de `rows` para evitar loops
+  const prevIdsStrRef = useRef('');
+  useEffect(() => {
+    if (!onVisibleItemsIds) return;
+    const ids = [];
+    const arr = rowsRef.current;
+    for (let i = startIdx; i <= endIdx; i++) {
+      const r = arr[i];
+      const id = getRowId?.(r);
+      if (Number.isFinite(id)) ids.push(id);
+    }
+    const str = ids.join(',');
+    if (str !== prevIdsStrRef.current) {
+      prevIdsStrRef.current = str;
+      onVisibleItemsIds(ids);
+    }
+  }, [startIdx, endIdx, getRowId, onVisibleItemsIds]);
+
+  return (
+    <div
+      ref={scrollRef}
+      style={{ height, overflow: 'auto', position: 'relative', willChange: 'transform' }}
+      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+          {visibleRows.map((row, i) =>
+            renderRow({
+              row,
+              index: startIdx + i,
+              style: { height: rowHeight, display: 'block' }
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- componente principal ---------------- */
 export default function TablaArticulos({
   filtroBusqueda = '',
   agrupacionSeleccionada,
@@ -54,7 +114,8 @@ export default function TablaArticulos({
   activeBizId,
   reloadKey = 0,
   onTodoInfo,
-  onTotalResolved
+  onTotalResolved,
+  onGroupCreated
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -65,66 +126,62 @@ export default function TablaArticulos({
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
-  const openSnack = (msg, type = 'success') => setSnack({ open: true, msg, type });
+  const openSnack = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
   const loadReqId = useRef(0);
 
-  // ✅ fuerza refetch “en vivo” sin F5
+  // refetch sin F5
   const [reloadTick, setReloadTick] = useState(0);
-  const refetchLocal = async () => {
-    // eslint-disable-next-line no-empty
+  const refetchLocal = useCallback(async () => {
     try { await refetchAgrupaciones?.(); } catch { }
-    setReloadTick((t) => t * 1); // re-consulta articlesTree
-  };
+    setReloadTick((t) => t + 1);
+  }, [refetchAgrupaciones]);
 
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-  const afterMutation = (removedIds = []) => {
+  const afterMutation = useCallback((removedIds = []) => {
     if (!agrupSelView?.id) { refetchLocal(); return; }
     const isTodo = esTodoGroup(agrupSelView, todoGroupId);
     if (isTodo) { refetchLocal(); return; }
     const rem = new Set(removedIds.map(Number));
     const actual = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
     const next = actual.filter(a => !rem.has(getId(a)));
-    setAgrupSelView({ ...agrupSelView, articulos: next });
+    setAgrupSelView((prev) => ({ ...(prev || {}), articulos: next }));
     refetchLocal();
-  };
+  }, [agrupSelView, todoGroupId, refetchLocal]);
 
-  // helper local para armar tree desde items planos
-  function buildTreeFromFlat(items = []) {
-    const flat = items
-      .map(row => {
-        const raw = row?.raw || {};
-        const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
-        return {
-          id,
-          nombre: String(row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`),
-          categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría'),
-          subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro'),
-          precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
-          costo: Number(row?.costo ?? raw?.costo ?? 0),
-        };
-      })
-      .filter(a => Number.isFinite(a.id));
+  // build tree desde plano
+  const buildTreeFromFlat = useCallback((items = []) => {
+    const flat = items.map(row => {
+      const raw = row?.raw || {};
+      const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
+      return {
+        id,
+        nombre: String(row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`),
+        categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría'),
+        subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro'),
+        precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
+        costo: Number(row?.costo ?? raw?.costo ?? 0),
+      };
+    }).filter(a => Number.isFinite(a.id));
 
-    // subrubro → categorias → articulos
-    const bySub = new Map(); // subrubro => Map(categoria => articulos[])
+    const bySub = new Map();
     for (const a of flat) {
       if (!bySub.has(a.subrubro)) bySub.set(a.subrubro, new Map());
       const byCat = bySub.get(a.subrubro);
       if (!byCat.has(a.categoria)) byCat.set(a.categoria, []);
       byCat.get(a.categoria).push(a);
     }
-
     return Array.from(bySub, ([subrubro, byCat]) => ({
       subrubro,
       categorias: Array.from(byCat, ([categoria, articulos]) => ({ categoria, articulos })),
     }));
-  }
+  }, []);
 
+  // Carga catálogo + exclusiones
   useEffect(() => {
     let cancel = false;
-    const myId = loadReqId.current;
+    const myId = ++loadReqId.current;
 
     (async () => {
       try {
@@ -138,16 +195,13 @@ export default function TablaArticulos({
           return;
         }
 
-        // 1) intento principal
         try {
           const { tree = [] } = await BusinessesAPI.articlesTree(bizId);
           if (!cancel && myId === loadReqId.current) {
             setCategorias(tree);
             onCategoriasLoaded?.(tree);
           }
-        } catch (e) {
-          // 2) fallback: plano → tree
-          // eslint-disable-next-line no-useless-catch
+        } catch {
           try {
             const { items = [] } = await BusinessesAPI.articlesFromDB(bizId);
             const tree = buildTreeFromFlat(items);
@@ -156,12 +210,9 @@ export default function TablaArticulos({
               onCategoriasLoaded?.(tree);
             }
             openSnack('Catálogo cargado por fallback', 'info');
-          } catch (e2) {
-            throw e2; // si también falla, mostramos error general abajo
-          }
+          } catch (e2) { throw e2; }
         }
 
-        // TODO  exclusiones (como ya lo tenías)
         try {
           const todo = await ensureTodo();
           if (todo?.id && !cancel && myId === loadReqId.current) {
@@ -187,20 +238,18 @@ export default function TablaArticulos({
     })();
 
     return () => { cancel = true; };
-  }, [activeBizId, reloadKey, reloadTick]);
+  }, [activeBizId, reloadKey, reloadTick, onCategoriasLoaded, buildTreeFromFlat, openSnack]);
 
+  /* --------- flatten catálogo --------- */
   const allArticulos = useMemo(() => {
     const out = [];
     for (const sub of categorias || []) {
-      const subrubroNombre =
-        String(sub?.subrubro ?? sub?.nombre ?? 'Sin subrubro');
+      const subrubroNombre = String(sub?.subrubro ?? sub?.nombre ?? 'Sin subrubro');
       for (const cat of sub?.categorias || []) {
-        const categoriaNombre =
-          String(cat?.categoria ?? cat?.nombre ?? 'Sin categoría');
+        const categoriaNombre = String(cat?.categoria ?? cat?.nombre ?? 'Sin categoría');
         for (const a of cat?.articulos || []) {
           out.push({
             ...a,
-            // si el artículo ya traía estos campos, respetamos; si no, heredamos del árbol
             subrubro: a?.subrubro ?? subrubroNombre,
             categoria: a?.categoria ?? categoriaNombre,
           });
@@ -210,141 +259,106 @@ export default function TablaArticulos({
     return out;
   }, [categorias]);
 
-  const baseById = useMemo(
-    () => new Map(allArticulos.map((a) => [getId(a), a])),
-    [allArticulos]
-  );
+  const baseById = useMemo(() => new Map(allArticulos.map((a) => [getId(a), a])), [allArticulos]);
 
-  const idsEnOtras = useMemo(
-    () =>
-      new Set(
-        (agrupaciones || [])
-          .filter((g) => !esTodoGroup(g, todoGroupId))
-          .flatMap((g) => (g.articulos || []).map(getId))
-      ),
-    [agrupaciones, todoGroupId]
-  );
+  const idsEnOtras = useMemo(() => new Set(
+    (agrupaciones || [])
+      .filter((g) => !esTodoGroup(g, todoGroupId))
+      .flatMap((g) => (g.articulos || []).map(getId))
+  ), [agrupaciones, todoGroupId]);
 
-  const idsSinAgrup = useMemo(
-    () =>
-      allArticulos
-        .map(getId)
-        .filter((id) => idsEnOtras.has(id) === false && excludedIds.has(id) === false),
-    [allArticulos, idsEnOtras, excludedIds]
-  );
+  const idsSinAgrup = useMemo(() =>
+    allArticulos.map(getId)
+      .filter((id) => !idsEnOtras.has(id) && !excludedIds.has(id))
+    , [allArticulos, idsEnOtras, excludedIds]);
 
   useEffect(() => {
-    if (!onTodoInfo) return;
-    onTodoInfo({
-      todoGroupId,
-      idsSinAgrupCount: idsSinAgrup.size,
-    });
+    onTodoInfo?.({ todoGroupId, idsSinAgrupCount: idsSinAgrup.size });
   }, [onTodoInfo, todoGroupId, idsSinAgrup]);
 
-  useEffect(() => {
-    if (!onTodoInfo) return;
-    onTodoInfo({
-      todoGroupId,
-      idsSinAgrupCount: idsSinAgrup.size,
-    });
-  }, [onTodoInfo, todoGroupId, idsSinAgrup]);
+  /* --------- a mostrar + filtro --------- */
+  const articulosAMostrar = useMemo(() => {
+    if (categoriaSeleccionada && agrupacionSeleccionada) {
+      const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
+        ? new Set(idsSinAgrup)
+        : new Set((agrupacionSeleccionada.articulos || []).map(getId));
 
-  // Filtro principal
-  let articulosAMostrar = [];
-  if (categoriaSeleccionada && agrupSelView) {
-    const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
-      ? idsSinAgrup
-      : new Set((agrupacionSeleccionada.articulos || []).map(getId));
-
-    // Hidratar con categoría/subrubro heredados del árbol  baseById
-    articulosAMostrar = (categoriaSeleccionada.categorias || [])
-      .flatMap((c) =>
-        (c.articulos || []).map((a) => {
+      return (categoriaSeleccionada.categorias || [])
+        .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a);
           const b = baseById.get(id) || {};
           return {
-            ...b,
-            ...a,
-            id,
+            ...b, ...a, id,
             nombre: a?.nombre ?? b?.nombre ?? `#${id}`,
             categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría",
             subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro",
             precio: num(a?.precio ?? b?.precio),
             costo: num(a?.costo ?? b?.costo),
           };
-        })
-      )
-      .filter((a) => idsFiltro.has(getId(a)));
-  } else if (categoriaSeleccionada) {
-    // Sin filtro de agrupación, pero igual hidratamos
-    articulosAMostrar = (categoriaSeleccionada.categorias || [])
-      .flatMap((c) =>
-        (c.articulos || []).map((a) => {
-          const id = getId(a);
-          const b = baseById.get(id) || {};
-          return {
-            ...b,
-            ...a,
-            id,
-            nombre: a?.nombre ?? b?.nombre ?? `#${id}`,
-            categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría",
-            subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro",
-            precio: num(a?.precio ?? b?.precio),
-            costo: num(a?.costo ?? b?.costo),
-          };
-        })
-      );
-  } else if (agrupSelView) {
-    const esTodo = esTodoGroup(agrupSelView, todoGroupId);
-    const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
-    if (esTodo && arr.length === 0) {
-      const enOtras = new Set(
-        (agrupaciones || [])
-          .filter((g) => !esTodoGroup(g, todoGroupId))
-          .flatMap((g) => (g.articulos || []).map(getId))
-      );
-      articulosAMostrar = allArticulos.filter(
-        (a) => !enOtras.has(getId(a)) && !excludedIds.has(getId(a))
-      );
-    } else if (arr.length > 0) {
-      articulosAMostrar = arr.map((a) => {
-        const id = getId(a);
-        const b = baseById.get(id) || {};
-        return {
-          ...b,
-          ...a,
-          id,
-          nombre: a.nombre ?? b.nombre ?? `#${id}`,
-          categoria: a.categoria ?? b.categoria ?? 'Sin categoría',
-          subrubro: a.subrubro ?? b.subrubro ?? 'Sin subrubro',
-          precio: num(a.precio ?? b.precio),
-          costo: num(a.costo ?? b.costo),
-        };
-      });
-    } else {
-      articulosAMostrar = allArticulos;
+        })).filter((a) => idsFiltro.has(getId(a)));
     }
-  } else {
-    articulosAMostrar = allArticulos;
-  }
 
-  // Buscador
-  const articulosFiltrados = filtroBusqueda
-    ? articulosAMostrar.filter(
-      (a) =>
-        (a.nombre || '')
-          .toLowerCase()
-          .includes(String(filtroBusqueda).toLowerCase()) ||
-        String(getId(a)).includes(String(filtroBusqueda).trim())
-    )
-    : articulosAMostrar;
+    if (categoriaSeleccionada) {
+      return (categoriaSeleccionada.categorias || [])
+        .flatMap((c) => (c.articulos || []).map((a) => {
+          const id = getId(a);
+          const b = baseById.get(id) || {};
+          return {
+            ...b, ...a, id,
+            nombre: a?.nombre ?? b?.nombre ?? `#${id}`,
+            categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría",
+            subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro",
+            precio: num(a?.precio ?? b?.precio),
+            costo: num(a?.costo ?? b?.costo),
+          };
+        }));
+    }
 
-  // Reportar ids visibles
-  useEffect(() => {
-    const ids = new Set(articulosFiltrados.map(getId));
-    onIdsVisibleChange?.(ids);
-  }, [onIdsVisibleChange, articulosFiltrados]);
+    if (agrupSelView) {
+      const esTodo = esTodoGroup(agrupSelView, todoGroupId);
+      const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
+      if (esTodo && arr.length === 0) {
+        const enOtras = new Set(
+          (agrupaciones || [])
+            .filter((g) => !esTodoGroup(g, todoGroupId))
+            .flatMap((g) => (g.articulos || []).map(getId))
+        );
+        return allArticulos.filter((a) => !enOtras.has(getId(a)) && !excludedIds.has(getId(a)));
+      }
+      if (arr.length > 0) {
+        return arr.map((a) => {
+          const id = getId(a);
+          const b = baseById.get(id) || {};
+          return {
+            ...b, ...a, id,
+            nombre: a.nombre ?? b.nombre ?? `#${id}`,
+            categoria: a.categoria ?? b.categoria ?? 'Sin categoría',
+            subrubro: a.subrubro ?? b.subrubro ?? 'Sin subrubro',
+            precio: num(a.precio ?? b.precio),
+            costo: num(a.costo ?? b.costo),
+          };
+        });
+      }
+      return allArticulos;
+    }
 
+    return allArticulos;
+  }, [
+    categoriaSeleccionada, agrupSelView, agrupacionSeleccionada, todoGroupId,
+    idsSinAgrup, baseById, agrupaciones, allArticulos, excludedIds
+  ]);
+
+  // Filtro con defer para tecleo suave
+  const filtroDefer = useDeferredValue(filtroBusqueda);
+  const articulosFiltrados = useMemo(() => {
+    if (!filtroDefer) return articulosAMostrar;
+    const q = String(filtroDefer).toLowerCase().trim();
+    return articulosAMostrar.filter((a) =>
+      (a.nombre || '').toLowerCase().includes(q) || String(getId(a)).includes(q)
+    );
+  }, [articulosAMostrar, filtroDefer]);
+
+  /* --------- construcción de bloques y filas "planas" --------- */
   const bloques = useMemo(() => {
     const byCat = new Map();
     for (const a of articulosFiltrados) {
@@ -361,16 +375,17 @@ export default function TablaArticulos({
     }));
   }, [articulosFiltrados]);
 
+  // ordenamiento
   const [sortBy, setSortBy] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const toggleSort = (k) => {
-    if (sortBy === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else {
-      setSortBy(k);
+  const toggleSort = useCallback((k) => {
+    setSortBy((prev) => {
+      if (prev === k) { setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); return prev; }
       setSortDir('asc');
-    }
-  };
-  const getSortValue = (a) => {
+      return k;
+    });
+  }, []);
+  const getSortValue = useCallback((a) => {
     const id = getId(a);
     switch (sortBy) {
       case 'codigo': return id;
@@ -391,8 +406,8 @@ export default function TablaArticulos({
       case 'manual': return num(manuales[id]) || 0;
       default: return null;
     }
-  };
-  const cmp = (a, b) => {
+  }, [sortBy, objetivos, manuales]);
+  const cmp = useCallback((a, b) => {
     if (!sortBy) return 0;
     const va = getSortValue(a), vb = getSortValue(b);
     if (typeof va === 'string' || typeof vb === 'string') {
@@ -401,19 +416,43 @@ export default function TablaArticulos({
     }
     const na = Number(va ?? 0), nb = Number(vb ?? 0);
     return sortDir === 'asc' ? na - nb : nb - na;
-  };
+  }, [sortBy, sortDir, getSortValue]);
+
+  // filas planas: headers + items
+  const flatRows = useMemo(() => {
+    const rows = [];
+    for (const blq of bloques) {
+      for (const sr of blq.subrubros) {
+        const artsOrdenados = sr.arts.slice().sort(cmp);
+        rows.push({
+          kind: 'header',
+          key: `H|${blq.categoria}|${sr.subrubro}`,
+          categoria: blq.categoria,
+          subrubro: sr.subrubro,
+          ids: artsOrdenados.map(getId),
+        });
+        for (const a of artsOrdenados) {
+          const id = getId(a);
+          rows.push({
+            kind: 'item',
+            key: `I|${blq.categoria}|${sr.subrubro}|${id}`,
+            categoria: blq.categoria,
+            subrubro: sr.subrubro,
+            art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+          });
+        }
+      }
+    }
+    return rows;
+  }, [bloques, cmp]);
+  // ====== layout tipo “tabla” con CSS grid
+  const gridTemplate = '120px 1fr 110px 110px 110px 110px 110px 120px 110px 80px'; // 9 columnas
+
+  const cellNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  const ITEM_H = 44; // alto de fila/header
 
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView, todoGroupId) : false;
 
-  // Estilos mínimos
-  const thStickyTop = {
-    position: 'sticky',
-    top: 0,
-    zIndex: 2,
-    background: '#fff',
-    userSelect: 'none',
-  };
-  const tdNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
   const calcularCostoPct = (a) => {
     const p = num(a.precio), c = num(a.costo);
     return p > 0 ? ((c / p) * 100).toFixed(2) : 0;
@@ -425,137 +464,161 @@ export default function TablaArticulos({
     return den > 0 ? c * (100 / den) : 0;
   };
 
+  // render de cada fila (para VirtualList)
+  const renderRow = ({ row, index, style }) => {
+    if (row.kind === 'header') {
+      const headerCat = row.categoria || 'Sin categoría';
+      const headerSr = row.subrubro || 'Sin subrubro';
+      return (
+        <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', background: '#fafafa', fontWeight: 600, borderTop: '1px solid #eee', padding: '4px 8px' }}>
+          <div style={{ gridColumn: '1 / -2' }}>{headerCat} - {headerSr}</div>
+          <div style={{ gridColumn: '-2 / -1', justifySelf: 'end' }}>
+            <SubrubroAccionesMenu
+              isTodo={isTodo}
+              agrupaciones={agrupaciones}
+              agrupacionSeleccionada={agrupacionSeleccionada}
+              todoGroupId={todoGroupId}
+              articuloIds={row.ids}
+              onRefetch={refetchLocal}
+              onAfterMutation={(ids) => afterMutation(ids)}
+              notify={(m, t = 'success') => openSnack(m, t)}
+              onGroupCreated={onGroupCreated}
+              categoriaSeleccionada={{ subrubro: headerSr }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // item
+    const a = row.art;
+    const id = a.id;
+    return (
+      <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', borderTop: '1px dashed #f0f0f0', padding: '4px 8px' }}>
+        <div>{id}</div>
+        <div>{a.nombre}</div>
+        <div>
+          <VentasCell
+            articuloId={id}
+            articuloNombre={a.nombre}
+            from={fechaDesde}
+            to={fechaHasta}
+            defaultGroupBy="day"
+            totalOverride={ventasPorArticulo?.get(id)}
+            onTotalResolved={onTotalResolved}
+          />
+        </div>
+        <div style={cellNum}>${fmt(a.precio, 0)}</div>
+        <div style={cellNum}>${fmt(a.costo, 0)}</div>
+        <div style={cellNum}>{calcularCostoPct(a)}%</div>
+        <div style={cellNum}>
+          <input
+            type="number"
+            value={objetivos[id] || ''}
+            onChange={(e) => setObjetivos((s) => ({ ...s, [id]: e.target.value }))}
+            style={{ width: 64 }}
+          />
+        </div>
+        <div style={cellNum}>${fmt(calcularSugerido(a), 2)}</div>
+        <div style={cellNum}>
+          <input
+            type="number"
+            value={manuales[id] || ''}
+            onChange={(e) => setManuales((s) => ({ ...s, [id]: e.target.value }))}
+            style={{ width: 84 }}
+          />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <ArticuloAccionesMenu
+            articulo={a}
+            agrupaciones={agrupaciones}
+            agrupacionSeleccionada={agrupacionSeleccionada}
+            todoGroupId={todoGroupId}
+            isTodo={isTodo}
+            onRefetch={refetchLocal}
+            onAfterMutation={(ids) => afterMutation(ids)}
+            notify={(m, t) => openSnack(m, t)}
+            onGroupCreated={onGroupCreated}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // ids visibles (solo items) — estable y sin loops
+  const handleVisibleIds = useCallback((ids) => {
+    onIdsVisibleChange?.(new Set(ids));
+  }, [onIdsVisibleChange]);
+
   return (
     <div className="tabla-articulos-container">
-      <div className="tabla-content">
-        {bloques.length  === 0 ? (
-          <p style={{ marginTop: '2rem', fontSize: '1.2rem', color: '#777' }}>
+      <div style={{ height: 'calc(100vh - 220px)', width: '100%' }}>
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 3,
+            background: '#fff',
+            borderBottom: '1px solid #eee',
+            padding: '8px 8px 6px',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: gridTemplate,
+              gap: 0,
+              fontWeight: 700,
+              userSelect: 'none',
+              alignItems: 'center',
+            }}
+          >
+            <div onClick={() => toggleSort('codigo')} style={{ cursor: 'pointer' }}>
+              Código {sortBy === 'codigo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
+              Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div>Ventas {ventasLoading ? '…' : ''}</div>
+            <div onClick={() => toggleSort('precio')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('costo')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('costoPct')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('objetivo')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('sugerido')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div onClick={() => toggleSort('manual')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+              Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+            <div style={{ textAlign: 'center' }}>Acciones</div>
+          </div>
+        </div>
+        {flatRows.length === 0 ? (
+          <p style={{ marginTop: '2rem', fontSize: '1.2rem', color: '#777', padding: '0 8px' }}>
             Cargando artículos.
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th onClick={() => toggleSort('codigo')} style={thStickyTop}>
-                  Código {sortBy === 'codigo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('nombre')} style={thStickyTop}>
-                  Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={thStickyTop}>
-                  Ventas {ventasLoading ? '…' : ''}
-                </th>
-                <th onClick={() => toggleSort('precio')} style={{ ...thStickyTop, ...tdNum }}>
-                  Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('costo')} style={{ ...thStickyTop, ...tdNum }}>
-                  Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('costoPct')} style={{ ...thStickyTop, ...tdNum }}>
-                  Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('objetivo')} style={{ ...thStickyTop, ...tdNum }}>
-                  Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('sugerido')} style={{ ...thStickyTop, ...tdNum }}>
-                  Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th onClick={() => toggleSort('manual')} style={{ ...thStickyTop, ...tdNum }}>
-                  Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th style={{ ...thStickyTop, width: 64, textAlign: 'center' }}>
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {bloques.map((blq) => (
-                <React.Fragment key={`cat:${blq.categoria}`}>
-                  {blq.subrubros.map((par) => {
-                    const headerCat = blq.categoria || 'Sin categoría';
-                    const headerSr = par.subrubro || 'Sin subrubro';
-                    const artsOrdenados = par.arts.slice().sort(cmp);
-                    const articuloIdsDeLaPareja = artsOrdenados.map(getId);
-                    return (
-                      <React.Fragment key={`cat:${headerCat}|sr:${headerSr}`}>
-                        <tr className="pair-header-row">
-                          <td colSpan={10}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <strong>{headerCat} - {headerSr}</strong>
-                              <SubrubroAccionesMenu
-                                isTodo={isTodo}
-                                agrupaciones={agrupaciones}
-                                agrupacionSeleccionada={agrupacionSeleccionada}
-                                todoGroupId={todoGroupId}
-                                articuloIds={articuloIdsDeLaPareja}
-                                onRefetch={refetchLocal}
-                                onAfterMutation={afterMutation}
-                                notify={(m, t = 'success') => openSnack(m, t)}
-                                categoriaSeleccionada={{ subrubro: headerSr }}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                        {artsOrdenados.map((a) => {
-                          const id = getId(a);
-                          const artHydrated = { ...a, id, precio: num(a.precio), costo: num(a.costo) };
-                          return (
-                            <tr key={`row:${headerCat}|${headerSr}|${id}`}>
-                              <td>{id}</td>
-                              <td>{a.nombre}</td>
-                              <td>
-                                <VentasCell
-                                  articuloId={id}
-                                  articuloNombre={a.nombre}
-                                  from={fechaDesde}
-                                  to={fechaHasta}
-                                  defaultGroupBy="day"
-                                  totalOverride={ventasPorArticulo?.get(id)}
-                                  onTotalResolved={onTotalResolved}
-                                />
-                              </td>
-                              <td style={tdNum}>${fmt(a.precio, 0)}</td>
-                              <td style={tdNum}>${fmt(a.costo, 0)}</td>
-                              <td style={tdNum}>{calcularCostoPct(a)}%</td>
-                              <td style={tdNum}>
-                                <input
-                                  type="number"
-                                  value={objetivos[id] || ''}
-                                  onChange={(e) => setObjetivos({ ...objetivos, [id]: e.target.value })}
-                                  style={{ width: 64 }}
-                                />
-                              </td>
-                              <td style={tdNum}>${fmt(calcularSugerido(a), 2)}</td>
-                              <td style={tdNum}>
-                                <input
-                                  type="number"
-                                  value={manuales[id] || ''}
-                                  onChange={(e) => setManuales({ ...manuales, [id]: e.target.value })}
-                                  style={{ width: 84 }}
-                                />
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <ArticuloAccionesMenu
-                                  articulo={artHydrated}
-                                  agrupaciones={agrupaciones}
-                                  agrupacionSeleccionada={agrupacionSeleccionada}
-                                  todoGroupId={todoGroupId}
-                                  isTodo={isTodo}
-                                  onRefetch={refetchLocal}
-                                  onAfterMutation={afterMutation}
-                                  notify={(m, t) => openSnack(m, t)}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </React.Fragment>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+          <VirtualList
+            rows={flatRows}
+            rowHeight={ITEM_H}
+            height={
+              typeof window !== 'undefined' && window.innerHeight
+                ? Math.max(240, window.innerHeight - 220)
+                : 520
+            }
+            overscan={8}
+            onVisibleItemsIds={handleVisibleIds}
+            getRowId={(r) => (r?.kind === 'item' ? Number(r?.art?.id) : null)}
+            renderRow={renderRow}
+          />
         )}
       </div>
       <Snackbar
@@ -564,11 +627,7 @@ export default function TablaArticulos({
         onClose={() => setSnack((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert
-          onClose={() => setSnack((s) => ({ ...s, open: false }))}
-          severity={snack.type}
-          sx={{ width: '100%' }}
-        >
+        <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: '100%' }}>
           {snack.msg}
         </Alert>
       </Snackbar>

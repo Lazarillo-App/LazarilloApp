@@ -129,7 +129,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     const s = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter((g) => (g?.nombre || "").toUpperCase() !== "Sin Agrupación")
+      .filter((g) => g?.id !== todoGroupId)
       .forEach((g) => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
         arts
@@ -140,7 +140,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
           });
       });
     return s;
-  }, [agrupaciones]);
+  }, [agrupaciones, todoGroupId]);
 
   // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)
   const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
@@ -164,7 +164,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     const s = new Set();
     (agrupaciones || [])
       .filter(Boolean)
-      .filter((g) => (g?.nombre || "").toUpperCase() !== "Sin Agrupación")
+      .filter((g) => g?.id !== todoGroupId)
       .forEach((g) =>
         (g?.articulos || []).forEach((a) => {
           const id = Number(a?.id);
@@ -172,7 +172,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         })
       );
     return s;
-  }, [agrupaciones]);
+  }, [agrupaciones, todoGroupId]);
 
   const todoVirtualArticulos = useMemo(() => {
     const out = [];

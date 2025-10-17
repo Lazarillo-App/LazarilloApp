@@ -123,7 +123,6 @@ export const BusinessesAPI = {
     http(`/businesses/${id}`, { method: 'PATCH', body, withBusinessId: false }),
   remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
-
   // Credenciales / estado de Maxi
   maxiStatus: (id) =>
     http(`/businesses/${id}/maxi-status`, { withBusinessId: false }),

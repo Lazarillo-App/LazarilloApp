@@ -113,7 +113,7 @@ const AgrupacionesList = ({
     const assigned = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'Sin Agrupación')
+      .filter(g => g?.id !== todoGroupId)
       .forEach(g => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
         arts.filter(Boolean).forEach(a => {
@@ -122,7 +122,7 @@ const AgrupacionesList = ({
         });
       });
     return (art) => assigned.has(String(art?.id));
-  }, [agrupaciones]);
+  }, [agrupaciones, todoGroupId]);
 
   return (
     <>

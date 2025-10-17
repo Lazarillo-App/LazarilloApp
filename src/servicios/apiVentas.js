@@ -14,7 +14,6 @@ function authHeaders(overrideBizId) {
   );
   let role = null;
   try { role = JSON.parse(localStorage.getItem('user') || 'null')?.role || null; } catch { }
-
   const h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = `Bearer ${token}`;
   if (bid && role !== 'app_admin') h['X-Business-Id'] = bid;
@@ -80,7 +79,7 @@ export async function obtenerVentas({
   ignoreZero = true,
   businessId, // opcional: consultar otro local explícitamente
 }) {
-  if (!articuloId || !from || !to) {
+  if ((!articuloId && !codigo && !q) || !from || !to) {
     return { total: 0, items: [] };
   }
 
@@ -116,6 +115,7 @@ export async function obtenerVentas({
         timeout: TIMEOUT_MS,
         headers: authHeaders(businessId),
       });
+
       // Backend: { total, items:[{label, qty}] }
       const total = Number(data?.total || 0);
       const items = Array.isArray(data?.items)

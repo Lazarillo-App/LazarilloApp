@@ -1,11 +1,10 @@
-// src/componentes/VentasCell.jsx
 import React, { useMemo, useState } from 'react';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
 import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
 import VentasMiniGraficoModal from './VentasMiniGraficoModal';
 import { obtenerVentas } from '../servicios/apiVentas';
 
-export default function VentasCell({
+function VentasCell({
   articuloId,
   articuloNombre,
   from,
@@ -22,6 +21,7 @@ export default function VentasCell({
   const activeBizId = localStorage.getItem('activeBusinessId');
   const totalToShow = Number(totalOverride ?? 0);
 
+  // cacheKey si luego querés caching local
   // eslint-disable-next-line no-unused-vars
   const cacheKey = useMemo(
     () => `${activeBizId}|${articuloId}|${from}|${to}|${groupBy}`,
@@ -37,12 +37,12 @@ export default function VentasCell({
         articuloId,
         from,
         to,
-        groupBy: gb,        // hoy sólo 'day', pero dejamos el prop
-        ignoreZero: false,  // que venga el rango completo
+        groupBy: gb,
+        ignoreZero: false,
       });
       setData(res);
       if (typeof onTotalResolved === 'function') {
-        onTotalResolved(articuloId, Number(res?.total || 0));  // 👈 actualiza la celda sin cerrar
+        onTotalResolved(articuloId, Number(res?.total || 0));
       }
     } catch (e) {
       console.error('fetchVentas error', e);
@@ -69,9 +69,9 @@ export default function VentasCell({
       <Tooltip title="Ver gráfico">
         <IconButton
           size="small"
-          onClick={async () => {
+          onClick={() => {
             setOpenModal(true);
-            await fetchVentas();
+            fetchVentas(); // no bloquear UI con await
           }}
         >
           <InsertChartOutlinedIcon fontSize="small" />
@@ -95,3 +95,5 @@ export default function VentasCell({
     </Stack>
   );
 }
+
+export default React.memo(VentasCell);

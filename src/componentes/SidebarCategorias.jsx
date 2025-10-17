@@ -1,5 +1,4 @@
-// src/componentes/SidebarCategorias.jsx
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import '../css/SidebarCategorias.css';
 
@@ -8,9 +7,8 @@ const labelAgrup = (g) => {
   return n === 'TODO' ? 'Sin Agrupación' : (g?.nombre || '');
 };
 
-export default function SidebarCategorias({
-  // Estructura: [{ subrubro, categorias: [{ categoria, articulos: [] }] }]
-  categorias = [],
+function SidebarCategorias({
+  categorias = [],                 // [{ subrubro, categorias: [{ categoria, articulos: [] }] }]
   setCategoriaSeleccionada,
   agrupaciones = [],
   agrupacionSeleccionada,
@@ -18,16 +16,13 @@ export default function SidebarCategorias({
   setFiltroBusqueda,
   setBusqueda,
   categoriaSeleccionada,
-
-  /* ✅ NUEVO (opcional): mapa { [agrupacionId:number]: countSinAgrup } para mostrar
-     el conteo real de "Sin Agrupación" aunque g.articulos esté vacío (TODO). */
-  todoCountOverride = {}, // ej: { [todoGroupId]: 123 }
+  // mapa opcional { [agrupacionId]: count } para “Sin Agrupación”
+  todoCountOverride = {},
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const agrupacionesArray = Array.isArray(agrupaciones) ? agrupaciones : [];
   const loading = categoriasSafe.length === 0;
 
-  // ids activos de la agrupación seleccionada (si hay)
   const activeIds = useMemo(() => {
     const g = agrupacionSeleccionada;
     if (!g || !Array.isArray(g.articulos)) return null;
@@ -36,39 +31,28 @@ export default function SidebarCategorias({
     return s;
   }, [agrupacionSeleccionada]);
 
-  // Aplica filtro por agrupación: si hay selección, mostramos solo subrubros/categorías con artículos del set
   const categoriasParaMostrar = useMemo(() => {
     if (!activeIds) return categoriasSafe;
-
-    // Para cada subrubro, quedarnos solo con las categorías/arts que intersectan con activeIds
     const pruned = categoriasSafe.map(sub => {
       const keepCategorias = (sub.categorias || []).map(c => {
         const arts = (c.articulos || []).filter(a => activeIds.has(Number(a.id)));
         return { ...c, articulos: arts };
       }).filter(c => (c.articulos?.length || 0) > 0);
-
-      return {
-        ...sub,
-        categorias: keepCategorias,
-      };
+      return { ...sub, categorias: keepCategorias };
     }).filter(sub => (sub.categorias?.reduce((acc, c) => acc + (c.articulos?.length || 0), 0) > 0));
-
     return pruned;
   }, [categoriasSafe, activeIds]);
 
-  // ✅ Si la categoría seleccionada quedó sin artículos visibles luego de un refetch, la des-seleccionamos
   useEffect(() => {
     if (!categoriaSeleccionada) return;
     const stillVisible = categoriasParaMostrar.some(
       sub => sub?.subrubro === categoriaSeleccionada?.subrubro
           && (sub?.categorias || []).some(c => (c?.articulos?.length || 0) > 0)
     );
-    if (!stillVisible) {
-      setCategoriaSeleccionada?.(null);
-    }
+    if (!stillVisible) setCategoriaSeleccionada?.(null);
   }, [categoriasParaMostrar, categoriaSeleccionada, setCategoriaSeleccionada]);
 
-  const handleAgrupacionChange = (event) => {
+  const handleAgrupacionChange = useCallback((event) => {
     const value = event.target.value; // '' | id
     if (value === '') {
       setAgrupacionSeleccionada?.(null);
@@ -81,9 +65,9 @@ export default function SidebarCategorias({
     }
     setCategoriaSeleccionada?.(null);
     setBusqueda?.('');
-  };
+  }, [agrupacionesArray, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda]);
 
-  const handleCategoriaClick = (subItem) => {
+  const handleCategoriaClick = useCallback((subItem) => {
     if (categoriaSeleccionada?.subrubro === subItem?.subrubro) {
       setCategoriaSeleccionada?.(null);
     } else {
@@ -91,12 +75,11 @@ export default function SidebarCategorias({
     }
     setFiltroBusqueda?.('');
     setBusqueda?.('');
-  };
+  }, [categoriaSeleccionada, setCategoriaSeleccionada, setFiltroBusqueda, setBusqueda]);
 
   const countArticulosSub = (sub) =>
     (sub?.categorias || []).reduce((acc, c) => acc + (c?.articulos?.length || 0), 0);
 
-  // ✅ Usa override si corresponde (ej. para “Sin Agrupación”)
   const countArticulosAgrup = (g) => {
     const id = Number(g?.id);
     const override = todoCountOverride && typeof todoCountOverride[id] === 'number'
@@ -151,3 +134,5 @@ export default function SidebarCategorias({
     </div>
   );
 }
+
+export default React.memo(SidebarCategorias);

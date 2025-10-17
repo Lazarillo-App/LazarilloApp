@@ -15,30 +15,27 @@ const totalesCache = new Map();
 export default function ArticulosMain(props) {
   const { syncVersion = 0 } = props;
 
-  // Estado compartido
   const [categorias, setCategorias] = useState([]);
-  const [agrupaciones, setAgrupaciones] = useState(props.agrupaciones || []); // 👈 ahora reactivo a cambios
+  const [agrupaciones, setAgrupaciones] = useState(props.agrupaciones || []);
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [activeIds, setActiveIds] = useState(new Set());
   const [activeBizId, setActiveBizId] = useState(localStorage.getItem('activeBusinessId') || '');
 
-  // Para forzar reload de TablaArticulos tras sync
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     (async () => {
       try {
         const bid = await ensureActiveBusiness();
-        setActiveBizId(String(bid)); // dispara los effects que traen ventas
+        setActiveBizId(String(bid));
       } catch (e) {
         console.error('No se pudo fijar negocio activo', e);
       }
     })();
   }, []);
 
-  // ✅ cuando cambian las agrupaciones que vienen del padre, actualizamos estado local
   useEffect(() => {
     setAgrupaciones(props.agrupaciones || []);
   }, [props.agrupaciones]);
@@ -55,14 +52,12 @@ export default function ArticulosMain(props) {
     };
   }, []);
 
-  // Reset mínimos al cambiar agrupación
   useEffect(() => {
     setFiltroBusqueda('');
     setCategoriaSeleccionada(null);
     setActiveIds(new Set());
   }, [agrupacionSeleccionada]);
 
-  // Sync de negocio activo desde localStorage / evento app
   useEffect(() => {
     const sync = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
     sync();
@@ -70,7 +65,6 @@ export default function ArticulosMain(props) {
     return () => window.removeEventListener('business:switched', sync);
   }, []);
 
-  // Rango de fechas
   const [rango, setRango] = useState({ mode: '30', from: '', to: '' });
   useEffect(() => {
     setRango(r => {
@@ -84,7 +78,6 @@ export default function ArticulosMain(props) {
     return lastNDaysUntilYesterday(daysByMode(rango.mode));
   }, [rango]);
 
-  // Ventas (summary)
   const [ventasMap, setVentasMap] = useState(new Map());
   const [ventasLoading, setVentasLoading] = useState(false);
   const reqId = useRef(0);
@@ -97,6 +90,17 @@ export default function ArticulosMain(props) {
     [agrupacionSeleccionada]
   );
 
+  // ✅ throttle para ids visibles
+  const [idsTrigger, setIdsTrigger] = useState([]);
+  const throttleRef = useRef(null);
+  useEffect(() => {
+    if (throttleRef.current) clearTimeout(throttleRef.current);
+    throttleRef.current = setTimeout(() => {
+      setIdsTrigger(Array.from(activeIds || []));
+    }, 250);
+    return () => clearTimeout(throttleRef.current);
+  }, [activeIds]);
+
   useEffect(() => {
     let canceled = false;
     const myId = ++reqId.current;
@@ -108,7 +112,7 @@ export default function ArticulosMain(props) {
         return;
       }
 
-      const idsList = Array.from(activeIds || []);
+      const idsList = idsTrigger;
 
       const cacheKey = `${bid}|${periodo.from}|${periodo.to}`;
       if (totalesCache.has(cacheKey) && syncVersion === 0) {
@@ -119,18 +123,17 @@ export default function ArticulosMain(props) {
 
       setVentasLoading(true);
       try {
-        // 1) Intento SIEMPRE de summary (no necesita ids visibles)
-        // 1) Intento principal: ranking últimos 30 días desde DB
         const { items = [] } = await BusinessesAPI.topArticulos(bid, { limit: 1000 });
-        // items: [{ article_id, qty }]
         const totals = new Map(items.map(r => [Number(r.article_id), Number(r.qty || 0)]));
+        if (totalesCache.size > 20) {
+          const fk = totalesCache.keys().next().value;
+          totalesCache.delete(fk);
+        }
         totalesCache.set(cacheKey, totals);
         if (!canceled && myId === reqId.current) setVentasMap(totals);
       } catch (e) {
-        // 2) Fallback por artículos visibles (si todavía no hay ids, esperamos a que la tabla los reporte)
         if (idsList.length === 0) { setVentasLoading(false); return; }
         const { obtenerVentasAgrupacion } = await import('../servicios/apiVentas');
-        // si hay agrupación seleccionada, usamos sus ids; si no, usamos los visibles
         const idsAgrup = (agrupacionSeleccionada?.articulos || [])
           .map(a => Number(a?.id ?? a?.articuloId)).filter(Boolean);
         const baseIds = idsAgrup.length ? idsAgrup : idsList;
@@ -141,6 +144,10 @@ export default function ArticulosMain(props) {
           articuloIds: baseIds,
         });
         const totals = resp.items.reduce((m, it) => m.set(Number(it.articuloId), Number(it.cantidad || 0)), new Map());
+        if (totalesCache.size > 20) {
+          const fk = totalesCache.keys().next().value;
+          totalesCache.delete(fk);
+        }
         totalesCache.set(cacheKey, totals);
         if (!canceled && myId === reqId.current) setVentasMap(totals);
       } finally {
@@ -150,9 +157,8 @@ export default function ArticulosMain(props) {
 
     fetchTotales();
     return () => { canceled = true; };
-  }, [activeBizId, periodo.from, periodo.to, syncVersion, activeIds]); // 👈 ids visibles también
+  }, [activeBizId, periodo.from, periodo.to, syncVersion, idsTrigger, agrupacionSeleccionada]);
 
-  // Permite que el modal “empuje” su total a la tabla en caliente
   const handleTotalResolved = (id, total) => {
     setVentasMap(prev => {
       const m = new Map(prev);
@@ -171,11 +177,8 @@ export default function ArticulosMain(props) {
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
-  /* ✅ Recibimos info de la Tabla para mostrar contador real en “Sin Agrupación” */
   const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
 
-  /* ---------- NUEVO: opciones del Buscador por NOMBRE (y código) ---------- */
-  // Mapa id -> nombre (desde el árbol `categorias`)
   const nameById = useMemo(() => {
     const m = new Map();
     (categorias || []).forEach((sub) =>
@@ -195,7 +198,7 @@ export default function ArticulosMain(props) {
     const ids = activeIds?.size ? Array.from(activeIds) : Array.from(nameById.keys());
     return ids.slice(0, 300).map((id) => ({
       id,
-      label: `${nameById.get(id) || `#${id}`} · ${id}`, // se ve el nombre y también el código
+      label: `${nameById.get(id) || `#${id}`} · ${id}`,
       value: nameById.get(id) || String(id),
     }));
   }, [activeIds, nameById]);
@@ -212,10 +215,44 @@ export default function ArticulosMain(props) {
     return m;
   }, [categorias]);
 
+  /* =======================
+     NUEVO: selección automática tras crear agrupación
+     ======================= */
+
+  // Hace refetch (si el padre lo provee) y selecciona la nueva agrupación por id o por nombre.
+  const handleGroupCreated = async ({ id, nombre }) => {
+    let list = agrupaciones;
+
+    if (typeof props.refetchAgrupaciones === 'function') {
+      try {
+        const res = await props.refetchAgrupaciones();
+        if (Array.isArray(res)) list = res;
+      } catch { /* noop */ }
+    }
+
+    // Si el padre no devolvió lista, usamos la que tengamos en props/state
+    if (!Array.isArray(list) || list.length === 0) {
+      list = props.agrupaciones || agrupaciones || [];
+    }
+    setAgrupaciones(list);
+
+    // Buscar por id; si no, por nombre (case-insensitive)
+    let creada = list.find(g => Number(g?.id) === Number(id));
+    if (!creada && nombre) {
+      const n = String(nombre).trim().toLowerCase();
+      creada = list.find(g => String(g?.nombre || '').trim().toLowerCase() === n);
+    }
+
+    if (creada) {
+      setAgrupacionSeleccionada(creada);
+      // opcional: limpiar selección de subrubro/búsqueda
+      setCategoriaSeleccionada(null);
+      setFiltroBusqueda('');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Header */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
         <h2 style={{ margin: 0 }}>Gestión de ventas</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -239,12 +276,10 @@ export default function ArticulosMain(props) {
               }, [activeIds, labelById])}
               placeholder="Buscar por código o nombre…"
             />
-
           </div>
         </div>
       </div>
 
-      {/* Body: Sidebar  Tabla */}
       <div style={{
         display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
         minHeight: '60vh', borderRadius: 12, overflow: 'hidden',
@@ -290,6 +325,7 @@ export default function ArticulosMain(props) {
             reloadKey={reloadKey}
             onTodoInfo={setTodoInfo}
             onTotalResolved={handleTotalResolved}
+            onGroupCreated={handleGroupCreated}
           />
         </div>
       </div>

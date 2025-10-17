@@ -1,11 +1,12 @@
 /* eslint-disable no-empty */
 // src/servicios/apiBase.js
 
-// === BASE del backend por entorno (Vite) ===
-// DEV:  VITE_BACKEND_URL=http://localhost:4000/api
-// PROD: VITE_BACKEND_URL=https://lazarilloapp-backend.onrender.com/api
-const RAW = import.meta.env.VITE_BACKEND_URL || '';
-export const BASE = RAW.replace(/\/+$/, ''); // sin barra final
+const RAW =
+  import.meta.env.VITE_BACKEND_URL || // Render / prod (ej: https://tu-back.onrender.com/api)
+  import.meta.env.VITE_LOCAL        || // Dev local (ej: http://localhost:4000/api)
+  '/api';                             // fallback si hay reverse proxy
+
+export const BASE = String(RAW).replace(/\/+$/, ''); // sin barra al final
 
 // === Basename del frontend (routing) ===
 // DEV/PROD raíz:    VITE_BASE=/

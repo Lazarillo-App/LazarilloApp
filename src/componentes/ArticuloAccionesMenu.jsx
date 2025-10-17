@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+/* eslint-disable no-empty */
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
@@ -14,7 +15,6 @@ import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
 
-// Helpers locales para árbol
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
   const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
@@ -41,16 +41,16 @@ const buildTree = (flatList = []) => {
   return Array.from(cats.values());
 };
 
-export default function ArticuloAccionesMenu({
+function ArticuloAccionesMenu({
   articulo,
   agrupaciones = [],
   agrupacionSeleccionada,
-  // eslint-disable-next-line no-unused-vars
   todoGroupId,
   isTodo = false,
   onRefetch,
   onAfterMutation,
   notify,
+  onGroupCreated,
   todosArticulos = [],
   loading = false,
 }) {
@@ -61,7 +61,6 @@ export default function ArticuloAccionesMenu({
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
   const [preselect, setPreselect] = useState(null);
 
-  // Fallback de árbol local
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
 
@@ -70,12 +69,11 @@ export default function ArticuloAccionesMenu({
   const effectiveLoading = haveExternalTree ? !!loading : loadingLocal;
 
   const open = Boolean(anchorEl);
-  const handleOpen = (e) => setAnchorEl(e.currentTarget);
-  const handleClose = () => setAnchorEl(null);
+  const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
+  const handleClose = useCallback(() => setAnchorEl(null), []);
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
-  // destinos posibles (incluye TODO si existe; solo excluye el grupo actual)
   const gruposDestino = useMemo(
     () => (agrupaciones || [])
       .filter(g => g?.id)
@@ -85,8 +83,8 @@ export default function ArticuloAccionesMenu({
 
   const loadedRef = useRef(false);
 
-  const openMover = () => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); };
-  const closeMover = () => setDlgMoverOpen(false);
+  const openMover = useCallback(() => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); }, [handleClose]);
+  const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
   async function mover() {
     if (!destId) return;
@@ -107,7 +105,6 @@ export default function ArticuloAccionesMenu({
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
-          // eslint-disable-next-line no-empty
           try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
         }
       } else {
@@ -157,7 +154,6 @@ export default function ArticuloAccionesMenu({
     }
   }
 
-  // Bloqueo para el modal "crear": artículos ya asignados a cualquier agrupación ≠ TODO
   const isArticuloBloqueadoCreate = useMemo(() => {
     const assigned = new Set();
     (agrupaciones || [])
@@ -170,7 +166,6 @@ export default function ArticuloAccionesMenu({
   }, [agrupaciones]);
 
   useEffect(() => {
-    // Solo cuando el modal se abre y NO tenemos árbol externo
     if (!openCrearAgr) return;
     if (haveExternalTree || loading || loadedRef.current) return;
 
@@ -179,17 +174,10 @@ export default function ArticuloAccionesMenu({
       try {
         setLoadingLocal(true);
         const bizId = localStorage.getItem('activeBusinessId');
-        if (!bizId) {
-          // opcional: notify?.('Seleccioná un local activo primero', 'warning');
-          setTreeLocal([]);
-          return;
-        }
+        if (!bizId) { setTreeLocal([]); return; }
         const res = await BusinessesAPI.articlesFromDB(bizId);
         const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
-        if (alive) {
-          setTreeLocal(buildTree(flat));
-          loadedRef.current = true;
-        }
+        if (alive) { setTreeLocal(buildTree(flat)); loadedRef.current = true; }
       } catch (e) {
         console.error('LOAD_TREE_ERROR', e);
         if (alive) setTreeLocal([]);
@@ -227,7 +215,7 @@ export default function ArticuloAccionesMenu({
           setPreselect({
             articleIds: [idNum],
             fromGroupId: (!isTodo && currentGroupId) ? Number(currentGroupId) : null,
-            allowAssigned: true, 
+            allowAssigned: true,
           });
           setOpenCrearAgr(true);
         }}>
@@ -236,7 +224,6 @@ export default function ArticuloAccionesMenu({
         </MenuItem>
       </Menu>
 
-      {/* Diálogo "Mover a" */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>
         <DialogContent>
@@ -262,7 +249,6 @@ export default function ArticuloAccionesMenu({
         </DialogActions>
       </Dialog>
 
-      {/* Modal: crear agrupación (reutilizable con fallback de árbol) */}
       <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
@@ -271,11 +257,14 @@ export default function ArticuloAccionesMenu({
         todosArticulos={effectiveTree}
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
-        onCreated={async (nombreCreado) => {
+        onCreated={async (nombreCreado, newId) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
           onRefetch?.();
+          onGroupCreated?.({ id: newId, nombre: nombreCreado });
         }}
       />
     </>
   );
 }
+
+export default React.memo(ArticuloAccionesMenu);

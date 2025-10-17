@@ -3,32 +3,33 @@
 import axios from 'axios';
 import { BASE } from './apiBase';
 
-function authHeaders() {
-    const token = localStorage.getItem('token') || '';
-    const bid = localStorage.getItem('activeBusinessId') || '';
-    const h = {};
-    if (token) h.Authorization = `Bearer ${token}`;
-    if (bid) h['x-business-id'] = bid;
-    return h;
+function authHeaders({ withBusinessId = true } = {}) {
+  const token = localStorage.getItem('token') || '';
+  const bid   = localStorage.getItem('activeBusinessId') || '';
+  const h = {};
+  if (token) h.Authorization = `Bearer ${token}`;
+  // para estas rutas no necesitamos X-Business-Id:
+  if (withBusinessId && bid) h['X-Business-Id'] = bid; // (mayúsculas por consistencia)
+  return h;
 }
 
 export async function ensureActiveBusiness() {
-    let bid = localStorage.getItem('activeBusinessId');
-    if (bid) return Number(bid);
+  let bid = localStorage.getItem('activeBusinessId');
+  if (bid) return Number(bid);
 
-    // obtengo la lista de negocios del usuario (ajusta si tu endpoint es otro)
-    const { data } = await axios.get(`${BASE}/businesses/mine`, { headers: authHeaders() });
-    const first = (data?.items || data || [])[0];
-    if (!first?.id) throw new Error('Sin negocios disponibles');
+  // ✅ endpoint correcto: GET /api/businesses (sin X-Business-Id)
+  const { data } = await axios.get(`${BASE}/businesses`, { headers: authHeaders({ withBusinessId: false }) });
+  const first = (data?.items ?? data ?? [])[0];
+  if (!first?.id) throw new Error('Sin negocios disponibles');
 
-    bid = String(first.id);
+  bid = String(first.id);
 
-    // aviso al backend (opcional pero recomendado si tenés /select)
-    try {
-        await axios.post(`${BASE}/businesses/${first.id}/select`, {}, { headers: authHeaders() });
-    } catch { }
+  // seleccionar en backend (sin X-Business-Id)
+  try {
+    await axios.post(`${BASE}/businesses/${first.id}/select`, {}, { headers: authHeaders({ withBusinessId: false }) });
+  } catch {}
 
-    localStorage.setItem('activeBusinessId', bid);
-    window.dispatchEvent(new Event('business:switched'));
-    return Number(bid);
+  localStorage.setItem('activeBusinessId', bid);
+  window.dispatchEvent(new Event('business:switched'));
+  return Number(bid);
 }
