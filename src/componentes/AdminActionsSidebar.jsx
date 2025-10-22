@@ -148,7 +148,8 @@ export default function AdminActionsSidebar({ onSynced }) {
       p: 2,
       background: 'var(--color-surface)',
     }}>
-      <Stack spacing={1.25}>
+      <Stack spacing={1.25}
+        sx={{ width: '100%' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography variant="h6" sx={{ m: 0, color: 'var(--color-fg)' }}>
             Acciones de administración

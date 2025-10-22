@@ -1,142 +1,171 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from "react";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
-export default function BusinessCard({ biz, activeId, onSetActive, onEdit, onDelete }) {
-  // Soporta ambos formatos: biz.branding y biz.props.branding
+export default function BusinessCard({
+  biz,
+  activeId,
+  onSetActive,
+  onEdit,
+  onDelete,
+  onOpenSync,
+}) {
   const branding = useMemo(
     () => biz?.branding || biz?.props?.branding || {},
     [biz]
   );
 
-  const bg   = branding.background ?? '#fafafa';
-  const prim = branding.primary   ?? '#222222';
-  const sec  = branding.secondary ?? '#999999';
-  const logo = branding.logo_url  ?? '';
+  const name =
+    biz?.name || biz?.nombre || (biz?.slug ? String(biz.slug) : `#${biz?.id}`);
 
-  const isActive = String(activeId) === String(biz.id);
-  const [imgOk, setImgOk] = useState(true);
+  // address -> string seguro
+  const address = useMemo(() => {
+    const raw =
+      biz?.address ??
+      biz?.direccion ??
+      biz?.props?.address ??
+      biz?.props?.direccion ??
+      "";
+    if (raw && typeof raw === "object") {
+      const { street, calle, number, numero, city, ciudad, line1, line2 } = raw;
+      return [street ?? calle ?? line1, number ?? numero, line2, city ?? ciudad]
+        .filter(Boolean)
+        .join(", ");
+    }
+    return String(raw || "");
+  }, [biz]);
 
-  // Texto legible sobre primario/secundario
-  const onColor = (hex) => {
-    const toRgb = (h)=> {
-      const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h||'');
-      return m ? [parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)] : [0,0,0];
-    };
-    const rl = ([r,g,b])=>{
-      const s=[r,g,b].map(v=>v/255).map(u=>u<=.03928?u/12.92:Math.pow((u+.055)/1.055,2.4));
-      return .2126*s[0]+.7152*s[1]+.0722*s[2];
-    };
-    const c = ([r,g,b],[R,G,B])=>{
-      const [L1,L2]=[rl([r,g,b]), rl([R,G,B])]; const hi=Math.max(L1,L2), lo=Math.min(L1,L2);
-      return (hi+.05)/(lo+.05);
-    };
-    return c(toRgb(hex), [255,255,255]) >= c(toRgb(hex), [0,0,0]) ? '#fff' : '#000';
-  };
+  // fuentes posibles
+  const photo =
+    biz?.photo_url || branding?.cover_url || biz?.image_url || "";
+  const logo = branding?.logo_url || "";
+
+  // decide “modo thumb”
+  const hasLogo = !!logo;
+  const thumbnail = hasLogo ? logo : photo;
+
+  // si es logo: mostrar en 'contain' y fondo blanco; si es foto: 'cover'
+  const isLogoThumb = hasLogo;
+  const isActive = String(activeId) === String(biz?.id);
 
   return (
-    <div className="biz-card" style={{ borderColor: prim }}>
-      {/* Banda preview: primario + subrayado secundario */}
-      <div className="banner" style={{ background: prim, borderBottomColor: sec }}>
-        {logo && imgOk ? (
-          <img
-            src={logo}
-            alt={biz.name}
-            className="logo"
-            onError={() => setImgOk(false)}
-            loading="lazy"
-          />
-        ) : (
-          <div className="avatar" style={{ background: sec, color: onColor(sec) }}>
-            {(biz.name || '?')[0]?.toUpperCase()}
-          </div>
-        )}
-        <span
-          className="badge-font"
-          title={`Fuente: ${branding.font || 'Inter, system-ui, sans-serif'}`}
-          style={{ color: onColor(prim) }}
-        >
-          {branding.font ? branding.font.split(',')[0] : 'Inter'}
-        </span>
-      </div>
+    <div className="bc-card">
+      <div className="bc-top">
+        <div className="bc-left">
+          <div className="bc-title-row">
+            <h4 className="bc-title" title={name}>{name}</h4>
 
-      <div className="body">
-        <div className="title" title={biz.name}>{biz.name}</div>
-        {biz.slug && <div className="slug">/{biz.slug}</div>}
+            {isActive && (
+              <span className="bc-badge-active" title="Negocio activo">
+                <CheckCircleIcon fontSize="inherit" />
+                Activo
+              </span>
+            )}
+          </div>
 
-        {/* Paleta: primario / secundario / fondo con códigos */}
-        <div className="palette">
-          <div className="swatch">
-            <span className="dot" style={{ background: prim }} />
-            <small>Primario</small>
-            <code>{prim}</code>
-          </div>
-          <div className="swatch">
-            <span className="dot" style={{ background: sec }} />
-            <small>Secundario</small>
-            <code>{sec}</code>
-          </div>
-          <div className="swatch">
-            <span className="dot" style={{ background: bg }} />
-            <small>Fondo</small>
-            <code>{bg}</code>
-          </div>
+          {address && <p className="bc-address" title={address}>{address}</p>}
+        </div>
+
+        <div className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"}`}>
+          {thumbnail ? (
+            <img
+              className="bc-thumb"
+              src={thumbnail}
+              alt={name}
+              loading="lazy"
+            />
+          ) : (
+            <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
+          )}
         </div>
       </div>
 
-      <div className="actions">
-        {!isActive ? (
-          <button className="btn btn-brand" onClick={() => onSetActive?.(biz.id)}>Activar</button>
-        ) : (
-          <span className="badge-active">Activo</span>
+      <div className="bc-actions">
+        {!isActive && (
+          <button className="bc-btn bc-btn-outline" onClick={() => onSetActive?.(biz.id)}>
+            Activar
+          </button>
         )}
-        <button className="btn btn-ghost"  onClick={() => onEdit?.(biz)}>Editar</button>
-        <button className="btn btn-danger" onClick={() => onDelete?.(biz)}>Eliminar</button>
+
+        <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(biz)}>
+          <EditIcon fontSize="small" />
+          Editar
+        </button>
+
+        {onOpenSync && (
+          <button className="bc-btn bc-btn-outline" onClick={() => onOpenSync(biz)}>
+            Sincronizar
+          </button>
+        )}
+
+        <button className="bc-icon bc-icon-danger" onClick={() => onDelete?.(biz)} title="Eliminar negocio">
+          <DeleteIcon fontSize="small" />
+        </button>
       </div>
 
       <style>{`
-        .biz-card{
-          width:300px; border:2px solid #e6e6e6; border-radius:14px; overflow:hidden;
-          background:#fff; display:flex; flex-direction:column;
+        .bc-card{
+          background:var(--color-surface,#fff);
+          border:1px solid var(--color-border,#e5e7eb);
+          border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px;
         }
-        .banner{
-          height:110px; display:grid; place-items:center; border-bottom:3px solid; position:relative;
+        .bc-top{ display:flex; gap:16px; }
+        .bc-left{ flex:1; min-width:0; }
+
+        /* —— Título con avatar —— */
+        .bc-title-row{ display:flex; align-items:center; gap:8px; min-width:0; }
+        .bc-title{ margin:0; font-weight:700; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+        .bc-avatar{
+          width:28px; height:28px; border-radius:999px; overflow:hidden; flex:0 0 28px;
+          border:1px solid var(--color-border,#e5e7eb); background:#fff; display:grid; place-items:center;
         }
-        .logo{
-          width:88px; height:88px; object-fit:contain; background:#fff; border-radius:12px;
-          border:1px solid #0001; box-shadow:0 4px 18px #0002; padding:6px;
+        .bc-avatar-img{ width:100%; height:100%; object-fit:cover; display:block; }
+        .bc-avatar-initial{ font-size:.8rem; font-weight:800; color:#444; }
+
+        .bc-badge-active{
+          margin-left:auto; display:inline-flex; align-items:center; gap:6px;
+          background: color-mix(in srgb, var(--color-primary,#34d399) 18%, white);
+          color:#166534; font-weight:700; padding:2px 8px; border-radius:999px; font-size:12px;
         }
-        .avatar{
-          width:72px; height:72px; border-radius:12px; display:grid; place-items:center; font-weight:800; font-size:28px;
-          border:1px solid #0001; box-shadow:0 4px 18px #0002;
+
+        .bc-address{ margin:.125rem 0 0 0; color:#6b7280; font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+        /* —— Thumbnail 16:9 con modo logo/foto —— */
+        .bc-thumb-wrap{
+          width:180px; /* puedes bajar a 140 si querés más compacto */
+          aspect-ratio:16/9; border-radius:12px; overflow:hidden; flex-shrink:0;
+          border:1px solid var(--color-border,#e5e7eb); background:#f3f4f6; display:block;
+          position:relative;
         }
-        .badge-font{
-          position:absolute; right:10px; bottom:8px; font-size:12px; opacity:.9;
-          background: rgba(0,0,0,.12); padding:2px 6px; border-radius:999px;
+        .bc-thumb{ width:100%; height:100%; display:block; }
+
+        /* Logo: que se vea completo, fondo blanco y un poco de padding visual */
+        .bc-thumb-wrap.logo-mode{ background:#fff; }
+        .bc-thumb-wrap.logo-mode .bc-thumb{
+          object-fit:contain; padding:6px;
         }
-        .body{ padding:10px 12px }
-        .title{ font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-        .slug{ color:#667085; font-size:.9rem; margin-top:2px }
-        .palette{
-          display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap;
+
+        /* Foto: que llene el encuadre tipo portada */
+        .bc-thumb-wrap.photo-mode .bc-thumb{
+          object-fit:cover;
         }
-        .swatch{ display:grid; grid-template-columns:auto; justify-items:start }
-        .swatch .dot{
-          width:22px; height:22px; border-radius:6px; border:1px solid #0002; margin-bottom:4px;
-        }
-        .swatch small{ color:#475569; line-height:1; }
-        .swatch code{ color:#64748b; font-size:11px; margin-top:2px }
-        .actions{ display:flex; gap:8px; justify-content:flex-end; padding:10px 12px }
-        .btn{ border:0; border-radius:8px; padding:8px 10px; cursor:pointer; transition:filter .15s }
-        .btn-brand{ background: var(--color-primary); color: var(--on-primary); }
-        .btn-brand:hover{ filter: brightness(.96) }
-        .btn-ghost{ background: var(--color-surface); color: var(--color-fg); border:1px solid var(--color-border); }
-        .btn-ghost:hover{ background: color-mix(in srgb, var(--color-secondary) 10%, var(--color-surface)); }
-        .btn-danger{ background:#e03131; color:#fff; }
-        .btn-danger:hover{ filter: brightness(.96) }
-        .badge-active{
-          background: var(--color-secondary); color: var(--on-secondary);
-          border-radius:999px; padding:6px 10px; font-size:.85rem;
+
+        .bc-thumb-fallback{ background:#f3f4f6; }
+        .bc-actions{ display:flex; align-items:center; gap:8px; }
+        .bc-btn{ border:0; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer; transition:filter .15s, background .15s; }
+        .bc-btn-edit{ flex:1; background: color-mix(in srgb, var(--color-primary,#34d399) 22%, white); color: var(--on-primary,#0b0f0c); }
+        .bc-btn-outline{ border:1px solid var(--color-border,#e5e7eb); background:var(--color-surface,#fff); color:var(--color-fg,#111827); }
+        .bc-icon{ width:40px; height:40px; border-radius:10px; background:#fff; border:1px solid var(--color-border,#e5e7eb);
+          display:grid; place-items:center; color:#e11d48; }
+        .bc-icon-danger{ color:#e11d48; }
+        
+        @media (max-width:720px){
+          .bc-thumb-wrap{ width:140px; }
         }
       `}</style>
     </div>
   );
 }
+

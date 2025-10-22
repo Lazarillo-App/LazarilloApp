@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/componentes/AgrupacionesList.jsx
 import React, { useMemo, useState } from "react";
 import {
@@ -10,6 +11,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 
 import {
   actualizarAgrupacion,
@@ -20,12 +23,14 @@ import { httpBiz } from "../servicios/apiBusinesses";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
 
 const AgrupacionesList = ({
+  onMutateGroups,
   agrupaciones = [],
   onActualizar,
   todoGroupId,
   todosArticulos = [],
   loading = false,
-  todoCountOverride = null,
+  favoriteGroupId,
+  onSetFavorite,
   todoVirtualArticulos = [],
 }) => {
   // edición de nombre por grupo
@@ -43,13 +48,6 @@ const AgrupacionesList = ({
     () => [...(agrupaciones || [])].sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''))),
     [agrupaciones]
   );
-
-  const articleCount = (g) => {
-    if (g?.id === todoGroupId && Number.isFinite(Number(todoCountOverride))) {
-      return Number(todoCountOverride);
-    }
-    return Array.isArray(g?.articulos) ? g.articulos.length : 0;
-  };
 
   const startEdit = (g) => {
     setEditing((s) => ({ ...s, [g.id]: true }));
@@ -92,21 +90,22 @@ const AgrupacionesList = ({
   };
 
   const removeOne = async (groupId, articuloId) => {
-    await quitarArticulo(groupId, articuloId);
-    onActualizar?.();
+    onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] }); // instantáneo
+    try { await quitarArticulo(groupId, articuloId); } catch { }
   };
 
   const moveSelected = async (fromId) => {
     const ids = Array.from(selectedByGroup[fromId] || []);
     const toId = Number(targetByGroup[fromId]);
     if (!ids.length || !Number.isFinite(toId) || toId === fromId) return;
-    await httpBiz(`/agrupaciones/${fromId}/move-items`, {
-      method: "POST",
-      body: { toId, ids }
-    });
+
+    onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById: null }); // si querés pasar baseById real, hacelo desde el padre
+    try {
+      await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+    } catch { }
     setSelectedByGroup((s) => ({ ...s, [fromId]: new Set() }));
-    onActualizar?.();
   };
+
 
   // 🔒 Bloqueo para "Agregar": bloquea artículos asignados a cualquier agrupación (incluida la actual), excepto TODO.
   const isArticuloBloqueadoForAppend = useMemo(() => {
@@ -163,9 +162,6 @@ const AgrupacionesList = ({
                         <Typography variant="h6" sx={{ mr: 1 }}>
                           {g.nombre}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          ({articleCount(g)} artículo{articleCount(g) === 1 ? "" : "s"})
-                        </Typography>
                       </>
                     ) : (
                       <TextField
@@ -207,6 +203,20 @@ const AgrupacionesList = ({
                             </Button>
                           </span>
                         </Tooltip>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { e.stopPropagation(); onSetFavorite?.(g.id); }}
+                          title={
+                            Number(favoriteGroupId) === Number(g.id)
+                              ? 'Quitar como favorita'
+                              : 'Marcar como favorita'
+                          }
+                          sx={{ mr: 1 }}
+                        >
+                          {Number(favoriteGroupId) === Number(g.id)
+                            ? <StarIcon color="warning" />
+                            : <StarBorderIcon />}
+                        </IconButton>
                       </>
                     ) : (
                       <IconButton color="primary" onClick={() => saveName(g)}>

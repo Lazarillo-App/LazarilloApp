@@ -8,14 +8,19 @@ function getUser() {
 
 export function authHeaders(
   extra = {},
-  opts = { withBusinessId: true, includeAuth: true }
+  opts = { withBusinessId: true, includeAuth: true, isFormData: false }
 ) {
   const token = localStorage.getItem('token') || '';
   const bid = localStorage.getItem('activeBusinessId') || '';
   const user = getUser();
 
-  // base
-  const h = { 'Content-Type': 'application/json', ...extra };
+  // Base headers
+  const h = { ...extra };
+
+  // Content-Type sólo si NO es FormData
+  if (!opts.isFormData) {
+    h['Content-Type'] = 'application/json';
+  }
 
   // bearer
   if (opts.includeAuth && token) h.Authorization = `Bearer ${token}`;
@@ -25,8 +30,6 @@ export function authHeaders(
     h['X-Business-Id'] = bid;
   }
 
-  // tip: si querés inyectar un token de Maxi a mano:
-  // pásalo en `extra` como { 'X-Maxi-Token': '…' }
   return h;
 }
 
@@ -46,9 +49,9 @@ export async function http(
   // ⛔ cortafuego: si es app_admin no dispares requests “scoped” a negocio
   const p = String(path || '');
   const isBusinessScoped =
-    withBusinessId ||                // nos pidieron enviar X-Business-Id
-    p.startsWith('/businesses') ||   // rutas de negocio explícitas
-    p.startsWith('/ventas');         // backend exige negocio activo aquí
+    withBusinessId ||
+    p.startsWith('/businesses') ||
+    p.startsWith('/ventas');
 
   if (user?.role === 'app_admin' && isBusinessScoped) {
     throw new Error('forbidden_for_app_admin(client)');
@@ -57,9 +60,12 @@ export async function http(
   const url = `${BASE}${p}`;
   const isAuthPublic = p.startsWith('/auth/');
 
+  // Soporte FormData (subidas)
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
   const hdrs = isAuthPublic
-    ? authHeaders(headers, { withBusinessId: false, includeAuth: false })
-    : authHeaders(headers, { withBusinessId, includeAuth: true });
+    ? authHeaders(headers, { withBusinessId: false, includeAuth: false, isFormData })
+    : authHeaders(headers, { withBusinessId, includeAuth: true, isFormData });
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
@@ -68,7 +74,8 @@ export async function http(
     res = await fetch(url, {
       method,
       headers: hdrs,
-      body: body ? JSON.stringify(body) : undefined,
+      // Si es FormData, NO stringify
+      body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
       signal: ctrl.signal,
     });
   } finally {
@@ -83,6 +90,7 @@ export async function http(
     throw new Error('invalid_token');
   }
 
+  // Si el response es vacío (204/no-content) devolvemos null
   const text = await res.text().catch(() => '');
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { }
@@ -123,12 +131,32 @@ export const BusinessesAPI = {
     http(`/businesses/${id}`, { method: 'PATCH', body, withBusinessId: false }),
   remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
+
   // Credenciales / estado de Maxi
   maxiStatus: (id) =>
     http(`/businesses/${id}/maxi-status`, { withBusinessId: false }),
   maxiSave: (id, creds) =>
-    http(`/businesses/${id}/maxi-credentials`, {
-      method: 'POST', body: creds, withBusinessId: false,
+    http(`/businesses/${id}/maxi-credentials`, { method: 'POST', body: creds, withBusinessId: false }),
+
+  // ----- LOGO / IMÁGENES -----
+  // Subir archivo (multipart)
+  uploadLogo: (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    // Si el backend espera 'logo' o 'image' en vez de 'file', ajustalo aquí.
+    return http(`/businesses/${id}/logo`, {
+      method: 'POST',
+      body: fd,
+      withBusinessId: false,       // típicamente admin-only
+      headers: {},                 // no toques Content-Type (lo maneja el browser)
+    });
+  },
+  // Guardar una URL de logo directamente
+  setLogoUrl: (id, url) =>
+    http(`/businesses/${id}`, {
+      method: 'PATCH',
+      withBusinessId: false,
+      body: { props: { branding: { logo_url: url } } },
     }),
 
   // ----- DATOS (con X-Business-Id)
@@ -143,16 +171,17 @@ export const BusinessesAPI = {
     http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
       { withBusinessId: true }),
   salesSeries: (_id, articuloId, { from, to, groupBy = 'day' }) =>
-    http(`/ventas/by-article?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
+   http(`/ventas/by-article?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
       { withBusinessId: true }),
   topArticulos: (_id, { limit = 200 } = {}) =>
     http(`/ventas/summary?limit=${limit}`, { withBusinessId: true }),
+
   // Negocio activo (bootstrap después de login / F5)
   getActive: () => http('/businesses/active', { withBusinessId: false }),
   setActive: (businessId) =>
     http('/businesses/active', {
       method: 'PATCH',
-      body: { businessId },       // ✅ no activeBusinessId
+      body: { businessId },
       withBusinessId: false
     }),
 
@@ -181,6 +210,8 @@ export const AdminAPI = {
   overview: () => http('/admin/overview', { withBusinessId: false }),
   users: ({ q = '', page = 1, pageSize = 20 } = {}) =>
     http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`, { withBusinessId: false }),
+  // alias para no romper llamadas viejas
+  listUsers: (args) => AdminAPI.users(args),
   updateUser: (id, body) =>
     http(`/admin/users/${id}`, { method: 'PATCH', body, withBusinessId: false }),
   deleteUser: (id) =>

@@ -89,7 +89,7 @@ function VirtualList({
             renderRow({
               row,
               index: startIdx + i,
-              style: { height: rowHeight, display: 'block' }
+              style: { height: rowHeight, display: 'block', color: '#373737ff', fontWeight: '500', fontSize: '0.95rem' },
             })
           )}
         </div>
@@ -115,7 +115,9 @@ export default function TablaArticulos({
   reloadKey = 0,
   onTodoInfo,
   onTotalResolved,
-  onGroupCreated
+  onGroupCreated,
+  visibleIds,
+  onMutateGroups
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -128,6 +130,11 @@ export default function TablaArticulos({
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const openSnack = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
   const loadReqId = useRef(0);
+  // normalizamos a Set<number> o null
+  const filterIds = useMemo(() => {
+    if (!visibleIds) return null;
+    return new Set(Array.from(visibleIds).map(Number));
+  }, [visibleIds]);
 
   // refetch sin F5
   const [reloadTick, setReloadTick] = useState(0);
@@ -139,16 +146,25 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-  const afterMutation = useCallback((removedIds = []) => {
+  // Recibe por props: onMutateGroups (definido en ArticulosMain)
+  const afterMutation = useCallback((removedIds) => {
+    const ids = (removedIds || []).map(Number).filter(Number.isFinite);
+    if (!ids.length) { refetchLocal(); return; }
     if (!agrupSelView?.id) { refetchLocal(); return; }
     const isTodo = esTodoGroup(agrupSelView, todoGroupId);
     if (isTodo) { refetchLocal(); return; }
-    const rem = new Set(removedIds.map(Number));
-    const actual = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
-    const next = actual.filter(a => !rem.has(getId(a)));
-    setAgrupSelView((prev) => ({ ...(prev || {}), articulos: next }));
+
+    // ✅ mutación optimista centralizada
+    onMutateGroups?.({
+      type: 'remove',
+      groupId: Number(agrupSelView.id),
+      ids
+    });
+
+    // opcional: ping al backend sin bloquear
     refetchLocal();
-  }, [agrupSelView, todoGroupId, refetchLocal]);
+  }, [agrupSelView, todoGroupId, onMutateGroups, refetchLocal]);
+
 
   // build tree desde plano
   const buildTreeFromFlat = useCallback((items = []) => {
@@ -259,7 +275,12 @@ export default function TablaArticulos({
     return out;
   }, [categorias]);
 
-  const baseById = useMemo(() => new Map(allArticulos.map((a) => [getId(a), a])), [allArticulos]);
+  const baseById = useMemo(() => {
+    const m = new Map();
+    for (const a of allArticulos) m.set(Number(a.id), a);
+    return m;
+  }, [allArticulos]);
+
 
   const idsEnOtras = useMemo(() => new Set(
     (agrupaciones || [])
@@ -267,22 +288,24 @@ export default function TablaArticulos({
       .flatMap((g) => (g.articulos || []).map(getId))
   ), [agrupaciones, todoGroupId]);
 
-  const idsSinAgrup = useMemo(() =>
-    allArticulos.map(getId)
-      .filter((id) => !idsEnOtras.has(id) && !excludedIds.has(id))
-    , [allArticulos, idsEnOtras, excludedIds]);
+  const idsSinAgrup = useMemo(() => {
+    const s = new Set();
+    for (const id of allArticulos.map(getId)) {
+      if (!idsEnOtras.has(id) && !excludedIds.has(id)) s.add(id);
+    }
+    return s;  // 👈 Set
+  }, [allArticulos, idsEnOtras, excludedIds]);
 
   useEffect(() => {
     onTodoInfo?.({ todoGroupId, idsSinAgrupCount: idsSinAgrup.size });
-  }, [onTodoInfo, todoGroupId, idsSinAgrup]);
+  }, [onTodoInfo, todoGroupId, idsSinAgrup.size]);
 
   /* --------- a mostrar + filtro --------- */
   const articulosAMostrar = useMemo(() => {
     if (categoriaSeleccionada && agrupacionSeleccionada) {
       const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
-        ? new Set(idsSinAgrup)
+        ? idsSinAgrup
         : new Set((agrupacionSeleccionada.articulos || []).map(getId));
-
       return (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a);
@@ -318,12 +341,7 @@ export default function TablaArticulos({
       const esTodo = esTodoGroup(agrupSelView, todoGroupId);
       const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
       if (esTodo && arr.length === 0) {
-        const enOtras = new Set(
-          (agrupaciones || [])
-            .filter((g) => !esTodoGroup(g, todoGroupId))
-            .flatMap((g) => (g.articulos || []).map(getId))
-        );
-        return allArticulos.filter((a) => !enOtras.has(getId(a)) && !excludedIds.has(getId(a)));
+        return allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
       }
       if (arr.length > 0) {
         return arr.map((a) => {
@@ -445,11 +463,21 @@ export default function TablaArticulos({
     }
     return rows;
   }, [bloques, cmp]);
+
+  const ventasMapFiltrado = useMemo(() => {
+    if (!filterIds) return ventasPorArticulo || new Map();
+    const out = new Map();
+    (ventasPorArticulo || new Map()).forEach((v, k) => {
+      if (filterIds.has(Number(k))) out.set(Number(k), v);
+    });
+    return out;
+  }, [ventasPorArticulo, filterIds]);
+
   // ====== layout tipo “tabla” con CSS grid
-  const gridTemplate = '120px 1fr 110px 110px 110px 110px 110px 120px 110px 80px'; // 9 columnas
+  const gridTemplate = '120px 1fr 110px 110px 110px 110px 110px 120px 110px 80px';
 
   const cellNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
-  const ITEM_H = 44; // alto de fila/header
+  const ITEM_H = 44;
 
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView, todoGroupId) : false;
 
@@ -474,6 +502,8 @@ export default function TablaArticulos({
           <div style={{ gridColumn: '1 / -2' }}>{headerCat} - {headerSr}</div>
           <div style={{ gridColumn: '-2 / -1', justifySelf: 'end' }}>
             <SubrubroAccionesMenu
+              onMutateGroups={onMutateGroups}
+              baseById={baseById}
               isTodo={isTodo}
               agrupaciones={agrupaciones}
               agrupacionSeleccionada={agrupacionSeleccionada}
@@ -482,8 +512,8 @@ export default function TablaArticulos({
               onRefetch={refetchLocal}
               onAfterMutation={(ids) => afterMutation(ids)}
               notify={(m, t = 'success') => openSnack(m, t)}
-              onGroupCreated={onGroupCreated}
               categoriaSeleccionada={{ subrubro: headerSr }}
+              onGroupCreated={onGroupCreated}
             />
           </div>
         </div>
@@ -530,6 +560,8 @@ export default function TablaArticulos({
         </div>
         <div style={{ textAlign: 'center' }}>
           <ArticuloAccionesMenu
+            onMutateGroups={onMutateGroups}
+            baseById={baseById}
             articulo={a}
             agrupaciones={agrupaciones}
             agrupacionSeleccionada={agrupacionSeleccionada}
@@ -571,6 +603,8 @@ export default function TablaArticulos({
               fontWeight: 700,
               userSelect: 'none',
               alignItems: 'center',
+              color: 'black',
+              fontSize: '1rem', 
             }}
           >
             <div onClick={() => toggleSort('codigo')} style={{ cursor: 'pointer' }}>

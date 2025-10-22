@@ -53,6 +53,8 @@ function ArticuloAccionesMenu({
   onGroupCreated,
   todosArticulos = [],
   loading = false,
+  onMutateGroups,
+  baseById
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -110,8 +112,18 @@ function ArticuloAccionesMenu({
       } else {
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
       }
-
+      if (fromId) {
+        onMutateGroups?.({ type: 'move', fromId, toId, ids: [idNum], baseById });
+      } else {
+        onMutateGroups?.({
+          type: 'append',
+          groupId: toId,
+          articulos: [{ id: idNum }],
+          baseById
+        });
+      }
       notify?.(`Artículo #${idNum} movido`, 'success');
+      onMutateGroups?.({ type: 'move', fromId: fromId ?? null, toId, ids: [idNum] });
       onAfterMutation?.([idNum]);
       onRefetch?.();
     } catch (e) {
@@ -129,6 +141,7 @@ function ArticuloAccionesMenu({
       try {
         await addExclusiones(todoGroupId, [{ scope: 'articulo', ref_id: idNum }]);
         notify?.(`Artículo #${idNum} ocultado de TODO`, 'success');
+        onMutateGroups?.({ type: 'excludeFromTodo', ids: [idNum] });
         onAfterMutation?.([idNum]);
         onRefetch?.();
       } catch (e) {
@@ -144,6 +157,7 @@ function ArticuloAccionesMenu({
     try {
       await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${idNum}`, { method: 'DELETE' });
       notify?.(`Artículo #${articulo.id} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');
+      onMutateGroups?.({ type: 'remove', groupId: currentGroupId, ids: [idNum] });
       onAfterMutation?.([idNum]);
       onRefetch?.();
     } catch (e) {
@@ -257,11 +271,18 @@ function ArticuloAccionesMenu({
         todosArticulos={effectiveTree}
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
-        onCreated={async (nombreCreado, newId) => {
+        onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
+          onMutateGroups?.({
+            type: 'create',
+            id: Number(newId),
+            nombre: nombreCreado,
+            articulos: Array.isArray(articulos) ? articulos : [],
+          });
+          onGroupCreated?.(nombreCreado, newId, articulos);
           onRefetch?.();
-          onGroupCreated?.({ id: newId, nombre: nombreCreado });
         }}
+        existingNames={(agrupaciones || []).map(g => String(g?.nombre || '')).filter(Boolean)}
       />
     </>
   );

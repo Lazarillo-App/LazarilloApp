@@ -66,7 +66,7 @@ export default function App() {
           localStorage.setItem('activeBusinessId', String(a.activeBusinessId));
           window.dispatchEvent(new Event('business:switched'));
         }
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -97,7 +97,17 @@ export default function App() {
   // listeners de cambios externos
   useEffect(() => {
     const syncBiz = () => setActiveBusinessId(localStorage.getItem('activeBusinessId') || '');
-    const syncAuth = () => { setIsLogged(!!localStorage.getItem('token')); setRole(readRole()); };
+    const syncAuth = () => {
+      const token = localStorage.getItem('token');
+      setIsLogged(!!token);
+      setRole(readRole());
+      if (!token) {
+        // al cerrar sesión, limpiamos estado de negocio/datos
+        setActiveBusinessId('');
+        setAgrupaciones([]);
+        setCategorias([]);
+      }
+    };
 
     window.addEventListener('storage', syncBiz);
     window.addEventListener('business:switched', syncBiz);
@@ -181,7 +191,7 @@ export default function App() {
                 <Route
                   path="/"
                   element={
-                    <RequireMaxi onReady={() => {}}>
+                    <RequireMaxi onReady={() => { }}>
                       <ArticulosMain
                         agrupacionSeleccionada={agrupacionSeleccionada}
                         setAgrupacionSeleccionada={setAgrupacionSeleccionada}

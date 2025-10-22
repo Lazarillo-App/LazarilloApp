@@ -50,11 +50,12 @@ function SubrubroAccionesMenu({
   articuloIds = [],
   onRefetch,
   notify,
-  onGroupCreated,
   onAfterMutation,
-  // opcional: árbol ya cargado por el padre
+  onGroupCreated,
   todosArticulos = [],
   loading = false,
+  onMutateGroups,
+  baseById
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -89,7 +90,6 @@ function SubrubroAccionesMenu({
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
   async function mover() {
-    if (!destId) return;
     const ids = articuloIds.map(getNum).filter(Boolean);
     if (!ids.length) return;
 
@@ -104,6 +104,16 @@ function SubrubroAccionesMenu({
 
     setIsMoving(true);
     try {
+if (fromId) {
+        onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
+      } else {
+        onMutateGroups?.({
+          type: 'append',
+          groupId: toId,
+          articulos: ids.map(id => ({ id })),
+          baseById
+        });
+      }
       if (fromId) {
         try {
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
@@ -114,7 +124,6 @@ function SubrubroAccionesMenu({
       } else {
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
       }
-
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
       onAfterMutation?.(ids);
       onRefetch?.();
@@ -146,6 +155,7 @@ function SubrubroAccionesMenu({
 
     if (!currentGroupId) return;
     try {
+      onMutateGroups?.({ type: 'remove', groupId: Number(currentGroupId), ids: [ids] });
       for (const id of ids) { try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch { } }
       notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
       onAfterMutation?.(ids);
@@ -251,7 +261,6 @@ function SubrubroAccionesMenu({
           </Button>
         </DialogActions>
       </Dialog>
-
       <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
@@ -260,11 +269,20 @@ function SubrubroAccionesMenu({
         todosArticulos={effectiveTree}
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
-        onCreated={async (nombreCreado, newId) => {
+        onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
-          onRefetch?.();
-          onGroupCreated?.({ id: newId, nombre: nombreCreado });
+          // avisa al padre (Tabla/Sidebar) para seleccionar/limpiar filtros, etc.
+          onGroupCreated?.(nombreCreado, newId, articulos);
+          // mutación optimista centralizada
+          onMutateGroups?.({
+            type: 'create',
+            id: Number(newId),
+            nombre: nombreCreado,
+            articulos: Array.isArray(articulos) ? articulos : [],
+          });
+          onRefetch?.(); // valida con backend sin bloquear la UI
         }}
+        existingNames={(agrupaciones || []).map(g => String(g?.nombre || '')).filter(Boolean)}
       />
     </>
   );

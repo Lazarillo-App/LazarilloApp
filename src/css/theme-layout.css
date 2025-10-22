@@ -235,7 +235,7 @@ background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
 
 /* Títulos dentro del header para que no “salten” */
 .sidebar h2 {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   font-weight: 700;
   margin: 0;
 }
@@ -254,9 +254,13 @@ background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
   display: flex;
   align-items: center;
   border-radius: var(--radius-md);
-
   /* chip suave en hover */
   transition: background .15s ease, font-weight .15s ease;
+}
+
+.sidebar li span{
+    font-size: 1.2rem;
+    font-weight: 700;
 }
 
 .sidebar li:hover {

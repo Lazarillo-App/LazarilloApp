@@ -8,12 +8,12 @@ import MenuIcon from '@mui/icons-material/Menu';
 import BusinessSwitcher from './BusinessSwitcher';
 
 function getUserRole() {
-  try { return (JSON.parse(localStorage.getItem('user')||'null')||{}).role || null; }
+  try { return (JSON.parse(localStorage.getItem('user') || 'null') || {}).role || null; }
   catch { return null; }
 }
 
 export default function Navbar() {
-  const [navEl, setNavEl]   = React.useState(null);
+  const [navEl, setNavEl] = React.useState(null);
   const [userEl, setUserEl] = React.useState(null);
   const navigate = useNavigate();
 
@@ -22,9 +22,14 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   const logout = () => {
+    const uid = (() => { try { return (JSON.parse(localStorage.getItem('user') || 'null') || {}).id } catch { return null } })();
     localStorage.removeItem('token');
     localStorage.removeItem('activeBusinessId');
     localStorage.removeItem('user');
+    // limpiar temas persistidos
+    localStorage.removeItem('bizTheme');
+    if (uid) localStorage.removeItem(`bizTheme:${uid}`);
+    window.dispatchEvent(new Event('auth:logout'));
     navigate('/login', { replace: true });
   };
 
@@ -40,27 +45,27 @@ export default function Navbar() {
 
           {/* Mobile */}
           <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
-            <IconButton size="large" color="inherit" onClick={(e)=>setNavEl(e.currentTarget)}>
+            <IconButton size="large" color="inherit" onClick={(e) => setNavEl(e.currentTarget)}>
               <MenuIcon />
             </IconButton>
             <Menu
               anchorEl={navEl}
               open={Boolean(navEl)}
-              onClose={()=>setNavEl(null)}
+              onClose={() => setNavEl(null)}
               anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
               transformOrigin={{ vertical: 'top', horizontal: 'left' }}
               sx={{ display: { xs: 'block', md: 'none' } }}
             >
               <MenuList dense>
-                <MenuItem component={NavLink} to={homeTo} onClick={()=>setNavEl(null)}>Inicio</MenuItem>
+                <MenuItem component={NavLink} to={homeTo} onClick={() => setNavEl(null)}>Inicio</MenuItem>
                 {!isAppAdmin && (
                   <>
-                    <MenuItem component={NavLink} to="/agrupaciones" onClick={()=>setNavEl(null)}>Agrupaciones</MenuItem>
-                    <MenuItem component={NavLink} to="/insumos" onClick={()=>setNavEl(null)}>Insumos</MenuItem>
+                    <MenuItem component={NavLink} to="/agrupaciones" onClick={() => setNavEl(null)}>Agrupaciones</MenuItem>
+                    <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>
                   </>
                 )}
                 {isAppAdmin && (
-                  <MenuItem component={NavLink} to="/admin" onClick={()=>setNavEl(null)}>Admin</MenuItem>
+                  <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>Admin</MenuItem>
                 )}
               </MenuList>
             </Menu>
@@ -81,7 +86,7 @@ export default function Navbar() {
           {/* Usuario */}
           <Box sx={{ flexGrow: 0 }}>
             <Tooltip title="Cuenta">
-              <IconButton onClick={(e)=>setUserEl(e.currentTarget)} sx={{ p: 0 }}>
+              <IconButton onClick={(e) => setUserEl(e.currentTarget)} sx={{ p: 0 }}>
                 <Avatar />
               </IconButton>
             </Tooltip>
@@ -89,42 +94,45 @@ export default function Navbar() {
               sx={{ mt: '45px' }}
               anchorEl={userEl}
               open={Boolean(userEl)}
-              onClose={()=>setUserEl(null)}
+              onClose={() => setUserEl(null)}
               anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
               transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             >
               <MenuList dense>
-                {logged ? (
-                  <>
-                    <MenuItem component={NavLink} to="/perfil" onClick={()=>setUserEl(null)}>
+                {logged
+                  ? [
+                    <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
                       Perfil
-                    </MenuItem>
+                    </MenuItem>,
 
-                    {!isAppAdmin && (
-                      <>
-                        <MenuItem disableRipple disableGutters>
-                          <Box sx={{ px: 2, py: 1, width: 280 }}>
-                            <Typography variant="caption" sx={{ opacity: 0.8 }}>Local</Typography>
-                            <BusinessSwitcher
-                              fullWidth
-                              onSwitched={() => {
-                                setUserEl(null);
-                                window.dispatchEvent(new CustomEvent('business:switched'));
-                              }}
-                            />
-                          </Box>
-                        </MenuItem>
-                        <Divider sx={{ my: 0.5 }} />
-                      </>
-                    )}
+                    !isAppAdmin && (
+                      <MenuItem key="switcher" disableRipple disableGutters>
+                        <Box sx={{ px: 2, py: 1, width: 280 }}>
+                          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                            Local
+                          </Typography>
+                          <BusinessSwitcher
+                            fullWidth
+                            onSwitched={() => {
+                              setUserEl(null);
+                              window.dispatchEvent(new CustomEvent('business:switched'));
+                            }}
+                          />
+                        </Box>
+                      </MenuItem>
+                    ),
 
-                    <MenuItem onClick={logout}>Salir</MenuItem>
-                  </>
-                ) : (
-                  <MenuItem component={NavLink} to="/login" onClick={()=>setUserEl(null)}>
-                    Login
-                  </MenuItem>
-                )}
+                    !isAppAdmin && <Divider key="div1" sx={{ my: 0.5 }} />,
+
+                    <MenuItem key="logout" onClick={logout}>
+                      Salir
+                    </MenuItem>,
+                  ].filter(Boolean)
+                  : [
+                    <MenuItem key="login" component={NavLink} to="/login" onClick={() => setUserEl(null)}>
+                      Login
+                    </MenuItem>,
+                  ]}
               </MenuList>
             </Menu>
           </Box>
