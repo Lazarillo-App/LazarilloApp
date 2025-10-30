@@ -9,7 +9,10 @@ import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { ensureActiveBusiness } from '../servicios/ensureBusiness';
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/groupMutations';
-import StarIcon from '@mui/icons-material/Star';
+import { onGroupsChanged } from "@/utils/groupsBus";
+import { obtenerAgrupaciones } from "@/servicios/apiAgrupaciones";
+import { emitGroupsChanged } from "@/utils/groupsBus";
+
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -24,7 +27,7 @@ export default function ArticulosMain(props) {
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
-  const [activeIds, setActiveIds] = useState(new Set()); // ids visibles en viewport (para ventas)
+  const [activeIds, setActiveIds] = useState(new Set());
   const [activeBizId, setActiveBizId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [reloadKey, setReloadKey] = useState(0);
   const [favoriteGroupId, setFavoriteGroupId] = useState(
@@ -32,8 +35,14 @@ export default function ArticulosMain(props) {
   );
   const lastManualPickRef = useRef(0);
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
+  const [jumpToId, setJumpToId] = useState(null);
 
-  // persistir al cambiar
+  // --- TODO virtual / info compartida con Tabla (debe ir arriba) ---
+  const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
+  const todoIdRef = useRef(null);
+  useEffect(() => { todoIdRef.current = todoInfo?.todoGroupId ?? null; }, [todoInfo?.todoGroupId]);
+
+  // persistir favorita
   useEffect(() => {
     if (Number.isFinite(Number(favoriteGroupId))) {
       localStorage.setItem(FAV_KEY, String(favoriteGroupId));
@@ -47,12 +56,11 @@ export default function ArticulosMain(props) {
     setAgrupaciones(prev => {
       switch (action.type) {
         case 'create':
-          return applyCreateGroup(prev,
-            {
-              id: action.id,
-              nombre: action.nombre,
-              articulos: action.articulos
-            });
+          return applyCreateGroup(prev, {
+            id: action.id,
+            nombre: action.nombre,
+            articulos: action.articulos
+          });
         case 'append':
           return applyAppend(prev, {
             groupId: action.groupId,
@@ -60,11 +68,10 @@ export default function ArticulosMain(props) {
             baseById: action.baseById
           });
         case 'remove':
-          return applyRemove(prev,
-            {
-              groupId: action.groupId,
-              ids: action.ids
-            });
+          return applyRemove(prev, {
+            groupId: action.groupId,
+            ids: action.ids
+          });
         case 'move':
           return applyMove(prev, {
             fromId: action.fromId,
@@ -78,9 +85,54 @@ export default function ArticulosMain(props) {
     });
 
     // opcional: confirmar con backend (no bloquea UI)
-    try { await props.refetchAgrupaciones?.(); } catch { }
+    try { await props.refetchAgrupaciones?.(); } catch {}
+    try { emitGroupsChanged(action.type, { action }); } catch {}
   }, [props.refetchAgrupaciones]);
 
+  // Escuchar cambios de agrupaciones (rename/delete/append/move) desde otras vistas/pestañas
+  useEffect(() => {
+    let canceled = false;
+    const off = onGroupsChanged(async () => {
+      try {
+        let list = null;
+        if (typeof props.refetchAgrupaciones === "function") {
+          list = await props.refetchAgrupaciones();
+        } else {
+          list = await obtenerAgrupaciones();
+        }
+        if (!canceled && Array.isArray(list)) {
+          setAgrupaciones(list);
+          setCategoriaSeleccionada(null);
+          setAgrupacionSeleccionada((prev) => {
+            if (!prev) return prev;
+            // si estás en TODO (virtual), no tocar
+            if (Number(prev.id) === Number(todoIdRef.current)) return prev;
+            const updated = list.find(g => Number(g.id) === Number(prev.id));
+            return updated || prev;
+          });
+        }
+      } catch {}
+    });
+    return () => { off?.(); canceled = true; };
+  }, [props.refetchAgrupaciones]);
+
+  const handleJump = useCallback((opt) => {
+    const id = Number(opt?.id ?? opt?.value);
+    if (!Number.isFinite(id)) return;
+    const container = document.getElementById('tabla-scroll');
+    const row = document.querySelector(`[data-article-id="${id}"]`);
+    if (row && container) {
+      const top = row.offsetTop - container.clientHeight / 2;
+      container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      row.classList.add('highlight-jump');
+      setTimeout(() => row.classList.remove('highlight-jump'), 1200);
+    } else {
+      setFiltroBusqueda(String(id));
+      setTimeout(() => setFiltroBusqueda(''), 400);
+    }
+  }, []);
+
+  // negocio activo
   useEffect(() => {
     (async () => {
       try {
@@ -92,10 +144,12 @@ export default function ArticulosMain(props) {
     })();
   }, []);
 
+  // recibir props.agrupaciones iniciales (si vienen precargadas)
   useEffect(() => {
     setAgrupaciones(props.agrupaciones || []);
   }, [props.agrupaciones]);
 
+  // eventos del negocio (switch/sync)
   useEffect(() => {
     const onBizSwitched = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
     const onBizSynced = () => setReloadKey((k) => k + 1);
@@ -108,13 +162,27 @@ export default function ArticulosMain(props) {
     };
   }, []);
 
+  // Mantener seleccionada en sync cuando cambia la lista local (mutación optimista)
   useEffect(() => {
-    // limpiar filtros al cambiar de agrupación
+    if (!agrupacionSeleccionada) return;
+    const gActual = (agrupaciones || []).find(g => Number(g.id) === Number(agrupacionSeleccionada.id));
+    if (gActual && (
+      gActual.nombre !== agrupacionSeleccionada.nombre ||
+      (Array.isArray(gActual.articulos) ? gActual.articulos.length : 0) !==
+      (Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos.length : 0)
+    )) {
+      setAgrupacionSeleccionada(gActual);
+    }
+  }, [agrupaciones]);
+
+  // limpiar filtros al cambiar de agrupación
+  useEffect(() => {
     setFiltroBusqueda('');
     setCategoriaSeleccionada(null);
     setActiveIds(new Set());
   }, [agrupacionSeleccionada]);
 
+  // sync active biz id
   useEffect(() => {
     const sync = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
     sync();
@@ -122,6 +190,7 @@ export default function ArticulosMain(props) {
     return () => window.removeEventListener('business:switched', sync);
   }, []);
 
+  // rango
   const [rango, setRango] = useState({ mode: '30', from: '', to: '' });
   useEffect(() => {
     setRango(r => {
@@ -135,19 +204,37 @@ export default function ArticulosMain(props) {
     return lastNDaysUntilYesterday(daysByMode(rango.mode));
   }, [rango]);
 
+  // opciones buscador global
+  const opcionesGlobales = useMemo(() => {
+    const out = [];
+    (categorias || []).forEach(sub => {
+      const subName = sub?.subrubro || 'Sin subrubro';
+      (sub.categorias || []).forEach(cat => {
+        const catName = cat?.categoria || 'Sin categoría';
+        (cat.articulos || []).forEach(a => {
+          const id = Number(a?.id);
+          if (!Number.isFinite(id)) return;
+          const name = String(a?.nombre || `#${id}`).trim();
+          out.push({ id, value: String(id), label: `${subName} › ${catName} · ${name} · ${id}` });
+        });
+      });
+    });
+    return out;
+  }, [categorias]);
+
+  // ventas
   const [ventasMap, setVentasMap] = useState(new Map());
   const [ventasLoading, setVentasLoading] = useState(false);
   const reqId = useRef(0);
 
   const articuloIds = useMemo(
-    () =>
-      (agrupacionSeleccionada?.articulos || [])
-        .map((a) => Number(a?.id ?? a?.articuloId))
-        .filter(Boolean),
+    () => (agrupacionSeleccionada?.articulos || [])
+      .map((a) => Number(a?.id ?? a?.articuloId))
+      .filter(Boolean),
     [agrupacionSeleccionada]
   );
 
-  // throttle para ids visibles (desde TablaArticulos → onIdsVisibleChange)
+  // throttle de visibles
   const [idsTrigger, setIdsTrigger] = useState([]);
   const throttleRef = useRef(null);
   useEffect(() => {
@@ -171,7 +258,6 @@ export default function ArticulosMain(props) {
       }
 
       const idsList = idsTrigger;
-
       const cacheKey = `${bid}|${periodo.from}|${periodo.to}`;
       if (totalesCache.has(cacheKey) && syncVersion === 0) {
         const mapa = totalesCache.get(cacheKey);
@@ -215,7 +301,7 @@ export default function ArticulosMain(props) {
 
     fetchTotales();
     return () => { canceled = true; };
-  }, [activeBizId, periodo.from, periodo.to, syncVersion, idsTrigger, agrupacionSeleccionada]);
+  }, [activeBizId, periodo.from, periodo.to, syncVersion, idsTrigger, agrupacionSeleccionada, reloadKey]);
 
   const handleTotalResolved = (id, total) => {
     setVentasMap(prev => {
@@ -229,13 +315,10 @@ export default function ArticulosMain(props) {
     if (!agrupacionSeleccionada?.id) return ventasMap;
     const s = new Set(articuloIds);
     const out = new Map();
-    ventasMap.forEach((v, k) => {
-      if (s.has(Number(k))) out.set(Number(k), v);
-    });
+    ventasMap.forEach((v, k) => { if (s.has(Number(k))) out.set(Number(k), v); });
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
-  const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
   const todoGroupId = todoInfo?.todoGroupId || null;
 
   const nameById = useMemo(() => {
@@ -256,221 +339,213 @@ export default function ArticulosMain(props) {
   // Selección por defecto: TODO (virtual)
   useEffect(() => {
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
-    if (!agrupacionSeleccionada && todoGroupId && catsReady){
+    if (!agrupacionSeleccionada && todoGroupId && catsReady) {
       setAgrupacionSeleccionada({ id: Number(todoGroupId), nombre: 'TODO', articulos: [] });
+      setFiltroBusqueda('');
+      setCategoriaSeleccionada(null);
+    }
+  }, [todoGroupId, agrupacionSeleccionada, categorias]);
+
+  const opcionesBuscador = useMemo(() => {
+    const ids = activeIds?.size ? Array.from(activeIds) : Array.from(nameById.keys());
+    return ids.slice(0, 300).map((id) => ({
+      id,
+      label: `${nameById.get(id) || `#${id}`} · ${id}`,
+      value: nameById.get(id) || String(id),
+    }));
+  }, [activeIds, nameById]);
+
+  const labelById = useMemo(() => {
+    const m = new Map();
+    (categorias || []).forEach(sub =>
+      (sub.categorias || []).forEach(cat =>
+        (cat.articulos || []).forEach(a =>
+          m.set(Number(a.id), String(a.nombre || '').trim())
+        )
+      )
+    );
+    return m;
+  }, [categorias]);
+
+  // al crear agrupación (desde tabla/menú)
+  const handleGroupCreated = useCallback((nombre, id, articulos) => {
+    mutateGroups({
+      type: 'create',
+      id: Number(id),
+      nombre,
+      articulos: Array.isArray(articulos) ? articulos : [],
+    });
     setFiltroBusqueda('');
     setCategoriaSeleccionada(null);
-  }
-  },[todoGroupId, agrupacionSeleccionada, categorias]);
+  }, [mutateGroups]);
 
-const opcionesBuscador = useMemo(() => {
-  const ids = activeIds?.size ? Array.from(activeIds) : Array.from(nameById.keys());
-  return ids.slice(0, 300).map((id) => ({
-    id,
-    label: `${nameById.get(id) || `#${id}`} · ${id}`,
-    value: nameById.get(id) || String(id),
-  }));
-}, [activeIds, nameById]);
-
-const labelById = useMemo(() => {
-  const m = new Map();
-  (categorias || []).forEach(sub =>
-    (sub.categorias || []).forEach(cat =>
-      (cat.articulos || []).forEach(a =>
-        m.set(Number(a.id), String(a.nombre || '').trim())
-      )
-    )
-  );
-  return m;
-}, [categorias]);
-
-// al crear agrupación (desde tabla/menú)
-const handleGroupCreated = useCallback((nombre, id, articulos) => {
-  mutateGroups({
-    type: 'create',
-    id: Number(id),
-    nombre,
-    articulos: Array.isArray(articulos) ? articulos : [],
-  });
-  setFiltroBusqueda('');
-  setCategoriaSeleccionada(null);
-}, [mutateGroups]);
-
-// ---------- ids base para “Sin Agrupación” ----------
-const allIds = useMemo(() => {
-  const out = [];
-  for (const sub of categorias || []) {
-    for (const cat of sub.categorias || []) {
-      for (const a of cat.articulos || []) {
-        const id = Number(a?.id ?? a?.articulo_id ?? a?.codigo);
-        if (Number.isFinite(id)) out.push(id);
+  // ---------- ids base para “Sin Agrupación” ----------
+  const allIds = useMemo(() => {
+    const out = [];
+    for (const sub of categorias || []) {
+      for (const cat of sub.categorias || []) {
+        for (const a of cat.articulos || []) {
+          const id = Number(a?.id ?? a?.articulo_id ?? a?.codigo);
+          if (Number.isFinite(id)) out.push(id);
+        }
       }
     }
-  }
-  return out;
-}, [categorias]);
+    return out;
+  }, [categorias]);
 
-const idsAsignados = useMemo(() => {
-  const s = new Set();
-  (agrupaciones || [])
-    .filter(g => Number(g?.id) !== Number(todoInfo?.todoGroupId))
-    .forEach(g => (g?.articulos || []).forEach(a => {
-      const id = Number(a?.id);
-      if (Number.isFinite(id)) s.add(id);
-    }));
-  return s;
-}, [agrupaciones, todoInfo?.todoGroupId]);
+  const idsAsignados = useMemo(() => {
+    const s = new Set();
+    (agrupaciones || [])
+      .filter(g => Number(g?.id) !== Number(todoInfo?.todoGroupId))
+      .forEach(g => (g?.articulos || []).forEach(a => {
+        const id = Number(a?.id);
+        if (Number.isFinite(id)) s.add(id);
+      }));
+    return s;
+  }, [agrupaciones, todoInfo?.todoGroupId]);
 
-// ids en “Sin Agrupación” (si tenés exclusiones, réstalas acá)
-const todoIds = useMemo(() => {
-  const s = new Set();
-  for (const id of allIds) {
-    if (!idsAsignados.has(id)) s.add(id);
-  }
-  return s;
-}, [allIds, idsAsignados]);
+  // ids en “Sin Agrupación”
+  const todoIds = useMemo(() => {
+    const s = new Set();
+    for (const id of allIds) {
+      if (!idsAsignados.has(id)) s.add(id);
+    }
+    return s;
+  }, [allIds, idsAsignados]);
 
-// ✅ ESTE es el set correcto a pasar a TablaArticulos (NO activeIds)
-const visibleIds = useMemo(() => {
-  const sel = agrupacionSeleccionada;
-  if (!sel) return null; // null = no filtro (todos)
-  if (Number(sel.id) === Number(todoInfo?.todoGroupId)) return todoIds; // TODO virtual
-  const s = new Set((sel.articulos || []).map(a => Number(a?.id)).filter(Number.isFinite));
-  return s;
-}, [agrupacionSeleccionada, todoIds, todoInfo?.todoGroupId]);
+  // Set de ids visibles a pasar a la tabla
+  const visibleIds = useMemo(() => {
+    const sel = agrupacionSeleccionada;
+    if (!sel) return null;
+    if (Number(sel.id) === Number(todoInfo?.todoGroupId)) return todoIds; // TODO virtual
+    const s = new Set((sel.articulos || []).map(a => Number(a?.id)).filter(Number.isFinite));
+    return s;
+  }, [agrupacionSeleccionada, todoIds, todoInfo?.todoGroupId]);
 
-useEffect(() => {
-  const todoId = todoInfo?.todoGroupId;
-  const todoEmpty = (todoInfo?.idsSinAgrupCount || 0) === 0;
-  const isTodoSelected =
-    agrupacionSeleccionada &&
-    Number(agrupacionSeleccionada.id) === Number(todoId);
-  const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
-  if (recentlyPicked) return;
-  if (todoEmpty) {
-    const fav = (agrupaciones || []).find(
-      g => Number(g?.id) === Number(favoriteGroupId)
-    );
-    if (fav) {
-      setAgrupacionSeleccionada(fav);
-      setCategoriaSeleccionada(null);
-      setFiltroBusqueda('');
+  // Auto-switch entre TODO y favorita según haya resto o no
+  useEffect(() => {
+    const todoId = todoInfo?.todoGroupId;
+    const todoEmpty = (todoInfo?.idsSinAgrupCount || 0) === 0;
+    const isTodoSelected =
+      agrupacionSeleccionada &&
+      Number(agrupacionSeleccionada.id) === Number(todoId);
+    const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
+    if (recentlyPicked) return;
+
+    if (todoEmpty) {
+      const fav = (agrupaciones || []).find(
+        g => Number(g?.id) === Number(favoriteGroupId)
+      );
+      if (fav) {
+        setAgrupacionSeleccionada(fav);
+        setCategoriaSeleccionada(null);
+        setFiltroBusqueda('');
+      } else {
+        setFavoriteGroupId(null);
+      }
     } else {
-      // si la favorita ya no existe, limpio
-      setFavoriteGroupId(null);
+      if (agrupacionSeleccionada && !isTodoSelected && Number.isFinite(Number(todoId))) {
+        setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
+        setCategoriaSeleccionada(null);
+        setFiltroBusqueda('');
+      }
     }
-  } else {
-    // OPCIONAL: si hay “resto” y estás viendo favorita, volvés a TODO
-    if (agrupacionSeleccionada && !isTodoSelected && Number.isFinite(Number(todoId))) {
-      setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
-      setCategoriaSeleccionada(null);
-      setFiltroBusqueda('');
-    }
-  }
-}, [
-  todoInfo?.todoGroupId,
-  todoInfo?.idsSinAgrupCount,
-  favoriteGroupId,
-  agrupaciones,
-  agrupacionSeleccionada,
-  setAgrupacionSeleccionada,
-  setCategoriaSeleccionada,
-  setFiltroBusqueda
-]);
+  }, [
+    todoInfo?.todoGroupId,
+    todoInfo?.idsSinAgrupCount,
+    favoriteGroupId,
+    agrupaciones,
+    agrupacionSeleccionada,
+    setAgrupacionSeleccionada,
+    setCategoriaSeleccionada,
+    setFiltroBusqueda
+  ]);
 
-const handleSetFavorite = useCallback((groupId) => {
-  setFavoriteGroupId((prev) => {
-    const next = Number(groupId);
-    // toggle: si ya es favorita, la limpio
-    return Number(prev) === next ? null : next;
-  });
-}, []);
+  const handleSetFavorite = useCallback((groupId) => {
+    setFavoriteGroupId((prev) => {
+      const next = Number(groupId);
+      return Number(prev) === next ? null : next;
+    });
+  }, []);
 
-return (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
-      <h2 style={{ margin: 0 }}>Gestión de ventas</h2>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <SalesPickerIcon value={rango} onChange={setRango} />
-        <div style={{ flex: 1, minWidth: 260 }}>
-          <Buscador
-            value={filtroBusqueda}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
+        <h2 style={{ margin: 0 }}>Gestión de ventas</h2>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <SalesPickerIcon value={rango} onChange={setRango} />
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <Buscador
+              value={filtroBusqueda}
+              setFiltroBusqueda={setFiltroBusqueda}
+              opciones={opcionesGlobales}
+              placeholder="Buscar por código o nombre…"
+              onPick={(opt) => setJumpToId(Number(opt.id))}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
+        borderRadius: 12, overflow: 'hidden', height: '75vh',
+        boxShadow: '0 1px 4px rgba(0,0,0,.08)'
+      }}>
+        <div style={{
+          borderRight: '1px solid #eee', background: '#fafafa',
+          position: 'sticky', top: 0, alignSelf: 'start',
+          height: 'calc(100vh - 0px)', overflowY: 'auto'
+        }}>
+          <SidebarCategorias
+            categorias={categorias}
+            categoriaSeleccionada={categoriaSeleccionada}
+            setCategoriaSeleccionada={setCategoriaSeleccionada}
+            agrupaciones={agrupaciones}
+            agrupacionSeleccionada={agrupacionSeleccionada}
+            setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             setFiltroBusqueda={setFiltroBusqueda}
-            opciones={useMemo(() => {
-              const out = [];
-              for (const id of activeIds) {
-                const code = Number(id);
-                const name = labelById.get(code) || '';
-                out.push({
-                  id: code,
-                  value: String(code),
-                  label: name ? `${code} · ${name}` : String(code),
-                });
-              }
-              return out.slice(0, 300);
-            }, [activeIds, labelById])}
-            placeholder="Buscar por código o nombre…"
+            setBusqueda={setFiltroBusqueda}
+            todoGroupId={todoInfo.todoGroupId}
+            todoCountOverride={
+              todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
+            }
+            listMode="by-subrubro"
+            visibleIds={visibleIds}
+            onManualPick={markManualPick}
+          />
+        </div>
+
+        <div
+          id="tabla-scroll"
+          style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
+          <TablaArticulos
+            filtroBusqueda={filtroBusqueda}
+            agrupaciones={agrupaciones}
+            agrupacionSeleccionada={agrupacionSeleccionada}
+            setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+            categoriaSeleccionada={categoriaSeleccionada}
+            setCategoriaSeleccionada={setCategoriaSeleccionada}
+            refetchAgrupaciones={props.refetchAgrupaciones}
+            fechaDesdeProp={periodo.from}
+            fechaHastaProp={periodo.to}
+            ventasPorArticulo={ventasMapFiltrado}
+            ventasLoading={ventasLoading}
+            onCategoriasLoaded={setCategorias}
+            onIdsVisibleChange={setActiveIds}
+            activeBizId={activeBizId}
+            reloadKey={reloadKey}
+            onTodoInfo={setTodoInfo}
+            onTotalResolved={handleTotalResolved}
+            onGroupCreated={handleGroupCreated}
+            onMutateGroups={mutateGroups}
+            visibleIds={visibleIds}
+            favoriteGroupId={favoriteGroupId}
+            onSetFavorite={handleSetFavorite}
+            jumpToArticleId={jumpToId}
+            onActualizar={() => setReloadKey(k => k + 1)}
           />
         </div>
       </div>
     </div>
-
-    <div style={{
-      display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
-      minHeight: '60vh', borderRadius: 12, overflow: 'hidden',
-      boxShadow: '0 1px 4px rgba(0,0,0,.08)'
-    }}>
-      <div style={{
-        borderRight: '1px solid #eee', background: '#fafafa',
-        position: 'sticky', top: 0, alignSelf: 'start',
-        height: 'calc(100vh - 0px)', overflowY: 'auto'
-      }}>
-        <SidebarCategorias
-          categorias={categorias}
-          categoriaSeleccionada={categoriaSeleccionada}
-          setCategoriaSeleccionada={setCategoriaSeleccionada}
-          agrupaciones={agrupaciones}
-          agrupacionSeleccionada={agrupacionSeleccionada}
-          setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-          setFiltroBusqueda={setFiltroBusqueda}
-          setBusqueda={setFiltroBusqueda}
-          todoGroupId={todoInfo.todoGroupId}
-          todoCountOverride={
-            todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
-          }
-          visibleIds={visibleIds}
-          onManualPick={markManualPick}
-        />
-      </div>
-
-      <div style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
-        <TablaArticulos
-          filtroBusqueda={filtroBusqueda}
-          agrupaciones={agrupaciones}
-          onActualizar={agrupaciones}
-          agrupacionSeleccionada={agrupacionSeleccionada}
-          setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-          categoriaSeleccionada={categoriaSeleccionada}
-          setCategoriaSeleccionada={setCategoriaSeleccionada}
-          refetchAgrupaciones={props.refetchAgrupaciones}
-          fechaDesdeProp={periodo.from}
-          fechaHastaProp={periodo.to}
-          ventasPorArticulo={ventasMapFiltrado}
-          ventasLoading={ventasLoading}
-          onCategoriasLoaded={setCategorias}
-          onIdsVisibleChange={setActiveIds}
-          activeBizId={activeBizId}
-          reloadKey={reloadKey}
-          onTodoInfo={setTodoInfo}
-          onTotalResolved={handleTotalResolved}
-          onGroupCreated={handleGroupCreated}
-          onMutateGroups={mutateGroups}
-          visibleIds={visibleIds}
-          favoriteGroupId={favoriteGroupId}
-          onSetFavorite={handleSetFavorite}
-        />
-      </div>
-    </div>
-  </div>
-);
+  );
 }

@@ -1,5 +1,5 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
-// src/componentes/AdminActionsSidebar.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Paper, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
@@ -7,13 +7,13 @@ import {
 } from '@mui/material';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
-// AdminActionsSidebar.jsx
+/* ---------------- utils ---------------- */
 function normalizeMaxiStatus(res = {}) {
   const configured = typeof res.configured === 'boolean' ? res.configured : null;
   const email = res.email ?? res.user ?? res.username;
   const codcli = res.codcli ?? res.client_code ?? res.codigo_cliente;
 
-  const hasCreds = configured ?? (!!email && !!codcli); // usa configured si viene
+  const hasCreds = configured ?? (!!email && !!codcli);
 
   const connected =
     typeof res.connected === 'boolean' ? res.connected :
@@ -26,12 +26,13 @@ function normalizeMaxiStatus(res = {}) {
   return { hasCreds, connected, lastSync };
 }
 
+/* ---------------- componente ---------------- */
 export default function AdminActionsSidebar({ onSynced }) {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [syncing, setSyncing] = useState(false);
   const [mx, setMx] = useState({ hasCreds: null, connected: null, lastSync: null, loading: false });
-  const [lastResult, setLastResult] = useState(null); // { upserted, mapped, cacheHash }
+  const [lastResult, setLastResult] = useState(null);
 
   const load = async () => {
     try {
@@ -47,7 +48,22 @@ export default function AdminActionsSidebar({ onSynced }) {
     }
   };
 
-  useEffect(() => { load(); /* mount */ }, []);
+  useEffect(() => { load(); }, []);
+
+  // Escuchar todos los eventos que afectan la lista o el activo
+  useEffect(() => {
+    const reload = () => load();
+    window.addEventListener('business:created', reload);
+    window.addEventListener('business:deleted', reload);
+    window.addEventListener('business:switched', reload);
+    window.addEventListener('business:list:updated', reload);
+    return () => {
+      window.removeEventListener('business:created', reload);
+      window.removeEventListener('business:deleted', reload);
+      window.removeEventListener('business:switched', reload);
+      window.removeEventListener('business:list:updated', reload);
+    };
+  }, []);
 
   const activeBiz = useMemo(
     () => items.find(b => String(b.id) === String(selectedId)) || null,
@@ -55,6 +71,17 @@ export default function AdminActionsSidebar({ onSynced }) {
   );
 
   // Estado de Maxi del negocio seleccionado
+  const fetchMxStatus = async (bizId) => {
+    setMx(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await BusinessesAPI.maxiStatus(bizId);
+      const n = normalizeMaxiStatus(res || {});
+      setMx({ ...n, loading: false });
+    } catch {
+      setMx({ hasCreds: null, connected: null, lastSync: null, loading: false });
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     setLastResult(null);
@@ -63,59 +90,68 @@ export default function AdminActionsSidebar({ onSynced }) {
       return () => {};
     }
     (async () => {
-      setMx(prev => ({ ...prev, loading: true }));
-      try {
-        const res = await BusinessesAPI.maxiStatus(selectedId);
-        if (!alive) return;
-        const n = normalizeMaxiStatus(res || {});
-        setMx({ ...n, loading: false });
-      } catch {
-        if (!alive) return;
-        setMx({ hasCreds: null, connected: null, lastSync: null, loading: false });
-      }
+      if (!alive) return;
+      await fetchMxStatus(selectedId);
     })();
     return () => { alive = false; };
   }, [selectedId]);
 
-  // Helper: si el catálogo del local está vacío, sincroniza automáticamente
-  const ensureCatalogReady = async (bizId) => {
-    try {
-      const res = await BusinessesAPI.articlesTree(bizId);
-      const tree = Array.isArray(res?.tree) ? res.tree : [];
-      if (tree.length > 0) return false; // ya hay datos, no hace falta
-      // Lanzar sync si hay credenciales o si no sabemos (dejamos que el backend valide)
-      await doSync(bizId, { silent: true });
-      return true;
-    } catch (e) {
-      console.warn('ensureCatalogReady error', e);
-      return false;
-    }
-  };
+  // Si otra parte de la app sincroniza, actualizamos el status
+  useEffect(() => {
+    const onSynced = (e) => {
+      const id = e?.detail?.activeBusinessId ?? e?.detail?.bizId;
+      if (!id || String(id) !== String(selectedId)) return;
+      fetchMxStatus(id);
+    };
+    window.addEventListener('business:synced', onSynced);
+    return () => window.removeEventListener('business:synced', onSynced);
+  }, [selectedId]);
 
   const doSync = async (bizId, { silent = false } = {}) => {
     if (!bizId || syncing) return;
     setSyncing(true);
     const prev = localStorage.getItem('activeBusinessId');
     try {
+      // Pre-chequeo rápido (si falla, dejamos que el backend decida)
+      try {
+        const st = await BusinessesAPI.maxiStatus(bizId);
+        if (st?.configured === false) {
+          throw new Error('UNAUTHORIZED_ACCESS: Local sin credenciales Maxi');
+        }
+      } catch (_) {}
+
       localStorage.setItem('activeBusinessId', String(bizId));
       const resp = await BusinessesAPI.syncNow(bizId, { scope: 'articles' });
+
       setLastResult({
         upserted: Number(resp?.upserted ?? 0),
         mapped: Number(resp?.mapped ?? 0),
         cacheHash: resp?.cacheHash || null,
       });
-      // notificar al resto de la app
+
       window.dispatchEvent(new CustomEvent('business:synced', { detail: { activeBusinessId: bizId } }));
       onSynced?.(resp);
-      if (!silent) alert(`Sync OK. Artículos actualizados: ${resp?.upserted ?? 0}. Mapeos categoría/subrubro: ${resp?.mapped ?? 0}.`);
+
+      if (!silent) {
+        alert(`Sync OK. Artículos actualizados: ${resp?.upserted ?? 0}. Mapeos: ${resp?.mapped ?? 0}.`);
+      }
     } catch (e) {
       console.error('sync error', e);
-      if (!silent) alert('No se pudo sincronizar. Revisá credenciales de Maxi o intentá nuevamente.');
+      const msg = String(e?.message || '');
+      if (!silent) {
+        if (msg.includes('UNAUTHORIZED_ACCESS') || msg.includes('UNAUTHORIZED')) {
+          alert('Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli del local.');
+        } else {
+          alert('No se pudo sincronizar. Revisá credenciales de Maxi o intentá nuevamente.');
+        }
+      }
       throw e;
     } finally {
       if (prev) localStorage.setItem('activeBusinessId', prev);
       else localStorage.removeItem('activeBusinessId');
       setSyncing(false);
+      // refrescar status luego de sync
+      if (bizId) fetchMxStatus(bizId);
     }
   };
 
@@ -129,9 +165,8 @@ export default function AdminActionsSidebar({ onSynced }) {
     await doSync(selectedId);
   };
 
-  // Badge compacto y limpio
   const renderBadge = () => {
-    if (mx.loading) return <Chip size="small" variant="outlined" label="Verificando..." />;
+    if (mx.loading) return <Chip size="small" variant="outlined" label="Verificando…" />;
     if (mx.connected === true)  return <Chip size="small" color="success" label="Conectado a Maxi" />;
     if (mx.connected === false) return <Chip size="small" color="error"   label="Desconectado" />;
     return null;
@@ -148,8 +183,7 @@ export default function AdminActionsSidebar({ onSynced }) {
       p: 2,
       background: 'var(--color-surface)',
     }}>
-      <Stack spacing={1.25}
-        sx={{ width: '100%' }}>
+      <Stack spacing={1.25} sx={{ width: '100%' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography variant="h6" sx={{ m: 0, color: 'var(--color-fg)' }}>
             Acciones de administración
@@ -198,16 +232,6 @@ export default function AdminActionsSidebar({ onSynced }) {
             </Button>
           </span>
         </Tooltip>
-
-        {/* Acción rápida: preparar catálogo si está vacío */}
-        <Button
-          variant="text"
-          onClick={() => ensureCatalogReady(selectedId)}
-          disabled={!selectedId || syncing}
-          sx={{ textTransform: 'none', alignSelf: 'flex-start', px: 0 }}
-        >
-          ¿Catálogo vacío? Prepararlo automáticamente
-        </Button>
 
         <Divider />
 

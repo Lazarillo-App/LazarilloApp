@@ -1,26 +1,22 @@
+/* eslint-disable no-useless-catch */
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
-// src/paginas/Perfil.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
-import AdminActionsSidebar from '../componentes/AdminActionsSidebar';
+import SyncDialog from '../componentes/SyncDialog';
 
 export default function Perfil() {
-  // ---------- estado ----------
   const [items, setItems] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState(null);
-
-  // sync (versión compacta)
-  const [mxStatus, setMxStatus] = useState({ configured: null, email: null, codcli: null });
-  const [syncBusy, setSyncBusy] = useState(false);
-  const [syncMsg, setSyncMsg] = useState('');
-
-  // ---------- helpers ----------
+  const [notice, setNotice] = useState({ open: false, title: "", message: "" });
+  const showNotice = (title, message) => setNotice({ open: true, title, message });
+  const closeNotice = () => setNotice(s => ({ ...s, open: false }));
   const me = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; }
     catch { return {}; }
@@ -36,22 +32,7 @@ export default function Perfil() {
     }
   };
 
-  const loadMx = async (bizId) => {
-    if (!bizId) { setMxStatus({ configured: null, email: null, codcli: null }); return; }
-    try {
-      const s = await BusinessesAPI.maxiStatus(Number(bizId));
-      setMxStatus({
-        configured: !!s?.configured,
-        email: s?.email || null,
-        codcli: s?.codcli || null
-      });
-    } catch (e) {
-      setMxStatus({ configured: false, email: null, codcli: null });
-    }
-  };
-
   useEffect(() => { load(); }, []);
-  useEffect(() => { loadMx(activeId || localStorage.getItem('activeBusinessId')); }, [activeId]);
 
   // Mantener en sync si se cambia el local desde otro lugar
   useEffect(() => {
@@ -59,20 +40,17 @@ export default function Perfil() {
       const id = localStorage.getItem('activeBusinessId') || '';
       setActiveId(id);
       load();
-      loadMx(id);
     };
     window.addEventListener('business:switched', onSwitched);
     return () => window.removeEventListener('business:switched', onSwitched);
   }, []);
 
-  // ---------- acciones ----------
   const onSetActive = async (id) => {
     try {
       await BusinessesAPI.select(id);
       localStorage.setItem('activeBusinessId', id);
       setActiveId(String(id));
       await load();
-      await loadMx(id);
       window.dispatchEvent(new CustomEvent('business:switched'));
     } catch (e) {
       console.error(e);
@@ -116,48 +94,54 @@ export default function Perfil() {
       const restantes = await BusinessesAPI.listMine();
       setItems(restantes || []);
     } catch { }
+
+    // Notificá otros paneles que listen (como AdminActionsSidebar)
+    try { window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: biz.id } })); } catch { }
     alert('Negocio eliminado.');
+    window.dispatchEvent(new CustomEvent("business:list:updated"));
   };
 
   const onCreateComplete = (biz) => {
     setItems(prev => [biz, ...prev]);
     setShowCreate(false);
     onSetActive(biz.id);
+    window.dispatchEvent(new CustomEvent("business:list:updated")); // 👈
   };
 
-  const onSaved = (savedOrPartial) => {
-    const merged = { ...editing, ...savedOrPartial };
-    if (editing?.props?.branding && savedOrPartial?.props?.branding) {
-      merged.props = { ...editing.props, ...savedOrPartial.props };
-    }
-    setItems(prev => prev.map(i => String(i.id) === String(merged.id) ? merged : i));
+  const onSaved = (saved) => {
+    setItems(prev => prev.map(i => String(i.id) === String(saved.id) ? { ...i, ...saved } : i));
     setEditing(null);
+    window.dispatchEvent(new CustomEvent("business:list:updated")); // 👈
   };
 
-  // sync con Maxi (hoy / 30d) – misma API que tu SalesSyncPanel
-  const runSync = async (mode) => {
-    if (!activeId) return;
-    setSyncMsg('');
-    setSyncBusy(true);
+  const onOpenSync = async (biz) => {
+    const prev = localStorage.getItem('activeBusinessId');
     try {
-      const res = await BusinessesAPI.syncSales(Number(activeId), { mode });
-      // feedback mínimo (opcional)
-      if (res?.counts || res?.sales) {
-        setSyncMsg(
-          res?.sales?.mode
-            ? `Listo: ${res.sales.mode}`
-            : 'Sincronización completada.'
-        );
-      }
-      window.dispatchEvent(new CustomEvent('business:synced'));
+      // asegura contexto X-Business-Id para este biz
+      localStorage.setItem('activeBusinessId', String(biz.id));
+
+      const resp = await BusinessesAPI.syncNow(biz.id, { scope: 'articles' });
+      window.dispatchEvent(new CustomEvent('business:synced', { detail: { bizId: biz.id } }));
+      await load();
+
+      const up = Number(resp?.upserted ?? 0);
+      const mp = Number(resp?.mapped ?? 0);
+      showNotice('Sincronización completada', `Sync OK. Artículos: ${up} · Mapeos: ${mp}`);
+      return resp;
     } catch (e) {
-      setSyncMsg(e?.message || 'No se pudo sincronizar.');
+      const msg = String(e?.message || '');
+      const friendly = msg.includes('401')
+        ? 'Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli del local.'
+        : (msg || 'No se pudo sincronizar.');
+      showNotice('No se pudo sincronizar', friendly);
+      throw e;
     } finally {
-      setSyncBusy(false);
+      // restaurar activo anterior
+      if (prev) localStorage.setItem('activeBusinessId', prev);
+      else localStorage.removeItem('activeBusinessId');
     }
   };
 
-  // negocio activo + branding
   const activeBiz = useMemo(
     () => items.find(i => String(i.id) === String(activeId)) || null,
     [items, activeId]
@@ -172,11 +156,11 @@ export default function Perfil() {
     };
   }, [activeBiz]);
 
-  const userInitial = (me?.firstName || me?.name || 'U')[0]?.toUpperCase?.() || 'U';
+  const user = me || {};
+  const userInitial = (user?.firstName || user?.name || 'U')[0]?.toUpperCase?.() || 'U';
   const bizInitial = (activeBiz ? (activeBranding.name || 'N') : userInitial)[0]?.toUpperCase?.() || 'N';
-  const meName = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
+  const meName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Usuario';
 
-  // ---------- UI ----------
   return (
     <div className="profile-wrap">
       <header className="profile-header">
@@ -197,7 +181,11 @@ export default function Perfil() {
           <h2>{meName}</h2>
           <div className="mail">{me?.email || ''}</div>
         </div>
+        <button className="cta-wide" onClick={() => setShowCreate(true)}>
+          Nuevo Local
+        </button>
       </header>
+
       <section className="section">
         <h3>Mis locales</h3>
         <div className="grid">
@@ -209,25 +197,14 @@ export default function Perfil() {
               onSetActive={onSetActive}
               onEdit={setEditing}
               onDelete={onDelete}
-            // si prefieres, puedes pasar onSync aquí para hacerlo por tarjeta:
-            // onSync={async () => runSync('auto')}
+              onOpenSync={onOpenSync}
+              showNotice={showNotice}
             />
           ))}
           {!items.length && (
             <div className="empty">Aún no tenés locales. Creá el primero.</div>
           )}
         </div>
-        <button className="cta-wide" onClick={() => setShowCreate(true)}>
-          Crear Nuevo Local
-        </button>
-      </section>
-
-      {/* Sincronizar datos (compacto) */}
-      <section className="section">
-        <h3>Sincronizar datos</h3>
-          <div className="admin-tools">
-            <AdminActionsSidebar onSynced={load} />
-          </div>
       </section>
 
       <BusinessCreateModal
@@ -241,25 +218,14 @@ export default function Perfil() {
         onClose={() => setEditing(null)}
         onSaved={onSaved}
       />
-      {/* Configuración (colapsable simple visual) */}
-      <section className="section">
-        <h3>Configuración</h3>
-        <div className="config-list">
-          <button className="row">
-            <span>Configuración General</span>
-            <span className="chev">›</span>
-          </button>
-          <button className="row">
-            <span>Notificaciones</span>
-            <span className="chev">›</span>
-          </button>
-          <button className="row">
-            <span>Ayuda y Soporte</span>
-            <span className="chev">›</span>
-          </button>
-        </div>
-      </section>
-      {/* estilos locales */}
+
+      <SyncDialog
+        open={notice.open}
+        title={notice.title}
+        message={notice.message}
+        onClose={closeNotice}
+      />
+
       <style>{`
         .profile-wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:18px}
         .profile-header{
@@ -271,68 +237,32 @@ export default function Perfil() {
         .who h1{margin:0 0 4px 0; font-size:14px; color:#64748b; font-weight:800}
         .who h2{margin:0; font-size:18px; font-weight:800}
         .who .mail{font-size:12px; color:#6b7280}
-        .new-btn{
-          height:36px;border-radius:10px;border:0;background:#1f2923ad;
-          color:white;font-weight:500; padding:0 12px; cursor:pointer;
-        }
 
         .section h3{margin:6px 0 10px;font-size:14px;font-weight:800;color:#1f2937}
         .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
         .empty{border:1px dashed #e5e7eb;border-radius:12px;padding:16px;color:#6b7280}
         .cta-wide{
-          width:50%;height:44px;border-radius:12px;border:0;background:#1f2923ad;
-          color:white;font-weight:500;cursor:pointer;margin-top:6px;disabled:opacity-50
+          width:120%;
+          height:40px;
+          border-radius:12px;
+          background: var(--color-primary, #0ea5e9);
+          color: var(--on-primary, #ffffff);
+          box-shadow: 0 1px 0 rgba(0,0,0,.06) inset;
+          font-weight:400;
+          cursor:pointer;
         }
-
-        .sync-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        @media (max-width:720px){ .sync-cards{grid-template-columns:1fr} .profile-header{grid-template-columns:auto 1fr} .new-btn{grid-column:1/-1;justify-self:end} }
-        .card{
-          background:var(--color-surface,#fff); border:1px solid var(--color-border,#e5e7eb);
-          border-radius:12px; padding:12px; display:grid; gap:10px;
-        }
-        .card-title{font-weight:700;color:#0f172a}
-        .status-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-        .pill{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:12px}
-        .pill.ok{background:color-mix(in srgb, var(--color-primary,#34d399) 18%, white); color:#065f46}
-        .pill.error{background:#fee2e2;color:#991b1b}
-        .pill.muted{background:#f3f4f6;color:#6b7280}
-        .mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:#475569}
-        .actions{display:flex;gap:8px;flex-wrap:wrap}
-        .btn{border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer}
-        .btn.dark{background:#111;color:#fff}
-        .btn.ghost{background:#f3f4f6;color:#111}
-        .hint{font-size:12px;color:#475569}
-
-        .config-list{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
-        .config-list .row{
-          width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
-          padding:12px;border:0;background:#fff;cursor:pointer;
-          border-bottom:1px solid #f1f5f9;
-        }
-        .config-list .row:last-child{border-bottom:0}
-        .chev{color:#94a3b8}
-
+        .cta-wide:hover{ filter: brightness(.96); }
         .admin-tools{opacity:.7}
-.avatar{
-  width:56px;height:56px;border-radius:999px;
-  display:grid;place-items:center;
-  background:#e5e7eb;
-}
-
-/* avatar del negocio (colores vienen inline) */
-.biz-avatar{
-  border:1px solid var(--color-border,#e5e7eb);
-  box-shadow: 0 1px 0 rgba(0,0,0,.03) inset;
-}
-
-.biz-avatar-initial{
-  font-weight:900;
-  font-size:20px;
-  line-height:1;
-  letter-spacing:.5px;
-  text-transform:uppercase;
-}
-
+        .avatar{
+          width:56px;height:56px;border-radius:999px;display:grid;place-items:center;background:#e5e7eb;
+        }
+        .biz-avatar{
+          border:1px solid var(--color-border,#e5e7eb);
+          box-shadow: 0 1px 0 rgba(0,0,0,.03) inset;
+        }
+        .biz-avatar-initial{
+          font-weight:900;font-size:20px;line-height:1;letter-spacing:.5px;text-transform:uppercase;
+        }
       `}</style>
     </div>
   );

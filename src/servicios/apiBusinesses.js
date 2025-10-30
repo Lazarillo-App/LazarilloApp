@@ -98,10 +98,12 @@ export async function http(
   if (!res.ok) {
     const is404 = res.status === 404;
     const msg =
-      (data && (data.error || data.message || data.detail)) ||
+      (data && ((data.error && data.detail && `${data.error}: ${data.detail}`) ||
+        data.detail || data.error || data.message)) ||
       (is404 ? `not_found: ${path}` : (text || res.statusText || `HTTP ${res.status}`));
     throw new Error(msg);
   }
+
   return data;
 }
 
@@ -171,7 +173,7 @@ export const BusinessesAPI = {
     http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
       { withBusinessId: true }),
   salesSeries: (_id, articuloId, { from, to, groupBy = 'day' }) =>
-   http(`/ventas/by-article?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
+    http(`/ventas/by-article?articuloId=${encodeURIComponent(articuloId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${groupBy}`,
       { withBusinessId: true }),
   topArticulos: (_id, { limit = 200 } = {}) =>
     http(`/ventas/summary?limit=${limit}`, { withBusinessId: true }),
@@ -187,7 +189,12 @@ export const BusinessesAPI = {
 
   // Sync legacy
   syncNow: (id, body) =>
-    http(`/businesses/${id}/sync`, { method: 'POST', body, withBusinessId: true }),
+    http(`/businesses/${id}/sync`, {
+      method: 'POST',
+      body,
+      withBusinessId: false,                // no uses el del localStorage
+      headers: { 'X-Business-Id': String(id) }, // fuerza el del negocio clickeado
+    }),
 
   // Ventas (nuevo sync): ?mode=auto | backfill_30d (+ opcional X-Maxi-Token)
   syncSales: (id, { mode = 'auto', dryrun = false, from, to, maxiToken } = {}) => {

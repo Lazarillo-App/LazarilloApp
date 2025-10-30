@@ -1,10 +1,11 @@
 // src/componentes/Agrupaciones.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
 
 import AgrupacionesList from "./AgrupacionesList";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
-
+import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/groupMutations';
+import { emitGroupsChanged } from "@/utils/groupsBus";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "../servicios/apiBusinesses";
 import { obtenerAgrupaciones } from "../servicios/apiAgrupaciones";
@@ -16,38 +17,55 @@ const mapRowToArticle = (row) => {
   return {
     id,
     nombre: row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`,
+    // En DB ya viene SWAP: categoria = subrubro Maxi, subrubro = rubro Maxi
     categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro ?? "Sin categoría",
     subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? "Sin subrubro",
     precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
 };
 
+/** Árbol correcto esperado por el Modal:
+ *  [
+ *    { subrubro, categorias: [{categoria, articulos:[{id,nombre,precio,...}]}] }
+ *  ]
+ */
 const buildTree = (flatList = []) => {
-  const cats = new Map();
+  const bySub = new Map(); // subrubro -> (categoria -> artículos[])
   for (const a of flatList) {
-    if (!Number.isFinite(a.id)) continue;
-    const cat = a.categoria || "Sin categoría";
-    const sr = a.subrubro || "Sin subrubro";
-    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
-    const catObj = cats.get(cat);
-    let srObj = catObj.subrubros.find((s) => s.nombre === sr);
-    if (!srObj) {
-      srObj = { nombre: sr, articulos: [] };
-      catObj.subrubros.push(srObj);
-    }
-    srObj.articulos.push({
+    if (!Number.isFinite(a?.id)) continue;
+    const sub = a.subrubro || "Sin subrubro";    // padre
+    const cat = a.categoria || "Sin categoría";  // hijo
+    if (!bySub.has(sub)) bySub.set(sub, new Map());
+    const byCat = bySub.get(sub);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push({
       id: a.id,
       nombre: a.nombre,
-      categoria: cat,
-      subrubro: sr,
       precio: a.precio,
+      categoria: cat,
+      subrubro: sub,
     });
   }
-  return Array.from(cats.values());
+
+  const tree = [];
+  for (const [subrubro, byCat] of bySub.entries()) {
+    const categorias = [];
+    for (const [categoria, articulos] of byCat.entries()) {
+      categorias.push({ categoria, articulos });
+    }
+    categorias.sort((a, b) =>
+      String(a.categoria).localeCompare(String(b.categoria), "es", { sensitivity: "base", numeric: true })
+    );
+    tree.push({ subrubro, categorias });
+  }
+  tree.sort((a, b) =>
+    String(a.subrubro).localeCompare(String(b.subrubro), "es", { sensitivity: "base", numeric: true })
+  );
+  return tree;
 };
 
 export default function Agrupaciones({ actualizarAgrupaciones }) {
-  const [todosArticulos, setTodosArticulos] = useState([]); // árbol categoría/subrubro
+  const [todosArticulos, setTodosArticulos] = useState([]); // árbol subrubro → categorías
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -77,6 +95,55 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     }
   };
 
+  
+  // --- baseById (opcional) para enriquecer mutaciones con datos del árbol actual ---
+  const baseById = useMemo(() => {
+    const m = new Map();
+    for (const sub of todosArticulos || []) {
+      for (const c of sub.categorias || []) {
+        for (const a of c.articulos || []) {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) m.set(id, a);
+        }
+      }
+    }
+    return m;
+  }, [todosArticulos]);
+
+  // --- mutador local optimista para la vista Agrupaciones ---
+  const onMutateGroups = useCallback((action) => {
+    setAgrupaciones((prev) => {
+      switch (action?.type) {
+        case 'create':
+          return applyCreateGroup(prev, {
+            id: Number(action.id),
+            nombre: action.nombre,
+            articulos: Array.isArray(action.articulos) ? action.articulos : [],
+          });
+        case 'append':
+          return applyAppend(prev, {
+            groupId: Number(action.groupId),
+            articulos: Array.isArray(action.articulos) ? action.articulos : [],
+            baseById, // para completar nombre/categoria/subrubro si falta
+          });
+        case 'remove':
+          return applyRemove(prev, {
+            groupId: Number(action.groupId),
+            ids: (action.ids || []).map(Number).filter(Boolean),
+          });
+        case 'move':
+          return applyMove(prev, {
+            fromId: Number(action.fromId),
+            toId: Number(action.toId),
+            ids: (action.ids || []).map(Number).filter(Boolean),
+            baseById,
+          });
+        default:
+          return prev;
+      }
+    });
+  }, [baseById]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -88,7 +155,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
           return;
         }
 
-        // Artículos desde nuestra BD
+        // Artículos desde nuestra BD -> a árbol subrubro→categorías→artículos
         const res = await BusinessesAPI.articlesFromDB(bizId);
         const flat = (res?.items || []).map(mapRowToArticle).filter((a) => Number.isFinite(a.id));
         setTodosArticulos(buildTree(flat));
@@ -132,12 +199,10 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
       .filter((g) => g?.id !== todoGroupId)
       .forEach((g) => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
-        arts
-          .filter(Boolean)
-          .forEach((a) => {
-            const id = Number(a?.id);
-            if (Number.isFinite(id)) s.add(String(id));
-          });
+        arts.forEach((a) => {
+          const id = Number(a?.id);
+          if (Number.isFinite(id)) s.add(String(id));
+        });
       });
     return s;
   }, [agrupaciones, todoGroupId]);
@@ -145,12 +210,12 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
   // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)
   const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
 
-  // Flatten de ids desde el árbol para contar TODO virtual
+  // Flatten de ids desde el árbol (subrubro→categorías→artículos)
   const allIds = useMemo(() => {
     const out = [];
-    for (const cat of todosArticulos || []) {
-      for (const sr of cat?.subrubros || []) {
-        for (const a of sr?.articulos || []) {
+    for (const sub of todosArticulos || []) {
+      for (const cat of sub?.categorias || []) {
+        for (const a of cat?.articulos || []) {
           const id = Number(a?.id);
           if (Number.isFinite(id)) out.push(id);
         }
@@ -174,19 +239,20 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     return s;
   }, [agrupaciones, todoGroupId]);
 
+  // Artículos visibles para el TODO virtual (desde el nuevo árbol)
   const todoVirtualArticulos = useMemo(() => {
     const out = [];
-    for (const cat of todosArticulos || []) {
-      for (const sr of cat?.subrubros || []) {
-        for (const a of sr?.articulos || []) {
+    for (const sub of todosArticulos || []) {
+      for (const cat of sub?.categorias || []) {
+        for (const a of cat?.articulos || []) {
           const id = Number(a?.id);
           if (!Number.isFinite(id)) continue;
           if (idsEnOtras.has(id) || excludedIds.has(id)) continue;
           out.push({
             id,
             nombre: a?.nombre ?? `#${id}`,
-            categoria: a?.categoria ?? cat?.nombre ?? "Sin categoría",
-            subrubro: a?.subrubro ?? sr?.nombre ?? "Sin subrubro",
+            categoria: a?.categoria ?? cat?.categoria ?? "Sin categoría",
+            subrubro: a?.subrubro ?? sub?.subrubro ?? "Sin subrubro",
             precio: a?.precio ?? 0,
           });
         }
@@ -199,7 +265,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
   const todoCount = useMemo(() => {
     let count = 0;
     for (const id of allIds) {
-      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count; // 👈 importante!
+      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count; // ← FIX
     }
     return count;
   }, [allIds, idsEnOtras, excludedIds]);
@@ -228,11 +294,23 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
           Nueva agrupación
         </Button>
 
-        {/* MODAL REUTILIZABLE con toda la lógica de creación */}
         <AgrupacionCreateModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          onCreated={async (nombreCreado) => {
+          onCreated={async (nombreCreado, newGroupId, articulos) => {
+            // mutación optimista local
+            onMutateGroups({
+              type: 'create',
+              id: newGroupId,
+              nombre: nombreCreado,
+              articulos: articulos || [],
+            });
+            // emite evento global (Home escucha y refetch)
+            emitGroupsChanged("create", {
+              groupId: Number(newGroupId),
+              count: (articulos || []).length
+            });
+            // refetch para consolidar
             await cargarAgrupaciones();
             actualizarAgrupaciones?.();
             showSnack(`Agrupación "${nombreCreado}" creada correctamente`);
@@ -243,12 +321,13 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         />
 
         <AgrupacionesList
+          onMutateGroups={onMutateGroups}
           agrupaciones={agrupaciones}
-          onActualizar={cargarAgrupaciones}     
-          todoGroupId={todoGroupId}             
-          todosArticulos={todosArticulos}       
+          onActualizar={cargarAgrupaciones}
+          todoGroupId={todoGroupId}
+          todosArticulos={todosArticulos}
           loading={loading}
-          todoCountOverride={todoCount}        
+          todoCountOverride={todoCount}
           todoVirtualArticulos={todoVirtualArticulos}
         />
       </div>

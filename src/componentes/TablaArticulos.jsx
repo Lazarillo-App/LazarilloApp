@@ -2,7 +2,7 @@
 /* eslint-disable no-useless-catch */
 /* eslint-disable no-unused-vars */
 import React, {
-  useEffect, useMemo, useRef, useState, useCallback, useDeferredValue,
+  useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, forwardRef, useImperativeHandle,
 } from 'react';
 import { Snackbar, Alert } from '@mui/material';
 
@@ -32,21 +32,15 @@ const esTodoGroup = (g, todoGroupId) => {
 };
 
 /* ---------------- VirtualList simple (sin librerías) ---------------- */
-function VirtualList({
-  rows = [],
-  rowHeight = 44,
-  height = 400,
-  overscan = 6,
-  onVisibleItemsIds,          // (ids:number[]) => void
-  renderRow,                  // ({ row, index, style }) => JSX
-  getRowId,                   // (row) => number | null
-}) {
+const VirtualList = forwardRef(function VirtualList(
+  { rows = [], rowHeight = 44, height = 400, overscan = 6, onVisibleItemsIds, renderRow, getRowId },
+  ref
+) {
   const scrollRef = useRef(null);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
   const [scrollTop, setScrollTop] = useState(0);
-
   const totalHeight = rows.length * rowHeight;
 
   const { startIdx, endIdx } = useMemo(() => {
@@ -59,13 +53,12 @@ function VirtualList({
   const offsetY = startIdx * rowHeight;
   const visibleRows = rows.slice(startIdx, endIdx + 1);
 
-  // reportar ids visibles (solo items), SIN depender de `rows` para evitar loops
   const prevIdsStrRef = useRef('');
   useEffect(() => {
     if (!onVisibleItemsIds) return;
     const ids = [];
     const arr = rowsRef.current;
-    for (let i = startIdx; i <= endIdx; i++) {
+    for (let i = startIdx; i <= endIdx; i++) { // <-- fix i++
       const r = arr[i];
       const id = getRowId?.(r);
       if (Number.isFinite(id)) ids.push(id);
@@ -77,6 +70,30 @@ function VirtualList({
     }
   }, [startIdx, endIdx, getRowId, onVisibleItemsIds]);
 
+  useImperativeHandle(ref, () => {
+    const doScrollToIndex = (idx) => {
+      if (!Number.isFinite(idx)) return;
+      const top = Math.max(0, idx * rowHeight - Math.floor(height / 3));
+      if (scrollRef.current) scrollRef.current.scrollTop = top;
+      setScrollTop(top);
+    };
+
+    const doScrollToId = (id) => {
+      if (!getRowId) return;
+      const arr = rowsRef.current;
+      let idx = -1;
+      for (let i = 0; i < arr.length; i++) {
+        if (Number(getRowId(arr[i])) === Number(id)) { idx = i; break; }
+      }
+      if (idx >= 0) doScrollToIndex(idx);
+    };
+
+    return {
+      scrollToIndex: doScrollToIndex,
+      scrollToId: doScrollToId,
+    };
+  }, [getRowId, rowHeight, height]);
+
   return (
     <div
       ref={scrollRef}
@@ -85,18 +102,29 @@ function VirtualList({
     >
       <div style={{ height: totalHeight, position: 'relative' }}>
         <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
-          {visibleRows.map((row, i) =>
-            renderRow({
-              row,
-              index: startIdx + i,
-              style: { height: rowHeight, display: 'block', color: '#373737ff', fontWeight: '500', fontSize: '0.95rem' },
-            })
-          )}
+          {visibleRows.map((row, i) => {
+            const index = startIdx + i;
+            const id = getRowId?.(row);
+            return (
+              <div
+                key={Number.isFinite(id) ? id : index}
+                data-article-id={Number.isFinite(id) ? id : undefined}
+                style={{ height: rowHeight, display: 'block' }}
+              >
+                {renderRow({
+                  row,
+                  index,
+                  style: { height: rowHeight, display: 'block', color: '#373737ff', fontWeight: 500, fontSize: '0.95rem' },
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
-}
+});
+
 
 /* ---------------- componente principal ---------------- */
 export default function TablaArticulos({
@@ -117,7 +145,8 @@ export default function TablaArticulos({
   onTotalResolved,
   onGroupCreated,
   visibleIds,
-  onMutateGroups
+  onMutateGroups,
+  jumpToArticleId
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -135,37 +164,78 @@ export default function TablaArticulos({
     if (!visibleIds) return null;
     return new Set(Array.from(visibleIds).map(Number));
   }, [visibleIds]);
-
+  const [expandedRubro, setExpandedRubro] = useState(null);
+  const [expandedCatByRubro, setExpandedCatByRubro] = useState({});
   // refetch sin F5
   const [reloadTick, setReloadTick] = useState(0);
   const refetchLocal = useCallback(async () => {
     try { await refetchAgrupaciones?.(); } catch { }
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
+  const listRef = useRef(null);
 
-  const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
-  useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
+  const findPath = useCallback((cats, id) => {
+    for (const sub of cats || []) {
+      const rubroName = sub?.subrubro || 'Sin subrubro';
+      for (const cat of sub?.categorias || []) {
+        const catName = cat?.categoria || 'Sin categoría';
+        for (const a of cat?.articulos || []) {
+          if (Number(a?.id) === Number(id)) {
+            return { rubroName, catName };
+          }
+        }
+      }
+    }
+    return null;
+  }, []);
 
-  // Recibe por props: onMutateGroups (definido en ArticulosMain)
-  const afterMutation = useCallback((removedIds) => {
-    const ids = (removedIds || []).map(Number).filter(Number.isFinite);
-    if (!ids.length) { refetchLocal(); return; }
-    if (!agrupSelView?.id) { refetchLocal(); return; }
-    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
-    if (isTodo) { refetchLocal(); return; }
+  // ---- ordenamiento ----
+  const [sortBy, setSortBy] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
 
-    // ✅ mutación optimista centralizada
-    onMutateGroups?.({
-      type: 'remove',
-      groupId: Number(agrupSelView.id),
-      ids
+  const toggleSort = useCallback((k) => {
+    setSortBy((prev) => {
+      if (prev === k) { setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); return prev; }
+      setSortDir('asc');
+      return k;
     });
+  }, []);
 
-    // opcional: ping al backend sin bloquear
-    refetchLocal();
-  }, [agrupSelView, todoGroupId, onMutateGroups, refetchLocal]);
+  const getSortValue = useCallback((a) => {
+    const id = getId(a);
+    switch (sortBy) {
+      case 'codigo': return id;
+      case 'nombre': return a?.nombre ?? '';
+      case 'precio': return num(a?.precio);
+      case 'costo': return num(a?.costo);
+      case 'costoPct': {
+        const p = num(a?.precio), c = num(a?.costo);
+        return p > 0 ? (c / p) * 100 : -Infinity;
+      }
+      case 'objetivo': return num(objetivos[id]) || 0;
+      case 'sugerido': {
+        const obj = num(objetivos[id]) || 0;
+        const c = num(a?.costo);
+        const den = 100 - obj;
+        return den > 0 ? c * (100 / den) : Infinity;
+      }
+      case 'manual': return num(manuales[id]) || 0;
+      default: return null;
+    }
+  }, [sortBy, objetivos, manuales]);
 
+  const cmp = useCallback((a, b) => {
+    if (!sortBy) return 0;
+    const va = getSortValue(a), vb = getSortValue(b);
+    if (typeof va === 'string' || typeof vb === 'string') {
+      const r = String(va ?? '').localeCompare(String(vb ?? ''), 'es', { sensitivity: 'base', numeric: true });
+      return sortDir === 'asc' ? r : -r;
+    }
+    const na = Number(va ?? 0), nb = Number(vb ?? 0);
+    return sortDir === 'asc' ? na - nb : nb - na;
+  }, [sortBy, sortDir, getSortValue]);
 
+  // ========== Catálogo y base ==========
   // build tree desde plano
   const buildTreeFromFlat = useCallback((items = []) => {
     const flat = items.map(row => {
@@ -194,10 +264,10 @@ export default function TablaArticulos({
     }));
   }, []);
 
-  // Carga catálogo + exclusiones
+  // Carga catálogo  exclusiones
   useEffect(() => {
     let cancel = false;
-    const myId = ++loadReqId.current;
+    const myId = loadReqId.current;
 
     (async () => {
       try {
@@ -281,7 +351,6 @@ export default function TablaArticulos({
     return m;
   }, [allArticulos]);
 
-
   const idsEnOtras = useMemo(() => new Set(
     (agrupaciones || [])
       .filter((g) => !esTodoGroup(g, todoGroupId))
@@ -300,7 +369,7 @@ export default function TablaArticulos({
     onTodoInfo?.({ todoGroupId, idsSinAgrupCount: idsSinAgrup.size });
   }, [onTodoInfo, todoGroupId, idsSinAgrup.size]);
 
-  /* --------- a mostrar + filtro --------- */
+  /* --------- a mostrar  filtro --------- */
   const articulosAMostrar = useMemo(() => {
     if (categoriaSeleccionada && agrupacionSeleccionada) {
       const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
@@ -337,36 +406,34 @@ export default function TablaArticulos({
         }));
     }
 
-    if (agrupSelView) {
-      const esTodo = esTodoGroup(agrupSelView, todoGroupId);
-      const arr = Array.isArray(agrupSelView.articulos) ? agrupSelView.articulos : [];
+    if (agrupacionSeleccionada) {
+      const esTodo = esTodoGroup(agrupacionSeleccionada, todoGroupId);
+      const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
       if (esTodo && arr.length === 0) {
         return allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
       }
       if (arr.length > 0) {
-        return arr.map((a) => {
-          const id = getId(a);
+        return arr.map((x) => {
+          const id = getId(x);
           const b = baseById.get(id) || {};
           return {
-            ...b, ...a, id,
-            nombre: a.nombre ?? b.nombre ?? `#${id}`,
-            categoria: a.categoria ?? b.categoria ?? 'Sin categoría',
-            subrubro: a.subrubro ?? b.subrubro ?? 'Sin subrubro',
-            precio: num(a.precio ?? b.precio),
-            costo: num(a.costo ?? b.costo),
+            id,
+            nombre: x?.nombre ?? b?.nombre ?? `#${id}`,
+            categoria: x?.categoria ?? b?.categoria ?? 'Sin categoría',
+            subrubro: x?.subrubro ?? b?.subrubro ?? 'Sin subrubro',
+            precio: num(x?.precio ?? b?.precio ?? 0),
+            costo: num(x?.costo ?? b?.costo ?? 0),
           };
         });
       }
-      return allArticulos;
     }
-
     return allArticulos;
   }, [
-    categoriaSeleccionada, agrupSelView, agrupacionSeleccionada, todoGroupId,
+    categoriaSeleccionada, agrupacionSeleccionada, todoGroupId,
     idsSinAgrup, baseById, agrupaciones, allArticulos, excludedIds
   ]);
 
-  // Filtro con defer para tecleo suave
+  // Filtro con defer para tecleo suave (👈 MOVIDO ARRIBA DE BLOQUES)
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
     if (!filtroDefer) return articulosAMostrar;
@@ -376,10 +443,10 @@ export default function TablaArticulos({
     );
   }, [articulosAMostrar, filtroDefer]);
 
-  /* --------- construcción de bloques y filas "planas" --------- */
+  // ---- agrupación por cabeceras (categoría > subrubro) ----
   const bloques = useMemo(() => {
     const byCat = new Map();
-    for (const a of articulosFiltrados) {
+    for (const a of (articulosFiltrados || [])) {
       const cat = getDisplayCategoria(a) || 'Sin categoría';
       const sr = getDisplaySubrubro(a) || 'Sin subrubro';
       if (!byCat.has(cat)) byCat.set(cat, new Map());
@@ -393,69 +460,26 @@ export default function TablaArticulos({
     }));
   }, [articulosFiltrados]);
 
-  // ordenamiento
-  const [sortBy, setSortBy] = useState(null);
-  const [sortDir, setSortDir] = useState('asc');
-  const toggleSort = useCallback((k) => {
-    setSortBy((prev) => {
-      if (prev === k) { setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); return prev; }
-      setSortDir('asc');
-      return k;
-    });
-  }, []);
-  const getSortValue = useCallback((a) => {
-    const id = getId(a);
-    switch (sortBy) {
-      case 'codigo': return id;
-      case 'nombre': return a?.nombre ?? '';
-      case 'precio': return num(a?.precio);
-      case 'costo': return num(a?.costo);
-      case 'costoPct': {
-        const p = num(a?.precio), c = num(a?.costo);
-        return p > 0 ? (c / p) * 100 : -Infinity;
-      }
-      case 'objetivo': return num(objetivos[id]) || 0;
-      case 'sugerido': {
-        const obj = num(objetivos[id]) || 0;
-        const c = num(a?.costo);
-        const den = 100 - obj;
-        return den > 0 ? c * (100 / den) : Infinity;
-      }
-      case 'manual': return num(manuales[id]) || 0;
-      default: return null;
-    }
-  }, [sortBy, objetivos, manuales]);
-  const cmp = useCallback((a, b) => {
-    if (!sortBy) return 0;
-    const va = getSortValue(a), vb = getSortValue(b);
-    if (typeof va === 'string' || typeof vb === 'string') {
-      const r = String(va ?? '').localeCompare(String(vb ?? ''), 'es', { sensitivity: 'base', numeric: true });
-      return sortDir === 'asc' ? r : -r;
-    }
-    const na = Number(va ?? 0), nb = Number(vb ?? 0);
-    return sortDir === 'asc' ? na - nb : nb - na;
-  }, [sortBy, sortDir, getSortValue]);
-
-  // filas planas: headers + items
   const flatRows = useMemo(() => {
     const rows = [];
     for (const blq of bloques) {
-      for (const sr of blq.subrubros) {
-        const artsOrdenados = sr.arts.slice().sort(cmp);
+      for (const sr of blq.subrUbros || blq.subrubros) {
+        const srNorm = sr; // por compatibilidad si viene como subrUbros
+        const artsOrdenados = (srNorm.arts || sr.arts || []).slice().sort(cmp);
         rows.push({
           kind: 'header',
-          key: `H|${blq.categoria}|${sr.subrubro}`,
+          key: `H|${blq.categoria}|${srNorm.subrubro}`,
           categoria: blq.categoria,
-          subrubro: sr.subrubro,
+          subrubro: srNorm.subrubro,
           ids: artsOrdenados.map(getId),
         });
         for (const a of artsOrdenados) {
           const id = getId(a);
           rows.push({
             kind: 'item',
-            key: `I|${blq.categoria}|${sr.subrubro}|${id}`,
+            key: `I|${blq.categoria}|${srNorm.subrubro}|${id}`,
             categoria: blq.categoria,
-            subrubro: sr.subrubro,
+            subrubro: srNorm.subrubro,
             art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
           });
         }
@@ -464,18 +488,72 @@ export default function TablaArticulos({
     return rows;
   }, [bloques, cmp]);
 
-  const ventasMapFiltrado = useMemo(() => {
-    if (!filterIds) return ventasPorArticulo || new Map();
-    const out = new Map();
-    (ventasPorArticulo || new Map()).forEach((v, k) => {
-      if (filterIds.has(Number(k))) out.set(Number(k), v);
+  const idToIndex = useMemo(() => {
+    const m = new Map();
+    flatRows.forEach((r, i) => {
+      if (r?.kind === 'item') {
+        const id = Number(r?.art?.id);
+        if (Number.isFinite(id)) m.set(id, i);
+      }
     });
-    return out;
-  }, [ventasPorArticulo, filterIds]);
+    return m;
+  }, [flatRows]);
+
+  useEffect(() => {
+    const id = Number(jumpToArticleId);
+    if (!Number.isFinite(id)) return;
+    const path = findPath(categorias, id);
+    if (!path) return;
+
+    // expandir paneles
+    setExpandedRubro(path.rubroName);
+    setExpandedCatByRubro(prev => ({ ...prev, [path.rubroName]: path.catName }));
+
+    // scrolleo por índice si está en flatRows; si no, búsqueda por data-attr
+    const idx = idToIndex.get(id);
+    if (idx != null) {
+      setTimeout(() => listRef.current?.scrollToIndex(idx), 50);
+    } else {
+      const tryScroll = () => {
+        const el = document.querySelector(`[data-article-id="${id}"]`);
+        if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return true; }
+        return false;
+      };
+      let tries = 0;
+      const iv = setInterval(() => { if (tryScroll() || tries++ > 12) clearInterval(iv); }, 60);
+      return () => clearInterval(iv);
+    }
+  }, [jumpToArticleId, categorias, findPath, idToIndex]);
+
+  const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
+  useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
+
+  // Recibe por props: onMutateGroups (definido en ArticulosMain)
+  const afterMutation = useCallback((removedIds) => {
+    const ids = (removedIds || []).map(Number).filter(Number.isFinite);
+    if (!ids.length) { refetchLocal(); return; }
+    if (!agrupSelView?.id) { refetchLocal(); return; }
+    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
+    if (isTodo) { refetchLocal(); return; }
+
+    // ✅ mutación optimista centralizada
+    onMutateGroups?.({
+      type: 'remove',
+      groupId: Number(agrupSelView.id),
+      ids
+    });
+
+    // opcional: ping al backend sin bloquear
+    refetchLocal();
+  }, [agrupSelView, todoGroupId, onMutateGroups, refetchLocal]);
+
+  // ids visibles (solo items) — estable y sin loops
+  const handleVisibleIds = useCallback((ids) => {
+    onIdsVisibleChange?.(new Set(ids));
+  }, [onIdsVisibleChange]);
 
   // ====== layout tipo “tabla” con CSS grid
-  const gridTemplate = '120px 1fr 110px 110px 110px 110px 110px 120px 110px 80px';
-
+  const gridTemplate = '.3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr';
   const cellNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
   const ITEM_H = 44;
 
@@ -498,7 +576,7 @@ export default function TablaArticulos({
       const headerCat = row.categoria || 'Sin categoría';
       const headerSr = row.subrubro || 'Sin subrubro';
       return (
-        <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', background: '#fafafa', fontWeight: 600, borderTop: '1px solid #eee', padding: '4px 8px' }}>
+        <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', background: '#fafafa', fontWeight: 800, borderTop: '1px solid #eee', padding: '4px 8px' }}>
           <div style={{ gridColumn: '1 / -2' }}>{headerCat} - {headerSr}</div>
           <div style={{ gridColumn: '-2 / -1', justifySelf: 'end' }}>
             <SubrubroAccionesMenu
@@ -577,11 +655,6 @@ export default function TablaArticulos({
     );
   };
 
-  // ids visibles (solo items) — estable y sin loops
-  const handleVisibleIds = useCallback((ids) => {
-    onIdsVisibleChange?.(new Set(ids));
-  }, [onIdsVisibleChange]);
-
   return (
     <div className="tabla-articulos-container">
       <div style={{ height: 'calc(100vh - 220px)', width: '100%' }}>
@@ -604,7 +677,7 @@ export default function TablaArticulos({
               userSelect: 'none',
               alignItems: 'center',
               color: 'black',
-              fontSize: '1rem', 
+              fontSize: '1rem',
             }}
           >
             <div onClick={() => toggleSort('codigo')} style={{ cursor: 'pointer' }}>
@@ -641,6 +714,7 @@ export default function TablaArticulos({
           </p>
         ) : (
           <VirtualList
+            ref={listRef}
             rows={flatRows}
             rowHeight={ITEM_H}
             height={

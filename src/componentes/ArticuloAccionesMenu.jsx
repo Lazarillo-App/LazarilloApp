@@ -15,30 +15,47 @@ import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
 
+/** Normaliza una fila plana proveniente de maxi_articles */
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
   const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
   return {
     id,
     nombre: row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`,
+    // En DB ya está SWAP: categoria = subrubro Maxi, subrubro = rubro Maxi
     categoria: row?.categoria ?? raw?.categoria ?? raw?.rubro ?? 'Sin categoría',
     subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? 'Sin subrubro',
     precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
 };
+
+/** >>> Fallback local correcto: SUBRUBRO -> CATEGORÍAS -> ARTÍCULOS <<< */
 const buildTree = (flatList = []) => {
-  const cats = new Map();
+  // subrubro -> categoria -> articulos[]
+  const bySub = new Map();
+
   for (const a of flatList) {
-    if (!Number.isFinite(a.id)) continue;
-    const cat = a.categoria || 'Sin categoría';
-    const sr = a.subrubro || 'Sin subrubro';
-    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
-    const catObj = cats.get(cat);
-    let srObj = catObj.subrubros.find(s => s.nombre === sr);
-    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
-    srObj.articulos.push({ id: a.id, nombre: a.nombre, categoria: cat, subrubro: sr, precio: a.precio });
+    if (!Number.isFinite(a?.id)) continue;
+    const sub = a.subrubro || 'Sin subrubro';    // padre (rubro Maxi)
+    const cat = a.categoria || 'Sin categoría';  // hijo  (subrubro Maxi)
+
+    if (!bySub.has(sub)) bySub.set(sub, new Map());
+    const byCat = bySub.get(sub);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push({ id: a.id, nombre: a.nombre, precio: a.precio, categoria: cat, subrubro: sub });
   }
-  return Array.from(cats.values());
+
+  const tree = [];
+  for (const [subrubro, byCat] of bySub.entries()) {
+    const categorias = [];
+    for (const [categoria, articulos] of byCat.entries()) {
+      categorias.push({ categoria, articulos });
+    }
+    categorias.sort((a, b) => String(a.categoria).localeCompare(String(b.categoria), 'es', { sensitivity: 'base', numeric: true }));
+    tree.push({ subrubro, categorias });
+  }
+  tree.sort((a, b) => String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true }));
+  return tree;
 };
 
 function ArticuloAccionesMenu({
@@ -107,23 +124,15 @@ function ArticuloAccionesMenu({
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
-          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
+          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch {}
         }
-      } else {
-        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
-      }
-      if (fromId) {
         onMutateGroups?.({ type: 'move', fromId, toId, ids: [idNum], baseById });
       } else {
-        onMutateGroups?.({
-          type: 'append',
-          groupId: toId,
-          articulos: [{ id: idNum }],
-          baseById
-        });
+        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
+        onMutateGroups?.({ type: 'append', groupId: toId, articulos: [{ id: idNum }], baseById });
       }
+
       notify?.(`Artículo #${idNum} movido`, 'success');
-      onMutateGroups?.({ type: 'move', fromId: fromId ?? null, toId, ids: [idNum] });
       onAfterMutation?.([idNum]);
       onRefetch?.();
     } catch (e) {
@@ -179,6 +188,7 @@ function ArticuloAccionesMenu({
     return (art) => assigned.has(String(art?.id));
   }, [agrupaciones]);
 
+  // Fallback: cargo plano desde DB y lo transformo en SUBRUBRO->CATEGORÍAS->ART.
   useEffect(() => {
     if (!openCrearAgr) return;
     if (haveExternalTree || loading || loadedRef.current) return;

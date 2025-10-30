@@ -13,7 +13,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
-
+import { emitGroupsChanged } from "@/utils/groupsBus";
 import {
   actualizarAgrupacion,
   eliminarAgrupacion,
@@ -21,6 +21,38 @@ import {
 } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
+
+// 🆕 helper puro (sin hooks) para agrupar y ordenar
+function groupBySubrubroCategoria(items = []) {
+  const bySub = new Map(); // subrubro -> (categoria -> artículos[])
+  items.forEach((a) => {
+    const sub = String(a?.subrubro || "Sin subrubro");
+    const cat = String(a?.categoria || "Sin categoría");
+    if (!bySub.has(sub)) bySub.set(sub, new Map());
+    const byCat = bySub.get(sub);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push(a);
+  });
+
+  const out = [];
+  for (const [subrubro, byCat] of bySub.entries()) {
+    const categorias = [];
+    for (const [categoria, articulos] of byCat.entries()) {
+      articulos.sort((x, y) =>
+        String(x?.nombre || "").localeCompare(String(y?.nombre || ""), "es", { sensitivity: "base", numeric: true })
+      );
+      categorias.push({ categoria, articulos });
+    }
+    categorias.sort((a, b) =>
+      String(a.categoria).localeCompare(String(b.categoria), "es", { sensitivity: "base", numeric: true })
+    );
+    out.push({ subrubro, categorias });
+  }
+  out.sort((a, b) =>
+    String(a.subrubro).localeCompare(String(b.subrubro), "es", { sensitivity: "base", numeric: true })
+  );
+  return out;
+}
 
 const AgrupacionesList = ({
   onMutateGroups,
@@ -60,7 +92,10 @@ const AgrupacionesList = ({
       setEditing((s) => ({ ...s, [g.id]: false }));
       return;
     }
+    // mutación local para que el select/tabla se actualicen al instante
+    onMutateGroups?.({ type: 'create', id: g.id, nombre: nuevo, articulos: g.articulos || [] });
     await actualizarAgrupacion(g.id, { nombre: nuevo });
+    emitGroupsChanged("rename", { groupId: g.id });
     setEditing((s) => ({ ...s, [g.id]: false }));
     onActualizar?.();
   };
@@ -69,6 +104,7 @@ const AgrupacionesList = ({
     if (g.id === todoGroupId) return; // no borrar TODO
     if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
     await eliminarAgrupacion(g.id);
+    emitGroupsChanged("delete", { groupId: g.id });
     onActualizar?.();
   };
 
@@ -91,7 +127,17 @@ const AgrupacionesList = ({
 
   const removeOne = async (groupId, articuloId) => {
     onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] }); // instantáneo
-    try { await quitarArticulo(groupId, articuloId); } catch { }
+    try {
+      await quitarArticulo(groupId, articuloId);
+      emitGroupsChanged("remove", { groupId, ids: [articuloId] });
+    } catch {
+      // opcional: revertir mutación optimista si quisieras
+    }
+    setSelectedByGroup(prev => {
+      const set = new Set(prev[groupId] || []);
+      set.delete(Number(articuloId));
+      return { ...prev, [groupId]: set };
+    });
   };
 
   const moveSelected = async (fromId) => {
@@ -99,13 +145,13 @@ const AgrupacionesList = ({
     const toId = Number(targetByGroup[fromId]);
     if (!ids.length || !Number.isFinite(toId) || toId === fromId) return;
 
-    onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById: null }); // si querés pasar baseById real, hacelo desde el padre
+    onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById: null });
     try {
       await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+      emitGroupsChanged("move", { fromId, toId, ids });
     } catch { }
     setSelectedByGroup((s) => ({ ...s, [fromId]: new Set() }));
   };
-
 
   // 🔒 Bloqueo para "Agregar": bloquea artículos asignados a cualquier agrupación (incluida la actual), excepto TODO.
   const isArticuloBloqueadoForAppend = useMemo(() => {
@@ -135,7 +181,8 @@ const AgrupacionesList = ({
           todosArticulos={todosArticulos || []}
           loading={!!loading}
           isArticuloBloqueado={isArticuloBloqueadoForAppend}
-          onAppended={async () => {
+          onAppended={async (groupId, _n, articulos) => {
+            onMutateGroups?.({ type: 'append', groupId, articulos, baseById: null });
             setAppendForGroup(null);
             await onActualizar?.();
           }}
@@ -151,6 +198,9 @@ const AgrupacionesList = ({
           const allIds = itemsForGroup.map((a) => Number(a.id)).filter(Boolean);
           const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
+
+          // 🆕 agrupado listo para render
+          const grouped = groupBySubrubroCategoria(itemsForGroup);
 
           return (
             <Accordion key={g.id} disableGutters>
@@ -250,45 +300,85 @@ const AgrupacionesList = ({
                       <Typography variant="body2">Seleccionar todos</Typography>
                     </Box>
 
-                    {/* Lista de artículos del grupo */}
-                    <Stack spacing={0.5}>
-                      {itemsForGroup.map((a) => {
-                        const checked = selected.has(Number(a.id));
-                        return (
-                          <Box
-                            key={a.id}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={{ px: 1, py: 0.5, borderRadius: 1, "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" } }}
+                    {/* 🆕 Lista agrupada: Rubro (subrubro) -> Subrubro/Categoría (categoría) -> artículos */}
+                    <Stack spacing={1.5}>
+                      {grouped.map((sub) => (
+                        <Box key={`sub-${sub.subrubro}`}>
+                          {/* Encabezado SUBRubro */}
+                          {/* <Typography
+                            variant="subtitle2"
+                            sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: ".2px", opacity: 0.85, mb: 0.5 }}
                           >
-                            <Box display="flex" alignItems="center" gap={1}>
-                              <Checkbox
-                                size="small"
-                                checked={checked}
-                                onChange={() => toggleArticle(g.id, Number(a.id))}
-                                disabled={isTodo}
-                              />
-                              <Typography variant="body2">
-                                {a.nombre} <Typography component="span" variant="caption" color="text.secondary">#{a.id}</Typography>
+                            {sub.subrubro}
+                          </Typography> */}
+                           {/* Encabezado Rubro */}
+                          {/* <Typography
+                            variant="subtitle2"
+                            sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5 }}
+                            title={cat.categoria}
+                          >
+                            {cat.categoria}
+                          </Typography> */}
+                          <Divider sx={{ mb: 1 }} />
+                          {sub.categorias.map((cat) => (
+                            <Box key={`cat-${sub.subrubro}-${cat.categoria}`} sx={{ ml: 1.5, mb: 1 }}>
+                              {/* Encabezado Subrubro/Categoría */}
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5 }}
+                                title={`${sub.subrubro} - ${cat.categoria}`}
+                              >
+                                {cat.categoria} - {sub.subrubro}
                               </Typography>
+
+                              {/* Artículos */}
+                              <Stack spacing={0.5}>
+                                {cat.articulos.map((a) => {
+                                  const checked = selected.has(Number(a.id));
+                                  return (
+                                    <Box
+                                      key={a.id}
+                                      display="flex"
+                                      alignItems="center"
+                                      justifyContent="space-between"
+                                      sx={{ px: 1, py: 0.5, borderRadius: 1, "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" } }}
+                                    >
+                                      <Box display="flex" alignItems="center" gap={1}>
+                                        <Checkbox
+                                          size="small"
+                                          checked={checked}
+                                          onChange={() => toggleArticle(g.id, Number(a.id))}
+                                          disabled={isTodo}
+                                        />
+                                        <Typography variant="body2" noWrap title={a?.nombre}>
+                                          {a.nombre}{" "}
+                                          <Typography component="span" variant="caption" color="text.secondary">
+                                            #{a.id}
+                                          </Typography>
+                                        </Typography>
+                                      </Box>
+
+                                      <Tooltip title={isTodo ? "No se quita desde Sin Agrupación" : "Quitar del grupo"}>
+                                        <span>
+                                          <Button
+                                            size="small"
+                                            color="error"
+                                            variant="text"
+                                            onClick={() => removeOne(g.id, Number(a.id))}
+                                            disabled={isTodo}
+                                          >
+                                            Quitar
+                                          </Button>
+                                        </span>
+                                      </Tooltip>
+                                    </Box>
+                                  );
+                                })}
+                              </Stack>
                             </Box>
-                            <Tooltip title={isTodo ? "No se quita desde Sin Agrupación" : "Quitar del grupo"}>
-                              <span>
-                                <Button
-                                  size="small"
-                                  color="error"
-                                  variant="text"
-                                  onClick={() => removeOne(g.id, Number(a.id))}
-                                  disabled={isTodo}
-                                >
-                                  Quitar
-                                </Button>
-                              </span>
-                            </Tooltip>
-                          </Box>
-                        );
-                      })}
+                          ))}
+                        </Box>
+                      ))}
                     </Stack>
                   </CardContent>
 
@@ -337,4 +427,3 @@ const AgrupacionesList = ({
 };
 
 export default AgrupacionesList;
-

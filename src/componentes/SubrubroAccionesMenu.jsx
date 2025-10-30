@@ -15,7 +15,7 @@ import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
 
-// Helpers para árbol local (fallback)
+// ---- helpers del fallback local (mismo buildTree que arriba)
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
   const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
@@ -27,19 +27,29 @@ const mapRowToArticle = (row) => {
     precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
 };
+
 const buildTree = (flatList = []) => {
-  const cats = new Map();
+  const bySub = new Map();
   for (const a of flatList) {
-    if (!Number.isFinite(a.id)) continue;
+    if (!Number.isFinite(a?.id)) continue;
+    const sub = a.subrubro || 'Sin subrubro';
     const cat = a.categoria || 'Sin categoría';
-    const sr = a.subrubro || 'Sin subrubro';
-    if (!cats.has(cat)) cats.set(cat, { id: cat, nombre: cat, subrubros: [] });
-    const catObj = cats.get(cat);
-    let srObj = catObj.subrubros.find(s => s.nombre === sr);
-    if (!srObj) { srObj = { nombre: sr, articulos: [] }; catObj.subrubros.push(srObj); }
-    srObj.articulos.push({ id: a.id, nombre: a.nombre, categoria: cat, subrubro: sr, precio: a.precio });
+    if (!bySub.has(sub)) bySub.set(sub, new Map());
+    const byCat = bySub.get(sub);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push({ id: a.id, nombre: a.nombre, precio: a.precio, categoria: cat, subrubro: sub });
   }
-  return Array.from(cats.values());
+  const tree = [];
+  for (const [subrubro, byCat] of bySub.entries()) {
+    const categorias = [];
+    for (const [categoria, articulos] of byCat.entries()) {
+      categorias.push({ categoria, articulos });
+    }
+    categorias.sort((a, b) => String(a.categoria).localeCompare(String(b.categoria), 'es', { sensitivity: 'base', numeric: true }));
+    tree.push({ subrubro, categorias });
+  }
+  tree.sort((a, b) => String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true }));
+  return tree;
 };
 
 function SubrubroAccionesMenu({
@@ -55,7 +65,8 @@ function SubrubroAccionesMenu({
   todosArticulos = [],
   loading = false,
   onMutateGroups,
-  baseById
+  baseById,
+  articuloIdsArray
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -104,26 +115,20 @@ function SubrubroAccionesMenu({
 
     setIsMoving(true);
     try {
-if (fromId) {
-        onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
-      } else {
-        onMutateGroups?.({
-          type: 'append',
-          groupId: toId,
-          articulos: ids.map(id => ({ id })),
-          baseById
-        });
-      }
       if (fromId) {
+        onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
         try {
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
-          for (const id of ids) { try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch { } }
+          for (const id of ids) { try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {} }
         }
       } else {
         await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
+        onMutateGroups?.({ type: 'append', groupId: toId, articulos: ids.map(id => ({ id })), baseById });
       }
+
+      onMutateGroups?.({ type: 'move', fromId, toId, ids: articuloIdsArray, baseById });
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
       onAfterMutation?.(ids);
       onRefetch?.();
@@ -155,8 +160,9 @@ if (fromId) {
 
     if (!currentGroupId) return;
     try {
-      onMutateGroups?.({ type: 'remove', groupId: Number(currentGroupId), ids: [ids] });
-      for (const id of ids) { try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch { } }
+      // FIX: enviar ids (no [ids])
+      onMutateGroups?.({ type: 'remove', groupId: Number(currentGroupId), ids });
+      for (const id of ids) { try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch {} }
       notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
       onAfterMutation?.(ids);
       onRefetch?.();
@@ -179,6 +185,7 @@ if (fromId) {
     return (art) => assigned.has(String(art?.id));
   }, [agrupaciones]);
 
+  // Fallback local: cargo plano desde DB y lo convierto al árbol esperado
   useEffect(() => {
     if (!openCrearAgr) return;
     if (haveExternalTree || loading || loadedRef.current) return;
@@ -261,6 +268,7 @@ if (fromId) {
           </Button>
         </DialogActions>
       </Dialog>
+
       <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
@@ -271,16 +279,14 @@ if (fromId) {
         isArticuloBloqueado={isArticuloBloqueadoCreate}
         onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
-          // avisa al padre (Tabla/Sidebar) para seleccionar/limpiar filtros, etc.
           onGroupCreated?.(nombreCreado, newId, articulos);
-          // mutación optimista centralizada
           onMutateGroups?.({
             type: 'create',
             id: Number(newId),
             nombre: nombreCreado,
             articulos: Array.isArray(articulos) ? articulos : [],
           });
-          onRefetch?.(); // valida con backend sin bloquear la UI
+          onRefetch?.();
         }}
         existingNames={(agrupaciones || []).map(g => String(g?.nombre || '')).filter(Boolean)}
       />
@@ -289,3 +295,4 @@ if (fromId) {
 }
 
 export default React.memo(SubrubroAccionesMenu);
+

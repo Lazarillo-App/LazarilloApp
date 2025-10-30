@@ -12,11 +12,11 @@ const normalizarOpciones = (opciones = []) =>
 
 export default function Buscador({
   value = "",
-  setFiltroBusqueda,        // (texto) => void
-  opciones = [],            // Array<string | {id, label, value}>
+  opciones = [],
   placeholder = "Buscar artículos…",
   autoFocus = false,
   maxSugerencias = 10,
+  onPick,
 }) {
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
@@ -45,25 +45,17 @@ export default function Buscador({
       const hay = o.label.toLowerCase().includes(t);
       if (!hay) continue;
       (o.label.toLowerCase().startsWith(t) ? starts : contains).push(o);
-      if (starts.length + contains.length >= 200) break; // cap de seguridad
+      if (starts.length + contains.length >= 200) break; 
     }
     return [...starts, ...contains].slice(0, maxSugerencias);
   }, [opts, q, maxSugerencias]);
 
-  // Debounce al informar el filtro hacia arriba
-  useEffect(() => {
-    const id = setTimeout(() => setFiltroBusqueda?.(q), 120);
-    return () => clearTimeout(id);
-  }, [q, setFiltroBusqueda]);
-
   const seleccionar = (opt) => {
     setQ(opt.label);
-    // ⬇️ Enviar el "valor crudo" (código), si existe.
-    setFiltroBusqueda?.(opt.value ?? opt.label);
+    onPick?.(opt)           
     setOpen(false);
     setCursor(-1);
   };
-
 
   const onKeyDown = (e) => {
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
