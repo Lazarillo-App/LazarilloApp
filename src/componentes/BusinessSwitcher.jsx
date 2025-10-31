@@ -1,6 +1,37 @@
 // src/componentes/BusinessSwitcher.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { setCssVarsFromPalette } from "@/tema/paletteBoot";
+
+function brandingToPalette(br = {}) {
+  // ajustá las claves si tu API devuelve otros nombres
+  return {
+    "color-primary": br.primary || "#111111",
+    "color-secondary": br.secondary || "#6366f1",
+    "color-bg": br.background || "#ffffff",
+    "color-surface": "#ffffff",
+    "color-border": "#e5e7eb",
+    "color-fg": br.fg || br.primary || "#1f2937"
+  };
+}
+
+async function fetchBusinessBranding(businessId) {
+  // intenta traer branding/paleta del negocio
+  // adapta al endpoint real que tengas:
+  // const { branding } = await BusinessesAPI.get(businessId);
+  // return branding || {};
+  try {
+    const full = await BusinessesAPI.get?.(businessId);
+    return full?.branding || {};
+  } catch { return {}; }
+}
+
+function applyAndPersistPalette(palette, userId) {
+  setCssVarsFromPalette(palette);
+  localStorage.setItem("bizTheme", JSON.stringify(palette));
+  if (userId) localStorage.setItem(`bizTheme:${userId}`, JSON.stringify(palette));
+  window.dispatchEvent(new Event("palette:changed"));
+}
 
 export default function BusinessSwitcher({ onSwitched, className = '' }) {
   const [items, setItems] = useState([]);
@@ -9,6 +40,9 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
   const ref = useRef(null);
 
   const hasToken = useMemo(() => !!localStorage.getItem('token'), []);
+  const userId = useMemo(() => {
+    try { return (JSON.parse(localStorage.getItem('user') || 'null') || {}).id } catch { return null }
+  }, []);
 
   useEffect(() => {
     if (!hasToken) return;
@@ -21,6 +55,9 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
       if (!activeId && list[0]?.id) {
         localStorage.setItem('activeBusinessId', list[0].id);
         setActiveId(list[0].id);
+        const branding = await fetchBusinessBranding(list[0].id);
+        applyAndPersistPalette(brandingToPalette(branding), userId);
+        window.dispatchEvent(new Event('business:switched'));
       }
     })().catch(console.error);
     return () => { alive = false; };
@@ -41,7 +78,10 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
       localStorage.setItem('activeBusinessId', id);
       setActiveId(id);
       setOpen(false);
+      const branding = await fetchBusinessBranding(id);
+      applyAndPersistPalette(brandingToPalette(branding), userId);
       onSwitched?.(id);
+      window.dispatchEvent(new CustomEvent('business:switched'));
     } catch (e) {
       console.error(e);
       alert('No se pudo cambiar de local');
@@ -52,7 +92,7 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
 
   return (
     <div className={`biz-avatar ${className}`} ref={ref}>
-      <button className="btn" onClick={() => setOpen(v=>!v)} title="Cambiar de local">
+      <button className="btn" onClick={() => setOpen(v => !v)} title="Cambiar de local">
         <div className="circle">{(current?.name || 'L')[0]?.toUpperCase()}</div>
       </button>
 
@@ -63,7 +103,7 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
             {items.map(it => (
               <button
                 key={it.id}
-                className={`item ${String(it.id)===String(activeId) ? 'active' : ''}`}
+                className={`item ${String(it.id) === String(activeId) ? 'active' : ''}`}
                 onClick={() => pick(it.id)}
               >
                 <span className="dot" />

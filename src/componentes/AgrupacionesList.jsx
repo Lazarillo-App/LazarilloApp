@@ -1,6 +1,6 @@
 /* eslint-disable no-empty */
 // src/componentes/AgrupacionesList.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   Box, Card, CardContent, CardActions, Accordion, AccordionSummary, AccordionDetails,
   Typography, IconButton, TextField, Button, Checkbox, FormControl, InputLabel,
@@ -80,6 +80,18 @@ const AgrupacionesList = ({
     () => [...(agrupaciones || [])].sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''))),
     [agrupaciones]
   );
+
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpanded = useCallback((id, isOpen) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (isOpen) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // helper para evitar que clicks en botones/textfields abran/cierren el acordeón
+  const stop = useCallback((e) => { e.stopPropagation(); }, []);
 
   const startEdit = (g) => {
     setEditing((s) => ({ ...s, [g.id]: true }));
@@ -195,15 +207,21 @@ const AgrupacionesList = ({
           const isTodo = g.id === todoGroupId;
           const selected = selectedByGroup[g.id] || new Set();
           const itemsForGroup = isTodo ? (todoVirtualArticulos || []) : (g.articulos || []);
+          const isOpen = expanded.has(g.id);
           const allIds = itemsForGroup.map((a) => Number(a.id)).filter(Boolean);
           const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
 
-          // 🆕 agrupado listo para render
-          const grouped = groupBySubrubroCategoria(itemsForGroup);
+          const grouped = isOpen ? groupBySubrubroCategoria(itemsForGroup) : [];
 
           return (
-            <Accordion key={g.id} disableGutters>
+            <Accordion
+              key={g.id}
+              disableGutters
+              expanded={isOpen}
+              onChange={(_, open) => toggleExpanded(g.id, open)}
+              TransitionProps={{ unmountOnExit: true }}   // ⬅️ desmonta al cerrar
+            >
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2} flexWrap="wrap">
                   <Box display="flex" alignItems="center" gap={1}>
@@ -219,6 +237,9 @@ const AgrupacionesList = ({
                         value={nameDraft[g.id] ?? ""}
                         onChange={(e) => setNameDraft((s) => ({ ...s, [g.id]: e.target.value }))}
                         onKeyDown={(e) => e.key === "Enter" && saveName(g)}
+                        onClick={stop}
+                        onMouseDown={stop}
+                        onFocus={stop}
                       />
                     )}
                   </Box>
@@ -228,14 +249,14 @@ const AgrupacionesList = ({
                       <>
                         <Tooltip title={isTodo ? "No se puede renombrar/borrar Sin Agrupación" : "Renombrar"}>
                           <span>
-                            <IconButton onClick={() => startEdit(g)} disabled={isTodo}>
+                            <IconButton onClick={(e) => { stop(e); startEdit(g); }} disabled={isTodo}>
                               <EditIcon />
                             </IconButton>
                           </span>
                         </Tooltip>
                         <Tooltip title={isTodo ? "No se puede eliminar Sin Agrupación" : "Eliminar"}>
                           <span>
-                            <IconButton color="error" onClick={() => removeGroup(g)} disabled={isTodo}>
+                            <IconButton color="error" onClick={(e) => { stop(e); removeGroup(g); }} disabled={isTodo}>
                               <DeleteIcon />
                             </IconButton>
                           </span>
@@ -245,7 +266,7 @@ const AgrupacionesList = ({
                             <Button
                               size="small"
                               variant="contained"
-                              onClick={() => !isTodo && setAppendForGroup({ id: g.id, nombre: g.nombre })}
+                              onClick={(e) => { stop(e); !isTodo && setAppendForGroup({ id: g.id, nombre: g.nombre }); }}
                               disabled={isTodo}
                               sx={{ ml: 1, textTransform: "none" }}
                             >
@@ -255,7 +276,7 @@ const AgrupacionesList = ({
                         </Tooltip>
                         <IconButton
                           size="small"
-                          onClick={(e) => { e.stopPropagation(); onSetFavorite?.(g.id); }}
+                          onClick={(e) => { stop(e); onSetFavorite?.(g.id); }}
                           title={
                             Number(favoriteGroupId) === Number(g.id)
                               ? 'Quitar como favorita'
@@ -269,7 +290,7 @@ const AgrupacionesList = ({
                         </IconButton>
                       </>
                     ) : (
-                      <IconButton color="primary" onClick={() => saveName(g)}>
+                      <IconButton color="primary" onClick={(e) => { stop(e); saveName(g); }}>
                         <SaveIcon />
                       </IconButton>
                     )}
@@ -311,7 +332,7 @@ const AgrupacionesList = ({
                           >
                             {sub.subrubro}
                           </Typography> */}
-                           {/* Encabezado Rubro */}
+                          {/* Encabezado Rubro */}
                           {/* <Typography
                             variant="subtitle2"
                             sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5 }}

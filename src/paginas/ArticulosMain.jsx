@@ -37,7 +37,19 @@ export default function ArticulosMain(props) {
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
   const [jumpToId, setJumpToId] = useState(null);
 
-  // --- TODO virtual / info compartida con Tabla (debe ir arriba) ---
+  // --- Refetch centralizado de agrupaciones ---
+  const refetchAgrupaciones = React.useCallback(async () => {
+    try {
+      const list = await obtenerAgrupaciones();
+      if (Array.isArray(list)) setAgrupaciones(list);
+      return list || [];
+    } catch {
+      setAgrupaciones([]);
+      return [];
+    }
+  }, []);
+
+  // --- TODO virtual / info compartida con Tabla ---
   const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
   const todoIdRef = useRef(null);
   useEffect(() => { todoIdRef.current = todoInfo?.todoGroupId ?? null; }, [todoInfo?.todoGroupId]);
@@ -85,36 +97,44 @@ export default function ArticulosMain(props) {
     });
 
     // opcional: confirmar con backend (no bloquea UI)
-    try { await props.refetchAgrupaciones?.(); } catch {}
+    try { await refetchAgrupaciones(); } catch {}
     try { emitGroupsChanged(action.type, { action }); } catch {}
-  }, [props.refetchAgrupaciones]);
+  }, [refetchAgrupaciones]);
 
-  // Escuchar cambios de agrupaciones (rename/delete/append/move) desde otras vistas/pestañas
+  // 🔄 Refetch al montar y cuando cambia el negocio / reloadKey
+  useEffect(() => {
+    if (!activeBizId) return;
+    refetchAgrupaciones();
+  }, [activeBizId, reloadKey, refetchAgrupaciones]);
+
+  // Escuchar cambios de agrupaciones desde otras vistas/pestañas
   useEffect(() => {
     let canceled = false;
     const off = onGroupsChanged(async () => {
-      try {
-        let list = null;
-        if (typeof props.refetchAgrupaciones === "function") {
-          list = await props.refetchAgrupaciones();
-        } else {
-          list = await obtenerAgrupaciones();
-        }
-        if (!canceled && Array.isArray(list)) {
-          setAgrupaciones(list);
-          setCategoriaSeleccionada(null);
-          setAgrupacionSeleccionada((prev) => {
-            if (!prev) return prev;
-            // si estás en TODO (virtual), no tocar
-            if (Number(prev.id) === Number(todoIdRef.current)) return prev;
-            const updated = list.find(g => Number(g.id) === Number(prev.id));
-            return updated || prev;
-          });
-        }
-      } catch {}
+      const list = await refetchAgrupaciones();
+      if (canceled || !Array.isArray(list)) return;
+      // mantener selección coherente
+      setCategoriaSeleccionada(null);
+      setAgrupacionSeleccionada((prev) => {
+        if (!prev) return prev;
+        if (Number(prev.id) === Number(todoIdRef.current)) return prev; // si estás en TODO, no tocar
+        const updated = list.find(g => Number(g.id) === Number(prev.id));
+        return updated || prev;
+      });
     });
     return () => { off?.(); canceled = true; };
-  }, [props.refetchAgrupaciones]);
+  }, [refetchAgrupaciones]);
+
+  // Forzar reloadKey al loguear o cambiar de local (dispara refetch)
+  useEffect(() => {
+    const bump = () => setReloadKey(k => k + 1);
+    window.addEventListener('auth:login', bump);
+    window.addEventListener('business:switched', bump);
+    return () => {
+      window.removeEventListener('auth:login', bump);
+      window.removeEventListener('business:switched', bump);
+    };
+  }, []);
 
   const handleJump = useCallback((opt) => {
     const id = Number(opt?.id ?? opt?.value);
@@ -149,7 +169,7 @@ export default function ArticulosMain(props) {
     setAgrupaciones(props.agrupaciones || []);
   }, [props.agrupaciones]);
 
-  // eventos del negocio (switch/sync)
+  // eventos del negocio (switch/sync visibles en otras partes)
   useEffect(() => {
     const onBizSwitched = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
     const onBizSynced = () => setReloadKey((k) => k + 1);
@@ -182,7 +202,7 @@ export default function ArticulosMain(props) {
     setActiveIds(new Set());
   }, [agrupacionSeleccionada]);
 
-  // sync active biz id
+  // sync active biz id (por si algún otro dispara el evento)
   useEffect(() => {
     const sync = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
     sync();
@@ -525,7 +545,7 @@ export default function ArticulosMain(props) {
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}
-            refetchAgrupaciones={props.refetchAgrupaciones}
+            refetchAgrupaciones={refetchAgrupaciones}
             fechaDesdeProp={periodo.from}
             fechaHastaProp={periodo.to}
             ventasPorArticulo={ventasMapFiltrado}

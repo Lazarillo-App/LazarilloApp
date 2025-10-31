@@ -1,7 +1,10 @@
+/* eslint-disable no-empty */
 // src/paginas/Login.jsx
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
+import { setCssVarsFromPalette } from '../tema/paletteBoot';
 import '../css/Auth.css';
 
 export default function Login() {
@@ -12,12 +15,39 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
+  const brandingToPalette = (br = {}) => ({
+    "color-primary": br.primary || "#111111",
+    "color-secondary": br.secondary || "#6366f1",
+    "color-bg": br.background || "#ffffff",
+    "color-surface": "#ffffff",
+    "color-border": "#e5e7eb",
+    "color-fg": br.fg || br.primary || "#1f2937",
+  });
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr('');
     setBusy(true);
     try {
       const data = await AuthAPI.login(email.trim(), password);
+
+      try {
+        const uid = (data?.user?.id) || (JSON.parse(localStorage.getItem('user') || 'null') || {}).id;
+        const resp = await BusinessesAPI.listMine();
+        const list = Array.isArray(resp) ? resp : (resp?.items || []);
+        const active = localStorage.getItem('activeBusinessId') || list[0]?.id;
+        if (active) {
+          localStorage.setItem('activeBusinessId', active);
+          // si tenés endpoint para branding del negocio, traelo:
+          const full = await BusinessesAPI.get?.(active);
+          const branding = full?.branding || {};
+          const pal = brandingToPalette(branding);
+          setCssVarsFromPalette(pal);
+          localStorage.setItem('bizTheme', JSON.stringify(pal));
+          if (uid) localStorage.setItem(`bizTheme:${uid}`, JSON.stringify(pal));
+          window.dispatchEvent(new Event('palette:changed'));
+        }
+      } catch { }
 
       // rol desde la respuesta o desde localStorage
       const role =

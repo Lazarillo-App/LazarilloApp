@@ -378,7 +378,7 @@ export default function AgrupacionCreateModal({
 
             {isCreate && (
               <TextField
-                label="Nombre del Rubro"
+                label="Nombre de la Agrupación"
                 value={nombreRubro}
                 onChange={(e) => setNombreRubro(e.target.value)}
                 fullWidth

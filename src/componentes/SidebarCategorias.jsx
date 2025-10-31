@@ -157,9 +157,10 @@ function SidebarCategorias({
   const countArticulosSub = (sub) => {
     let total = 0;
     const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
-    for (const c of cats) total = (Array.isArray(c?.articulos) ? c.articulos.length : 0);
+    for (const c of cats) total += (Array.isArray(c?.articulos) ? c.articulos.length : 0); // ⬅️ suma
     return total;
   };
+
 
   return (
     <div className="sidebar">
