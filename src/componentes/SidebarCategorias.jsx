@@ -1,5 +1,8 @@
+/* eslint-disable no-empty */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, {
+  useEffect, useMemo, useCallback, useRef, useState
+} from 'react';
 import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import '../css/SidebarCategorias.css';
 
@@ -23,7 +26,8 @@ function SidebarCategorias({
   todoGroupId,
   visibleIds,
   onManualPick,
-  listMode = 'by-subrubro', //  ⬅️  "by-subrubro" | "by-categoria"
+  listMode = 'by-subrubro', // "by-subrubro" | "by-categoria"
+  onReorderSubrubros,       // (nuevoOrden: string[]) => void (opcional)
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
@@ -55,7 +59,6 @@ function SidebarCategorias({
     if (!agrupacionSeleccionada) return;
     const g = (agrupaciones || []).find(x => Number(x?.id) === Number(agrupacionSeleccionada.id));
     if (!g) return;
-    // Actualizá solo si cambió algo visible (nombre o cantidad de artículos)
     const changed =
       g.nombre !== agrupacionSeleccionada.nombre ||
       (Array.isArray(g.articulos) ? g.articulos.length : 0) !==
@@ -63,9 +66,9 @@ function SidebarCategorias({
     if (changed) setAgrupacionSeleccionada?.(g);
   }, [agrupaciones]);
 
-
-  // === Construcciones según modo =================================================
-  // MODO SUBRUBRO: usamos directamente el árbol { subrubro, categorias:[...] } que viene del backend
+  /* ==========================
+     Árbol según modo
+  ========================== */
   const treeBySubrubro = useMemo(() => {
     if (!activeIds) return categoriasSafe;
     const pruned = categoriasSafe
@@ -83,14 +86,13 @@ function SidebarCategorias({
       .filter(sub => {
         let total = 0;
         for (const c of (sub?.categorias || [])) {
-          total = (Array.isArray(c?.articulos) ? c.articulos.length : 0);
+          total += (Array.isArray(c?.articulos) ? c.articulos.length : 0);
         }
         return total > 0;
       });
     return pruned;
   }, [categoriasSafe, activeIds]);
 
-  // MODO CATEGORÍA: re-agrupamos por categoría y fabricamos un "subrubro" sintético con nombre = categoría
   const treeByCategoria = useMemo(() => {
     const catMap = new Map(); // categoria -> artículos
     for (const sub of categoriasSafe) {
@@ -107,7 +109,7 @@ function SidebarCategorias({
       const filtered = !activeIds ? arts : arts.filter(a => activeIds.has(Number(a?.id)));
       if (filtered.length > 0) {
         out.push({
-          subrubro: catName, // <- mostramos esto
+          subrubro: catName,
           categorias: [{ categoria: catName, articulos: filtered }],
         });
       }
@@ -118,10 +120,98 @@ function SidebarCategorias({
     return out;
   }, [categoriasSafe, activeIds]);
 
-  // Elegimos el árbol según listMode
-  const listaParaMostrar = listMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
+  const listaBase = listMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
 
-  // Si lo seleccionado deja de existir, limpiar
+  /* ==========================
+     Orden personalizado (DnD)
+  ========================== */
+  const storageKey = useMemo(() => {
+    const groupKey = agrupacionSeleccionada?.id != null ? String(agrupacionSeleccionada.id) : 'global';
+    return `lazarillo:sidebarOrder:${listMode}:${groupKey}`;
+  }, [listMode, agrupacionSeleccionada?.id]);
+
+  // Estado con el orden de claves (subrubro string)
+  const [order, setOrder] = useState([]);
+
+  // Lee/normaliza orden cuando cambian datos base
+  useEffect(() => {
+    const actualKeys = (listaBase || []).map(s => String(s?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')));
+    let saved = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) saved = JSON.parse(raw);
+    } catch {}
+    // merge: mantener orden guardado y agregar nuevas claves al final
+    const merged = [
+      ...saved.filter(k => actualKeys.includes(k)),
+      ...actualKeys.filter(k => !saved.includes(k)),
+    ];
+    // limpiar claves obsoletas
+    const finalKeys = merged.filter(k => actualKeys.includes(k));
+    setOrder(finalKeys);
+  }, [listaBase, storageKey, listMode]);
+
+  const saveOrder = useCallback((keys) => {
+    try { localStorage.setItem(storageKey, JSON.stringify(keys)); } catch {}
+    onReorderSubrubros?.(keys);
+  }, [storageKey, onReorderSubrubros]);
+
+  // Aplica el orden a la lista mostrada
+  const listaParaMostrar = useMemo(() => {
+    if (!order?.length) return listaBase;
+    const map = new Map((listaBase || []).map(s => [String(s?.subrubro || ''), s]));
+    return order.map(k => map.get(k)).filter(Boolean);
+  }, [listaBase, order]);
+
+  /* ===== HTML5 Drag & Drop ===== */
+  const dragIndexRef = useRef(null);
+  const overIndexRef = useRef(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const handleDragStart = useCallback((idx) => (e) => {
+    dragIndexRef.current = idx;
+    overIndexRef.current = idx;
+    setDragOverIndex(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    // setData para Firefox
+    e.dataTransfer.setData('text/plain', String(idx));
+  }, []);
+
+  const handleDragOver = useCallback((idx) => (e) => {
+    e.preventDefault();
+    if (overIndexRef.current !== idx) {
+      overIndexRef.current = idx;
+      setDragOverIndex(idx);
+    }
+  }, []);
+
+  const handleDrop = useCallback((idx) => (e) => {
+    e.preventDefault();
+    const from = dragIndexRef.current;
+    const to = idx;
+    dragIndexRef.current = null;
+    overIndexRef.current = null;
+    setDragOverIndex(null);
+    if (from == null || to == null || from === to) return;
+
+    setOrder((prev) => {
+      const next = prev.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      saveOrder(next);
+      return next;
+    });
+  }, [saveOrder]);
+
+  const handleDragEnd = useCallback(() => {
+    dragIndexRef.current = null;
+    overIndexRef.current = null;
+    setDragOverIndex(null);
+  }, []);
+
+  /* ==========================
+     UX: selección & contadores
+  ========================== */
   useEffect(() => {
     if (!categoriaSeleccionada) return;
     const stillVisible = listaParaMostrar.some(
@@ -131,7 +221,6 @@ function SidebarCategorias({
     if (!stillVisible) setCategoriaSeleccionada?.(null);
   }, [listaParaMostrar, categoriaSeleccionada, setCategoriaSeleccionada]);
 
-  // Handlers
   const handleAgrupacionChange = useCallback((event) => {
     const idSel = Number(event.target.value);
     const seleccionada =
@@ -157,10 +246,9 @@ function SidebarCategorias({
   const countArticulosSub = (sub) => {
     let total = 0;
     const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
-    for (const c of cats) total += (Array.isArray(c?.articulos) ? c.articulos.length : 0); // ⬅️ suma
+    for (const c of cats) total += (Array.isArray(c?.articulos) ? c.articulos.length : 0);
     return total;
   };
-
 
   return (
     <div className="sidebar">
@@ -184,26 +272,65 @@ function SidebarCategorias({
         </Select>
       </FormControl>
 
-      <h3>{listMode === 'by-categoria' ? 'Categorías' : 'Subrubros'}</h3>
-      <ul>
-        {loading && <li style={{ opacity: 0.7 }}>
-          Cargando {listMode === 'by-categoria' ? 'categorías' : 'subrubros'}…
-        </li>}
-        {!loading && listaParaMostrar.map((sub) => {
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {listMode === 'by-categoria' ? 'Categorías' : 'Subrubros'}
+        <small style={{ opacity: .6, fontWeight: 500 }}></small>
+      </h3>
+
+      <ul className="sidebar-draggable-list">
+        {loading && (
+          <li style={{ opacity: 0.7 }}>
+            Cargando {listMode === 'by-categoria' ? 'categorías' : 'subrubros'}…
+          </li>
+        )}
+
+        {!loading && listaParaMostrar.map((sub, idx) => {
+          const keyStr = String(sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro'));
           const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
+          const dragOver = dragOverIndex === idx;
+
           return (
             <li
-              key={sub?.subrubro || (listMode === 'by-categoria' ? '(sin categoría)' : '(sin subrubro)')}
-              onClick={() => handleCategoriaClick(sub)}
-              className={active ? 'categoria-activa' : undefined}
-              style={{ display: 'flex', justifyContent: 'space-between', gap: 8, cursor: 'pointer' }}
-              title={sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')}
+              key={keyStr}
+              className={[
+                active ? 'categoria-activa' : '',
+                dragOver ? 'drag-over' : '',
+              ].join(' ').trim()}
+              title={keyStr}
+              draggable
+              onDragStart={handleDragStart(idx)}
+              onDragOver={handleDragOver(idx)}
+              onDrop={handleDrop(idx)}
+              onDragEnd={handleDragEnd}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                alignItems: 'center',
+                cursor: 'grab',
+                userSelect: 'none',
+              }}
             >
-              <span><span className="icono" /> {sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')}</span>
-              <small style={{ opacity: 0.65 }}>{countArticulosSub(sub)}</small>
+              <span
+                onClick={() => handleCategoriaClick(sub)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}
+              >
+                <span className="icono" />
+                {keyStr}
+              </span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <small style={{ opacity: 0.65 }}>{countArticulosSub(sub)}</small>
+                <span
+                  aria-hidden
+                  title="Arrastrar para reordenar"
+                  style={{ opacity: .6, cursor: 'grab' }}
+                ></span>
+              </div>
             </li>
           );
         })}
+
         {!loading && listaParaMostrar.length === 0 && (
           <li style={{ opacity: 0.7 }}>No hay artículos en esta agrupación.</li>
         )}
@@ -213,4 +340,3 @@ function SidebarCategorias({
 }
 
 export default React.memo(SidebarCategorias);
-

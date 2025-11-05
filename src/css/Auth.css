@@ -54,3 +54,161 @@
 .page-wrap{ padding: 16px; display:grid; gap:16px; }
 .w-full{ width:100%; }
 
+/* ====== Layout mejorado ====== */
+.auth-shell{
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--color-primary,#3b82f6) 12%, transparent), transparent),
+    linear-gradient(180deg, #f8fafc, #ffffff);
+}
+@media (min-width: 960px){
+  .auth-shell{ grid-template-columns: 1fr 1fr; }
+}
+
+/* Panel izquierdo (ilustración + bullets) */
+.auth-aside{
+  display: none;
+  padding: clamp(16px, 3vw, 32px);
+}
+@media (min-width: 960px){ .auth-aside{ display: block; } }
+
+.auth-aside-inner{
+  height: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--color-border,#e5e7eb);
+  background: var(--color-surface,#fff);
+  padding: clamp(16px, 2.4vw, 28px);
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 12px;
+}
+
+.auth-brand{
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: .2px;
+  color: var(--color-fg,#0f172a);
+  display: flex; align-items:center; gap: 8px;
+}
+.brand-dot{
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--color-primary,#3b82f6);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  display: inline-block;
+}
+.auth-aside-title{
+  margin: 0;
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 800;
+  color: #1f2937;
+}
+.auth-bullets{
+  margin: 4px 0 0; padding-left: 16px; color:#4b5563;
+  display: grid; gap: 4px; font-size: 14px;
+}
+.auth-illus{
+  align-self: end;
+  height: 240px;
+  border-radius: 12px;
+  display: grid;             
+  place-items: center;        
+  padding: 12px; 
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--color-primary) 38%, #fff), #fff);
+  border: 1px solid var(--color-border,#e5e7eb);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.auth-cta-row{
+  margin: 10px 0 2px;
+  text-align: center;
+}
+
+/* Panel derecho */
+.auth-main{
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 4vw, 32px);
+   background:
+    linear-gradient( color-mix(in srgb, var(--color-primary) 38%, #fff), #fff);
+}
+
+/* Card más compacta */
+.auth-card.compact{
+  width: 100%;
+  max-width: 420px;            /* más angosta para evitar “pozos” */
+  padding: 16px 16px;          /* menos padding vertical */
+  gap: 10px;
+}
+.auth-head{ margin-bottom: 2px; }
+.auth-foot.compact-foot{ margin-top: 8px; }
+
+/* Inputs y feedback */
+.input-with-action{
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+}
+.ghost-btn{
+  border: 0; background: transparent; font-weight: 700; cursor: pointer;
+  color: color-mix(in srgb, var(--color-primary,#3b82f6) 90%, #000);
+}
+.input-error{ border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgb(239 68 68 / 10%) inset; }
+.field-hint{ font-size: 12px; margin-top: 4px; color:#64748b; }
+.field-hint.error{ color:#b91c1c; }
+
+/* Password meter */
+.pw-meter{
+  display: grid; grid-template-columns: 1fr 1fr 1fr auto; align-items: center;
+  gap: 6px; margin: 6px 0 8px;
+}
+.pw-bar{
+  height: 6px; border-radius: 999px;
+  background: #e5e7eb; transition: background .2s;
+}
+.pw-bar.on{ background: color-mix(in srgb, var(--color-primary,#3b82f6) 80%, #9bd); }
+.pw-label{ font-size: 12px; color:#475569; }
+
+/* Botón principal */
+.btn.w-full{
+  margin-top: 6px;
+  height: 42px;
+  font-weight: 800;
+}
+
+/* Animación de trazo */
+.ad-anim-line {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: ad-draw 1.2s ease-in-out 0.4s forwards;
+}
+@keyframes ad-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Punta de flecha con fade-in */
+.ad-anim-head {
+  opacity: 0;
+  animation: ad-fade 0.4s ease 1.2s forwards;
+}
+@keyframes ad-fade {
+  to { opacity: 1; }
+}
+
+/* Fade-up para nodos */
+.ad-fade-up {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: ad-up 0.5s ease forwards;
+}
+@keyframes ad-up {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade-in simple para labels */
+.ad-fade-in {
+  opacity: 0;
+  animation: ad-fade 0.5s ease forwards;
+}
+

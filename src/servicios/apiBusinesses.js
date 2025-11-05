@@ -14,18 +14,15 @@ export function authHeaders(
   const bid = localStorage.getItem('activeBusinessId') || '';
   const user = getUser();
 
-  // Base headers
   const h = { ...extra };
 
-  // Content-Type sólo si NO es FormData
+  // ⛔ NO setear Content-Type si es FormData (dejar que el browser ponga boundary)
   if (!opts.isFormData) {
     h['Content-Type'] = 'application/json';
   }
 
-  // bearer
   if (opts.includeAuth && token) h.Authorization = `Bearer ${token}`;
 
-  // X-Business-Id (nunca para app_admin)
   if (opts.withBusinessId && bid && user?.role !== 'app_admin') {
     h['X-Business-Id'] = bid;
   }
@@ -46,7 +43,6 @@ export async function http(
 ) {
   const user = getUser();
 
-  // ⛔ cortafuego: si es app_admin no dispares requests “scoped” a negocio
   const p = String(path || '');
   const isBusinessScoped =
     withBusinessId ||
@@ -60,7 +56,6 @@ export async function http(
   const url = `${BASE}${p}`;
   const isAuthPublic = p.startsWith('/auth/');
 
-  // Soporte FormData (subidas)
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
   const hdrs = isAuthPublic
@@ -74,7 +69,6 @@ export async function http(
     res = await fetch(url, {
       method,
       headers: hdrs,
-      // Si es FormData, NO stringify
       body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
       signal: ctrl.signal,
     });
@@ -90,7 +84,6 @@ export async function http(
     throw new Error('invalid_token');
   }
 
-  // Si el response es vacío (204/no-content) devolvemos null
   const text = await res.text().catch(() => '');
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { }
@@ -134,41 +127,41 @@ export const BusinessesAPI = {
   remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
 
+  // ---- Logo: subir archivo (FormData) ----
+  uploadLogo: (id, file) => {
+    const fd = new FormData();
+    // el backend acepta 'file', 'logo' o 'image'
+    fd.append('file', file, file?.name || 'logo.png');
+
+    return http(`/businesses/${id}/logo`, {
+      method: 'POST',
+      body: fd,
+      withBusinessId: false,   // usamos :id en la ruta; no forzar header
+      headers: undefined,      // ¡no metas Content-Type!
+    });
+  },
+
+  // ---- Branding URL directa del logo (PATCH /:id/branding-url) ----
+  setBrandingUrl: (id, logo_url) =>
+    http(`/businesses/${id}/branding-url`, {
+      method: 'PATCH',
+      body: { logo_url },
+      withBusinessId: false,
+    }),
+
   // Credenciales / estado de Maxi
   maxiStatus: (id) =>
     http(`/businesses/${id}/maxi-status`, { withBusinessId: false }),
   maxiSave: (id, creds) =>
     http(`/businesses/${id}/maxi-credentials`, { method: 'POST', body: creds, withBusinessId: false }),
 
-  // ----- LOGO / IMÁGENES -----
-  // Subir archivo (multipart)
-  uploadLogo: (id, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    // Si el backend espera 'logo' o 'image' en vez de 'file', ajustalo aquí.
-    return http(`/businesses/${id}/logo`, {
-      method: 'POST',
-      body: fd,
-      withBusinessId: false,       // típicamente admin-only
-      headers: {},                 // no toques Content-Type (lo maneja el browser)
-    });
-  },
-  // Guardar una URL de logo directamente
-  setLogoUrl: (id, url) =>
-    http(`/businesses/${id}`, {
-      method: 'PATCH',
-      withBusinessId: false,
-      body: { props: { branding: { logo_url: url } } },
-    }),
-
   // ----- DATOS (con X-Business-Id)
-  // Catálogo
   articlesFromDB: (id) =>
     http(`/businesses/${id}/articles`, { withBusinessId: true }),
   articlesTree: (id) =>
     http(`/businesses/${id}/articles/tree`, { withBusinessId: true }),
 
-  // Ventas: backend /api/ventas (peek & series)
+  // Ventas
   salesSummary: (_id, { from, to, limit = 500 }) =>
     http(`/ventas?peek=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`,
       { withBusinessId: true }),
@@ -178,7 +171,7 @@ export const BusinessesAPI = {
   topArticulos: (_id, { limit = 200 } = {}) =>
     http(`/ventas/summary?limit=${limit}`, { withBusinessId: true }),
 
-  // Negocio activo (bootstrap después de login / F5)
+  // Negocio activo
   getActive: () => http('/businesses/active', { withBusinessId: false }),
   setActive: (businessId) =>
     http('/businesses/active', {
@@ -187,27 +180,29 @@ export const BusinessesAPI = {
       withBusinessId: false
     }),
 
-  // Sync legacy
   syncNow: (id, body) =>
     http(`/businesses/${id}/sync`, {
       method: 'POST',
       body,
-      withBusinessId: false,                // no uses el del localStorage
-      headers: { 'X-Business-Id': String(id) }, // fuerza el del negocio clickeado
+      withBusinessId: true,
     }),
 
-  // Ventas (nuevo sync): ?mode=auto | backfill_30d (+ opcional X-Maxi-Token)
   syncSales: (id, { mode = 'auto', dryrun = false, from, to, maxiToken } = {}) => {
     const qs = new URLSearchParams();
     if (mode) qs.set('mode', mode);
     if (dryrun) qs.set('dryrun', '1');
     if (from) qs.set('from', from);
     if (to) qs.set('to', to);
-    const extraHeaders = maxiToken ? { 'X-Maxi-Token': maxiToken } : undefined;
+
+    const extraHeaders = {
+      'X-Business-Id': String(id),
+      ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
+    };
+
     return http(`/businesses/${id}/sync-sales?${qs.toString()}`, {
       method: 'POST',
-      withBusinessId: true,       // envía X-Business-Id
-      headers: extraHeaders,      // opcional para forzar token Maxi
+      withBusinessId: false,
+      headers: extraHeaders,
     });
   },
 };
@@ -217,7 +212,6 @@ export const AdminAPI = {
   overview: () => http('/admin/overview', { withBusinessId: false }),
   users: ({ q = '', page = 1, pageSize = 20 } = {}) =>
     http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`, { withBusinessId: false }),
-  // alias para no romper llamadas viejas
   listUsers: (args) => AdminAPI.users(args),
   updateUser: (id, body) =>
     http(`/admin/users/${id}`, { method: 'PATCH', body, withBusinessId: false }),

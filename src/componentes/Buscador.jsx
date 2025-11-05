@@ -1,148 +1,98 @@
 // src/componentes/Buscador.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const normalizarOpciones = (opciones = []) =>
-  (Array.isArray(opciones) ? opciones : [])
-    .map((o) =>
-      typeof o === "string"
-        ? { id: o, label: o, value: o }
-        : { id: o.id ?? o.value ?? o.label, label: o.label ?? String(o.value ?? ""), value: o.value ?? o.label }
-    )
-    .filter((o) => o.label?.trim().length);
+/* eslint-disable no-unused-vars */
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import TextField from '@mui/material/TextField';
+import Autocomplete from '@mui/material/Autocomplete';
 
 export default function Buscador({
-  value = "",
+  value = '',
   opciones = [],
-  placeholder = "Buscar artículos…",
-  autoFocus = false,
-  maxSugerencias = 10,
-  onPick,
+  placeholder = 'Buscar…',
+  onPick,                 
+  onChange,               
+  clearOnFocus = false,   
+  clearOnPick = true,     
+  autoFocusAfterPick = false, 
 }) {
-  const inputRef = useRef(null);
-  const wrapRef = useRef(null);
+  const [inputValue, setInputValue] = useState(value || '');
   const [open, setOpen] = useState(false);
-  const [cursor, setCursor] = useState(-1);
-  const [q, setQ] = useState(value ?? "");
+  const inputRef = useRef(null);
 
-  useEffect(() => setQ(value ?? ""), [value]);
-
-  // Cierra al hacer click fuera
+  // sync con valor controlado del padre
   useEffect(() => {
-    const onClick = (e) => {
-      if (!wrapRef.current?.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+    setInputValue(value || '');
+  }, [value]);
 
-  const opts = useMemo(() => normalizarOpciones(opciones), [opciones]);
-  const sugerencias = useMemo(() => {
-    const t = (q || "").trim().toLowerCase();
-    if (!t) return opts.slice(0, maxSugerencias);
-    const starts = [];
-    const contains = [];
-    for (const o of opts) {
-      const hay = o.label.toLowerCase().includes(t);
-      if (!hay) continue;
-      (o.label.toLowerCase().startsWith(t) ? starts : contains).push(o);
-      if (starts.length + contains.length >= 200) break; 
+  const handleFocus = useCallback(() => {
+    if (clearOnFocus && inputValue) {
+      setInputValue('');
+      onChange?.('');
     }
-    return [...starts, ...contains].slice(0, maxSugerencias);
-  }, [opts, q, maxSugerencias]);
+    setOpen(true);
+  }, [clearOnFocus, inputValue, onChange]);
 
-  const seleccionar = (opt) => {
-    setQ(opt.label);
-    onPick?.(opt)           
-    setOpen(false);
-    setCursor(-1);
-  };
+  const handleInputChange = useCallback((_, newVal, reason) => {
+    // reason: 'input' | 'reset' | 'clear'
+    setInputValue(newVal);
+    onChange?.(newVal);
+    if (!open) setOpen(true);
+  }, [onChange, open]);
 
-  const onKeyDown = (e) => {
-    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      setOpen(true);
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setCursor((c) => Math.min(c + 1, sugerencias.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setCursor((c) => Math.max(c - 1, 0));
-    } else if (e.key === "Enter") {
-      if (open && cursor >= 0 && cursor < sugerencias.length) {
-        e.preventDefault();
-        seleccionar(sugerencias[cursor]);
+  const handleChange = useCallback((_, opt, reason) => {
+    // reason: 'selectOption' | 'clear' | ...
+    if (reason === 'selectOption' && opt) {
+      onPick?.(opt);
+      if (clearOnPick) {
+        setInputValue('');
+        onChange?.('');
       }
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setCursor(-1);
+      // Mantener abierto y con foco para nueva búsqueda
+      if (autoFocusAfterPick) {
+        setOpen(true);
+        // re-enfocar en el próximo tick para evitar cerrar por blur del Autocomplete
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            // mostrar menú abierto aun con string vacío
+            setOpen(true);
+          }
+        }, 0);
+      } else {
+        setOpen(false);
+      }
     }
-  };
+  }, [onPick, onChange, clearOnPick, autoFocusAfterPick]);
+
+  const opts = useMemo(() => opciones || [], [opciones]);
 
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
-      <input
-        ref={inputRef}
-        type="text"
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        style={{
-          width: "250px",
-          height: "25px",
-          padding: "6px 10px",
-          borderRadius: 6,
-          border: "1px solid #c9d1d9",
-          outline: "none",
-        }}
-      />
-
-      {open && sugerencias.length > 0 && (
-        <div
-          role="listbox"
-          style={{
-            position: "absolute",
-            zIndex: 20,
-            top: "calc(100% + 4px)",
-            left: 0,
-            right: 0,
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: 6,
-            boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
-            maxHeight: 280,
-            overflowY: "auto",
-          }}
-        >
-          {sugerencias.map((s, i) => (
-            <div
-              key={s.id ?? s.label}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => seleccionar(s)}
-              onMouseEnter={() => setCursor(i)}
-              role="option"
-              aria-selected={i === cursor}
-              style={{
-                width: "60%",
-                height: "30px",
-                padding: "8px 10px",
-                cursor: "pointer",
-                background: i === cursor ? "#f3f4f6" : "transparent",
-                textOverflow: "ellipsis",
-              }}
-              title={s.label}
-            >
-              {s.label}
-            </div>
-          ))}
-        </div>
+    <Autocomplete
+      freeSolo
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={(_, reason) => {
+        // evitá cerrar por select para poder seguir buscando
+        if (reason === 'selectOption' && autoFocusAfterPick) return;
+        setOpen(false);
+      }}
+      options={opts}
+      getOptionLabel={(o) => String(o?.label ?? o ?? '')}
+      isOptionEqualToValue={(a, b) => String(a?.id ?? a?.value ?? a) === String(b?.id ?? b?.value ?? b)}
+      inputValue={inputValue}
+      onInputChange={handleInputChange}
+      onChange={handleChange}
+      clearOnEscape
+      forcePopupIcon={false}
+      filterSelectedOptions
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          inputRef={inputRef}
+          placeholder={placeholder}
+          size="small"
+          onFocus={handleFocus}
+        />
       )}
-    </div>
+    />
   );
 }

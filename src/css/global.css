@@ -1,84 +1,85 @@
 /* src/css/global.css */
 * {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-    height: 100%;
+  height: 100%;
+  margin: 0px;
 }
 
 a {
-    text-decoration: none;
-    color: inherit;
+  text-decoration: none;
+  color: inherit;
 }
 
 .hidden {
-    display: none !important;
+  display: none !important;
 }
 
 /* Botón base */
 .btn {
-    border: 0;
-    border-radius: 8px;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: filter .15s ease, transform .02s ease;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: filter .15s ease, transform .02s ease;
 }
 
 /* Jerarquías */
 .btn-brand {
-    /* CTA principal (guardar, crear…) */
-    background: var(--color-primary);
-    color: var(--on-primary);
+  /* CTA principal (guardar, crear…) */
+  background: var(--color-primary);
+  color: var(--on-primary);
 }
 
 .btn-brand:hover {
-    filter: brightness(.96);
+  filter: brightness(.96);
 }
 
 .btn-accent {
-    /* acciones destacadas “secundarias” → usamos secondary */
-    background: var(--color-secondary);
-    color: var(--on-secondary);
+  /* acciones destacadas “secundarias” → usamos secondary */
+  background: var(--color-secondary);
+  color: var(--on-secondary);
 }
 
 .btn-accent:hover {
-    filter: brightness(.96);
+  filter: brightness(.96);
 }
 
 .btn-ghost {
-    /* alternativa neutra */
-    background: var(--color-surface);
-    color: var(--color-fg);
-    border: 1px solid var(--color-border);
+  /* alternativa neutra */
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
 }
 
 .btn-ghost:hover {
-    background: color-mix(in srgb, var(--color-secondary) 10%, var(--color-surface));
+  background: color-mix(in srgb, var(--color-secondary) 10%, var(--color-surface));
 }
 
 .btn-danger {
-    background: var(--color-error);
-    color: #fff;
+  background: var(--color-error);
+  color: #fff;
 }
 
 .btn-danger:hover {
-    filter: brightness(.96);
+  filter: brightness(.96);
 }
 
 /* Tamaños opcionales */
 .btn-sm {
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: .92rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: .92rem;
 }
 
 .btn-lg {
-    padding: 10px 16px;
-    border-radius: 10px;
-    font-size: 1.02rem;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 1.02rem;
 }
 
 /* ===========================
@@ -92,37 +93,81 @@ a {
   --font-small: clamp(12px, 0.8vw + 8px, 14px);
   --font-h6: clamp(14px, 1.1vw + 10px, 18px);
 }
-body { font-size: var(--font-base); }
+
+body {
+  font-size: var(--font-base);
+}
 
 /* Encabezados livianos en pantallas chicas */
-h1, h2, h3 { line-height: 1.25; }
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+}
 
 /* 2) Tabla: permitir cortes y reducir paddings */
-table { table-layout: auto; }
-thead th, tbody td {
-  white-space: normal;       /* permite wraps */
-  word-break: break-word;    /* fuerza corte si es muy largo */
+table {
+  table-layout: auto;
+}
+
+thead th,
+tbody td {
+  white-space: normal;
+  /* permite wraps */
+  word-break: break-word;
+  /* fuerza corte si es muy largo */
+}
+
+@media (min-width: 1536px) {
+  .css-hhdjsd-MuiContainer-root {
+    max-width: 100%;
+  }
 }
 
 /* 3) Breakpoint grande → más compacto */
 @media (max-width: 1200px) {
-  :root { --sidebar-width: 260px; }
-  thead th { padding: 8px 10px; }
-  tbody td { padding: 8px 10px; }
+  :root {
+    --sidebar-width: 260px;
+  }
+
+  thead th {
+    padding: 8px 10px;
+  }
+
+  tbody td {
+    padding: 8px 10px;
+  }
 }
 
 /* 4) <= 992px: baja leve de fuentes/espaciado */
 @media (max-width: 992px) {
-  thead th { font-size: 0.95rem; }
-  tbody td { font-size: 0.92rem; }
-  .sidebar li span { font-size: 0.9rem; }
-  .filtros-container { gap: 10px 12px; }
-  input[type="number"] { width: 64px; padding: 4px 6px; }
+  thead th {
+    font-size: 0.95rem;
+  }
+
+  tbody td {
+    font-size: 0.92rem;
+  }
+
+  .sidebar li span {
+    font-size: 0.9rem;
+  }
+
+  .filtros-container {
+    gap: 10px 12px;
+  }
+
+  input[type="number"] {
+    width: 64px;
+    padding: 4px 6px;
+  }
 }
 
 /* 5) <= 900px: apilar columnas (sidebar arriba, tabla abajo) */
 @media (max-width: 900px) {
-  :root { --sidebar-width: 100%; }
+  :root {
+    --sidebar-width: 100%;
+  }
 
   /* Apilado */
   .articulos-layout {
@@ -141,40 +186,95 @@ thead th, tbody td {
   }
 
   /* Select/encabezados más compactos */
-  .agrupaciones-select { gap: 4px; margin-bottom: 8px; }
-  .sidebar li { padding: 8px 10px; }
-  .sidebar li span { font-size: 0.88rem; }
+  .agrupaciones-select {
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .sidebar li {
+    padding: 8px 10px;
+  }
+
+  .sidebar li span {
+    font-size: 0.88rem;
+  }
 
   /* Tabla más densa */
-  thead th { font-size: 0.9rem; padding: 6px 8px; }
-  tbody td { font-size: 0.88rem; padding: 6px 8px; }
-  .rubro-row td { font-size: 0.95rem; }
+  thead th {
+    font-size: 0.9rem;
+    padding: 6px 8px;
+  }
+
+  tbody td {
+    font-size: 0.88rem;
+    padding: 6px 8px;
+  }
+
+  .rubro-row td {
+    font-size: 0.95rem;
+  }
 
   /* Filtros: una sola columna si no entra */
-  .filtros-container { gap: 8px 10px; }
-  .filtros-fechas { gap: 8px; margin-left: 0; }
+  .filtros-container {
+    gap: 8px 10px;
+  }
+
+  .filtros-fechas {
+    gap: 8px;
+    margin-left: 0;
+  }
 }
 
 /* 6) <= 768px: aún más compacto + navbar */
 @media (max-width: 768px) {
-  :root { --navbar-height: 64px; }
-  .MuiAppBar-root { height: var(--navbar-height); padding: 0 12px; }
-  .nav-link { padding: 6px 8px; }
+  :root {
+    --navbar-height: 64px;
+  }
+
+  .MuiAppBar-root {
+    height: var(--navbar-height);
+    padding: 0 12px;
+  }
+
+  .nav-link {
+    padding: 6px 8px;
+  }
 
   /* Inputs más chicos */
-  input[type="number"] { width: 60px; }
+  input[type="number"] {
+    width: 60px;
+  }
 
   /* Celdas: reducir altura mínima */
-  tbody td { line-height: 1.25; }
+  tbody td {
+    line-height: 1.25;
+  }
 }
 
 /* 7) <= 600px: mínimos razonables */
 @media (max-width: 600px) {
-  thead th { font-size: 0.86rem; padding: 6px; }
-  tbody td { font-size: 0.84rem; padding: 6px; }
-  .sidebar h2 { font-size: 1rem; }
+  thead th {
+    font-size: 0.86rem;
+    padding: 6px;
+  }
+
+  tbody td {
+    font-size: 0.84rem;
+    padding: 6px;
+  }
+
+  .sidebar h2 {
+    font-size: 1rem;
+  }
 
   /* Botones compactos */
-  .btn { padding: 6px 10px; border-radius: 6px; }
-  .btn-sm { font-size: 0.86rem; padding: 5px 8px; }
+  .btn {
+    padding: 6px 10px;
+    border-radius: 6px;
+  }
+
+  .btn-sm {
+    font-size: 0.86rem;
+    padding: 5px 8px;
+  }
 }

@@ -117,7 +117,7 @@ export const brandingToPalette = (br = {}) => ({
   surface: DEFAULTS.surface,
   border: DEFAULTS.border,
   fg: br.fg ? coerceHex(br.fg, DEFAULTS.fg)
-            : bestOn(coerceHex(br.background, DEFAULTS.bg)),
+    : bestOn(coerceHex(br.background, DEFAULTS.bg)),
   hover: undefined,
   font: safeStr(br.font, DEFAULTS.font),
   logo_url: br.logo_url ?? null,
@@ -176,6 +176,18 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     if (persist) persistPalette(cleaned, biz);
   };
 
+  // ★ helper: refrescar desde backend y cachear
+  const refreshFromBackend = async (id) => {
+    try {
+      const biz = await BusinessesAPI.get(id);
+      const br = biz?.props?.branding || biz?.branding || null;
+      if (br) setPaletteForBiz(brandingToPalette(br), { persist: true, biz: id });
+      else setPaletteForBiz(DEFAULTS, { persist: true, biz: id });
+    } catch {
+      setPaletteForBiz(DEFAULTS, { persist: true, biz: id });
+    }
+  };
+
   // 2) cuando cambia activeBizId (prop o LS), cargar cache o backend
   useEffect(() => {
     const nextId = String(activeBizId || getActiveBizId() || '');
@@ -195,20 +207,11 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     } catch { }
 
     // luego backend
-    (async () => {
-      try {
-        const biz = await BusinessesAPI.get(nextId);
-        const br = biz?.props?.branding || biz?.branding || null;
-        if (br) setPaletteForBiz(brandingToPalette(br), { persist: true, biz: nextId });
-        else setPaletteForBiz(DEFAULTS, { persist: true, biz: nextId });
-      } catch {
-        setPaletteForBiz(DEFAULTS, { persist: true, biz: nextId });
-      }
-    })();
+    refreshFromBackend(nextId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBizId]);
 
-  // 3) eventos globales: switched / branding-updated / logout
+  // 3) eventos globales
   useEffect(() => {
     const onSwitch = () => {
       const id = getActiveBizId();
@@ -224,22 +227,51 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
         if (cached) { setBizId(id); setPaletteForBiz(cached, { persist: false, biz: id }); return; }
       } catch { }
 
-      (async () => {
-        try {
-          const biz = await BusinessesAPI.get(id);
-          const br = biz?.props?.branding || biz?.branding || null;
-          if (br) { setBizId(id); setPaletteForBiz(brandingToPalette(br), { persist: true, biz: id }); }
-        } catch { }
-      })();
+      refreshFromBackend(id);
+    };
+
+    // ★ nuevo: cuando el modal guarda y dispara business:updated con el objeto actualizado
+    const onBusinessUpdated = (e) => {
+      const id = getActiveBizId();
+      if (!id || role === 'app_admin') return;
+
+      const updatedBiz = e?.detail?.business;
+      const updatedId = String(e?.detail?.id || updatedBiz?.id || '');
+      if (!updatedId || updatedId !== String(id)) return;
+
+      const br = updatedBiz?.props?.branding || updatedBiz?.branding || null;
+      if (br) {
+        setBizId(id);
+        setPaletteForBiz(brandingToPalette(br), { persist: true, biz: id });
+      } else {
+        // si no vino el branding en el evento, pedir al backend por las dudas
+        refreshFromBackend(id);
+      }
+    };
+
+    // ★ opcional: si disparás theme:updated para “forzar” lectura del cache actual
+    const onThemeUpdated = () => {
+      const id = getActiveBizId();
+      if (!id || role === 'app_admin') return;
+      try {
+        const cached = JSON.parse(localStorage.getItem(keyFor(id)) || 'null');
+        if (cached) { setBizId(id); setPaletteForBiz(cached, { persist: false, biz: id }); }
+      } catch { /* no-op */ }
     };
 
     const onBrandingUpdated = (e) => {
-      const id = getActiveBizId();
+      const id = String(getActiveBizId() || '');
       if (!id || role === 'app_admin') return;
+
+      const eventBizId = e?.detail?.id ? String(e.detail.id) : id;
       const br = e?.detail?.branding || null;
       if (!br) return;
-      setBizId(id);
-      setPaletteForBiz(brandingToPalette(br), { persist: true, biz: id });
+
+      // Si el update corresponde al activo, persistimos y espejamos
+      const pal = brandingToPalette(br);
+      setBizId(eventBizId);
+      setPaletteForBiz(pal, { persist: true, biz: eventBizId });
+      try { localStorage.setItem('bizTheme:current', JSON.stringify(pal)); } catch { }
     };
 
     const onLogout = () => {
@@ -250,10 +282,15 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     };
 
     window.addEventListener('business:switched', onSwitch);
+    window.addEventListener('business:updated', onBusinessUpdated);     // ★
+    window.addEventListener('theme:updated', onThemeUpdated);           // ★
     window.addEventListener('business:branding-updated', onBrandingUpdated);
     window.addEventListener('auth:logout', onLogout);
+
     return () => {
       window.removeEventListener('business:switched', onSwitch);
+      window.removeEventListener('business:updated', onBusinessUpdated);   // ★
+      window.removeEventListener('theme:updated', onThemeUpdated);         // ★
       window.removeEventListener('business:branding-updated', onBrandingUpdated);
       window.removeEventListener('auth:logout', onLogout);
     };

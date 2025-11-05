@@ -1,3 +1,4 @@
+// src/paginas/ArticulosMain.jsx
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -12,7 +13,8 @@ import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/g
 import { onGroupsChanged } from "@/utils/groupsBus";
 import { obtenerAgrupaciones } from "@/servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "@/utils/groupsBus";
-
+import { buildAgrupacionesIndex, findGroupsForQuery } from '@/servicios/agrupacionesIndex';
+import { Snackbar, Alert } from '@mui/material';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -33,9 +35,16 @@ export default function ArticulosMain(props) {
   const [favoriteGroupId, setFavoriteGroupId] = useState(
     Number(localStorage.getItem(FAV_KEY)) || null
   );
+
+  const agIndex = useMemo(() => buildAgrupacionesIndex(agrupaciones || []), [agrupaciones]);
+
+  // Aviso “el artículo se encuentra en…”
+  const [missMsg, setMissMsg] = useState('');
+  const [missOpen, setMissOpen] = useState(false);
+  const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
+
   const lastManualPickRef = useRef(0);
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
-  const [jumpToId, setJumpToId] = useState(null);
 
   // --- Refetch centralizado de agrupaciones ---
   const refetchAgrupaciones = React.useCallback(async () => {
@@ -97,8 +106,8 @@ export default function ArticulosMain(props) {
     });
 
     // opcional: confirmar con backend (no bloquea UI)
-    try { await refetchAgrupaciones(); } catch {}
-    try { emitGroupsChanged(action.type, { action }); } catch {}
+    try { await refetchAgrupaciones(); } catch { }
+    try { emitGroupsChanged(action.type, { action }); } catch { }
   }, [refetchAgrupaciones]);
 
   // 🔄 Refetch al montar y cuando cambia el negocio / reloadKey
@@ -134,22 +143,6 @@ export default function ArticulosMain(props) {
       window.removeEventListener('auth:login', bump);
       window.removeEventListener('business:switched', bump);
     };
-  }, []);
-
-  const handleJump = useCallback((opt) => {
-    const id = Number(opt?.id ?? opt?.value);
-    if (!Number.isFinite(id)) return;
-    const container = document.getElementById('tabla-scroll');
-    const row = document.querySelector(`[data-article-id="${id}"]`);
-    if (row && container) {
-      const top = row.offsetTop - container.clientHeight / 2;
-      container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-      row.classList.add('highlight-jump');
-      setTimeout(() => row.classList.remove('highlight-jump'), 1200);
-    } else {
-      setFiltroBusqueda(String(id));
-      setTimeout(() => setFiltroBusqueda(''), 400);
-    }
   }, []);
 
   // negocio activo
@@ -339,6 +332,53 @@ export default function ArticulosMain(props) {
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
+  // ------- Jump to row (scheduler  reintentos) -------
+  const [jumpToId, setJumpToId] = useState(null);
+  const pendingJumpRef = useRef(null);
+  const jumpTriesRef = useRef(0);
+
+  const tryJumpNow = useCallback((id) => {
+    const container = document.getElementById('tabla-scroll');
+    const row = document.querySelector(`[data-article-id="${id}"]`);
+    if (!container || !row) return false;
+    const top = row.offsetTop - container.clientHeight / 2;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    row.classList.add('highlight-jump');
+    setTimeout(() => row.classList.remove('highlight-jump'), 1400);
+    return true;
+  }, []);
+
+  const scheduleJump = useCallback((id) => {
+    pendingJumpRef.current = Number(id);
+    jumpTriesRef.current = 0;
+  }, []);
+
+  useEffect(() => {
+    const id = Number(pendingJumpRef.current);
+    if (!Number.isFinite(id) || id <= 0) return;
+
+    const tick = () => {
+      if (tryJumpNow(id)) {
+        pendingJumpRef.current = null;
+        return;
+      }
+      jumpTriesRef.current = 1;
+      if (jumpTriesRef.current > 25) {
+        pendingJumpRef.current = null;
+        return;
+      }
+      setTimeout(tick, 80);
+    };
+
+    const t0 = setTimeout(tick, 40);
+    return () => clearTimeout(t0);
+  }, [
+    categorias,
+    agrupacionSeleccionada,
+    reloadKey,
+    ventasMapFiltrado
+  ]);
+
   const todoGroupId = todoInfo?.todoGroupId || null;
 
   const nameById = useMemo(() => {
@@ -488,6 +528,9 @@ export default function ArticulosMain(props) {
     });
   }, []);
 
+  // ======= ⬇️ Resaltado permanente del artículo seleccionado
+  const [selectedArticleId, setSelectedArticleId] = useState(null);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
@@ -497,10 +540,37 @@ export default function ArticulosMain(props) {
           <div style={{ flex: 1, minWidth: 260 }}>
             <Buscador
               value={filtroBusqueda}
-              setFiltroBusqueda={setFiltroBusqueda}
+              clearOnFocus={true}
+              clearOnPick={true}
+              autoFocusAfterPick={false}
               opciones={opcionesGlobales}
               placeholder="Buscar por código o nombre…"
-              onPick={(opt) => setJumpToId(Number(opt.id))}
+              onPick={(opt) => {
+                const id = Number(opt?.id ?? opt?.value);
+                if (!Number.isFinite(id)) return;
+                const isVisibleHere = !visibleIds || visibleIds.has(id);
+                if (!isVisibleHere) {
+                  const setIds = agIndex.byArticleId.get(id) || new Set();
+                  const hereId = Number(agrupacionSeleccionada?.id);
+                  const names = Array.from(setIds)
+                    .filter(gid => !hereId || Number(gid) !== hereId)
+                    .map(gid => agIndex.groupNameById.get(gid) || `Agrupación #${gid}`);
+
+                  if (names.length) {
+                    const nombre = labelById.get(id) || `#${id}`;
+                    showMiss(`“${nombre}” se encuentra en: ${names.join(', ')}`);
+                  } else {
+                    const nombre = labelById.get(id) || `#${id}`;
+                    showMiss(`“${nombre}” no pertenece a esta agrupación.`);
+                  }
+                  setFiltroBusqueda('');
+                  return;
+                }
+                setSelectedArticleId(id);
+                setJumpToId(id);
+                scheduleJump(id);
+                setFiltroBusqueda('');
+              }}
             />
           </div>
         </div>
@@ -562,10 +632,22 @@ export default function ArticulosMain(props) {
             favoriteGroupId={favoriteGroupId}
             onSetFavorite={handleSetFavorite}
             jumpToArticleId={jumpToId}
+            selectedArticleId={selectedArticleId}
             onActualizar={() => setReloadKey(k => k + 1)}
           />
         </div>
       </div>
+      <Snackbar
+        open={missOpen}
+        autoHideDuration={3500}
+        onClose={() => setMissOpen(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setMissOpen(false)} severity="info" sx={{ width: '100%' }}>
+          {missMsg}
+        </Alert>
+      </Snackbar>
     </div>
+
   );
 }

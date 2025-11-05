@@ -1,9 +1,8 @@
-/* eslint-disable no-useless-catch */
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import React, { useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { setActiveBusiness } from "@/servicios/setActiveBusiness";
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
@@ -47,11 +46,9 @@ export default function Perfil() {
 
   const onSetActive = async (id) => {
     try {
-      await BusinessesAPI.select(id);
-      localStorage.setItem('activeBusinessId', id);
+      await setActiveBusiness(id);
       setActiveId(String(id));
       await load();
-      window.dispatchEvent(new CustomEvent('business:switched'));
     } catch (e) {
       console.error(e);
       alert('No se pudo activar.');
@@ -61,8 +58,7 @@ export default function Perfil() {
   const onDelete = async (biz) => {
     const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
     const typed = window.prompt(
-      `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\n` +
-      `Para confirmar, escribí EXACTAMENTE el nombre del negocio:`
+      `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\nPara confirmar, escribí EXACTAMENTE el nombre del negocio:`
     );
     if (typed === null) return;
     if (typed.trim() !== nombre) {
@@ -180,10 +176,10 @@ export default function Perfil() {
           <h1>Mi Perfil</h1>
           <h2>{meName}</h2>
           <div className="mail">{me?.email || ''}</div>
+          <button className="cta-wide" onClick={() => setShowCreate(true)}>
+            Nuevo Local
+          </button>
         </div>
-        <button className="cta-wide" onClick={() => setShowCreate(true)}>
-          Nuevo Local
-        </button>
       </header>
 
       <section className="section">
@@ -242,7 +238,7 @@ export default function Perfil() {
         .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
         .empty{border:1px dashed #e5e7eb;border-radius:12px;padding:16px;color:#6b7280}
         .cta-wide{
-          width:120%;
+          width:15%;
           height:40px;
           border-radius:12px;
           background: var(--color-primary, #0ea5e9);
@@ -250,6 +246,7 @@ export default function Perfil() {
           box-shadow: 0 1px 0 rgba(0,0,0,.06) inset;
           font-weight:400;
           cursor:pointer;
+          margin: 10px
         }
         .cta-wide:hover{ filter: brightness(.96); }
         .admin-tools{opacity:.7}

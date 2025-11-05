@@ -1,3 +1,4 @@
+// src/componentes/TablaArticulos.jsx
 /* eslint-disable no-empty */
 /* eslint-disable no-useless-catch */
 /* eslint-disable no-unused-vars */
@@ -58,7 +59,7 @@ const VirtualList = forwardRef(function VirtualList(
     if (!onVisibleItemsIds) return;
     const ids = [];
     const arr = rowsRef.current;
-    for (let i = startIdx; i <= endIdx; i++) { // <-- fix i++
+    for (let i = startIdx; i <= endIdx; i++) { // i++
       const r = arr[i];
       const id = getRowId?.(r);
       if (Number.isFinite(id)) ids.push(id);
@@ -146,7 +147,9 @@ export default function TablaArticulos({
   onGroupCreated,
   visibleIds,
   onMutateGroups,
-  jumpToArticleId
+  jumpToArticleId,
+  /** ⬇️ nuevo: id seleccionado para resaltado permanente */
+  selectedArticleId,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -159,19 +162,23 @@ export default function TablaArticulos({
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const openSnack = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
   const loadReqId = useRef(0);
+
   // normalizamos a Set<number> o null
   const filterIds = useMemo(() => {
     if (!visibleIds) return null;
     return new Set(Array.from(visibleIds).map(Number));
   }, [visibleIds]);
+
   const [expandedRubro, setExpandedRubro] = useState(null);
   const [expandedCatByRubro, setExpandedCatByRubro] = useState({});
+
   // refetch sin F5
   const [reloadTick, setReloadTick] = useState(0);
   const refetchLocal = useCallback(async () => {
     try { await refetchAgrupaciones?.(); } catch { }
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
+
   const listRef = useRef(null);
 
   const findPath = useCallback((cats, id) => {
@@ -217,7 +224,7 @@ export default function TablaArticulos({
         const obj = num(objetivos[id]) || 0;
         const c = num(a?.costo);
         const den = 100 - obj;
-        return den > 0 ? c * (100 / den) : Infinity;
+        return den > 0 ? c * (100 / den) : 0;
       }
       case 'manual': return num(manuales[id]) || 0;
       default: return null;
@@ -236,7 +243,6 @@ export default function TablaArticulos({
   }, [sortBy, sortDir, getSortValue]);
 
   // ========== Catálogo y base ==========
-  // build tree desde plano
   const buildTreeFromFlat = useCallback((items = []) => {
     const flat = items.map(row => {
       const raw = row?.raw || {};
@@ -264,7 +270,7 @@ export default function TablaArticulos({
     }));
   }, []);
 
-  // Carga catálogo  exclusiones
+  // Carga catálogo + exclusiones
   useEffect(() => {
     let cancel = false;
     const myId = loadReqId.current;
@@ -362,14 +368,14 @@ export default function TablaArticulos({
     for (const id of allArticulos.map(getId)) {
       if (!idsEnOtras.has(id) && !excludedIds.has(id)) s.add(id);
     }
-    return s;  // 👈 Set
+    return s;  // Set
   }, [allArticulos, idsEnOtras, excludedIds]);
 
   useEffect(() => {
     onTodoInfo?.({ todoGroupId, idsSinAgrupCount: idsSinAgrup.size });
   }, [onTodoInfo, todoGroupId, idsSinAgrup.size]);
 
-  /* --------- a mostrar  filtro --------- */
+  /* --------- a mostrar + filtro --------- */
   const articulosAMostrar = useMemo(() => {
     if (categoriaSeleccionada && agrupacionSeleccionada) {
       const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
@@ -433,7 +439,7 @@ export default function TablaArticulos({
     idsSinAgrup, baseById, agrupaciones, allArticulos, excludedIds
   ]);
 
-  // Filtro con defer para tecleo suave (👈 MOVIDO ARRIBA DE BLOQUES)
+  // Filtro con defer para tecleo suave
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
     if (!filtroDefer) return articulosAMostrar;
@@ -464,7 +470,7 @@ export default function TablaArticulos({
     const rows = [];
     for (const blq of bloques) {
       for (const sr of blq.subrUbros || blq.subrubros) {
-        const srNorm = sr; // por compatibilidad si viene como subrUbros
+        const srNorm = sr;
         const artsOrdenados = (srNorm.arts || sr.arts || []).slice().sort(cmp);
         rows.push({
           kind: 'header',
@@ -499,24 +505,37 @@ export default function TablaArticulos({
     return m;
   }, [flatRows]);
 
+  // Scroll + efecto corto cuando llega jumpToArticleId (sigue existiendo)
   useEffect(() => {
     const id = Number(jumpToArticleId);
     if (!Number.isFinite(id)) return;
     const path = findPath(categorias, id);
     if (!path) return;
 
-    // expandir paneles
     setExpandedRubro(path.rubroName);
     setExpandedCatByRubro(prev => ({ ...prev, [path.rubroName]: path.catName }));
 
-    // scrolleo por índice si está en flatRows; si no, búsqueda por data-attr
     const idx = idToIndex.get(id);
     if (idx != null) {
-      setTimeout(() => listRef.current?.scrollToIndex(idx), 50);
+      setTimeout(() => {
+        listRef.current?.scrollToIndex(idx);
+        setTimeout(() => {
+          const el = document.querySelector(`[data-article-id="${id}"]`);
+          if (el) {
+            el.classList.add('highlight-jump');
+            setTimeout(() => el.classList.remove('highlight-jump'), 1400);
+          }
+        }, 40);
+      }, 50);
     } else {
       const tryScroll = () => {
         const el = document.querySelector(`[data-article-id="${id}"]`);
-        if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return true; }
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el.classList.add('highlight-jump');
+          setTimeout(() => el.classList.remove('highlight-jump'), 1400);
+          return true;
+        }
         return false;
       };
       let tries = 0;
@@ -528,7 +547,6 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-  // Recibe por props: onMutateGroups (definido en ArticulosMain)
   const afterMutation = useCallback((removedIds) => {
     const ids = (removedIds || []).map(Number).filter(Number.isFinite);
     if (!ids.length) { refetchLocal(); return; }
@@ -536,18 +554,15 @@ export default function TablaArticulos({
     const isTodo = esTodoGroup(agrupSelView, todoGroupId);
     if (isTodo) { refetchLocal(); return; }
 
-    // ✅ mutación optimista centralizada
     onMutateGroups?.({
       type: 'remove',
       groupId: Number(agrupSelView.id),
       ids
     });
 
-    // opcional: ping al backend sin bloquear
     refetchLocal();
   }, [agrupSelView, todoGroupId, onMutateGroups, refetchLocal]);
 
-  // ids visibles (solo items) — estable y sin loops
   const handleVisibleIds = useCallback((ids) => {
     onIdsVisibleChange?.(new Set(ids));
   }, [onIdsVisibleChange]);
@@ -601,8 +616,38 @@ export default function TablaArticulos({
     // item
     const a = row.art;
     const id = a.id;
+    const isSelected = Number(selectedArticleId) === Number(id);
+
+    // estilos de resaltado permanente
+    const selectedStyle = isSelected
+      ? {
+          background: 'rgba(59,130,246,0.10)',            // azul suave
+          boxShadow: 'inset 0 0 0 1px rgba(59,130,246,0.35)',
+          position: 'relative',
+        }
+      : null;
+
+    const leftBar = isSelected
+      ? <div style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
+          background: 'rgba(59,130,246,0.95)', borderRadius: 2
+        }} />
+      : null;
+
     return (
-      <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', borderTop: '1px dashed #f0f0f0', padding: '4px 8px' }}>
+      <div
+        key={row.key}
+        style={{
+          ...style,
+          display: 'grid',
+          gridTemplateColumns: gridTemplate,
+          alignItems: 'center',
+          borderTop: '1px dashed #f0f0f0',
+          padding: '4px 8px',
+          ...(selectedStyle || {}),
+        }}
+      >
+        {leftBar}
         <div>{id}</div>
         <div>{a.nombre}</div>
         <div>
