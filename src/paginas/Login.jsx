@@ -1,9 +1,10 @@
+// src/paginas/Login.jsx
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { syncAllBusinesses } from '@/servicios/syncAllBusinesses';
-import AuthDiagram from "@/componentes/AuthDiagram";
+import AuthDiagram from '@/componentes/AuthDiagram';
 import { setCssVarsFromPalette } from '../tema/paletteBoot';
 import '../css/Auth.css';
 
@@ -20,7 +21,10 @@ export default function Login() {
   const [err, setErr] = useState('');
   const [touched, setTouched] = useState({ email: false, password: false });
 
-  const valid = useMemo(() => emailOk(email) && String(password).length >= 1, [email, password]);
+  const valid = useMemo(
+    () => emailOk(email) && String(password).length >= 1,
+    [email, password]
+  );
 
   const brandingToPalette = (br = {}) => ({
     'color-primary': br.primary || '#111111',
@@ -34,41 +38,64 @@ export default function Login() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr('');
-    if (!valid) { setTouched({ email: true, password: true }); return; }
+
+    if (!valid) {
+      setTouched({ email: true, password: true });
+      return;
+    }
+
     setBusy(true);
     try {
+      // 👉 ahora AuthAPI.login devuelve { user, token, ... }
       const data = await AuthAPI.login(email.trim(), password);
+      const user =
+        data?.user ??
+        (JSON.parse(localStorage.getItem('user') || 'null') || {});
 
-      // post-login: activo + paleta
+      // ───── Post-login: negocio activo + paleta ─────
       try {
-        const uid = (data?.user?.id) || (JSON.parse(localStorage.getItem('user') || 'null') || {}).id;
+        const uid = user?.id;
+
         const resp = await BusinessesAPI.listMine();
         const list = Array.isArray(resp) ? resp : (resp?.items || []);
-        const active = localStorage.getItem('activeBusinessId') || list[0]?.id;
+
+        const active =
+          localStorage.getItem('activeBusinessId') || list[0]?.id;
+
         if (active) {
           localStorage.setItem('activeBusinessId', active);
+
           const full = await BusinessesAPI.get?.(active);
           const branding = full?.branding || {};
           const pal = brandingToPalette(branding);
+
           setCssVarsFromPalette(pal);
           localStorage.setItem('bizTheme', JSON.stringify(pal));
-          if (uid) localStorage.setItem(`bizTheme:${uid}`, JSON.stringify(pal));
+          if (uid) {
+            localStorage.setItem(`bizTheme:${uid}`, JSON.stringify(pal));
+          }
           window.dispatchEvent(new Event('palette:changed'));
         }
-      } catch { /* ignore */ }
+      } catch {
+        // no rompemos login por errores de branding
+      }
 
-      // auto-sync NO bloqueante (evento global notifica estado)
+      // ───── Auto-sync NO bloqueante ─────
       syncAllBusinesses({ scope: 'articles', alsoSalesDays: 14, concurrency: 2 })
-        .catch(() => { });
+        .catch(() => {});
 
-      // redirect según rol
+      // ───── Redirect según rol ─────
       const role =
-        data?.user?.role ??
+        user?.role ??
         (JSON.parse(localStorage.getItem('user') || 'null') || {}).role;
 
-      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/');
+      const to = role === 'app_admin'
+        ? '/admin'
+        : (loc.state?.from || '/');
+
       nav(to, { replace: true });
     } catch (e2) {
+      console.error('LOGIN ERROR >>>', e2); 
       setErr(e2.message || 'Error de inicio de sesión');
     } finally {
       setBusy(false);
@@ -77,7 +104,7 @@ export default function Login() {
 
   return (
     <div className="auth-shell">
-      {/* IZQ: hero con video/diagrama */}
+      {/* IZQ: hero con diagrama */}
       <aside className="auth-aside">
         <div className="auth-aside-inner">
           <h1 className="auth-brand">
@@ -90,12 +117,12 @@ export default function Login() {
             <li>➤ Ventas y KPIs al instante</li>
           </ul>
 
-          {/* ⬇️ Reemplaza ESTE bloque */}
           <div className="auth-illus">
             <AuthDiagram className="opacity-90" />
           </div>
         </div>
       </aside>
+
       {/* DER: formulario */}
       <main className="auth-main">
         <form className="auth-card compact" onSubmit={onSubmit} noValidate>
@@ -150,11 +177,16 @@ export default function Login() {
           </button>
 
           <div className="auth-cta-row">
-            <Link to="/forgot-password" className="auth-link">¿Olvidaste tu contraseña?</Link>
+            <Link to="/forgot-password" className="auth-link">
+              ¿Olvidaste tu contraseña?
+            </Link>
           </div>
 
           <footer className="auth-foot compact-foot">
-            ¿No tenés cuenta? <Link to="/register" className="auth-link">Crear cuenta</Link>
+            ¿No tenés cuenta?{' '}
+            <Link to="/register" className="auth-link">
+              Crear cuenta
+            </Link>
           </footer>
         </form>
       </main>

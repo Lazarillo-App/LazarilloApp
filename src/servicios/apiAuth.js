@@ -11,7 +11,8 @@ function saveSession(data) {
     const bid  = data?.user?.active_business_id ?? data?.active_business_id;
 
     if (role === 'app_admin') {
-      localStorage.removeItem('activeBusinessId');       // ⛔ nada de negocio para admin
+      // ⛔ Admin global NO tiene negocio activo
+      localStorage.removeItem('activeBusinessId');
     } else if (bid !== undefined && bid !== null && bid !== '') {
       localStorage.setItem('activeBusinessId', String(bid));
     }
@@ -41,10 +42,15 @@ export const AuthAPI = {
       withBusinessId: false,   // público
       noAuthRedirect: true,    // no redirigir en 401 de login
     });
+
+    // Guarda token + user + active_business_id (si viene)
     saveSession(data);
+
     // notificar a la app
     try { window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user })); } catch {}
-    return data.user;          // 👈 devolvemos el usuario directamente
+
+    // 👈 devolvemos TODO (user + token + lo que envíe el back)
+    return data;
   },
 
   async register({ name, email, password }) {
@@ -54,9 +60,10 @@ export const AuthAPI = {
       withBusinessId: false,
       noAuthRedirect: true,
     });
+
     saveSession(data);
     try { window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user })); } catch {}
-    return data.user;          // consistencia con login()
+    return data;
   },
 
   async me() {
@@ -64,16 +71,19 @@ export const AuthAPI = {
       withBusinessId: false,
       noAuthRedirect: true,
     });
+
     if (data) {
-      // preservar role si /me no lo trae
+      // preservamos role previo si /me no lo trae
       const prev = getUser() || {};
       const merged = { ...prev, ...data, role: prev.role ?? data.role };
+
       localStorage.setItem('user', JSON.stringify(merged));
 
       const bid = merged?.active_business_id;
       if (bid !== undefined && bid !== null && bid !== '') {
         localStorage.setItem('activeBusinessId', String(bid));
       }
+
       return merged;
     }
     return null;
@@ -103,3 +113,17 @@ export const AuthAPI = {
   },
 };
 
+/* ───── Exports nombrados para AuthContext.jsx ───── */
+
+export async function login(email, password) {
+  const data = await AuthAPI.login(email, password);
+  return data?.user ?? null;
+}
+
+export async function me() {
+  return AuthAPI.me();
+}
+
+export function logout() {
+  return AuthAPI.logout();
+}

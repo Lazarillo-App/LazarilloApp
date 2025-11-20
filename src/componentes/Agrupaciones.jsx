@@ -1,4 +1,4 @@
-// src/componentes/Agrupaciones.jsx
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
 
@@ -22,6 +22,24 @@ const mapRowToArticle = (row) => {
     subrubro: row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? "Sin subrubro",
     precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
   };
+};
+
+// normaliza nombres para comparar sin tildes / mayúsculas
+const norm = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+
+const isRealTodoGroup = (g, todoGroupId) => {
+  if (!g) return false;
+  if (!Number.isFinite(Number(todoGroupId))) return false;
+  if (Number(g.id) !== Number(todoGroupId)) return false;
+  const n = norm(g.nombre);
+  // nombres “oficiales” del TODO virtual
+  return n === 'todo' || n === 'sin agrupacion';
 };
 
 /** Árbol correcto esperado por el Modal:
@@ -70,7 +88,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
   const [loading, setLoading] = useState(true);
 
   const [todoGroupId, setTodoGroupId] = useState(null);
-  const [excludedIds, setExcludedIds] = useState(new Set()); // exclusiones de TODO
+  const [excludedIds, setExcludedIds] = useState(new Set()); // exclusiones de TODO  
 
   // Modal crear agrupación
   const [modalOpen, setModalOpen] = useState(false);
@@ -85,6 +103,28 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     setSnackbarOpen(true);
   };
 
+  // ✅ Solo consideramos "virtual" al grupo TODO si sigue teniendo el nombre default
+  const effectiveTodoGroupId = useMemo(() => {
+    if (!todoGroupId) return null;
+
+    const g = (agrupaciones || []).find(
+      x => Number(x.id) === Number(todoGroupId)
+    );
+    if (!g) return todoGroupId; // todavía no cargó la lista
+
+    const n = norm(g.nombre);
+    const esNombreTodo =
+      n === 'todo' ||
+      n === 'sin agrupacion' ||
+      n === 'sin agrupación' ||
+      n === 'sin agrupar' ||
+      n === 'sin grupo';
+
+    // ⬅️ Si ya NO se llama "Sin agrupación"/"TODO", desactivamos modo virtual
+    return esNombreTodo ? todoGroupId : null;
+  }, [agrupaciones, todoGroupId]);
+
+
   const cargarAgrupaciones = async () => {
     try {
       const data = await obtenerAgrupaciones();
@@ -95,7 +135,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     }
   };
 
-  
+
   // --- baseById (opcional) para enriquecer mutaciones con datos del árbol actual ---
   const baseById = useMemo(() => {
     const m = new Map();
@@ -196,7 +236,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     const s = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
       .filter(Boolean)
-      .filter((g) => g?.id !== todoGroupId)
+      .filter((g) => g?.id !== effectiveTodoGroupId)
       .forEach((g) => {
         const arts = Array.isArray(g?.articulos) ? g.articulos : [];
         arts.forEach((a) => {
@@ -205,7 +245,8 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         });
       });
     return s;
-  }, [agrupaciones, todoGroupId]);
+  }, [agrupaciones, effectiveTodoGroupId]);
+
 
   // Artículo bloqueado = ya pertenece a otra agrupación (excepto TODO)
   const isArticuloBloqueado = (articulo) => assignedIds.has(String(articulo.id));
@@ -224,12 +265,11 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     return out;
   }, [todosArticulos]);
 
-  // ids asignados a otras agrupaciones (numérico)
   const idsEnOtras = useMemo(() => {
     const s = new Set();
     (agrupaciones || [])
       .filter(Boolean)
-      .filter((g) => g?.id !== todoGroupId)
+      .filter((g) => g?.id !== effectiveTodoGroupId)
       .forEach((g) =>
         (g?.articulos || []).forEach((a) => {
           const id = Number(a?.id);
@@ -237,7 +277,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         })
       );
     return s;
-  }, [agrupaciones, todoGroupId]);
+  }, [agrupaciones, effectiveTodoGroupId]);
 
   // Artículos visibles para el TODO virtual (desde el nuevo árbol)
   const todoVirtualArticulos = useMemo(() => {
@@ -265,7 +305,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
   const todoCount = useMemo(() => {
     let count = 0;
     for (const id of allIds) {
-      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count; // ← FIX
+      if (!idsEnOtras.has(id) && !excludedIds.has(id)) count++; // ← FIX
     }
     return count;
   }, [allIds, idsEnOtras, excludedIds]);
@@ -324,11 +364,11 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
           onMutateGroups={onMutateGroups}
           agrupaciones={agrupaciones}
           onActualizar={cargarAgrupaciones}
-          todoGroupId={todoGroupId}
+          todoGroupId={effectiveTodoGroupId}
           todosArticulos={todosArticulos}
           loading={loading}
-          todoCountOverride={todoCount}
-          todoVirtualArticulos={todoVirtualArticulos}
+          todoCountOverride={effectiveTodoGroupId ? todoCount : 0}
+          todoVirtualArticulos={effectiveTodoGroupId ? todoVirtualArticulos : []}
         />
       </div>
     </>

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useEffect, useState, useContext } from 'react';
 import { me, login as apiLogin, logout as apiLogout } from '../servicios/apiAuth';
 

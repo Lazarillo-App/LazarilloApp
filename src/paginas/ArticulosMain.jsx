@@ -1,4 +1,3 @@
-// src/paginas/ArticulosMain.jsx
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -11,18 +10,32 @@ import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { ensureActiveBusiness } from '../servicios/ensureBusiness';
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/groupMutations';
 import { onGroupsChanged } from "@/utils/groupsBus";
-import { obtenerAgrupaciones } from "@/servicios/apiAgrupaciones";
+import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "@/servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "@/utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '@/servicios/agrupacionesIndex';
 import { Snackbar, Alert } from '@mui/material';
+import { clearVentasCache } from '@/servicios/apiVentas';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
 const totalesCache = new Map();
 const FAV_KEY = 'favGroupId';
 
+const norm = (s) => String(s || '').trim().toLowerCase();
+const isDiscontinuadosGroup = (g) => {
+  const n = norm(g?.nombre);
+  return n === 'discontinuados' || n === 'descontinuados';
+};
+
 export default function ArticulosMain(props) {
-  const { syncVersion = 0 } = props;
+  const { syncVersion: syncVersionProp = 0 } = props;
+  const [syncVersion, setSyncVersion] = useState(0);
+
+  // helper: invalidar el cache de totales para el bid y periodo actual
+  function clearTotalsCacheFor(bid, from, to) {
+    const key = `${bid}|${from}|${to}`;
+    if (totalesCache.has(key)) totalesCache.delete(key);
+  }
 
   const [categorias, setCategorias] = useState([]);
   const [agrupaciones, setAgrupaciones] = useState(props.agrupaciones || []);
@@ -35,6 +48,18 @@ export default function ArticulosMain(props) {
   const [favoriteGroupId, setFavoriteGroupId] = useState(
     Number(localStorage.getItem(FAV_KEY)) || null
   );
+
+  const VIEW_KEY = 'lazarillo:ventasViewMode';
+
+  // 🔁 Vista compartida Sidebar/Tabla: 'by-subrubro' | 'by-categoria'
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window === 'undefined') return 'by-subrubro';
+    return localStorage.getItem(VIEW_KEY) || 'by-subrubro';
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(VIEW_KEY, viewMode); } catch { }
+  }, [viewMode]);
 
   const agIndex = useMemo(() => buildAgrupacionesIndex(agrupaciones || []), [agrupaciones]);
 
@@ -58,10 +83,50 @@ export default function ArticulosMain(props) {
     }
   }, []);
 
+  // 🔁 Sync inicial de ventas (últimos 7 días) al tener negocio activo
+  const didInitialSyncRef = useRef(false);
+  useEffect(() => {
+    const bid = String(localStorage.getItem('activeBusinessId') || '');
+    if (!bid || didInitialSyncRef.current) return;
+    (async () => {
+      try {
+        await BusinessesAPI.syncSalesLast7d(bid);
+        // avisamos a la app y forzamos re-render para que VentasCell recalcule
+        try { window.dispatchEvent(new CustomEvent('ventas:updated')); } catch { }
+        clearVentasCache();
+        setSyncVersion(v => v + 1);
+        didInitialSyncRef.current = true;
+      } catch (e) {
+        console.error('Sync inicial (7d) falló:', e?.message || e);
+      }
+    })();
+  }, []);
+
+
   // --- TODO virtual / info compartida con Tabla ---
   const [todoInfo, setTodoInfo] = useState({ todoGroupId: null, idsSinAgrupCount: 0 });
   const todoIdRef = useRef(null);
   useEffect(() => { todoIdRef.current = todoInfo?.todoGroupId ?? null; }, [todoInfo?.todoGroupId]);
+
+  // Si existe "Discontinuados", apagamos la lista virtual (TODO / Sin Agrupación)
+  const discontinuadosExists = useMemo(
+    () => (agrupaciones || []).some((g) => isDiscontinuadosGroup(g)),
+    [agrupaciones]
+  );
+
+  const handleTodoInfo = useCallback((info) => {
+    if (discontinuadosExists) {
+      // 🔌 Modo maduro: sin agrupación virtual
+      setTodoInfo({ todoGroupId: null, idsSinAgrupCount: 0 });
+    } else {
+      // 🧩 Modo clásico: usar la info que viene de TablaArticulos / backend
+      const safe = info || {};
+      const rawId = safe.todoGroupId;
+      const todoGroupId = Number.isFinite(Number(rawId)) ? Number(rawId) : null;
+      const idsSinAgrupCount = Number(safe.idsSinAgrupCount || 0);
+      setTodoInfo({ todoGroupId, idsSinAgrupCount });
+    }
+  }, [discontinuadosExists]);
 
   // persistir favorita
   useEffect(() => {
@@ -116,23 +181,80 @@ export default function ArticulosMain(props) {
     refetchAgrupaciones();
   }, [activeBizId, reloadKey, refetchAgrupaciones]);
 
-  // Escuchar cambios de agrupaciones desde otras vistas/pestañas
+    // negocio activo
   useEffect(() => {
-    let canceled = false;
-    const off = onGroupsChanged(async () => {
-      const list = await refetchAgrupaciones();
-      if (canceled || !Array.isArray(list)) return;
-      // mantener selección coherente
-      setCategoriaSeleccionada(null);
-      setAgrupacionSeleccionada((prev) => {
-        if (!prev) return prev;
-        if (Number(prev.id) === Number(todoIdRef.current)) return prev; // si estás en TODO, no tocar
-        const updated = list.find(g => Number(g.id) === Number(prev.id));
-        return updated || prev;
-      });
+    (async () => {
+      try {
+        const bid = await ensureActiveBusiness();
+        setActiveBizId(String(bid));
+      } catch (e) {
+        console.error('No se pudo fijar negocio activo', e);
+      }
+    })();
+  }, []);
+
+  // recibir props.agrupaciones iniciales (si vienen precargadas)
+  useEffect(() => {
+    setAgrupaciones(props.agrupaciones || []);
+  }, [props.agrupaciones]);
+
+  // 🔹 PRIMERO: rango / periodo / refs relacionadas
+  const [rango, setRango] = useState({ mode: '7', from: '', to: '' });
+
+  useEffect(() => {
+    setRango(r => {
+      if (r.from && r.to) return r;
+      const def = lastNDaysUntilYesterday(daysByMode(r.mode || '30'));
+      return { ...r, ...def };
     });
-    return () => { off?.(); canceled = true; };
-  }, [refetchAgrupaciones]);
+  }, []);
+
+  const periodo = useMemo(() => {
+    if (rango.from && rango.to) return { from: rango.from, to: rango.to };
+    return lastNDaysUntilYesterday(daysByMode(rango.mode));
+  }, [rango]);
+
+  const periodoRef = useRef(periodo);
+  useEffect(() => {
+    periodoRef.current = periodo;
+  }, [periodo]);
+
+  // 👉 idem para el businessId activo
+  const activeBizRef = useRef(localStorage.getItem('activeBusinessId') || '');
+  useEffect(() => {
+    activeBizRef.current = activeBizId;
+  }, [activeBizId]);
+
+  // 🔹 DESPUÉS: eventos del negocio (usa activeBizRef y periodoRef)
+  useEffect(() => {
+    const onBizSwitched = () =>
+      setActiveBizId(localStorage.getItem('activeBusinessId') || '');
+    const onBizSynced = () =>
+      setReloadKey((k) => k + 1);
+
+    const onVentasUpdated = () => {
+      const bid = activeBizRef.current;
+      const { from, to } = periodoRef.current || {};
+      if (bid && from && to) {
+        clearTotalsCacheFor(bid, from, to);
+      }
+      setSyncVersion((v) => v + 1);
+    };
+
+    // inicial
+    onBizSwitched();
+
+    // listeners
+    window.addEventListener('business:switched', onBizSwitched);
+    window.addEventListener('business:synced', onBizSynced);
+    window.addEventListener('ventas:updated', onVentasUpdated);
+
+    return () => {
+      window.removeEventListener('business:switched', onBizSwitched);
+      window.removeEventListener('business:synced', onBizSynced);
+      window.removeEventListener('ventas:updated', onVentasUpdated);
+    };
+  }, []);
 
   // Forzar reloadKey al loguear o cambiar de local (dispara refetch)
   useEffect(() => {
@@ -162,19 +284,6 @@ export default function ArticulosMain(props) {
     setAgrupaciones(props.agrupaciones || []);
   }, [props.agrupaciones]);
 
-  // eventos del negocio (switch/sync visibles en otras partes)
-  useEffect(() => {
-    const onBizSwitched = () => setActiveBizId(localStorage.getItem('activeBusinessId') || '');
-    const onBizSynced = () => setReloadKey((k) => k + 1);
-    onBizSwitched();
-    window.addEventListener('business:switched', onBizSwitched);
-    window.addEventListener('business:synced', onBizSynced);
-    return () => {
-      window.removeEventListener('business:switched', onBizSwitched);
-      window.removeEventListener('business:synced', onBizSynced);
-    };
-  }, []);
-
   // Mantener seleccionada en sync cuando cambia la lista local (mutación optimista)
   useEffect(() => {
     if (!agrupacionSeleccionada) return;
@@ -186,7 +295,7 @@ export default function ArticulosMain(props) {
     )) {
       setAgrupacionSeleccionada(gActual);
     }
-  }, [agrupaciones]);
+  }, [agrupaciones]); // actualizar referencia si cambió
 
   // limpiar filtros al cambiar de agrupación
   useEffect(() => {
@@ -203,19 +312,56 @@ export default function ArticulosMain(props) {
     return () => window.removeEventListener('business:switched', sync);
   }, []);
 
-  // rango
-  const [rango, setRango] = useState({ mode: '30', from: '', to: '' });
+  // Cada vez que cambia el periodo, invalidá cache de totales para ese bid
   useEffect(() => {
-    setRango(r => {
-      if (r.from && r.to) return r;
-      const def = lastNDaysUntilYesterday(daysByMode(r.mode || '30'));
-      return { ...r, ...def };
-    });
-  }, []);
-  const periodo = useMemo(() => {
-    if (rango.from && rango.to) return { from: rango.from, to: rango.to };
-    return lastNDaysUntilYesterday(daysByMode(rango.mode));
-  }, [rango]);
+    const bid = localStorage.getItem('activeBusinessId');
+    if (!bid) return;
+    try { clearTotalsCacheFor(bid, periodo.from, periodo.to); } catch { }
+    setSyncVersion(v => v + 1);
+  }, [periodo.from, periodo.to]);
+
+ 
+
+  // ========= NUEVO: índice completo por id para enriquecer agrupaciones =========
+  const metaById = useMemo(() => {
+    const m = new Map();
+    (categorias || []).forEach(sub =>
+      (sub.categorias || []).forEach(cat =>
+        (cat.articulos || []).forEach(a => {
+          const id = Number(a.id ?? a.articulo_id ?? a.codigo);
+          if (!Number.isFinite(id)) return;
+          m.set(id, {
+            id,
+            nombre: String(a.nombre ?? a.descripcion ?? `#${id}`),
+            categoria: String(a.categoria ?? cat.categoria ?? 'Sin categoría'),
+            subrubro: String(a.subrubro ?? sub.subrubro ?? 'Sin subrubro'),
+            precio: Number(a.precio ?? 0),
+          });
+        })
+      )
+    );
+    return m;
+  }, [categorias]);
+
+  const agrupacionesRich = useMemo(() => {
+    return (agrupaciones || []).map(g => ({
+      ...g,
+      articulos: (g.articulos || []).map(a => {
+        const id = Number(a?.id ?? a?.articuloId);
+        const meta = metaById.get(id);
+        return meta ? { ...a, ...meta, id } : { ...a, id };
+      }),
+    }));
+  }, [agrupaciones, metaById]);
+
+  // mantener seleccionada la versión enriquecida
+  useEffect(() => {
+    if (!agrupacionSeleccionada) return;
+    const enriched = (agrupacionesRich || []).find(
+      g => Number(g.id) === Number(agrupacionSeleccionada.id)
+    );
+    if (enriched) setAgrupacionSeleccionada(enriched);
+  }, [agrupacionesRich]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // opciones buscador global
   const opcionesGlobales = useMemo(() => {
@@ -235,104 +381,153 @@ export default function ArticulosMain(props) {
     return out;
   }, [categorias]);
 
-  // ventas
+    // ventas
   const [ventasMap, setVentasMap] = useState(new Map());
   const [ventasLoading, setVentasLoading] = useState(false);
   const reqId = useRef(0);
 
   const articuloIds = useMemo(
-    () => (agrupacionSeleccionada?.articulos || [])
-      .map((a) => Number(a?.id ?? a?.articuloId))
-      .filter(Boolean),
+    () =>
+      (agrupacionSeleccionada?.articulos || [])
+        .map((a) => Number(a?.id ?? a?.articuloId))
+        .filter(Number.isFinite),
     [agrupacionSeleccionada]
   );
 
-  // throttle de visibles
-  const [idsTrigger, setIdsTrigger] = useState([]);
-  const throttleRef = useRef(null);
-  useEffect(() => {
-    if (throttleRef.current) clearTimeout(throttleRef.current);
-    throttleRef.current = setTimeout(() => {
-      setIdsTrigger(Array.from(activeIds || []));
-    }, 250);
-    return () => clearTimeout(throttleRef.current);
-  }, [activeIds]);
-
-  // cargar totales
+  // 👉 Totales de ventas por artículo usando /businesses/:id/sales/summary
   useEffect(() => {
     let canceled = false;
+    reqId.current += 1;
     const myId = reqId.current;
 
     async function fetchTotales() {
-      const bid = localStorage.getItem('activeBusinessId');
-      if (!bid) {
-        setVentasMap(new Map());
+      const bid = activeBizId || localStorage.getItem('activeBusinessId');
+      if (!bid || !periodo?.from || !periodo?.to) {
+        if (!canceled && myId === reqId.current) {
+          setVentasMap(new Map());
+        }
         return;
       }
 
-      const idsList = idsTrigger;
       const cacheKey = `${bid}|${periodo.from}|${periodo.to}`;
-      if (totalesCache.has(cacheKey) && syncVersion === 0) {
+
+      // Cache local de totales
+      if (totalesCache.has(cacheKey)) {
         const mapa = totalesCache.get(cacheKey);
-        if (!canceled && myId === reqId.current) setVentasMap(mapa);
+        if (!canceled && myId === reqId.current) {
+          setVentasMap(mapa);
+        }
         return;
       }
 
       setVentasLoading(true);
       try {
-        const { items = [] } = await BusinessesAPI.topArticulos(bid, { limit: 1000 });
-        const totals = new Map(items.map(r => [Number(r.article_id), Number(r.qty || 0)]));
-        if (totalesCache.size > 20) {
-          const fk = totalesCache.keys().next().value;
-          totalesCache.delete(fk);
-        }
-        totalesCache.set(cacheKey, totals);
-        if (!canceled && myId === reqId.current) setVentasMap(totals);
-      } catch (e) {
-        if (idsList.length === 0) { setVentasLoading(false); return; }
-        const { obtenerVentasAgrupacion } = await import('../servicios/apiVentas');
-        const idsAgrup = (agrupacionSeleccionada?.articulos || [])
-          .map(a => Number(a?.id ?? a?.articuloId)).filter(Boolean);
-        const baseIds = idsAgrup.length ? idsAgrup : idsList;
-        const resp = await obtenerVentasAgrupacion({
-          agrupacionId: agrupacionSeleccionada?.id || 0,
+        // Usa el helper nuevo que pega a /businesses/:id/sales/summary
+        const resp = await BusinessesAPI.getSalesItems(bid, {
           from: periodo.from,
           to: periodo.to,
-          articuloIds: baseIds,
+          limit: 5000,
         });
-        const totals = resp.items.reduce((m, it) => m.set(Number(it.articuloId), Number(it.cantidad || 0)), new Map());
+
+        const rows = Array.isArray(resp) ? resp : resp?.items || [];
+
+        const totals = new Map();
+
+        for (const r of rows) {
+          const id = Number(
+            r.article_id ??
+            r.articuloId ??
+            r.articulo_id ??
+            r.idArticulo ??
+            r.id
+          );
+          // ignoramos article_id = 0 (Sin mapping Maxi)
+          if (!Number.isFinite(id) || id <= 0) continue;
+
+          const qty = Number(
+            r.qty ??
+            r.cantidad ??
+            r.unidades ??
+            r.total_qty ??
+            r.total_units ??
+            0
+          );
+
+          const amount = Number(
+            r.amount ??
+            r.total ??
+            r.importe ??
+            r.total_amount ??
+            r.monto ??
+            0
+          );
+
+          const prev = totals.get(id) || { qty: 0, amount: 0 };
+          totals.set(id, {
+            qty: prev.qty + (Number.isFinite(qty) ? qty : 0),
+            amount: prev.amount + (Number.isFinite(amount) ? amount : 0),
+          });
+        }
+
+        // Cache ring buffer sencillo
         if (totalesCache.size > 20) {
           const fk = totalesCache.keys().next().value;
           totalesCache.delete(fk);
         }
         totalesCache.set(cacheKey, totals);
-        if (!canceled && myId === reqId.current) setVentasMap(totals);
+
+        if (!canceled && myId === reqId.current) {
+          setVentasMap(totals);
+        }
+      } catch (e) {
+        console.error('Error cargando totales de ventas', e);
+        if (!canceled && myId === reqId.current) {
+          setVentasMap(new Map());
+        }
       } finally {
-        if (!canceled && myId === reqId.current) setVentasLoading(false);
+        if (!canceled && myId === reqId.current) {
+          setVentasLoading(false);
+        }
       }
     }
 
     fetchTotales();
-    return () => { canceled = true; };
-  }, [activeBizId, periodo.from, periodo.to, syncVersion, idsTrigger, agrupacionSeleccionada, reloadKey]);
 
+    return () => {
+      canceled = true;
+    };
+  }, [activeBizId, periodo.from, periodo.to, syncVersion, reloadKey]);
+
+  // Cuando cambie el rango, invalidamos cache de ventas (de apiVentas, no el local de totales)
+  useEffect(() => {
+    if (!periodo?.from || !periodo?.to) return;
+    clearVentasCache();
+    setSyncVersion((v) => v + 1);
+  }, [periodo?.from, periodo?.to]);
+
+  // Permite que celdas individuales ajusten su total (ej: serie recalculada)
   const handleTotalResolved = (id, total) => {
-    setVentasMap(prev => {
+    setVentasMap((prev) => {
       const m = new Map(prev);
-      m.set(Number(id), Number(total || 0));
+      const key = Number(id);
+      const cur = m.get(key) || { qty: 0, amount: 0 };
+      m.set(key, { ...cur, qty: Number(total || 0) });
       return m;
     });
   };
 
+  // Si hay agrupación seleccionada, filtramos el mapa de ventas solo a sus artículos
   const ventasMapFiltrado = useMemo(() => {
     if (!agrupacionSeleccionada?.id) return ventasMap;
     const s = new Set(articuloIds);
     const out = new Map();
-    ventasMap.forEach((v, k) => { if (s.has(Number(k))) out.set(Number(k), v); });
+    ventasMap.forEach((v, k) => {
+      if (s.has(Number(k))) out.set(Number(k), v);
+    });
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
-  // ------- Jump to row (scheduler  reintentos) -------
+  // ------- Jump to row -------
   const [jumpToId, setJumpToId] = useState(null);
   const pendingJumpRef = useRef(null);
   const jumpTriesRef = useRef(0);
@@ -383,14 +578,11 @@ export default function ArticulosMain(props) {
 
   const nameById = useMemo(() => {
     const m = new Map();
-    (categorias || []).forEach((sub) =>
-      (sub.categorias || []).forEach((cat) =>
-        (cat.articulos || []).forEach((a) => {
-          const id = Number(a.id ?? a.articulo_id ?? a.codigo);
-          if (Number.isFinite(id)) {
-            m.set(id, String(a.nombre ?? a.descripcion ?? `#${id}`));
-          }
-        })
+    (categorias || []).forEach(sub =>
+      (sub.categorias || []).forEach(cat =>
+        (cat.articulos || []).forEach(a =>
+          m.set(Number(a.id), String(a.nombre || '').trim())
+        )
       )
     );
     return m;
@@ -528,8 +720,58 @@ export default function ArticulosMain(props) {
     });
   }, []);
 
+  const handleEditGroup = useCallback(async (group) => {
+    if (!group) return;
+    const currentName = String(group.nombre || '');
+    const nuevo = window.prompt('Nuevo nombre para la agrupación', currentName);
+    if (nuevo == null) return; // cancelado
+    const trimmed = nuevo.trim();
+    if (!trimmed || trimmed === currentName) return;
+
+    // mutación optimista
+    mutateGroups({
+      type: 'create',
+      id: Number(group.id),
+      nombre: trimmed,
+      articulos: Array.isArray(group.articulos) ? group.articulos : [],
+    });
+
+    try {
+      await actualizarAgrupacion(group.id, { nombre: trimmed });
+      await refetchAgrupaciones();
+    } catch (e) {
+      console.error('Error al renombrar agrupación', e);
+      // si algo sale mal, nos traemos lo que diga el backend
+      await refetchAgrupaciones();
+    }
+  }, [mutateGroups, refetchAgrupaciones]);
+
+  const handleDeleteGroup = useCallback(async (group) => {
+    if (!group || !group.id) return;
+    if (Number(group.id) === Number(todoInfo?.todoGroupId)) {
+      // grupo automático de sobrantes no se elimina
+      return;
+    }
+    const ok = window.confirm(`Eliminar la agrupación "${group.nombre}"?`);
+    if (!ok) return;
+
+    try {
+      await eliminarAgrupacion(group.id);
+      await refetchAgrupaciones();
+      if (Number(agrupacionSeleccionada?.id) === Number(group.id)) {
+        setAgrupacionSeleccionada(null);
+      }
+    } catch (e) {
+      console.error('Error al eliminar agrupación', e);
+    }
+  }, [todoInfo?.todoGroupId, refetchAgrupaciones, agrupacionSeleccionada]);
+
+
   // ======= ⬇️ Resaltado permanente del artículo seleccionado
   const [selectedArticleId, setSelectedArticleId] = useState(null);
+  const sidebarListMode = viewMode; // 'by-subrubro' o 'by-categoria'
+  const tableHeaderMode = viewMode === 'by-subrubro' ? 'cat-first' : 'sr-first';
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -574,6 +816,7 @@ export default function ArticulosMain(props) {
             />
           </div>
         </div>
+
       </div>
 
       <div style={{
@@ -590,7 +833,7 @@ export default function ArticulosMain(props) {
             categorias={categorias}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}
-            agrupaciones={agrupaciones}
+            agrupaciones={agrupacionesRich}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             setFiltroBusqueda={setFiltroBusqueda}
@@ -599,9 +842,14 @@ export default function ArticulosMain(props) {
             todoCountOverride={
               todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
             }
-            listMode="by-subrubro"
+            listMode={sidebarListMode}
             visibleIds={visibleIds}
             onManualPick={markManualPick}
+            onChangeListMode={setViewMode}
+            favoriteGroupId={favoriteGroupId}
+            onSetFavorite={handleSetFavorite}
+            onEditGroup={handleEditGroup}
+            onDeleteGroup={handleDeleteGroup}
           />
         </div>
 
@@ -610,7 +858,7 @@ export default function ArticulosMain(props) {
           style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
             filtroBusqueda={filtroBusqueda}
-            agrupaciones={agrupaciones}
+            agrupaciones={agrupacionesRich}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             categoriaSeleccionada={categoriaSeleccionada}
@@ -624,7 +872,8 @@ export default function ArticulosMain(props) {
             onIdsVisibleChange={setActiveIds}
             activeBizId={activeBizId}
             reloadKey={reloadKey}
-            onTodoInfo={setTodoInfo}
+            syncVersion={syncVersion}
+            onTodoInfo={handleTodoInfo}
             onTotalResolved={handleTotalResolved}
             onGroupCreated={handleGroupCreated}
             onMutateGroups={mutateGroups}
@@ -634,6 +883,7 @@ export default function ArticulosMain(props) {
             jumpToArticleId={jumpToId}
             selectedArticleId={selectedArticleId}
             onActualizar={() => setReloadKey(k => k + 1)}
+            tableHeaderMode={tableHeaderMode}
           />
         </div>
       </div>

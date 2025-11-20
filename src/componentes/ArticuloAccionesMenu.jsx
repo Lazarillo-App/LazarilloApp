@@ -12,8 +12,15 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 const getNum = (v) => Number(v ?? 0);
+const norm = (s) => String(s || '').trim().toLowerCase();
+const isDiscontinuadosGroup = (g) => {
+  const n = norm(g?.nombre);
+  return n === 'discontinuados' || n === 'descontinuados';
+};
 
 /** Normaliza una fila plana proveniente de maxi_articles */
 const mapRowToArticle = (row) => {
@@ -93,6 +100,21 @@ function ArticuloAccionesMenu({
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
+  const discontinuadosGroup = useMemo(
+    () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)),
+    [agrupaciones]
+  );
+  const discontinuadosId = discontinuadosGroup ? Number(discontinuadosGroup.id) : null;
+
+  const isInDiscontinuados = useMemo(() => {
+    const idNum = getNum(articulo?.id);
+    if (!Number.isFinite(idNum) || !discontinuadosId) return false;
+
+    const g = (agrupaciones || []).find((gg) => Number(gg.id) === discontinuadosId);
+    const arts = Array.isArray(g?.articulos) ? g.articulos : [];
+    return arts.some((a) => Number(a?.id) === idNum);
+  }, [agrupaciones, articulo, discontinuadosId]);
+
   const gruposDestino = useMemo(
     () => (agrupaciones || [])
       .filter(g => g?.id)
@@ -104,6 +126,40 @@ function ArticuloAccionesMenu({
 
   const openMover = useCallback(() => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
+
+  async function toggleDiscontinuado() {
+    const idNum = getNum(articulo?.id);
+    if (!Number.isFinite(idNum)) return;
+
+    try {
+      if (!isInDiscontinuados) {
+        // 🔴 DESACTIVAR: mandarlo a "Discontinuados" sacándolo de cualquier agrupación
+        await httpBiz('/agrupaciones/create-or-move', {
+          method: 'POST',
+          body: {
+            nombre: 'Discontinuados',
+            ids: [idNum],
+          },
+        });
+        notify?.(`Artículo #${idNum} marcado como discontinuado`, 'success');
+      } else {
+        // 🟢 REACTIVAR: quitarlo de "Discontinuados" → queda sin agrupación (vuelve a TODO)
+        if (!discontinuadosId) return;
+        await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
+          method: 'DELETE',
+        });
+        notify?.(`Artículo #${idNum} reactivado`, 'success');
+      }
+
+      onAfterMutation?.([idNum]);
+      onRefetch?.();
+    } catch (e) {
+      console.error('TOGGLE_DISCONTINUADO_ERROR', e);
+      notify?.('No se pudo cambiar el estado de discontinuado', 'error');
+    } finally {
+      handleClose();
+    }
+  }
 
   async function mover() {
     if (!destId) return;
@@ -124,7 +180,7 @@ function ArticuloAccionesMenu({
           await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids: [idNum] } });
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids: [idNum] } });
-          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch {}
+          try { await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, { method: 'DELETE' }); } catch { }
         }
         onMutateGroups?.({ type: 'move', fromId, toId, ids: [idNum], baseById });
       } else {
@@ -220,6 +276,19 @@ function ArticuloAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
+        <MenuItem onClick={toggleDiscontinuado}>
+          <ListItemIcon>
+            {isInDiscontinuados
+              ? <VisibilityIcon fontSize="small" />
+              : <VisibilityOffIcon fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText>
+            {isInDiscontinuados
+              ? 'Reactivar (quitar de Discontinuados)'
+              : 'Marcar como discontinuado'}
+          </ListItemText>
+        </MenuItem>
+
         <MenuItem onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a…</ListItemText>
@@ -247,7 +316,6 @@ function ArticuloAccionesMenu({
           <ListItemText>Crear agrupación…</ListItemText>
         </MenuItem>
       </Menu>
-
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>
         <DialogContent>

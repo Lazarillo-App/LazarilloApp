@@ -395,7 +395,7 @@ export default function AgrupacionCreateModal({
             />
 
             <Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 2 }}>
-              Seleccioná Categorías y Artículos
+              Seleccioná Rubros / Subrubros / Artículos
             </Typography>
           </Box>
 

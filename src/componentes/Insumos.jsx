@@ -31,13 +31,14 @@ export default function Insumos() {
         setLoading(true);
         try {
             const r = await insumosList({ page, limit, search: q });
+            console.log('[Insumos.jsx] respuesta listar:', r); 
             setRows(r.data || []);
             setPagination(r.pagination || { total: 0, pages: 1 });
         } finally {
             setLoading(false);
         }
     };
-    useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [page, q]);
+    useEffect(() => { fetchData();  }, [page, q]);
 
     const filtered = useMemo(() => rows, [rows]);
 
@@ -143,7 +144,7 @@ export default function Insumos() {
                                     <td>{num(r.precio_ref)}</td>
                                     <td>
                                         <Button size="small" variant="outlined" onClick={() => openEdit(r)} sx={{ mr: 1 }}>Editar</Button>
-                                        <Button size="small" variant="outlined" color="error" onClick={() => eliminar(r)}>Desactivar</Button>
+                                        <Button size="small" variant="outlined" color="error" onClick={() => eliminar(r)}>Eliminar</Button>
                                     </td>
                                 </tr>
                             ))}

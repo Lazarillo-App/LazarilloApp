@@ -24,12 +24,33 @@ const prefer = (...vals) => { for (const v of vals) if (!isSin(v)) return clean(
 const getDisplayCategoria = (a) => prefer(a?.categoria, a?.raw?.categoria, a?.raw?.raw?.categoria);
 const getDisplaySubrubro = (a) => prefer(a?.subrubro, a?.raw?.subrubro, a?.raw?.raw?.subrubro);
 
+const normKey = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const getRubroBase = (name) => {
+  const raw = String(name || '').trim();
+  if (!raw) return 'Sin rubro';
+  const first = raw.split('-')[0].trim();
+  return first || raw;
+};
+
 const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
 const num = (v) => Number(v ?? 0);
 const fmt = (v, d = 0) => Number(v ?? 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
-const esTodoGroup = (g, todoGroupId) => {
+
+const esTodoGroup = (g) => {
   const n = String(g?.nombre || '').trim().toUpperCase();
-  return g?.id === todoGroupId || n === 'TODO' || n === 'SIN AGRUPACIÓN' || n === 'SIN AGRUPACION';
+  return (
+    n === 'TODO' ||
+    n === 'SIN AGRUPACION' ||
+    n === 'SIN AGRUPACIÓN' ||
+    n === 'SIN AGRUPAR' ||
+    n === 'SIN GRUPO'
+  );
 };
 
 /* ---------------- VirtualList simple (sin librerías) ---------------- */
@@ -126,7 +147,6 @@ const VirtualList = forwardRef(function VirtualList(
   );
 });
 
-
 /* ---------------- componente principal ---------------- */
 export default function TablaArticulos({
   filtroBusqueda = '',
@@ -136,8 +156,8 @@ export default function TablaArticulos({
   refetchAgrupaciones,
   fechaDesdeProp,
   fechaHastaProp,
-  ventasPorArticulo,
-  ventasLoading,
+  ventasPorArticulo = new Map(),   // 👈 default seguro
+  ventasLoading = false,           // 👈 default
   onCategoriasLoaded,
   onIdsVisibleChange,
   activeBizId,
@@ -148,9 +168,10 @@ export default function TablaArticulos({
   visibleIds,
   onMutateGroups,
   jumpToArticleId,
-  /** ⬇️ nuevo: id seleccionado para resaltado permanente */
   selectedArticleId,
+  tableHeaderMode = 'cat-first', // 'cat-first' | 'sr-first'
 }) {
+
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
@@ -357,11 +378,14 @@ export default function TablaArticulos({
     return m;
   }, [allArticulos]);
 
-  const idsEnOtras = useMemo(() => new Set(
-    (agrupaciones || [])
-      .filter((g) => !esTodoGroup(g, todoGroupId))
-      .flatMap((g) => (g.articulos || []).map(getId))
-  ), [agrupaciones, todoGroupId]);
+  const idsEnOtras = useMemo(
+    () => new Set(
+      (agrupaciones || [])
+        .filter((g) => !esTodoGroup(g))
+        .flatMap((g) => (g.articulos || []).map(getId))
+    ),
+    [agrupaciones]
+  );
 
   const idsSinAgrup = useMemo(() => {
     const s = new Set();
@@ -377,10 +401,12 @@ export default function TablaArticulos({
 
   /* --------- a mostrar + filtro --------- */
   const articulosAMostrar = useMemo(() => {
+    // 1) Hay categoría Y agrupación seleccionada
     if (categoriaSeleccionada && agrupacionSeleccionada) {
-      const idsFiltro = esTodoGroup(agrupacionSeleccionada, todoGroupId)
-        ? idsSinAgrup
+      const idsFiltro = esTodoGroup(agrupacionSeleccionada)
+        ? idsSinAgrup                        // TODO virtual → solo sin agrupar
         : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+
       return (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a);
@@ -393,9 +419,11 @@ export default function TablaArticulos({
             precio: num(a?.precio ?? b?.precio),
             costo: num(a?.costo ?? b?.costo),
           };
-        })).filter((a) => idsFiltro.has(getId(a)));
+        }))
+        .filter((a) => idsFiltro.has(getId(a)));
     }
 
+    // 2) Solo categoría seleccionada (sin agrupación)
     if (categoriaSeleccionada) {
       return (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
@@ -412,12 +440,18 @@ export default function TablaArticulos({
         }));
     }
 
+    // 3) Solo agrupación seleccionada (sin categoría)
     if (agrupacionSeleccionada) {
-      const esTodo = esTodoGroup(agrupacionSeleccionada, todoGroupId);
-      const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
-      if (esTodo && arr.length === 0) {
+      // 👉 Si ES el grupo TODO (virtual): siempre mostrar solo los "sin agrupar"
+      if (esTodoGroup(agrupacionSeleccionada)) {
         return allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
       }
+
+      // 👉 Discontinuados u otra agrupación normal:
+      const arr = Array.isArray(agrupacionSeleccionada.articulos)
+        ? agrupacionSeleccionada.articulos
+        : [];
+
       if (arr.length > 0) {
         return arr.map((x) => {
           const id = getId(x);
@@ -432,11 +466,16 @@ export default function TablaArticulos({
           };
         });
       }
+
+      // 👉 Agrupación normal vacía → tabla vacía (NO todo el catálogo)
+      return [];
     }
+
+    // 4) Sin categoría ni agrupación: vista general → todo el catálogo
     return allArticulos;
   }, [
-    categoriaSeleccionada, agrupacionSeleccionada, todoGroupId,
-    idsSinAgrup, baseById, agrupaciones, allArticulos, excludedIds
+    categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup,
+    baseById, allArticulos
   ]);
 
   // Filtro con defer para tecleo suave
@@ -449,10 +488,30 @@ export default function TablaArticulos({
     );
   }, [articulosAMostrar, filtroDefer]);
 
-  // ---- agrupación por cabeceras (categoría > subrubro) ----
   const bloques = useMemo(() => {
+    const items = articulosFiltrados || [];
+
+    // ⭐ MODO RUBRO: unificar "Pasteleria - ..." en un solo bloque "Pasteleria"
+    if (tableHeaderMode === 'sr-first') {
+      const byRubro = new Map(); // key -> { rubroLabel, arts[] }
+
+      for (const a of items) {
+        const srName = getDisplaySubrubro(a) || 'Sin subrubro';
+        const rubroBase = getRubroBase(srName);   // "Pasteleria"
+        const key = normKey(rubroBase);
+        if (!byRubro.has(key)) byRubro.set(key, { rubroLabel: rubroBase, arts: [] });
+        byRubro.get(key).arts.push(a);
+      }
+
+      return Array.from(byRubro.values()).map(({ rubroLabel, arts }) => ({
+        categoria: rubroLabel,
+        subrubros: [{ subrubro: rubroLabel, arts }],
+      }));
+    }
+
+    // ⭐ MODO ORIGINAL: Categoría > Subrubro
     const byCat = new Map();
-    for (const a of (articulosFiltrados || [])) {
+    for (const a of items) {
       const cat = getDisplayCategoria(a) || 'Sin categoría';
       const sr = getDisplaySubrubro(a) || 'Sin subrubro';
       if (!byCat.has(cat)) byCat.set(cat, new Map());
@@ -464,7 +523,7 @@ export default function TablaArticulos({
       categoria,
       subrubros: Array.from(mapSr, ([subrubro, arts]) => ({ subrubro, arts })),
     }));
-  }, [articulosFiltrados]);
+  }, [articulosFiltrados, tableHeaderMode]);
 
   const flatRows = useMemo(() => {
     const rows = [];
@@ -551,7 +610,7 @@ export default function TablaArticulos({
     const ids = (removedIds || []).map(Number).filter(Number.isFinite);
     if (!ids.length) { refetchLocal(); return; }
     if (!agrupSelView?.id) { refetchLocal(); return; }
-    const isTodo = esTodoGroup(agrupSelView, todoGroupId);
+    const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
     if (isTodo) { refetchLocal(); return; }
 
     onMutateGroups?.({
@@ -568,16 +627,17 @@ export default function TablaArticulos({
   }, [onIdsVisibleChange]);
 
   // ====== layout tipo “tabla” con CSS grid
-  const gridTemplate = '.3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr';
+  const gridTemplate = '.3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr';
   const cellNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
   const ITEM_H = 44;
 
-  const isTodo = agrupSelView ? esTodoGroup(agrupSelView, todoGroupId) : false;
+  const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
 
   const calcularCostoPct = (a) => {
     const p = num(a.precio), c = num(a.costo);
     return p > 0 ? ((c / p) * 100).toFixed(2) : 0;
   };
+
   const calcularSugerido = (a) => {
     const o = num(objetivos[getId(a)]) || 0;
     const c = num(a.costo);
@@ -590,9 +650,28 @@ export default function TablaArticulos({
     if (row.kind === 'header') {
       const headerCat = row.categoria || 'Sin categoría';
       const headerSr = row.subrubro || 'Sin subrubro';
+
+      const same = headerCat === headerSr;
+      const label =
+        tableHeaderMode === 'sr-first'
+          ? (same ? headerSr : `${headerSr} - ${headerCat}`)
+          : `${headerCat} - ${headerSr}`;
+
       return (
-        <div key={row.key} style={{ ...style, display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center', background: '#fafafa', fontWeight: 800, borderTop: '1px solid #eee', padding: '4px 8px' }}>
-          <div style={{ gridColumn: '1 / -2' }}>{headerCat} - {headerSr}</div>
+        <div
+          key={row.key}
+          style={{
+            ...style,
+            display: 'grid',
+            gridTemplateColumns: gridTemplate,
+            alignItems: 'center',
+            background: '#fafafa',
+            fontWeight: 800,
+            borderTop: '1px solid #eee',
+            padding: '4px 8px',
+          }}
+        >
+          <div style={{ gridColumn: '1 / -2' }}>{label}</div>
           <div style={{ gridColumn: '-2 / -1', justifySelf: 'end' }}>
             <SubrubroAccionesMenu
               onMutateGroups={onMutateGroups}
@@ -613,26 +692,47 @@ export default function TablaArticulos({
       );
     }
 
-    // item
+    // ---------- item ----------
     const a = row.art;
     const id = a.id;
     const isSelected = Number(selectedArticleId) === Number(id);
 
+    // override de ventas: ahora viene { qty, amount } desde ArticulosMain
+    const ventaObj = ventasPorArticulo?.get(id);
+
+    const overrideQty =
+      ventaObj && ventaObj.qty != null && !Number.isNaN(Number(ventaObj.qty))
+        ? Number(ventaObj.qty)
+        : undefined;
+
+    // 💰 Ventas $ = unidades * precio de la tabla (importe TEÓRICO)
+    const overrideAmount =
+      overrideQty != null && !Number.isNaN(overrideQty)
+        ? overrideQty * num(a.precio)
+        : undefined;
+
     // estilos de resaltado permanente
     const selectedStyle = isSelected
       ? {
-          background: 'rgba(59,130,246,0.10)',            // azul suave
-          boxShadow: 'inset 0 0 0 1px rgba(59,130,246,0.35)',
-          position: 'relative',
-        }
+        background: 'rgba(59,130,246,0.10)',
+        boxShadow: 'inset 0 0 0 1px rgba(59,130,246,0.35)',
+        position: 'relative',
+      }
       : null;
 
-    const leftBar = isSelected
-      ? <div style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
-          background: 'rgba(59,130,246,0.95)', borderRadius: 2
-        }} />
-      : null;
+    const leftBar = isSelected ? (
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 4,
+          background: 'rgba(59,130,246,0.95)',
+          borderRadius: 2,
+        }}
+      />
+    ) : null;
 
     return (
       <div
@@ -648,8 +748,13 @@ export default function TablaArticulos({
         }}
       >
         {leftBar}
+        {/* 1️⃣ Código */}
         <div>{id}</div>
+
+        {/* 2️⃣ Nombre */}
         <div>{a.nombre}</div>
+
+        {/* 3️⃣ Ventas U */}
         <div>
           <VentasCell
             articuloId={id}
@@ -657,13 +762,28 @@ export default function TablaArticulos({
             from={fechaDesde}
             to={fechaHasta}
             defaultGroupBy="day"
-            totalOverride={ventasPorArticulo?.get(id)}
+            totalOverride={overrideQty}
             onTotalResolved={onTotalResolved}
           />
         </div>
+
+        {/* 4️⃣ Ventas $ */}
+        <div style={cellNum}>
+          {overrideAmount != null
+            ? `$${fmt(overrideAmount, 0)}`
+            : '—'}
+        </div>
+
+        {/* 5️⃣ Precio */}
         <div style={cellNum}>${fmt(a.precio, 0)}</div>
+
+        {/* 6️⃣ Costo */}
         <div style={cellNum}>${fmt(a.costo, 0)}</div>
+
+        {/* 7️⃣ Costo % */}
         <div style={cellNum}>{calcularCostoPct(a)}%</div>
+
+        {/* 8️⃣ Objetivo % */}
         <div style={cellNum}>
           <input
             type="number"
@@ -672,7 +792,11 @@ export default function TablaArticulos({
             style={{ width: 64 }}
           />
         </div>
+
+        {/* 9️⃣ Sugerido $ */}
         <div style={cellNum}>${fmt(calcularSugerido(a), 2)}</div>
+
+        {/* 🔟 Manual $ */}
         <div style={cellNum}>
           <input
             type="number"
@@ -681,6 +805,8 @@ export default function TablaArticulos({
             style={{ width: 84 }}
           />
         </div>
+
+        {/* 1️⃣1️⃣ Acciones */}
         <div style={{ textAlign: 'center' }}>
           <ArticuloAccionesMenu
             onMutateGroups={onMutateGroups}
@@ -731,31 +857,58 @@ export default function TablaArticulos({
             <div onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
               Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div>Ventas {ventasLoading ? '…' : ''}</div>
-            <div onClick={() => toggleSort('precio')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div>Ventas U {ventasLoading ? '…' : ''}</div>
+            <div>Ventas $ {ventasLoading ? '…' : ''}</div>
+            <div
+              onClick={() => toggleSort('precio')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div onClick={() => toggleSort('costo')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div
+              onClick={() => toggleSort('costo')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div onClick={() => toggleSort('costoPct')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div
+              onClick={() => toggleSort('costoPct')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div onClick={() => toggleSort('objetivo')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div
+              onClick={() => toggleSort('objetivo')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div onClick={() => toggleSort('sugerido')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div
+              onClick={() => toggleSort('sugerido')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div onClick={() => toggleSort('manual')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+            <div
+              onClick={() => toggleSort('manual')}
+              style={{ cursor: 'pointer', textAlign: 'right' }}
+            >
               Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div style={{ textAlign: 'center' }}>Acciones</div>
           </div>
         </div>
+
         {flatRows.length === 0 ? (
-          <p style={{ marginTop: '2rem', fontSize: '1.2rem', color: '#777', padding: '0 8px' }}>
-            Cargando artículos.
+          <p
+            style={{
+              marginTop: '2rem',
+              fontSize: '1.2rem',
+              color: '#777',
+              padding: '0 8px',
+            }}
+          >
+            No hay artículos.
           </p>
         ) : (
           <VirtualList
@@ -774,13 +927,18 @@ export default function TablaArticulos({
           />
         )}
       </div>
+
       <Snackbar
         open={snack.open}
         autoHideDuration={2600}
         onClose={() => setSnack((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: '100%' }}>
+        <Alert
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
+          severity={snack.type}
+          sx={{ width: '100%' }}
+        >
           {snack.msg}
         </Alert>
       </Snackbar>

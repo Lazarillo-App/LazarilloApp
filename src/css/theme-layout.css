@@ -194,9 +194,9 @@ h2 {
 }
 
 .css-y1rx2q {
-    width: 50px !important;
-    height: 50px !important;
-    border-radius: 25px !important;
+  width: 50px !important;
+  height: 50px !important;
+  border-radius: 25px !important;
 }
 
 .css-zx1ouc-MuiButtonBase-root-MuiButton-root {
@@ -211,10 +211,9 @@ h2 {
   height: 50px !important;
 }
 
-.css-cmpglg-MuiFormControl-root-MuiTextField-root
- {
+.css-cmpglg-MuiFormControl-root-MuiTextField-root {
   width: 35% !important;
- }
+}
 
 /* ===========================
    Board Artículos (2 columnas)
@@ -267,7 +266,11 @@ element.style {
 }
 
 .css-trm6af-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input.MuiSelect-select {
-  min-height: 2.78em;
+  min-height: 1.5580em !important;
+}
+
+.css-hvjq6j-MuiFormLabel-root-MuiInputLabel-root {
+  top: 5 !important;
 }
 
 /* Franja superior del sidebar (cinta roja) */
@@ -286,6 +289,7 @@ element.style {
   outline: 2px dashed var(--color-secondary, #6366f1);
   background: rgba(99, 102, 241, 0.08);
 }
+
 .sidebar-draggable-list li.categoria-activa {
   background: rgba(59, 130, 246, 0.10);
   border-left: 3px solid var(--color-primary, #3b82f6);
@@ -517,9 +521,17 @@ input[type="number"]:focus {
 }
 
 @keyframes jumpPulse {
-  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-primary) 55%, transparent); }
-  60%  { box-shadow: 0 0 0 8px color-mix(in oklab, var(--color-primary) 0%, transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-primary) 0%, transparent); }
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-primary) 55%, transparent);
+  }
+
+  60% {
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--color-primary) 0%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-primary) 0%, transparent);
+  }
 }
 
 /* Tabla */
@@ -630,7 +642,7 @@ input[type="number"]:focus {
 }
 
 @media (min-width: 1536px) {
-    .css-hhdjsd-MuiContainer-root {
-        max-width: 100% !important;
-    }
+  .css-hhdjsd-MuiContainer-root {
+    max-width: 100% !important;
+  }
 }

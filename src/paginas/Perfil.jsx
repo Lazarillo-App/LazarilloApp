@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import React, { useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
@@ -55,59 +54,110 @@ export default function Perfil() {
     }
   };
 
-  const onDelete = async (biz) => {
-    const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
-    const typed = window.prompt(
-      `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\nPara confirmar, escribí EXACTAMENTE el nombre del negocio:`
-    );
-    if (typed === null) return;
-    if (typed.trim() !== nombre) {
-      alert('El texto no coincide. Operación cancelada.');
+ const onDelete = async (biz) => {
+  const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
+  const typed = window.prompt(
+    `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\nPara confirmar, escribí EXACTAMENTE el nombre del negocio:`
+  );
+  if (typed === null) return;
+  if (typed.trim() !== nombre) {
+    alert('El texto no coincide. Operación cancelada.');
+    return;
+  }
+
+  const deletedId = biz.id;
+
+  try {
+    await BusinessesAPI.remove(deletedId);
+  } catch (e) {
+    if (String(e?.message).toLowerCase().includes('not_found')) {
+      console.warn('Negocio ya no existe en backend, limpiando UI igual.');
+    } else {
+      console.error(e);
+      alert(e?.message || 'No se pudo eliminar.');
       return;
     }
+  }
 
-    try {
-      await BusinessesAPI.remove(biz.id);
-    } catch (e) {
-      if (String(e?.message).toLowerCase().includes('not_found')) {
-        console.warn('Negocio ya no existe en backend, limpiando UI igual.');
-      } else {
-        console.error(e);
-        alert(e?.message || 'No se pudo eliminar.');
-        return;
+  // 1) Refrescamos lista desde backend
+  let restantes = [];
+  try {
+    restantes = await BusinessesAPI.listMine();
+    setItems(restantes || []);
+  } catch {
+    setItems(prev => prev.filter(i => String(i.id) !== String(deletedId)));
+  }
+
+  // 2) Si el que borraste era el activo → decidir nuevo activo
+  const wasActive = String(localStorage.getItem('activeBusinessId')) === String(deletedId);
+
+  if (wasActive) {
+    if (restantes && restantes.length > 0) {
+      // elegimos el primero de la lista como nuevo activo
+      const fallback = restantes[0];
+      try {
+        const bizActivo = await setActiveBusiness(fallback.id);
+        localStorage.setItem('activeBusinessId', String(bizActivo.id));
+        setActiveId(String(bizActivo.id));
+      } catch (e) {
+        console.error('No se pudo activar fallback tras borrar negocio:', e);
+        localStorage.removeItem('activeBusinessId');
+        setActiveId('');
       }
-    }
-
-    setItems(prev => prev.filter(i => String(i.id) !== String(biz.id)));
-
-    if (String(localStorage.getItem('activeBusinessId')) === String(biz.id)) {
+    } else {
+      // ya no quedan negocios
       localStorage.removeItem('activeBusinessId');
       setActiveId('');
-      window.dispatchEvent(new CustomEvent('business:switched'));
     }
 
-    try {
-      const restantes = await BusinessesAPI.listMine();
-      setItems(restantes || []);
-    } catch { }
+    // avisar a toda la app que cambió el local
+    window.dispatchEvent(new CustomEvent('business:switched'));
+  }
 
-    // Notificá otros paneles que listen (como AdminActionsSidebar)
-    try { window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: biz.id } })); } catch { }
-    alert('Negocio eliminado.');
-    window.dispatchEvent(new CustomEvent("business:list:updated"));
+  try { 
+    window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: deletedId } })); 
+  } catch {}
+
+  alert('Negocio eliminado.');
+  window.dispatchEvent(new CustomEvent("business:list:updated"));
+};
+
+  // ===== Helper: auto-sync ventas 7d para nuevo negocio (si Maxi está configurado)
+  const tryAutoSyncNewBusiness = async (bizId) => {
+    try {
+      const st = await BusinessesAPI.maxiStatus(bizId);
+      if (st?.configured) {
+        const resp = await BusinessesAPI.syncSalesLast7d(bizId);
+        const s = resp?.sales || {};
+        showNotice('Ventas sincronizadas',
+          `Se sincronizaron ventas (7 días): ${s.from} → ${s.to} · upserted ${s.upserted ?? 0} · updated ${s.updated ?? 0}`);
+        window.dispatchEvent(new CustomEvent('business:synced', { detail: { bizId } }));
+      } else {
+        // opcional: hint si no hay credenciales
+        console.info('Maxi no configurado para el nuevo negocio; se omite auto-sync 7d.');
+      }
+    } catch (e) {
+      console.error('Auto-sync ventas 7d (nuevo negocio) falló:', e);
+    } finally {
+      // Notificar a listeners (AdminActionsSidebar, etc.)
+      try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch {}
+    }
   };
 
-  const onCreateComplete = (biz) => {
+  const onCreateComplete = async (biz) => {
     setItems(prev => [biz, ...prev]);
     setShowCreate(false);
-    onSetActive(biz.id);
-    window.dispatchEvent(new CustomEvent("business:list:updated")); // 👈
+    await onSetActive(biz.id);
+    window.dispatchEvent(new CustomEvent("business:list:updated"));
+
+    // 🔁 Intentar auto-sync de ventas 7 días para el nuevo negocio
+    try { await tryAutoSyncNewBusiness(biz.id); } catch {}
   };
 
   const onSaved = (saved) => {
     setItems(prev => prev.map(i => String(i.id) === String(saved.id) ? { ...i, ...saved } : i));
     setEditing(null);
-    window.dispatchEvent(new CustomEvent("business:list:updated")); // 👈
+    window.dispatchEvent(new CustomEvent("business:list:updated"));
   };
 
   const onOpenSync = async (biz) => {

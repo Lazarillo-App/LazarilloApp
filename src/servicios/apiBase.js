@@ -1,6 +1,7 @@
 /* eslint-disable no-empty */
 // src/servicios/apiBase.js
 
+// === Base URL del backend ===
 const RAW =
   import.meta.env.VITE_BACKEND_URL || // Render / prod (ej: https://tu-back.onrender.com/api)
   import.meta.env.VITE_LOCAL        || // Dev local (ej: http://localhost:4000/api)
@@ -42,9 +43,12 @@ export function qs(params = {}) {
   return s ? `?${s}` : '';
 }
 
-// === Cliente HTTP central (liviano) ===
-// Úsalo para llamadas simples. Para endpoints de businesses/ventas
-// preferí el wrapper http() de apiBusinesses.js.
+/**
+ * Cliente HTTP liviano:
+ *  - soporta cancelación con `signal`
+ *  - NO setea Content-Type si el body es FormData
+ *  - encadena timeout propio con el `signal` entrante
+ */
 export async function api(
   path,
   {
@@ -52,36 +56,46 @@ export async function api(
     body,
     headers,
     timeout = 45000,         // ⏱️ evita cuelgues si Render está lento
-    redirectOn401 = true,    // 🔐 igual que http() de apiBusinesses
+    redirectOn401 = true,    // 🔐 igual que http() del wrapper
+    signal,                  // 👈 NUEVO: cancelación externa
   } = {}
 ) {
   const url = path.startsWith('http') ? path : `${BASE}${path}`;
-
   const { token, activeBusinessId } = getSession();
-  const h = { 'Content-Type': 'application/json', ...(headers || {}) };
-  if (token) h.Authorization = `Bearer ${token}`;
-  if (activeBusinessId) h['X-Business-Id'] = activeBusinessId; // header esperado por el backend
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
+  // Solo seteamos Content-Type cuando NO es FormData (boundary lo pone el browser)
+  const h = { ...(headers || {}) };
+  if (!isFormData) h['Content-Type'] = 'application/json';
+  if (token && !h.Authorization) h.Authorization = `Bearer ${token}`;
+  if (activeBusinessId && !h['X-Business-Id']) h['X-Business-Id'] = activeBusinessId;
+
+  // AbortController con encadenado de signal externo + timeout
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeout);
+  if (signal && typeof signal.addEventListener === 'function') {
+    signal.addEventListener('abort', () => {
+      try { ctrl.abort(signal.reason || 'aborted_by_caller'); } catch {}
+    });
+  }
+  const t = setTimeout(() => ctrl.abort('timeout'), timeout);
 
   let res;
   try {
     res = await fetch(url, {
       method,
       headers: h,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
       signal: ctrl.signal,
     });
   } finally {
     clearTimeout(t);
   }
 
-  // Manejo de 401 (opcional)
+  // Manejo de 401 (opcional con redirect)
   if (res.status === 401 && redirectOn401) {
     try { await res.clone().json(); } catch {}
     clearSession();
-    // si usás basename distinto, el Router lo resuelve
     window.location.href = `${APP_BASENAME || ''}/login`;
     throw new Error('invalid_token');
   }

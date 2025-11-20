@@ -1,9 +1,17 @@
+// src/componentes/BusinessCard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CircularProgress from "@mui/material/CircularProgress";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { insumosSyncMaxi } from "@/servicios/apiInsumos";
+
+/* Cache simple en memoria para no pedir el status en cada render */
+const maxiStatusCache = new Map(); // key: businessId -> { configured, at }
 
 export default function BusinessCard({
   biz,
@@ -14,27 +22,61 @@ export default function BusinessCard({
   onOpenSync,
   showNotice,
 }) {
-  const [syncing, setSyncing] = useState(false);
-
-  // 🔄 estado de "vista" que parte de la prop y se actualiza por evento
+  const [syncingArt, setSyncingArt] = useState(false);
+  const [syncingSales, setSyncingSales] = useState(false);
   const [viewBiz, setViewBiz] = useState(biz);
+  const [syncingInsumos, setSyncingInsumos] = useState(false);
+  // estado/flags para maxi
+  const [maxiLoading, setMaxiLoading] = useState(true);
+  const [maxiConfigured, setMaxiConfigured] = useState(false);
 
-  // si el padre trae una nueva versión, sincronizamos
   useEffect(() => { setViewBiz(biz); }, [biz]);
 
-  // escuchar cambios globales (emitidos por el modal al guardar)
+  // refresco card si llega evento externo
   useEffect(() => {
     const onUpdated = (ev) => {
       const updated = ev?.detail?.business;
       const id = ev?.detail?.id ?? updated?.id;
       if (!id) return;
-      // si es esta misma card, refrescamos su estado de vista
       if (String(id) === String(viewBiz?.id)) {
         setViewBiz((prev) => ({ ...prev, ...updated }));
       }
     };
     window.addEventListener("business:updated", onUpdated);
     return () => window.removeEventListener("business:updated", onUpdated);
+  }, [viewBiz?.id]);
+
+  // ▶ chequear si Maxi está configurado (con pequeño cache)
+  useEffect(() => {
+    let mounted = true;
+    const id = viewBiz?.id;
+    if (!id) return;
+
+    // 60s de TTL para evitar sobrecargar
+    const cacheHit = maxiStatusCache.get(id);
+    if (cacheHit && Date.now() - cacheHit.at < 60_000) {
+      setMaxiConfigured(!!cacheHit.configured);
+      setMaxiLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        setMaxiLoading(true);
+        const st = await BusinessesAPI.maxiStatus(id); // { ok, configured, email, codcli }
+        if (!mounted) return;
+        const configured = !!st?.configured;
+        setMaxiConfigured(configured);
+        maxiStatusCache.set(id, { configured, at: Date.now() });
+      } catch {
+        if (!mounted) return;
+        setMaxiConfigured(false);
+      } finally {
+        if (mounted) setMaxiLoading(false);
+      }
+    })();
+
+    return () => { mounted = false; };
   }, [viewBiz?.id]);
 
   const branding = useMemo(
@@ -70,23 +112,73 @@ export default function BusinessCard({
   const isLogoThumb = hasLogo;
   const isActive = String(activeId) === String(viewBiz?.id);
 
-  const handleSync = async () => {
-    if (!onOpenSync || syncing) return;
-    setSyncing(true);
+  /* ============ Sincronizar ARTÍCULOS (existente) ============ */
+  const handleSyncArticulos = async () => {
+    if (!onOpenSync || syncingArt) return;
+    setSyncingArt(true);
     try {
       const resp = await onOpenSync(viewBiz);
       const up = Number(resp?.upserted ?? 0);
       const mp = Number(resp?.mapped ?? 0);
-      showNotice?.(`Sync OK. Artículos: ${up} · Mapeos: ${mp}`);
+      showNotice?.(`Artículos OK. Upsert: ${up} · Mapeos: ${mp}`);
     } catch (e) {
       const msg = String(e?.message || "");
       if (msg.includes("UNAUTHORIZED_ACCESS") || msg.includes("UNAUTHORIZED")) {
-        showNotice?.("Maxi devolvió 401: credenciales inválidas o token caído. Revisa email/clave/codcli del local.");
+        showNotice?.("Maxi 401: credenciales inválidas / token caído. Revisá email/clave/codcli.");
       } else {
-        showNotice?.("No se pudo sincronizar. Probá nuevamente o revisá credenciales de Maxi.");
+        showNotice?.("No se pudo sincronizar artículos. Revisá credenciales.");
       }
     } finally {
-      setSyncing(false);
+      setSyncingArt(false);
+    }
+  };
+
+  /* ============ Sincronizar VENTAS (últimos 7 días) ============ */
+  const handleSyncVentas7d = async () => {
+    if (syncingSales) return;
+    setSyncingSales(true);
+    try {
+      const res = await BusinessesAPI.syncSalesLast7d(viewBiz.id);
+      const s = res?.sales || {};
+      showNotice?.(
+        `Ventas OK · ${s.from} → ${s.to} · upserted: ${s.upserted ?? 0} · updated: ${s.updated ?? 0}`
+      );
+      window.dispatchEvent(new Event("ventas:updated"));
+    } catch (e) {
+      const msg = String(e?.message || "");
+      if (msg.includes("maxi_not_configured")) {
+        showNotice?.("Maxi no configurado en este local. Cargá email / clave / codcli.");
+      } else {
+        showNotice?.(`No se pudo sincronizar ventas: ${msg}`);
+      }
+    } finally {
+      setSyncingSales(false);
+    }
+  };
+
+  /* ============ Sincronizar INSUMOS ============ */
+  const handleSyncInsumos = async () => {
+    if (syncingInsumos) return;
+    setSyncingInsumos(true);
+    try {
+      const res = await insumosSyncMaxi(viewBiz.id);
+
+      // 👇 ADD: ver respuesta real en consola
+      console.log('[SYNC INSUMOS] respuesta backend:', res);
+
+      const s = res?.summary || res || {};
+      const received = s.received ?? s.normalized ?? 0;
+      const synced = s.synced ?? s.total ?? 0;
+
+      showNotice?.(`Insumos OK · recibidos: ${received} · sincronizados: ${synced}`);
+
+
+      showNotice?.(`Insumos OK · insertados: ${received} · actualizados: ${synced}`);
+    } catch (e) {
+      const msg = String(e?.message || "");
+      showNotice?.(`No se pudo sincronizar insumos: ${msg}`);
+    } finally {
+      setSyncingInsumos(false);
     }
   };
 
@@ -116,30 +208,96 @@ export default function BusinessCard({
       </div>
 
       <div className="bc-actions">
-        {!isActive && (
-          <button className="bc-btn bc-btn-outline" onClick={() => onSetActive?.(viewBiz.id)}>
-            Activar
-          </button>
-        )}
+        {/* Fila principal: activar / editar / eliminar */}
+        <div className="bc-actions-main">
+          {!isActive && (
+            <button
+              className="bc-btn bc-btn-outline"
+              onClick={() => onSetActive?.(viewBiz.id)}
+            >
+              Activar
+            </button>
+          )}
 
-        <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(viewBiz)}>
-          <EditIcon fontSize="small" />
-          Editar
-        </button>
-
-        {onOpenSync && (
-          <button className="bc-btn bc-btn-outline" onClick={handleSync} disabled={syncing}>
-            {syncing ? <CircularProgress size={16} /> : <AutorenewIcon fontSize="small" />}
-            {syncing ? " Sincronizando..." : " Sincronizar"}
+          <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(viewBiz)}>
+            <EditIcon fontSize="small" />
+            Editar
           </button>
-        )}
-        <button
-          className="bc-icon bc-icon-danger"
-          onClick={() => onDelete?.(viewBiz)}
-          title="Eliminar negocio"
-        >
-          <DeleteIcon fontSize="small" />
-        </button>
+
+          <button
+            className="bc-icon bc-icon-danger"
+            onClick={() => onDelete?.(viewBiz)}
+            title="Eliminar negocio"
+          >
+            <DeleteIcon fontSize="small" />
+          </button>
+        </div>
+
+        {/* Fila de sincronización */}
+        <div className="bc-actions-sync">
+          {onOpenSync && (
+            <button
+              className="bc-btn bc-btn-outline"
+              onClick={handleSyncArticulos}
+              disabled={syncingArt}
+              title="Sincronizar catálogo / artículos"
+            >
+              {syncingArt ? (
+                <CircularProgress size={16} />
+              ) : (
+                <AutorenewIcon fontSize="small" />
+              )}
+              {syncingArt ? " Artículos…" : " Artículos"}
+            </button>
+          )}
+
+          {/* Ventas: visible solo si Maxi está configurado */}
+          {!maxiLoading && maxiConfigured && (
+            <button
+              className="bc-btn bc-btn-outline"
+              onClick={handleSyncVentas7d}
+              disabled={syncingSales}
+              title="Traer ventas de los últimos 7 días (hasta ayer)"
+            >
+              {syncingSales ? (
+                <CircularProgress size={16} />
+              ) : (
+                <PointOfSaleIcon fontSize="small" />
+              )}
+              {syncingSales ? " Ventas…" : " Ventas 7 días"}
+            </button>
+          )}
+
+          {/* Insumos: también requiere Maxi configurado */}
+          {!maxiLoading && maxiConfigured && (
+            <button
+              className="bc-btn bc-btn-outline"
+              onClick={handleSyncInsumos}
+              disabled={syncingInsumos}
+              title="Sincronizar insumos desde Maxi"
+            >
+              {syncingInsumos ? (
+                <CircularProgress size={16} />
+              ) : (
+                <Inventory2Icon fontSize="small" />
+              )}
+              {syncingInsumos ? " Insumos…" : " Insumos"}
+            </button>
+          )}
+
+          {/* Hint cuando Maxi no está configurado */}
+          {!maxiLoading && !maxiConfigured && (
+            <button
+              className="bc-btn bc-btn-outline"
+              disabled
+              title="Configura Maxi (email, codcli y clave) para habilitar la sincronización"
+              style={{ opacity: 0.5, cursor: "not-allowed" }}
+            >
+              <PointOfSaleIcon fontSize="small" />
+              Maxi no configurado
+            </button>
+          )}
+        </div>
       </div>
 
       <style>{`
@@ -155,9 +313,11 @@ export default function BusinessCard({
         .bc-thumb-wrap.logo-mode{background:#fff;}
         .bc-thumb-wrap.logo-mode .bc-thumb{object-fit:contain;padding:6px;}
         .bc-thumb-wrap.photo-mode .bc-thumb{object-fit:cover;}
-        .bc-actions{display:flex;align-items:stretch;gap:8px;}
-        .bc-btn{border:0;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer;transition:filter .15s, background .15s;}
-        .bc-btn-edit{flex:1;background:var(--color-primary,#0ea5e9);color:var(--on-primary,#ffffff);box-shadow:0 1px 0 rgba(0,0,0,.06) inset;}
+        .bc-actions{ display:flex;flex-direction:column;gap:6px;}
+        .bc-actions-main{ display:flex; align-items:stretch;gap:8px; flex-wrap:wrap;}
+        .bc-actions-sync{ display:flex;align-items:stretch;gap:8px;flex-wrap:wrap; }
+        .bc-btn{border:0;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer;transition:filter .15s, background .15s;display:inline-flex;align-items:center;gap:6px;}
+        .bc-btn-edit{background:var(--color-primary,#0ea5e9);color:var(--on-primary,#ffffff);box-shadow:0 1px 0 rgba(0,0,0,.06) inset;}
         .bc-btn-edit:hover{filter:brightness(.96);}
         .bc-btn-edit:disabled{opacity:.6;cursor:default;filter:none;}
         .bc-btn-outline{border:1px solid var(--color-border,#e5e7eb);background:var(--color-surface,#fff);color:var(--color-fg,#111827);}

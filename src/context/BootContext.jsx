@@ -1,3 +1,5 @@
+/* eslint-disable no-empty */
+/* eslint-disable react-refresh/only-export-components */
 // src/context/BootContext.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { BusinessesAPI, authHeaders } from '../servicios/apiBusinesses';

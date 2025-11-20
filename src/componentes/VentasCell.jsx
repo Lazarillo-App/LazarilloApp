@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+// src/componentes/VentasCell.jsx
+import React, { useEffect, useMemo, useState } from 'react';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
 import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
 import VentasMiniGraficoModal from './VentasMiniGraficoModal';
-import { obtenerVentas } from '../servicios/apiVentas';
+import { useVentasSeries } from '../hooks/useVentasSeries';
 
 function VentasCell({
   articuloId,
@@ -14,47 +15,84 @@ function VentasCell({
   onTotalResolved,
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState({ total: 0, items: [] });
   const [openModal, setOpenModal] = useState(false);
 
-  const activeBizId = localStorage.getItem('activeBusinessId');
-  const totalToShow = Number(totalOverride ?? 0);
+  // 🔁 Siempre traemos la serie mientras haya datos mínimos
+  const {
+    data,
+    isLoading,
+  } = useVentasSeries({
+    articuloId,
+    from,
+    to,
+    groupBy,
+    enabled: !!articuloId && !!from && !!to,
+  });
 
-  // cacheKey si luego querés caching local
-  // eslint-disable-next-line no-unused-vars
-  const cacheKey = useMemo(
-    () => `${activeBizId}|${articuloId}|${from}|${to}|${groupBy}`,
-    [activeBizId, articuloId, from, to, groupBy]
-  );
+  // 🔍 Total calculado de forma robusta
+  const totalFromSeries = useMemo(() => {
+    if (!data) return 0;
 
-  async function fetchVentas(nextGroupBy) {
-    if (!activeBizId || !articuloId || !from || !to) return;
-    const gb = nextGroupBy || groupBy;
-    setLoading(true);
-    try {
-      const res = await obtenerVentas({
-        articuloId,
-        from,
-        to,
-        groupBy: gb,
-        ignoreZero: false,
-      });
-      setData(res);
-      if (typeof onTotalResolved === 'function') {
-        onTotalResolved(articuloId, Number(res?.total || 0));
-      }
-    } catch (e) {
-      console.error('fetchVentas error', e);
-      setData({ total: 0, items: [] });
-    } finally {
-      setLoading(false);
+    // 1) Si el backend ya manda un total numérico, lo usamos directo
+    if (typeof data.total === 'number' && !Number.isNaN(data.total)) {
+      return data.total;
     }
-  }
+
+    // 2) Si viene algo tipo { data: { total, items } }
+    if (data.data && typeof data.data.total === 'number') {
+      return data.data.total;
+    }
+
+    // 3) Sumamos items (formas comunes: qty, cantidad, unidades, total_u)
+    const items =
+      (Array.isArray(data.items) && data.items) ||
+      (Array.isArray(data.series) && data.series) ||
+      (Array.isArray(data.data?.items) && data.data.items) ||
+      [];
+
+    const sum = items.reduce((acc, it) => {
+      const v = Number(
+        it.qty ??
+        it.cantidad ??
+        it.unidades ??
+        it.total_u ??
+        0
+      );
+      return acc + (Number.isNaN(v) ? 0 : v);
+    }, 0);
+
+    return sum;
+  }, [data]);
+
+  // Si el padre quiere enterarse del total, se lo informamos cuando cambie
+  useEffect(() => {
+    if (
+      typeof onTotalResolved === 'function' &&
+      articuloId &&
+      !Number.isNaN(totalFromSeries)
+    ) {
+      onTotalResolved(articuloId, totalFromSeries);
+    }
+  }, [articuloId, totalFromSeries, onTotalResolved]);
+
+  // Qué número mostramos en la celda
+  const totalToShow =
+    totalOverride != null && !Number.isNaN(Number(totalOverride))
+      ? Number(totalOverride)
+      : totalFromSeries;
+
+  const handleOpenModal = () => {
+    if (!articuloId || !from || !to) return;
+    setOpenModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setOpenModal(false);
+  };
 
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120 }}>
-      {loading ? (
+      {isLoading && openModal ? (
         <CircularProgress size={18} />
       ) : (
         <Typography
@@ -69,10 +107,8 @@ function VentasCell({
       <Tooltip title="Ver gráfico">
         <IconButton
           size="small"
-          onClick={() => {
-            setOpenModal(true);
-            fetchVentas(); // no bloquear UI con await
-          }}
+          onClick={handleOpenModal}
+          aria-label="Ver gráfico de ventas"
         >
           <InsertChartOutlinedIcon fontSize="small" />
         </IconButton>
@@ -80,16 +116,15 @@ function VentasCell({
 
       <VentasMiniGraficoModal
         open={openModal}
-        onClose={() => setOpenModal(false)}
+        onClose={handleCloseModal}
         articuloNombre={articuloNombre}
         rango={{ from, to }}
-        data={data}
-        loading={loading}
+        data={data || { total: 0, items: [] }}
+        loading={isLoading}
         groupBy={groupBy}
-        onChangeGroupBy={async (gb) => {
+        onChangeGroupBy={(gb) => {
           if (!gb || gb === groupBy) return;
-          setGroupBy(gb);
-          await fetchVentas(gb);
+          setGroupBy(gb); // el hook se re-dispara solo porque groupBy cambia
         }}
       />
     </Stack>

@@ -71,20 +71,6 @@ export default function Navbar() {
     setColors({ primary, onPrimary });
   }, []);
 
-  React.useLayoutEffect(() => {
-    recomputeColors();
-  }, [recomputeColors]);
-
-  React.useEffect(() => {
-    const handlers = [
-      ['business:switched', recomputeColors],
-      ['theme:updated', recomputeColors],
-      ['palette:changed', recomputeColors],
-    ];
-    handlers.forEach(([ev, fn]) => window.addEventListener(ev, fn));
-    return () => handlers.forEach(([ev, fn]) => window.removeEventListener(ev, fn));
-  }, [recomputeColors]);
-
   // local activo
   const [bizLabel, setBizLabel] = React.useState('Local');
   const [activeBizId, setActiveBizId] = React.useState(null);
@@ -107,7 +93,12 @@ export default function Navbar() {
 
   const loadActiveBusiness = React.useCallback(async () => {
     try {
-      if (isAppAdmin || !logged) { setBizLabel('Local'); setActiveBizId(null); setActiveBizLogo(''); return; }
+      if (isAppAdmin || !logged) {
+        setBizLabel('Local');
+        setActiveBizId(null);
+        setActiveBizLogo('');
+        return;
+      }
       const act = await BusinessesAPI.getActive();
       const id = act?.activeBusinessId || null;
       setActiveBizId(id);
@@ -116,10 +107,14 @@ export default function Navbar() {
         setBizLabel(biz?.name || 'Local');
         setActiveBizLogo(getBizLogoUrl(biz));
       } else {
-        setBizLabel('Local'); setActiveBizLogo('');
+        setBizLabel('Local');
+        setActiveBizLogo('');
       }
-    } catch {
-      setBizLabel('Local'); setActiveBizId(null); setActiveBizLogo('');
+    } catch (e) {
+      console.error('[Navbar] loadActiveBusiness failed', e);
+      setBizLabel('Local');
+      setActiveBizId(null);
+      setActiveBizLogo('');
     }
   }, [isAppAdmin, logged]);
 
@@ -141,26 +136,66 @@ export default function Navbar() {
       setBizLabel(biz?.name || "Local");
       setActiveBizLogo(getBizLogoUrl(biz));
       setLocalEl(null);
-      // recalcular contraste del AppBar
       recomputeColors();
     } catch (e) {
       console.error("switchBusiness failed", e);
     }
   };
 
+  // 🔧 ÚNICO efecto principal para tema + negocio + listeners
   React.useEffect(() => {
+    // 1) inicial
     recomputeColors();
     loadActiveBusiness();
     setUserAvatar(getUserAvatarUrl());
-    const handlers = [
-      ['business:switched', () => { recomputeColors(); loadActiveBusiness(); }],
-      ['theme:updated', recomputeColors],
-      ['palette:changed', recomputeColors],
-      ['auth:login', () => setUserAvatar(getUserAvatarUrl())],
-      ['auth:logout', () => setUserAvatar('')],
-    ];
-    handlers.forEach(([ev, fn]) => window.addEventListener(ev, fn));
-    return () => handlers.forEach(([ev, fn]) => window.removeEventListener(ev, fn));
+
+    // 2) listeners globales
+    const onBizSwitched = () => {
+      recomputeColors();
+      loadActiveBusiness();
+    };
+
+    const onBizDeleted = () => {
+      recomputeColors();
+      loadActiveBusiness();
+    };
+
+    const onThemeUpdated = () => {
+      recomputeColors();
+    };
+
+    const onPaletteChanged = () => {
+      recomputeColors();
+    };
+
+    const onLogin = () => {
+      setUserAvatar(getUserAvatarUrl());
+      loadActiveBusiness();
+    };
+
+    const onLogout = () => {
+      setUserAvatar('');
+      setBizLabel('Local');
+      setActiveBizId(null);
+      setActiveBizLogo('');
+      recomputeColors();
+    };
+
+    window.addEventListener('business:switched', onBizSwitched);
+    window.addEventListener('business:deleted', onBizDeleted);
+    window.addEventListener('theme:updated', onThemeUpdated);
+    window.addEventListener('palette:changed', onPaletteChanged);
+    window.addEventListener('auth:login', onLogin);
+    window.addEventListener('auth:logout', onLogout);
+
+    return () => {
+      window.removeEventListener('business:switched', onBizSwitched);
+      window.removeEventListener('business:deleted', onBizDeleted);
+      window.removeEventListener('theme:updated', onThemeUpdated);
+      window.removeEventListener('palette:changed', onPaletteChanged);
+      window.removeEventListener('auth:login', onLogin);
+      window.removeEventListener('auth:logout', onLogout);
+    };
   }, [recomputeColors, loadActiveBusiness]);
 
   // Escuchar inicio/fin del auto-sync (disparados por syncAllBusinesses)

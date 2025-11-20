@@ -1,4 +1,3 @@
-/* eslint-disable no-empty */
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
@@ -17,18 +16,12 @@ import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
 
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
-import { SearchProvider } from './servicios/searchContext';
 
 import Login from './paginas/Login';
 import Register from './paginas/Register';
 import Perfil from './paginas/Perfil';
 import ProtectedRoute from './componentes/ProtectedRoute';
-
 import AdminApp from './admin/AdminApp';
-
-import { obtenerVentas } from './servicios/apiVentas';
-window.apiVentas = { obtenerVentas };
-
 import './css/global.css';
 import './css/theme-layout.css';
 
@@ -43,7 +36,7 @@ function readRole() {
 export default function App() {
   const [bootReady, setBootReady] = useState(false);
   const [isLogged, setIsLogged] = useState(!!localStorage.getItem('token'));
-  const [role, setRole] = useState(readRole());               // 👈 role reactivo
+  const [role, setRole] = useState(readRole());
 
   const [activeBusinessId, setActiveBusinessId] = useState(
     localStorage.getItem('activeBusinessId') || ''
@@ -55,28 +48,13 @@ export default function App() {
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
 
-  // bootstrap: rellenar activeBusinessId si falta
-  useEffect(() => {
-    (async () => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      try {
-        const a = await BusinessesAPI.getActive(); // sin X-Business-Id
-        if (a?.activeBusinessId) {
-          localStorage.setItem('activeBusinessId', String(a.activeBusinessId));
-          window.dispatchEvent(new Event('business:switched'));
-        }
-      } catch { }
-    })();
-  }, []);
-
   // resolver negocio activo (o nada si es app_admin)
   useEffect(() => {
     (async () => {
       try {
         const token = localStorage.getItem('token');
         setIsLogged(!!token);
-        setRole(readRole());                                  // 👈 sync role
+        setRole(readRole());
 
         if (!token) { setBootReady(true); return; }
 
@@ -102,7 +80,6 @@ export default function App() {
       setIsLogged(!!token);
       setRole(readRole());
       if (!token) {
-        // al cerrar sesión, limpiamos estado de negocio/datos
         setActiveBusinessId('');
         setAgrupaciones([]);
         setCategorias([]);
@@ -111,7 +88,7 @@ export default function App() {
 
     window.addEventListener('storage', syncBiz);
     window.addEventListener('business:switched', syncBiz);
-    window.addEventListener('auth:login', syncAuth);   // emítelo al hacer login
+    window.addEventListener('auth:login', syncAuth);
     window.addEventListener('auth:logout', syncAuth);
 
     return () => {
@@ -148,19 +125,14 @@ export default function App() {
   useEffect(() => {
     if (!bootReady || !isLogged) return;
 
-    if (role === 'app_admin') {
-      setAgrupaciones([]);
-      setCategorias([]);
-      return;
-    }
-    if (!activeBusinessId) {
+    if (role === 'app_admin' || !activeBusinessId) {
       setAgrupaciones([]);
       setCategorias([]);
       return;
     }
     recargarAgrupaciones();
     cargarCategorias();
-  }, [bootReady, isLogged, role, activeBusinessId]);          // 👈 depende de role
+  }, [bootReady, isLogged, role, activeBusinessId]);
 
   const onBusinessSwitched = () => {
     setActiveBusinessId(localStorage.getItem('activeBusinessId') || '');
@@ -171,52 +143,50 @@ export default function App() {
   if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
 
   return (
-    <SearchProvider>
-      <ThemeProviderNegocio activeBizId={activeBusinessId}>
-        {isLogged && <Navbar />}
+    <ThemeProviderNegocio activeBizId={activeBusinessId}>
+      {isLogged && <Navbar />}
 
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
-          <Route element={<ProtectedRoute />}>
-            {/* ADMIN independiente del negocio */}
-            <Route path="/admin/*" element={<AdminApp />} />
+        <Route element={<ProtectedRoute />}>
+          {/* ADMIN independiente del negocio */}
+          <Route path="/admin/*" element={<AdminApp />} />
 
-            {/* App “normal” solo si no es app_admin */}
-            {role !== 'app_admin' ? (
-              <Route element={<OnboardingGuard />}>
-                <Route
-                  path="/"
-                  element={
-                    <RequireMaxi onReady={() => { }}>
-                      <ArticulosMain
-                        agrupacionSeleccionada={agrupacionSeleccionada}
-                        setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-                        categoriaSeleccionada={categoriaSeleccionada}
-                        setCategoriaSeleccionada={setCategoriaSeleccionada}
-                        agrupaciones={agrupaciones}
-                        categorias={categorias}
-                        onBusinessSwitched={onBusinessSwitched}
-                      />
-                    </RequireMaxi>
-                  }
-                />
-                <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
-                <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
-                <Route path="/insumos" element={<Insumos />} />
-                <Route path="/perfil" element={<Perfil />} />
-              </Route>
-            ) : (
-              <Route path="/" element={<AdminApp />} />
-            )}
-          </Route>
+          {/* App “normal” solo si no es app_admin */}
+          {role !== 'app_admin' ? (
+            <Route element={<OnboardingGuard />}>
+              <Route
+                path="/"
+                element={
+                  <RequireMaxi onReady={() => { }}>
+                    <ArticulosMain
+                      agrupacionSeleccionada={agrupacionSeleccionada}
+                      setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+                      categoriaSeleccionada={categoriaSeleccionada}
+                      setCategoriaSeleccionada={setCategoriaSeleccionada}
+                      agrupaciones={agrupaciones}
+                      categorias={categorias}
+                      onBusinessSwitched={onBusinessSwitched}
+                    />
+                  </RequireMaxi>
+                }
+              />
+              <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
+              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
+              <Route path="/insumos" element={<Insumos />} />
+              <Route path="/perfil" element={<Perfil />} />
+            </Route>
+          ) : (
+            <Route path="/" element={<AdminApp />} />
+          )}
+        </Route>
 
-          <Route path="*" element={<Login />} />
-        </Routes>
-      </ThemeProviderNegocio>
-    </SearchProvider>
+        <Route path="*" element={<Login />} />
+      </Routes>
+    </ThemeProviderNegocio>
   );
 }

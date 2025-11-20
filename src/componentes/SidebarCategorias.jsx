@@ -1,18 +1,41 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, {
   useEffect, useMemo, useCallback, useRef, useState
 } from 'react';
-import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import {
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  ToggleButtonGroup,
+  ToggleButton,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
+
 import '../css/SidebarCategorias.css';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
-const isRealSin = (g) => {
+
+const esTodoGroup = (g) => {
   const n = norm(g?.nombre);
-  return n === 'sin agrupacion' || n === 'sin agrupación' || n === 'todo';
+  return (
+    n === 'todo' ||
+    n === 'sin agrupacion' ||
+    n === 'sin agrupación' ||
+    n === 'sin agrupar' ||
+    n === 'sin grupo'
+  );
 };
-const labelAgrup = (g, todoGroupId) =>
-  Number(g?.id) === Number(todoGroupId) ? 'Sin Agrupación' : (g?.nombre || '');
+
+// ahora simplemente mostramos el nombre real
+const labelAgrup = (g) => g?.nombre || '';
 
 function SidebarCategorias({
   categorias = [],
@@ -28,31 +51,77 @@ function SidebarCategorias({
   onManualPick,
   listMode = 'by-subrubro', // "by-subrubro" | "by-categoria"
   onReorderSubrubros,       // (nuevoOrden: string[]) => void (opcional)
+  onChangeListMode,
+  // 🆕 props desde el padre
+  favoriteGroupId,
+  onSetFavorite,
+  onEditGroup,
+  onDeleteGroup,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
 
   // Select de agrupaciones
   const opcionesSelect = useMemo(() => {
-    const base = (Array.isArray(agrupaciones) ? agrupaciones : [])
-      .filter(Boolean)
-      .filter(g => Number(g.id) !== Number(todoGroupId))
-      .filter(g => !isRealSin(g));
-    return Number.isFinite(Number(todoGroupId))
-      ? [{ id: Number(todoGroupId), nombre: 'TODO', articulos: [] }, ...base]
-      : base;
+    const arr = (Array.isArray(agrupaciones) ? agrupaciones : []).filter(Boolean);
+    const todoIdNum = Number(todoGroupId);
+
+    if (!Number.isFinite(todoIdNum)) return arr;
+
+    const todo = arr.find(g => Number(g.id) === todoIdNum) || null;
+    const others = arr.filter(g => Number(g.id) !== todoIdNum);
+
+    return todo ? [todo, ...others] : others;
   }, [agrupaciones, todoGroupId]);
+
+  // Valor seguro para el Select de agrupaciones (evita value=0 fuera de rango)
+  const selectedAgrupValue = useMemo(() => {
+    const idsOpciones = opcionesSelect.map(g => Number(g.id));
+
+    const actualId = agrupacionSeleccionada
+      ? Number(agrupacionSeleccionada.id)
+      : null;
+
+    // Si la selección actual existe en las opciones, usarla
+    if (actualId != null && idsOpciones.includes(actualId)) {
+      return actualId;
+    }
+
+    // Si no, probamos con el TODO si existe
+    const todoIdNum = Number(todoGroupId);
+    if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) {
+      return todoIdNum;
+    }
+
+    // Si nada encaja, dejamos el select sin selección
+    return '';
+  }, [opcionesSelect, agrupacionSeleccionada, todoGroupId]);
 
   // Set de ids activos
   const activeIds = useMemo(() => {
+    // 1) Si la tabla nos pasa los visibles → usamos eso (modo sincronizado)
     if (visibleIds && visibleIds.size) return visibleIds;
+
     const g = agrupacionSeleccionada;
     if (!g) return null;
-    if (Number(g.id) === Number(todoGroupId)) return null;
-    const gActual = (agrupaciones || []).find(x => Number(x?.id) === Number(agrupacionSeleccionada?.id));
+
+    // 2) Si es un grupo virtual (TODO / Sin agrupación) → no filtramos el árbol
+    if (esTodoGroup(g)) return null;
+
+    // 3) Para cualquier otra agrupación usamos solo sus artículos
+    const gActual = (agrupaciones || []).find(
+      x => Number(x?.id) === Number(g?.id)
+    );
     const arr = Array.isArray(gActual?.articulos) ? gActual.articulos : [];
-    if (!arr.length) return null;
-    return new Set(arr.map(a => Number(a?.id)).filter(Number.isFinite));
+
+    // ⚠️ Clave: si no hay artículos → set vacío → sidebar queda vacío
+    if (!arr.length) return new Set();
+
+    return new Set(
+      arr
+        .map(a => Number(a?.id))
+        .filter(Number.isFinite)
+    );
   }, [visibleIds, agrupacionSeleccionada, agrupaciones, todoGroupId]);
 
   useEffect(() => {
@@ -64,7 +133,7 @@ function SidebarCategorias({
       (Array.isArray(g.articulos) ? g.articulos.length : 0) !==
       (Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos.length : 0);
     if (changed) setAgrupacionSeleccionada?.(g);
-  }, [agrupaciones]);
+  }, [agrupaciones, agrupacionSeleccionada, setAgrupacionSeleccionada]);
 
   /* ==========================
      Árbol según modo
@@ -140,19 +209,17 @@ function SidebarCategorias({
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) saved = JSON.parse(raw);
-    } catch {}
-    // merge: mantener orden guardado y agregar nuevas claves al final
+    } catch { }
     const merged = [
       ...saved.filter(k => actualKeys.includes(k)),
       ...actualKeys.filter(k => !saved.includes(k)),
     ];
-    // limpiar claves obsoletas
     const finalKeys = merged.filter(k => actualKeys.includes(k));
     setOrder(finalKeys);
   }, [listaBase, storageKey, listMode]);
 
   const saveOrder = useCallback((keys) => {
-    try { localStorage.setItem(storageKey, JSON.stringify(keys)); } catch {}
+    try { localStorage.setItem(storageKey, JSON.stringify(keys)); } catch { }
     onReorderSubrubros?.(keys);
   }, [storageKey, onReorderSubrubros]);
 
@@ -173,7 +240,6 @@ function SidebarCategorias({
     overIndexRef.current = idx;
     setDragOverIndex(idx);
     e.dataTransfer.effectAllowed = 'move';
-    // setData para Firefox
     e.dataTransfer.setData('text/plain', String(idx));
   }, []);
 
@@ -224,16 +290,14 @@ function SidebarCategorias({
   const handleAgrupacionChange = useCallback((event) => {
     const idSel = Number(event.target.value);
     const seleccionada =
-      Number(idSel) === Number(todoGroupId)
-        ? { id: Number(todoGroupId), nombre: 'TODO', articulos: [] }
-        : (agrupaciones || []).find(g => Number(g?.id) === idSel) || null;
+      (agrupaciones || []).find(g => Number(g?.id) === idSel) || null;
 
     setAgrupacionSeleccionada?.(seleccionada);
     setFiltroBusqueda?.('');
     setCategoriaSeleccionada?.(null);
     setBusqueda?.('');
     onManualPick?.();
-  }, [agrupaciones, todoGroupId, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick]);
+  }, [agrupaciones, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick]);
 
   const handleCategoriaClick = useCallback((subItem) => {
     setCategoriaSeleccionada?.(
@@ -257,25 +321,109 @@ function SidebarCategorias({
         <Select
           label="Agrupaciones"
           sx={{ fontWeight: '500' }}
-          value={
-            agrupacionSeleccionada
-              ? Number(agrupacionSeleccionada.id)
-              : (Number.isFinite(Number(todoGroupId)) ? Number(todoGroupId) : '')
-          }
+          value={selectedAgrupValue}
           onChange={handleAgrupacionChange}
         >
           {opcionesSelect.map(g => (
             <MenuItem key={g.id} value={Number(g.id)}>
-              {labelAgrup(g, todoGroupId)}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  gap: 8,
+                }}
+              >
+                <span>{labelAgrup(g)}</span>
+
+                {/* Botonera de acciones dentro del select */}
+                <span
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  {onSetFavorite && (
+                    <Tooltip
+                      title={
+                        Number(favoriteGroupId) === Number(g.id)
+                          ? 'Quitar como favorita'
+                          : 'Marcar como favorita'
+                      }
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetFavorite(g.id);
+                        }}
+                      >
+                        {Number(favoriteGroupId) === Number(g.id)
+                          ? <StarIcon fontSize="inherit" color="warning" />
+                          : <StarBorderIcon fontSize="inherit" />}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+
+                  {onEditGroup && (
+                    <Tooltip title="Renombrar agrupación">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditGroup(g);
+                        }}
+                      >
+                        <EditIcon fontSize="inherit" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+
+                  {onDeleteGroup && (
+                    <Tooltip
+                      title={
+                        Number(g.id) === Number(todoGroupId)
+                          ? 'No se puede eliminar el grupo automático de sobrantes'
+                          : 'Eliminar agrupación'
+                      }
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={Number(g.id) === Number(todoGroupId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (Number(g.id) === Number(todoGroupId)) return;
+                            onDeleteGroup(g);
+                          }}
+                        >
+                          <DeleteIcon fontSize="inherit" color="error" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  )}
+                </span>
+              </div>
             </MenuItem>
           ))}
         </Select>
       </FormControl>
 
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {listMode === 'by-categoria' ? 'Categorías' : 'Subrubros'}
-        <small style={{ opacity: .6, fontWeight: 500 }}></small>
-      </h3>
+      <div style={{ padding: '2px 0 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 8, textTransform: 'uppercase', opacity: 0.65 }}>
+        </span>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={listMode}
+          onChange={(_, val) => {
+            if (!val) return;
+            onChangeListMode?.(val);
+          }}
+        >
+          <ToggleButton value="by-subrubro">Rubro</ToggleButton>
+          <ToggleButton value="by-categoria">SubRubro</ToggleButton>
+        </ToggleButtonGroup>
+      </div>
 
       <ul className="sidebar-draggable-list">
         {loading && (
@@ -332,8 +480,14 @@ function SidebarCategorias({
         })}
 
         {!loading && listaParaMostrar.length === 0 && (
-          <li style={{ opacity: 0.7 }}>No hay artículos en esta agrupación.</li>
+          <li style={{ opacity: 0.7 }}>
+            {agrupacionSeleccionada &&
+              /discontinuad/i.test(agrupacionSeleccionada.nombre || '')
+              ? 'No hay Rubros/Subrubros discontinuados.'
+              : 'No hay Rubros/Subrubros en esta agrupación.'}
+          </li>
         )}
+
       </ul>
     </div>
   );

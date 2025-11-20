@@ -1,9 +1,9 @@
 // src/servicios/apiInsumos.js
 import { BASE } from './apiBase';
 
-function authHeaders() {
+function authHeaders(bizId) {
   const token = localStorage.getItem('token') || '';
-  const bid = localStorage.getItem('activeBusinessId') || '';
+  const bid = bizId || localStorage.getItem('activeBusinessId') || '';
   const h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = `Bearer ${token}`;
   if (bid) h['X-Business-Id'] = bid;
@@ -80,3 +80,15 @@ export const insumosCleanup = async () => {
   if (!res.ok) throw new Error('Error en cleanup');
   return await res.json();
 };
+
+// src/servicios/apiInsumos.js
+export const insumosSyncMaxi = async () => {
+  const res = await fetch(`${BASE}/insumos/maxi-sync`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Error al sincronizar insumos');
+  return data;
+};
+
