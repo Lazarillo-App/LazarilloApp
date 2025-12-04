@@ -7,9 +7,9 @@ import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import SyncDialog from '../componentes/SyncDialog';
 
-export default function Perfil() {
+export default function Perfil({ activeBusinessId }) {
   const [items, setItems] = useState([]);
-  const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
+  const [activeId, setActiveId] = useState(String(activeBusinessId || ''));
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState({ open: false, title: "", message: "" });
@@ -19,6 +19,10 @@ export default function Perfil() {
     try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; }
     catch { return {}; }
   }, []);
+
+  useEffect(() => {
+    setActiveId(String(activeBusinessId || ''));
+  }, [activeBusinessId]);
 
   const load = async () => {
     try {
@@ -32,21 +36,9 @@ export default function Perfil() {
 
   useEffect(() => { load(); }, []);
 
-  // Mantener en sync si se cambia el local desde otro lugar
-  useEffect(() => {
-    const onSwitched = () => {
-      const id = localStorage.getItem('activeBusinessId') || '';
-      setActiveId(id);
-      load();
-    };
-    window.addEventListener('business:switched', onSwitched);
-    return () => window.removeEventListener('business:switched', onSwitched);
-  }, []);
-
-  const onSetActive = async (id) => {
+   const onSetActive = async (id) => {
     try {
-      await setActiveBusiness(id);
-      setActiveId(String(id));
+      await setActiveBusiness(id, { fetchBiz: true, broadcast: true });
       await load();
     } catch (e) {
       console.error(e);
@@ -54,73 +46,65 @@ export default function Perfil() {
     }
   };
 
- const onDelete = async (biz) => {
-  const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
-  const typed = window.prompt(
-    `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\nPara confirmar, escribí EXACTAMENTE el nombre del negocio:`
-  );
-  if (typed === null) return;
-  if (typed.trim() !== nombre) {
-    alert('El texto no coincide. Operación cancelada.');
-    return;
-  }
-
-  const deletedId = biz.id;
-
-  try {
-    await BusinessesAPI.remove(deletedId);
-  } catch (e) {
-    if (String(e?.message).toLowerCase().includes('not_found')) {
-      console.warn('Negocio ya no existe en backend, limpiando UI igual.');
-    } else {
-      console.error(e);
-      alert(e?.message || 'No se pudo eliminar.');
+  const onDelete = async (biz) => {
+    const nombre = String(biz?.name ?? biz?.nombre ?? `#${biz.id}`).trim();
+    const typed = window.prompt(
+      `Vas a eliminar el negocio "${nombre}". Esta acción es permanente.\n\nPara confirmar, escribí EXACTAMENTE el nombre del negocio:`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== nombre) {
+      alert('El texto no coincide. Operación cancelada.');
       return;
     }
-  }
 
-  // 1) Refrescamos lista desde backend
-  let restantes = [];
-  try {
-    restantes = await BusinessesAPI.listMine();
-    setItems(restantes || []);
-  } catch {
-    setItems(prev => prev.filter(i => String(i.id) !== String(deletedId)));
-  }
+    const deletedId = biz.id;
 
-  // 2) Si el que borraste era el activo → decidir nuevo activo
-  const wasActive = String(localStorage.getItem('activeBusinessId')) === String(deletedId);
-
-  if (wasActive) {
-    if (restantes && restantes.length > 0) {
-      // elegimos el primero de la lista como nuevo activo
-      const fallback = restantes[0];
-      try {
-        const bizActivo = await setActiveBusiness(fallback.id);
-        localStorage.setItem('activeBusinessId', String(bizActivo.id));
-        setActiveId(String(bizActivo.id));
-      } catch (e) {
-        console.error('No se pudo activar fallback tras borrar negocio:', e);
-        localStorage.removeItem('activeBusinessId');
-        setActiveId('');
+    try {
+      await BusinessesAPI.remove(deletedId);
+    } catch (e) {
+      if (String(e?.message).toLowerCase().includes('not_found')) {
+        console.warn('Negocio ya no existe en backend, limpiando UI igual.');
+      } else {
+        console.error(e);
+        alert(e?.message || 'No se pudo eliminar.');
+        return;
       }
-    } else {
-      // ya no quedan negocios
-      localStorage.removeItem('activeBusinessId');
-      setActiveId('');
     }
 
-    // avisar a toda la app que cambió el local
-    window.dispatchEvent(new CustomEvent('business:switched'));
+    // 1) Refrescamos lista desde backend
+    let restantes = [];
+    try {
+      restantes = await BusinessesAPI.listMine();
+      setItems(restantes || []);
+    } catch {
+      setItems(prev => prev.filter(i => String(i.id) !== String(deletedId)));
+    }
+
+    // 2) Si el que borraste era el activo → decidir nuevo activo
+    const wasActive = String(localStorage.getItem('activeBusinessId')) === String(deletedId);
+
+     if (wasActive) {
+    if (restantes && restantes.length > 0) {
+      const fallback = restantes[0];
+      try {
+        await setActiveBusiness(fallback.id, { fetchBiz: true, broadcast: true });
+      } catch (e) {
+        console.error('No se pudo activar fallback tras borrar negocio:', e);
+      }
+    } else {
+      // sin negocios: limpiamos negocio activo globalmente
+      localStorage.removeItem('activeBusinessId');
+      window.dispatchEvent(new Event('business:switched'));
+    }
   }
 
-  try { 
-    window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: deletedId } })); 
-  } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: deletedId } }));
+    } catch { }
 
-  alert('Negocio eliminado.');
-  window.dispatchEvent(new CustomEvent("business:list:updated"));
-};
+    alert('Negocio eliminado.');
+    window.dispatchEvent(new CustomEvent("business:list:updated"));
+  };
 
   // ===== Helper: auto-sync ventas 7d para nuevo negocio (si Maxi está configurado)
   const tryAutoSyncNewBusiness = async (bizId) => {
@@ -140,7 +124,7 @@ export default function Perfil() {
       console.error('Auto-sync ventas 7d (nuevo negocio) falló:', e);
     } finally {
       // Notificar a listeners (AdminActionsSidebar, etc.)
-      try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch {}
+      try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch { }
     }
   };
 
@@ -151,7 +135,7 @@ export default function Perfil() {
     window.dispatchEvent(new CustomEvent("business:list:updated"));
 
     // 🔁 Intentar auto-sync de ventas 7 días para el nuevo negocio
-    try { await tryAutoSyncNewBusiness(biz.id); } catch {}
+    try { await tryAutoSyncNewBusiness(biz.id); } catch { }
   };
 
   const onSaved = (saved) => {
@@ -164,7 +148,7 @@ export default function Perfil() {
     const prev = localStorage.getItem('activeBusinessId');
     try {
       // asegura contexto X-Business-Id para este biz
-      localStorage.setItem('activeBusinessId', String(biz.id));
+      await setActiveBusiness(biz.id, { fetchBiz: false, broadcast: true });
 
       const resp = await BusinessesAPI.syncNow(biz.id, { scope: 'articles' });
       window.dispatchEvent(new CustomEvent('business:synced', { detail: { bizId: biz.id } }));
@@ -183,8 +167,13 @@ export default function Perfil() {
       throw e;
     } finally {
       // restaurar activo anterior
-      if (prev) localStorage.setItem('activeBusinessId', prev);
-      else localStorage.removeItem('activeBusinessId');
+      if (prev && String(prev) !== String(biz.id)) {
+        try {
+          await setActiveBusiness(prev, { fetchBiz: false, broadcast: true });
+        } catch (e) {
+          console.error('No se pudo restaurar negocio activo previo:', e);
+        }
+      }
     }
   };
 

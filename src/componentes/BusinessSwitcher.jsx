@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { setCssVarsFromPalette } from "@/tema/paletteBoot";
+import { setActiveBusiness } from "@/servicios/setActiveBusiness";
 
 function brandingToPalette(br = {}) {
   // ajustá las claves si tu API devuelve otros nombres
@@ -33,7 +34,7 @@ function applyAndPersistPalette(palette, userId) {
   window.dispatchEvent(new Event("palette:changed"));
 }
 
-export default function BusinessSwitcher({ onSwitched, className = '' }) {
+export default function BusinessSwitcher({ className = '' }) {
   const [items, setItems] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [open, setOpen] = useState(false);
@@ -53,11 +54,13 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
       if (!alive) return;
       setItems(list);
       if (!activeId && list[0]?.id) {
-        localStorage.setItem('activeBusinessId', list[0].id);
-        setActiveId(list[0].id);
-        const branding = await fetchBusinessBranding(list[0].id);
+        const { biz } = await setActiveBusiness(list[0].id, {
+          fetchBiz: true,
+          broadcast: true,
+        });
+        setActiveId(String(list[0].id));
+        const branding = biz?.branding || biz?.props?.branding || await fetchBusinessBranding(list[0].id);
         applyAndPersistPalette(brandingToPalette(branding), userId);
-        window.dispatchEvent(new Event('business:switched'));
       }
     })().catch(console.error);
     return () => { alive = false; };
@@ -74,14 +77,26 @@ export default function BusinessSwitcher({ onSwitched, className = '' }) {
 
   const pick = async (id) => {
     try {
-      await BusinessesAPI.select(id);
-      localStorage.setItem('activeBusinessId', id);
-      setActiveId(id);
+      // 1) Cambiar negocio activo en backend + localStorage + eventos globales
+      const { biz } = await setActiveBusiness(id, {
+        fetchBiz: true,   // así ya tenemos el negocio para el branding
+        broadcast: true,  // dispara business:switched + palette:changed
+      });
+
+      // 2) Aplicar paleta a partir del negocio devuelto
+      const branding = biz?.branding || biz?.props?.branding || {};
+      const palette = brandingToPalette({
+        primary: branding.primary,
+        secondary: branding.secondary,
+        background: branding.background,
+        fg: branding.fg || branding.primary,
+      });
+
+      applyAndPersistPalette(palette, userId);
+
+      // 3) Estado local del switcher
+      setActiveId(String(id));
       setOpen(false);
-      const branding = await fetchBusinessBranding(id);
-      applyAndPersistPalette(brandingToPalette(branding), userId);
-      onSwitched?.(id);
-      window.dispatchEvent(new CustomEvent('business:switched'));
     } catch (e) {
       console.error(e);
       alert('No se pudo cambiar de local');

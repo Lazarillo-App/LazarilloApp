@@ -13,28 +13,74 @@ export default function VentasMiniGraficoModal({
   open, onClose, articuloNombre, rango, data,
   groupBy, onChangeGroupBy, loading
 }) {
-  const chartData = useMemo(() => {
-    const items = Array.isArray(data?.items) ? data.items : [];
+  // helper robusto para qty
+ const getItemQty = (it) => {
+  const v = Number(
+    it.qty ??
+    it.cantidad ??
+    it.unidades ??
+    it.total_u ??
+    it.total_qty ??     
+    it.qty_sum ??        
+    0
+  );
+  return Number.isNaN(v) ? 0 : v;
+};
 
+  const chartData = useMemo(() => {
+    const baseItems =
+      (Array.isArray(data?.items) && data.items) ||
+      (Array.isArray(data?.data?.items) && data.data.items) ||
+      (Array.isArray(data?.series) && data.series) ||
+      (Array.isArray(data?.data?.series) && data.data.series) ||
+      [];
+
+    if (!rango?.from || !rango?.to) return [];
+
+    // ---- week / month (cuando lo habilites) ----
     if (groupBy !== 'day') {
-      // Para week/month (cuando lo habilites), no completamos calendario.
       let acc = 0;
-      return items.map((it, i) => {
-        const qty = Number(it.qty || 0);
+      return baseItems.map((it, i) => {
+        const qty = getItemQty(it);
         acc += qty;
-        return { idx: i + 1, label: it.label, qty, acc };
+        return {
+          idx: i + 1,
+          label: String(it.label ?? `#${i + 1}`),
+          qty,
+          acc,
+        };
       });
     }
 
-    // --- completar calendario día a día (YYYY-MM-DD) ---
-    const map = new Map(items.map(it => [String(it.label), Number(it.qty || 0)]));
+    // ---- day: completar calendario YYYY-MM-DD ----
+    // Normalizamos label a solo fecha "YYYY-MM-DD"
+    const map = new Map();
+    for (const it of baseItems) {
+      const raw = String(
+        it.label ??
+        it.date ??
+        it.day ??
+        it.fecha ??
+        it.day ?? 
+        ''
+      );
+      if (!raw) continue;
+
+      const dayKey = raw.slice(0, 10);
+      const qty = getItemQty(it);
+      map.set(dayKey, (map.get(dayKey) || 0) + qty);
+    }
+
     const from = new Date(rango.from + 'T00:00:00Z');
-    const to   = new Date(rango.to   + 'T00:00:00Z');
+    const to = new Date(rango.to + 'T00:00:00Z');
 
     const seq = [];
     for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
-      const label = d.toISOString().slice(0, 10);
-      seq.push({ label, qty: map.get(label) || 0 });
+      const dayKey = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      seq.push({
+        label: dayKey,
+        qty: map.get(dayKey) || 0,
+      });
     }
 
     let acc = 0;
@@ -42,7 +88,24 @@ export default function VentasMiniGraficoModal({
       acc += d.qty;
       return { idx: i + 1, label: d.label, qty: d.qty, acc };
     });
-  }, [data, groupBy, rango.from, rango.to]);
+  }, [data, groupBy, rango?.from, rango?.to]);
+
+  // Total a mostrar en el pie
+  const totalFooter = useMemo(() => {
+    const direct =
+      (typeof data?.total === 'number' && !Number.isNaN(data.total))
+        ? data.total
+        : (typeof data?.data?.total === 'number' && !Number.isNaN(data.data.total))
+          ? data.data.total
+          : null;
+
+    if (direct != null) return direct;
+
+    return chartData.reduce(
+      (acc, d) => acc + (Number(d.qty) || 0),
+      0
+    );
+  }, [data, chartData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -113,7 +176,7 @@ export default function VentasMiniGraficoModal({
 
       <DialogActions>
         <Typography sx={{ flex: 1, pl: 2 }} variant="body2">
-          Total: <b>{data?.total ?? 0}</b>
+          Total: <b>{totalFooter}</b>
         </Typography>
         <Button onClick={onClose} variant="contained">Cerrar</Button>
       </DialogActions>

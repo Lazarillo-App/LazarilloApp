@@ -38,7 +38,20 @@ const getRubroBase = (name) => {
   return first || raw;
 };
 
-const getId = (x) => Number(x?.id ?? x?.articuloId ?? x?.codigo ?? x?.codigoArticulo);
+const getId = (x) => {
+  const raw =
+    x?.article_id ??
+    x?.articulo_id ??
+    x?.articuloId ??
+    x?.idArticulo ??
+    x?.id ??
+    x?.codigo ??
+    x?.codigoArticulo;
+
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
 const num = (v) => Number(v ?? 0);
 const fmt = (v, d = 0) => Number(v ?? 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -80,7 +93,7 @@ const VirtualList = forwardRef(function VirtualList(
     if (!onVisibleItemsIds) return;
     const ids = [];
     const arr = rowsRef.current;
-    for (let i = startIdx; i <= endIdx; i++) { // i++
+    for (let i = startIdx; i <= endIdx; i++) {
       const r = arr[i];
       const id = getRowId?.(r);
       if (Number.isFinite(id)) ids.push(id);
@@ -127,16 +140,29 @@ const VirtualList = forwardRef(function VirtualList(
           {visibleRows.map((row, i) => {
             const index = startIdx + i;
             const id = getRowId?.(row);
+
+            // 🆕 key única: priorizamos row.key
+            const reactKey =
+              row && row.key != null
+                ? row.key
+                : (Number.isFinite(id) ? `row-${id}-${index}` : `row-${index}`);
+
             return (
               <div
-                key={Number.isFinite(id) ? id : index}
+                key={reactKey}
                 data-article-id={Number.isFinite(id) ? id : undefined}
                 style={{ height: rowHeight, display: 'block' }}
               >
                 {renderRow({
                   row,
                   index,
-                  style: { height: rowHeight, display: 'block', color: '#373737ff', fontWeight: 500, fontSize: '0.95rem' },
+                  style: {
+                    height: rowHeight,
+                    display: 'block',
+                    color: '#373737ff',
+                    fontWeight: 500,
+                    fontSize: '0.95rem',
+                  },
                 })}
               </div>
             );
@@ -156,8 +182,8 @@ export default function TablaArticulos({
   refetchAgrupaciones,
   fechaDesdeProp,
   fechaHastaProp,
-  ventasPorArticulo = new Map(),   // 👈 default seguro
-  ventasLoading = false,           // 👈 default
+  ventasPorArticulo = new Map(),
+  ventasLoading = false,
   onCategoriasLoaded,
   onIdsVisibleChange,
   activeBizId,
@@ -169,11 +195,24 @@ export default function TablaArticulos({
   onMutateGroups,
   jumpToArticleId,
   selectedArticleId,
-  tableHeaderMode = 'cat-first', // 'cat-first' | 'sr-first'
+  tableHeaderMode = 'cat-first',
+  modalTreeMode = 'cat-first',
+  onDiscontinuadoChange,
+  onDiscontinuarBloque,
 }) {
 
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
+
+  const getVentasQty = React.useCallback(
+    (artOrId) => {
+      const id = typeof artOrId === 'number' ? artOrId : getId(artOrId);
+      const v = ventasPorArticulo?.get(id);
+      const qty = Number(v?.qty ?? 0);
+      return Number.isFinite(qty) ? qty : 0;
+    },
+    [ventasPorArticulo]
+  );
 
   const [categorias, setCategorias] = useState([]);
   const [todoGroupId, setTodoGroupId] = useState(null);
@@ -218,8 +257,8 @@ export default function TablaArticulos({
   }, []);
 
   // ---- ordenamiento ----
-  const [sortBy, setSortBy] = useState(null);
-  const [sortDir, setSortDir] = useState('asc');
+  const [sortBy, setSortBy] = useState('ventas');
+  const [sortDir, setSortDir] = useState('desc');
 
   const toggleSort = useCallback((k) => {
     setSortBy((prev) => {
@@ -232,25 +271,35 @@ export default function TablaArticulos({
   const getSortValue = useCallback((a) => {
     const id = getId(a);
     switch (sortBy) {
-      case 'codigo': return id;
-      case 'nombre': return a?.nombre ?? '';
-      case 'precio': return num(a?.precio);
-      case 'costo': return num(a?.costo);
+      case 'ventas':
+        return getVentasQty(id);
+      case 'codigo':
+        return id;
+      case 'nombre':
+        return a?.nombre ?? '';
+      case 'precio':
+        return num(a?.precio);
+      case 'costo':
+        return num(a?.costo);
       case 'costoPct': {
         const p = num(a?.precio), c = num(a?.costo);
         return p > 0 ? (c / p) * 100 : -Infinity;
       }
-      case 'objetivo': return num(objetivos[id]) || 0;
+      case 'objetivo':
+        return num(objetivos[id]) || 0;
       case 'sugerido': {
         const obj = num(objetivos[id]) || 0;
         const c = num(a?.costo);
         const den = 100 - obj;
         return den > 0 ? c * (100 / den) : 0;
       }
-      case 'manual': return num(manuales[id]) || 0;
-      default: return null;
+      case 'manual':
+        return num(manuales[id]) || 0;
+      default:
+        return null;
     }
-  }, [sortBy, objetivos, manuales]);
+  }, [sortBy, objetivos, manuales, getVentasQty]);
+
 
   const cmp = useCallback((a, b) => {
     if (!sortBy) return 0;
@@ -299,6 +348,7 @@ export default function TablaArticulos({
     (async () => {
       try {
         const bizId = activeBizId;
+        console.log('[VENTAS] usando businessId', bizId);
         if (!bizId) {
           if (!cancel && myId === loadReqId.current) {
             setCategorias([]);
@@ -378,6 +428,27 @@ export default function TablaArticulos({
     return m;
   }, [allArticulos]);
 
+  // 💰 Monto de ventas por artículo (usa amount si viene del backend, si no qty * precio)
+  const getVentasAmountForId = (idRaw) => {
+    const id = Number(idRaw);
+    if (!Number.isFinite(id)) return 0;
+
+    const v = ventasPorArticulo?.get(id);
+    if (!v) return 0;
+
+    const amount = Number(v.amount ?? 0);
+    if (Number.isFinite(amount) && amount !== 0) {
+      return amount;
+    }
+
+    const qty = Number(v.qty ?? 0);
+    const base = baseById.get(id) || {};
+    const precio = num(base.precio);
+    if (!Number.isFinite(qty) || !Number.isFinite(precio)) return 0;
+
+    return qty * precio;
+  };
+
   const idsEnOtras = useMemo(
     () => new Set(
       (agrupaciones || [])
@@ -392,22 +463,34 @@ export default function TablaArticulos({
     for (const id of allArticulos.map(getId)) {
       if (!idsEnOtras.has(id) && !excludedIds.has(id)) s.add(id);
     }
-    return s;  // Set
+    return s;  // Set<number>
   }, [allArticulos, idsEnOtras, excludedIds]);
 
+  // Array estable a partir del Set para enviar al padre
+  const idsSinAgrupArray = useMemo(
+    () => Array.from(idsSinAgrup),
+    [idsSinAgrup]
+  );
+
   useEffect(() => {
-    onTodoInfo?.({ todoGroupId, idsSinAgrupCount: idsSinAgrup.size });
-  }, [onTodoInfo, todoGroupId, idsSinAgrup.size]);
+    onTodoInfo?.({
+      todoGroupId,
+      idsSinAgrupCount: idsSinAgrup.size,
+      idsSinAgrup: idsSinAgrupArray,   // 👈 ahora también mandamos la lista
+    });
+  }, [onTodoInfo, todoGroupId, idsSinAgrup.size, idsSinAgrupArray]);
 
   /* --------- a mostrar + filtro --------- */
   const articulosAMostrar = useMemo(() => {
+    let base = [];
+
     // 1) Hay categoría Y agrupación seleccionada
     if (categoriaSeleccionada && agrupacionSeleccionada) {
       const idsFiltro = esTodoGroup(agrupacionSeleccionada)
         ? idsSinAgrup                        // TODO virtual → solo sin agrupar
         : new Set((agrupacionSeleccionada.articulos || []).map(getId));
 
-      return (categoriaSeleccionada.categorias || [])
+      base = (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a);
           const b = baseById.get(id) || {};
@@ -424,8 +507,8 @@ export default function TablaArticulos({
     }
 
     // 2) Solo categoría seleccionada (sin agrupación)
-    if (categoriaSeleccionada) {
-      return (categoriaSeleccionada.categorias || [])
+    else if (categoriaSeleccionada) {
+      base = (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a);
           const b = baseById.get(id) || {};
@@ -441,41 +524,51 @@ export default function TablaArticulos({
     }
 
     // 3) Solo agrupación seleccionada (sin categoría)
-    if (agrupacionSeleccionada) {
-      // 👉 Si ES el grupo TODO (virtual): siempre mostrar solo los "sin agrupar"
+    else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
-        return allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
+        base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
+      } else {
+        const arr = Array.isArray(agrupacionSeleccionada.articulos)
+          ? agrupacionSeleccionada.articulos
+          : [];
+
+        if (arr.length > 0) {
+          base = arr.map((x) => {
+            const id = getId(x);
+            const b = baseById.get(id) || {};
+            return {
+              id,
+              nombre: x?.nombre ?? b?.nombre ?? `#${id}`,
+              categoria: x?.categoria ?? b?.categoria ?? 'Sin categoría',
+              subrubro: x?.subrubro ?? b?.subrubro ?? 'Sin subrubro',
+              precio: num(x?.precio ?? b?.precio ?? 0),
+              costo: num(x?.costo ?? b?.costo ?? 0),
+            };
+          });
+        } else {
+          base = [];
+        }
       }
-
-      // 👉 Discontinuados u otra agrupación normal:
-      const arr = Array.isArray(agrupacionSeleccionada.articulos)
-        ? agrupacionSeleccionada.articulos
-        : [];
-
-      if (arr.length > 0) {
-        return arr.map((x) => {
-          const id = getId(x);
-          const b = baseById.get(id) || {};
-          return {
-            id,
-            nombre: x?.nombre ?? b?.nombre ?? `#${id}`,
-            categoria: x?.categoria ?? b?.categoria ?? 'Sin categoría',
-            subrubro: x?.subrubro ?? b?.subrubro ?? 'Sin subrubro',
-            precio: num(x?.precio ?? b?.precio ?? 0),
-            costo: num(x?.costo ?? b?.costo ?? 0),
-          };
-        });
-      }
-
-      // 👉 Agrupación normal vacía → tabla vacía (NO todo el catálogo)
-      return [];
     }
 
     // 4) Sin categoría ni agrupación: vista general → todo el catálogo
-    return allArticulos;
+    else {
+      base = allArticulos;
+    }
+
+    // 🔎 Filtro final por IDs visibles (Sirve para ocultar discontinuados, etc.)
+    if (filterIds && filterIds.size) {
+      base = base.filter((a) => filterIds.has(getId(a)));
+    }
+
+    return base;
   }, [
-    categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup,
-    baseById, allArticulos
+    categoriaSeleccionada,
+    agrupacionSeleccionada,
+    idsSinAgrup,
+    baseById,
+    allArticulos,
+    filterIds,
   ]);
 
   // Filtro con defer para tecleo suave
@@ -488,70 +581,109 @@ export default function TablaArticulos({
     );
   }, [articulosAMostrar, filtroDefer]);
 
+  const isRubroView = tableHeaderMode === 'cat-first';
+  const isSubrubroView = tableHeaderMode === 'sr-first';
+
   const bloques = useMemo(() => {
     const items = articulosFiltrados || [];
+    const localeOpts = { sensitivity: 'base', numeric: true };
 
-    // ⭐ MODO RUBRO: unificar "Pasteleria - ..." en un solo bloque "Pasteleria"
-    if (tableHeaderMode === 'sr-first') {
-      const byRubro = new Map(); // key -> { rubroLabel, arts[] }
+    // Siempre: RUBRO (categoría) -> SUBRUBRO
+    const byCat = new Map(); // categoria -> Map(subrubro -> artículos[])
 
-      for (const a of items) {
-        const srName = getDisplaySubrubro(a) || 'Sin subrubro';
-        const rubroBase = getRubroBase(srName);   // "Pasteleria"
-        const key = normKey(rubroBase);
-        if (!byRubro.has(key)) byRubro.set(key, { rubroLabel: rubroBase, arts: [] });
-        byRubro.get(key).arts.push(a);
-      }
-
-      return Array.from(byRubro.values()).map(({ rubroLabel, arts }) => ({
-        categoria: rubroLabel,
-        subrubros: [{ subrubro: rubroLabel, arts }],
-      }));
-    }
-
-    // ⭐ MODO ORIGINAL: Categoría > Subrubro
-    const byCat = new Map();
     for (const a of items) {
       const cat = getDisplayCategoria(a) || 'Sin categoría';
       const sr = getDisplaySubrubro(a) || 'Sin subrubro';
+
       if (!byCat.has(cat)) byCat.set(cat, new Map());
       const bySr = byCat.get(cat);
       if (!bySr.has(sr)) bySr.set(sr, []);
       bySr.get(sr).push(a);
     }
-    return Array.from(byCat, ([categoria, mapSr]) => ({
-      categoria,
-      subrubros: Array.from(mapSr, ([subrubro, arts]) => ({ subrubro, arts })),
-    }));
-  }, [articulosFiltrados, tableHeaderMode]);
 
+    const bloquesCat = Array.from(byCat, ([categoria, mapSr]) => {
+      // 👉 Subrubros ordenados alfabéticamente dentro del rubro
+      const subBlocks = Array.from(mapSr, ([subrubro, arts]) => ({
+        subrubro,
+        arts,
+      })).sort((a, b) =>
+        String(a.subrubro).localeCompare(String(b.subrubro), 'es', localeOpts)
+      );
+
+      return {
+        categoria,
+        subrubros: subBlocks.map(({ subrubro, arts }) => ({ subrubro, arts })),
+      };
+    });
+
+    // 👉 Rubros ordenados alfabéticamente
+    bloquesCat.sort((a, b) =>
+      String(a.categoria).localeCompare(String(b.categoria), 'es', localeOpts)
+    );
+
+    // Normalizamos salida
+    return bloquesCat.map(({ categoria, subrubros }) => ({ categoria, subrubros }));
+  }, [articulosFiltrados]);
   const flatRows = useMemo(() => {
-    const rows = [];
+    const sections = [];
+
+    // 1️⃣ Armamos secciones (bloque = rubro+subrubro con sus artículos)
     for (const blq of bloques) {
-      for (const sr of blq.subrUbros || blq.subrubros) {
+      const subList = blq.subrUbros || blq.subrubros || [];
+      for (const sr of subList) {
         const srNorm = sr;
-        const artsOrdenados = (srNorm.arts || sr.arts || []).slice().sort(cmp);
-        rows.push({
-          kind: 'header',
-          key: `H|${blq.categoria}|${srNorm.subrubro}`,
+        const artsOrdenados = (srNorm.arts || sr.arts || [])
+          .slice()
+          .sort(cmp);
+
+        sections.push({
           categoria: blq.categoria,
           subrubro: srNorm.subrubro,
-          ids: artsOrdenados.map(getId),
+          arts: artsOrdenados,
         });
-        for (const a of artsOrdenados) {
-          const id = getId(a);
-          rows.push({
-            kind: 'item',
-            key: `I|${blq.categoria}|${srNorm.subrubro}|${id}`,
-            categoria: blq.categoria,
-            subrubro: srNorm.subrubro,
-            art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
-          });
-        }
       }
     }
+
+    // 2️⃣ Ordenamos las secciones para que sigan el orden del sidebar
+    //    👉 Vista RUBRO: orden por SUBRUBRO (como el sidebar que muestra "Adicional cafeteria", "AGUAS-ISO", etc.)
+    //    👉 Vista SUBRUBRO: dejamos el orden tal como viene (ya te funciona bien).
+    const localeOpts = { sensitivity: 'base', numeric: true };
+    const isRubroView = tableHeaderMode === 'cat-first'; // ajustado a cómo lo estés usando
+
+    if (isRubroView) {
+      sections.sort((a, b) =>
+        String(a.subrubro).localeCompare(String(b.subrubro), 'es', localeOpts)
+      );
+    }
+
+    // 3️⃣ Aplanamos secciones en filas (header + items)
+    const rows = [];
+
+    for (const sec of sections) {
+      const { categoria, subrubro, arts } = sec;
+
+      rows.push({
+        kind: 'header',
+        key: `H|${categoria}|${subrubro}`,
+        categoria,
+        subrubro,
+        ids: arts.map(getId),
+      });
+
+      for (const a of arts) {
+        const id = getId(a);
+        rows.push({
+          kind: 'item',
+          key: `I|${categoria}|${subrubro}|${id}`,
+          categoria,
+          subrubro,
+          art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+        });
+      }
+    }
+
     return rows;
-  }, [bloques, cmp]);
+  }, [bloques, cmp, tableHeaderMode]);
 
   const idToIndex = useMemo(() => {
     const m = new Map();
@@ -564,7 +696,7 @@ export default function TablaArticulos({
     return m;
   }, [flatRows]);
 
-  // Scroll + efecto corto cuando llega jumpToArticleId (sigue existiendo)
+  // Scroll + efecto corto cuando llega jumpToArticleId
   useEffect(() => {
     const id = Number(jumpToArticleId);
     if (!Number.isFinite(id)) return;
@@ -626,9 +758,33 @@ export default function TablaArticulos({
     onIdsVisibleChange?.(new Set(ids));
   }, [onIdsVisibleChange]);
 
+  // 👉 Discontinuar en bloque: llama al handler general por cada id
+
+  const handleDiscontinuarBloque = useCallback(
+    async (ids) => {
+      // ids viene del SubrubroAccionesMenu
+      if (!onDiscontinuadoChange) return;
+
+      // Normalizamos: si tu handler actual solo acepta un id,
+      // mantenemos compatibilidad llamando uno por uno.
+      for (const rawId of ids || []) {
+        const id = Number(rawId);
+        if (!Number.isFinite(id)) continue;
+
+        try {
+          await onDiscontinuadoChange(id, true); // true = marcar como discontinuado
+        } catch (e) {
+          console.error("DISCONTINUAR_BLOQUE_ITEM_ERROR", id, e);
+        }
+      }
+    },
+    [onDiscontinuadoChange]
+  );
+
+
   // ====== layout tipo “tabla” con CSS grid
-  const gridTemplate = '.3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr';
-  const cellNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  const gridTemplate = '.3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .2fr';
+  const cellNum = { textAlign: 'center', fontVariantNumeric: 'tabular-nums' };
   const ITEM_H = 44;
 
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
@@ -648,14 +804,40 @@ export default function TablaArticulos({
   // render de cada fila (para VirtualList)
   const renderRow = ({ row, index, style }) => {
     if (row.kind === 'header') {
-      const headerCat = row.categoria || 'Sin categoría';
-      const headerSr = row.subrubro || 'Sin subrubro';
+      let headerCat = row.categoria || 'Sin categoría';
+      let headerSr = row.subrubro || 'Sin subrubro';
 
-      const same = headerCat === headerSr;
+      // Recalculamos rubro/subrubro reales desde el primer artículo
+      if (row.ids && row.ids.length > 0) {
+        const firstId = Number(row.ids[0]);
+        const base = baseById.get(firstId);
+
+        if (base) {
+          const rubro = getDisplayCategoria(base);
+          const sub = getDisplaySubrubro(base);
+
+          if (rubro) headerCat = rubro;
+          if (sub) headerSr = sub;
+        }
+      }
+
       const label =
-        tableHeaderMode === 'sr-first'
-          ? (same ? headerSr : `${headerSr} - ${headerCat}`)
-          : `${headerCat} - ${headerSr}`;
+        isRubroView
+          ? `${headerSr} - ${headerCat}`   // Rubro - Subrubro
+          : `${headerCat} - ${headerSr}`;  // Subrubro - Rubro
+
+      // 👇 Clave de agrupación según modo:
+      // - sr-first (vista Subrubro): manda headerCat (ej: "Cafeteria")
+      // - cat-first (vista Rubro):   manda headerSr  (ej: "Bebida")
+      const groupKeyName =
+        tableHeaderMode === 'sr-first' ? headerCat : headerSr;
+
+      const ids = row.ids || [];
+
+
+      // 🔢 Totales del bloque
+      const totalQty = ids.reduce((acc, id) => acc + getVentasQty(id), 0);
+      const totalAmount = ids.reduce((acc, id) => acc + getVentasAmountForId(id), 0);
 
       return (
         <div
@@ -665,39 +847,57 @@ export default function TablaArticulos({
             display: 'grid',
             gridTemplateColumns: gridTemplate,
             alignItems: 'center',
-            background: '#fafafa',
-            fontWeight: 800,
-            borderTop: '1px solid #eee',
+            background: 'color-mix(in srgb, var(--color-primary) 40%, transparent)',
+            color: 'var(--on-secondary)',
+            fontWeight: 500,
+            borderTop: '1px solid rgba(0,0,0,0.04)',
+            borderBottom: '1px solid rgba(0,0,0,0.04)',
             padding: '4px 8px',
           }}
         >
-          <div style={{ gridColumn: '1 / -2' }}>{label}</div>
-          <div style={{ gridColumn: '-2 / -1', justifySelf: 'end' }}>
-            <SubrubroAccionesMenu
-              onMutateGroups={onMutateGroups}
-              baseById={baseById}
-              isTodo={isTodo}
-              agrupaciones={agrupaciones}
-              agrupacionSeleccionada={agrupacionSeleccionada}
-              todoGroupId={todoGroupId}
-              articuloIds={row.ids}
-              onRefetch={refetchLocal}
-              onAfterMutation={(ids) => afterMutation(ids)}
-              notify={(m, t = 'success') => openSnack(m, t)}
-              categoriaSeleccionada={{ subrubro: headerSr }}
-              onGroupCreated={onGroupCreated}
-            />
+          {/* Nombre del bloque ocupando Código + Nombre */}
+          <div style={{ gridColumn: '1 / 3' }}>
+            {label}
           </div>
+
+          {/* Ventas U totales */}
+          <div style={cellNum}>{fmt(totalQty, 0)}</div>
+
+          {/* Ventas $ totales */}
+          <div style={cellNum}>{`$${fmt(totalAmount, 0)}`}</div>
+
+          {/* Columnas intermedias vacías */}
+          <div />
+          <div />
+          <div />
+          <div />
+          <div />
+          <div />
+          <SubrubroAccionesMenu
+            subrubro={groupKeyName}
+            todosArticulos={categorias}
+            onMutateGroups={onMutateGroups}
+            baseById={baseById}
+            isTodo={isTodo}
+            agrupaciones={agrupaciones}
+            agrupacionSeleccionada={agrupacionSeleccionada}
+            todoGroupId={todoGroupId}
+            articuloIds={row.ids}
+            articuloIdsArray={row.ids}
+            onRefetch={refetchLocal}
+            onAfterMutation={(ids) => afterMutation(ids)}
+            notify={(m, t = 'success') => openSnack(m, t)}
+            onGroupCreated={onGroupCreated}
+            treeMode={tableHeaderMode}
+          />
         </div>
       );
     }
-
     // ---------- item ----------
     const a = row.art;
     const id = a.id;
     const isSelected = Number(selectedArticleId) === Number(id);
 
-    // override de ventas: ahora viene { qty, amount } desde ArticulosMain
     const ventaObj = ventasPorArticulo?.get(id);
 
     const overrideQty =
@@ -705,13 +905,25 @@ export default function TablaArticulos({
         ? Number(ventaObj.qty)
         : undefined;
 
-    // 💰 Ventas $ = unidades * precio de la tabla (importe TEÓRICO)
+    // 💰 ahora usamos amount REAL si viene del backend
     const overrideAmount =
-      overrideQty != null && !Number.isNaN(overrideQty)
-        ? overrideQty * num(a.precio)
-        : undefined;
+      ventaObj && ventaObj.amount != null && !Number.isNaN(Number(ventaObj.amount))
+        ? Number(ventaObj.amount)
+        : (
+          overrideQty != null && !Number.isNaN(overrideQty)
+            ? overrideQty * num(a.precio) // fallback
+            : undefined
+        );
 
-    // estilos de resaltado permanente
+    if (index === 0) {
+      console.log('[TablaArticulos] ejemplo venta fila 0:', {
+        id,
+        overrideQty,
+        overrideAmount,
+        ventaObj,
+      });
+    }
+
     const selectedStyle = isSelected
       ? {
         background: 'rgba(59,130,246,0.10)',
@@ -793,10 +1005,10 @@ export default function TablaArticulos({
           />
         </div>
 
-        {/* 9️⃣ Sugerido $ */}
+        {/* 9️⃣ Sugerido */}
         <div style={cellNum}>${fmt(calcularSugerido(a), 2)}</div>
 
-        {/* 🔟 Manual $ */}
+        {/* 🔟 Manual */}
         <div style={cellNum}>
           <input
             type="number"
@@ -820,6 +1032,8 @@ export default function TablaArticulos({
             onAfterMutation={(ids) => afterMutation(ids)}
             notify={(m, t) => openSnack(m, t)}
             onGroupCreated={onGroupCreated}
+            onDiscontinuadoChange={onDiscontinuadoChange}
+            treeMode={modalTreeMode}
           />
         </div>
       </div>
@@ -857,41 +1071,48 @@ export default function TablaArticulos({
             <div onClick={() => toggleSort('nombre')} style={{ cursor: 'pointer' }}>
               Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
-            <div>Ventas U {ventasLoading ? '…' : ''}</div>
+            <div
+              onClick={() => toggleSort('ventas')}
+              style={{ cursor: 'pointer' }}
+            >
+              Ventas U {ventasLoading ? '…' : ''}{' '}
+              {sortBy === 'ventas' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </div>
+
             <div>Ventas $ {ventasLoading ? '…' : ''}</div>
             <div
               onClick={() => toggleSort('precio')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Precio {sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div
               onClick={() => toggleSort('costo')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Costo ($) {sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div
               onClick={() => toggleSort('costoPct')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Costo (%) {sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div
               onClick={() => toggleSort('objetivo')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Objetivo (%) {sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div
               onClick={() => toggleSort('sugerido')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Sugerido ($) {sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>
             <div
               onClick={() => toggleSort('manual')}
-              style={{ cursor: 'pointer', textAlign: 'right' }}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               Manual ($) {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
             </div>

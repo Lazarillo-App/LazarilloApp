@@ -169,14 +169,14 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
   }, [open, business]);
 
   /* ───────────────── Preview de tema en vivo (sin persistir) ───────────────── */
-useEffect(() => {
-  if (!open) return;
-  const draft = brandingToPalette({
-    primary, secondary, background, font, logo_url: logoUrl || null
-  });
-  // Preview en vivo, sin persistir
-  try { setPaletteForBiz(draft, { persist: false }); } catch {}
-}, [open, primary, secondary, background, font, logoUrl, setPaletteForBiz]);
+  useEffect(() => {
+    if (!open) return;
+    const draft = brandingToPalette({
+      primary, secondary, background, font, logo_url: logoUrl || null
+    });
+    // Preview en vivo, sin persistir
+    try { setPaletteForBiz(draft, { persist: false }); } catch { }
+  }, [open, primary, secondary, background, font, logoUrl, setPaletteForBiz]);
 
   /* ───────────────── Handlers ───────────────── */
   const handleClose = () => {
@@ -207,12 +207,17 @@ useEffect(() => {
       const up = await BusinessesAPI.uploadLogo(bizId, logoFile);
       finalLogoUrl = up?.url || up?.logo_url || up?.secure_url || finalLogoUrl;
     }
-    // 2) patch props con branding
+
+    // 2) armar branding
     const branding = { primary, secondary, background, font, logo_url: finalLogoUrl };
+
+    // 3) patch: ACTUALIZAMOS raíz y props
+    const prevProps = business?.props || {};
     const payload = {
       name,
+      branding, // ⬅️ NUEVO: reflejamos también en la raíz del negocio
       props: {
-        ...(business?.props || {}),
+        ...prevProps,                  // mantenemos maxi, etc.
         branding,
         contact: { phone: normalizeEmpty(phone) },
         description: normalizeEmpty(description),
@@ -229,11 +234,13 @@ useEffect(() => {
         },
       },
     };
+
     const res = await BusinessesAPI.update(bizId, payload);
 
-    // persistir tema para el refresh
+    // 4) persistir tema para el refresh
     try {
-      setPaletteForBiz(brandingToPalette(branding), { persist: true, biz: bizId });
+      const palette = brandingToPalette(branding);
+      setPaletteForBiz(palette, { persist: true, biz: bizId });
       window.dispatchEvent(new CustomEvent("theme:updated"));
     } catch { }
 

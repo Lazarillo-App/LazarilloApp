@@ -1,7 +1,9 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 
 // src/servicios/apiVentas.js
 import { http, BusinessesAPI } from './apiBusinesses';
+import { BASE } from './apiBase';
 
 /* ============================== Helpers ============================== */
 const TIMEOUT_MS = 200000; // 200s (Render puede estar lerdo)
@@ -356,4 +358,54 @@ export async function obtenerVentasSeriesDB({
     if (last) return last;
     return { total: 0, items: [] };
   }
+}
+
+/* ====================== Descargar ventas (CSV) ====================== */
+/**
+ * Descarga CSV de ventas para un negocio y rango de fechas:
+ *   GET /api/businesses/:id/sales/export?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * Devuelve un Blob para que el front pueda disparar la descarga.
+ */
+// al final de src/servicios/apiVentas.js
+
+export async function downloadVentasCSV(businessId, { from, to }) {
+  const role = readRole();
+  const bid = String(businessId ?? getActiveBizId());
+
+  if (!bid || !from || !to) {
+    throw new Error('Faltan parámetros para descargar CSV (businessId, from, to)');
+  }
+
+  if (role === 'app_admin') {
+    throw new Error('El rol app_admin no puede descargar ventas de un negocio concreto.');
+  }
+
+  const token = localStorage.getItem('token') || '';
+  const qs = new URLSearchParams({ from, to }).toString();
+
+  // Usamos el mismo BASE que todo el resto del front
+  // BASE ya incluye el /api si lo pusiste en VITE_BACKEND_URL
+  const url = `${BASE}/businesses/${encodeURIComponent(bid)}/sales/export?${qs}`;
+
+  console.log('[downloadVentasCSV] url', url);
+
+
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    Accept: 'text/csv,application/octet-stream,*/*',
+  };
+
+  const resp = await fetch(url, { method: 'GET', headers });
+
+  if (!resp.ok) {
+    let text = '';
+    try {
+      text = await resp.text();
+    } catch {}
+    console.error('[downloadVentasCSV] status', resp.status, text);
+    throw new Error(text || `Error al descargar CSV de ventas (${resp.status})`);
+  }
+
+  const blob = await resp.blob();
+  return blob;
 }

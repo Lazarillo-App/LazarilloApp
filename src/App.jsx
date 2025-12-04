@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
 import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
-import Insumos from './componentes/Insumos';
+import Insumos from './paginas/InsumosMain';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
@@ -47,6 +47,53 @@ export default function App() {
 
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+
+  // Opciones del buscador: ART + INS
+  const globalSearchOptions = useMemo(() => {
+    const out = [];
+    if (!Array.isArray(categorias)) return out;
+
+    // ---------- ARTÍCULOS ----------
+    categorias.forEach((item) => {
+      // Caso 1: estructura árbol (subrubro > categoría > artículos)
+      if (Array.isArray(item.categorias)) {
+        const subName = item.subrubro || 'Sin subrubro';
+        item.categorias.forEach((cat) => {
+          const catName = cat.categoria || 'Sin categoría';
+          (cat.articulos || []).forEach((a) => {
+            const id = Number(a.id);
+            if (!Number.isFinite(id)) return;
+            const nombre = (a.nombre || '').trim() || `#${id}`;
+            out.push({
+              id: `articulo:${id}`,
+              type: 'articulo',
+              articuloId: id,
+              label: `[ART] ${subName} › ${catName} · ${nombre} · ${id}`,
+              // texto "limpio" para filtrar en tablas/APIs
+              searchText: nombre,
+            });
+          });
+        });
+        return;
+      }
+
+      // Caso 2: lista plana de artículos
+      const id = Number(item.id);
+      if (!Number.isFinite(id)) return;
+      const nombre = (item.nombre || '').trim() || `#${id}`;
+      const codigo = item.codigo || '';
+      out.push({
+        id: `articulo:${id}`,
+        type: 'articulo',
+        articuloId: id,
+        label: `[ART] ${codigo ? codigo + ' – ' : ''}${nombre}`,
+        searchText: nombre,
+      });
+    });
+
+    return out;
+  }, [categorias]);
+
 
   // resolver negocio activo (o nada si es app_admin)
   useEffect(() => {
@@ -171,14 +218,26 @@ export default function App() {
                       agrupaciones={agrupaciones}
                       categorias={categorias}
                       onBusinessSwitched={onBusinessSwitched}
+                      activeBizId={activeBusinessId}
                     />
                   </RequireMaxi>
                 }
               />
-              <Route path="/agrupaciones" element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />} />
-              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
-              <Route path="/insumos" element={<Insumos />} />
-              <Route path="/perfil" element={<Perfil />} />
+              <Route
+                path="/agrupaciones"
+                element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
+              />
+              <Route
+                path="/agrupacioneslist"
+                element={<AgrupacionesList agrupaciones={agrupaciones} />}
+              />
+              <Route
+                path="/insumos"
+                element={
+                  <Insumos/>
+                }
+              />
+              <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
             </Route>
           ) : (
             <Route path="/" element={<AdminApp />} />

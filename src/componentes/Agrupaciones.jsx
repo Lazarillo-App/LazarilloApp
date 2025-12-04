@@ -281,25 +281,23 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
 
   // Artículos visibles para el TODO virtual (desde el nuevo árbol)
   const todoVirtualArticulos = useMemo(() => {
-    const out = [];
-    for (const sub of todosArticulos || []) {
-      for (const cat of sub?.categorias || []) {
-        for (const a of cat?.articulos || []) {
-          const id = Number(a?.id);
-          if (!Number.isFinite(id)) continue;
-          if (idsEnOtras.has(id) || excludedIds.has(id)) continue;
-          out.push({
-            id,
-            nombre: a?.nombre ?? `#${id}`,
-            categoria: a?.categoria ?? cat?.categoria ?? "Sin categoría",
-            subrubro: a?.subrubro ?? sub?.subrubro ?? "Sin subrubro",
-            precio: a?.precio ?? 0,
-          });
-        }
-      }
-    }
-    return out;
-  }, [todosArticulos, idsEnOtras, excludedIds]);
+    const all = Array.isArray(todosArticulos) ? todosArticulos : [];
+
+    // IDs de artículos que ya están en alguna agrupación REAL (no el TODO)
+    const assignedIds = new Set();
+
+    (agrupaciones || [])
+      .filter((g) => !isRealTodoGroup(g, todoGroupId))  // 👈 excluimos el TODO
+      .forEach((g) => {
+        (g.articulos || []).forEach((a) => {
+          const id = Number(a.id);
+          if (Number.isFinite(id)) assignedIds.add(id);
+        });
+      });
+
+    // sobrantes = todos - los que ya están en alguna agrupación
+    return all.filter((a) => !assignedIds.has(Number(a.id)));
+  }, [todosArticulos, agrupaciones, todoGroupId]);
 
   // Conteo real de "sin agrupación" = todos - (asignados  excluidos)
   const todoCount = useMemo(() => {

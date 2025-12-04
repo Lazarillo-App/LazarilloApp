@@ -2,9 +2,33 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { useAuth } from './AuthContext';
+import { useBoot } from './BootContext'; // 👈 NUEVO
 
 const BizCtx = createContext(null);
 export const useBusiness = () => useContext(BizCtx);
+
+// 🔹 NUEVO: hook unificado para obtener el negocio activo
+export function useActiveBusiness() {
+  const bizCtx = useBusiness();
+  const { activeBusinessId } = useBoot() || {};
+
+  const active = bizCtx?.active || null;
+  const activeIdFromCtx = bizCtx?.activeId || '';
+  const activeIdFromBoot = activeBusinessId || '';
+  const activeIdFromStorage = localStorage.getItem('activeBusinessId') || '';
+
+  const businessId =
+    active?.id ||
+    activeIdFromCtx ||
+    activeIdFromBoot ||
+    activeIdFromStorage ||
+    '';
+
+  return {
+    businessId,      // 👈 esto es lo que usa useVentasSeries
+    business: active,
+  };
+}
 
 export function BusinessProvider({ children }) {
   const { isLogged } = useAuth();

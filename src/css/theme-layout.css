@@ -212,7 +212,7 @@ h2 {
 }
 
 .css-cmpglg-MuiFormControl-root-MuiTextField-root {
-  width: 35% !important;
+  width: 35%;
 }
 
 /* ===========================
@@ -645,4 +645,47 @@ input[type="number"]:focus {
   .css-hhdjsd-MuiContainer-root {
     max-width: 100% !important;
   }
+}
+
+/* Layout específico de Insumos */
+.insumos-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Barra superior (título + botones) */
+.insumos-topbar {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Cuerpo: sidebar + tabla, como en Menú */
+.insumos-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  /* para que la tabla pueda scrollear dentro */
+}
+
+/* Aseguramos que el main ocupe todo lo que queda */
+.insumos-body .tabla-articulos-wrapper {
+  flex: 1;
+}
+
+.sidebar-header {
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--color-secondary) 45%, transparent);
+  margin-bottom: 10px;
+}
+
+.sidebar-categorias {
+  width: 280px;
+}
+
+.articulos-layoutInsumos {
+  grid-template-columns: var(--sidebar-width) 1fr;
+  gap: 16px;
+  height: calc(100vh - var(--navbar-height));
+  padding: 8px;
+  box-sizing: border-box;
 }

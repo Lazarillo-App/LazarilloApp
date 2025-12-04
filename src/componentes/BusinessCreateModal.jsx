@@ -78,7 +78,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const tempObjectUrlRef = useRef(null);
 
   const isHttpUrl = (u) => /^https?:\/\/.+/i.test(String(u || "").trim());
-  const normalizeEmpty = (s) => (String(s || "").trim() === "" ? null : s.trim());
+  const normalizeEmpty = (s) =>
+    String(s || "").trim() === "" ? null : s.trim();
   const brandingToPalette = (br) => ({
     name: "Custom",
     primary: br.primary,
@@ -96,35 +97,74 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (open) return;
     setStep(0);
     setBizCreated(null);
-    setBusy(false); setErr(""); setNotice("");
-    setName(""); setPhone(""); setDescription("");
-    setAddrLine1(""); setAddrLine2(""); setCity("");
-    setPrimary("#38e07b"); setSecondary("#1f2923"); setBackground("#f6f8f7");
-    setFont("Inter, system-ui, sans-serif"); setLogoUrl(""); setLogoFile(null);
-    setInstagram(""); setFacebook(""); setTiktok(""); setWebsite("");
-    setMxEmail(""); setMxPass(""); setMxCod(""); setShowPass(false);
-    if (tempObjectUrlRef.current) { try { URL.revokeObjectURL(tempObjectUrlRef.current); } catch {} tempObjectUrlRef.current = null; }
+    setBusy(false);
+    setErr("");
+    setNotice("");
+    setName("");
+    setPhone("");
+    setDescription("");
+    setAddrLine1("");
+    setAddrLine2("");
+    setCity("");
+    setPrimary("#38e07b");
+    setSecondary("#1f2923");
+    setBackground("#f6f8f7");
+    setFont("Inter, system-ui, sans-serif");
+    setLogoUrl("");
+    setLogoFile(null);
+    setInstagram("");
+    setFacebook("");
+    setTiktok("");
+    setWebsite("");
+    setMxEmail("");
+    setMxPass("");
+    setMxCod("");
+    setShowPass(false);
+    if (tempObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(tempObjectUrlRef.current);
+      } catch {}
+      tempObjectUrlRef.current = null;
+    }
   }, [open]);
 
   /* ─── preview de tema en vivo SOLO cuando el paso es Estilos ─── */
   useEffect(() => {
+    // Solo cuando se abre el modal EN el paso 1
     if (!open || step !== 1) return;
-    const draft = brandingToPalette({ primary, secondary, background, font, logo_url: logoUrl || null });
-    setPaletteForBiz(draft, { persist: false });
-    prevRestoreRef.current = () => { window.dispatchEvent(new CustomEvent("business:switched")); };
-  }, [open, step, primary, secondary, background, font, logoUrl, setPaletteForBiz]);
+
+    const draft = brandingToPalette({
+      primary,
+      secondary,
+      background,
+      font,
+      logo_url: logoUrl || null,
+    });
+
+    // Aplica preview UNA vez al entrar al paso 1
+    try {
+      setPaletteForBiz(draft, { persist: false });
+    } catch {}
+
+    // para restaurar después si hace falta
+    prevRestoreRef.current = () => {
+      window.dispatchEvent(new CustomEvent("business:switched"));
+    };
+  }, [open, step]); // intencionalmente solo depende de step/open
 
   const handleClose = () => {
     if (busy) return;
-    try { prevRestoreRef.current?.(); } catch {}
+    try {
+      prevRestoreRef.current?.();
+    } catch {}
     onClose?.();
   };
 
   /* ─── Validaciones por paso ─── */
   const canNext = useMemo(() => {
-    if (step === 0) return name.trim().length > 0;          // Datos
-    if (step === 1) return true;                             // Estilos
-    if (step === 2) return true;                             // Redes
+    if (step === 0) return name.trim().length > 0; // Datos
+    if (step === 1) return true; // Estilos
+    if (step === 2) return true; // Redes
     if (step === 3) return !!mxEmail && !!mxPass && !!mxCod; // Maxi
     return false;
   }, [step, name, mxEmail, mxPass, mxCod]);
@@ -133,16 +173,32 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   async function ensureBusinessCreated() {
     if (bizCreated?.id) return bizCreated;
 
-    const draftBranding = { primary, secondary, background, font, logo_url: null };
-    if (isHttpUrl(logoUrl) && !logoFile) draftBranding.logo_url = logoUrl.trim();
+    const draftBranding = {
+      primary,
+      secondary,
+      background,
+      font,
+      logo_url: null,
+    };
+    if (isHttpUrl(logoUrl) && !logoFile)
+      draftBranding.logo_url = logoUrl.trim();
 
     const payload = {
       name: name.trim(),
       branding: draftBranding,
       contact: { phone: normalizeEmpty(phone) },
       description: normalizeEmpty(description),
-      address: { line1: normalizeEmpty(addrLine1), line2: normalizeEmpty(addrLine2), city: normalizeEmpty(city) },
-      social: { instagram: normalizeEmpty(instagram), facebook: normalizeEmpty(facebook), tiktok: normalizeEmpty(tiktok), website: normalizeEmpty(website) },
+      address: {
+        line1: normalizeEmpty(addrLine1),
+        line2: normalizeEmpty(addrLine2),
+        city: normalizeEmpty(city),
+      },
+      social: {
+        instagram: normalizeEmpty(instagram),
+        facebook: normalizeEmpty(facebook),
+        tiktok: normalizeEmpty(tiktok),
+        website: normalizeEmpty(website),
+      },
     };
 
     const resp = await BusinessesAPI.create(payload);
@@ -154,10 +210,15 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (logoFile) {
       try {
         const up = await BusinessesAPI.uploadLogo(biz.id, logoFile);
-        finalLogoUrl = up?.url || up?.logo_url || up?.secure_url || null;
+        finalLogoUrl =
+          up?.url || up?.logo_url || up?.secure_url || finalLogoUrl;
+
         if (finalLogoUrl) {
           await BusinessesAPI.update(biz.id, {
-            props: { ...(biz.props || {}), branding: { ...draftBranding, logo_url: finalLogoUrl } }
+            props: {
+              ...(biz.props || {}),
+              branding: { ...draftBranding, logo_url: finalLogoUrl },
+            },
           });
         }
       } catch (eUp) {
@@ -165,30 +226,51 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
       }
     }
 
-    // Activar y aplicar tema
-    localStorage.setItem("activeBusinessId", String(biz.id));
-    window.dispatchEvent(new CustomEvent("business:switched"));
-    const persisted = brandingToPalette({ ...draftBranding, logo_url: finalLogoUrl });
-    setPaletteForBiz(persisted, { persist: true, biz: biz.id });
+    // 🔁 Construimos el objeto completo con props coherentes
+    const full = {
+      ...biz,
+      props: {
+        ...(biz.props || {}),
+        branding: { ...draftBranding, logo_url: finalLogoUrl },
+        contact: { phone: normalizeEmpty(phone) },
+        description: normalizeEmpty(description),
+        address: {
+          line1: normalizeEmpty(addrLine1),
+          line2: normalizeEmpty(addrLine2),
+          city: normalizeEmpty(city),
+        },
+        social: {
+          instagram: normalizeEmpty(instagram),
+          facebook: normalizeEmpty(facebook),
+          tiktok: normalizeEmpty(tiktok),
+          website: normalizeEmpty(website),
+        },
+      },
+    };
 
-    const full = { ...biz, props: { ...(biz.props || {}), branding: { ...draftBranding, logo_url: finalLogoUrl } } };
     setBizCreated(full);
     onCreateComplete?.(full);
-    window.dispatchEvent(new CustomEvent("business:created", { detail: { id: biz.id } }));
-    return biz;
+    window.dispatchEvent(
+      new CustomEvent("business:created", { detail: { id: biz.id } })
+    );
+
+    // ❌ OJO: acá YA NO cambiamos activeBusinessId ni disparamos business:switched
+    return full;
   }
 
   /* ─── Navegación ─── */
   const onNext = async (e) => {
     e?.preventDefault?.();
     if (busy || !canNext) return;
-    setErr(""); setNotice("");
+    setErr("");
+    setNotice("");
     if (step < steps.length - 1) setStep(step + 1);
   };
   const onBack = (e) => {
     e?.preventDefault?.();
     if (busy) return;
-    setErr(""); setNotice("");
+    setErr("");
+    setNotice("");
     if (step > 0) setStep(step - 1);
   };
 
@@ -196,23 +278,66 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const onFinish = async (e) => {
     e?.preventDefault?.();
     if (busy || !canNext) return;
-    setErr(""); setNotice(""); setBusy(true);
-    try {
-      const biz = await ensureBusinessCreated();
-      await BusinessesAPI.maxiSave(biz.id, { email: mxEmail, password: mxPass, codcli: mxCod });
+    setErr("");
+    setNotice("");
+    setBusy(true);
 
+    try {
+      // 1️⃣ Crear negocio si aún no existe
+      const biz = await ensureBusinessCreated();
+
+      // 2️⃣ Guardar credenciales de Maxi
+      await BusinessesAPI.maxiSave(biz.id, {
+        email: mxEmail,
+        password: mxPass,
+        codcli: mxCod,
+      });
+
+      // 3️⃣ Sincronizar catálogo (artículos + mapeos)
       setNotice("Sincronizando artículos…");
       const syncRes = await BusinessesAPI.syncNow(biz.id, { scope: "articles" });
       const up = Number(syncRes?.upserted ?? 0);
       const mp = Number(syncRes?.mapped ?? 0);
       setNotice(`Sync OK. Artículos: ${up} · Mapeos: ${mp}`);
 
+      // 4️⃣ AHORA sí: marcar negocio como activo y persistir tema
+      const branding =
+        biz?.props?.branding || biz?.branding || {
+          primary,
+          secondary,
+          background,
+          font,
+          logo_url:
+            biz?.props?.branding?.logo_url ||
+            biz?.branding?.logo_url ||
+            null,
+        };
+
+      const palette = brandingToPalette(branding);
+
+      // marcar activo
+      localStorage.setItem("activeBusinessId", String(biz.id));
+
+      try {
+        // guardar tema por negocio
+        setPaletteForBiz(palette, { persist: true, biz: biz.id });
+        // espejo del tema actual para evitar flash en recarga
+        localStorage.setItem("bizTheme:current", JSON.stringify(palette));
+      } catch {}
+
+      // notificar cambio de negocio activo
+      window.dispatchEvent(
+        new CustomEvent("business:switched", { detail: { id: biz.id } })
+      );
+
       onClose?.();
     } catch (e2) {
       console.error(e2);
       const msg = String(e2?.message || "");
       if (msg.includes("UNAUTHORIZED_ACCESS") || msg.includes("401")) {
-        setErr("Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli.");
+        setErr(
+          "Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli."
+        );
       } else {
         setErr(msg || "No se pudo completar la creación/sincronización.");
       }
@@ -234,51 +359,83 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
         {/* Stepper */}
         <div className="gc-steps">
           {steps.map((label, i) => (
-            <div key={label} className={`gc-step ${i === step ? "active" : i < step ? "done" : ""}`}>
+            <div
+              key={label}
+              className={`gc-step ${
+                i === step ? "active" : i < step ? "done" : ""
+              }`}
+            >
               <span className="gc-step-index">{i + 1}</span>
               <span className="gc-step-label">{label}</span>
             </div>
           ))}
         </div>
 
-        {/* Body (sin scroll, contenido corto por paso) */}
+        {/* Body */}
         <div className="gc-body">
           {step === 0 && (
             <form onSubmit={onNext}>
               <section>
                 <h4 className="gc-section-title">Datos del local</h4>
                 <div className="gc-field">
-                  <label htmlFor="gc-name" className="gc-label">Nombre</label>
-                  <input id="gc-name" className="gc-input" placeholder="e.g., Downtown Eatery"
-                    value={name} onChange={(e) => setName(e.target.value)} />
+                  <label htmlFor="gc-name" className="gc-label">
+                    Nombre
+                  </label>
+                  <input
+                    id="gc-name"
+                    className="gc-input"
+                    placeholder="e.g., Downtown Eatery"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
                 </div>
                 <div className="gc-grid-3">
                   <div className="gc-field">
                     <label className="gc-label">Teléfono</label>
-                    <input className="gc-input" placeholder="+54 9 ..."
-                      value={phone} onChange={(e)=>setPhone(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="+54 9 ..."
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
                   </div>
                   <div className="gc-field">
                     <label className="gc-label">Ciudad</label>
-                    <input className="gc-input" placeholder="Ciudad"
-                      value={city} onChange={(e)=>setCity(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="Ciudad"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                    />
                   </div>
                 </div>
                 <div className="gc-grid-3">
-                  <div className="gc-field"> 
+                  <div className="gc-field">
                     <label className="gc-label">Calle</label>
-                    <input className="gc-input" placeholder="Calle 123"
-                      value={addrLine1} onChange={(e)=>setAddrLine1(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="Calle 123"
+                      value={addrLine1}
+                      onChange={(e) => setAddrLine1(e.target.value)}
+                    />
                   </div>
                   <div className="gc-field">
                     <label className="gc-label">Número</label>
-                    <input className="gc-input" placeholder="(opcional)"
-                      value={addrLine2} onChange={(e)=>setAddrLine2(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="(opcional)"
+                      value={addrLine2}
+                      onChange={(e) => setAddrLine2(e.target.value)}
+                    />
                   </div>
                   <div className="gc-field">
                     <label className="gc-label">Descripción</label>
-                    <input className="gc-input" placeholder="Breve descripción"
-                      value={description} onChange={(e)=>setDescription(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="Breve descripción"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
                   </div>
                 </div>
               </section>
@@ -287,8 +444,21 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               {notice && <div className="gc-notice">{notice}</div>}
 
               <div className="gc-footer">
-                <button type="button" className="gc-btn outline" onClick={handleClose} disabled={busy}>Cancelar</button>
-                <button type="submit" className="gc-btn primary" disabled={!canNext || busy}>Siguiente</button>
+                <button
+                  type="button"
+                  className="gc-btn outline"
+                  onClick={handleClose}
+                  disabled={busy}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="gc-btn primary"
+                  disabled={!canNext || busy}
+                >
+                  Siguiente
+                </button>
               </div>
             </form>
           )}
@@ -298,9 +468,24 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               <section>
                 <h4 className="gc-section-title">Estilos</h4>
                 <div className="gc-grid-3">
-                  <ColorField id="gc-primary" label="Primary" value={primary} onChange={setPrimary} />
-                  <ColorField id="gc-secondary" label="Secondary" value={secondary} onChange={setSecondary} />
-                  <ColorField id="gc-bg" label="Background" value={background} onChange={setBackground} />
+                  <ColorField
+                    id="gc-primary"
+                    label="Primary"
+                    value={primary}
+                    onChange={setPrimary}
+                  />
+                  <ColorField
+                    id="gc-secondary"
+                    label="Secondary"
+                    value={secondary}
+                    onChange={setSecondary}
+                  />
+                  <ColorField
+                    id="gc-bg"
+                    label="Background"
+                    value={background}
+                    onChange={setBackground}
+                  />
                 </div>
 
                 <div className="gc-field">
@@ -310,7 +495,10 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       className="gc-input flex-1"
                       placeholder="Pega una URL (https://...)"
                       value={logoUrl}
-                      onChange={(e) => { setLogoUrl(e.target.value); setLogoFile(null); }}
+                      onChange={(e) => {
+                        setLogoUrl(e.target.value);
+                        setLogoFile(null);
+                      }}
                     />
                     <span className="gc-muted">o</span>
                     <button
@@ -327,9 +515,12 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       accept="image/*"
                       className="gc-hidden-file"
                       onChange={(e) => {
-                        const f = e.target.files?.[0]; if (!f) return;
+                        const f = e.target.files?.[0];
+                        if (!f) return;
                         if (tempObjectUrlRef.current) {
-                          try { URL.revokeObjectURL(tempObjectUrlRef.current); } catch {}
+                          try {
+                            URL.revokeObjectURL(tempObjectUrlRef.current);
+                          } catch {}
                         }
                         setLogoFile(f);
                         const temp = URL.createObjectURL(f);
@@ -346,9 +537,16 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                 </div>
 
                 <div className="gc-field">
-                  <label htmlFor="gc-font" className="gc-label">Fuente (CSS)</label>
-                  <input id="gc-font" className="gc-input" placeholder="Inter, system-ui, sans-serif"
-                    value={font} onChange={(e) => setFont(e.target.value)} />
+                  <label htmlFor="gc-font" className="gc-label">
+                    Fuente (CSS)
+                  </label>
+                  <input
+                    id="gc-font"
+                    className="gc-input"
+                    placeholder="Inter, system-ui, sans-serif"
+                    value={font}
+                    onChange={(e) => setFont(e.target.value)}
+                  />
                 </div>
               </section>
 
@@ -356,8 +554,21 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               {notice && <div className="gc-notice">{notice}</div>}
 
               <div className="gc-footer">
-                <button type="button" className="gc-btn outline" onClick={onBack} disabled={busy}>Atrás</button>
-                <button type="submit" className="gc-btn primary" disabled={!canNext || busy}>Siguiente</button>
+                <button
+                  type="button"
+                  className="gc-btn outline"
+                  onClick={onBack}
+                  disabled={busy}
+                >
+                  Atrás
+                </button>
+                <button
+                  type="submit"
+                  className="gc-btn primary"
+                  disabled={!canNext || busy}
+                >
+                  Siguiente
+                </button>
               </div>
             </form>
           )}
@@ -369,24 +580,43 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                 <div className="gc-grid-3">
                   <div className="gc-field">
                     <label className="gc-label">Instagram</label>
-                    <input className="gc-input" placeholder="https://instagram.com/..."
-                      value={instagram} onChange={(e)=>setInstagram(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="https://instagram.com/..."
+                      value={instagram}
+                      onChange={(e) => setInstagram(e.target.value)}
+                    />
                   </div>
                   <div className="gc-field">
                     <label className="gc-label">Facebook</label>
-                    <input className="gc-input" placeholder="https://facebook.com/..."
-                      value={facebook} onChange={(e)=>setFacebook(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="https://facebook.com/..."
+                      value={facebook}
+                      onChange={(e) => setFacebook(e.target.value)}
+                    />
                   </div>
                   <div className="gc-field">
                     <label className="gc-label">TikTok</label>
-                    <input className="gc-input" placeholder="https://tiktok.com/@..."
-                      value={tiktok} onChange={(e)=>setTiktok(e.target.value)} />
+                    <input
+                      className="gc-input"
+                      placeholder="https://tiktok.com/@..."
+                      value={tiktok}
+                      onChange={(e) => setTiktok(e.target.value)}
+                    />
                   </div>
                 </div>
-                <div className="gc-field" style={{padding:0, marginTop:8}}>
+                <div
+                  className="gc-field"
+                  style={{ padding: 0, marginTop: 8 }}
+                >
                   <label className="gc-label">Sitio web</label>
-                  <input className="gc-input" placeholder="https://..."
-                    value={website} onChange={(e)=>setWebsite(e.target.value)} />
+                  <input
+                    className="gc-input"
+                    placeholder="https://..."
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                  />
                 </div>
               </section>
 
@@ -394,8 +624,21 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               {notice && <div className="gc-notice">{notice}</div>}
 
               <div className="gc-footer">
-                <button type="button" className="gc-btn outline" onClick={onBack} disabled={busy}>Atrás</button>
-                <button type="submit" className="gc-btn primary" disabled={!canNext || busy}>Siguiente</button>
+                <button
+                  type="button"
+                  className="gc-btn outline"
+                  onClick={onBack}
+                  disabled={busy}
+                >
+                  Atrás
+                </button>
+                <button
+                  type="submit"
+                  className="gc-btn primary"
+                  disabled={!canNext || busy}
+                >
+                  Siguiente
+                </button>
               </div>
             </form>
           )}
@@ -405,26 +648,56 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               <section>
                 <h4 className="gc-section-title">Credenciales de MaxiRest</h4>
                 <div className="gc-field">
-                  <label htmlFor="gc-mx-email" className="gc-label">Email</label>
-                  <input id="gc-mx-email" type="email" className="gc-input" placeholder="email@example.com"
-                    value={mxEmail} onChange={(e) => setMxEmail(e.target.value)} required />
+                  <label htmlFor="gc-mx-email" className="gc-label">
+                    Email
+                  </label>
+                  <input
+                    id="gc-mx-email"
+                    type="email"
+                    className="gc-input"
+                    placeholder="email@example.com"
+                    value={mxEmail}
+                    onChange={(e) => setMxEmail(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="gc-field">
-                  <label htmlFor="gc-mx-pass" className="gc-label">Contraseña</label>
+                  <label htmlFor="gc-mx-pass" className="gc-label">
+                    Contraseña
+                  </label>
                   <div className="gc-inline">
-                    <input id="gc-mx-pass" type={showPass ? "text" : "password"} className="gc-input"
-                      placeholder="••••••••" value={mxPass} onChange={(e) => setMxPass(e.target.value)} required />
-                    <button type="button" className="gc-btn outline" onClick={() => setShowPass(s => !s)}>
+                    <input
+                      id="gc-mx-pass"
+                      type={showPass ? "text" : "password"}
+                      className="gc-input"
+                      placeholder="••••••••"
+                      value={mxPass}
+                      onChange={(e) => setMxPass(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="gc-btn outline"
+                      onClick={() => setShowPass((s) => !s)}
+                    >
                       {showPass ? "Ocultar" : "Mostrar"}
                     </button>
                   </div>
                 </div>
 
                 <div className="gc-field">
-                  <label htmlFor="gc-mx-cod" className="gc-label">Código de cliente</label>
-                  <input id="gc-mx-cod" className="gc-input" placeholder="Ej: 12345"
-                    value={mxCod} onChange={(e) => setMxCod(e.target.value)} required />
+                  <label htmlFor="gc-mx-cod" className="gc-label">
+                    Código de cliente
+                  </label>
+                  <input
+                    id="gc-mx-cod"
+                    className="gc-input"
+                    placeholder="Ej: 12345"
+                    value={mxCod}
+                    onChange={(e) => setMxCod(e.target.value)}
+                    required
+                  />
                 </div>
               </section>
 
@@ -432,8 +705,19 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
               {notice && <div className="gc-notice">{notice}</div>}
 
               <div className="gc-footer">
-                <button type="button" className="gc-btn outline" onClick={onBack} disabled={busy}>Atrás</button>
-                <button type="submit" className="gc-btn primary" disabled={!canNext || busy}>
+                <button
+                  type="button"
+                  className="gc-btn outline"
+                  onClick={onBack}
+                  disabled={busy}
+                >
+                  Atrás
+                </button>
+                <button
+                  type="submit"
+                  className="gc-btn primary"
+                  disabled={!canNext || busy}
+                >
                   {busy ? "Creando" : "Crear"}
                 </button>
               </div>

@@ -62,10 +62,18 @@ const getRubroBase = (name) => {
 const isRealTodoGroup = (g, todoGroupId) => {
   if (!g) return false;
   if (!Number.isFinite(Number(todoGroupId))) return false;
-  if (Number(g.id) !== Number(todoGroupId)) return false;
-  const n = normKey(g.nombre); // ya normaliza y saca acentos
-  // nombres “oficiales” del grupo virtual
+  return Number(g.id) === Number(todoGroupId);
+};
+
+const esNombreReservadoTodo = (nombre) => {
+  const n = normKey(nombre);
+  // normKey ya elimina tilde, así que "sin agrupación" también cae acá
   return n === 'todo' || n === 'sin agrupacion';
+};
+
+const isDiscontinuadosGroup = (g) => {
+  const n = normKey(g?.nombre);
+  return n === 'discontinuados' || n === 'descontinuados';
 };
 
 // helper puro (sin hooks) para agrupar según layout
@@ -162,6 +170,7 @@ const AgrupacionesList = ({
   favoriteGroupId,
   onSetFavorite,
   todoVirtualArticulos = [],
+  notify,                // 👈 opcional, para usar el mismo sistema de mensajes que en el resto
 }) => {
   // edición de nombre por grupo
   const [editing, setEditing] = useState({}); // { [groupId]: true }
@@ -202,6 +211,17 @@ const AgrupacionesList = ({
   // helper para evitar que clicks en botones/textfields abran/cierren el acordeón
   const stop = useCallback((e) => { e.stopPropagation(); }, []);
 
+  const showMsg = useCallback((msg, type = 'info') => {
+    if (typeof notify === 'function') {
+      notify(msg, type);
+    } else if (typeof window !== 'undefined') {
+      // fallback simple si no pasaste notify
+      window.alert(msg);
+    } else {
+      console.log(`[${type}]`, msg);
+    }
+  }, [notify]);
+
   const startEdit = (g) => {
     setEditing((s) => ({ ...s, [g.id]: true }));
     setNameDraft((s) => ({ ...s, [g.id]: g.nombre || "" }));
@@ -216,33 +236,47 @@ const AgrupacionesList = ({
 
     const isTodo = isRealTodoGroup(g, todoGroupId);
 
-    // 👉 Si es el grupo TODO ("Sin Agrupación" virtual), usamos
-    // todoVirtualArticulos = TODO lo que se ve ahí en ese momento.
+    // ✅ Si NO es el grupo TODO, no dejamos usar nombres reservados
+    if (!isTodo && esNombreReservadoTodo(nuevo)) {
+      showMsg('Ese nombre está reservado para el grupo "Sin agrupación".', 'warning');
+      return;
+    }
+
+    // 👉 A partir de acá ya es un rename válido (incluye al TODO)
     const baseArticulos = isTodo
       ? (todoVirtualArticulos || [])
       : (g.articulos || []);
-    // 1) Mutación optimista en memoria
+
+    // 1) Mutación optimista
     onMutateGroups?.({
-      type: 'create',
+      type: 'create',          // lo dejamos igual que estaba, para no romper tu handler
       id: g.id,
       nombre: nuevo,
       articulos: baseArticulos,
     });
 
-    // 2) Llamada al backend
     const payload = isTodo
-      ? { nombre: nuevo, articulos: baseArticulos }
+      ? { nombre: nuevo, articulos: baseArticulos } // TODO: se promueve con sus artículos actuales
       : { nombre: nuevo };
 
-    await actualizarAgrupacion(g.id, payload);
-
-    emitGroupsChanged("rename", { groupId: g.id });
-    setEditing((s) => ({ ...s, [g.id]: false }));
-    onActualizar?.();
+    try {
+      await actualizarAgrupacion(g.id, payload);
+      emitGroupsChanged("rename", { groupId: g.id });
+      setEditing((s) => ({ ...s, [g.id]: false }));
+      onActualizar?.(); // 👈 acá el padre debería refetch → trae nuevo todoGroupId + agrupaciones
+      showMsg('Nombre de agrupación actualizado.', 'success');
+    } catch (err) {
+      console.error('ERROR_UPDATE_GROUP_NAME', err);
+      showMsg('No se pudo actualizar el nombre de la agrupación.', 'error');
+      setEditing((s) => ({ ...s, [g.id]: false }));
+      setNameDraft((s) => ({ ...s, [g.id]: g.nombre || "" }));
+    }
   };
 
+
   const removeGroup = async (g) => {
-    if (g.id === todoGroupId) return; // no borrar grupo automático de sobrantes
+    // ⬇ ahora usamos la misma regla que en el resto:
+    if (isRealTodoGroup(g, todoGroupId) || isDiscontinuadosGroup(g)) return;
     if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
     await eliminarAgrupacion(g.id);
     emitGroupsChanged("delete", { groupId: g.id });
@@ -377,22 +411,26 @@ const AgrupacionesList = ({
                   <Box>
                     {!editing[g.id] ? (
                       <>
-                        {/* ✅ Ahora también se puede renombrar el grupo automático (TODO/Discontinuados) */}
-                        <Tooltip
-                          title={
-                            isTodo
-                              ? "Renombrar grupo automático de sobrantes"
-                              : "Renombrar"
-                          }
-                        >
-                          <span>
-                            <IconButton
-                              onClick={(e) => { stop(e); startEdit(g); }}
-                            >
-                              <EditIcon />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
+                        {/* ✏️ Renombrar (no se muestra para Discontinuados) */}
+                        {!isDiscontinuadosGroup(g) && (
+                          <Tooltip
+                            title={
+                              isTodo
+                                ? "Renombrar grupo automático de sobrantes"
+                                : "Renombrar"
+                            }
+                          >
+                            <span>
+                              <IconButton
+                                onClick={(e) => { stop(e); startEdit(g); }}
+                              >
+                                <EditIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+
+                        {/* ➕ Agregar artículos */}
                         <Tooltip
                           title={
                             isTodo
@@ -413,6 +451,22 @@ const AgrupacionesList = ({
                           </span>
                         </Tooltip>
 
+                        {/* 🗑️ Eliminar agrupación (no se puede borrar TODO ni Discontinuados) */}
+                        {!isTodo && !isDiscontinuadosGroup(g) && (
+                          <Tooltip title="Eliminar agrupación">
+                            <span>
+                              <IconButton
+                                color="error"
+                                onClick={(e) => { stop(e); removeGroup(g); }}
+                                sx={{ ml: 0.5 }}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+
+                        {/* ⭐ Favorita */}
                         <IconButton
                           size="small"
                           onClick={(e) => { stop(e); onSetFavorite?.(g.id); }}
@@ -429,7 +483,10 @@ const AgrupacionesList = ({
                         </IconButton>
                       </>
                     ) : (
-                      <IconButton color="primary" onClick={(e) => { stop(e); saveName(g); }}>
+                      <IconButton
+                        color="primary"
+                        onClick={(e) => { stop(e); saveName(g); }}
+                      >
                         <SaveIcon />
                       </IconButton>
                     )}

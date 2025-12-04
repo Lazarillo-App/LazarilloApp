@@ -1,7 +1,7 @@
-/* eslint-disable react-refresh/only-export-components */
+// src/hooks/useVentasSeries.js
 import { useQuery } from '@tanstack/react-query';
 import { obtenerVentasSeriesDB } from '../servicios/apiVentas';
-import { getActiveBusinessId } from '../servicios/apiBusinesses';
+import { useActiveBusiness } from '../context/BusinessContext';
 
 export function useVentasSeries({
   articuloId,
@@ -10,17 +10,19 @@ export function useVentasSeries({
   groupBy = 'day',
   enabled = true,
 }) {
-  const bizIdRaw = getActiveBusinessId();
-  const bizId = bizIdRaw ? Number(bizIdRaw) : NaN;
+  const { businessId } = useActiveBusiness();
+  const bizId = Number(businessId);
+
+  const canRun =
+    enabled &&
+    !!articuloId &&
+    !!from &&
+    !!to &&
+    Number.isFinite(bizId);
 
   return useQuery({
     queryKey: ['ventas-series', { bizId, articuloId, from, to, groupBy }],
-    enabled:
-      enabled &&
-      !!articuloId &&
-      !!from &&
-      !!to &&
-      Number.isFinite(bizId),
+    enabled: canRun,
     queryFn: () =>
       obtenerVentasSeriesDB({
         articuloId,

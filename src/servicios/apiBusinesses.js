@@ -62,7 +62,7 @@ export async function http(
   const user = getUser();
 
   const p = String(path || '');
-    const isBusinessScoped =
+  const isBusinessScoped =
     withBusinessId ||
     p.startsWith('/businesses') ||
     p.startsWith('/ventas');
@@ -203,46 +203,74 @@ export const BusinessesAPI = {
   remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
 
-    // Negocio activo basado en localStorage (+ opcional fetch de detalles)
+  // Negocio activo: backend como verdad + sincroniza localStorage
   async getActive() {
-    const idStr = localStorage.getItem('activeBusinessId');
-    const id = idStr ? Number(idStr) : null;
-
-    if (!id) {
-      return { activeBusinessId: null, business: null };
-    }
-
     try {
-      const biz = await BusinessesAPI.get(id);
-      return { activeBusinessId: id, business: biz };
+      // 1) Preguntamos al backend
+      const data = await http('/businesses/active', { withBusinessId: false });
+      const id = data?.activeBusinessId ?? null;
+
+      if (id) {
+        localStorage.setItem('activeBusinessId', String(id));
+      } else {
+        localStorage.removeItem('activeBusinessId');
+      }
+
+      return { activeBusinessId: id, business: data?.business ?? null };
     } catch (e) {
-      console.warn('[BusinessesAPI.getActive] no se pudo cargar business', e);
+      console.warn('[BusinessesAPI.getActive] backend falló, uso LS', e);
+      // 2) Fallback: lo que haya en LS
+      const idStr = localStorage.getItem('activeBusinessId');
+      const id = idStr ? Number(idStr) : null;
       return { activeBusinessId: id, business: null };
     }
   },
 
-  // Cambiar negocio activo: solo front + POST /:id/select como best-effort
+  // Cambiar negocio activo: backend + localStorage + user en LS
   async setActive(businessId) {
     const id = Number(businessId);
     if (!Number.isFinite(id)) throw new Error('businessId inválido');
 
-    // 1) Guardar en localStorage (fuente de verdad para el front)
+    // 1) Avisar al backend: PATCH /businesses/active
+    let serverResp = null;
+    try {
+      serverResp = await http('/businesses/active', {
+        method: 'PATCH',
+        body: { businessId: id },
+        withBusinessId: false,
+      });
+    } catch (e) {
+      console.warn('[BusinessesAPI.setActive] PATCH /businesses/active falló, sigo con LS', e);
+    }
+
+    // 2) Guardar en localStorage (fuente de verdad para el front)
     localStorage.setItem('activeBusinessId', String(id));
 
-    // 2) Avisar al backend si existe /businesses/:id/select
+    // 3) Actualizar también el user cacheado en localStorage (por si alguien usa active_business_id)
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        u.active_business_id = id;
+        localStorage.setItem('user', JSON.stringify(u));
+      }
+    } catch {
+      // no rompemos nada
+    }
+
+    // 4) Best-effort: mantener también la ruta vieja /businesses/:id/select
     try {
       if (typeof BusinessesAPI.select === 'function') {
         await BusinessesAPI.select(id);
       }
     } catch (e) {
       const msg = String(e?.message || '');
-      // Si el back no tiene esa ruta, seguimos igual sin romper el flujo
       if (!msg.startsWith('not_found')) {
-        console.warn('[BusinessesAPI.setActive] fallo select, pero seguimos con LS', e);
+        console.warn('[BusinessesAPI.setActive] fallo select (legacy), pero seguimos', e);
       }
     }
 
-    return { activeBusinessId: id };
+    return serverResp || { activeBusinessId: id };
   },
 
   // ---- Logo: subir archivo (FormData) ----
@@ -304,8 +332,8 @@ export const BusinessesAPI = {
       { withBusinessId: false }
     ),
 
-    // ───────── Top artículos por ventas usando /businesses/:id/sales/summary ─────────
-   async topArticulos(businessId, { from, to, limit = 100 } = {}) {
+  // ───────── Top artículos por ventas usando /businesses/:id/sales/summary ─────────
+  async topArticulos(businessId, { from, to, limit = 100 } = {}) {
     if (!businessId) {
       const bid = Number(getActiveBusinessId());
       if (Number.isFinite(bid)) businessId = bid;
@@ -333,7 +361,7 @@ export const BusinessesAPI = {
     // 🔍 log de diagnóstico: vas a ver en consola los primeros 5 registros
     try {
       console.log('[topArticulos] sample rows:', items.slice(0, 5));
-    } catch {}
+    } catch { }
 
     return {
       ...data,
@@ -341,7 +369,7 @@ export const BusinessesAPI = {
     };
   },
 
-    // ───────── Totales simples de ventas por artículo (summary plano) ─────────
+  // ───────── Totales simples de ventas por artículo (summary plano) ─────────
   async getSalesItems(businessId, { from, to, limit = 5000 } = {}) {
     // Si no me pasan id, intento usar el activo
     if (!businessId) {
@@ -402,17 +430,75 @@ export const BusinessesAPI = {
     if (!(typeof from === 'string' && typeof to === 'string')) {
       return Promise.reject(new Error('from/to requeridos (YYYY-MM-DD)'));
     }
-    return BusinessesAPI.syncSales(id, { ...opts, from, to });
+    return BusinessesAPI.syncSales(id, { ...opts, mode: 'range', from, to });
   },
 
+  // 🔹 NUEVO: usar endpoint V2 /sync-sales/window para “Ventas 7 días”
   syncSalesLast7d: (id, opts = {}) => {
     const { from, to } = last7dUntilYesterday();
-    return BusinessesAPI.syncSales(id, { ...opts, from, to });
+
+    return http(`/businesses/${id}/sync-sales/window`, {
+      method: 'POST',
+      withBusinessId: false,
+      body: {
+        windowDays: 7,
+        from,
+        to,
+        ...(opts || {}),
+      },
+    });
   },
 
-  
-};
+  async saveViewPref(businessId, { agrupacionId, viewMode }) {
+    if (!businessId || !agrupacionId || !viewMode) return;
+    try {
+      await http(
+        `/businesses/${businessId}/view-prefs`,
+        {
+          method: 'POST',
+          body: { agrupacionId, viewMode },
+          withBusinessId: false,
+        }
+      );
+    } catch (e) {
+      console.error('saveViewPref failed', e);
+    }
+  },
 
+  // 🔹 FAVORITA por usuario + negocio
+  async getFavoriteGroup(businessId) {
+    if (!businessId) return { ok: true, favoriteGroupId: null };
+
+    try {
+      const resp = await http(
+        `/businesses/${businessId}/fav-group`,
+        { method: 'GET', withBusinessId: false }
+      );
+      // espero { ok, favoriteGroupId }
+      return resp || { ok: true, favoriteGroupId: null };
+    } catch (e) {
+      console.error('getFavoriteGroup failed', e);
+      return { ok: false, favoriteGroupId: null };
+    }
+  },
+
+  async saveFavoriteGroup(businessId, agrupacionId) {
+    if (!businessId) return;
+
+    try {
+      await http(
+        `/businesses/${businessId}/fav-group`,
+        {
+          method: 'POST',
+          body: { agrupacionId: agrupacionId ?? null },
+          withBusinessId: false,
+        }
+      );
+    } catch (e) {
+      console.error('saveFavoriteGroup failed', e);
+    }
+  },
+};
 
 /* ======================= API Admin (sin X-Business-Id) ======================= */
 export const AdminAPI = {

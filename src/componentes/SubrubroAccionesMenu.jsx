@@ -8,14 +8,20 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import BlockIcon from '@mui/icons-material/Block';
 
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 
 const getNum = (v) => Number(v ?? 0);
+const norm = (s) => String(s || '').trim().toLowerCase();
 
-// ---- helpers del fallback local (mismo buildTree que arriba)
+const isDiscontinuadosGroup = (g) => {
+  const n = norm(g?.nombre);
+  return n === 'discontinuados' || n === 'descontinuados';
+};
+
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
   const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
@@ -37,7 +43,13 @@ const buildTree = (flatList = []) => {
     if (!bySub.has(sub)) bySub.set(sub, new Map());
     const byCat = bySub.get(sub);
     if (!byCat.has(cat)) byCat.set(cat, []);
-    byCat.get(cat).push({ id: a.id, nombre: a.nombre, precio: a.precio, categoria: cat, subrubro: sub });
+    byCat.get(cat).push({
+      id: a.id,
+      nombre: a.nombre,
+      precio: a.precio,
+      categoria: cat,
+      subrubro: sub,
+    });
   }
   const tree = [];
   for (const [subrubro, byCat] of bySub.entries()) {
@@ -45,28 +57,44 @@ const buildTree = (flatList = []) => {
     for (const [categoria, articulos] of byCat.entries()) {
       categorias.push({ categoria, articulos });
     }
-    categorias.sort((a, b) => String(a.categoria).localeCompare(String(b.categoria), 'es', { sensitivity: 'base', numeric: true }));
+    categorias.sort((a, b) =>
+      String(a.categoria).localeCompare(String(b.categoria), 'es', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+    );
     tree.push({ subrubro, categorias });
   }
-  tree.sort((a, b) => String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true }));
+  tree.sort((a, b) =>
+    String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
+      sensitivity: 'base',
+      numeric: true,
+    })
+  );
   return tree;
 };
 
+const safeId = (a) => {
+  const n = Number(a?.id ?? a?.articuloId ?? a?.codigo);
+  return Number.isFinite(n) ? n : null;
+};
+
 function SubrubroAccionesMenu({
+  subrubro,
+  todosArticulos = [],
+  agrupacionSeleccionada,
   isTodo = false,
   agrupaciones = [],
-  agrupacionSeleccionada,
   todoGroupId,
   articuloIds = [],
   onRefetch,
   notify,
   onAfterMutation,
   onGroupCreated,
-  todosArticulos = [],
   loading = false,
   onMutateGroups,
   baseById,
-  articuloIdsArray
+  treeMode = "cat-first"
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -88,23 +116,111 @@ function SubrubroAccionesMenu({
 
   const loadedRef = useRef(false);
 
-  const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
+  const currentGroupId = agrupacionSeleccionada?.id
+    ? Number(agrupacionSeleccionada.id)
+    : null;
+
+  const subDisplayName = useMemo(() => {
+    if (typeof subrubro === 'string') {
+      return subrubro.trim() || 'este subrubro';
+    }
+    if (subrubro && typeof subrubro === 'object') {
+      if (subrubro.nombre) return String(subrubro.nombre).trim();
+      if (subrubro.label) return String(subrubro.label).trim();
+    }
+    return 'este subrubro';
+  }, [subrubro]);
+
+  // Discontinuados
+  const discontinuadosGroup = useMemo(
+    () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)) || null,
+    [agrupaciones]
+  );
+  const discontinuadosId = discontinuadosGroup ? Number(discontinuadosGroup.id) : null;
+
+  const isInDiscontinuadosView = useMemo(
+    () => !!agrupacionSeleccionada && isDiscontinuadosGroup(agrupacionSeleccionada),
+    [agrupacionSeleccionada]
+  );
 
   const gruposDestino = useMemo(
-    () => (agrupaciones || [])
-      .filter(g => g?.id)
-      .filter(g => Number(g.id) !== currentGroupId),
+    () =>
+      (agrupaciones || [])
+        .filter((g) => g?.id)
+        .filter((g) => Number(g.id) !== currentGroupId),
     [agrupaciones, currentGroupId]
   );
 
-  const openMover = useCallback(() => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); }, [handleClose]);
+  const subName = useMemo(() => norm(subrubro?.nombre || subrubro), [subrubro]);
+
+  const allArticleIdsForSub = useMemo(() => {
+    const baseIds = (articuloIds || []).map(getNum).filter(Boolean);
+    if (!baseIds.length) return baseIds;
+
+    const out = new Set(baseIds);
+
+    // 🟢 MODO RUBRO (tableHeaderMode === "cat-first")
+    // Queremos: todos los artículos cuyo SUBRUBRO se llame igual
+    // que el que cliqueaste (ej: "AGUAS-ISO"), sin importar el rubro.
+    if (treeMode === "cat-first") {
+      if (!subName || !Array.isArray(todosArticulos) || !todosArticulos.length) {
+        return baseIds;
+      }
+
+      for (const node of todosArticulos) {
+        const nodeSubNorm = norm(node?.subrubro);
+        if (nodeSubNorm !== subName) continue;
+
+        for (const cat of node.categorias || []) {
+          for (const art of cat.articulos || []) {
+            const id = safeId(art);
+            if (id != null) out.add(id);
+          }
+        }
+      }
+
+      return Array.from(out);
+    }
+
+    // 🟣 MODO SUBRUBRO (tableHeaderMode === "sr-first")
+    // Queremos: todo el RUBRO real (ej: "Cafeteria"), como ya te funciona bien.
+    const firstBase = baseById ? baseById.get(baseIds[0]) : null;
+    const rubroNameNorm = norm(
+      firstBase?.categoria ||
+      firstBase?.raw?.categoria ||
+      ''
+    );
+
+    if (!rubroNameNorm || !Array.isArray(todosArticulos) || !todosArticulos.length) {
+      return baseIds;
+    }
+
+    for (const node of todosArticulos) {
+      for (const cat of node.categorias || []) {
+        const catNorm = norm(cat?.categoria);
+        if (catNorm !== rubroNameNorm) continue;
+
+        for (const art of cat.articulos || []) {
+          const id = safeId(art);
+          if (id != null) out.add(id);
+        }
+      }
+    }
+
+    return Array.from(out);
+  }, [articuloIds, subName, baseById, todosArticulos, treeMode]);
+
+  const openMover = useCallback(() => {
+    handleClose();
+    setTimeout(() => setDlgMoverOpen(true), 0);
+  }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
   async function mover() {
     const ids = articuloIds.map(getNum).filter(Boolean);
-    if (!ids.length) return;
+    if (!ids.length || !destId) return;
 
-    const fromId = (!isTodo && currentGroupId) ? Number(currentGroupId) : null;
+    const fromId = !isTodo && currentGroupId ? Number(currentGroupId) : null;
     const toId = Number(destId);
 
     if (fromId && fromId === toId) {
@@ -118,17 +234,36 @@ function SubrubroAccionesMenu({
       if (fromId) {
         onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
         try {
-          await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+          await httpBiz(`/agrupaciones/${fromId}/move-items`, {
+            method: 'POST',
+            body: { toId, ids },
+          });
         } catch {
-          await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
-          for (const id of ids) { try { await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, { method: 'DELETE' }); } catch {} }
+          await httpBiz(`/agrupaciones/${toId}/articulos`, {
+            method: 'PUT',
+            body: { ids },
+          });
+          for (const id of ids) {
+            try {
+              await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, {
+                method: 'DELETE',
+              });
+            } catch { }
+          }
         }
       } else {
-        await httpBiz(`/agrupaciones/${toId}/articulos`, { method: 'PUT', body: { ids } });
-        onMutateGroups?.({ type: 'append', groupId: toId, articulos: ids.map(id => ({ id })), baseById });
+        await httpBiz(`/agrupaciones/${toId}/articulos`, {
+          method: 'PUT',
+          body: { ids },
+        });
+        onMutateGroups?.({
+          type: 'append',
+          groupId: toId,
+          articulos: ids.map((id) => ({ id })),
+          baseById,
+        });
       }
 
-      onMutateGroups?.({ type: 'move', fromId, toId, ids: articuloIdsArray, baseById });
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
       onAfterMutation?.(ids);
       onRefetch?.();
@@ -143,15 +278,20 @@ function SubrubroAccionesMenu({
 
   async function quitarDeActual() {
     const ids = articuloIds.map(getNum).filter(Boolean);
+
+    // TODO → exclusiones (equivale a "Sin agrupación" para TODO)
     if (isTodo && todoGroupId && ids.length) {
       try {
-        await addExclusiones(todoGroupId, ids.map(id => ({ scope: 'articulo', ref_id: id })));
-        notify?.(`Ocultados ${ids.length} artículo(s) de TODO`, 'success');
+        await addExclusiones(
+          todoGroupId,
+          ids.map((id) => ({ scope: 'articulo', ref_id: id }))
+        );
+        notify?.(`Quitados ${ids.length} artículo(s) de TODO`, 'success');
         onAfterMutation?.(ids);
         onRefetch?.();
       } catch (e) {
         console.error('EXCLUIR_SUBRUBRO_TODO_ERROR', e);
-        notify?.('No se pudo ocultar el subrubro de TODO', 'error');
+        notify?.('No se pudo quitar el subrubro de TODO', 'error');
       } finally {
         handleClose();
       }
@@ -160,10 +300,22 @@ function SubrubroAccionesMenu({
 
     if (!currentGroupId) return;
     try {
-      // FIX: enviar ids (no [ids])
-      onMutateGroups?.({ type: 'remove', groupId: Number(currentGroupId), ids });
-      for (const id of ids) { try { await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, { method: 'DELETE' }); } catch {} }
-      notify?.(`Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`, 'success');
+      onMutateGroups?.({
+        type: 'remove',
+        groupId: Number(currentGroupId),
+        ids,
+      });
+      for (const id of ids) {
+        try {
+          await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, {
+            method: 'DELETE',
+          });
+        } catch { }
+      }
+      notify?.(
+        `Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`,
+        'success'
+      );
       onAfterMutation?.(ids);
       onRefetch?.();
     } catch (e) {
@@ -174,18 +326,76 @@ function SubrubroAccionesMenu({
     }
   }
 
+  async function toggleDiscontinuarBloque() {
+    const ids = (articuloIds || []).map(getNum).filter(Boolean);
+    if (!ids.length) return;
+
+    if (!discontinuadosId) {
+      notify?.('No existe la agrupación "Discontinuados". Creala primero.', 'error');
+      handleClose();
+      return;
+    }
+
+    const labelCount = ids.length === 1 ? '1 artículo' : `${ids.length} artículos`;
+
+    try {
+      if (!isInDiscontinuadosView) {
+        // Discontinuar
+        await httpBiz(`/agrupaciones/${discontinuadosId}/articulos`, {
+          method: 'PUT',
+          body: { ids },
+        });
+
+        onMutateGroups?.({
+          type: 'append',
+          groupId: discontinuadosId,
+          articulos: ids.map((id) => ({ id })),
+          baseById,
+        });
+
+        notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
+      } else {
+        // Reactivar
+        for (const id of ids) {
+          try {
+            await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${id}`, {
+              method: 'DELETE',
+            });
+          } catch { }
+        }
+
+        onMutateGroups?.({
+          type: 'remove',
+          groupId: discontinuadosId,
+          ids,
+        });
+
+        notify?.(`Subrubro reactivado (${labelCount})`, 'success');
+      }
+
+      onAfterMutation?.(ids);
+      onRefetch?.();
+    } catch (e) {
+      console.error('DISCONTINUAR_BLOQUE_ERROR', e);
+      notify?.('No se pudo cambiar el estado del subrubro', 'error');
+    } finally {
+      handleClose();
+    }
+  }
+
   const isArticuloBloqueadoCreate = useMemo(() => {
     const assigned = new Set();
     (agrupaciones || [])
-      .filter(g => (g?.nombre || '').toUpperCase() !== 'TODO')
-      .forEach(g => (g.articulos || []).forEach(a => {
-        const n = Number(a?.id);
-        if (Number.isFinite(n)) assigned.add(String(n));
-      }));
+      .filter((g) => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .forEach((g) =>
+        (g.articulos || []).forEach((a) => {
+          const n = Number(a?.id);
+          if (Number.isFinite(n)) assigned.add(String(n));
+        })
+      );
     return (art) => assigned.has(String(art?.id));
   }, [agrupaciones]);
 
-  // Fallback local: cargo plano desde DB y lo convierto al árbol esperado
   useEffect(() => {
     if (!openCrearAgr) return;
     if (haveExternalTree || loading || loadedRef.current) return;
@@ -195,10 +405,18 @@ function SubrubroAccionesMenu({
       try {
         setLoadingLocal(true);
         const bizId = localStorage.getItem('activeBusinessId');
-        if (!bizId) { setTreeLocal([]); return; }
+        if (!bizId) {
+          setTreeLocal([]);
+          return;
+        }
         const res = await BusinessesAPI.articlesFromDB(bizId);
-        const flat = (res?.items || []).map(mapRowToArticle).filter(a => Number.isFinite(a.id));
-        if (alive) { setTreeLocal(buildTree(flat)); loadedRef.current = true; }
+        const flat = (res?.items || [])
+          .map(mapRowToArticle)
+          .filter((a) => Number.isFinite(a.id));
+        if (alive) {
+          setTreeLocal(buildTree(flat));
+          loadedRef.current = true;
+        }
       } catch (e) {
         console.error('LOAD_TREE_ERROR', e);
         if (alive) setTreeLocal([]);
@@ -207,7 +425,9 @@ function SubrubroAccionesMenu({
       }
     })();
 
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [openCrearAgr, haveExternalTree, loading]);
 
   return (
@@ -217,30 +437,54 @@ function SubrubroAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        <MenuItem onClick={openMover}>
-          <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Mover subrubro a…</ListItemText>
+        {/* 1. Discontinuar / Reactivar */}
+        <MenuItem onClick={toggleDiscontinuarBloque}>
+          <ListItemIcon>
+            <BlockIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            {isInDiscontinuadosView
+              ? 'Reactivar (quitar de Discontinuados)'
+              : 'Discontinuar'}
+          </ListItemText>
         </MenuItem>
 
-        {!isTodo && (
-          <MenuItem onClick={quitarDeActual}>
-            <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Quitar del grupo actual</ListItemText>
-          </MenuItem>
-        )}
+        {/* 2. Quitar de esta agrupación (incluye TODO: lo manda a “Sin agrupación” lógico) */}
+        <MenuItem onClick={quitarDeActual}>
+          <ListItemIcon>
+            <UndoIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Quitar de esta agrupación</ListItemText>
+        </MenuItem>
 
-        <MenuItem onClick={() => {
-          handleClose();
-          const ids = (articuloIds || []).map(getNum).filter(Boolean);
-          setPreselect({
-            articleIds: ids,
-            fromGroupId: (!isTodo && currentGroupId) ? Number(currentGroupId) : null,
-            allowAssigned: true,
-          });
-          setOpenCrearAgr(true);
-        }}>
-          <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Crear agrupación con este subrubro…</ListItemText>
+        {/* 3. Mover a… */}
+        <MenuItem onClick={openMover}>
+          <ListItemIcon>
+            <DriveFileMoveIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Mover a…</ListItemText>
+        </MenuItem>
+
+        {/* 4. Crear agrupación a partir de… */}
+        <MenuItem
+          onClick={() => {
+            handleClose();
+            const ids = allArticleIdsForSub;
+            setPreselect({
+              articleIds: ids,
+              fromGroupId:
+                !isTodo && currentGroupId ? Number(currentGroupId) : null,
+              allowAssigned: true,
+            });
+            setOpenCrearAgr(true);
+          }}
+        >
+          <ListItemIcon>
+            <GroupAddIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            {`Crear agrupación a partir de “${subDisplayName}”`}
+          </ListItemText>
         </MenuItem>
       </Menu>
 
@@ -255,15 +499,25 @@ function SubrubroAccionesMenu({
             fullWidth
             sx={{ mt: 1 }}
           >
-            <option value="" disabled>Seleccionar…</option>
-            {gruposDestino.map(g => (
-              <option key={g.id} value={g.id}>{g.nombre}</option>
+            <option value="" disabled>
+              Seleccionar…
+            </option>
+            {gruposDestino.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nombre}
+              </option>
             ))}
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeMover} disabled={isMoving}>Cancelar</Button>
-          <Button onClick={mover} variant="contained" disabled={!destId || isMoving}>
+          <Button onClick={closeMover} disabled={isMoving}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={mover}
+            variant="contained"
+            disabled={!destId || isMoving}
+          >
             {isMoving ? 'Moviendo…' : 'Mover'}
           </Button>
         </DialogActions>
@@ -288,11 +542,14 @@ function SubrubroAccionesMenu({
           });
           onRefetch?.();
         }}
-        existingNames={(agrupaciones || []).map(g => String(g?.nombre || '')).filter(Boolean)}
+        existingNames={(agrupaciones || [])
+          .map((g) => String(g?.nombre || ''))
+          .filter(Boolean)}
+        treeMode="cat-first"
+        groupName={subDisplayName}
       />
     </>
   );
 }
 
 export default React.memo(SubrubroAccionesMenu);
-

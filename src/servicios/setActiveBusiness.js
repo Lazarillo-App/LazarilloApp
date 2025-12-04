@@ -1,25 +1,53 @@
 // src/servicios/setActiveBusiness.js
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 
-export async function setActiveBusiness(id, {
-  fetchBiz = true,
-  broadcast = true
-} = {}) {
-  // 1) backend: marca activo
-  await BusinessesAPI.setActive(id);
+/**
+ * Cambia el negocio activo en backend + front.
+ * - Llama a BusinessesAPI.setActive (POST /businesses/:id/select o similar)
+ * - Actualiza localStorage.activeBusinessId con lo que devuelva el back
+ * - Opcionalmente trae los datos del negocio
+ * - Lanza eventos globales para que el resto de la UI reaccione
+ */
+export async function setActiveBusiness(
+  id,
+  {
+    fetchBiz = true,
+    broadcast = true,
+  } = {}
+) {
+  // 1) Backend: marca activo y nos devuelve el id final
+  const res = await BusinessesAPI.setActive(id);
+  const finalId = Number(res?.activeBusinessId ?? id);
 
-  // 2) client: persistir y opcionalmente traer datos del biz
-  localStorage.setItem("activeBusinessId", String(id));
+  // 2) Front: persistir en localStorage
+  localStorage.setItem("activeBusinessId", String(finalId));
+
+  // 3) Opcional: traer datos del negocio
   let biz = null;
   if (fetchBiz) {
-    try { biz = await BusinessesAPI.get(id); } catch { /* no-op */ }
+    try {
+      biz = await BusinessesAPI.get(finalId);
+    } catch {
+      // no rompemos nada si falla
+    }
   }
 
-  // 3) evento global para que toda la UI reaccione (Tema, tablas, etc.)
+  // 4) Eventos globales para tema / tablas / etc.
   if (broadcast) {
-    window.dispatchEvent(new CustomEvent("business:switched", { detail: { bizId: id, biz } }));
-    window.dispatchEvent(new CustomEvent("palette:changed", { detail: { bizId: id } }));
+    try {
+      window.dispatchEvent(
+        new CustomEvent("business:switched", {
+          detail: { bizId: finalId, biz },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent("palette:changed", { detail: { bizId: finalId } })
+      );
+    } catch {
+      // por si el objeto window no está disponible en algún contexto raro
+    }
   }
 
-  return biz;
+  // Devolvemos ambos por comodidad
+  return { id: finalId, biz };
 }

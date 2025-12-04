@@ -17,33 +17,34 @@ function VentasCell({
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [openModal, setOpenModal] = useState(false);
 
-  // 🔁 Siempre traemos la serie mientras haya datos mínimos
-  const {
-    data,
-    isLoading,
-  } = useVentasSeries({
+  // 👉 ¿Tenemos total ya calculado por el padre?
+  const hasOverride =
+    totalOverride != null && !Number.isNaN(Number(totalOverride));
+
+  // ✅ Solo traemos la serie CUANDO el modal está abierto
+  const shouldFetchSeries =
+    !!articuloId && !!from && !!to && openModal;
+
+  const { data, isLoading } = useVentasSeries({
     articuloId,
     from,
     to,
     groupBy,
-    enabled: !!articuloId && !!from && !!to,
+    enabled: shouldFetchSeries,
   });
 
-  // 🔍 Total calculado de forma robusta
+  // 🔍 Total calculado desde la serie (para el modal / fallback)
   const totalFromSeries = useMemo(() => {
     if (!data) return 0;
 
-    // 1) Si el backend ya manda un total numérico, lo usamos directo
     if (typeof data.total === 'number' && !Number.isNaN(data.total)) {
       return data.total;
     }
 
-    // 2) Si viene algo tipo { data: { total, items } }
     if (data.data && typeof data.data.total === 'number') {
       return data.data.total;
     }
 
-    // 3) Sumamos items (formas comunes: qty, cantidad, unidades, total_u)
     const items =
       (Array.isArray(data.items) && data.items) ||
       (Array.isArray(data.series) && data.series) ||
@@ -53,10 +54,10 @@ function VentasCell({
     const sum = items.reduce((acc, it) => {
       const v = Number(
         it.qty ??
-        it.cantidad ??
-        it.unidades ??
-        it.total_u ??
-        0
+          it.cantidad ??
+          it.unidades ??
+          it.total_u ??
+          0
       );
       return acc + (Number.isNaN(v) ? 0 : v);
     }, 0);
@@ -64,22 +65,22 @@ function VentasCell({
     return sum;
   }, [data]);
 
-  // Si el padre quiere enterarse del total, se lo informamos cuando cambie
+  // 🔁 Solo avisamos al padre si NO hay override y sí hay serie (normalmente en el modal)
   useEffect(() => {
     if (
+      !hasOverride &&
       typeof onTotalResolved === 'function' &&
       articuloId &&
       !Number.isNaN(totalFromSeries)
     ) {
       onTotalResolved(articuloId, totalFromSeries);
     }
-  }, [articuloId, totalFromSeries, onTotalResolved]);
+  }, [hasOverride, articuloId, totalFromSeries, onTotalResolved]);
 
-  // Qué número mostramos en la celda
-  const totalToShow =
-    totalOverride != null && !Number.isNaN(Number(totalOverride))
-      ? Number(totalOverride)
-      : totalFromSeries;
+  // 🔢 Qué número mostramos en la celda de la tabla
+  const totalToShow = hasOverride
+    ? Number(totalOverride)
+    : totalFromSeries;
 
   const handleOpenModal = () => {
     if (!articuloId || !from || !to) return;
@@ -92,17 +93,14 @@ function VentasCell({
 
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120 }}>
-      {isLoading && openModal ? (
-        <CircularProgress size={18} />
-      ) : (
-        <Typography
-          variant="body2"
-          sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-          title={String(totalToShow)}
-        >
-          {totalToShow}
-        </Typography>
-      )}
+      {/* En la tabla nunca bloqueamos por loading: usamos el número que ya tenemos */}
+      <Typography
+        variant="body2"
+        sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+        title={String(totalToShow)}
+      >
+        {totalToShow}
+      </Typography>
 
       <Tooltip title="Ver gráfico">
         <IconButton
@@ -110,7 +108,11 @@ function VentasCell({
           onClick={handleOpenModal}
           aria-label="Ver gráfico de ventas"
         >
-          <InsertChartOutlinedIcon fontSize="small" />
+          {isLoading && openModal ? (
+            <CircularProgress size={16} />
+          ) : (
+            <InsertChartOutlinedIcon fontSize="small" />
+          )}
         </IconButton>
       </Tooltip>
 
@@ -119,12 +121,12 @@ function VentasCell({
         onClose={handleCloseModal}
         articuloNombre={articuloNombre}
         rango={{ from, to }}
-        data={data || { total: 0, items: [] }}
+        data={data || { total: totalToShow, items: [] }}
         loading={isLoading}
         groupBy={groupBy}
         onChangeGroupBy={(gb) => {
           if (!gb || gb === groupBy) return;
-          setGroupBy(gb); // el hook se re-dispara solo porque groupBy cambia
+          setGroupBy(gb); 
         }}
       />
     </Stack>

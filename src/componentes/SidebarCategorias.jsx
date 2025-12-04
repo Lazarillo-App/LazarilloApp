@@ -1,8 +1,6 @@
-/* eslint-disable no-unused-vars */
-/* eslint-disable no-empty */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, {
-  useEffect, useMemo, useCallback, useRef, useState
+  useEffect, useMemo, useCallback
 } from 'react';
 import {
   FormControl,
@@ -23,6 +21,20 @@ import '../css/SidebarCategorias.css';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
+const safeId = (a) => {
+  const raw =
+    a?.article_id ??   // 👈 mismo criterio que getArtId
+    a?.articulo_id ??
+    a?.articuloId ??
+    a?.idArticulo ??
+    a?.id ??
+    a?.codigo ??
+    a?.code;
+
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
 const esTodoGroup = (g) => {
   const n = norm(g?.nombre);
   return (
@@ -34,8 +46,33 @@ const esTodoGroup = (g) => {
   );
 };
 
+// 🆕 Nuevo: detectar agrupación "Discontinuados"
+const esDiscontinuadosGroup = (g) => {
+  const n = norm(g?.nombre);
+  return n === 'discontinuados' || n === 'descontinuados';
+};
+
 // ahora simplemente mostramos el nombre real
 const labelAgrup = (g) => g?.nombre || '';
+
+/**
+ * 🧮 Helper: devuelve el monto de ventas de un artículo
+ * AJUSTA el nombre del campo según tu data real.
+ * Ejemplos posibles: a.ventas_monto, a.montoVentas, a.ventas_total, etc.
+ */
+const getArticuloMontoVentas = (a) => {
+  const v =
+    a?.ventas_monto ??   // 👉 CAMBIA este nombre si hace falta
+    a?.ventasMonto ??
+    a?.ventas_total ??
+    a?.ventasTotal ??
+    a?.monto ??
+    a?.amount ??
+    0;
+
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 function SidebarCategorias({
   categorias = [],
@@ -49,14 +86,14 @@ function SidebarCategorias({
   todoGroupId,
   visibleIds,
   onManualPick,
-  listMode = 'by-subrubro', // "by-subrubro" | "by-categoria"
-  onReorderSubrubros,       // (nuevoOrden: string[]) => void (opcional)
+  listMode = 'by-subrubro', 
+  //onReorderSubrubros,      
   onChangeListMode,
-  // 🆕 props desde el padre
   favoriteGroupId,
   onSetFavorite,
   onEditGroup,
   onDeleteGroup,
+  onRenameGroup,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
@@ -64,17 +101,33 @@ function SidebarCategorias({
   // Select de agrupaciones
   const opcionesSelect = useMemo(() => {
     const arr = (Array.isArray(agrupaciones) ? agrupaciones : []).filter(Boolean);
+    if (!arr.length) return [];
+
     const todoIdNum = Number(todoGroupId);
 
-    if (!Number.isFinite(todoIdNum)) return arr;
-
     const todo = arr.find(g => Number(g.id) === todoIdNum) || null;
-    const others = arr.filter(g => Number(g.id) !== todoIdNum);
 
-    return todo ? [todo, ...others] : others;
+    // separar Discontinuados
+    const discontinuados = arr.filter(esDiscontinuadosGroup);
+    const discIds = new Set(discontinuados.map(g => Number(g.id)));
+
+    const middle = arr.filter(g => {
+      const idNum = Number(g.id);
+      if (todo && idNum === Number(todo.id)) return false;
+      if (discIds.has(idNum)) return false;
+      return true;
+    });
+
+    const ordered = [];
+    if (todo) ordered.push(todo);
+    ordered.push(...middle);
+    // Discontinuados siempre al final
+    ordered.push(...discontinuados);
+
+    return ordered;
   }, [agrupaciones, todoGroupId]);
 
-  // Valor seguro para el Select de agrupaciones (evita value=0 fuera de rango)
+  // Valor seguro para el Select de agrupaciones
   const selectedAgrupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map(g => Number(g.id));
 
@@ -82,45 +135,38 @@ function SidebarCategorias({
       ? Number(agrupacionSeleccionada.id)
       : null;
 
-    // Si la selección actual existe en las opciones, usarla
     if (actualId != null && idsOpciones.includes(actualId)) {
       return actualId;
     }
 
-    // Si no, probamos con el TODO si existe
     const todoIdNum = Number(todoGroupId);
     if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) {
       return todoIdNum;
     }
 
-    // Si nada encaja, dejamos el select sin selección
     return '';
   }, [opcionesSelect, agrupacionSeleccionada, todoGroupId]);
 
   // Set de ids activos
   const activeIds = useMemo(() => {
-    // 1) Si la tabla nos pasa los visibles → usamos eso (modo sincronizado)
     if (visibleIds && visibleIds.size) return visibleIds;
 
     const g = agrupacionSeleccionada;
     if (!g) return null;
 
-    // 2) Si es un grupo virtual (TODO / Sin agrupación) → no filtramos el árbol
     if (esTodoGroup(g)) return null;
 
-    // 3) Para cualquier otra agrupación usamos solo sus artículos
     const gActual = (agrupaciones || []).find(
       x => Number(x?.id) === Number(g?.id)
     );
     const arr = Array.isArray(gActual?.articulos) ? gActual.articulos : [];
 
-    // ⚠️ Clave: si no hay artículos → set vacío → sidebar queda vacío
     if (!arr.length) return new Set();
 
     return new Set(
       arr
-        .map(a => Number(a?.id))
-        .filter(Number.isFinite)
+        .map(a => safeId(a))
+        .filter((id) => id != null)
     );
   }, [visibleIds, agrupacionSeleccionada, agrupaciones, todoGroupId]);
 
@@ -136,17 +182,23 @@ function SidebarCategorias({
   }, [agrupaciones, agrupacionSeleccionada, setAgrupacionSeleccionada]);
 
   /* ==========================
-     Árbol según modo
+     Árbol según modo + ORDEN POR VENTAS
   ========================== */
+
   const treeBySubrubro = useMemo(() => {
     if (!activeIds) return categoriasSafe;
+
     const pruned = categoriasSafe
       .map(sub => {
         const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
         const keepCategorias = cats
           .map(c => {
             const arts = (Array.isArray(c?.articulos) ? c.articulos : [])
-              .filter(a => activeIds.has(Number(a?.id)));
+              .filter(a => {
+                if (!activeIds) return true;
+                const id = safeId(a);
+                return id != null && activeIds.has(id);
+              });
             return { ...c, articulos: arts };
           })
           .filter(c => (Array.isArray(c.articulos) ? c.articulos.length : 0) > 0);
@@ -159,7 +211,32 @@ function SidebarCategorias({
         }
         return total > 0;
       });
-    return pruned;
+
+    // 🧮 calcular ventas totales por subrubro
+    const withVentas = pruned.map(sub => {
+      let ventasMonto = 0;
+      const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
+      for (const c of cats) {
+        const arts = Array.isArray(c?.articulos) ? c.articulos : [];
+        for (const art of arts) {
+          ventasMonto += getArticuloMontoVentas(art);
+        }
+      }
+      return { ...sub, __ventasMonto: ventasMonto };
+    });
+
+    // Ordenar de mayor a menor ventas; si empatan, alfabético
+    withVentas.sort((a, b) => {
+      if (b.__ventasMonto !== a.__ventasMonto) {
+        return b.__ventasMonto - a.__ventasMonto;
+      }
+      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    });
+
+    return withVentas;
   }, [categoriasSafe, activeIds]);
 
   const treeByCategoria = useMemo(() => {
@@ -173,107 +250,48 @@ function SidebarCategorias({
         catMap.get(catName).push(...arts);
       }
     }
+
     const out = [];
     for (const [catName, arts] of catMap.entries()) {
-      const filtered = !activeIds ? arts : arts.filter(a => activeIds.has(Number(a?.id)));
+      const filtered = !activeIds
+        ? arts
+        : arts.filter(a => {
+          const id = safeId(a);
+          return id != null && activeIds.has(id);
+        });
       if (filtered.length > 0) {
+        // 🧮 ventas por categoría
+        let ventasMonto = 0;
+        for (const art of filtered) {
+          ventasMonto += getArticuloMontoVentas(art);
+        }
+
         out.push({
           subrubro: catName,
           categorias: [{ categoria: catName, articulos: filtered }],
+          __ventasMonto: ventasMonto,
         });
       }
     }
-    out.sort((a, b) =>
-      String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true })
-    );
+
+    // Ordenar por ventas (desc) y luego alfabético
+    out.sort((a, b) => {
+      if (b.__ventasMonto !== a.__ventasMonto) {
+        return b.__ventasMonto - a.__ventasMonto;
+      }
+      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    });
+
     return out;
   }, [categoriasSafe, activeIds]);
 
   const listaBase = listMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
 
-  /* ==========================
-     Orden personalizado (DnD)
-  ========================== */
-  const storageKey = useMemo(() => {
-    const groupKey = agrupacionSeleccionada?.id != null ? String(agrupacionSeleccionada.id) : 'global';
-    return `lazarillo:sidebarOrder:${listMode}:${groupKey}`;
-  }, [listMode, agrupacionSeleccionada?.id]);
-
-  // Estado con el orden de claves (subrubro string)
-  const [order, setOrder] = useState([]);
-
-  // Lee/normaliza orden cuando cambian datos base
-  useEffect(() => {
-    const actualKeys = (listaBase || []).map(s => String(s?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')));
-    let saved = [];
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) saved = JSON.parse(raw);
-    } catch { }
-    const merged = [
-      ...saved.filter(k => actualKeys.includes(k)),
-      ...actualKeys.filter(k => !saved.includes(k)),
-    ];
-    const finalKeys = merged.filter(k => actualKeys.includes(k));
-    setOrder(finalKeys);
-  }, [listaBase, storageKey, listMode]);
-
-  const saveOrder = useCallback((keys) => {
-    try { localStorage.setItem(storageKey, JSON.stringify(keys)); } catch { }
-    onReorderSubrubros?.(keys);
-  }, [storageKey, onReorderSubrubros]);
-
-  // Aplica el orden a la lista mostrada
-  const listaParaMostrar = useMemo(() => {
-    if (!order?.length) return listaBase;
-    const map = new Map((listaBase || []).map(s => [String(s?.subrubro || ''), s]));
-    return order.map(k => map.get(k)).filter(Boolean);
-  }, [listaBase, order]);
-
-  /* ===== HTML5 Drag & Drop ===== */
-  const dragIndexRef = useRef(null);
-  const overIndexRef = useRef(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-
-  const handleDragStart = useCallback((idx) => (e) => {
-    dragIndexRef.current = idx;
-    overIndexRef.current = idx;
-    setDragOverIndex(idx);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(idx));
-  }, []);
-
-  const handleDragOver = useCallback((idx) => (e) => {
-    e.preventDefault();
-    if (overIndexRef.current !== idx) {
-      overIndexRef.current = idx;
-      setDragOverIndex(idx);
-    }
-  }, []);
-
-  const handleDrop = useCallback((idx) => (e) => {
-    e.preventDefault();
-    const from = dragIndexRef.current;
-    const to = idx;
-    dragIndexRef.current = null;
-    overIndexRef.current = null;
-    setDragOverIndex(null);
-    if (from == null || to == null || from === to) return;
-
-    setOrder((prev) => {
-      const next = prev.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      saveOrder(next);
-      return next;
-    });
-  }, [saveOrder]);
-
-  const handleDragEnd = useCallback(() => {
-    dragIndexRef.current = null;
-    overIndexRef.current = null;
-    setDragOverIndex(null);
-  }, []);
+  // ✅ Ya no hay orden manual ni drag & drop: usamos directamente listaBase
+  const listaParaMostrar = listaBase;
 
   /* ==========================
      UX: selección & contadores
@@ -323,6 +341,12 @@ function SidebarCategorias({
           sx={{ fontWeight: '500' }}
           value={selectedAgrupValue}
           onChange={handleAgrupacionChange}
+          renderValue={(value) => {
+            const g = opcionesSelect.find(
+              (x) => Number(x.id) === Number(value)
+            );
+            return g ? labelAgrup(g) : 'Sin agrupación';
+          }}
         >
           {opcionesSelect.map(g => (
             <MenuItem key={g.id} value={Number(g.id)}>
@@ -335,72 +359,107 @@ function SidebarCategorias({
                   gap: 8,
                 }}
               >
-                <span>{labelAgrup(g)}</span>
+                <span
+                  style={{
+                    fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal',
+                    color: esDiscontinuadosGroup(g) ? '#555' : 'inherit',
+                  }}
+                >
+                  {labelAgrup(g)}
+                </span>
 
-                {/* Botonera de acciones dentro del select */}
                 <span
                   onClick={(e) => e.stopPropagation()}
                   style={{ display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  {onSetFavorite && (
-                    <Tooltip
-                      title={
-                        Number(favoriteGroupId) === Number(g.id)
-                          ? 'Quitar como favorita'
-                          : 'Marcar como favorita'
-                      }
-                    >
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSetFavorite(g.id);
-                        }}
-                      >
-                        {Number(favoriteGroupId) === Number(g.id)
-                          ? <StarIcon fontSize="inherit" color="warning" />
-                          : <StarBorderIcon fontSize="inherit" />}
-                      </IconButton>
-                    </Tooltip>
-                  )}
+                  {(() => {
+                    const isTodo = esTodoGroup(g);
+                    const isDisc = esDiscontinuadosGroup(g);
 
-                  {onEditGroup && (
-                    <Tooltip title="Renombrar agrupación">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEditGroup(g);
-                        }}
-                      >
-                        <EditIcon fontSize="inherit" />
-                      </IconButton>
-                    </Tooltip>
-                  )}
+                    if (isDisc) return null;
 
-                  {onDeleteGroup && (
-                    <Tooltip
-                      title={
-                        Number(g.id) === Number(todoGroupId)
-                          ? 'No se puede eliminar el grupo automático de sobrantes'
-                          : 'Eliminar agrupación'
-                      }
-                    >
-                      <span>
-                        <IconButton
-                          size="small"
-                          disabled={Number(g.id) === Number(todoGroupId)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (Number(g.id) === Number(todoGroupId)) return;
-                            onDeleteGroup(g);
-                          }}
-                        >
-                          <DeleteIcon fontSize="inherit" color="error" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  )}
+                    if (isTodo) {
+                      return (
+                        onRenameGroup && (
+                          <Tooltip title='Convertir "Sin agrupación" en una nueva agrupación con esos artículos'>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const currentName = String(g.nombre || '');
+                                const nuevo = window.prompt(
+                                  'Nombre para la nueva agrupación creada desde "Sin agrupación"',
+                                  currentName || 'Nueva agrupación'
+                                );
+                                if (nuevo == null) return;
+                                const trimmed = nuevo.trim();
+                                if (!trimmed) return;
+                                onRenameGroup(g, trimmed);
+                              }}
+                            >
+                              <EditIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        )
+                      );
+                    }
+
+                    return (
+                      <>
+                        {onSetFavorite && (
+                          <Tooltip
+                            title={
+                              Number(favoriteGroupId) === Number(g.id)
+                                ? 'Quitar como favorita'
+                                : 'Marcar como favorita'
+                            }
+                          >
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSetFavorite(g.id);
+                              }}
+                            >
+                              {Number(favoriteGroupId) === Number(g.id)
+                                ? <StarIcon fontSize="inherit" color="warning" />
+                                : <StarBorderIcon fontSize="inherit" />}
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {onEditGroup && (
+                          <Tooltip title="Renombrar agrupación">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditGroup(g);
+                              }}
+                            >
+                              <EditIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {onDeleteGroup && (
+                          <Tooltip title="Eliminar agrupación">
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteGroup(g);
+                                }}
+                              >
+                                <DeleteIcon fontSize="inherit" color="error" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                      </>
+                    );
+                  })()}
                 </span>
               </div>
             </MenuItem>
@@ -432,36 +491,31 @@ function SidebarCategorias({
           </li>
         )}
 
-        {!loading && listaParaMostrar.map((sub, idx) => {
-          const keyStr = String(sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro'));
+        {!loading && listaParaMostrar.map((sub) => {
+          const keyStr = String(
+            sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')
+          );
           const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
-          const dragOver = dragOverIndex === idx;
 
           return (
             <li
               key={keyStr}
               className={[
                 active ? 'categoria-activa' : '',
-                dragOver ? 'drag-over' : '',
               ].join(' ').trim()}
               title={keyStr}
-              draggable
-              onDragStart={handleDragStart(idx)}
-              onDragOver={handleDragOver(idx)}
-              onDrop={handleDrop(idx)}
-              onDragEnd={handleDragEnd}
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 gap: 8,
                 alignItems: 'center',
-                cursor: 'grab',
+                cursor: 'pointer',
                 userSelect: 'none',
               }}
             >
               <span
                 onClick={() => handleCategoriaClick(sub)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}
               >
                 <span className="icono" />
                 {keyStr}
@@ -469,11 +523,6 @@ function SidebarCategorias({
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <small style={{ opacity: 0.65 }}>{countArticulosSub(sub)}</small>
-                <span
-                  aria-hidden
-                  title="Arrastrar para reordenar"
-                  style={{ opacity: .6, cursor: 'grab' }}
-                ></span>
               </div>
             </li>
           );
@@ -487,7 +536,6 @@ function SidebarCategorias({
               : 'No hay Rubros/Subrubros en esta agrupación.'}
           </li>
         )}
-
       </ul>
     </div>
   );

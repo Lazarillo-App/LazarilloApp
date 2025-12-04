@@ -62,13 +62,20 @@ export default function Navbar() {
 
   // contraste dinámico
   const [colors, setColors] = React.useState(() => ({ primary: '#111111', onPrimary: '#ffffff' }));
+
   const recomputeColors = React.useCallback(() => {
     const root = document.documentElement;
     let primary = getComputedStyle(root).getPropertyValue('--color-primary').trim();
     if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(primary)) primary = '#111111';
     const onPrimary = onColorFor(primary);
     root.style.setProperty('--on-primary', onPrimary);
-    setColors({ primary, onPrimary });
+
+    setColors(prev => {
+      if (prev.primary === primary && prev.onPrimary === onPrimary) {
+        return prev; // no dispares rerender si no cambió nada
+      }
+      return { primary, onPrimary };
+    });
   }, []);
 
   // local activo
@@ -97,24 +104,53 @@ export default function Navbar() {
         setBizLabel('Local');
         setActiveBizId(null);
         setActiveBizLogo('');
+        localStorage.removeItem('activeBusinessId');
         return;
       }
+
+      const lsId = localStorage.getItem('activeBusinessId');
+
+      if (lsId) {
+        const id = String(lsId);
+        setActiveBizId(id);
+        try {
+          const biz = await BusinessesAPI.get(id);
+          setBizLabel(biz?.name || 'Local');
+          setActiveBizLogo(getBizLogoUrl(biz));
+        } catch {
+          setBizLabel('Local');
+          setActiveBizLogo('');
+        }
+        console.log(
+          '[NAVBAR] usando businessId desde localStorage (ya sincronizado por ensureActiveBusiness):',
+          id
+        );
+        return;
+      }
+
+      // 2) Si NO hay nada en LS → preguntamos al backend
       const act = await BusinessesAPI.getActive();
       const id = act?.activeBusinessId || null;
       setActiveBizId(id);
+
       if (id) {
+        localStorage.setItem('activeBusinessId', String(id));
         const biz = await BusinessesAPI.get(id);
         setBizLabel(biz?.name || 'Local');
         setActiveBizLogo(getBizLogoUrl(biz));
+        console.log('[NAVBAR] usando businessId desde backend:', id);
       } else {
+        localStorage.removeItem('activeBusinessId');
         setBizLabel('Local');
         setActiveBizLogo('');
+        console.log('[NAVBAR] sin negocio activo en backend');
       }
-    } catch (e) {
-      console.error('[Navbar] loadActiveBusiness failed', e);
+    } catch (err) {
+      console.error('loadActiveBusiness error', err);
       setBizLabel('Local');
       setActiveBizId(null);
       setActiveBizLogo('');
+      // mejor no tocar LS en caso de error
     }
   }, [isAppAdmin, logged]);
 
@@ -251,7 +287,6 @@ export default function Navbar() {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
-            {/* LOGO DE MARCA (imagen, no texto) */}
             <Box
               component={NavLink}
               to={homeTo}
@@ -291,7 +326,6 @@ export default function Navbar() {
                 <MenuIcon />
               </IconButton>
               <Menu
-                key={`main-${colors.primary}`}
                 anchorEl={navEl}
                 open={Boolean(navEl)}
                 onClose={() => setNavEl(null)}
@@ -304,7 +338,7 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  <MenuItem component={NavLink} to={homeTo} onClick={() => setNavEl(null)}>Inicio</MenuItem>
+                  <MenuItem component={NavLink} to={homeTo} onClick={() => setNavEl(null)}>Menú</MenuItem>
                   {!isAppAdmin && (
                     <>
                       <MenuItem component={NavLink} to="/agrupaciones" onClick={() => setNavEl(null)}>Agrupaciones</MenuItem>
@@ -320,7 +354,7 @@ export default function Navbar() {
 
             {/* Desktop – links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
-              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to={homeTo}>Inicio</Button>
+              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to={homeTo}>Menú</Button>
               {!isAppAdmin && (
                 <>
                   <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/agrupaciones">Agrupaciones</Button>
@@ -382,7 +416,6 @@ export default function Navbar() {
                 </Button>
 
                 <Menu
-                  key={`local-${colors.primary}`}
                   anchorEl={localEl}
                   open={Boolean(localEl)}
                   onClose={() => setLocalEl(null)}
@@ -494,7 +527,6 @@ export default function Navbar() {
                 </IconButton>
               </Tooltip>
               <Menu
-                key={`user-${colors.primary}`}
                 sx={{ mt: '45px', '& .MuiPaper-root': { background: 'var(--color-primary)', color: 'var(--on-primary)' } }}
                 anchorEl={userEl}
                 open={Boolean(userEl)}

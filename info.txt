@@ -13,18 +13,73 @@ Conexion a DB en Consola (admin)
 $env:PGPASSWORD = "qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc"
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -p 5432 -U lazarillo_app_user -d lazarillo_app -v sslmode=require
 
-\encoding UTF8
-\set biz 31
-\set desde '2025-11-03'
-\set hasta '2025-11-09'
-
- column_name
--------------
- article_id
- articulo_id
- business_id
- categoria
- subrubro
- updated_at
-(6 filas)
-
+lazarillo_app=> \d
+                            Listado de relaciones
+ Esquema |              Nombre              |   Tipo    |       Due±o
+---------+----------------------------------+-----------+--------------------
+ public  | agrupacion_articulos             | tabla     | lazarillo_app_user
+ public  | agrupacion_articulos_id_seq      | secuencia | lazarillo_app_user
+ public  | agrupacion_exclusiones           | tabla     | lazarillo_app_user
+ public  | agrupacion_exclusiones_id_seq    | secuencia | lazarillo_app_user
+ public  | agrupaciones                     | tabla     | lazarillo_app_user
+ public  | agrupaciones_id_seq              | secuencia | lazarillo_app_user
+ public  | app_articles                     | tabla     | lazarillo_app_user
+ public  | app_articles_id_seq              | secuencia | lazarillo_app_user
+ public  | app_branches                     | tabla     | lazarillo_app_user
+ public  | app_branches_id_seq              | secuencia | lazarillo_app_user
+ public  | app_businesses                   | tabla     | lazarillo_app_user
+ public  | app_businesses_id_seq            | secuencia | lazarillo_app_user
+ public  | app_memberships                  | tabla     | lazarillo_app_user
+ public  | app_memberships_id_seq           | secuencia | lazarillo_app_user
+ public  | app_sales                        | tabla     | lazarillo_app_user
+ public  | app_sales_id_seq                 | secuencia | lazarillo_app_user
+ public  | app_sales_items                  | tabla     | lazarillo_app_user
+ public  | app_sales_items_id_seq           | secuencia | lazarillo_app_user
+ public  | app_user_group_favs              | tabla     | lazarillo_app_user
+ public  | app_user_group_favs_id_seq       | secuencia | lazarillo_app_user
+ public  | app_user_group_view_prefs        | tabla     | lazarillo_app_user
+ public  | app_user_group_view_prefs_id_seq | secuencia | lazarillo_app_user
+ public  | app_users                        | tabla     | lazarillo_app_user
+ public  | app_users_id_seq                 | secuencia | lazarillo_app_user
+ public  | categorias                       | tabla     | lazarillo_app_user
+ public  | categorias_id_seq                | secuencia | lazarillo_app_user
+ public  | cron_runs                        | tabla     | lazarillo_app_user
+ public  | cron_runs_id_seq                 | secuencia | lazarillo_app_user
+ public  | ingest_runs                      | tabla     | lazarillo_app_user
+ public  | ingest_runs_id_seq               | secuencia | lazarillo_app_user
+ public  | insumo_group_items               | tabla     | lazarillo_app_user
+ public  | insumo_group_items_id_seq        | secuencia | lazarillo_app_user
+ public  | insumo_groups                    | tabla     | lazarillo_app_user
+ public  | insumo_groups_id_seq             | secuencia | lazarillo_app_user
+ public  | insumo_grupo_items               | tabla     | lazarillo_app_user
+ public  | insumo_grupo_items_id_seq        | secuencia | lazarillo_app_user
+ public  | insumo_grupos                    | tabla     | lazarillo_app_user
+ public  | insumo_grupos_id_seq             | secuencia | lazarillo_app_user
+ public  | insumo_presentaciones            | tabla     | lazarillo_app_user
+ public  | insumo_presentaciones_id_seq     | secuencia | lazarillo_app_user
+ public  | insumo_rubros                    | tabla     | lazarillo_app_user
+ public  | insumo_rubros_id_seq             | secuencia | lazarillo_app_user
+ public  | insumos                          | tabla     | lazarillo_app_user
+ public  | insumos_id_seq                   | secuencia | lazarillo_app_user
+ public  | maxi_article_map                 | tabla     | lazarillo_app_user
+ public  | maxi_article_map_candidates      | tabla     | lazarillo_app_user
+ public  | maxi_articles                    | tabla     | lazarillo_app_user
+ public  | maxi_menu_cache                  | tabla     | lazarillo_app_user
+ public  | maxi_menu_cache_id_seq           | secuencia | lazarillo_app_user
+ public  | maxi_sales_daily                 | tabla     | lazarillo_app_user
+ public  | maxi_supplies                    | tabla     | lazarillo_app_user
+ public  | maxi_supplies_id_seq             | secuencia | lazarillo_app_user
+ public  | preview_articles_swapped         | vista     | lazarillo_app_user
+ public  | raw_maxi_payloads                | tabla     | lazarillo_app_user
+ public  | raw_maxi_payloads_id_seq         | secuencia | lazarillo_app_user
+ public  | sales_daily                      | tabla     | lazarillo_app_user
+ public  | sales_daily_items                | tabla     | lazarillo_app_user
+ public  | sales_daily_view                 | vista     | lazarillo_app_user
+ public  | sales_sync_state                 | tabla     | lazarillo_app_user
+ public  | subrubros                        | tabla     | lazarillo_app_user
+ public  | subrubros_id_seq                 | secuencia | lazarillo_app_user
+ public  | sync_jobs                        | tabla     | lazarillo_app_user
+ public  | user_businesses                  | tabla     | lazarillo_app_user
+ public  | user_businesses_id_seq           | secuencia | lazarillo_app_user
+ public  | v_sales_daily_items_named        | vista     | lazarillo_app_user
+ public  | vw_articles_with_taxonomy        | vista     | lazarillo_app_user

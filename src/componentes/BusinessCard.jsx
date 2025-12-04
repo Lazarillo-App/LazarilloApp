@@ -8,7 +8,7 @@ import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
-import { insumosSyncMaxi } from "@/servicios/apiInsumos";
+import { insumosSyncMaxi, insumosRubrosSync } from "@/servicios/apiInsumos";
 
 /* Cache simple en memoria para no pedir el status en cada render */
 const maxiStatusCache = new Map(); // key: businessId -> { configured, at }
@@ -26,12 +26,10 @@ export default function BusinessCard({
   const [syncingSales, setSyncingSales] = useState(false);
   const [viewBiz, setViewBiz] = useState(biz);
   const [syncingInsumos, setSyncingInsumos] = useState(false);
-  // estado/flags para maxi
   const [maxiLoading, setMaxiLoading] = useState(true);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
 
   useEffect(() => { setViewBiz(biz); }, [biz]);
-
   // refresco card si llega evento externo
   useEffect(() => {
     const onUpdated = (ev) => {
@@ -45,6 +43,48 @@ export default function BusinessCard({
     window.addEventListener("business:updated", onUpdated);
     return () => window.removeEventListener("business:updated", onUpdated);
   }, [viewBiz?.id]);
+
+  const isActive = String(activeId) === String(viewBiz?.id);
+
+  // ⚡ Auto-sincronización al tener negocio activo + Maxi configurado
+  useEffect(() => {
+    const bizId = viewBiz?.id;
+    if (!bizId) return;
+
+    // solo para el negocio ACTIVO
+    if (!isActive) return;
+
+    // esperamos a que haya respondido maxiStatus
+    if (maxiLoading) return;
+    if (!maxiConfigured) return;
+
+    // Evitar repetir auto-sync en la misma sesión/navegador
+    const key = `lazarillo:autoSyncOnLogin:${bizId}`;
+    try {
+      if (sessionStorage.getItem(key) === 'done') {
+        return; // ya se hizo antes en esta sesión
+      }
+      sessionStorage.setItem(key, 'done');
+    } catch {
+      // si sessionStorage falla, no pasa nada, solo podría repetirse
+    }
+
+    // Ejecutamos sincronizaciones en segundo plano
+    (async () => {
+      try {
+        // 1) Catálogo / artículos (usa el mismo handler del botón)
+        await handleSyncArticulos();
+
+        // 2) Ventas últimos 7 días
+        await handleSyncVentas7d();
+
+        // 3) Insumos
+        await handleSyncInsumos();
+      } catch (e) {
+        console.error('[BusinessCard] auto-sync on login error', e);
+      }
+    })();
+  }, [viewBiz?.id, isActive, maxiLoading, maxiConfigured]);
 
   // ▶ chequear si Maxi está configurado (con pequeño cache)
   useEffect(() => {
@@ -110,7 +150,6 @@ export default function BusinessCard({
   const hasLogo = !!logo;
   const thumbnail = hasLogo ? logo : photo;
   const isLogoThumb = hasLogo;
-  const isActive = String(activeId) === String(viewBiz?.id);
 
   /* ============ Sincronizar ARTÍCULOS (existente) ============ */
   const handleSyncArticulos = async () => {
@@ -139,13 +178,21 @@ export default function BusinessCard({
     setSyncingSales(true);
     try {
       const res = await BusinessesAPI.syncSalesLast7d(viewBiz.id);
-      const s = res?.sales || {};
+
+      // Soportar ambas formas: { sales: {...} } o plano { from, to, ... }
+      const s = res?.sales || res || {};
+
+      const from = s.from || s.range?.from || s.minDay || '';
+      const to = s.to || s.range?.to || s.maxDay || '';
+
       showNotice?.(
-        `Ventas OK · ${s.from} → ${s.to} · upserted: ${s.upserted ?? 0} · updated: ${s.updated ?? 0}`
+        `Ventas OK · ${from || '?'} → ${to || '?'} · upserted: ${s.upserted ?? 0} · updated: ${s.updated ?? 0}`
       );
+
       window.dispatchEvent(new Event("ventas:updated"));
     } catch (e) {
-      const msg = String(e?.message || "");
+      console.error('[SYNC VENTAS 7D] error:', e);
+      const msg = String(e?.message || "error desconocido");
       if (msg.includes("maxi_not_configured")) {
         showNotice?.("Maxi no configurado en este local. Cargá email / clave / codcli.");
       } else {
@@ -161,19 +208,26 @@ export default function BusinessCard({
     if (syncingInsumos) return;
     setSyncingInsumos(true);
     try {
-      const res = await insumosSyncMaxi(viewBiz.id);
+      const bizId = viewBiz.id;
 
-      // 👇 ADD: ver respuesta real en consola
-      console.log('[SYNC INSUMOS] respuesta backend:', res);
+      // 1) Sync insumos
+      const resSupplies = await insumosSyncMaxi(bizId);
+      console.log('[SYNC INSUMOS] supplies:', resSupplies);
 
-      const s = res?.summary || res || {};
-      const received = s.received ?? s.normalized ?? 0;
-      const synced = s.synced ?? s.total ?? 0;
+      // 2) Sync rubros
+      const resRubros = await insumosRubrosSync(bizId);
+      console.log('[SYNC INSUMOS] rubros:', resRubros);
 
-      showNotice?.(`Insumos OK · recibidos: ${received} · sincronizados: ${synced}`);
+      const s1 = resSupplies?.summary || resSupplies || {};
+      const s2 = resRubros?.summary || resRubros || {};
 
+      const received = s1.received ?? s1.normalized ?? 0;
+      const synced = s1.synced ?? s1.total ?? 0;
+      const rubros = s2.count ?? s2.total ?? 0;
 
-      showNotice?.(`Insumos OK · insertados: ${received} · actualizados: ${synced}`);
+      showNotice?.(
+        `Insumos OK · recibidos: ${received} · sincronizados: ${synced} · rubros: ${rubros}`
+      );
     } catch (e) {
       const msg = String(e?.message || "");
       showNotice?.(`No se pudo sincronizar insumos: ${msg}`);
