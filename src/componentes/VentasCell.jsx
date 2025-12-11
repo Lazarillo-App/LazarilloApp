@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/componentes/VentasCell.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
@@ -33,7 +34,7 @@ function VentasCell({
     enabled: shouldFetchSeries,
   });
 
-  // 🔍 Total calculado desde la serie (para el modal / fallback)
+  // 🔍 Total calculado desde la serie (para el modal / fallback) - unidades
   const totalFromSeries = useMemo(() => {
     if (!data) return 0;
 
@@ -65,17 +66,59 @@ function VentasCell({
     return sum;
   }, [data]);
 
+  // 🔍 Monto calculado desde la serie (para pasar amount al padre)
+  const amountFromSeries = useMemo(() => {
+    if (!data) return 0;
+
+    if (typeof data.amount === 'number' && !Number.isNaN(data.amount)) {
+      return data.amount;
+    }
+
+    if (data.data && typeof data.data.total_amount === 'number') {
+      return data.data.total_amount;
+    }
+
+    const items =
+      (Array.isArray(data.items) && data.items) ||
+      (Array.isArray(data.series) && data.series) ||
+      (Array.isArray(data.data?.items) && data.data.items) ||
+      [];
+
+    const sum = items.reduce((acc, it) => {
+      const v = Number(
+        it.amount ??
+          it.importe ??
+          it.total ??
+          it.total_amount ??
+          it.venta_monto ??
+          0
+      );
+      return acc + (Number.isNaN(v) ? 0 : v);
+    }, 0);
+
+    return sum;
+  }, [data]);
+
   // 🔁 Solo avisamos al padre si NO hay override y sí hay serie (normalmente en el modal)
   useEffect(() => {
     if (
       !hasOverride &&
       typeof onTotalResolved === 'function' &&
       articuloId &&
-      !Number.isNaN(totalFromSeries)
+      !Number.isNaN(Number(totalFromSeries))
     ) {
-      onTotalResolved(articuloId, totalFromSeries);
+      try {
+        const idNum = Number(articuloId);
+        const qtyNum = Number(totalFromSeries || 0);
+        const amountNum = Number(amountFromSeries || 0);
+
+        onTotalResolved(idNum, { qty: Number.isFinite(qtyNum) ? qtyNum : 0, amount: Number.isFinite(amountNum) ? amountNum : 0 });
+      } catch (e) {
+        // no rompemos la UI por un fallo al notificar
+        // console.error('VentasCell.onTotalResolved error', e);
+      }
     }
-  }, [hasOverride, articuloId, totalFromSeries, onTotalResolved]);
+  }, [hasOverride, articuloId, totalFromSeries, amountFromSeries, onTotalResolved]);
 
   // 🔢 Qué número mostramos en la celda de la tabla
   const totalToShow = hasOverride
@@ -126,7 +169,7 @@ function VentasCell({
         groupBy={groupBy}
         onChangeGroupBy={(gb) => {
           if (!gb || gb === groupBy) return;
-          setGroupBy(gb); 
+          setGroupBy(gb);
         }}
       />
     </Stack>

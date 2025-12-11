@@ -54,6 +54,15 @@ const getId = (x) => {
 
 const num = (v) => Number(v ?? 0);
 const fmt = (v, d = 0) => Number(v ?? 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtCurrency = (v) => {
+  try {
+    const n = Number(v || 0);
+    if (!Number.isFinite(n)) return '—';
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return String(v || '');
+  }
+};
 
 const esTodoGroup = (g) => {
   const n = String(g?.nombre || '').trim().toUpperCase();
@@ -207,9 +216,38 @@ export default function TablaArticulos({
   const getVentasQty = React.useCallback(
     (artOrId) => {
       const id = typeof artOrId === 'number' ? artOrId : getId(artOrId);
-      const v = ventasPorArticulo?.get(id);
-      const qty = Number(v?.qty ?? 0);
+      const idNum = Number(id);
+      if (!Number.isFinite(idNum)) return 0;
+
+      const venta = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(idNum));
+      if (!venta) return 0;
+
+      const qty = Number(venta.qty ?? venta.quantity ?? 0);
       return Number.isFinite(qty) ? qty : 0;
+    },
+    [ventasPorArticulo]
+  );
+
+  // NUEVO: monto por artículo (desde ventasPorArticulo o fallback qty * precio)
+  const getVentasAmount = React.useCallback(
+    (artOrId) => {
+      const id = typeof artOrId === 'number' ? artOrId : getId(artOrId);
+      const idNum = Number(id);
+      if (!Number.isFinite(idNum)) return 0;
+
+      const venta = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(idNum));
+      if (venta) {
+        const am = Number(venta.amount ?? venta.total ?? venta.importe ?? venta.monto ?? 0);
+        if (Number.isFinite(am) && am !== 0) return am;
+        // if no explicit amount but qty exists, fallback to qty * price if we know price later
+        const qty = Number(venta.qty ?? venta.quantity ?? 0);
+        if (Number.isFinite(qty) && qty > 0) {
+          // price lookup later if available by baseById in outer scope
+          // but here return qty and let callers multiply if they have price
+          return { qtyOnly: qty };
+        }
+      }
+      return 0;
     },
     [ventasPorArticulo]
   );
@@ -268,50 +306,6 @@ export default function TablaArticulos({
     });
   }, []);
 
-  const getSortValue = useCallback((a) => {
-    const id = getId(a);
-    switch (sortBy) {
-      case 'ventas':
-        return getVentasQty(id);
-      case 'codigo':
-        return id;
-      case 'nombre':
-        return a?.nombre ?? '';
-      case 'precio':
-        return num(a?.precio);
-      case 'costo':
-        return num(a?.costo);
-      case 'costoPct': {
-        const p = num(a?.precio), c = num(a?.costo);
-        return p > 0 ? (c / p) * 100 : -Infinity;
-      }
-      case 'objetivo':
-        return num(objetivos[id]) || 0;
-      case 'sugerido': {
-        const obj = num(objetivos[id]) || 0;
-        const c = num(a?.costo);
-        const den = 100 - obj;
-        return den > 0 ? c * (100 / den) : 0;
-      }
-      case 'manual':
-        return num(manuales[id]) || 0;
-      default:
-        return null;
-    }
-  }, [sortBy, objetivos, manuales, getVentasQty]);
-
-
-  const cmp = useCallback((a, b) => {
-    if (!sortBy) return 0;
-    const va = getSortValue(a), vb = getSortValue(b);
-    if (typeof va === 'string' || typeof vb === 'string') {
-      const r = String(va ?? '').localeCompare(String(vb ?? ''), 'es', { sensitivity: 'base', numeric: true });
-      return sortDir === 'asc' ? r : -r;
-    }
-    const na = Number(va ?? 0), nb = Number(vb ?? 0);
-    return sortDir === 'asc' ? na - nb : nb - na;
-  }, [sortBy, sortDir, getSortValue]);
-
   // ========== Catálogo y base ==========
   const buildTreeFromFlat = useCallback((items = []) => {
     const flat = items.map(row => {
@@ -348,7 +342,6 @@ export default function TablaArticulos({
     (async () => {
       try {
         const bizId = activeBizId;
-        console.log('[VENTAS] usando businessId', bizId);
         if (!bizId) {
           if (!cancel && myId === loadReqId.current) {
             setCategorias([]);
@@ -428,27 +421,6 @@ export default function TablaArticulos({
     return m;
   }, [allArticulos]);
 
-  // 💰 Monto de ventas por artículo (usa amount si viene del backend, si no qty * precio)
-  const getVentasAmountForId = (idRaw) => {
-    const id = Number(idRaw);
-    if (!Number.isFinite(id)) return 0;
-
-    const v = ventasPorArticulo?.get(id);
-    if (!v) return 0;
-
-    const amount = Number(v.amount ?? 0);
-    if (Number.isFinite(amount) && amount !== 0) {
-      return amount;
-    }
-
-    const qty = Number(v.qty ?? 0);
-    const base = baseById.get(id) || {};
-    const precio = num(base.precio);
-    if (!Number.isFinite(qty) || !Number.isFinite(precio)) return 0;
-
-    return qty * precio;
-  };
-
   const idsEnOtras = useMemo(
     () => new Set(
       (agrupaciones || [])
@@ -479,6 +451,72 @@ export default function TablaArticulos({
       idsSinAgrup: idsSinAgrupArray,   // 👈 ahora también mandamos la lista
     });
   }, [onTodoInfo, todoGroupId, idsSinAgrup.size, idsSinAgrupArray]);
+
+    const getSortValue = useCallback((a) => {
+    const id = getId(a);
+
+    switch (sortBy) {
+      case 'ventas': {
+        // Ordenar por MONTO ($) en lugar de unidades
+        const idNum = Number(id);
+        if (!Number.isFinite(idNum)) return 0;
+
+        const venta = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(idNum));
+        if (venta) {
+          const am = Number(venta.amount ?? venta.total ?? venta.importe ?? venta.monto ?? 0);
+          if (Number.isFinite(am) && am !== 0) return am;
+          const qty = Number(venta.qty ?? venta.quantity ?? 0);
+          const price = Number(baseById?.get?.(idNum)?.precio ?? 0);
+          if (Number.isFinite(qty) && Number.isFinite(price)) return qty * price;
+          return 0;
+        }
+
+        // no hay registro en ventasPorArticulo -> intentar qty * precio desde baseById / objeto
+        const b = baseById?.get?.(idNum) || {};
+        const qty2 = Number(a?.qty ?? b?.qty ?? a?.ventas_u ?? b?.ventas_u ?? 0);
+        const price2 = Number(a?.precio ?? b?.precio ?? 0);
+        if (Number.isFinite(qty2) && Number.isFinite(price2) && qty2 > 0) return qty2 * price2;
+
+        return 0;
+      }
+
+      case 'codigo':
+        return id;
+      case 'nombre':
+        return a?.nombre ?? '';
+      case 'precio':
+        return num(a?.precio);
+      case 'costo':
+        return num(a?.costo);
+      case 'costoPct': {
+        const p = num(a?.precio), c = num(a?.costo);
+        return p > 0 ? (c / p) * 100 : -Infinity;
+      }
+      case 'objetivo':
+        return num(objetivos[id]) || 0;
+      case 'sugerido': {
+        const obj = num(objetivos[id]) || 0;
+        const c = num(a?.costo);
+        const den = 100 - obj;
+        return den > 0 ? c * (100 / den) : 0;
+      }
+      case 'manual':
+        return num(manuales[id]) || 0;
+      default:
+        return null;
+    }
+  }, [sortBy, objetivos, manuales, ventasPorArticulo, baseById]);
+
+  const cmp = useCallback((a, b) => {
+    if (!sortBy) return 0;
+    const va = getSortValue(a), vb = getSortValue(b);
+    if (typeof va === 'string' || typeof vb === 'string') {
+      const r = String(va ?? '').localeCompare(String(vb ?? ''), 'es', { sensitivity: 'base', numeric: true });
+      return sortDir === 'asc' ? r : -r;
+    }
+    const na = Number(va ?? 0), nb = Number(vb ?? 0);
+    return sortDir === 'asc' ? na - nb : nb - na;
+  }, [sortBy, sortDir, getSortValue]);
 
   /* --------- a mostrar + filtro --------- */
   const articulosAMostrar = useMemo(() => {
@@ -589,7 +627,8 @@ export default function TablaArticulos({
     const localeOpts = { sensitivity: 'base', numeric: true };
 
     // Siempre: RUBRO (categoría) -> SUBRUBRO
-    const byCat = new Map(); // categoria -> Map(subrubro -> artículos[])
+    // Construimos mapa categoria -> Map(subrubro -> { arts, ventasMonto })
+    const byCat = new Map(); // categoria -> Map(subrubro -> { arts, ventasMonto })
 
     for (const a of items) {
       const cat = getDisplayCategoria(a) || 'Sin categoría';
@@ -597,33 +636,63 @@ export default function TablaArticulos({
 
       if (!byCat.has(cat)) byCat.set(cat, new Map());
       const bySr = byCat.get(cat);
-      if (!bySr.has(sr)) bySr.set(sr, []);
-      bySr.get(sr).push(a);
+      if (!bySr.has(sr)) bySr.set(sr, { arts: [], ventasMonto: 0 });
+      const node = bySr.get(sr);
+      node.arts.push(a);
+      // calcular monto del artículo: preferimos ventasPorArticulo amount, si no usar qty*precio fallback
+      const venta = ventasPorArticulo?.get(Number(getId(a))) ?? ventasPorArticulo?.get(String(getId(a)));
+      let monto = 0;
+      if (venta) {
+        const am = Number(venta.amount ?? venta.total ?? venta.importe ?? venta.monto ?? 0);
+        if (Number.isFinite(am) && am !== 0) monto = am;
+        else {
+          const qty = Number(venta.qty ?? venta.quantity ?? 0);
+          const price = Number(a?.precio ?? 0);
+          if (Number.isFinite(qty) && Number.isFinite(price)) monto = qty * price;
+        }
+      } else {
+        // no hay registro de venta, fallback qty*precio if qty present in object
+        const qty = Number(a?.qty ?? a?.ventas_u ?? 0);
+        const price = Number(a?.precio ?? 0);
+        if (Number.isFinite(qty) && Number.isFinite(price) && qty > 0) monto = qty * price;
+      }
+      node.ventasMonto += monto;
     }
 
+    // Ahora transformamos cada categoria en objeto con subrubros y sumas
     const bloquesCat = Array.from(byCat, ([categoria, mapSr]) => {
-      // 👉 Subrubros ordenados alfabéticamente dentro del rubro
-      const subBlocks = Array.from(mapSr, ([subrubro, arts]) => ({
+      const subBlocks = Array.from(mapSr, ([subrubro, data]) => ({
         subrubro,
-        arts,
-      })).sort((a, b) =>
-        String(a.subrubro).localeCompare(String(b.subrubro), 'es', localeOpts)
-      );
+        arts: data.arts,
+        __ventasMonto: data.ventasMonto || 0,
+      }));
+
+      // Ordenar subrubros por ventas desc (si empatan, alfabético)
+      subBlocks.sort((a, b) => {
+        if (b.__ventasMonto !== a.__ventasMonto) return b.__ventasMonto - a.__ventasMonto;
+        return String(a.subrubro).localeCompare(String(b.subrubro), 'es', localeOpts);
+      });
+
+      // suma total del rubro (categoria)
+      const totalRub = subBlocks.reduce((s, x) => s + (x.__ventasMonto || 0), 0);
 
       return {
         categoria,
-        subrubros: subBlocks.map(({ subrubro, arts }) => ({ subrubro, arts })),
+        __ventasMonto: totalRub,
+        subrubros: subBlocks.map(({ subrubro, arts, __ventasMonto }) => ({ subrubro, arts, __ventasMonto })),
       };
     });
 
-    // 👉 Rubros ordenados alfabéticamente
-    bloquesCat.sort((a, b) =>
-      String(a.categoria).localeCompare(String(b.categoria), 'es', localeOpts)
-    );
+    // Ordenar rubros por ventas total desc (si empatan, alfabético)
+    bloquesCat.sort((a, b) => {
+      if (b.__ventasMonto !== a.__ventasMonto) return b.__ventasMonto - a.__ventasMonto;
+      return String(a.categoria).localeCompare(String(b.categoria), 'es', localeOpts);
+    });
 
     // Normalizamos salida
-    return bloquesCat.map(({ categoria, subrubros }) => ({ categoria, subrubros }));
-  }, [articulosFiltrados]);
+    return bloquesCat.map(({ categoria, subrubros, __ventasMonto }) => ({ categoria, subrubros, __ventasMonto }));
+  }, [articulosFiltrados, ventasPorArticulo]);
+
   const flatRows = useMemo(() => {
     const sections = [];
 
@@ -636,25 +705,49 @@ export default function TablaArticulos({
           .slice()
           .sort(cmp);
 
+        // calculamos monto de la sección (sumando artículos)
+        const sectionMonto = (srNorm.__ventasMonto != null)
+          ? srNorm.__ventasMonto
+          : artsOrdenados.reduce((acc, a) => {
+            const venta = ventasPorArticulo?.get(Number(getId(a))) ?? ventasPorArticulo?.get(String(getId(a)));
+            let am = 0;
+            if (venta) {
+              const val = Number(venta.amount ?? venta.total ?? venta.importe ?? venta.monto ?? 0);
+              if (Number.isFinite(val) && val !== 0) am = val;
+              else {
+                const qty = Number(venta.qty ?? venta.quantity ?? 0);
+                const price = Number(a?.precio ?? 0);
+                if (Number.isFinite(qty) && Number.isFinite(price)) am = qty * price;
+              }
+            } else {
+              const qty = Number(a?.qty ?? a?.ventas_u ?? 0);
+              const price = Number(a?.precio ?? 0);
+              if (Number.isFinite(qty) && Number.isFinite(price) && qty > 0) am = qty * price;
+            }
+            return acc + am;
+          }, 0);
+
         sections.push({
           categoria: blq.categoria,
           subrubro: srNorm.subrubro,
           arts: artsOrdenados,
+          __ventasMonto: sectionMonto,
         });
       }
     }
 
-    // 2️⃣ Ordenamos las secciones para que sigan el orden del sidebar
-    //    👉 Vista RUBRO: orden por SUBRUBRO (como el sidebar que muestra "Adicional cafeteria", "AGUAS-ISO", etc.)
-    //    👉 Vista SUBRUBRO: dejamos el orden tal como viene (ya te funciona bien).
-    const localeOpts = { sensitivity: 'base', numeric: true };
-    const isRubroView = tableHeaderMode === 'cat-first'; // ajustado a cómo lo estés usando
+    // 2️⃣ Ordenamos las secciones para que sigan el orden del sidebar (por monto)
+    //    👉 Vista RUBRO: orden por monto de la sección (desc)
+    //    👉 Vista SUBRUBRO: dejamos el orden tal como viene (ya agrupado)
+    const isRubroViewLocal = tableHeaderMode === 'cat-first';
 
-    if (isRubroView) {
-      sections.sort((a, b) =>
-        String(a.subrubro).localeCompare(String(b.subrubro), 'es', localeOpts)
-      );
+    if (isRubroViewLocal) {
+      sections.sort((a, b) => {
+        if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
+        return String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true });
+      });
     }
+    // else keep natural order (already sorted by rubro ordering above)
 
     // 3️⃣ Aplanamos secciones en filas (header + items)
     const rows = [];
@@ -668,6 +761,7 @@ export default function TablaArticulos({
         categoria,
         subrubro,
         ids: arts.map(getId),
+        __ventasMonto: sec.__ventasMonto || 0,
       });
 
       for (const a of arts) {
@@ -683,7 +777,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode]);
+  }, [bloques, cmp, tableHeaderMode, ventasPorArticulo]);
 
   const idToIndex = useMemo(() => {
     const m = new Map();
@@ -833,11 +927,39 @@ export default function TablaArticulos({
         tableHeaderMode === 'sr-first' ? headerCat : headerSr;
 
       const ids = row.ids || [];
+      const totalQty = ids.reduce((acc, id) => {
+        const idNum = Number(id);
+        if (!Number.isFinite(idNum)) return acc;
 
+        const venta = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(idNum));
+        const q = Number(venta?.qty ?? venta?.quantity ?? 0);
 
-      // 🔢 Totales del bloque
-      const totalQty = ids.reduce((acc, id) => acc + getVentasQty(id), 0);
-      const totalAmount = ids.reduce((acc, id) => acc + getVentasAmountForId(id), 0);
+        return acc + (Number.isFinite(q) ? q : 0);
+      }, 0);
+
+      const totalAmount = ids.reduce((acc, id) => {
+        const idNum = Number(id);
+        if (!Number.isFinite(idNum)) return acc;
+
+        const venta = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(idNum));
+        let am = 0;
+        if (venta) {
+          const val = Number(venta?.amount ?? venta?.total ?? venta?.importe ?? venta?.monto ?? 0);
+          if (Number.isFinite(val) && val !== 0) am = val;
+          else {
+            const qty = Number(venta.qty ?? venta.quantity ?? 0);
+            const price = Number(baseById.get(idNum)?.precio ?? 0);
+            if (Number.isFinite(qty) && Number.isFinite(price)) am = qty * price;
+          }
+        } else {
+          const base = baseById.get(idNum);
+          const qty = Number(base?.qty ?? base?.ventas_u ?? 0);
+          const price = Number(base?.precio ?? 0);
+          if (Number.isFinite(qty) && Number.isFinite(price) && qty > 0) am = qty * price;
+        }
+
+        return acc + (Number.isFinite(am) ? am : 0);
+      }, 0);
 
       return (
         <div
@@ -864,7 +986,7 @@ export default function TablaArticulos({
           <div style={cellNum}>{fmt(totalQty, 0)}</div>
 
           {/* Ventas $ totales */}
-          <div style={cellNum}>{`$${fmt(totalAmount, 0)}`}</div>
+          <div style={cellNum}>{fmtCurrency(totalAmount)}</div>
 
           {/* Columnas intermedias vacías */}
           <div />
@@ -898,31 +1020,20 @@ export default function TablaArticulos({
     const id = a.id;
     const isSelected = Number(selectedArticleId) === Number(id);
 
-    const ventaObj = ventasPorArticulo?.get(id);
+    const idNum = Number(id);
+    const ventaObj = ventasPorArticulo?.get(idNum) ?? ventasPorArticulo?.get(String(id));
 
+    // ✅ Cantidad de ventas
     const overrideQty =
       ventaObj && ventaObj.qty != null && !Number.isNaN(Number(ventaObj.qty))
         ? Number(ventaObj.qty)
         : undefined;
 
-    // 💰 ahora usamos amount REAL si viene del backend
+    // ✅ Amount SIEMPRE del hook (no calcular fallback)
     const overrideAmount =
       ventaObj && ventaObj.amount != null && !Number.isNaN(Number(ventaObj.amount))
         ? Number(ventaObj.amount)
-        : (
-          overrideQty != null && !Number.isNaN(overrideQty)
-            ? overrideQty * num(a.precio) // fallback
-            : undefined
-        );
-
-    if (index === 0) {
-      console.log('[TablaArticulos] ejemplo venta fila 0:', {
-        id,
-        overrideQty,
-        overrideAmount,
-        ventaObj,
-      });
-    }
+        : undefined;
 
     const selectedStyle = isSelected
       ? {
@@ -982,15 +1093,15 @@ export default function TablaArticulos({
         {/* 4️⃣ Ventas $ */}
         <div style={cellNum}>
           {overrideAmount != null
-            ? `$${fmt(overrideAmount, 0)}`
+            ? fmtCurrency(overrideAmount)
             : '—'}
         </div>
 
         {/* 5️⃣ Precio */}
-        <div style={cellNum}>${fmt(a.precio, 0)}</div>
+        <div style={cellNum}>{fmt(a.precio, 0)}</div>
 
         {/* 6️⃣ Costo */}
-        <div style={cellNum}>${fmt(a.costo, 0)}</div>
+        <div style={cellNum}>{fmt(a.costo, 0)}</div>
 
         {/* 7️⃣ Costo % */}
         <div style={cellNum}>{calcularCostoPct(a)}%</div>
@@ -1006,7 +1117,7 @@ export default function TablaArticulos({
         </div>
 
         {/* 9️⃣ Sugerido */}
-        <div style={cellNum}>${fmt(calcularSugerido(a), 2)}</div>
+        <div style={cellNum}>{fmt(calcularSugerido(a), 2)}</div>
 
         {/* 🔟 Manual */}
         <div style={cellNum}>

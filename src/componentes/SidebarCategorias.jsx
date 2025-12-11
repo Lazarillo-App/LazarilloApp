@@ -55,23 +55,51 @@ const esDiscontinuadosGroup = (g) => {
 // ahora simplemente mostramos el nombre real
 const labelAgrup = (g) => g?.nombre || '';
 
+// Formateador de moneda (Argentina)
+const fmtCurrency = (v) => {
+  try {
+    const n = Number(v || 0);
+    if (!Number.isFinite(n)) return '';
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return String(v || '');
+  }
+};
+
 /**
- * 🧮 Helper: devuelve el monto de ventas de un artículo
- * AJUSTA el nombre del campo según tu data real.
- * Ejemplos posibles: a.ventas_monto, a.montoVentas, a.ventas_total, etc.
+ * Helper local: intenta obtener el monto de ventas de un artículo de forma fiable.
+ * - Primero usa getAmountForId (si viene desde el padre)
+ * - Luego intenta leer campos comunes del objeto art
+ * - Finalmente devuelve 0
  */
-const getArticuloMontoVentas = (a) => {
+const resolveArticuloMonto = (art, getAmountForId, metaById) => {
+  const id = safeId(art);
+  if (Number.isFinite(Number(id)) && getAmountForId) {
+    const m = Number(getAmountForId(Number(id)) || 0);
+    if (Number.isFinite(m)) return m;
+  }
+
+  // fallback: intentar leer propiedades del propio art
   const v =
-    a?.ventas_monto ??   // 👉 CAMBIA este nombre si hace falta
-    a?.ventasMonto ??
-    a?.ventas_total ??
-    a?.ventasTotal ??
-    a?.monto ??
-    a?.amount ??
+    art?.ventas_monto ??
+    art?.ventasMonto ??
+    art?.ventas_total ??
+    art?.ventasTotal ??
+    art?.monto ??
+    art?.amount ??
     0;
 
   const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  if (Number.isFinite(n)) return n;
+
+  // último recurso: si no hay cantidad ni monto, intentar estimar con precio y cantidad
+  const qty = Number(art?.qty ?? art?.cantidad ?? art?.ventas_u ?? 0);
+  const precio = Number(metaById?.get?.(id)?.precio ?? art?.precio ?? 0);
+  if (Number.isFinite(qty) && Number.isFinite(precio)) {
+    return qty * precio;
+  }
+
+  return 0;
 };
 
 function SidebarCategorias({
@@ -86,14 +114,15 @@ function SidebarCategorias({
   todoGroupId,
   visibleIds,
   onManualPick,
-  listMode = 'by-subrubro', 
-  //onReorderSubrubros,      
+  listMode = 'by-subrubro',
   onChangeListMode,
   favoriteGroupId,
   onSetFavorite,
   onEditGroup,
   onDeleteGroup,
   onRenameGroup,
+  metaById,
+  getAmountForId,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
@@ -212,14 +241,14 @@ function SidebarCategorias({
         return total > 0;
       });
 
-    // 🧮 calcular ventas totales por subrubro
+    // 🧮 calcular ventas totales por subrubro usando getAmountForId
     const withVentas = pruned.map(sub => {
       let ventasMonto = 0;
       const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
       for (const c of cats) {
         const arts = Array.isArray(c?.articulos) ? c.articulos : [];
         for (const art of arts) {
-          ventasMonto += getArticuloMontoVentas(art);
+          ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
         }
       }
       return { ...sub, __ventasMonto: ventasMonto };
@@ -237,7 +266,7 @@ function SidebarCategorias({
     });
 
     return withVentas;
-  }, [categoriasSafe, activeIds]);
+  }, [categoriasSafe, activeIds, getAmountForId, metaById]);
 
   const treeByCategoria = useMemo(() => {
     const catMap = new Map(); // categoria -> artículos
@@ -260,10 +289,10 @@ function SidebarCategorias({
           return id != null && activeIds.has(id);
         });
       if (filtered.length > 0) {
-        // 🧮 ventas por categoría
+        // 🧮 ventas por categoría (monto)
         let ventasMonto = 0;
         for (const art of filtered) {
-          ventasMonto += getArticuloMontoVentas(art);
+          ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
         }
 
         out.push({
@@ -286,7 +315,7 @@ function SidebarCategorias({
     });
 
     return out;
-  }, [categoriasSafe, activeIds]);
+  }, [categoriasSafe, activeIds, getAmountForId, metaById]);
 
   const listaBase = listMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
 
@@ -329,6 +358,18 @@ function SidebarCategorias({
     let total = 0;
     const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
     for (const c of cats) total += (Array.isArray(c?.articulos) ? c.articulos.length : 0);
+    return total;
+  };
+
+  const montoArticulosSub = (sub) => {
+    let total = 0;
+    const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
+    for (const c of cats) {
+      const arts = Array.isArray(c?.articulos) ? c.articulos : [];
+      for (const art of arts) {
+        total += resolveArticuloMonto(art, getAmountForId, metaById);
+      }
+    }
     return total;
   };
 
@@ -497,6 +538,9 @@ function SidebarCategorias({
           );
           const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
 
+          const count = countArticulosSub(sub);
+          const monto = montoArticulosSub(sub);
+
           return (
             <li
               key={keyStr}
@@ -522,7 +566,10 @@ function SidebarCategorias({
               </span>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <small style={{ opacity: 0.65 }}>{countArticulosSub(sub)}</small>
+                <small style={{ opacity: 0.65 }}>
+                  {count}
+                  {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
+                </small>
               </div>
             </li>
           );

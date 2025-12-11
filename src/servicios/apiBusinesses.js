@@ -405,25 +405,96 @@ export const BusinessesAPI = {
     }),
 
   // Sync ventas
-  syncSales: (id, { mode = 'auto', dryrun = false, from, to, maxiToken, signal } = {}) => {
-    const qs = new URLSearchParams();
-    if (mode) qs.set('mode', mode);
-    if (dryrun) qs.set('dryrun', '1');
-    if (from) qs.set('from', from);
-    if (to) qs.set('to', to);
+  syncSales: async (id, options = {}) => {
+  const {
+    mode = 'auto',
+    from = null,
+    to = null,
+    dryrun = false,
+    maxiToken = null,
+    signal = null,
+  } = options;
 
-    const extraHeaders = {
-      'X-Business-Id': String(id),
-      ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
-    };
+  const body = { mode };
+  if (from) body.from = from;
+  if (to) body.to = to;
+  if (dryrun) body.dryrun = true;
 
-    return http(`/businesses/${id}/sync-sales?${qs.toString()}`, {
+  const extraHeaders = {
+    'X-Business-Id': String(id),
+    ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
+  };
+
+  try {
+    const response = await http(`/businesses/${id}/sync-sales`, {
       method: 'POST',
+      body,
       withBusinessId: false,
       headers: extraHeaders,
       signal,
     });
-  },
+    return response;
+  } catch (error) {
+    console.error('[BusinessesAPI.syncSales] error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Sincronización automática diaria (backfill + últimos días)
+ * POST /api/businesses/:id/sync-sales/daily-auto
+ */
+syncSalesDaily: async (id) => {
+  try {
+    const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
+      method: 'POST',
+      withBusinessId: false,
+    });
+    return response;
+  } catch (error) {
+    console.error('[BusinessesAPI.syncSalesDaily] error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Sincronizar ventana específica de fechas
+ * POST /api/businesses/:id/sync-sales/window
+ */
+syncSalesWindow: async (id, { from, to, dryrun = false }) => {
+  if (!from || !to) {
+    throw new Error('from y to son requeridos');
+  }
+
+  try {
+    const response = await http(`/businesses/${id}/sync-sales/window`, {
+      method: 'POST',
+      body: { from, to, dryrun },
+      withBusinessId: false,
+    });
+    return response;
+  } catch (error) {
+    console.error('[BusinessesAPI.syncSalesWindow] error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Backfill inicial (primeros 90 días)
+ * POST /api/businesses/:id/sync-sales/backfill-once
+ */
+syncSalesBackfill: async (id) => {
+  try {
+    const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
+      method: 'POST',
+      withBusinessId: false,
+    });
+    return response;
+  } catch (error) {
+    console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
+    throw error;
+  }
+},
 
   // Helpers de conveniencia (front)
   syncSalesRange: (id, from, to, opts = {}) => {
@@ -513,3 +584,4 @@ export const AdminAPI = {
   resetPassword: (id) =>
     http(`/admin/users/${id}/reset-password`, { method: 'POST', withBusinessId: false }),
 };
+

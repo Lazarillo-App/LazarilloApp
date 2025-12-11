@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/componentes/BusinessCard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -7,11 +8,13 @@ import AutorenewIcon from "@mui/icons-material/Autorenew";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-import { BusinessesAPI } from "@/servicios/apiBusinesses";
-import { insumosSyncMaxi, insumosRubrosSync } from "@/servicios/apiInsumos";
-
-/* Cache simple en memoria para no pedir el status en cada render */
-const maxiStatusCache = new Map(); // key: businessId -> { configured, at }
+import SyncVentasButton from './SyncVentasButton';
+import {
+  syncArticulos,
+  syncVentas,
+  syncInsumos,
+  isMaxiConfigured,
+} from "@/servicios/syncService";
 
 export default function BusinessCard({
   biz,
@@ -19,18 +22,18 @@ export default function BusinessCard({
   onSetActive,
   onEdit,
   onDelete,
-  onOpenSync,
   showNotice,
 }) {
   const [syncingArt, setSyncingArt] = useState(false);
   const [syncingSales, setSyncingSales] = useState(false);
-  const [viewBiz, setViewBiz] = useState(biz);
   const [syncingInsumos, setSyncingInsumos] = useState(false);
+  const [viewBiz, setViewBiz] = useState(biz);
   const [maxiLoading, setMaxiLoading] = useState(true);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
 
   useEffect(() => { setViewBiz(biz); }, [biz]);
-  // refresco card si llega evento externo
+
+  // Refresco card si llega evento externo
   useEffect(() => {
     const onUpdated = (ev) => {
       const updated = ev?.detail?.business;
@@ -51,10 +54,10 @@ export default function BusinessCard({
     const bizId = viewBiz?.id;
     if (!bizId) return;
 
-    // solo para el negocio ACTIVO
+    // Solo para el negocio ACTIVO
     if (!isActive) return;
 
-    // esperamos a que haya respondido maxiStatus
+    // Esperamos a que haya respondido maxiStatus
     if (maxiLoading) return;
     if (!maxiConfigured) return;
 
@@ -62,17 +65,17 @@ export default function BusinessCard({
     const key = `lazarillo:autoSyncOnLogin:${bizId}`;
     try {
       if (sessionStorage.getItem(key) === 'done') {
-        return; // ya se hizo antes en esta sesión
+        return; // Ya se hizo antes en esta sesión
       }
       sessionStorage.setItem(key, 'done');
     } catch {
-      // si sessionStorage falla, no pasa nada, solo podría repetirse
+      // Si sessionStorage falla, no pasa nada, solo podría repetirse
     }
 
     // Ejecutamos sincronizaciones en segundo plano
     (async () => {
       try {
-        // 1) Catálogo / artículos (usa el mismo handler del botón)
+        // 1) Artículos
         await handleSyncArticulos();
 
         // 2) Ventas últimos 7 días
@@ -86,28 +89,18 @@ export default function BusinessCard({
     })();
   }, [viewBiz?.id, isActive, maxiLoading, maxiConfigured]);
 
-  // ▶ chequear si Maxi está configurado (con pequeño cache)
+  // ▶ Chequear si Maxi está configurado
   useEffect(() => {
     let mounted = true;
     const id = viewBiz?.id;
     if (!id) return;
 
-    // 60s de TTL para evitar sobrecargar
-    const cacheHit = maxiStatusCache.get(id);
-    if (cacheHit && Date.now() - cacheHit.at < 60_000) {
-      setMaxiConfigured(!!cacheHit.configured);
-      setMaxiLoading(false);
-      return;
-    }
-
     (async () => {
       try {
         setMaxiLoading(true);
-        const st = await BusinessesAPI.maxiStatus(id); // { ok, configured, email, codcli }
+        const configured = await isMaxiConfigured(id);
         if (!mounted) return;
-        const configured = !!st?.configured;
         setMaxiConfigured(configured);
-        maxiStatusCache.set(id, { configured, at: Date.now() });
       } catch {
         if (!mounted) return;
         setMaxiConfigured(false);
@@ -151,22 +144,24 @@ export default function BusinessCard({
   const thumbnail = hasLogo ? logo : photo;
   const isLogoThumb = hasLogo;
 
-  /* ============ Sincronizar ARTÍCULOS (existente) ============ */
+  /* ============ Sincronizar ARTÍCULOS ============ */
   const handleSyncArticulos = async () => {
-    if (!onOpenSync || syncingArt) return;
+    if (syncingArt) return;
     setSyncingArt(true);
     try {
-      const resp = await onOpenSync(viewBiz);
-      const up = Number(resp?.upserted ?? 0);
-      const mp = Number(resp?.mapped ?? 0);
-      showNotice?.(`Artículos OK. Upsert: ${up} · Mapeos: ${mp}`);
-    } catch (e) {
-      const msg = String(e?.message || "");
-      if (msg.includes("UNAUTHORIZED_ACCESS") || msg.includes("UNAUTHORIZED")) {
-        showNotice?.("Maxi 401: credenciales inválidas / token caído. Revisá email/clave/codcli.");
-      } else {
-        showNotice?.("No se pudo sincronizar artículos. Revisá credenciales.");
+      const result = await syncArticulos(viewBiz.id, {
+        onProgress: (msg, type) => {
+          if (type === 'success' || type === 'error') {
+            showNotice?.(msg);
+          }
+        },
+      });
+
+      if (result.ok && !result.cached) {
+        window.dispatchEvent(new Event('business:synced'));
       }
+    } catch (e) {
+      showNotice?.(`Error: ${e.message}`);
     } finally {
       setSyncingArt(false);
     }
@@ -177,27 +172,18 @@ export default function BusinessCard({
     if (syncingSales) return;
     setSyncingSales(true);
     try {
-      const res = await BusinessesAPI.syncSalesLast7d(viewBiz.id);
+      const result = await syncVentas(viewBiz.id, {
+        days: 7,
+        onProgress: (msg, type) => {
+          if (type === 'success' || type === 'error') {
+            showNotice?.(msg);
+          }
+        },
+      });
 
-      // Soportar ambas formas: { sales: {...} } o plano { from, to, ... }
-      const s = res?.sales || res || {};
-
-      const from = s.from || s.range?.from || s.minDay || '';
-      const to = s.to || s.range?.to || s.maxDay || '';
-
-      showNotice?.(
-        `Ventas OK · ${from || '?'} → ${to || '?'} · upserted: ${s.upserted ?? 0} · updated: ${s.updated ?? 0}`
-      );
-
-      window.dispatchEvent(new Event("ventas:updated"));
+      // El servicio ya emite evento 'ventas:updated' internamente
     } catch (e) {
-      console.error('[SYNC VENTAS 7D] error:', e);
-      const msg = String(e?.message || "error desconocido");
-      if (msg.includes("maxi_not_configured")) {
-        showNotice?.("Maxi no configurado en este local. Cargá email / clave / codcli.");
-      } else {
-        showNotice?.(`No se pudo sincronizar ventas: ${msg}`);
-      }
+      showNotice?.(`Error: ${e.message}`);
     } finally {
       setSyncingSales(false);
     }
@@ -208,29 +194,15 @@ export default function BusinessCard({
     if (syncingInsumos) return;
     setSyncingInsumos(true);
     try {
-      const bizId = viewBiz.id;
-
-      // 1) Sync insumos
-      const resSupplies = await insumosSyncMaxi(bizId);
-      console.log('[SYNC INSUMOS] supplies:', resSupplies);
-
-      // 2) Sync rubros
-      const resRubros = await insumosRubrosSync(bizId);
-      console.log('[SYNC INSUMOS] rubros:', resRubros);
-
-      const s1 = resSupplies?.summary || resSupplies || {};
-      const s2 = resRubros?.summary || resRubros || {};
-
-      const received = s1.received ?? s1.normalized ?? 0;
-      const synced = s1.synced ?? s1.total ?? 0;
-      const rubros = s2.count ?? s2.total ?? 0;
-
-      showNotice?.(
-        `Insumos OK · recibidos: ${received} · sincronizados: ${synced} · rubros: ${rubros}`
-      );
+      const result = await syncInsumos(viewBiz.id, {
+        onProgress: (msg, type) => {
+          if (type === 'success' || type === 'error') {
+            showNotice?.(msg);
+          }
+        },
+      });
     } catch (e) {
-      const msg = String(e?.message || "");
-      showNotice?.(`No se pudo sincronizar insumos: ${msg}`);
+      showNotice?.(`Error: ${e.message}`);
     } finally {
       setSyncingInsumos(false);
     }
@@ -287,42 +259,34 @@ export default function BusinessCard({
           </button>
         </div>
 
-        {/* Fila de sincronización */}
         <div className="bc-actions-sync">
-          {onOpenSync && (
-            <button
-              className="bc-btn bc-btn-outline"
-              onClick={handleSyncArticulos}
-              disabled={syncingArt}
-              title="Sincronizar catálogo / artículos"
-            >
-              {syncingArt ? (
-                <CircularProgress size={16} />
-              ) : (
-                <AutorenewIcon fontSize="small" />
-              )}
-              {syncingArt ? " Artículos…" : " Artículos"}
-            </button>
-          )}
+          {/* Artículos */}
+          <button
+            className="bc-btn bc-btn-outline"
+            onClick={handleSyncArticulos}
+            disabled={syncingArt}
+            title="Sincronizar catálogo / artículos"
+          >
+            {syncingArt ? (
+              <CircularProgress size={16} />
+            ) : (
+              <AutorenewIcon fontSize="small" />
+            )}
+            {syncingArt ? " Artículos…" : " Artículos"}
+          </button>
 
-          {/* Ventas: visible solo si Maxi está configurado */}
+          {/* Ventas: con modal para elegir modo */}
           {!maxiLoading && maxiConfigured && (
-            <button
-              className="bc-btn bc-btn-outline"
-              onClick={handleSyncVentas7d}
-              disabled={syncingSales}
-              title="Traer ventas de los últimos 7 días (hasta ayer)"
-            >
-              {syncingSales ? (
-                <CircularProgress size={16} />
-              ) : (
-                <PointOfSaleIcon fontSize="small" />
-              )}
-              {syncingSales ? " Ventas…" : " Ventas 7 días"}
-            </button>
+            <SyncVentasButton
+              businessId={viewBiz.id}
+              onSuccess={() => {
+                showNotice?.('✅ Ventas sincronizadas correctamente');
+                window.dispatchEvent(new Event('ventas:updated'));
+              }}
+            />
           )}
 
-          {/* Insumos: también requiere Maxi configurado */}
+          {/* Insumos */}
           {!maxiLoading && maxiConfigured && (
             <button
               className="bc-btn bc-btn-outline"

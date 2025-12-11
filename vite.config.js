@@ -5,16 +5,20 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  base: '/',                     // ok para dev y GitHub Pages con base '/'. Cambia si hosteás en subcarpeta
+  base: '/',
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),     // 👈 alias
+      '@': path.resolve(__dirname, 'src'),
     },
   },
   server: {
     proxy: {
-      '/api': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api': {
+        target: 'https://lazarilloapp-backend.onrender.com',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })

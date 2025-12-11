@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { setActiveBusiness } from "@/servicios/setActiveBusiness";
+import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
@@ -36,7 +37,7 @@ export default function Perfil({ activeBusinessId }) {
 
   useEffect(() => { load(); }, []);
 
-   const onSetActive = async (id) => {
+  const onSetActive = async (id) => {
     try {
       await setActiveBusiness(id, { fetchBiz: true, broadcast: true });
       await load();
@@ -83,20 +84,20 @@ export default function Perfil({ activeBusinessId }) {
     // 2) Si el que borraste era el activo → decidir nuevo activo
     const wasActive = String(localStorage.getItem('activeBusinessId')) === String(deletedId);
 
-     if (wasActive) {
-    if (restantes && restantes.length > 0) {
-      const fallback = restantes[0];
-      try {
-        await setActiveBusiness(fallback.id, { fetchBiz: true, broadcast: true });
-      } catch (e) {
-        console.error('No se pudo activar fallback tras borrar negocio:', e);
+    if (wasActive) {
+      if (restantes && restantes.length > 0) {
+        const fallback = restantes[0];
+        try {
+          await setActiveBusiness(fallback.id, { fetchBiz: true, broadcast: true });
+        } catch (e) {
+          console.error('No se pudo activar fallback tras borrar negocio:', e);
+        }
+      } else {
+        // sin negocios: limpiamos negocio activo globalmente
+        localStorage.removeItem('activeBusinessId');
+        window.dispatchEvent(new Event('business:switched'));
       }
-    } else {
-      // sin negocios: limpiamos negocio activo globalmente
-      localStorage.removeItem('activeBusinessId');
-      window.dispatchEvent(new Event('business:switched'));
     }
-  }
 
     try {
       window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id: deletedId } }));
@@ -106,75 +107,62 @@ export default function Perfil({ activeBusinessId }) {
     window.dispatchEvent(new CustomEvent("business:list:updated"));
   };
 
-  // ===== Helper: auto-sync ventas 7d para nuevo negocio (si Maxi está configurado)
-  const tryAutoSyncNewBusiness = async (bizId) => {
-    try {
-      const st = await BusinessesAPI.maxiStatus(bizId);
-      if (st?.configured) {
-        const resp = await BusinessesAPI.syncSalesLast7d(bizId);
-        const s = resp?.sales || {};
-        showNotice('Ventas sincronizadas',
-          `Se sincronizaron ventas (7 días): ${s.from} → ${s.to} · upserted ${s.upserted ?? 0} · updated ${s.updated ?? 0}`);
-        window.dispatchEvent(new CustomEvent('business:synced', { detail: { bizId } }));
-      } else {
-        // opcional: hint si no hay credenciales
-        console.info('Maxi no configurado para el nuevo negocio; se omite auto-sync 7d.');
-      }
-    } catch (e) {
-      console.error('Auto-sync ventas 7d (nuevo negocio) falló:', e);
-    } finally {
-      // Notificar a listeners (AdminActionsSidebar, etc.)
-      try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch { }
-    }
-  };
-
+  // 🆕 Auto-sync al crear nuevo negocio
   const onCreateComplete = async (biz) => {
+    // 1) Agregar a lista y activar
     setItems(prev => [biz, ...prev]);
     setShowCreate(false);
     await onSetActive(biz.id);
     window.dispatchEvent(new CustomEvent("business:list:updated"));
 
-    // 🔁 Intentar auto-sync de ventas 7 días para el nuevo negocio
-    try { await tryAutoSyncNewBusiness(biz.id); } catch { }
+    // 2) 🔄 Verificar si Maxi está configurado antes de auto-sync
+    try {
+      const maxiOk = await isMaxiConfigured(biz.id);
+      
+      if (maxiOk) {
+        // Si Maxi está configurado → sincronización completa
+        showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
+
+        const result = await syncAll(biz.id, {
+          onProgress: (msg, type, step) => {
+            console.log(`[AUTO-SYNC] [${step}] ${msg}`);
+          },
+        });
+
+        if (result.ok) {
+          showNotice(
+            'Sincronización completa',
+            'Artículos, ventas e insumos sincronizados correctamente'
+          );
+        } else {
+          const errorSteps = result.errors.map(e => e.step).join(', ');
+          showNotice(
+            'Sincronización parcial',
+            `Completado con errores en: ${errorSteps}`
+          );
+        }
+      } else {
+        // Si Maxi NO está configurado → mensaje informativo
+        showNotice(
+          'Negocio creado',
+          'Configurá las credenciales de Maxi para habilitar la sincronización automática'
+        );
+      }
+    } catch (e) {
+      console.error('Auto-sync on create error:', e);
+      showNotice('Error', 'No se pudo completar la sincronización automática');
+    }
+
+    // 3) Emitir evento de creación
+    try {
+      window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } }));
+    } catch { }
   };
 
   const onSaved = (saved) => {
     setItems(prev => prev.map(i => String(i.id) === String(saved.id) ? { ...i, ...saved } : i));
     setEditing(null);
     window.dispatchEvent(new CustomEvent("business:list:updated"));
-  };
-
-  const onOpenSync = async (biz) => {
-    const prev = localStorage.getItem('activeBusinessId');
-    try {
-      // asegura contexto X-Business-Id para este biz
-      await setActiveBusiness(biz.id, { fetchBiz: false, broadcast: true });
-
-      const resp = await BusinessesAPI.syncNow(biz.id, { scope: 'articles' });
-      window.dispatchEvent(new CustomEvent('business:synced', { detail: { bizId: biz.id } }));
-      await load();
-
-      const up = Number(resp?.upserted ?? 0);
-      const mp = Number(resp?.mapped ?? 0);
-      showNotice('Sincronización completada', `Sync OK. Artículos: ${up} · Mapeos: ${mp}`);
-      return resp;
-    } catch (e) {
-      const msg = String(e?.message || '');
-      const friendly = msg.includes('401')
-        ? 'Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli del local.'
-        : (msg || 'No se pudo sincronizar.');
-      showNotice('No se pudo sincronizar', friendly);
-      throw e;
-    } finally {
-      // restaurar activo anterior
-      if (prev && String(prev) !== String(biz.id)) {
-        try {
-          await setActiveBusiness(prev, { fetchBiz: false, broadcast: true });
-        } catch (e) {
-          console.error('No se pudo restaurar negocio activo previo:', e);
-        }
-      }
-    }
   };
 
   const activeBiz = useMemo(
@@ -232,7 +220,6 @@ export default function Perfil({ activeBusinessId }) {
               onSetActive={onSetActive}
               onEdit={setEditing}
               onDelete={onDelete}
-              onOpenSync={onOpenSync}
               showNotice={showNotice}
             />
           ))}

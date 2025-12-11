@@ -83,3 +83,11 @@ lazarillo_app=> \d
  public  | user_businesses_id_seq           | secuencia | lazarillo_app_user
  public  | v_sales_daily_items_named        | vista     | lazarillo_app_user
  public  | vw_articles_with_taxonomy        | vista     | lazarillo_app_user
+
+
+
+Como creo un negocio que dependa de un negocio?
+podria ser con la misma logica de lazarillo a maxi pero interna
+container coffe depende de container bar (negocio principal) 
+como hago para que lo  que saco de container bar no vuelva a aparecer y sea SOLO de container coffe?
+sub tablas de negocios?
