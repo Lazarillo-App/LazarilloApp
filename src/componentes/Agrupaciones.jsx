@@ -1,7 +1,12 @@
+/* eslint-disable no-undef */
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
-
+import {
+  findAutoGroupSuggestions,
+  groupSuggestionsByTarget,
+  applyAutoGrouping,
+} from '@/servicios/autoGrouping';
 import AgrupacionesList from "./AgrupacionesList";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/groupMutations';
@@ -103,6 +108,12 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     setSnackbarOpen(true);
   };
 
+  const [autoGroupModal, setAutoGroupModal] = useState({
+    open: false,
+    suggestions: [],
+    loading: false,
+  });
+
   // ✅ Solo consideramos "virtual" al grupo TODO si sigue teniendo el nombre default
   const effectiveTodoGroupId = useMemo(() => {
     if (!todoGroupId) return null;
@@ -184,53 +195,6 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     });
   }, [baseById]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const bizId = localStorage.getItem("activeBusinessId");
-        if (!bizId) {
-          setTodosArticulos([]);
-          setLoading(false);
-          showSnack("Seleccioná un local activo primero", "warning");
-          return;
-        }
-
-        // Artículos desde nuestra BD -> a árbol subrubro→categorías→artículos
-        const res = await BusinessesAPI.articlesFromDB(bizId);
-        const flat = (res?.items || []).map(mapRowToArticle).filter((a) => Number.isFinite(a.id));
-        setTodosArticulos(buildTree(flat));
-        setLoading(false);
-
-        // Garantizar TODO  exclusiones
-        try {
-          const todo = await ensureTodo();
-          if (todo?.id) {
-            setTodoGroupId(todo.id);
-            try {
-              const ex = await getExclusiones(todo.id);
-              const ids = (ex || [])
-                .filter((e) => e.scope === "articulo")
-                .map((e) => Number(e.ref_id))
-                .filter(Boolean);
-              setExcludedIds(new Set(ids));
-            } catch {
-              setExcludedIds(new Set());
-            }
-          }
-        } catch {
-          // si falla, seguimos sin TODO virtual pero sin romper UI
-        }
-
-        // Agrupaciones
-        await cargarAgrupaciones();
-      } catch (error) {
-        console.error("Error al cargar los datos:", error);
-        setLoading(false);
-        showSnack("Error al cargar datos", "error");
-      }
-    })();
-  }, []);
-
   // ids asignados a otras agrupaciones (excepto TODO)
   const assignedIds = useMemo(() => {
     const s = new Set();
@@ -307,6 +271,163 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     }
     return count;
   }, [allIds, idsEnOtras, excludedIds]);
+
+  const checkForAutoGrouping = useCallback(async () => {
+    try {
+      // Artículos que NO están en ninguna agrupación (excepto excluidos)
+      const newArticles = [];
+
+      for (const sub of todosArticulos || []) {
+        for (const cat of sub.categorias || []) {
+          for (const art of cat.articulos || []) {
+            const id = Number(art.id);
+            if (!Number.isFinite(id)) continue;
+
+            // Verificar si está en alguna agrupación
+            const isAssigned = idsEnOtras.has(id);
+            const isExcluded = excludedIds.has(id);
+
+            if (!isAssigned && !isExcluded) {
+              newArticles.push(art);
+            }
+          }
+        }
+      }
+
+      if (newArticles.length === 0) {
+        console.log('✅ No hay artículos nuevos sin agrupar');
+        return;
+      }
+
+      console.log(`📦 ${newArticles.length} artículos sin agrupar detectados`);
+
+      // Buscar sugerencias de auto-agrupación
+      const suggestions = findAutoGroupSuggestions(
+        newArticles,
+        agrupaciones.filter((g) => !isRealTodoGroup(g, effectiveTodoGroupId)),
+        todosArticulos
+      );
+
+      if (suggestions.length === 0) {
+        console.log('ℹ️ No se encontraron coincidencias para auto-agrupar');
+        return;
+      }
+
+      console.log(`💡 ${suggestions.length} sugerencias de auto-agrupación encontradas`);
+
+      // Agrupar sugerencias por grupo destino
+      const grouped = groupSuggestionsByTarget(suggestions);
+
+      // Mostrar modal
+      setAutoGroupModal({
+        open: true,
+        suggestions: grouped,
+        loading: false,
+      });
+    } catch (error) {
+      console.error('Error al verificar auto-agrupación:', error);
+    }
+  }, [todosArticulos, agrupaciones, idsEnOtras, excludedIds, effectiveTodoGroupId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const bizId = localStorage.getItem("activeBusinessId");
+        if (!bizId) {
+          setTodosArticulos([]);
+          setLoading(false);
+          showSnack("Seleccioná un local activo primero", "warning");
+          return;
+        }
+
+        // Artículos desde nuestra BD -> a árbol subrubro→categorías→artículos
+        const res = await BusinessesAPI.articlesFromDB(bizId);
+        const flat = (res?.items || []).map(mapRowToArticle).filter((a) => Number.isFinite(a.id));
+        setTodosArticulos(buildTree(flat));
+        setLoading(false);
+
+        // Garantizar TODO + exclusiones
+        try {
+          const todo = await ensureTodo();
+          if (todo?.id) {
+            setTodoGroupId(todo.id);
+            try {
+              const ex = await getExclusiones(todo.id);
+              const ids = (ex || [])
+                .filter((e) => e.scope === "articulo")
+                .map((e) => Number(e.ref_id))
+                .filter(Boolean);
+              setExcludedIds(new Set(ids));
+            } catch {
+              setExcludedIds(new Set());
+            }
+          }
+        } catch {
+          // si falla, seguimos sin TODO virtual pero sin romper UI
+        }
+
+        // Agrupaciones
+        await cargarAgrupaciones();
+
+        // 🆕 VERIFICAR AUTO-AGRUPACIÓN después de cargar todo
+        setTimeout(() => {
+          checkForAutoGrouping();
+        }, 500); // pequeño delay para asegurar que todo está cargado
+
+      } catch (error) {
+        console.error("Error al cargar los datos:", error);
+        setLoading(false);
+        showSnack("Error al cargar datos", "error");
+      }
+    })();
+  }, []);
+
+  // 5️⃣ HANDLER PARA APLICAR AUTO-AGRUPACIÓN (línea ~280):
+
+  /**
+   * Aplica las sugerencias de auto-agrupación seleccionadas
+   */
+  const handleApplyAutoGrouping = async (selectedSuggestions) => {
+    setAutoGroupModal((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const { success, failed } = await applyAutoGrouping(selectedSuggestions, httpBiz);
+
+      // Mutaciones optimistas locales
+      selectedSuggestions.forEach((sug) => {
+        onMutateGroups?.({
+          type: 'append',
+          groupId: sug.suggestedGroupId,
+          articulos: [{ id: sug.articleId }],
+        });
+      });
+
+      // Refetch para consolidar
+      await cargarAgrupaciones();
+
+      // Emitir evento global
+      emitGroupsChanged('auto-group', {
+        count: success,
+        failed,
+      });
+
+      // Actualizar padre
+      actualizarAgrupaciones?.();
+
+      // Cerrar modal y mostrar resultado
+      setAutoGroupModal({ open: false, suggestions: [], loading: false });
+
+      if (failed === 0) {
+        showSnack(`✅ ${success} artículo${success !== 1 ? 's' : ''} agrupado${success !== 1 ? 's' : ''} automáticamente`, 'success');
+      } else {
+        showSnack(`✅ ${success} agrupados, ⚠️ ${failed} fallaron`, 'warning');
+      }
+    } catch (error) {
+      console.error('Error al aplicar auto-agrupación:', error);
+      showSnack('Error al agrupar artículos automáticamente', 'error');
+      setAutoGroupModal((prev) => ({ ...prev, loading: false }));
+    }
+  };
 
   return (
     <>

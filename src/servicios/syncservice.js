@@ -1,6 +1,13 @@
 /* eslint-disable no-empty */
 // src/servicios/syncService.js
 
+// 🔧 Control centralizado de Maxi via variable de entorno
+// Para habilitar: VITE_MAXI_ENABLED=true en .env
+// Para deshabilitar: VITE_MAXI_ENABLED=false en .env
+const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+
+console.log(`[syncService] MAXI_ENABLED: ${MAXI_ENABLED}`);
+
 import { BusinessesAPI } from './apiBusinesses';
 import { insumosSyncMaxi, insumosRubrosSync } from './apiInsumos';
 import { clearVentasCache } from './apiVentas';
@@ -13,14 +20,10 @@ import { clearVentasCache } from './apiVentas';
  * - Ventas (últimos 7 días por defecto)
  * - Insumos (desde Maxi)
  * 
- * Con:
- * - Cache en sessionStorage para evitar duplicados en la misma sesión
- * - Notificaciones consistentes
- * - Estado de loading centralizado
+ * ⚠️ TEMPORALMENTE controlado por VITE_MAXI_ENABLED
  */
 
 // ==================== CACHE ====================
-// Evita re-sincronizar el mismo negocio múltiples veces en la misma sesión
 const getCacheKey = (bizId, type) => `lazarillo:autoSync:${bizId}:${type}`;
 
 function wasAlreadySynced(bizId, type) {
@@ -44,7 +47,6 @@ function clearSyncCache(bizId, type = null) {
     if (type) {
       sessionStorage.removeItem(getCacheKey(bizId, type));
     } else {
-      // Limpiamos todos los tipos para este negocio
       ['articulos', 'ventas', 'insumos'].forEach(t => {
         sessionStorage.removeItem(getCacheKey(bizId, t));
       });
@@ -54,9 +56,6 @@ function clearSyncCache(bizId, type = null) {
 
 // ==================== HELPERS ====================
 
-/**
- * Verifica si Maxi está configurado para un negocio
- */
 async function isMaxiConfigured(bizId) {
   try {
     const st = await BusinessesAPI.maxiStatus(bizId);
@@ -66,9 +65,6 @@ async function isMaxiConfigured(bizId) {
   }
 }
 
-/**
- * Emite eventos globales para notificar cambios
- */
 function emitEvent(eventName, detail = {}) {
   try {
     window.dispatchEvent(new CustomEvent(eventName, { detail }));
@@ -77,18 +73,23 @@ function emitEvent(eventName, detail = {}) {
   }
 }
 
+// ==================== WRAPPER DESHABILITADOR ====================
+
+function preventMaxiSync(fn, name) {
+  return async (...args) => {
+    if (!MAXI_ENABLED) {
+      console.warn(`⚠️ ${name} deshabilitado (VITE_MAXI_ENABLED=false) - usando solo CSV`);
+      const opts = args[1] || {};
+      opts.onProgress?.(`${name} deshabilitado - usando solo CSV`, 'warning');
+      return { ok: false, error: 'maxi_disabled', cached: true };
+    }
+    return fn(...args);
+  };
+}
+
 // ==================== SYNC ARTÍCULOS ====================
 
-/**
- * Sincroniza artículos (catálogo) desde Maxi
- * 
- * @param {number|string} bizId - ID del negocio
- * @param {object} opts - Opciones
- * @param {boolean} opts.force - Forzar sync aunque ya se haya hecho
- * @param {function} opts.onProgress - Callback de progreso (msg, type)
- * @returns {Promise<object>} - { ok, upserted, mapped, error }
- */
-export async function syncArticulos(bizId, opts = {}) {
+async function _syncArticulos(bizId, opts = {}) {
   const { force = false, onProgress } = opts;
   
   const id = Number(bizId);
@@ -96,37 +97,37 @@ export async function syncArticulos(bizId, opts = {}) {
     throw new Error('businessId inválido para syncArticulos');
   }
 
-  // 🔍 Check cache
   if (!force && wasAlreadySynced(id, 'articulos')) {
+    console.log('[syncArticulos] ⏭️ Usando caché - ya sincronizado en esta sesión');
     onProgress?.('Artículos ya sincronizados en esta sesión', 'info');
     return { ok: true, cached: true };
   }
 
+  console.log(`[syncArticulos] 🔄 Sincronizando (force=${force})...`);
   onProgress?.('Sincronizando artículos…', 'loading');
 
   try {
-    // 🔧 Verificar Maxi
     const maxiOk = await isMaxiConfigured(id);
     if (!maxiOk) {
       throw new Error('maxi_not_configured');
     }
 
-    // 🔄 Sincronizar
     const resp = await BusinessesAPI.syncNow(id, { scope: 'articles' });
     
     const upserted = Number(resp?.upserted ?? 0);
     const mapped = Number(resp?.mapped ?? 0);
 
-    // ✅ Éxito
     markAsSynced(id, 'articulos');
     emitEvent('business:synced', { bizId: id, type: 'articulos' });
     
+    console.log(`[syncArticulos] ✅ OK - upserted: ${upserted}, mapped: ${mapped}`);
     onProgress?.(`Artículos OK · upserted: ${upserted} · mapeos: ${mapped}`, 'success');
 
     return {
       ok: true,
       upserted,
       mapped,
+      cached: false,
     };
 
   } catch (e) {
@@ -139,6 +140,7 @@ export async function syncArticulos(bizId, opts = {}) {
       friendly = 'Maxi no configurado. Cargá email, clave y codcli';
     }
 
+    console.error('[syncArticulos] ❌ Error:', friendly);
     onProgress?.(friendly, 'error');
     
     return {
@@ -150,17 +152,7 @@ export async function syncArticulos(bizId, opts = {}) {
 
 // ==================== SYNC VENTAS ====================
 
-/**
- * Sincroniza ventas de los últimos N días (default 7)
- * 
- * @param {number|string} bizId - ID del negocio
- * @param {object} opts - Opciones
- * @param {number} opts.days - Días a sincronizar (default 7)
- * @param {boolean} opts.force - Forzar sync
- * @param {function} opts.onProgress - Callback de progreso
- * @returns {Promise<object>} - { ok, from, to, upserted, updated, error }
- */
-export async function syncVentas(bizId, opts = {}) {
+async function _syncVentas(bizId, opts = {}) {
   const { days = 7, force = false, onProgress } = opts;
   
   const id = Number(bizId);
@@ -168,25 +160,23 @@ export async function syncVentas(bizId, opts = {}) {
     throw new Error('businessId inválido para syncVentas');
   }
 
-  // 🔍 Check cache
   if (!force && wasAlreadySynced(id, 'ventas')) {
+    console.log('[syncVentas] ⏭️ Usando caché - ya sincronizado en esta sesión');
     onProgress?.('Ventas ya sincronizadas en esta sesión', 'info');
     return { ok: true, cached: true };
   }
 
+  console.log(`[syncVentas] 🔄 Sincronizando últimos ${days} días (force=${force})...`);
   onProgress?.(`Sincronizando ventas (últimos ${days} días)…`, 'loading');
 
   try {
-    // 🔧 Verificar Maxi
     const maxiOk = await isMaxiConfigured(id);
     if (!maxiOk) {
       throw new Error('maxi_not_configured');
     }
 
-    // 🔄 Sincronizar
     const resp = await BusinessesAPI.syncSalesLast7d(id);
     
-    // Soportar ambas estructuras de respuesta
     const s = resp?.sales || resp || {};
     
     const from = s.from || s.range?.from || s.minDay || '';
@@ -194,11 +184,11 @@ export async function syncVentas(bizId, opts = {}) {
     const upserted = Number(s.upserted ?? 0);
     const updated = Number(s.updated ?? 0);
 
-    // ✅ Éxito
     markAsSynced(id, 'ventas');
-    clearVentasCache(); // Invalidar cache de ventas
+    clearVentasCache();
     emitEvent('ventas:updated', { bizId: id });
     
+    console.log(`[syncVentas] ✅ OK - ${from} → ${to}, upserted: ${upserted}, updated: ${updated}`);
     onProgress?.(
       `Ventas OK · ${from} → ${to} · upserted: ${upserted} · updated: ${updated}`,
       'success'
@@ -210,6 +200,7 @@ export async function syncVentas(bizId, opts = {}) {
       to,
       upserted,
       updated,
+      cached: false,
     };
 
   } catch (e) {
@@ -222,6 +213,7 @@ export async function syncVentas(bizId, opts = {}) {
       friendly = 'Maxi devolvió 401: credenciales inválidas';
     }
 
+    console.error('[syncVentas] ❌ Error:', friendly);
     onProgress?.(friendly, 'error');
     
     return {
@@ -233,16 +225,7 @@ export async function syncVentas(bizId, opts = {}) {
 
 // ==================== SYNC INSUMOS ====================
 
-/**
- * Sincroniza insumos desde Maxi
- * 
- * @param {number|string} bizId - ID del negocio
- * @param {object} opts - Opciones
- * @param {boolean} opts.force - Forzar sync
- * @param {function} opts.onProgress - Callback de progreso
- * @returns {Promise<object>} - { ok, received, synced, rubros, error }
- */
-export async function syncInsumos(bizId, opts = {}) {
+async function _syncInsumos(bizId, opts = {}) {
   const { force = false, onProgress } = opts;
   
   const id = Number(bizId);
@@ -250,38 +233,36 @@ export async function syncInsumos(bizId, opts = {}) {
     throw new Error('businessId inválido para syncInsumos');
   }
 
-  // 🔍 Check cache
   if (!force && wasAlreadySynced(id, 'insumos')) {
+    console.log('[syncInsumos] ⏭️ Usando caché - ya sincronizado en esta sesión');
     onProgress?.('Insumos ya sincronizados en esta sesión', 'info');
     return { ok: true, cached: true };
   }
 
+  console.log(`[syncInsumos] 🔄 Sincronizando (force=${force})...`);
   onProgress?.('Sincronizando insumos…', 'loading');
 
   try {
-    // 🔧 Verificar Maxi
     const maxiOk = await isMaxiConfigured(id);
     if (!maxiOk) {
       throw new Error('maxi_not_configured');
     }
 
-    // 🔄 Sincronizar insumos
     const resSupplies = await insumosSyncMaxi(id);
     const s1 = resSupplies?.summary || resSupplies || {};
     
     const received = Number(s1.received ?? s1.normalized ?? 0);
     const synced = Number(s1.synced ?? s1.total ?? 0);
 
-    // 🔄 Sincronizar rubros
     const resRubros = await insumosRubrosSync(id);
     const s2 = resRubros?.summary || resRubros || {};
     
     const rubros = Number(s2.count ?? s2.total ?? 0);
 
-    // ✅ Éxito
     markAsSynced(id, 'insumos');
     emitEvent('business:synced', { bizId: id, type: 'insumos' });
     
+    console.log(`[syncInsumos] ✅ OK - received: ${received}, synced: ${synced}, rubros: ${rubros}`);
     onProgress?.(
       `Insumos OK · recibidos: ${received} · sincronizados: ${synced} · rubros: ${rubros}`,
       'success'
@@ -292,6 +273,7 @@ export async function syncInsumos(bizId, opts = {}) {
       received,
       synced,
       rubros,
+      cached: false,
     };
 
   } catch (e) {
@@ -304,6 +286,7 @@ export async function syncInsumos(bizId, opts = {}) {
       friendly = 'Maxi devolvió 401: credenciales inválidas';
     }
 
+    console.error('[syncInsumos] ❌ Error:', friendly);
     onProgress?.(friendly, 'error');
     
     return {
@@ -315,19 +298,7 @@ export async function syncInsumos(bizId, opts = {}) {
 
 // ==================== SYNC COMPLETO ====================
 
-/**
- * Sincroniza TODO (artículos + ventas + insumos) en un negocio
- * 
- * @param {number|string} bizId - ID del negocio
- * @param {object} opts - Opciones
- * @param {boolean} opts.force - Forzar sync aunque ya se haya hecho
- * @param {boolean} opts.articulos - Sincronizar artículos (default true)
- * @param {boolean} opts.ventas - Sincronizar ventas (default true)
- * @param {boolean} opts.insumos - Sincronizar insumos (default true)
- * @param {function} opts.onProgress - Callback de progreso (msg, type, step)
- * @returns {Promise<object>} - { ok, results: {articulos, ventas, insumos}, errors }
- */
-export async function syncAll(bizId, opts = {}) {
+async function _syncAll(bizId, opts = {}) {
   const {
     force = false,
     articulos: doArticulos = true,
@@ -341,6 +312,7 @@ export async function syncAll(bizId, opts = {}) {
     throw new Error('businessId inválido para syncAll');
   }
 
+  console.log(`[syncAll] 🚀 Iniciando sync completo (force=${force})...`);
   onProgress?.('Iniciando sincronización completa…', 'loading', 'init');
 
   const results = {
@@ -351,10 +323,9 @@ export async function syncAll(bizId, opts = {}) {
 
   const errors = [];
 
-  // 1️⃣ Artículos
   if (doArticulos) {
     try {
-      results.articulos = await syncArticulos(id, {
+      results.articulos = await _syncArticulos(id, {
         force,
         onProgress: (msg, type) => onProgress?.(msg, type, 'articulos'),
       });
@@ -363,10 +334,9 @@ export async function syncAll(bizId, opts = {}) {
     }
   }
 
-  // 2️⃣ Ventas
   if (doVentas) {
     try {
-      results.ventas = await syncVentas(id, {
+      results.ventas = await _syncVentas(id, {
         force,
         onProgress: (msg, type) => onProgress?.(msg, type, 'ventas'),
       });
@@ -375,10 +345,9 @@ export async function syncAll(bizId, opts = {}) {
     }
   }
 
-  // 3️⃣ Insumos
   if (doInsumos) {
     try {
-      results.insumos = await syncInsumos(id, {
+      results.insumos = await _syncInsumos(id, {
         force,
         onProgress: (msg, type) => onProgress?.(msg, type, 'insumos'),
       });
@@ -387,12 +356,13 @@ export async function syncAll(bizId, opts = {}) {
     }
   }
 
-  // 🎯 Resumen final
   const allOk = errors.length === 0;
   
   if (allOk) {
+    console.log('[syncAll] ✅ Sincronización completa exitosa');
     onProgress?.('✅ Sincronización completa exitosa', 'success', 'done');
   } else {
+    console.warn(`[syncAll] ⚠️ Sincronización con ${errors.length} error(es):`, errors);
     onProgress?.(`⚠️ Sincronización con ${errors.length} error(es)`, 'warning', 'done');
   }
 
@@ -403,6 +373,13 @@ export async function syncAll(bizId, opts = {}) {
   };
 }
 
-// ==================== UTILS PÚBLICOS ====================
+// ==================== EXPORTS WRAPPED ====================
+// 🎯 Si MAXI_ENABLED=false, estas funciones retornan error inmediatamente
+// 🎯 Si MAXI_ENABLED=true, funcionan normalmente
+
+export const syncArticulos = preventMaxiSync(_syncArticulos, 'syncArticulos');
+export const syncVentas = preventMaxiSync(_syncVentas, 'syncVentas');
+export const syncInsumos = preventMaxiSync(_syncInsumos, 'syncInsumos');
+export const syncAll = preventMaxiSync(_syncAll, 'syncAll');
 
 export { clearSyncCache, wasAlreadySynced, isMaxiConfigured };

@@ -7,6 +7,7 @@ import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import SyncDialog from '../componentes/SyncDialog';
+import NotificationsPanel from '../componentes/NotificationsPanel'; // 🆕
 
 export default function Perfil({ activeBusinessId }) {
   const [items, setItems] = useState([]);
@@ -72,7 +73,6 @@ export default function Perfil({ activeBusinessId }) {
       }
     }
 
-    // 1) Refrescamos lista desde backend
     let restantes = [];
     try {
       restantes = await BusinessesAPI.listMine();
@@ -81,7 +81,6 @@ export default function Perfil({ activeBusinessId }) {
       setItems(prev => prev.filter(i => String(i.id) !== String(deletedId)));
     }
 
-    // 2) Si el que borraste era el activo → decidir nuevo activo
     const wasActive = String(localStorage.getItem('activeBusinessId')) === String(deletedId);
 
     if (wasActive) {
@@ -93,7 +92,6 @@ export default function Perfil({ activeBusinessId }) {
           console.error('No se pudo activar fallback tras borrar negocio:', e);
         }
       } else {
-        // sin negocios: limpiamos negocio activo globalmente
         localStorage.removeItem('activeBusinessId');
         window.dispatchEvent(new Event('business:switched'));
       }
@@ -107,20 +105,16 @@ export default function Perfil({ activeBusinessId }) {
     window.dispatchEvent(new CustomEvent("business:list:updated"));
   };
 
-  // 🆕 Auto-sync al crear nuevo negocio
   const onCreateComplete = async (biz) => {
-    // 1) Agregar a lista y activar
     setItems(prev => [biz, ...prev]);
     setShowCreate(false);
     await onSetActive(biz.id);
     window.dispatchEvent(new CustomEvent("business:list:updated"));
 
-    // 2) 🔄 Verificar si Maxi está configurado antes de auto-sync
     try {
       const maxiOk = await isMaxiConfigured(biz.id);
       
       if (maxiOk) {
-        // Si Maxi está configurado → sincronización completa
         showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
 
         const result = await syncAll(biz.id, {
@@ -134,6 +128,8 @@ export default function Perfil({ activeBusinessId }) {
             'Sincronización completa',
             'Artículos, ventas e insumos sincronizados correctamente'
           );
+          // 🆕 Emitir evento para refrescar notificaciones
+          window.dispatchEvent(new CustomEvent('sync:completed'));
         } else {
           const errorSteps = result.errors.map(e => e.step).join(', ');
           showNotice(
@@ -142,7 +138,6 @@ export default function Perfil({ activeBusinessId }) {
           );
         }
       } else {
-        // Si Maxi NO está configurado → mensaje informativo
         showNotice(
           'Negocio creado',
           'Configurá las credenciales de Maxi para habilitar la sincronización automática'
@@ -153,7 +148,6 @@ export default function Perfil({ activeBusinessId }) {
       showNotice('Error', 'No se pudo completar la sincronización automática');
     }
 
-    // 3) Emitir evento de creación
     try {
       window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } }));
     } catch { }
@@ -207,6 +201,10 @@ export default function Perfil({ activeBusinessId }) {
             Nuevo Local
           </button>
         </div>
+        {/* 🆕 PANEL DE NOTIFICACIONES */}
+        <div className="notifications-container">
+          <NotificationsPanel businessId={activeId} />
+        </div>
       </header>
 
       <section className="section">
@@ -251,14 +249,26 @@ export default function Perfil({ activeBusinessId }) {
       <style>{`
         .profile-wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:18px}
         .profile-header{
-          display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
-          background:var(--color-surface,#fff); border:1px solid var(--color-border,#e5e7eb);
-          border-radius:14px; padding:12px 14px;
+          display:grid; 
+          grid-template-columns:auto 1fr auto; 
+          gap:12px; 
+          align-items:center;
+          background:var(--color-surface,#fff); 
+          border:1px solid var(--color-border,#e5e7eb);
+          border-radius:14px; 
+          padding:12px 14px;
         }
         .avatar{width:56px;height:56px;border-radius:999px;background:#e5e7eb}
         .who h1{margin:0 0 4px 0; font-size:14px; color:#64748b; font-weight:800}
         .who h2{margin:0; font-size:18px; font-weight:800}
         .who .mail{font-size:12px; color:#6b7280}
+
+        /* 🆕 Estilos para contenedor de notificaciones */
+        .notifications-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
 
         .section h3{margin:6px 0 10px;font-size:14px;font-weight:800;color:#1f2937}
         .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}

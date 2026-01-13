@@ -14,18 +14,19 @@ export default function VentasMiniGraficoModal({
   groupBy, onChangeGroupBy, loading
 }) {
   // helper robusto para qty
- const getItemQty = (it) => {
-  const v = Number(
-    it.qty ??
-    it.cantidad ??
-    it.unidades ??
-    it.total_u ??
-    it.total_qty ??     
-    it.qty_sum ??        
-    0
-  );
-  return Number.isNaN(v) ? 0 : v;
-};
+  const getItemQty = (it) => {
+    const v = Number(
+      it.qty ??
+      it.qtyMap ??          // ✅
+      it.cantidad ??
+      it.unidades ??
+      it.total_u ??
+      it.total_qty ??
+      it.qty_sum ??
+      0
+    );
+    return Number.isNaN(v) ? 0 : v;
+  };
 
   const chartData = useMemo(() => {
     const baseItems =
@@ -53,7 +54,6 @@ export default function VentasMiniGraficoModal({
     }
 
     // ---- day: completar calendario YYYY-MM-DD ----
-    // Normalizamos label a solo fecha "YYYY-MM-DD"
     const map = new Map();
     for (const it of baseItems) {
       const raw = String(
@@ -61,7 +61,6 @@ export default function VentasMiniGraficoModal({
         it.date ??
         it.day ??
         it.fecha ??
-        it.day ?? 
         ''
       );
       if (!raw) continue;
@@ -76,7 +75,7 @@ export default function VentasMiniGraficoModal({
 
     const seq = [];
     for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
-      const dayKey = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      const dayKey = d.toISOString().slice(0, 10);
       seq.push({
         label: dayKey,
         qty: map.get(dayKey) || 0,
@@ -90,21 +89,20 @@ export default function VentasMiniGraficoModal({
     });
   }, [data, groupBy, rango?.from, rango?.to]);
 
-  // Total a mostrar en el pie
+  // ✅ Total: la verdad es lo que estás graficando (chartData)
   const totalFooter = useMemo(() => {
+    if (chartData.length > 0) {
+      return chartData.reduce((acc, d) => acc + (Number(d.qty) || 0), 0);
+    }
+
     const direct =
       (typeof data?.total === 'number' && !Number.isNaN(data.total))
         ? data.total
         : (typeof data?.data?.total === 'number' && !Number.isNaN(data.data.total))
           ? data.data.total
-          : null;
+          : 0;
 
-    if (direct != null) return direct;
-
-    return chartData.reduce(
-      (acc, d) => acc + (Number(d.qty) || 0),
-      0
-    );
+    return direct || 0;
   }, [data, chartData]);
 
   return (

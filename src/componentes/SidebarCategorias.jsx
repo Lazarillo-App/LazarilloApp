@@ -12,6 +12,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
+import BlockActionsMenu from './BlockActionsMenu';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
@@ -123,6 +124,9 @@ function SidebarCategorias({
   onRenameGroup,
   metaById,
   getAmountForId,
+  onMutateGroups,
+  onRefetch,
+  notify,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
@@ -427,15 +431,7 @@ function SidebarCategorias({
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const currentName = String(g.nombre || '');
-                                const nuevo = window.prompt(
-                                  'Nombre para la nueva agrupación creada desde "Sin agrupación"',
-                                  currentName || 'Nueva agrupación'
-                                );
-                                if (nuevo == null) return;
-                                const trimmed = nuevo.trim();
-                                if (!trimmed) return;
-                                onRenameGroup(g, trimmed);
+                                onRenameGroup(g);
                               }}
                             >
                               <EditIcon fontSize="inherit" />
@@ -570,6 +566,16 @@ function SidebarCategorias({
                   {count}
                   {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
                 </small>
+                <BlockActionsMenu
+                  sub={sub}
+                  agrupaciones={agrupaciones}
+                  agrupacionSeleccionada={agrupacionSeleccionada}
+                  todoGroupId={todoGroupId}
+                  onMutateGroups={onMutateGroups}
+                  onRefetch={onRefetch}
+                  notify={notify}
+                  baseById={metaById}
+                />
               </div>
             </li>
           );

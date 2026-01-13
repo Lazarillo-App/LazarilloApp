@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-escape */
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -11,9 +12,11 @@ import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from ".
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
 import { Snackbar, Alert, Button } from '@mui/material';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
 import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
+import UploadCSVModal from '../componentes/UploadCSVModal';
 import Buscador from '../componentes/Buscador';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -76,22 +79,30 @@ export default function ArticulosMain(props) {
   const [activeBizId, setActiveBizId] = useState(String(activeBizIdProp || ''));
   const [reloadKey, setReloadKey] = useState(0);
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
 
-  // 🔹 PRIMERO: rango / periodo (ANTES de useSalesData)
-  const [rango, setRango] = useState({ mode: '7', from: '', to: '' });
+  // 🔹 Inicializar rango con valores reales desde el inicio
+  const [rango, setRango] = useState(() => {
+    const def = lastNDaysUntilYesterday(daysByMode('7'));
+    return { mode: '7', from: def.from, to: def.to };
+  });
 
-  useEffect(() => {
-    setRango(r => {
-      if (r.from && r.to) return r;
-      const def = lastNDaysUntilYesterday(daysByMode(r.mode || '30'));
-      return { ...r, ...def };
-    });
-  }, []);
+  // ✅ Ya NO necesitamos el useEffect porque inicializamos con valores reales
+  // useEffect(() => { ... }, []); ← ELIMINAR ESTO
 
   const periodo = useMemo(() => {
-    if (rango.from && rango.to) return { from: rango.from, to: rango.to };
-    return lastNDaysUntilYesterday(daysByMode(rango.mode));
+    // Siempre debe haber from/to porque lo inicializamos arriba
+    if (rango.from && rango.to) {
+      return { from: rango.from, to: rango.to };
+    }
+    // Fallback por si acaso
+    return lastNDaysUntilYesterday(daysByMode(rango.mode || '7'));
   }, [rango]);
+
+  // 🔍 LOG temporal para debug
+  console.log('📅 [ArticulosMain] Rango actual:', rango);
+  console.log('📅 [ArticulosMain] Periodo calculado:', periodo);
 
   const periodoRef = useRef(periodo);
   useEffect(() => {
@@ -101,6 +112,7 @@ export default function ArticulosMain(props) {
   // ✅ AHORA SÍ: useSalesData (después de declarar periodo)
   const {
     ventasMap,
+    ventasPorArticulo,
     isLoading: ventasLoading,
     error: ventasError,
     refetch: refetchVentas,
@@ -197,22 +209,22 @@ export default function ArticulosMain(props) {
     }
   }, []);
 
-  const didInitialSyncRef = useRef(false);
-  useEffect(() => {
-    const bid = String(localStorage.getItem('activeBusinessId') || '');
-    if (!bid || didInitialSyncRef.current) return;
-    (async () => {
-      try {
-        await BusinessesAPI.syncSalesLast7d(bid);
-        try { window.dispatchEvent(new CustomEvent('ventas:updated')); } catch { }
-        clearVentasCache();
-        setSyncVersion(v => v + 1);
-        didInitialSyncRef.current = true;
-      } catch (e) {
-        console.error('Sync inicial (7d) falló:', e?.message || e);
-      }
-    })();
-  }, []);
+  // const didInitialSyncRef = useRef(false);
+  // useEffect(() => {
+  //   const bid = String(localStorage.getItem('activeBusinessId') || '');
+  //   if (!bid || didInitialSyncRef.current) return;
+  //   (async () => {
+  //     try {
+  //       await BusinessesAPI.syncSalesLast7d(bid);
+  //       try { window.dispatchEvent(new CustomEvent('ventas:updated')); } catch { }
+  //       clearVentasCache();
+  //       setSyncVersion(v => v + 1);
+  //       didInitialSyncRef.current = true;
+  //     } catch (e) {
+  //       console.error('Sync inicial (7d) falló:', e?.message || e);
+  //     }
+  //   })();
+  // }, []);
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -621,13 +633,38 @@ export default function ArticulosMain(props) {
     setSyncVersion((v) => v + 1);
   }, [periodo?.from, periodo?.to]);
 
-  const handleTotalResolved = (id, total) => {
+
+  const handleTotalResolved = useCallback((id, total) => {
     const key = Number(id);
     if (!Number.isFinite(key) || key <= 0) return;
 
-    // ⚠️ NO modificamos ventasMap manualmente
-    // El hook useSalesData ya lo maneja
-  };
+    const qty = Number(total?.qty ?? total?.total ?? 0);
+    const amount = Number(
+      total?.amount ??
+      total?.calcAmount ??
+      total?.total_amount ??
+      total?.totalAmount ??
+      0
+    );
+
+    const qtyOk = Number.isFinite(qty) ? qty : 0;
+    const amountOk = Number.isFinite(amount) ? amount : 0;
+
+    // Si vino todo 0, no ensuciamos el override
+    if (qtyOk === 0 && amountOk === 0) return;
+
+    setVentasOverrides(prev => {
+      const next = new Map(prev);
+      const prevVal = next.get(key) || {};
+
+      // Evita rerenders inútiles si no cambió
+      if ((prevVal.qty ?? 0) === qtyOk && (prevVal.amount ?? 0) === amountOk) return prev;
+
+      next.set(key, { ...prevVal, qty: qtyOk, amount: amountOk });
+      return next;
+    });
+  }, []);
+
 
   const [jumpToId, setJumpToId] = useState(null);
   const [selectedArticleId, setSelectedArticleId] = useState(null);
@@ -779,6 +816,12 @@ export default function ArticulosMain(props) {
       setSelectedArticleId(id);
       setJumpToId(id);
       scheduleJump(id);
+
+      // 🆕 LIMPIAR después de 2 segundos para evitar re-scrolls
+      setTimeout(() => {
+        setJumpToId(null);
+        setSelectedArticleId(null);
+      }, 2000);
     },
     [
       visibleIds,
@@ -1009,13 +1052,42 @@ export default function ArticulosMain(props) {
   }, [todoGroupId, agrupacionSeleccionada, categorias]);
 
   const opcionesBuscador = useMemo(() => {
-    const ids = activeIds?.size ? Array.from(activeIds) : Array.from(nameById.keys());
-    return ids.slice(0, 300).map((id) => ({
-      id,
-      label: `${nameById.get(id) || `#${id}`} · ${id}`,
-      value: nameById.get(id) || String(id),
-    }));
-  }, [activeIds, nameById]);
+    // Siempre usar TODOS los artículos del árbol de categorías
+    const allIds = Array.from(nameById.keys());
+
+    // Opcional: agregar info de agrupación al label
+    const withGroupInfo = allIds.map((id) => {
+      const nombre = nameById.get(id) || `#${id}`;
+
+      // Buscar en qué agrupación está (opcional, para mostrar en el label)
+      const groupsSet = agIndex.byArticleId.get(id) || new Set();
+      let groupName = '';
+
+      if (groupsSet.size > 0) {
+        const firstGroupId = Array.from(groupsSet)[0];
+        const group = (agrupaciones || []).find(g => Number(g.id) === Number(firstGroupId));
+        if (group && !esTodoGroup(group)) {
+          groupName = ` [${group.nombre}]`;
+        }
+      }
+
+      return {
+        id,
+        label: `${nombre}${groupName} · ${id}`,
+        value: nombre,
+        groupName: groupName.replace(/[\[\]]/g, '').trim(),
+      };
+    });
+
+    withGroupInfo.sort((a, b) => {
+      const nameA = String(a.value || '').toLowerCase();
+      const nameB = String(b.value || '').toLowerCase();
+      return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+    });
+
+    // Limitar a 500 opciones para performance (opcional)
+    return withGroupInfo.slice(0, 500);
+  }, [nameById, agIndex, agrupaciones]);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -1159,9 +1231,10 @@ export default function ArticulosMain(props) {
 
     if (isDisc) return;
 
+    // ✅ UN SOLO PROMPT para ambos casos
     const promptMsg = isTodo
-      ? 'Nombre para la NUEVA agrupación (se llevará lo que hoy está en "Sin Agrupación"):'
-      : 'Nuevo nombre para la agrupación';
+      ? 'Nombre para la nueva agrupación (los artículos de "Sin Agrupación" se moverán aquí):'
+      : 'Nuevo nombre para la agrupación:';
 
     const nuevo = window.prompt(promptMsg, isTodo ? '' : currentName);
     if (nuevo == null) return;
@@ -1171,6 +1244,7 @@ export default function ArticulosMain(props) {
 
     try {
       if (isTodo) {
+        // Crear nueva agrupación con artículos de "Sin agrupación"
         const baseSet =
           todoInfo?.todoIds && todoInfo.todoIds.size
             ? todoInfo.todoIds
@@ -1221,6 +1295,7 @@ export default function ArticulosMain(props) {
         showMiss(`Agrupación "${nombre}" creada a partir de "Sin agrupación".`);
 
       } else {
+        // Renombrar agrupación existente
         await actualizarAgrupacion(group.id, { nombre });
         await refetchAgrupaciones();
         showMiss('Nombre de agrupación actualizado.');
@@ -1250,6 +1325,18 @@ export default function ArticulosMain(props) {
     [filtroBusqueda]
   );
 
+  const ventasPorArticuloMerged = useMemo(() => {
+    const base = ventasMap || new Map();  // ✅ Usar ventasMap
+    if (!ventasOverrides || ventasOverrides.size === 0) return base;
+
+    const merged = new Map(base);
+    for (const [id, ov] of ventasOverrides.entries()) {
+      const prev = merged.get(id) || merged.get(String(id)) || {};
+      merged.set(id, { ...prev, ...ov });
+    }
+    return merged;
+  }, [ventasMap, ventasOverrides]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
@@ -1264,6 +1351,15 @@ export default function ArticulosMain(props) {
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon value={rango} onChange={setRango} />
+          <Button
+            variant="contained"
+            startIcon={<CloudUploadIcon />}
+            onClick={() => setUploadModalOpen(true)}
+            sx={{ textTransform: 'none' }}
+          >
+            Importar CSV
+          </Button>
+
           <button onClick={handleDownloadVentasCsv}>
             Descargar ventas (CSV)
           </button>
@@ -1321,6 +1417,9 @@ export default function ArticulosMain(props) {
             ventasMap={ventasMap}
             metaById={metaById}
             getAmountForId={getAmountForId}
+            onMutateGroups={mutateGroups}
+            onRefetch={refetchAgrupaciones}
+            notify={showMiss}
           />
         </div>
 
@@ -1337,7 +1436,7 @@ export default function ArticulosMain(props) {
             refetchAgrupaciones={refetchAgrupaciones}
             fechaDesdeProp={periodo.from}
             fechaHastaProp={periodo.to}
-            ventasPorArticulo={ventasMap}
+            ventasPorArticulo={ventasPorArticuloMerged}
             ventasLoading={ventasLoading}
             onCategoriasLoaded={handleCategoriasLoaded}
             onIdsVisibleChange={setActiveIds}
@@ -1358,7 +1457,6 @@ export default function ArticulosMain(props) {
             onDiscontinuadoChange={handleDiscontinuadoChange}
             modalTreeMode={modalTreeMode}
             onDiscontinuarBloque={handleDiscontinuarBloque}
-            // opcional: pasar getAmountForId también a la tabla si querés ordenar filas por monto
             getAmountForId={getAmountForId}
           />
         </div>
@@ -1373,8 +1471,17 @@ export default function ArticulosMain(props) {
           {missMsg}
         </Alert>
       </Snackbar>
+      <UploadCSVModal
+        open={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        businessId={activeBizId}
+        onSuccess={() => {
+          // Refrescar ventas
+          clearVentasCache();
+          setSyncVersion(v => v + 1);
+          showMiss('✅ Ventas importadas correctamente');
+        }}
+      />
     </div>
-
   );
-
 }

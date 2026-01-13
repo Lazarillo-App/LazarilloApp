@@ -235,7 +235,8 @@ h2 {
 
 element.style {
   border-right: 1px solid rgb(238, 238, 238);
-  background: rgb(250, 250, 250);
+  background:
+    color-mix(in srgb, var(--color-primary) 40%, transparent);
   position: sticky;
   top: 0px;
   align-self: start;
@@ -492,7 +493,7 @@ input[type="number"]:focus {
   color: var(--color-fg);
 }
 
-.filtros-fechas button {
+.filtros-fechas .button {
   padding: 8px 12px;
   background: var(--color-primary);
   color: var(--on-primary);

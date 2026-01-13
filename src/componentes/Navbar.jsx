@@ -42,6 +42,40 @@ const getUserAvatarUrl = () => {
   return u?.photo_url || u?.avatar_url || u?.picture || '';
 };
 
+// 🆕 Helpers para activeBusinessId por usuario
+const getActiveBusinessIdKey = () => {
+  try {
+    const user = getUser();
+    const userId = user?.id;
+    return userId ? `activeBusinessId:${userId}` : 'activeBusinessId';
+  } catch {
+    return 'activeBusinessId';
+  }
+};
+
+const getActiveBusinessId = () => {
+  const key = getActiveBusinessIdKey();
+  return localStorage.getItem(key);
+};
+
+const setActiveBusinessIdLS = (bizId) => {
+  const key = getActiveBusinessIdKey();
+  if (bizId) {
+    localStorage.setItem(key, String(bizId));
+    // También guardamos en la key global para compatibilidad
+    localStorage.setItem('activeBusinessId', String(bizId));
+  } else {
+    localStorage.removeItem(key);
+    localStorage.removeItem('activeBusinessId');
+  }
+};
+
+const removeActiveBusinessIdLS = () => {
+  const key = getActiveBusinessIdKey();
+  localStorage.removeItem(key);
+  // NO borramos la key global en logout, solo la del usuario
+};
+
 const getBranding = (biz) => biz?.branding || biz?.props?.branding || {};
 const getBizLogoUrl = (biz) =>
   getBranding(biz)?.logo_url ||
@@ -72,7 +106,7 @@ export default function Navbar() {
 
     setColors(prev => {
       if (prev.primary === primary && prev.onPrimary === onPrimary) {
-        return prev; // no dispares rerender si no cambió nada
+        return prev;
       }
       return { primary, onPrimary };
     });
@@ -90,7 +124,7 @@ export default function Navbar() {
   // avatar usuario
   const [userAvatar, setUserAvatar] = React.useState(getUserAvatarUrl());
 
-  // ---- Estado de sincronización global (auto-sync) ----
+  // Estado de sincronización global
   const [syncRunning, setSyncRunning] = React.useState(false);
   const [syncTotal, setSyncTotal] = React.useState(0);
   const [snack, setSnack] = React.useState({ open: false, msg: '', sev: 'success' });
@@ -104,11 +138,12 @@ export default function Navbar() {
         setBizLabel('Local');
         setActiveBizId(null);
         setActiveBizLogo('');
-        localStorage.removeItem('activeBusinessId');
+        removeActiveBusinessIdLS();
         return;
       }
 
-      const lsId = localStorage.getItem('activeBusinessId');
+      // 1) Primero intentamos desde localStorage (con userId)
+      const lsId = getActiveBusinessId();
 
       if (lsId) {
         const id = String(lsId);
@@ -117,14 +152,11 @@ export default function Navbar() {
           const biz = await BusinessesAPI.get(id);
           setBizLabel(biz?.name || 'Local');
           setActiveBizLogo(getBizLogoUrl(biz));
+          console.log('[NAVBAR] 🔑 Usando businessId desde localStorage (user-specific):', id);
         } catch {
           setBizLabel('Local');
           setActiveBizLogo('');
         }
-        console.log(
-          '[NAVBAR] usando businessId desde localStorage (ya sincronizado por ensureActiveBusiness):',
-          id
-        );
         return;
       }
 
@@ -134,23 +166,22 @@ export default function Navbar() {
       setActiveBizId(id);
 
       if (id) {
-        localStorage.setItem('activeBusinessId', String(id));
+        setActiveBusinessIdLS(id);
         const biz = await BusinessesAPI.get(id);
         setBizLabel(biz?.name || 'Local');
         setActiveBizLogo(getBizLogoUrl(biz));
-        console.log('[NAVBAR] usando businessId desde backend:', id);
+        console.log('[NAVBAR] 🌐 Usando businessId desde backend:', id);
       } else {
-        localStorage.removeItem('activeBusinessId');
+        removeActiveBusinessIdLS();
         setBizLabel('Local');
         setActiveBizLogo('');
-        console.log('[NAVBAR] sin negocio activo en backend');
+        console.log('[NAVBAR] ❌ Sin negocio activo');
       }
     } catch (err) {
-      console.error('loadActiveBusiness error', err);
+      console.error('[NAVBAR] loadActiveBusiness error', err);
       setBizLabel('Local');
       setActiveBizId(null);
       setActiveBizLogo('');
-      // mejor no tocar LS en caso de error
     }
   }, [isAppAdmin, logged]);
 
@@ -166,26 +197,46 @@ export default function Navbar() {
   };
 
   const switchBusiness = async (id) => {
-    try {
-      const biz = await setActiveBusiness(id);
-      setActiveBizId(id);
-      setBizLabel(biz?.name || "Local");
-      setActiveBizLogo(getBizLogoUrl(biz));
-      setLocalEl(null);
-      recomputeColors();
-    } catch (e) {
-      console.error("switchBusiness failed", e);
-    }
-  };
+  try {
+    console.log('🔄 [Navbar] switchBusiness iniciando:', id);
+    
+    const biz = await setActiveBusiness(id);
+    
+    setActiveBizId(id);
+    setBizLabel(biz?.name || "Local");
+    setActiveBizLogo(getBizLogoUrl(biz));
+    setActiveBusinessIdLS(id);
+    setLocalEl(null);
+    recomputeColors();
+    
+    // 🆕 DISPARAR EVENTOS
+    console.log('📢 [Navbar] Disparando eventos de cambio de negocio');
+    
+    window.dispatchEvent(
+      new CustomEvent("business:switched", {
+        detail: {
+          business: biz,
+          id: String(id),
+          nombre: biz?.name || "Local"
+        }
+      })
+    );
+    
+    // 🆕 También disparar business:synced para compatibilidad con Artículos
+    window.dispatchEvent(new Event("business:synced"));
+    
+    console.log('✅ [Navbar] Cambio de negocio completado');
+  } catch (e) {
+    console.error("❌ [Navbar] switchBusiness failed", e);
+  }
+};
 
   // 🔧 ÚNICO efecto principal para tema + negocio + listeners
   React.useEffect(() => {
-    // 1) inicial
     recomputeColors();
     loadActiveBusiness();
     setUserAvatar(getUserAvatarUrl());
 
-    // 2) listeners globales
     const onBizSwitched = () => {
       recomputeColors();
       loadActiveBusiness();
@@ -234,7 +285,7 @@ export default function Navbar() {
     };
   }, [recomputeColors, loadActiveBusiness]);
 
-  // Escuchar inicio/fin del auto-sync (disparados por syncAllBusinesses)
+  // Escuchar inicio/fin del auto-sync
   React.useEffect(() => {
     const onStart = (e) => {
       const total = Number(e?.detail?.total || 0);
@@ -263,11 +314,16 @@ export default function Navbar() {
 
   const logout = () => {
     const uid = getUser()?.id || null;
+    
+    // 🔧 Solo borramos token, user y bizTheme
     localStorage.removeItem('token');
-    localStorage.removeItem('activeBusinessId');
     localStorage.removeItem('user');
     localStorage.removeItem('bizTheme');
     if (uid) localStorage.removeItem(`bizTheme:${uid}`);
+    
+    // 🆕 NO borramos activeBusinessId (ni global ni user-specific)
+    // Esto permite que persista entre sesiones
+    
     window.dispatchEvent(new Event('auth:logout'));
     navigate('/login', { replace: true });
   };
@@ -364,7 +420,7 @@ export default function Navbar() {
               {isAppAdmin && <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/admin">Admin</Button>}
             </Box>
 
-            {/* ====== Botón LOCAL (logo  nombre) ====== */}
+            {/* ====== Botón LOCAL ====== */}
             {!isAppAdmin && logged && (
               <>
                 <Button
@@ -512,7 +568,7 @@ export default function Navbar() {
               </>
             )}
 
-            {/* ====== Botón PERFIL (usa foto si existe) ====== */}
+            {/* ====== Botón PERFIL ====== */}
             <Box sx={{ flexGrow: 0 }}>
               <Tooltip title="Perfil">
                 <IconButton

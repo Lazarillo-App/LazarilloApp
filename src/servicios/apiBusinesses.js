@@ -131,7 +131,6 @@ export async function http(
       console.warn('Auth 401', await res.clone().json());
     } catch { }
     localStorage.removeItem('token');
-    localStorage.removeItem('activeBusinessId');
     window.location.href = '/login';
     throw new Error('invalid_token');
   }
@@ -172,7 +171,38 @@ export async function http(
   return data;
 }
 
-export const getActiveBusinessId = () => localStorage.getItem('activeBusinessId');
+const getActiveBusinessIdKey = () => {
+  try {
+    const user = getUser();
+    const userId = user?.id;
+    return userId ? `activeBusinessId:${userId}` : 'activeBusinessId';
+  } catch {
+    return 'activeBusinessId';
+  }
+};
+
+export const getActiveBusinessId = () => {
+  const key = getActiveBusinessIdKey();
+  return localStorage.getItem(key);
+};
+
+const setActiveBusinessIdLS = (bizId) => {
+  const key = getActiveBusinessIdKey();
+  if (bizId) {
+    localStorage.setItem(key, String(bizId));
+    // También guardamos en la key global para compatibilidad
+    localStorage.setItem('activeBusinessId', String(bizId));
+  } else {
+    localStorage.removeItem(key);
+    removeActiveBusinessIdLS();
+  }
+};
+
+const removeActiveBusinessIdLS = () => {
+  const key = getActiveBusinessIdKey();
+  localStorage.removeItem(key);
+  // NO borramos la key global, solo la del usuario
+};
 
 /**
  * Rutas que ya llevan /businesses/:id → no mandamos X-Business-Id
@@ -211,7 +241,7 @@ export const BusinessesAPI = {
       const id = data?.activeBusinessId ?? null;
 
       if (id) {
-        localStorage.setItem('activeBusinessId', String(id));
+        setActiveBusinessIdLS(id);
       } else {
         localStorage.removeItem('activeBusinessId');
       }
@@ -244,7 +274,7 @@ export const BusinessesAPI = {
     }
 
     // 2) Guardar en localStorage (fuente de verdad para el front)
-    localStorage.setItem('activeBusinessId', String(id));
+    setActiveBusinessIdLS(id);
 
     // 3) Actualizar también el user cacheado en localStorage (por si alguien usa active_business_id)
     try {
@@ -370,6 +400,7 @@ export const BusinessesAPI = {
   },
 
   // ───────── Totales simples de ventas por artículo (summary plano) ─────────
+  // ───────── Totales simples de ventas por artículo (summary plano) ─────────
   async getSalesItems(businessId, { from, to, limit = 5000 } = {}) {
     // Si no me pasan id, intento usar el activo
     if (!businessId) {
@@ -380,7 +411,55 @@ export const BusinessesAPI = {
       throw new Error('businessId requerido en getSalesItems');
     }
 
-    // Usamos la ruta ya existente: /businesses/:id/sales/summary
+    // 🎯 CAMBIO TEMPORAL: usar CSV mientras Maxi esté deshabilitado
+    // 📌 Controlado por VITE_MAXI_ENABLED en .env
+    const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+
+    if (!MAXI_ENABLED) {
+      // ═══════════════════════════════════════════════════════════════
+      // 🔴 MODO CSV (temporal)
+      // ═══════════════════════════════════════════════════════════════
+      try {
+        const token = localStorage.getItem('token') || '';
+        const url = `${BASE}/api/ventas-csv/top-articles?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`;
+        
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Business-Id': String(businessId),
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        // Transformar formato CSV a formato esperado
+        if (result.ok && result.articles) {
+          return result.articles.map(art => ({
+            article_id: art.article_id,
+            articulo_id: art.article_id,
+            nombre: art.article_name,
+            qty: parseFloat(art.total_qty) || 0,
+            cantidad: parseFloat(art.total_qty) || 0,
+            amount: parseFloat(art.total_amount) || 0,
+            importe: parseFloat(art.total_amount) || 0,
+          }));
+        }
+        
+        return [];
+      } catch (error) {
+        console.error('[getSalesItems CSV] Error:', error);
+        return [];
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🟢 MODO MAXI (normal) - se restaura automáticamente cuando
+    //    VITE_MAXI_ENABLED=true en .env
+    // ═══════════════════════════════════════════════════════════════
     const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
     const data = pick(raw);
 
@@ -395,7 +474,7 @@ export const BusinessesAPI = {
 
     return rows;
   },
-
+  
   // Sync catálogo (Maxi → DB)
   syncNow: (id, body) =>
     http(`/businesses/${id}/sync`, {
@@ -406,95 +485,95 @@ export const BusinessesAPI = {
 
   // Sync ventas
   syncSales: async (id, options = {}) => {
-  const {
-    mode = 'auto',
-    from = null,
-    to = null,
-    dryrun = false,
-    maxiToken = null,
-    signal = null,
-  } = options;
+    const {
+      mode = 'auto',
+      from = null,
+      to = null,
+      dryrun = false,
+      maxiToken = null,
+      signal = null,
+    } = options;
 
-  const body = { mode };
-  if (from) body.from = from;
-  if (to) body.to = to;
-  if (dryrun) body.dryrun = true;
+    const body = { mode };
+    if (from) body.from = from;
+    if (to) body.to = to;
+    if (dryrun) body.dryrun = true;
 
-  const extraHeaders = {
-    'X-Business-Id': String(id),
-    ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
-  };
+    const extraHeaders = {
+      'X-Business-Id': String(id),
+      ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
+    };
 
-  try {
-    const response = await http(`/businesses/${id}/sync-sales`, {
-      method: 'POST',
-      body,
-      withBusinessId: false,
-      headers: extraHeaders,
-      signal,
-    });
-    return response;
-  } catch (error) {
-    console.error('[BusinessesAPI.syncSales] error:', error);
-    throw error;
-  }
-},
+    try {
+      const response = await http(`/businesses/${id}/sync-sales`, {
+        method: 'POST',
+        body,
+        withBusinessId: false,
+        headers: extraHeaders,
+        signal,
+      });
+      return response;
+    } catch (error) {
+      console.error('[BusinessesAPI.syncSales] error:', error);
+      throw error;
+    }
+  },
 
-/**
- * Sincronización automática diaria (backfill + últimos días)
- * POST /api/businesses/:id/sync-sales/daily-auto
- */
-syncSalesDaily: async (id) => {
-  try {
-    const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
-      method: 'POST',
-      withBusinessId: false,
-    });
-    return response;
-  } catch (error) {
-    console.error('[BusinessesAPI.syncSalesDaily] error:', error);
-    throw error;
-  }
-},
+  /**
+   * Sincronización automática diaria (backfill + últimos días)
+   * POST /api/businesses/:id/sync-sales/daily-auto
+   */
+  syncSalesDaily: async (id) => {
+    try {
+      const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
+        method: 'POST',
+        withBusinessId: false,
+      });
+      return response;
+    } catch (error) {
+      console.error('[BusinessesAPI.syncSalesDaily] error:', error);
+      throw error;
+    }
+  },
 
-/**
- * Sincronizar ventana específica de fechas
- * POST /api/businesses/:id/sync-sales/window
- */
-syncSalesWindow: async (id, { from, to, dryrun = false }) => {
-  if (!from || !to) {
-    throw new Error('from y to son requeridos');
-  }
+  /**
+   * Sincronizar ventana específica de fechas
+   * POST /api/businesses/:id/sync-sales/window
+   */
+  syncSalesWindow: async (id, { from, to, dryrun = false }) => {
+    if (!from || !to) {
+      throw new Error('from y to son requeridos');
+    }
 
-  try {
-    const response = await http(`/businesses/${id}/sync-sales/window`, {
-      method: 'POST',
-      body: { from, to, dryrun },
-      withBusinessId: false,
-    });
-    return response;
-  } catch (error) {
-    console.error('[BusinessesAPI.syncSalesWindow] error:', error);
-    throw error;
-  }
-},
+    try {
+      const response = await http(`/businesses/${id}/sync-sales/window`, {
+        method: 'POST',
+        body: { from, to, dryrun },
+        withBusinessId: false,
+      });
+      return response;
+    } catch (error) {
+      console.error('[BusinessesAPI.syncSalesWindow] error:', error);
+      throw error;
+    }
+  },
 
-/**
- * Backfill inicial (primeros 90 días)
- * POST /api/businesses/:id/sync-sales/backfill-once
- */
-syncSalesBackfill: async (id) => {
-  try {
-    const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
-      method: 'POST',
-      withBusinessId: false,
-    });
-    return response;
-  } catch (error) {
-    console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
-    throw error;
-  }
-},
+  /**
+   * Backfill inicial (primeros 90 días)
+   * POST /api/businesses/:id/sync-sales/backfill-once
+   */
+  syncSalesBackfill: async (id) => {
+    try {
+      const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
+        method: 'POST',
+        withBusinessId: false,
+      });
+      return response;
+    } catch (error) {
+      console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
+      throw error;
+    }
+  },
 
   // Helpers de conveniencia (front)
   syncSalesRange: (id, from, to, opts = {}) => {
@@ -520,6 +599,21 @@ syncSalesBackfill: async (id) => {
     });
   },
 
+  async getViewPrefs(businessId) {
+  if (!businessId) return { ok: true, byGroup: {} };
+
+  try {
+    const resp = await http(
+      `/businesses/${businessId}/view-prefs`,
+      { method: 'GET', withBusinessId: false }
+    );
+    return resp || { ok: true, byGroup: {} };
+  } catch (e) {
+    console.error('[BusinessesAPI.getViewPrefs] Error:', e);
+    return { ok: false, byGroup: {} };
+  }
+},
+
   async saveViewPref(businessId, { agrupacionId, viewMode }) {
     if (!businessId || !agrupacionId || !viewMode) return;
     try {
@@ -536,16 +630,17 @@ syncSalesBackfill: async (id) => {
     }
   },
 
-  // 🔹 FAVORITA por usuario + negocio
-  async getFavoriteGroup(businessId) {
+  // servicios/apiBusinesses.js
+
+  // 🔹 FAVORITA por usuario + negocio (con scope opcional)
+  async getFavoriteGroup(businessId, scope = 'articulo') {
     if (!businessId) return { ok: true, favoriteGroupId: null };
 
     try {
       const resp = await http(
-        `/businesses/${businessId}/fav-group`,
+        `/businesses/${businessId}/fav-group?scope=${scope}`,  // 🆕 Agregar scope al query
         { method: 'GET', withBusinessId: false }
       );
-      // espero { ok, favoriteGroupId }
       return resp || { ok: true, favoriteGroupId: null };
     } catch (e) {
       console.error('getFavoriteGroup failed', e);
@@ -553,7 +648,7 @@ syncSalesBackfill: async (id) => {
     }
   },
 
-  async saveFavoriteGroup(businessId, agrupacionId) {
+  async saveFavoriteGroup(businessId, agrupacionId, scope = 'articulo') {
     if (!businessId) return;
 
     try {
@@ -561,7 +656,10 @@ syncSalesBackfill: async (id) => {
         `/businesses/${businessId}/fav-group`,
         {
           method: 'POST',
-          body: { agrupacionId: agrupacionId ?? null },
+          body: {
+            agrupacionId: agrupacionId ?? null,
+            scope  // 🆕 Agregar scope al body
+          },
           withBusinessId: false,
         }
       );

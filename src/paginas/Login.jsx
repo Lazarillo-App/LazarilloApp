@@ -80,6 +80,18 @@ export default function Login() {
         // no rompemos login por errores de branding
       }
 
+      // 🆕 ───── EMITIR EVENTOS POST-LOGIN ─────
+      console.log('✅ Login exitoso, emitiendo eventos...');
+      
+      // Evento 1: Notificar que hay login (Navbar escucha esto)
+      window.dispatchEvent(new Event('auth:login'));
+      
+      // Evento 2: Forzar recarga del negocio activo (con delay para asegurar que todo esté listo)
+      setTimeout(() => {
+        window.dispatchEvent(new Event('business:switched'));
+        console.log('✅ Eventos post-login emitidos correctamente');
+      }, 100);
+
       // ───── Auto-sync NO bloqueante ─────
       syncAllBusinesses({ scope: 'articles', alsoSalesDays: 14, concurrency: 2 })
         .catch(() => {});

@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/VentasCell.jsx
 import React, { useEffect, useMemo, useState } from 'react';
@@ -5,6 +6,11 @@ import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/m
 import InsertChartOutlinedIcon from '@mui/icons-material/InsertChartOutlined';
 import VentasMiniGraficoModal from './VentasMiniGraficoModal';
 import { useVentasSeries } from '../hooks/useVentasSeries';
+
+const toNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 function VentasCell({
   articuloId,
@@ -18,7 +24,6 @@ function VentasCell({
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [openModal, setOpenModal] = useState(false);
 
-  // 👉 ¿Tenemos total ya calculado por el padre?
   const hasOverride =
     totalOverride != null && !Number.isNaN(Number(totalOverride));
 
@@ -34,91 +39,116 @@ function VentasCell({
     enabled: shouldFetchSeries,
   });
 
-  // 🔍 Total calculado desde la serie (para el modal / fallback) - unidades
+  const seriesItems = useMemo(() => {
+    return (
+      (Array.isArray(data?.items) && data.items) ||
+      (Array.isArray(data?.series) && data.series) ||
+      (Array.isArray(data?.data?.items) && data.data.items) ||
+      (Array.isArray(data?.data?.series) && data.data.series) ||
+      []
+    );
+  }, [data]);
+
+  // 🔍 Total unidades desde la serie
   const totalFromSeries = useMemo(() => {
     if (!data) return 0;
 
-    if (typeof data.total === 'number' && !Number.isNaN(data.total)) {
-      return data.total;
-    }
+    // si viene total explícito
+    const direct =
+      (typeof data.total === 'number' && !Number.isNaN(data.total)) ? data.total
+      : (typeof data?.data?.total === 'number' && !Number.isNaN(data.data.total)) ? data.data.total
+      : null;
 
-    if (data.data && typeof data.data.total === 'number') {
-      return data.data.total;
-    }
+    if (direct != null) return toNum(direct);
 
-    const items =
-      (Array.isArray(data.items) && data.items) ||
-      (Array.isArray(data.series) && data.series) ||
-      (Array.isArray(data.data?.items) && data.data.items) ||
-      [];
-
-    const sum = items.reduce((acc, it) => {
-      const v = Number(
+    return seriesItems.reduce((acc, it) => {
+      const v = toNum(
         it.qty ??
-          it.cantidad ??
-          it.unidades ??
-          it.total_u ??
-          0
+        it.qtyMap ??
+        it.cantidad ??
+        it.unidades ??
+        it.total_u ??
+        it.total_qty ??
+        it.qty_sum ??
+        0
       );
-      return acc + (Number.isNaN(v) ? 0 : v);
+      return acc + v;
     }, 0);
+  }, [data, seriesItems]);
 
-    return sum;
-  }, [data]);
-
-  // 🔍 Monto calculado desde la serie (para pasar amount al padre)
+  // 🔍 Monto desde la serie (si existe)
   const amountFromSeries = useMemo(() => {
     if (!data) return 0;
 
-    if (typeof data.amount === 'number' && !Number.isNaN(data.amount)) {
-      return data.amount;
-    }
+    const direct =
+      (typeof data.amount === 'number' && !Number.isNaN(data.amount)) ? data.amount
+      : (typeof data?.data?.total_amount === 'number' && !Number.isNaN(data.data.total_amount)) ? data.data.total_amount
+      : null;
 
-    if (data.data && typeof data.data.total_amount === 'number') {
-      return data.data.total_amount;
-    }
+    if (direct != null) return toNum(direct);
 
-    const items =
-      (Array.isArray(data.items) && data.items) ||
-      (Array.isArray(data.series) && data.series) ||
-      (Array.isArray(data.data?.items) && data.data.items) ||
-      [];
-
-    const sum = items.reduce((acc, it) => {
-      const v = Number(
+    return seriesItems.reduce((acc, it) => {
+      const v = toNum(
+        it.calcAmount ??
         it.amount ??
-          it.importe ??
-          it.total ??
-          it.total_amount ??
-          it.venta_monto ??
-          0
+        it.amountMap ??
+        it.importe ??
+        it.total ??
+        it.total_amount ??
+        it.venta_monto ??
+        0
       );
-      return acc + (Number.isNaN(v) ? 0 : v);
+      return acc + v;
     }, 0);
+  }, [data, seriesItems]);
 
-    return sum;
-  }, [data]);
-
-  // 🔁 Solo avisamos al padre si NO hay override y sí hay serie (normalmente en el modal)
+  /**
+   * ✅ SOLUCIÓN AL PROBLEMA DEL MODAL QUE SE CIERRA:
+   * 
+   * SOLO actualizamos el padre (onTotalResolved) cuando:
+   * 1. El modal se CIERRA (no mientras está abierto)
+   * 2. Hay datos de la serie
+   * 3. Los datos difieren del override actual
+   * 
+   * Esto evita re-renders masivos que cierran el modal prematuramente.
+   */
   useEffect(() => {
-    if (
-      !hasOverride &&
-      typeof onTotalResolved === 'function' &&
-      articuloId &&
-      !Number.isNaN(Number(totalFromSeries))
-    ) {
-      try {
-        const idNum = Number(articuloId);
-        const qtyNum = Number(totalFromSeries || 0);
-        const amountNum = Number(amountFromSeries || 0);
+    // ✅ CLAVE: Solo actualizar cuando el modal se CIERRA
+    if (openModal) return;
+    
+    if (!data) return;
+    if (typeof onTotalResolved !== 'function') return;
+    if (!articuloId) return;
 
-        onTotalResolved(idNum, { qty: Number.isFinite(qtyNum) ? qtyNum : 0, amount: Number.isFinite(amountNum) ? amountNum : 0 });
+    const idNum = Number(articuloId);
+    if (!Number.isFinite(idNum)) return;
+
+    const qtyNum = toNum(totalFromSeries);
+    const amountNum = toNum(amountFromSeries);
+
+    // Solo actualizar si:
+    // a) No hay override, o
+    // b) El valor cambió respecto al override
+    const overrideNum = toNum(totalOverride);
+    const shouldUpdate = !hasOverride || qtyNum !== overrideNum;
+
+    if (shouldUpdate && (qtyNum > 0 || amountNum > 0)) {
+      try {
+        onTotalResolved(idNum, { qty: qtyNum, amount: amountNum });
       } catch (e) {
-        // no rompemos la UI por un fallo al notificar
-        // console.error('VentasCell.onTotalResolved error', e);
+        console.warn('[VentasCell] Error en onTotalResolved:', e);
       }
     }
-  }, [hasOverride, articuloId, totalFromSeries, amountFromSeries, onTotalResolved]);
+  }, [
+    openModal,  // ✅ Solo cuando openModal cambia (especialmente cuando se cierra)
+    data,
+    articuloId,
+    totalFromSeries,
+    amountFromSeries,
+    onTotalResolved,
+    hasOverride,
+    totalOverride
+  ]);
 
   // 🔢 Qué número mostramos en la celda de la tabla
   const totalToShow = hasOverride
@@ -136,7 +166,6 @@ function VentasCell({
 
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120 }}>
-      {/* En la tabla nunca bloqueamos por loading: usamos el número que ya tenemos */}
       <Typography
         variant="body2"
         sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
