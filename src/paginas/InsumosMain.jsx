@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-// src/componentes/InsumosMain.jsx
+// src/paginas/InsumosMain.jsx
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import InsumosSidebar from "../componentes/InsumosSidebar.jsx";
 import InsumosTable from "../componentes/InsumosTable.jsx";
@@ -28,6 +28,9 @@ import {
   getExclusionesInsumos,
   ensureDiscontinuadosInsumos,
 } from '../servicios/apiInsumosTodo';
+
+// ✅ IMPORTAR BUSINESS CONTEXT
+import { useBusiness } from '../context/BusinessContext';
 
 import {
   Dialog,
@@ -69,16 +72,25 @@ const esDiscontinuadosGroup = (g) => {
 
 /* ================== COMPONENTE PRINCIPAL ================== */
 export default function InsumosMain() {
-  /* ================== 1️⃣ NEGOCIO ACTIVO ================== */
-  const [activeBusiness, setActiveBusiness] = useState(() => {
-    const id = localStorage.getItem("activeBusinessId");
-    const nombre =
-      localStorage.getItem("activeBusinessName") ||
-      localStorage.getItem("activeBusinessNombre");
-    return id ? { id, nombre: nombre || null } : null;
-  });
+  /* ================== 1️⃣ BUSINESS CONTEXT ================== */
+  const {
+    effectiveBusinessId,
+    activeBusiness,
+    activeSubnegocio,
+    activeBusinessId,
+    activeSubnegocioId,
+  } = useBusiness() || {};
 
-  const businessId = activeBusiness?.id || null;
+  // businessId es el ID efectivo (subnegocio si existe, sino negocio principal)
+  const businessId = effectiveBusinessId || null;
+
+  // Nombre para mostrar en el título
+  const businessName = useMemo(() => {
+    if (activeSubnegocio?.nombre) {
+      return `${activeBusiness?.nombre || 'Negocio'} › ${activeSubnegocio.nombre}`;
+    }
+    return activeBusiness?.nombre || null;
+  }, [activeBusiness, activeSubnegocio]);
 
   /* ================== 2️⃣ ESTADO BÁSICO ================== */
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
@@ -108,7 +120,6 @@ export default function InsumosMain() {
   const isJumpingRef = useRef(false);
   const jumpCleanupTRef = useRef(null);
 
-
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
 
   /* ================== 3️⃣ AGRUPACIONES ================== */
@@ -129,8 +140,8 @@ export default function InsumosMain() {
   const [viewPrefs, setViewPrefs] = useState({});
 
   /* ================== 3️⃣.5️⃣ idToIndex STATE ================== */
-const idToIndexRef = useRef(new Map());
-const [idToIndexVersion, setIdToIndexVersion] = useState(0);
+  const idToIndexRef = useRef(new Map());
+  const [idToIndexVersion, setIdToIndexVersion] = useState(0);
 
   /* ================== 4️⃣ CALLBACKS BÁSICOS ================== */
   const notify = useCallback((msg, type = 'success') => {
@@ -150,10 +161,10 @@ const [idToIndexVersion, setIdToIndexVersion] = useState(0);
   }, []);
 
   // 🆕 CALLBACK ESTABLE para recibir idToIndex desde InsumosTable
-const handleIdToIndexChange = useCallback((newMap) => {
-  idToIndexRef.current = newMap;      // no rerender
-  setIdToIndexVersion(v => v + 1);    // rerender controlado (solo un número)
-}, []);
+  const handleIdToIndexChange = useCallback((newMap) => {
+    idToIndexRef.current = newMap;
+    setIdToIndexVersion(v => v + 1);
+  }, []);
 
   /* ================== 5️⃣ CARGAR PREFERENCIAS ================== */
   useEffect(() => {
@@ -294,68 +305,26 @@ const handleIdToIndexChange = useCallback((newMap) => {
     }
   }, [businessId, loadGroups]);
 
-  /* ================== 🔟 EVENTOS DE NEGOCIO ================== */
+  /* ================== 🔟 ESCUCHAR EVENTOS DE CAMBIO DE NEGOCIO ================== */
   useEffect(() => {
-    const fromLocalStorage = () => {
-      const id = localStorage.getItem("activeBusinessId");
-      const nombre =
-        localStorage.getItem("activeBusinessName") ||
-        localStorage.getItem("activeBusinessNombre");
-      setActiveBusiness(id ? { id, nombre: nombre || null } : null);
+    const handleBusinessSwitch = () => {
+      console.log('🔔 [InsumosMain] business:switched o subnegocio:switched');
+      forceRefresh();
     };
 
-    const handleBusinessSwitched = (evt) => {
-      const d = evt?.detail;
-
-      if (d?.business) {
-        const b = d.business;
-        setActiveBusiness({
-          id: String(b.id),
-          nombre: b.nombre || b.name || null,
-        });
-        localStorage.setItem("activeBusinessId", String(b.id));
-        if (b.nombre || b.name) {
-          localStorage.setItem("activeBusinessName", b.nombre || b.name);
-        }
-        return;
-      }
-
-      if (d?.id) {
-        setActiveBusiness({
-          id: String(d.id),
-          nombre: d.nombre || d.name || null,
-        });
-        localStorage.setItem("activeBusinessId", String(d.id));
-        if (d.nombre || d.name) {
-          localStorage.setItem("activeBusinessName", d.nombre || d.name);
-        }
-        return;
-      }
-
-      fromLocalStorage();
-    };
-
-    const handleStorage = (evt) => {
-      if (evt.key === "activeBusinessId" || evt.key === "activeBusinessName") {
-        fromLocalStorage();
-      }
-    };
-
-    fromLocalStorage();
-
-    window.addEventListener("business:switched", handleBusinessSwitched);
-    window.addEventListener("storage", handleStorage);
+    window.addEventListener('business:switched', handleBusinessSwitch);
+    window.addEventListener('subnegocio:switched', handleBusinessSwitch);
 
     return () => {
-      window.removeEventListener("business:switched", handleBusinessSwitched);
-      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener('business:switched', handleBusinessSwitch);
+      window.removeEventListener('subnegocio:switched', handleBusinessSwitch);
     };
-  }, []);
+  }, [forceRefresh]);
 
-  /* ================== 1️⃣1️⃣ RECARGA AL CAMBIAR NEGOCIO ================== */
+  /* ================== 1️⃣1️⃣ RECARGA AL CAMBIAR NEGOCIO/SUBNEGOCIO ================== */
   useEffect(() => {
     if (!businessId) {
-      console.log('⚠️ Sin businessId, limpiando');
+      console.log('⚠️ [InsumosMain] Sin businessId, limpiando');
       setAllInsumos([]);
       setRows([]);
       setGroups([]);
@@ -367,17 +336,14 @@ const handleIdToIndexChange = useCallback((newMap) => {
       return;
     }
 
-    console.log('🔄 [InsumosMain] businessId cambió a:', businessId);
+    console.log('🔄 [InsumosMain] effectiveBusinessId cambió a:', businessId);
 
     let isCancelled = false;
 
     const recargarTodo = async () => {
-      console.log('🔄 [recargarTodo] Iniciando... isCancelled:', isCancelled);
       if (isCancelled) return;
 
-      console.log('🔄 [recargarTodo] Limpiando estado...');
-
-      // Limpiar
+      // Limpiar estado previo
       setAllInsumos([]);
       setRows([]);
       setGroups([]);
@@ -389,14 +355,12 @@ const handleIdToIndexChange = useCallback((newMap) => {
       setPage(1);
 
       await new Promise(resolve => setTimeout(resolve, 100));
-
-      console.log('🔄 [recargarTodo] Después del delay, isCancelled:', isCancelled);
       if (isCancelled) return;
 
       try {
+        // Cargar rubros
         console.log('📚 [recargarTodo] Cargando rubros...');
         const resRubros = await insumosRubrosList(businessId);
-        console.log('📚 [recargarTodo] Rubros cargados, isCancelled:', isCancelled);
         if (isCancelled) return;
 
         const items = resRubros?.items || resRubros?.data || [];
@@ -411,30 +375,27 @@ const handleIdToIndexChange = useCallback((newMap) => {
         });
         setRubrosMap(map);
 
+        // Cargar insumos
         console.log('📦 [recargarTodo] Cargando insumos...');
         const resInsumos = await insumosList({
           page: 1,
           limit: 999999,
           search: "",
         });
-        console.log('📦 [recargarTodo] Insumos cargados, isCancelled:', isCancelled);
         if (isCancelled) return;
 
         const data = Array.isArray(resInsumos.data) ? resInsumos.data : [];
         setAllInsumos(data);
 
+        // Cargar catálogo (TODO, Discontinuados, grupos)
         console.log('🔧 [recargarTodo] Cargando catálogo...');
         const todoGroup = await ensureTodoInsumos();
-        console.log('🔧 [recargarTodo] TODO group recibido, isCancelled:', isCancelled);
         if (isCancelled) return;
 
-        console.log('✅ [recargarTodo] TODO group:', todoGroup?.id);
         setTodoGroupId(todoGroup?.id || null);
 
         if (todoGroup?.id) {
-          console.log('🔧 [recargarTodo] Cargando exclusiones...');
           const exclusiones = await getExclusionesInsumos(todoGroup.id);
-          console.log('🔧 [recargarTodo] Exclusiones recibidas, isCancelled:', isCancelled);
           if (isCancelled) return;
 
           const ids = exclusiones
@@ -442,27 +403,19 @@ const handleIdToIndexChange = useCallback((newMap) => {
             .map(e => Number(e.ref_id))
             .filter(Boolean);
           setExcludedIds(new Set(ids));
-          console.log('✅ [recargarTodo] Exclusiones:', ids.length);
         }
 
-        console.log('🔧 [recargarTodo] Asegurando Discontinuados...');
         try {
           await ensureDiscontinuadosInsumos();
-          console.log('✅ [recargarTodo] Discontinuados OK, isCancelled:', isCancelled);
         } catch (e) {
-          console.error('⚠️ [recargarTodo] Error en Discontinuados (continuando):', e);
+          console.error('⚠️ [recargarTodo] Error en Discontinuados:', e);
         }
 
-        console.log('🔄 [recargarTodo] Antes del check de isCancelled, valor:', isCancelled);
-        if (isCancelled) {
-          console.log('❌ [recargarTodo] CANCELADO antes de cargar grupos');
-          return;
-        }
+        if (isCancelled) return;
 
+        // Cargar grupos
         console.log('📋 [recargarTodo] Cargando grupos...');
         const res = await insumoGroupsList();
-        console.log('📋 [recargarTodo] Response de grupos:', res);
-        console.log('📋 [recargarTodo] Después de grupos, isCancelled:', isCancelled);
         if (isCancelled) return;
 
         const list = Array.isArray(res?.data) ? res.data :
@@ -470,11 +423,9 @@ const handleIdToIndexChange = useCallback((newMap) => {
 
         setGroups(list);
 
-        console.log('✅ [recargarTodo] Completado - Groups length:', list.length);
+        console.log('✅ [recargarTodo] Completado - Groups:', list.length, '- Insumos:', data.length);
       } catch (e) {
-        console.error('❌ [recargarTodo] Error CRÍTICO:', e);
-        console.error('❌ [recargarTodo] Stack:', e.stack);
-        console.error('❌ [recargarTodo] isCancelled en catch:', isCancelled);
+        console.error('❌ [recargarTodo] Error:', e);
       }
     };
 
@@ -631,8 +582,7 @@ const handleIdToIndexChange = useCallback((newMap) => {
   /* ================== 1️⃣4️⃣ SELECCIÓN INTELIGENTE: TODO vs FAVORITA ================== */
   useEffect(() => {
     if (isJumpingRef.current) {
-      console.log('🚫 [useEffect selección] Jump activo, no tocar selección')
-      return
+      return;
     }
 
     const todoId = todoGroupId;
@@ -746,11 +696,11 @@ const handleIdToIndexChange = useCallback((newMap) => {
     return row.rubro_nombre || row.rubroNombre || (code != null ? `Rubro ${code}` : "Sin rubro");
   }, [rubrosMap]);
 
-  // 🆕 REF PARA VirtualList
+  // REF PARA VirtualList
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
 
-  // refs para poder cancelar timers limpito
+  // refs para poder cancelar timers
   const scrollT1Ref = useRef(null);
   const scrollT2Ref = useRef(null);
   const domIntervalRef = useRef(null);
@@ -758,22 +708,16 @@ const handleIdToIndexChange = useCallback((newMap) => {
   useEffect(() => {
     const id = Number(jumpToInsumoId);
 
-    // ✅ si es null/undefined/NaN/<=0, no hacemos nada
     if (!Number.isFinite(id) || id <= 0) return;
 
-    // ✅ limpiar timers/interval previos si el user salta rápido
+    // Limpiar timers/interval previos
     if (scrollT1Ref.current) { clearTimeout(scrollT1Ref.current); scrollT1Ref.current = null; }
     if (scrollT2Ref.current) { clearTimeout(scrollT2Ref.current); scrollT2Ref.current = null; }
     if (domIntervalRef.current) { clearInterval(domIntervalRef.current); domIntervalRef.current = null; }
 
-
     const idx = idToIndexRef.current.get(id);
 
-    // ✅ Caso ideal: tengo índice → scroll virtual
     if (idx != null) {
-      console.log("✅ [useEffect scroll] Índice encontrado:", idx);
-
-      // IMPORTANTE: recién acá marcamos "ya salté a este ID"
       if (lastJumpedIdRef.current === id) return;
       lastJumpedIdRef.current = id;
 
@@ -783,12 +727,10 @@ const handleIdToIndexChange = useCallback((newMap) => {
         scrollT2Ref.current = setTimeout(() => {
           const el = document.querySelector(`[data-insumo-id="${id}"]`);
           if (el) {
-            console.log("🎨 [useEffect scroll] Aplicando highlight");
             el.classList.add("highlight-jump");
             setTimeout(() => el.classList.remove("highlight-jump"), 1400);
           }
 
-          // ✅ limpiar el "pedido" de jump UNA VEZ que ya scrolleaste
           setJumpToInsumoId(null);
           isJumpingRef.current = false;
         }, 40);
@@ -797,14 +739,7 @@ const handleIdToIndexChange = useCallback((newMap) => {
       return;
     }
 
-    // ⚠️ Si NO hay índice todavía, NO marques lastJumpedIdRef
-    console.warn("⚠️ [useEffect scroll] Índice no encontrado aún para ID:", id);
-    console.warn(
-      "📊 [useEffect scroll] idToIndex contiene (sample):",
-      Array.from(idToIndexRef.current.keys()).slice(0, 10)
-    );
-
-    // ✅ Fallback DOM con reintentos (pero sin dejarlo vivo para siempre)
+    // Fallback DOM con reintentos
     const tryScroll = () => {
       const el = document.querySelector(`[data-insumo-id="${id}"]`);
       if (el) {
@@ -812,7 +747,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
         el.classList.add("highlight-jump");
         setTimeout(() => el.classList.remove("highlight-jump"), 1400);
 
-        // ✅ ahora sí consideramos que ya “saltamos”
         lastJumpedIdRef.current = id;
 
         setJumpToInsumoId(null);
@@ -828,7 +762,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
         clearInterval(domIntervalRef.current);
         domIntervalRef.current = null;
 
-        // si no lo encontró, liberamos igual el flag para no trabar UX
         if (tries > 12) {
           isJumpingRef.current = false;
         }
@@ -842,7 +775,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
     };
   }, [jumpToInsumoId, idToIndexVersion]);
 
-  // 🧹 LIMPIAR lastJumpedId cuando jumpToInsumoId cambia a null
   useEffect(() => {
     if (!jumpToInsumoId) {
       lastJumpedIdRef.current = null;
@@ -854,7 +786,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
-      // ✅ Cancelar limpieza anterior (si el user busca otro insumo rápido)
       if (jumpCleanupTRef.current) {
         clearTimeout(jumpCleanupTRef.current);
         jumpCleanupTRef.current = null;
@@ -866,7 +797,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
 
       let targetGroupId = null;
 
-      // 🔹 Prioridad: grupo preferido
       if (preferGroupId != null) {
         const prefNum = Number(preferGroupId);
         if (Number.isFinite(prefNum)) {
@@ -875,54 +805,44 @@ const handleIdToIndexChange = useCallback((newMap) => {
         }
       }
 
-      // 🔹 Fallbacks
       if (!targetGroupId) {
         if (alreadyVisible) {
           targetGroupId = selectedGroupId ?? null;
         } else if (groupsSet.size > 0) {
           for (const gid of groupsSet) {
             const n = Number(gid);
-            if (Number.isFinite(n) && n > 0) {   // 👈 blindaje extra
+            if (Number.isFinite(n) && n > 0) {
               targetGroupId = n;
               break;
             }
           }
         } else if (Number.isFinite(Number(todoGroupId))) {
           const t = Number(todoGroupId);
-          if (t > 0) targetGroupId = t;          // 👈 blindaje extra
+          if (t > 0) targetGroupId = t;
         }
       }
 
-      // 🔴 ACTIVAR JUMP
       isJumpingRef.current = true;
 
-      // 🔹 Cambiar grupo solo si hace falta
       const shouldChangeGroup =
         targetGroupId &&
         (!selectedGroupId || Number(selectedGroupId) !== Number(targetGroupId));
 
       if (shouldChangeGroup) {
-        console.log("🔍 [focusInsumo] Cambiando a grupo:", targetGroupId);
         markManualPick();
         setSelectedGroupId(targetGroupId);
         setRubroSeleccionado(null);
         setPage(1);
       }
 
-      // 🔹 Estado visual
       setSelectedInsumoId(id);
       setJumpToInsumoId(id);
 
-      // ✅ Limpieza controlada (sin “apilar” timeouts)
-      // Nota: esto NO garantiza el scroll, pero evita re-scrolls y estados zombies.
       jumpCleanupTRef.current = setTimeout(() => {
         setJumpToInsumoId(null);
-        // opcional: solo limpiar selectedInsumoId si vos lo usás SOLO para highlight de salto
-        // setSelectedInsumoId(null);
-
         isJumpingRef.current = false;
         jumpCleanupTRef.current = null;
-      }, 350); // 👈 350ms suele ir mejor que 2000ms para evitar loops
+      }, 350);
     },
     [
       visibleIds,
@@ -1103,8 +1023,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
             return;
           }
 
-          console.log('📦 [handleRenameGroup] Creando agrupación desde TODO:', nombre, `(${ids.length} insumos)`);
-
           const res = await http('/insumos/groups/create-or-move', {
             method: 'POST',
             body: {
@@ -1118,8 +1036,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
             res?.id || res?.groupId || res?.agrupacionId || res?.group?.id
           );
 
-          console.log('✅ [handleRenameGroup] Agrupación creada, ID:', createdId);
-
           await loadGroups();
 
           if (Number.isFinite(createdId) && createdId > 0) {
@@ -1129,8 +1045,6 @@ const handleIdToIndexChange = useCallback((newMap) => {
           notify(`Agrupación "${nombre}" creada con ${ids.length} insumos.`, 'success');
 
         } else {
-          console.log('✏️ [handleRenameGroup] Renombrando agrupación:', group.id, nombre);
-
           await insumoGroupUpdate(group.id, { nombre });
           await loadGroups();
 
@@ -1389,8 +1303,8 @@ const handleIdToIndexChange = useCallback((newMap) => {
   }, [businessId, notify, loadAllInsumos, fetchData]);
 
   /* ================== 2️⃣1️⃣ RENDER ================== */
-  const titulo = activeBusiness?.nombre
-    ? `Insumos — ${activeBusiness.nombre}`
+  const titulo = businessName
+    ? `Insumos — ${businessName}`
     : "Insumos";
 
   return (

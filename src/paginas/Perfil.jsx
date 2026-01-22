@@ -7,7 +7,11 @@ import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import SyncDialog from '../componentes/SyncDialog';
-import NotificationsPanel from '../componentes/NotificationsPanel'; // 🆕
+import NotificationsPanel from '../componentes/NotificationsPanel';
+
+// 🆕 Divisiones
+import { getDivisions } from '@/servicios/apiDivisions';
+import { getActiveDivisionId, setActiveDivisionId } from '@/servicios/activeDivision';
 
 export default function Perfil({ activeBusinessId }) {
   const [items, setItems] = useState([]);
@@ -17,10 +21,16 @@ export default function Perfil({ activeBusinessId }) {
   const [notice, setNotice] = useState({ open: false, title: "", message: "" });
   const showNotice = (title, message) => setNotice({ open: true, title, message });
   const closeNotice = () => setNotice(s => ({ ...s, open: false }));
+
   const me = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; }
     catch { return {}; }
   }, []);
+
+  // 🆕 divisiones del negocio activo
+  const [divList, setDivList] = useState([]);
+  const [loadingDiv, setLoadingDiv] = useState(false);
+  const [activeDivId, setActiveDivId] = useState('');
 
   useEffect(() => {
     setActiveId(String(activeBusinessId || ''));
@@ -41,11 +51,74 @@ export default function Perfil({ activeBusinessId }) {
   const onSetActive = async (id) => {
     try {
       await setActiveBusiness(id, { fetchBiz: true, broadcast: true });
+      setActiveId(String(id));
       await load();
+      // divisiones se recargan por efecto (activeId)
     } catch (e) {
       console.error(e);
       alert('No se pudo activar.');
     }
+  };
+
+  // 🆕 cargar divisiones cuando cambia negocio activo
+  useEffect(() => {
+    let alive = true;
+
+    async function loadDivs() {
+      if (!activeId) {
+        setDivList([]);
+        setActiveDivId('');
+        return;
+      }
+
+      try {
+        setLoadingDiv(true);
+        const data = await getDivisions(activeId);
+        if (!alive) return;
+
+        const divs = data?.divisions || [];
+        setDivList(divs);
+
+        // resolver activa (guardada -> main -> primera)
+        const saved = getActiveDivisionId(activeId);
+        const savedOk = saved && divs.some(d => String(d.id) === String(saved));
+        const pick = savedOk
+          ? saved
+          : (divs.find(d => d.is_main)?.id || divs[0]?.id || '');
+
+        if (pick) {
+          setActiveDivId(String(pick));
+          setActiveDivisionId(activeId, pick);
+
+          // notificar al resto de la app
+          window.dispatchEvent(new CustomEvent('division:switched', {
+            detail: { businessId: String(activeId), divisionId: String(pick) }
+          }));
+        } else {
+          setActiveDivId('');
+        }
+      } catch (e) {
+        console.error('[Perfil] error cargando divisiones:', e);
+        setDivList([]);
+        setActiveDivId('');
+      } finally {
+        if (alive) setLoadingDiv(false);
+      }
+    }
+
+    loadDivs();
+    return () => { alive = false; };
+  }, [activeId]);
+
+  // 🆕 cambiar división manualmente
+  const onSwitchDivision = (divisionId) => {
+    const did = String(divisionId || '');
+    setActiveDivId(did);
+    setActiveDivisionId(activeId, did);
+
+    window.dispatchEvent(new CustomEvent('division:switched', {
+      detail: { businessId: String(activeId), divisionId: String(did) }
+    }));
   };
 
   const onDelete = async (biz) => {
@@ -88,6 +161,7 @@ export default function Perfil({ activeBusinessId }) {
         const fallback = restantes[0];
         try {
           await setActiveBusiness(fallback.id, { fetchBiz: true, broadcast: true });
+          setActiveId(String(fallback.id));
         } catch (e) {
           console.error('No se pudo activar fallback tras borrar negocio:', e);
         }
@@ -113,7 +187,7 @@ export default function Perfil({ activeBusinessId }) {
 
     try {
       const maxiOk = await isMaxiConfigured(biz.id);
-      
+
       if (maxiOk) {
         showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
 
@@ -128,7 +202,6 @@ export default function Perfil({ activeBusinessId }) {
             'Sincronización completa',
             'Artículos, ventas e insumos sincronizados correctamente'
           );
-          // 🆕 Emitir evento para refrescar notificaciones
           window.dispatchEvent(new CustomEvent('sync:completed'));
         } else {
           const errorSteps = result.errors.map(e => e.step).join(', ');
@@ -178,6 +251,11 @@ export default function Perfil({ activeBusinessId }) {
   const bizInitial = (activeBiz ? (activeBranding.name || 'N') : userInitial)[0]?.toUpperCase?.() || 'N';
   const meName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Usuario';
 
+  const activeDivName = useMemo(() => {
+    const d = divList.find(x => String(x.id) === String(activeDivId));
+    return d?.name || '';
+  }, [divList, activeDivId]);
+
   return (
     <div className="profile-wrap">
       <header className="profile-header">
@@ -193,15 +271,50 @@ export default function Perfil({ activeBusinessId }) {
             <span className="biz-avatar-initial">{bizInitial}</span>
           </div>
         </div>
+
         <div className="who">
           <h1>Mi Perfil</h1>
           <h2>{meName}</h2>
           <div className="mail">{me?.email || ''}</div>
+
+          {/* 🆕 Selector de división */}
+          {!!activeId && (
+            <div className="division-row">
+              <div className="division-label">
+                Subnegocio:
+              </div>
+
+              {loadingDiv ? (
+                <div className="division-loading">Cargando…</div>
+              ) : (divList.length <= 1 ? (
+                <div className="division-single">
+                  {activeDivName || 'Principal'}
+                </div>
+              ) : (
+                <select
+                  className="division-select"
+                  value={activeDivId}
+                  onChange={(e) => onSwitchDivision(e.target.value)}
+                  aria-label="Cambiar subnegocio"
+                >
+                  {divList
+                    .slice()
+                    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+                    .map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}{d.is_main ? ' (Principal)' : ''}
+                      </option>
+                    ))}
+                </select>
+              ))}
+            </div>
+          )}
+
           <button className="cta-wide" onClick={() => setShowCreate(true)}>
             Nuevo Local
           </button>
         </div>
-        {/* 🆕 PANEL DE NOTIFICACIONES */}
+
         <div className="notifications-container">
           <NotificationsPanel businessId={activeId} />
         </div>
@@ -218,7 +331,7 @@ export default function Perfil({ activeBusinessId }) {
               onSetActive={onSetActive}
               onEdit={setEditing}
               onDelete={onDelete}
-              showNotice={showNotice}
+              showNotice={(msg) => showNotice('Aviso', msg)}
             />
           ))}
           {!items.length && (
@@ -249,30 +362,57 @@ export default function Perfil({ activeBusinessId }) {
       <style>{`
         .profile-wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:18px}
         .profile-header{
-          display:grid; 
-          grid-template-columns:auto 1fr auto; 
-          gap:12px; 
+          display:grid;
+          grid-template-columns:auto 1fr auto;
+          gap:12px;
           align-items:center;
-          background:var(--color-surface,#fff); 
+          background:var(--color-surface,#fff);
           border:1px solid var(--color-border,#e5e7eb);
-          border-radius:14px; 
+          border-radius:14px;
           padding:12px 14px;
         }
-        .avatar{width:56px;height:56px;border-radius:999px;background:#e5e7eb}
+        .avatar{width:56px;height:56px;border-radius:999px;background:#e5e7eb;display:grid;place-items:center}
         .who h1{margin:0 0 4px 0; font-size:14px; color:#64748b; font-weight:800}
         .who h2{margin:0; font-size:18px; font-weight:800}
         .who .mail{font-size:12px; color:#6b7280}
 
-        /* 🆕 Estilos para contenedor de notificaciones */
-        .notifications-container {
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .division-row{
+          margin-top:10px;
+          display:flex;
+          align-items:center;
+          gap:10px;
+          flex-wrap:wrap;
+        }
+        .division-label{
+          font-size:12px;
+          font-weight:800;
+          color:#64748b;
+        }
+        .division-loading, .division-single{
+          font-size:12px;
+          font-weight:800;
+          color:#111827;
+          padding:8px 10px;
+          border-radius:10px;
+          border:1px solid var(--color-border,#e5e7eb);
+          background:var(--color-surface,#fff);
+        }
+        .division-select{
+          height:36px;
+          padding:0 10px;
+          border-radius:10px;
+          border:1px solid var(--color-border,#e5e7eb);
+          background:var(--color-surface,#fff);
+          font-weight:800;
+          color:#111827;
+          outline:none;
         }
 
+        .notifications-container{display:flex;align-items:center;justify-content:center}
         .section h3{margin:6px 0 10px;font-size:14px;font-weight:800;color:#1f2937}
         .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
         .empty{border:1px dashed #e5e7eb;border-radius:12px;padding:16px;color:#6b7280}
+
         .cta-wide{
           width:15%;
           height:40px;
@@ -285,17 +425,9 @@ export default function Perfil({ activeBusinessId }) {
           margin: 10px
         }
         .cta-wide:hover{ filter: brightness(.96); }
-        .admin-tools{opacity:.7}
-        .avatar{
-          width:56px;height:56px;border-radius:999px;display:grid;place-items:center;background:#e5e7eb;
-        }
-        .biz-avatar{
-          border:1px solid var(--color-border,#e5e7eb);
-          box-shadow: 0 1px 0 rgba(0,0,0,.03) inset;
-        }
-        .biz-avatar-initial{
-          font-weight:900;font-size:20px;line-height:1;letter-spacing:.5px;text-transform:uppercase;
-        }
+
+        .biz-avatar{border:1px solid var(--color-border,#e5e7eb);box-shadow:0 1px 0 rgba(0,0,0,.03) inset;}
+        .biz-avatar-initial{font-weight:900;font-size:20px;line-height:1;letter-spacing:.5px;text-transform:uppercase;}
       `}</style>
     </div>
   );

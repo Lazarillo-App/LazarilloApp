@@ -10,9 +10,8 @@ import { APP_BASENAME } from './servicios/apiBase';
 import App from './App.jsx';
 import './index.css';
 
-// 👉 NUEVOS IMPORTS DE CONTEXTOS
+// Contextos
 import { AuthProvider } from './context/AuthContext.jsx';
-import { BootProvider } from './context/BootContext.jsx';
 import { BusinessProvider } from './context/BusinessContext.jsx';
 
 bootApplySavedPalette();
@@ -21,17 +20,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BootProvider>
-          <BusinessProvider>
-            <BrowserRouter basename={APP_BASENAME}>
-              <SearchProvider>
-                <App />
-              </SearchProvider>
-            </BrowserRouter>
-          </BusinessProvider>
-        </BootProvider>
+        <BusinessProvider> 
+          <BrowserRouter basename={APP_BASENAME}>
+            <SearchProvider>
+              <App />
+            </SearchProvider>
+          </BrowserRouter>
+        </BusinessProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );
-

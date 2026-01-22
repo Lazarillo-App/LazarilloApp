@@ -127,3 +127,7 @@ export async function me() {
 export function logout() {
   return AuthAPI.logout();
 }
+
+export function getAuthToken() {
+  return getToken();
+}

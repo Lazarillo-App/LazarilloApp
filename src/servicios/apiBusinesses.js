@@ -682,4 +682,3 @@ export const AdminAPI = {
   resetPassword: (id) =>
     http(`/admin/users/${id}/reset-password`, { method: 'POST', withBusinessId: false }),
 };
-

@@ -1,12 +1,16 @@
 /* eslint-disable no-empty */
 // src/servicios/syncService.js
 
-// 🔧 Control centralizado de Maxi via variable de entorno
-// Para habilitar: VITE_MAXI_ENABLED=true en .env
-// Para deshabilitar: VITE_MAXI_ENABLED=false en .env
-const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+// 🔧 Control granular de Maxi via variables de entorno
+const MAXI_ARTICULOS_ENABLED = import.meta.env.VITE_MAXI_ARTICULOS_ENABLED === 'true';
+const MAXI_VENTAS_ENABLED = import.meta.env.VITE_MAXI_VENTAS_ENABLED === 'true';
+const MAXI_INSUMOS_ENABLED = import.meta.env.VITE_MAXI_INSUMOS_ENABLED === 'true';
 
-console.log(`[syncService] MAXI_ENABLED: ${MAXI_ENABLED}`);
+console.log('[syncService] Maxi habilitado:', {
+  articulos: MAXI_ARTICULOS_ENABLED,
+  ventas: MAXI_VENTAS_ENABLED,
+  insumos: MAXI_INSUMOS_ENABLED
+});
 
 import { BusinessesAPI } from './apiBusinesses';
 import { insumosSyncMaxi, insumosRubrosSync } from './apiInsumos';
@@ -16,11 +20,9 @@ import { clearVentasCache } from './apiVentas';
  * 🔄 Servicio centralizado de sincronización
  * 
  * Maneja:
- * - Artículos (catálogo desde Maxi)
- * - Ventas (últimos 7 días por defecto)
- * - Insumos (desde Maxi)
- * 
- * ⚠️ TEMPORALMENTE controlado por VITE_MAXI_ENABLED
+ * - Artículos (catálogo desde Maxi) → VITE_MAXI_ARTICULOS_ENABLED
+ * - Ventas (últimos 7 días) → VITE_MAXI_VENTAS_ENABLED
+ * - Insumos (desde Maxi) → VITE_MAXI_INSUMOS_ENABLED
  */
 
 // ==================== CACHE ====================
@@ -75,12 +77,12 @@ function emitEvent(eventName, detail = {}) {
 
 // ==================== WRAPPER DESHABILITADOR ====================
 
-function preventMaxiSync(fn, name) {
+function preventMaxiSync(fn, name, enabledFlag) {
   return async (...args) => {
-    if (!MAXI_ENABLED) {
-      console.warn(`⚠️ ${name} deshabilitado (VITE_MAXI_ENABLED=false) - usando solo CSV`);
+    if (!enabledFlag) {
+      console.warn(`⚠️ ${name} deshabilitado - usando solo CSV manual`);
       const opts = args[1] || {};
-      opts.onProgress?.(`${name} deshabilitado - usando solo CSV`, 'warning');
+      opts.onProgress?.(`${name} deshabilitado - usando CSV manual`, 'warning');
       return { ok: false, error: 'maxi_disabled', cached: true };
     }
     return fn(...args);
@@ -323,7 +325,7 @@ async function _syncAll(bizId, opts = {}) {
 
   const errors = [];
 
-  if (doArticulos) {
+  if (doArticulos && MAXI_ARTICULOS_ENABLED) {
     try {
       results.articulos = await _syncArticulos(id, {
         force,
@@ -334,7 +336,7 @@ async function _syncAll(bizId, opts = {}) {
     }
   }
 
-  if (doVentas) {
+  if (doVentas && MAXI_VENTAS_ENABLED) {
     try {
       results.ventas = await _syncVentas(id, {
         force,
@@ -345,7 +347,7 @@ async function _syncAll(bizId, opts = {}) {
     }
   }
 
-  if (doInsumos) {
+  if (doInsumos && MAXI_INSUMOS_ENABLED) {
     try {
       results.insumos = await _syncInsumos(id, {
         force,
@@ -374,12 +376,29 @@ async function _syncAll(bizId, opts = {}) {
 }
 
 // ==================== EXPORTS WRAPPED ====================
-// 🎯 Si MAXI_ENABLED=false, estas funciones retornan error inmediatamente
-// 🎯 Si MAXI_ENABLED=true, funcionan normalmente
 
-export const syncArticulos = preventMaxiSync(_syncArticulos, 'syncArticulos');
-export const syncVentas = preventMaxiSync(_syncVentas, 'syncVentas');
-export const syncInsumos = preventMaxiSync(_syncInsumos, 'syncInsumos');
-export const syncAll = preventMaxiSync(_syncAll, 'syncAll');
+export const syncArticulos = preventMaxiSync(
+  _syncArticulos, 
+  'syncArticulos', 
+  MAXI_ARTICULOS_ENABLED
+);
+
+export const syncVentas = preventMaxiSync(
+  _syncVentas, 
+  'syncVentas', 
+  MAXI_VENTAS_ENABLED
+);
+
+export const syncInsumos = preventMaxiSync(
+  _syncInsumos, 
+  'syncInsumos', 
+  MAXI_INSUMOS_ENABLED
+);
+
+export const syncAll = preventMaxiSync(
+  _syncAll, 
+  'syncAll', 
+  MAXI_ARTICULOS_ENABLED && MAXI_VENTAS_ENABLED && MAXI_INSUMOS_ENABLED
+);
 
 export { clearSyncCache, wasAlreadySynced, isMaxiConfigured };

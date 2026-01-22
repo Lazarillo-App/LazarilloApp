@@ -10,33 +10,74 @@ export function AuthProvider({ children }) {
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
+    console.log('[AuthContext] 🚀 Inicializando...');
+
     (async () => {
       try {
-        if (localStorage.getItem('token')) {
-          const u = await me();
-          setUser(u);
+        const token = localStorage.getItem('token');
+        
+        if (token) {
+          // ✅ OPTIMISTIC RESTORE: Leer user de localStorage INMEDIATAMENTE
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            try {
+              const cachedUser = JSON.parse(userStr);
+              console.log('[AuthContext] ⚡ Restauración optimista:', cachedUser.email);
+              setUser(cachedUser); // ✅ Esto hace que isLogged sea true AHORA
+            } catch (e) {
+              console.warn('[AuthContext] ⚠️ Error parseando user cache:', e);
+            }
+          }
+
+          // Luego validar con el backend (puede actualizar datos)
+          console.log('[AuthContext] 🔄 Validando sesión con backend...');
+          const freshUser = await me();
+          console.log('[AuthContext] ✅ Sesión validada:', freshUser.email);
+          
+          // Actualizar con datos frescos del backend
+          setUser(freshUser);
+          localStorage.setItem('user', JSON.stringify(freshUser));
+        } else {
+          console.log('[AuthContext] ⚠️ Sin token, sesión vacía');
         }
-      } catch {
+      } catch (err) {
+        console.error('[AuthContext] ❌ Error validando sesión:', err);
         apiLogout();
+        setUser(null);
       } finally {
         setBooting(false);
+        console.log('[AuthContext] ✅ Boot completo');
       }
     })();
   }, []);
 
   const login = async (email, password) => {
+    console.log('[AuthContext] 🔓 Login:', email);
     const u = await apiLogin(email, password);
     setUser(u);
+    localStorage.setItem('user', JSON.stringify(u)); // ✅ Guardar user en LS
+    window.dispatchEvent(new Event('auth:login'));
     return u;
   };
 
   const logout = () => {
+    console.log('[AuthContext] 🔒 Logout');
     apiLogout();
     setUser(null);
+    localStorage.removeItem('user'); // ✅ Limpiar user del LS
+    window.dispatchEvent(new Event('auth:logout'));
+  };
+
+  const value = {
+    user,
+    booting,
+    login,
+    logout,
+    isLogged: !!user,
   };
 
   return (
-    <AuthCtx.Provider value={{ user, booting, login, logout, isLogged: !!user }}>
+    <AuthCtx.Provider value={value}>
       {children}
     </AuthCtx.Provider>
   );

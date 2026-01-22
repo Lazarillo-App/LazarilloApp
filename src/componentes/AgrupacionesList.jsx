@@ -18,7 +18,7 @@ import { emitGroupsChanged } from "@/utils/groupsBus";
 import {
   actualizarAgrupacion,
   eliminarAgrupacion,
-  quitarArticulo
+  eliminarArticuloDeAgrupacion as quitarArticulo,
 } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
@@ -170,8 +170,9 @@ const AgrupacionesList = ({
   favoriteGroupId,
   onSetFavorite,
   todoVirtualArticulos = [],
-  notify,                // 👈 opcional, para usar el mismo sistema de mensajes que en el resto
+  notify,
 }) => {
+
   // edición de nombre por grupo
   const [editing, setEditing] = useState({}); // { [groupId]: true }
   const [nameDraft, setNameDraft] = useState({}); // { [groupId]: 'nuevo nombre' }
@@ -260,7 +261,7 @@ const AgrupacionesList = ({
       : { nombre: nuevo };
 
     try {
-      await actualizarAgrupacion(g.id, payload);
+      await actualizarAgrupacion(businessId, g.id, payload);
       emitGroupsChanged("rename", { groupId: g.id });
       setEditing((s) => ({ ...s, [g.id]: false }));
       onActualizar?.(); // 👈 acá el padre debería refetch → trae nuevo todoGroupId + agrupaciones
@@ -278,7 +279,7 @@ const AgrupacionesList = ({
     // ⬇ ahora usamos la misma regla que en el resto:
     if (isRealTodoGroup(g, todoGroupId) || isDiscontinuadosGroup(g)) return;
     if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
-    await eliminarAgrupacion(g.id);
+    await eliminarAgrupacion(businessId, g.id);
     emitGroupsChanged("delete", { groupId: g.id });
     onActualizar?.();
   };
@@ -303,7 +304,7 @@ const AgrupacionesList = ({
   const removeOne = async (groupId, articuloId) => {
     onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] }); // instantáneo
     try {
-      await quitarArticulo(groupId, articuloId);
+      await quitarArticulo(businessId, groupId, articuloId);
       emitGroupsChanged("remove", { groupId, ids: [articuloId] });
     } catch {
       // opcional: revertir mutación optimista si quisieras

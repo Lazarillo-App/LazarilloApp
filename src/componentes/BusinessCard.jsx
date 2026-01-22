@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/BusinessCard.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
@@ -6,21 +7,29 @@ import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-import SyncVentasButton from './SyncVentasButton';
-import AutoGroupModal from './AutoGroupModal'; // 🆕
+
+import SyncVentasButton from "./SyncVentasButton";
+import AutoGroupModal from "./AutoGroupModal";
+
+// ✅ USAR BusinessContext en lugar de DivisionContext
+import { useBusiness } from "@/context/BusinessContext";
+import DivisionCreateSimpleModal from './DivisionCreateSimpleModal';
+
 import {
   syncArticulos,
   syncVentas,
   syncInsumos,
   isMaxiConfigured,
 } from "@/servicios/syncService";
+
 import {
   checkNewArticlesAndSuggest,
   applyAutoGrouping,
   createNewAgrupacion,
-} from "@/servicios/autoGrouping"; // 🆕
+} from "@/servicios/autoGrouping";
 
 export default function BusinessCard({
   biz,
@@ -30,6 +39,15 @@ export default function BusinessCard({
   onDelete,
   showNotice,
 }) {
+  // ✅ USAR BusinessContext
+  const {
+    activeSubnegocioId,
+    selectSubnegocio,
+    subnegocios,
+    loadingSubnegocios,
+    refreshSubnegocios,
+  } = useBusiness() || {};
+
   const [syncingArt, setSyncingArt] = useState(false);
   const [syncingSales, setSyncingSales] = useState(false);
   const [syncingInsumos, setSyncingInsumos] = useState(false);
@@ -37,19 +55,25 @@ export default function BusinessCard({
   const [maxiLoading, setMaxiLoading] = useState(true);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
 
-  // 🆕 Estado del modal de auto-agrupación
+  // 🆕 Modal de auto-agrupación
   const [autoGroupModal, setAutoGroupModal] = useState({
     open: false,
     suggestions: [],
     loading: false,
   });
 
-  // 🆕 Refs para trackear sincronizaciones en progreso
+  // 🆕 Panel de subnegocios
+  const [divPanelOpen, setDivPanelOpen] = useState(false);
+  const [showCreateDivModal, setShowCreateDivModal] = useState(false);
+
+  // Refs para evitar doble click
   const syncingArtRef = useRef(false);
   const syncingSalesRef = useRef(false);
   const syncingInsumosRef = useRef(false);
 
-  useEffect(() => { setViewBiz(biz); }, [biz]);
+  useEffect(() => {
+    setViewBiz(biz);
+  }, [biz]);
 
   // Refresco card si llega evento externo
   useEffect(() => {
@@ -71,60 +95,39 @@ export default function BusinessCard({
   useEffect(() => {
     const bizId = viewBiz?.id;
     if (!bizId) return;
-
-    // Solo para el negocio ACTIVO
     if (!isActive) return;
-
-    // Esperamos a que haya respondido maxiStatus
     if (maxiLoading) return;
     if (!maxiConfigured) return;
 
-    // Evitar repetir auto-sync en la misma sesión/navegador
     const key = `lazarillo:autoSyncOnLogin:${bizId}`;
     try {
-      if (sessionStorage.getItem(key) === 'done') {
-        return; // Ya se hizo antes en esta sesión
-      }
-      sessionStorage.setItem(key, 'done');
-    } catch {
-      // Si sessionStorage falla, no pasa nada, solo podría repetirse
-    }
+      if (sessionStorage.getItem(key) === "done") return;
+      sessionStorage.setItem(key, "done");
+    } catch { }
 
-    // 🔇 Ejecutamos sincronizaciones en segundo plano (MODO SILENCIOSO)
     (async () => {
       try {
-        console.log('[BusinessCard] 🔄 Auto-sync iniciando...');
-        
-        // 1) Artículos (sin notificaciones)
-        await syncArticulos(viewBiz.id, { onProgress: () => {} });
+        console.log("[BusinessCard] 🔄 Auto-sync iniciando...");
 
-        // 🆕 2) Verificar auto-agrupación después del sync de artículos
+        await syncArticulos(viewBiz.id, { onProgress: () => { } });
+
         setTimeout(async () => {
           try {
             const suggestions = await checkNewArticlesAndSuggest(bizId);
-            
             if (suggestions && suggestions.length > 0) {
-              console.log('🎯 Auto-agrupación: Sugerencias encontradas');
-              setAutoGroupModal({
-                open: true,
-                suggestions,
-                loading: false,
-              });
+              setAutoGroupModal({ open: true, suggestions, loading: false });
             }
           } catch (error) {
-            console.error('[Auto-group] Error verificando:', error);
+            console.error("[Auto-group] Error verificando:", error);
           }
         }, 1500);
 
-        // 3) Ventas últimos 7 días (sin notificaciones)
-        await syncVentas(viewBiz.id, { days: 7, onProgress: () => {} });
+        await syncVentas(viewBiz.id, { days: 7, onProgress: () => { } });
+        await syncInsumos(viewBiz.id, { onProgress: () => { } });
 
-        // 4) Insumos (sin notificaciones)
-        await syncInsumos(viewBiz.id, { onProgress: () => {} });
-
-        console.log('[BusinessCard] ✅ Auto-sync completado');
+        console.log("[BusinessCard] ✅ Auto-sync completado");
       } catch (e) {
-        console.error('[BusinessCard] ❌ auto-sync error:', e);
+        console.error("[BusinessCard] ❌ auto-sync error:", e);
       }
     })();
   }, [viewBiz?.id, isActive, maxiLoading, maxiConfigured]);
@@ -149,7 +152,9 @@ export default function BusinessCard({
       }
     })();
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [viewBiz?.id]);
 
   const branding = useMemo(
@@ -184,230 +189,169 @@ export default function BusinessCard({
   const thumbnail = hasLogo ? logo : photo;
   const isLogoThumb = hasLogo;
 
-  /* ============ Sincronizar ARTÍCULOS ============ */
-  const handleSyncArticulos = async () => {
-    console.log('🔵 handleSyncArticulos INICIO', { syncingArt, refValue: syncingArtRef.current });
+  // -------------------- SUBNEGOCIOS --------------------
+  // ✅ Usamos los subnegocios del BusinessContext (ya cargados para el negocio activo)
+  // Solo mostramos subnegocios si este es el negocio activo
+  const divisions = isActive ? (subnegocios || []) : [];
+  const divLoading = isActive ? loadingSubnegocios : false;
+  const hasDivisions = divisions.length > 0;
+
+  const toggleDivPanel = async () => {
+    const next = !divPanelOpen;
+    setDivPanelOpen(next);
     
-    if (syncingArt || syncingArtRef.current) {
-      console.log('🔴 YA ESTÁ SINCRONIZANDO - ABORTANDO');
-      return;
+    // Si abrimos el panel y es el negocio activo, refrescar subnegocios
+    if (next && isActive) {
+      await refreshSubnegocios?.();
     }
-    
+  };
+
+  const handlePickSubnegocio = async (subnegocioId) => {
+    const bizId = viewBiz?.id;
+    if (!bizId) return;
+
+    // Si el negocio no está activo, lo activamos primero
+    if (!isActive) {
+      // Limpiar subnegocio previo
+      selectSubnegocio?.('');
+      await onSetActive?.(bizId);
+      
+      // Después de activar, seleccionar el subnegocio si se eligió uno
+      if (subnegocioId) {
+        // Pequeño delay para que el contexto se actualice
+        setTimeout(() => {
+          selectSubnegocio?.(subnegocioId);
+        }, 100);
+      }
+    } else {
+      // Ya es el negocio activo, solo cambiar subnegocio
+      selectSubnegocio?.(subnegocioId || '');
+    }
+
+    setDivPanelOpen(false);
+  };
+
+  const handleCreateDivision = () => {
+    setShowCreateDivModal(true);
+  };
+
+  const handleDivisionCreated = async () => {
+    setShowCreateDivModal(false);
+
+    // Recargar subnegocios desde el contexto
+    await refreshSubnegocios?.();
+
+    // Notificar
+    showNotice?.('✅ Subnegocio creado correctamente');
+
+    // Broadcast para que otros componentes se actualicen
+    window.dispatchEvent(new CustomEvent('subnegocio:created', {
+      detail: { businessId: viewBiz?.id }
+    }));
+  };
+
+  // -------------------- SYNC HANDLERS --------------------
+  const handleSyncArticulos = async () => {
+    if (syncingArt || syncingArtRef.current) return;
+
     setSyncingArt(true);
     syncingArtRef.current = true;
-    console.log('🟢 Estado cambiado a TRUE');
-    
+
     try {
       const result = await syncArticulos(viewBiz.id, {
-        force: true, // ← Ignorar caché en sync manual
+        force: true,
         onProgress: (msg, type) => {
-          console.log('📨 Progress artículos:', msg, type);
-          if (type === 'success' || type === 'error') {
-            showNotice?.(msg);
-          }
+          if (type === "success" || type === "error") showNotice?.(msg);
         },
       });
 
-      console.log('✅ syncArticulos completado:', result);
-
       if (result.ok && !result.cached) {
-        window.dispatchEvent(new Event('business:synced'));
-        
-        // 🆕 Verificar auto-agrupación después del sync manual
+        window.dispatchEvent(new Event("business:synced"));
+
         setTimeout(async () => {
           try {
             const suggestions = await checkNewArticlesAndSuggest(viewBiz.id);
-            
             if (suggestions && suggestions.length > 0) {
-              console.log('🎯 Auto-agrupación: Mostrando modal con sugerencias');
-              setAutoGroupModal({
-                open: true,
-                suggestions,
-                loading: false,
-              });
-            } else {
-              console.log('ℹ️ No hay artículos nuevos para agrupar');
+              setAutoGroupModal({ open: true, suggestions, loading: false });
             }
           } catch (error) {
-            console.error('[Auto-group] Error verificando:', error);
+            console.error("[Auto-group] Error verificando:", error);
           }
         }, 1500);
       }
     } catch (e) {
-      console.log('❌ ERROR en syncArticulos:', e);
       showNotice?.(`Error: ${e.message}`);
     } finally {
-      console.log('🟡 FINALLY - Reseteando estado a FALSE');
       setSyncingArt(false);
       syncingArtRef.current = false;
-      
-      // 🆕 Double-check después de 500ms
-      setTimeout(() => {
-        if (syncingArt) {
-          console.warn('⚠️ Estado aún en TRUE después de 500ms - FORZANDO RESET');
-          setSyncingArt(false);
-        }
-      }, 500);
     }
-    
-    console.log('🔵 handleSyncArticulos FIN');
   };
 
-  /* ============ Sincronizar VENTAS (últimos 7 días) ============ */
-  const handleSyncVentas7d = async () => {
-    console.log('🔵 handleSyncVentas7d INICIO', { syncingSales, refValue: syncingSalesRef.current });
-    
-    if (syncingSales || syncingSalesRef.current) {
-      console.log('🔴 YA ESTÁ SINCRONIZANDO - ABORTANDO');
-      return;
-    }
-    
-    setSyncingSales(true);
-    syncingSalesRef.current = true;
-    console.log('🟢 Estado cambiado a TRUE');
-    
-    try {
-      const result = await syncVentas(viewBiz.id, {
-        days: 7,
-        force: true, // ← Ignorar caché en sync manual
-        onProgress: (msg, type) => {
-          console.log('📨 Progress ventas:', msg, type);
-          if (type === 'success' || type === 'error') {
-            showNotice?.(msg);
-          }
-        },
-      });
-
-      console.log('✅ syncVentas completado:', result);
-      // El servicio ya emite evento 'ventas:updated' internamente
-    } catch (e) {
-      console.log('❌ ERROR en syncVentas:', e);
-      showNotice?.(`Error: ${e.message}`);
-    } finally {
-      console.log('🟡 FINALLY - Reseteando estado a FALSE');
-      setSyncingSales(false);
-      syncingSalesRef.current = false;
-      
-      // 🆕 Double-check después de 500ms
-      setTimeout(() => {
-        if (syncingSales) {
-          console.warn('⚠️ Estado aún en TRUE después de 500ms - FORZANDO RESET');
-          setSyncingSales(false);
-        }
-      }, 500);
-    }
-    
-    console.log('🔵 handleSyncVentas7d FIN');
-  };
-
-  /* ============ Sincronizar INSUMOS ============ */
   const handleSyncInsumos = async () => {
-    console.log('🔵 handleSyncInsumos INICIO', { syncingInsumos, refValue: syncingInsumosRef.current });
-    
-    if (syncingInsumos || syncingInsumosRef.current) {
-      console.log('🔴 YA ESTÁ SINCRONIZANDO - ABORTANDO');
-      return;
-    }
-    
+    if (syncingInsumos || syncingInsumosRef.current) return;
+
     setSyncingInsumos(true);
     syncingInsumosRef.current = true;
-    console.log('🟢 Estado cambiado a TRUE');
-    
+
     try {
       const result = await syncInsumos(viewBiz.id, {
-        force: true, // ← Ignorar caché en sync manual
+        force: true,
         onProgress: (msg, type) => {
-          console.log('📨 Progress insumos:', msg, type);
-          if (type === 'success' || type === 'error') {
-            showNotice?.(msg);
-          }
+          if (type === "success" || type === "error") showNotice?.(msg);
         },
       });
-
-      console.log('✅ syncInsumos completado:', result);
     } catch (e) {
-      console.log('❌ ERROR en syncInsumos:', e);
       showNotice?.(`Error: ${e.message}`);
     } finally {
-      console.log('🟡 FINALLY - Reseteando estado a FALSE');
       setSyncingInsumos(false);
       syncingInsumosRef.current = false;
-      
-      // 🆕 Double-check después de 500ms
-      setTimeout(() => {
-        if (syncingInsumos) {
-          console.warn('⚠️ Estado aún en TRUE después de 500ms - FORZANDO RESET');
-          setSyncingInsumos(false);
-        }
-      }, 500);
     }
-    
-    console.log('🔵 handleSyncInsumos FIN');
   };
 
-  /* ============ 🆕 HANDLERS DE AUTO-AGRUPACIÓN ============ */
-  
-  /**
-   * Aplica las selecciones del modal de auto-agrupación
-   */
+  // -------------------- AUTO GROUP HANDLERS --------------------
   const handleApplyAutoGrouping = async (selections) => {
-    setAutoGroupModal(prev => ({ ...prev, loading: true }));
-
+    setAutoGroupModal((prev) => ({ ...prev, loading: true }));
     try {
-      // Importar httpBiz dinámicamente si es necesario
-      const { httpBiz } = await import('@/servicios/apiBusinesses');
-      
+      const { httpBiz } = await import("@/servicios/apiBusinesses");
       const { success, failed } = await applyAutoGrouping(selections, httpBiz);
 
-      // Cerrar modal
       setAutoGroupModal({ open: false, suggestions: [], loading: false });
+      window.dispatchEvent(new Event("agrupaciones:updated"));
 
-      // Emitir evento para refrescar agrupaciones en otras pantallas
-      window.dispatchEvent(new Event('agrupaciones:updated'));
-
-      // Notificar resultado
       if (failed === 0) {
         showNotice?.(
-          `✅ ${success} artículo${success !== 1 ? 's' : ''} agrupado${success !== 1 ? 's' : ''} correctamente`
+          `✅ ${success} artículo${success !== 1 ? "s" : ""} agrupado${success !== 1 ? "s" : ""
+          } correctamente`
         );
       } else {
-        showNotice?.(
-          `✅ ${success} agrupados, ⚠️ ${failed} fallaron`
-        );
+        showNotice?.(`✅ ${success} agrupados, ⚠️ ${failed} fallaron`);
       }
     } catch (error) {
-      console.error('[Auto-group] Error aplicando agrupación:', error);
-      setAutoGroupModal(prev => ({ ...prev, loading: false }));
-      showNotice?.('❌ Error al agrupar artículos');
+      console.error("[Auto-group] Error aplicando agrupación:", error);
+      setAutoGroupModal((prev) => ({ ...prev, loading: false }));
+      showNotice?.("❌ Error al agrupar artículos");
     }
   };
 
-  /**
-   * Crea una nueva agrupación desde el modal
-   */
   const handleCreateGroup = async (nombre) => {
     try {
       const newGroupId = await createNewAgrupacion(viewBiz.id, nombre);
-      console.log('✅ Nueva agrupación creada:', newGroupId);
-      
-      // Emitir evento para refrescar agrupaciones
-      window.dispatchEvent(new Event('agrupaciones:updated'));
-      
+      window.dispatchEvent(new Event("agrupaciones:updated"));
       return newGroupId;
     } catch (error) {
-      console.error('[Auto-group] Error creando agrupación:', error);
-      showNotice?.('❌ Error al crear agrupación');
+      showNotice?.("❌ Error al crear agrupación");
       throw error;
     }
   };
 
   return (
     <>
-      {/* 🆕 Modal de auto-agrupación */}
       <AutoGroupModal
         open={autoGroupModal.open}
         suggestions={autoGroupModal.suggestions}
-        onClose={() => setAutoGroupModal({ open: false, suggestions: [], loading: false })}
+        onClose={() =>
+          setAutoGroupModal({ open: false, suggestions: [], loading: false })
+        }
         onApply={handleApplyAutoGrouping}
         onCreateGroup={handleCreateGroup}
         loading={autoGroupModal.loading}
@@ -417,7 +361,9 @@ export default function BusinessCard({
         <div className="bc-top">
           <div className="bc-left">
             <div className="bc-title-row">
-              <h4 className="bc-title" title={name}>{name}</h4>
+              <h4 className="bc-title" title={name}>
+                {name}
+              </h4>
               {isActive && (
                 <span className="bc-badge-active" title="Negocio activo">
                   <CheckCircleIcon fontSize="inherit" />
@@ -425,12 +371,24 @@ export default function BusinessCard({
                 </span>
               )}
             </div>
-            {address && <p className="bc-address" title={address}>{address}</p>}
+            {address && (
+              <p className="bc-address" title={address}>
+                {address}
+              </p>
+            )}
           </div>
 
-          <div className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"}`}>
+          <div
+            className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"
+              }`}
+          >
             {thumbnail ? (
-              <img className="bc-thumb" src={thumbnail} alt={name} loading="lazy" />
+              <img
+                className="bc-thumb"
+                src={thumbnail}
+                alt={name}
+                loading="lazy"
+              />
             ) : (
               <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
             )}
@@ -438,12 +396,15 @@ export default function BusinessCard({
         </div>
 
         <div className="bc-actions">
-          {/* Fila principal: activar / editar / eliminar */}
           <div className="bc-actions-main">
             {!isActive && (
               <button
                 className="bc-btn bc-btn-outline"
-                onClick={() => onSetActive?.(viewBiz.id)}
+                onClick={async () => {
+                  // Al activar negocio, limpiar subnegocio previo
+                  selectSubnegocio?.('');
+                  await onSetActive?.(viewBiz.id);
+                }}
               >
                 Activar
               </button>
@@ -461,36 +422,118 @@ export default function BusinessCard({
             >
               <DeleteIcon fontSize="small" />
             </button>
+
+            {/* 🆕 Subnegocios */}
+            <button
+              className="bc-btn bc-btn-outline"
+              onClick={toggleDivPanel}
+              title="Ver subnegocios"
+            >
+              {divLoading ? <CircularProgress size={16} /> : <AccountTreeIcon fontSize="small" />}
+              Subnegocios
+            </button>
           </div>
 
+          {divPanelOpen && (
+            <div className="bc-div-panel">
+              <div className="bc-div-head">
+                <strong>Subnegocios</strong>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="bc-btn bc-btn-outline"
+                    style={{ padding: "6px 10px" }}
+                    onClick={handleCreateDivision}
+                  >
+                    + Crear
+                  </button>
+                  <button
+                    className="bc-btn bc-btn-outline"
+                    style={{ padding: "6px 10px" }}
+                    onClick={() => setDivPanelOpen(false)}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+
+              {!isActive ? (
+                <div className="bc-div-empty">
+                  Activá este negocio para ver sus subnegocios.
+                </div>
+              ) : divLoading ? (
+                <div className="bc-div-loading">
+                  <CircularProgress size={18} /> Cargando…
+                </div>
+              ) : !hasDivisions ? (
+                <div className="bc-div-empty">
+                  Este negocio no tiene subnegocios.
+                  <br />
+                  <button
+                    className="bc-btn bc-btn-outline"
+                    style={{ marginTop: 8 }}
+                    onClick={handleCreateDivision}
+                  >
+                    Crear el primero
+                  </button>
+                </div>
+              ) : (
+                <div className="bc-div-list">
+                  {/* Opción "Todas / Principal" */}
+                  <button
+                    className={`bc-btn bc-btn-outline ${!activeSubnegocioId ? 'bc-btn-selected' : ''}`}
+                    onClick={() => handlePickSubnegocio('')}
+                    title="Ver todo (principal)"
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      (Todas / Principal)
+                      {!activeSubnegocioId && <CheckCircleIcon fontSize="small" style={{ opacity: .8 }} />}
+                    </span>
+                  </button>
+
+                  {divisions.map((d) => {
+                    const isSel = String(activeSubnegocioId || '') === String(d.id);
+                    return (
+                      <button
+                        key={d.id}
+                        className={`bc-btn bc-btn-outline ${isSel ? 'bc-btn-selected' : ''}`}
+                        onClick={() => handlePickSubnegocio(String(d.id))}
+                        style={{ justifyContent: "space-between" }}
+                        title={`Seleccionar ${d.name || d.nombre || `#${d.id}`}`}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {d.name || d.nombre || `Subnegocio #${d.id}`}
+                          {isSel && <CheckCircleIcon fontSize="small" style={{ opacity: .8 }} />}
+                        </span>
+                        <span style={{ opacity: 0.6, fontSize: 12 }}>#{d.id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="bc-actions-sync">
-            {/* Artículos */}
             <button
               className="bc-btn bc-btn-outline"
               onClick={handleSyncArticulos}
               disabled={syncingArt}
               title="Sincronizar catálogo / artículos"
             >
-              {syncingArt ? (
-                <CircularProgress size={16} />
-              ) : (
-                <AutorenewIcon fontSize="small" />
-              )}
+              {syncingArt ? <CircularProgress size={16} /> : <AutorenewIcon fontSize="small" />}
               {syncingArt ? " Artículos…" : " Artículos"}
             </button>
 
-            {/* Ventas: con modal para elegir modo */}
             {!maxiLoading && maxiConfigured && (
               <SyncVentasButton
                 businessId={viewBiz.id}
                 onSuccess={() => {
-                  showNotice?.('✅ Ventas sincronizadas correctamente');
-                  window.dispatchEvent(new Event('ventas:updated'));
+                  showNotice?.("✅ Ventas sincronizadas correctamente");
+                  window.dispatchEvent(new Event("ventas:updated"));
                 }}
               />
             )}
 
-            {/* Insumos */}
             {!maxiLoading && maxiConfigured && (
               <button
                 className="bc-btn bc-btn-outline"
@@ -498,16 +541,11 @@ export default function BusinessCard({
                 disabled={syncingInsumos}
                 title="Sincronizar insumos desde Maxi"
               >
-                {syncingInsumos ? (
-                  <CircularProgress size={16} />
-                ) : (
-                  <Inventory2Icon fontSize="small" />
-                )}
+                {syncingInsumos ? <CircularProgress size={16} /> : <Inventory2Icon fontSize="small" />}
                 {syncingInsumos ? " Insumos…" : " Insumos"}
               </button>
             )}
 
-            {/* Hint cuando Maxi no está configurado */}
             {!maxiLoading && !maxiConfigured && (
               <button
                 className="bc-btn bc-btn-outline"
@@ -543,10 +581,26 @@ export default function BusinessCard({
           .bc-btn-edit:hover{filter:brightness(.96);}
           .bc-btn-edit:disabled{opacity:.6;cursor:default;filter:none;}
           .bc-btn-outline{border:1px solid var(--color-border,#e5e7eb);background:var(--color-surface,#fff);color:var(--color-fg,#111827);}
+          .bc-btn-outline:hover{background:var(--color-surface-hover,#f9fafb);}
+          .bc-btn-selected{background:color-mix(in srgb,var(--color-primary,#0ea5e9) 12%,white);border-color:var(--color-primary,#0ea5e9);}
           .bc-icon{width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid var(--color-border,#e5e7eb);display:grid;place-items:center;}
           .bc-icon-danger{color:#e11d48;}
+
+          .bc-div-panel{margin-top:8px;border:1px solid var(--color-border,#e5e7eb);border-radius:12px;padding:10px;background:var(--color-surface,#fff);}
+          .bc-div-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+          .bc-div-loading{display:flex;align-items:center;gap:8px;opacity:.8;font-size:13px;padding:8px;}
+          .bc-div-empty{opacity:.8;font-size:13px;padding:8px;}
+          .bc-div-list{display:flex;flex-direction:column;gap:6px;}
+
           @media (max-width:720px){ .bc-thumb-wrap{ width:140px; } }
         `}</style>
+        
+        <DivisionCreateSimpleModal
+          open={showCreateDivModal}
+          businessId={viewBiz?.id}
+          onClose={() => setShowCreateDivModal(false)}
+          onSuccess={handleDivisionCreated}
+        />
       </div>
     </>
   );

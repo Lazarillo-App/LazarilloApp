@@ -6,6 +6,7 @@ import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
 import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
+import { useBusiness } from '../context/BusinessContext';
 import { BusinessesAPI, httpBiz } from "../servicios/apiBusinesses";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
@@ -70,7 +71,7 @@ export default function ArticulosMain(props) {
 
   const [syncVersion, setSyncVersion] = useState(0);
   const [categorias, setCategorias] = useState([]);
-  const [agrupaciones, setAgrupaciones] = useState(props.agrupaciones || []);
+  const [agrupaciones, setAgrupaciones] = useState([]);
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [discoOrigenById, setDiscoOrigenById] = useState({});
@@ -81,6 +82,8 @@ export default function ArticulosMain(props) {
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
+
+  const { activeDivisionId } = useBusiness();
 
   // 🔹 Inicializar rango con valores reales desde el inicio
   const [rango, setRango] = useState(() => {
@@ -99,10 +102,6 @@ export default function ArticulosMain(props) {
     // Fallback por si acaso
     return lastNDaysUntilYesterday(daysByMode(rango.mode || '7'));
   }, [rango]);
-
-  // 🔍 LOG temporal para debug
-  console.log('📅 [ArticulosMain] Rango actual:', rango);
-  console.log('📅 [ArticulosMain] Periodo calculado:', periodo);
 
   const periodoRef = useRef(periodo);
   useEffect(() => {
@@ -199,32 +198,43 @@ export default function ArticulosMain(props) {
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
 
   const refetchAgrupaciones = React.useCallback(async () => {
-    try {
-      const list = await obtenerAgrupaciones();
-      if (Array.isArray(list)) setAgrupaciones(list);
-      return list || [];
-    } catch {
+    if (!activeBizId) {
+      console.log('[ArticulosMain] ⚠️ No hay businessId activo');
       setAgrupaciones([]);
       return [];
     }
-  }, []);
 
-  // const didInitialSyncRef = useRef(false);
-  // useEffect(() => {
-  //   const bid = String(localStorage.getItem('activeBusinessId') || '');
-  //   if (!bid || didInitialSyncRef.current) return;
-  //   (async () => {
-  //     try {
-  //       await BusinessesAPI.syncSalesLast7d(bid);
-  //       try { window.dispatchEvent(new CustomEvent('ventas:updated')); } catch { }
-  //       clearVentasCache();
-  //       setSyncVersion(v => v + 1);
-  //       didInitialSyncRef.current = true;
-  //     } catch (e) {
-  //       console.error('Sync inicial (7d) falló:', e?.message || e);
-  //     }
-  //   })();
-  // }, []);
+    try {
+      console.log('[ArticulosMain] 🔄 Recargando agrupaciones:', {
+        businessId: activeBizId,
+        divisionId: activeDivisionId || 'principal', // 🆕 MODIFICADO
+      });
+
+      // 🆕 MODIFICADO: Pasar activeDivisionId como segundo parámetro
+      const list = await obtenerAgrupaciones(activeBizId, activeDivisionId);
+      console.log('AGRUPACIONES FROM API', list?.[0]);
+
+      console.log('[ArticulosMain] ✅ Agrupaciones cargadas:', list.length);
+
+      if (Array.isArray(list)) setAgrupaciones(list);
+      return list || [];
+    } catch (e) {
+      console.error('[ArticulosMain] ❌ Error cargando agrupaciones:', e);
+      setAgrupaciones([]);
+      return [];
+    }
+  }, [activeBizId, activeDivisionId]);
+
+  useEffect(() => {
+    if (!activeBizId) {
+      console.log('[ArticulosMain] ⚠️ Sin businessId, limpiando agrupaciones');
+      setAgrupaciones([]);
+      return;
+    }
+
+    console.log('[ArticulosMain] 🚀 Cargando agrupaciones inicial...');
+    refetchAgrupaciones();
+  }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -348,10 +358,6 @@ export default function ArticulosMain(props) {
       }
     })();
   }, [activeBizId]);
-
-  useEffect(() => {
-    setAgrupaciones(props.agrupaciones || []);
-  }, [props.agrupaciones]);
 
   const handleDownloadVentasCsv = async () => {
     try {
@@ -1420,6 +1426,7 @@ export default function ArticulosMain(props) {
             onMutateGroups={mutateGroups}
             onRefetch={refetchAgrupaciones}
             notify={showMiss}
+            businessId={activeBizId}
           />
         </div>
 
