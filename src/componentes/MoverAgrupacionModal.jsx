@@ -4,7 +4,7 @@
  * Usa: POST /api/businesses/:businessId/agrupaciones/:groupId/assign-division
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -77,13 +77,13 @@ export default function MoverAgrupacionModal({
     return Number.isFinite(groupId) ? groupId : null;
   };
 
-  // Filtrar divisiones disponibles (subnegocios)
-  const availableDivisions = (divisions || []).filter((d) => {
-    if (d?.is_main) return false;
-    // si por alguna razón la división tiene mismo id que el business, la ocultamos
-    if (String(d?.id) === String(effectiveBusinessId)) return false;
-    return true;
-  });
+  const availableDivisions = useMemo(() => {
+    return (divisions || []).filter((d) => {
+      if (d?.is_main) return false;
+      if (String(d?.id) === String(effectiveBusinessId)) return false;
+      return true;
+    });
+  }, [divisions, effectiveBusinessId]);
 
   const hasDivisions = availableDivisions.length > 0;
   const divLoading = !!divisionsLoading;
@@ -98,45 +98,51 @@ export default function MoverAgrupacionModal({
     const groupId = getGroupId();
     if (!groupId) return setError('No se pudo obtener el ID del grupo');
 
-    // destino
-    let divisionId = null;
+    // ✅ destino final: null => principal | number => subnegocio
+    const divisionId = mode === 'existente' ? Number(selectedDivisionId) : null;
+
     if (mode === 'existente') {
       if (!selectedDivisionId) return setError('Debes seleccionar un subnegocio');
-      divisionId = Number(selectedDivisionId);
       if (!Number.isFinite(divisionId)) return setError('Subnegocio inválido');
-    } else {
-      // principal
-      divisionId = null;
     }
 
     setLoading(true);
     setError(null);
-    setProgress(mode === 'principal' ? 'Devolviendo al negocio principal...' : 'Asignando a subnegocio...');
+    setProgress(divisionId == null ? 'Devolviendo al negocio principal...' : 'Asignando a subnegocio...');
 
     try {
       const result = await httpBiz(
         `/agrupaciones/${groupId}/assign-division`,
-        { method: 'POST', body: { divisionId } },
+        {
+          method: 'POST',
+          body: { divisionId },
+        },
         effectiveBusinessId
       );
 
-      if (!result?.ok) throw new Error(result?.error || 'Error asignando agrupación');
+      // si el backend responde {ok:false,...}
+      if (result?.ok === false) {
+        throw new Error(result?.error || 'Error al asignar división');
+      }
 
-      // refrescos/eventos
       window.dispatchEvent(new CustomEvent('agrupaciones:updated'));
       window.dispatchEvent(new CustomEvent('business:synced'));
+
+      const divisionName =
+        divisionId == null
+          ? 'Principal'
+          : (
+              availableDivisions.find((d) => Number(d.id) === Number(divisionId))?.name ||
+              availableDivisions.find((d) => Number(d.id) === Number(divisionId))?.nombre ||
+              `Subnegocio #${divisionId}`
+            );
 
       onSuccess?.({
         businessId: effectiveBusinessId,
         agrupacionId: groupId,
         agrupacionNombre: agrupacion?.nombre,
-        divisionId: divisionId,
-        divisionName:
-          divisionId == null
-            ? 'Principal'
-            : (availableDivisions.find((d) => Number(d.id) === divisionId)?.name ||
-              availableDivisions.find((d) => Number(d.id) === divisionId)?.nombre ||
-              `Subnegocio #${divisionId}`),
+        divisionId,
+        divisionName,
         articleCount: articulosCount,
         action: divisionId == null ? 'unassigned' : 'assigned',
       });
@@ -172,7 +178,11 @@ export default function MoverAgrupacionModal({
             <Typography variant="body2" sx={{ mt: 0.5 }}>
               <strong>Artículos:</strong> {articulosCount}
             </Typography>
-            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+            <Typography
+              variant="caption"
+              display="block"
+              sx={{ mt: 1, color: 'text.secondary' }}
+            >
               💡 Esto cambia “a qué subnegocio pertenece” la agrupación (se verá con el filtro de división).
             </Typography>
           </Alert>

@@ -90,6 +90,7 @@ function ArticuloAccionesMenu({
   baseById,
   onDiscontinuadoChange,
   treeMode = 'cat-first',
+  businessId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -120,6 +121,13 @@ function ArticuloAccionesMenu({
   const discontinuadosId = discontinuadosGroup ? Number(discontinuadosGroup.id) : null;
 
   const articuloIdNum = getNum(articulo?.id);
+
+  /* ==================== businessId efectivo ==================== */
+  const effectiveBusinessId =
+    businessId ??
+    localStorage.getItem('activeBusinessId') ??
+    localStorage.getItem('effectiveBusinessId') ??
+    null;
 
   // Nombre del artículo para usar en el menú / modal
   const articuloDisplayName = useMemo(() => {
@@ -238,7 +246,7 @@ function ArticuloAccionesMenu({
             await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, {
               method: 'DELETE',
             });
-          } catch {}
+          } catch { }
         }
         onMutateGroups?.({
           type: 'move',
@@ -484,6 +492,7 @@ function ArticuloAccionesMenu({
           .filter(Boolean)}
         treeMode={treeMode}
         groupName={articuloDisplayName}
+        businessId={effectiveBusinessId}
       />
     </>
   );

@@ -1,4 +1,3 @@
-/* eslint-disable no-useless-escape */
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -19,6 +18,8 @@ import { downloadVentasCSV } from '../servicios/apiVentas';
 import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import Buscador from '../componentes/Buscador';
+import instructionImage1 from '../assets/brand/maxirest-menu.jpeg';
+import instructionImage2 from '../assets/brand/maxirest-config.jpeg';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -40,6 +41,15 @@ const getArtId = (a) => {
   const id = Number(raw);
   return Number.isFinite(id) && id > 0 ? id : null;
 };
+
+const normalize = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const esTodoGroup = (g) => {
   const n = norm(g?.nombre);
@@ -77,13 +87,16 @@ export default function ArticulosMain(props) {
   const [discoOrigenById, setDiscoOrigenById] = useState({});
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [activeIds, setActiveIds] = useState(new Set());
-  const [activeBizId, setActiveBizId] = useState(String(activeBizIdProp || ''));
   const [reloadKey, setReloadKey] = useState(0);
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
 
   const { activeDivisionId } = useBusiness();
+  const [searchText, setSearchText] = useState('');
+
+  const { activeBusinessId } = useBusiness();
+  const activeBizId = String(activeBusinessId || '');
 
   // 🔹 Inicializar rango con valores reales desde el inicio
   const [rango, setRango] = useState(() => {
@@ -122,11 +135,6 @@ export default function ArticulosMain(props) {
     enabled: !!activeBizId && !!periodo.from && !!periodo.to,
     syncVersion,
   });
-
-  // cuando App cambie el negocio, lo reflejamos acá
-  useEffect(() => {
-    setActiveBizId(String(activeBizIdProp || ''));
-  }, [activeBizIdProp]);
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
     if (typeof window === 'undefined') return 'by-subrubro';
@@ -211,7 +219,7 @@ export default function ArticulosMain(props) {
       });
 
       // 🆕 MODIFICADO: Pasar activeDivisionId como segundo parámetro
-      const list = await obtenerAgrupaciones(activeBizId, activeDivisionId);
+      const list = await obtenerAgrupaciones(activeBizId, null);
       console.log('AGRUPACIONES FROM API', list?.[0]);
 
       console.log('[ArticulosMain] ✅ Agrupaciones cargadas:', list.length);
@@ -224,6 +232,13 @@ export default function ArticulosMain(props) {
       return [];
     }
   }, [activeBizId, activeDivisionId]);
+
+  useEffect(() => {
+    setAgrupacionSeleccionada(null);
+    setCategoriaSeleccionada(null);
+    setFiltroBusqueda('');
+    setSearchText('');
+  }, [activeBizId]);
 
   useEffect(() => {
     if (!activeBizId) {
@@ -826,8 +841,7 @@ export default function ArticulosMain(props) {
       // 🆕 LIMPIAR después de 2 segundos para evitar re-scrolls
       setTimeout(() => {
         setJumpToId(null);
-        setSelectedArticleId(null);
-      }, 2000);
+      }, 800);
     },
     [
       visibleIds,
@@ -851,29 +865,33 @@ export default function ArticulosMain(props) {
       const allGroups = agrupacionesRich || [];
 
       const findOriginGroup = () => {
-        return allGroups.find(g => {
-          if (!g || !g.id) return false;
-          if (esTodoGroup(g)) return false;
-          if (isDiscontinuadosGroup(g)) return false;
-          return (g.articulos || []).some(a => getArtId(a) === id);
-        }) || null;
+        return (
+          allGroups.find((g) => {
+            if (!g || !g.id) return false;
+            if (esTodoGroup(g)) return false;
+            if (isDiscontinuadosGroup(g)) return false;
+            return (g.articulos || []).some((a) => getArtId(a) === id);
+          }) || null
+        );
       };
 
+      // ===========================
+      // ✅ DISCONTINUAR
+      // ===========================
       if (isNowDiscontinuado) {
-        setDiscoOrigenById(prev => {
+        // ✅ IMPORTANTÍSIMO: primero bloquear autopiloto
+        try { markManualPick(); } catch { }
+
+        setDiscoOrigenById((prev) => {
           if (prev[id]) return prev;
 
           const origen = findOriginGroup();
           if (!origen) return prev;
 
-          return {
-            ...prev,
-            [id]: Number(origen.id),
-          };
+          return { ...prev, [id]: Number(origen.id) };
         });
 
         if (discGroup) {
-          try { markManualPick(); } catch { }
           setAgrupacionSeleccionada(discGroup);
           setCategoriaSeleccionada(null);
           setFiltroBusqueda('');
@@ -885,9 +903,15 @@ export default function ArticulosMain(props) {
         return;
       }
 
+      // ===========================
+      // ✅ REACTIVAR
+      // ===========================
+      // (Opcional pero recomendado: también bloquear autopiloto al volver)
+      try { markManualPick(); } catch { }
+
       let originId = null;
 
-      setDiscoOrigenById(prev => {
+      setDiscoOrigenById((prev) => {
         originId = prev[id] ?? null;
         if (!originId) return prev;
         const next = { ...prev };
@@ -918,8 +942,11 @@ export default function ArticulosMain(props) {
         }
 
         const originGroup =
-          allGroups.find(g => Number(g.id) === Number(originId)) ||
-          { id: originId, nombre: 'Agrupación', articulos: [] };
+          allGroups.find((g) => Number(g.id) === Number(originId)) || {
+            id: originId,
+            nombre: 'Agrupación',
+            articulos: [],
+          };
 
         setAgrupacionSeleccionada(originGroup);
         setCategoriaSeleccionada(null);
@@ -940,6 +967,7 @@ export default function ArticulosMain(props) {
       metaById,
       focusArticle,
       showMiss,
+      markManualPick,
       setAgrupacionSeleccionada,
       setCategoriaSeleccionada,
       setFiltroBusqueda,
@@ -1058,42 +1086,12 @@ export default function ArticulosMain(props) {
   }, [todoGroupId, agrupacionSeleccionada, categorias]);
 
   const opcionesBuscador = useMemo(() => {
-    // Siempre usar TODOS los artículos del árbol de categorías
-    const allIds = Array.from(nameById.keys());
-
-    // Opcional: agregar info de agrupación al label
-    const withGroupInfo = allIds.map((id) => {
-      const nombre = nameById.get(id) || `#${id}`;
-
-      // Buscar en qué agrupación está (opcional, para mostrar en el label)
-      const groupsSet = agIndex.byArticleId.get(id) || new Set();
-      let groupName = '';
-
-      if (groupsSet.size > 0) {
-        const firstGroupId = Array.from(groupsSet)[0];
-        const group = (agrupaciones || []).find(g => Number(g.id) === Number(firstGroupId));
-        if (group && !esTodoGroup(group)) {
-          groupName = ` [${group.nombre}]`;
-        }
-      }
-
-      return {
-        id,
-        label: `${nombre}${groupName} · ${id}`,
-        value: nombre,
-        groupName: groupName.replace(/[\[\]]/g, '').trim(),
-      };
-    });
-
-    withGroupInfo.sort((a, b) => {
-      const nameA = String(a.value || '').toLowerCase();
-      const nameB = String(b.value || '').toLowerCase();
-      return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
-    });
-
-    // Limitar a 500 opciones para performance (opcional)
-    return withGroupInfo.slice(0, 500);
-  }, [nameById, agIndex, agrupaciones]);
+    return Array.from(nameById.entries()).map(([id, nombre]) => ({
+      id,
+      nombre,
+      _search: normalize(nombre), // 👈 CLAVE
+    }));
+  }, [nameById]);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -1124,13 +1122,15 @@ export default function ArticulosMain(props) {
     const todoId = todoInfo?.todoGroupId;
     const todoEmpty = (todoInfo?.idsSinAgrupCount || 0) === 0;
 
-    const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
+    const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
     if (recentlyPicked) return;
 
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
-    const groupsReady =
-      Array.isArray(agrupacionesRich) && agrupacionesRich.length > 0;
+    const groupsReady = Array.isArray(agrupacionesRich) && agrupacionesRich.length > 0;
     if (!catsReady || !groupsReady) return;
+
+    // ✅ NO sacar al usuario de Discontinuados
+    if (agrupacionSeleccionada && isDiscontinuadosGroup(agrupacionSeleccionada)) return;
 
     const isTodoSelected =
       agrupacionSeleccionada &&
@@ -1218,7 +1218,7 @@ export default function ArticulosMain(props) {
     if (!ok) return;
 
     try {
-      await eliminarAgrupacion(group.id);
+      await eliminarAgrupacion(group);
       await refetchAgrupaciones();
       if (Number(agrupacionSeleccionada?.id) === Number(group.id)) {
         setAgrupacionSeleccionada(null);
@@ -1302,7 +1302,7 @@ export default function ArticulosMain(props) {
 
       } else {
         // Renombrar agrupación existente
-        await actualizarAgrupacion(group.id, { nombre });
+        await actualizarAgrupacion(activeBizId, group.id, { nombre });
         await refetchAgrupaciones();
         showMiss('Nombre de agrupación actualizado.');
       }
@@ -1310,7 +1310,7 @@ export default function ArticulosMain(props) {
       console.error('RENAME_GROUP_ERROR', e);
       window.alert('No se pudo renombrar la agrupación.');
     }
-  }, [todoInfo, todoIdsFromTree, refetchAgrupaciones, setAgrupacionSeleccionada, setCategoriaSeleccionada, setFiltroBusqueda, showMiss, markManualPick]);
+  }, [activeBizId, todoInfo, todoIdsFromTree, refetchAgrupaciones, setAgrupacionSeleccionada, setCategoriaSeleccionada, setFiltroBusqueda, showMiss, markManualPick]);
 
   const effectiveViewMode = useMemo(() => {
     const g = agrupacionSeleccionada;
@@ -1343,6 +1343,12 @@ export default function ArticulosMain(props) {
     return merged;
   }, [ventasMap, ventasOverrides]);
 
+  const bizCtx = useBusiness();
+  useEffect(() => {
+    console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
+    console.log('[ArticulosMain] state activeBizId:', activeBizId);
+  }, [bizCtx?.activeBusinessId, activeBizId]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
@@ -1369,17 +1375,19 @@ export default function ArticulosMain(props) {
           <button onClick={handleDownloadVentasCsv}>
             Descargar ventas (CSV)
           </button>
-          {/* 🔍 Buscador local de artículos */}
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
               placeholder="Buscar artículo…"
               opciones={opcionesBuscador}
+              value={searchText}
+              onChange={(v) => setSearchText(v || '')}
               clearOnPick={false}
               autoFocusAfterPick
               onPick={(opt) => {
-                if (!opt?.id) return;
-                const id = Number(opt.id);
+                const id = Number(opt?.id);
                 if (!Number.isFinite(id)) return;
+                setFiltroBusqueda('');
+                setSearchText('');
                 focusArticle(id);
               }}
             />
@@ -1434,7 +1442,7 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
-            filtroBusqueda={filtroEfectivo}
+            filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
@@ -1483,11 +1491,12 @@ export default function ArticulosMain(props) {
         onClose={() => setUploadModalOpen(false)}
         businessId={activeBizId}
         onSuccess={() => {
-          // Refrescar ventas
           clearVentasCache();
           setSyncVersion(v => v + 1);
           showMiss('✅ Ventas importadas correctamente');
         }}
+        instructionImage1={instructionImage1}
+        instructionImage2={instructionImage2}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-// src/componentes/AgrupacionCreateModal.jsx
+/* eslint-disable no-empty */
 import React, {
   useMemo,
   useState,
@@ -20,7 +20,6 @@ import {
   Alert,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { crearAgrupacion } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
 import { emitGroupsChanged } from "@/utils/groupsBus";
 
@@ -36,9 +35,8 @@ function VirtualList({
   const totalHeight = rows.length * rowHeight;
 
   const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
-  const visibleCount =
-    Math.ceil(height / rowHeight) + overscan * 2; // ✅ legible
-  const endIdx = Math.min(rows.length - 1, startIdx + visibleCount - 1); // ✅ FIX
+  const visibleCount = Math.ceil(height / rowHeight) + overscan * 2;
+  const endIdx = Math.min(rows.length - 1, startIdx + visibleCount - 1);
 
   const offsetY = startIdx * rowHeight;
   const visibleRows = rows.slice(startIdx, endIdx + 1);
@@ -53,7 +51,7 @@ function VirtualList({
           {visibleRows.map((row, i) =>
             renderRow({
               row,
-              index: startIdx + i, // ✅ índice correcto
+              index: startIdx + i,
               style: {
                 height: rowHeight,
                 display: "flex",
@@ -67,7 +65,7 @@ function VirtualList({
   );
 }
 
-/* ---------------- Helpers (FIX) ---------------- */
+/* ---------------- Helpers ---------------- */
 const safeId = (x) => {
   const raw =
     x?.article_id ??
@@ -83,20 +81,22 @@ const safeId = (x) => {
 };
 
 const normalize = (s) => String(s || "").trim().toLowerCase();
+
 function nextAvailableName(baseName, names) {
   const base = String(baseName || "").trim();
   if (!base) return base;
   const set = new Set((names || []).map(normalize));
   if (!set.has(normalize(base))) return base;
   let i = 2;
-  while (set.has(normalize(`${base} (${i})`))) i++; // ✅ FIX
+  while (set.has(normalize(`${base} (${i})`))) i++;
   return `${base} (${i})`;
 }
+
 const estadoCheckbox = (idsDisponibles, selectedIds) => {
   const total = idsDisponibles.length;
   if (total === 0) return { checked: false, indeterminate: false };
   let count = 0;
-  for (const id of idsDisponibles) if (selectedIds.has(id)) count++; // ✅ FIX
+  for (const id of idsDisponibles) if (selectedIds.has(id)) count++;
   return {
     checked: count === total,
     indeterminate: count > 0 && count < total,
@@ -109,23 +109,42 @@ export default function AgrupacionCreateModal({
   todosArticulos = [],
   loading = false,
   isArticuloBloqueado = () => false,
+
+  // create | append
   mode = "create",
   groupId,
   groupName,
+
   onCreated,
   onAppended,
   saveButtonLabel,
+
   preselect = null,
   existingNames = [],
-  treeMode = "cat-first",   // 👈 NUEVO: "cat-first" | "sr-first"
+  treeMode = "cat-first", // "cat-first" | "sr-first"
+
+  // ✅ NUEVO: para no depender de localStorage
+  businessId: businessIdProp,
 }) {
+  /* ---------- businessId efectivo ---------- */
+  const effectiveBusinessId = useMemo(() => {
+    const v =
+      businessIdProp ??
+      localStorage.getItem("activeBusinessId") ??
+      localStorage.getItem("effectiveBusinessId") ??
+      null;
+
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [businessIdProp]);
 
   /* ---------- state ---------- */
   const [nombreRubro, setNombreRubro] = useState("");
-  const [expandedCategoria, setExpandedCategoria] = useState(null); // TOP: categoría (subrubro Maxi)
-  const [expandedRubro, setExpandedRubro] = useState({}); // CHILD: rubro (rubro Maxi)
+  const [expandedCategoria, setExpandedCategoria] = useState(null);
+  const [expandedRubro, setExpandedRubro] = useState({});
   const [query, setQuery] = useState("");
   const queryDeferred = useDeferredValue(query);
+
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
   const [snackbarTipo, setSnackbarTipo] = useState("success");
@@ -138,6 +157,7 @@ export default function AgrupacionCreateModal({
   }, []);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+
   const preselectedIds = useMemo(
     () =>
       new Set((preselect?.articleIds || []).map(Number).filter(Number.isFinite)),
@@ -166,7 +186,7 @@ export default function AgrupacionCreateModal({
 
   // Index por id para armar payload
   const articleById = useMemo(() => {
-    if (!open) return new Map(); // 👈 si el modal está cerrado, no hago nada
+    if (!open) return new Map();
     const m = new Map();
     const fuente = Array.isArray(todosArticulos)
       ? todosArticulos
@@ -182,10 +202,7 @@ export default function AgrupacionCreateModal({
     return m;
   }, [todosArticulos, open]);
 
-  /* ========= Re-agrupado UI en dos modos =========
-     treeMode = "cat-first" → Categoría -> Rubro -> Artículos   (como ahora)
-     treeMode = "sr-first"  → Subrubro -> Categoría -> Artículos
-  ================================================ */
+  /* ========= Re-agrupado UI en dos modos ========= */
   const uiCategoriasRaw = useMemo(() => {
     if (!open) return [];
 
@@ -193,45 +210,37 @@ export default function AgrupacionCreateModal({
       ? todosArticulos
       : todosArticulos?.tree || [];
 
-    // 🟣 MODO 1: subrubro → categorías (rubro Maxi como padre)
+    // 🟣 sr-first: Subrubro → Rubro → Artículos
     if (treeMode === "sr-first") {
       const out = [];
-
       for (const sub of fuente || []) {
-        const subName = String(sub?.subrubro || "Sin subrubro"); // TOP
+        const subName = String(sub?.subrubro || "Sin subrubro");
         const rubros = [];
-
         for (const cat of sub?.categorias || []) {
-          const rubroName = String(cat?.categoria || "Sin categoría"); // hijo
+          const rubroName = String(cat?.categoria || "Sin categoría");
           rubros.push({
             rubro: rubroName,
             articulos: cat?.articulos || [],
           });
         }
-
         rubros.sort((a, b) =>
           String(a.rubro).localeCompare(String(b.rubro), "es", {
             sensitivity: "base",
             numeric: true,
           })
         );
-
-        // ⚠️ Ojo: usamos "categoria" como key genérica del nivel top,
-        // aunque en este modo realmente es el SUBRUBRO.
         out.push({ categoria: subName, rubros });
       }
-
       out.sort((a, b) =>
         String(a.categoria).localeCompare(String(b.categoria), "es", {
           sensitivity: "base",
           numeric: true,
         })
       );
-
       return out;
     }
 
-    // 🟢 MODO 2 (por defecto): categoría → rubro → artículos (lo que ya tenías)
+    // 🟢 cat-first: Categoría → Rubro → Artículos
     const byCat = new Map();
     for (const sub of fuente || []) {
       const rubroFromSub = String(sub?.subrubro || "Sin subrubro");
@@ -272,10 +281,10 @@ export default function AgrupacionCreateModal({
 
   // Filtro por búsqueda
   const uiCategorias = useMemo(() => {
-    if (!open) return []; // 👈 no procesar si está cerrado
-
+    if (!open) return [];
     const q = String(queryDeferred || "").trim().toLowerCase();
     if (!q) return uiCategoriasRaw;
+
     const res = [];
     for (const cat of uiCategoriasRaw) {
       const rubrosFiltrados = [];
@@ -294,6 +303,7 @@ export default function AgrupacionCreateModal({
   // Preselección
   useEffect(() => {
     if (!open) return;
+
     if (preselectedIds.size > 0) {
       const next = new Set();
       let sugCategoria = "";
@@ -309,8 +319,9 @@ export default function AgrupacionCreateModal({
         }
       }
       setSelectedIds(next);
-      if (mode === "create" && !nombreRubro.trim())
-        setNombreRubro(groupName || sugCategoria || nombreRubro);
+      if (mode === "create" && !nombreRubro.trim()) {
+        setNombreRubro(groupName || sugCategoria || "");
+      }
       setExpandedCategoria(sugCategoria || null);
     } else {
       setSelectedIds(new Set());
@@ -345,138 +356,132 @@ export default function AgrupacionCreateModal({
     if (saving) return;
     setSaving(true);
 
-    const selectedAsArray = Array.from(selectedIds).filter(Number.isFinite);
-
-    if (mode === "create") {
-      if (!nombreRubro.trim() || selectedAsArray.length === 0) {
-        showSnack("Debes ingresar un nombre y seleccionar artículos", "error");
-        setSaving(false);
+    try {
+      if (!effectiveBusinessId) {
+        showSnack("No hay business activo (businessId). Volvé a entrar al negocio.", "error");
         return;
       }
 
-      const nombreBase = nombreRubro.trim();
-      let finalName = nextAvailableName(nombreBase, existingNames);
-      if (finalName !== nombreBase)
-        showSnack(`El nombre ya existía. Usando “${finalName}”.`, "info");
+      const selectedAsArray = Array.from(selectedIds).filter(Number.isFinite);
 
-      const payload = {
-        nombre: finalName,
-        articulos: selectedAsArray.map((id) => {
+      // ===== CREATE =====
+      if (mode === "create") {
+        if (!nombreRubro.trim() || selectedAsArray.length === 0) {
+          showSnack("Debes ingresar un nombre y seleccionar artículos", "error");
+          return;
+        }
+
+        const nombreBase = nombreRubro.trim();
+        let finalName = nextAvailableName(nombreBase, existingNames);
+        if (finalName !== nombreBase) {
+          showSnack(`El nombre ya existía. Usando “${finalName}”.`, "info");
+        }
+
+        // armamos detalle para callbacks / mutaciones
+        const articulosDetallados = selectedAsArray.map((id) => {
           const a = articleById.get(id) || {};
           return {
             id,
             nombre: a?.nombre || "",
-            categoria: a?.categoria || "Sin categoría", // (subrubro Maxi)
-            subrubro: a?.subrubro || "Sin subrubro", // (rubro Maxi)
+            categoria: a?.categoria || "Sin categoría",
+            subrubro: a?.subrubro || "Sin subrubro",
             precio: a?.precio ?? 0,
           };
-        }),
-      };
+        });
 
-      try {
-        let nuevo;
-        try {
-          nuevo = await crearAgrupacion(payload);
-        } catch (err) {
-          const msg = String(err?.message || "").toLowerCase();
-          if (err?.status === 409 || msg.includes("existe")) {
-            const retryName = nextAvailableName(payload.nombre, existingNames);
-            if (retryName !== payload.nombre) {
-              payload.nombre = retryName;
-              showSnack(
-                `Otro lo registró antes. Guardé como “${retryName}”.`,
-                "info"
-              );
-              nuevo = await crearAgrupacion(payload);
-            } else {
-              throw err;
-            }
-          } else {
-            throw err;
-          }
+        // ✅ si venimos desde una agrupación: crear VACÍA + mover con move-items
+        const fromId = Number(preselect?.fromGroupId);
+        const haveFrom = Number.isFinite(fromId) && fromId > 0;
+
+        // 1) crear agrupación (solo nombre)
+        const nuevo = await httpBiz(
+          `/agrupaciones`,
+          { method: "POST", body: { nombre: finalName } },
+          effectiveBusinessId
+        );
+
+        const newGroupId = Number(nuevo?.id ?? nuevo?.groupId ?? nuevo?.agrupacionId);
+        if (!Number.isFinite(newGroupId) || newGroupId <= 0) {
+          throw new Error("No se pudo obtener id de la agrupación creada");
         }
 
-        const newGroupId = Number(nuevo?.id);
+        // 2) mover o agregar ids
+        const ids = selectedAsArray;
 
-        const fromId = Number(preselect?.fromGroupId);
-        if (Number.isFinite(fromId) && fromId > 0) {
-          const ids = payload.articulos
-            .map((a) => a.id)
-            .filter(Number.isFinite);
-          await Promise.all(
-            ids.map((id) =>
-              httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, {
-                method: "DELETE",
-              }).catch(() => { })
-            )
+        if (haveFrom) {
+          // 🔥 esto evita duplicados: saca del fromId y mete en newGroupId
+          await httpBiz(
+            `/agrupaciones/${fromId}/move-items`,
+            { method: "POST", body: { toId: newGroupId, ids } },
+            effectiveBusinessId
+          );
+        } else {
+          // desde TODO: sólo agregamos al nuevo grupo (TODO no se “vacía”)
+          await httpBiz(
+            `/agrupaciones/${newGroupId}/articulos`,
+            { method: "PUT", body: { ids } },
+            effectiveBusinessId
           );
         }
 
-        const nombreCreado = payload.nombre;
+        // UI callbacks
         setNombreRubro("");
         setSelectedIds(new Set());
-        onCreated?.(nombreCreado, newGroupId, payload.articulos);
-        showSnack(`Agrupación "${nombreCreado}" creada correctamente`);
-        emitGroupsChanged("create", {
-          groupId: newGroupId,
-          count: payload.articulos.length,
-        });
+        onCreated?.(finalName, newGroupId, articulosDetallados);
+
+        showSnack(`Agrupación "${finalName}" creada correctamente`);
+        emitGroupsChanged("create", { groupId: newGroupId, count: ids.length });
+
         setTimeout(() => {
           setSnackbarOpen(false);
           onClose?.();
         }, 600);
-      } catch (err) {
-        console.error("Error al crear agrupación:", err);
-        showSnack("No se pudo crear la agrupación", "error");
-      } finally {
-        setSaving(false);
+        return;
       }
-      return;
-    }
 
-    // append a grupo existente (✅ sin duplicados y pasando artículos)
-    const articulos = selectedAsArray
-      .map((id) => {
-        const a = articleById.get(id);
-        return {
-          id,
-          nombre: a?.nombre || "",
-          categoria: a?.categoria || "Sin categoría",
-          subrubro: a?.subrubro || "Sin subrubro",
-          precio: a?.precio ?? 0,
-        };
-      })
-      .filter((x) => Number.isFinite(x.id));
+      // ===== APPEND =====
+      const articulos = selectedAsArray
+        .map((id) => {
+          const a = articleById.get(id);
+          return {
+            id,
+            nombre: a?.nombre || "",
+            categoria: a?.categoria || "Sin categoría",
+            subrubro: a?.subrubro || "Sin subrubro",
+            precio: a?.precio ?? 0,
+          };
+        })
+        .filter((x) => Number.isFinite(x.id));
 
-    if (!Number.isFinite(Number(groupId)) || articulos.length === 0) {
-      showSnack("Seleccioná al menos un artículo", "error");
-      setSaving(false);
-      return;
-    }
+      if (!Number.isFinite(Number(groupId)) || articulos.length === 0) {
+        showSnack("Seleccioná al menos un artículo", "error");
+        return;
+      }
 
-    try {
-      await httpBiz(`/agrupaciones/${groupId}/articulos`, {
-        method: "PUT",
-        body: { articulos },
-      });
+      await httpBiz(
+        `/agrupaciones/${groupId}/articulos`,
+        { method: "PUT", body: { articulos } },
+        effectiveBusinessId
+      );
+
       const n = articulos.length;
       setSelectedIds(new Set());
-      onAppended?.(groupId, n, articulos); // ✅ pasamos artículos para mutación local
-      showSnack(
-        `Se agregaron ${n} artículo${n === 1 ? "" : "s"} a "${groupName}"`
-      );
+      onAppended?.(groupId, n, articulos);
+
+      showSnack(`Se agregaron ${n} artículo${n === 1 ? "" : "s"} a "${groupName}"`);
       emitGroupsChanged("append", {
         groupId,
         count: n,
         ids: articulos.map((a) => Number(a.id)).filter(Boolean),
       });
+
       setTimeout(() => {
         setSnackbarOpen(false);
         onClose?.();
       }, 600);
     } catch (err) {
-      console.error("Error al agregar artículos:", err);
-      showSnack("Error al agregar artículos", "error");
+      console.error("AgrupacionCreateModal guardar ERROR:", err);
+      showSnack("No se pudo guardar la agrupación", "error");
     } finally {
       setSaving(false);
     }
@@ -484,7 +489,6 @@ export default function AgrupacionCreateModal({
 
   const isCreate = mode === "create";
 
-  /* ---------- UI con footer fijo ---------- */
   return (
     <>
       <Snackbar
@@ -541,11 +545,7 @@ export default function AgrupacionCreateModal({
               fullWidth
             />
 
-            <Typography
-              variant="subtitle1"
-              fontWeight="bold"
-              sx={{ mt: 2 }}
-            >
+            <Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 2 }}>
               Seleccioná Rubros / Subrubros / Artículos
             </Typography>
           </Box>
@@ -556,8 +556,8 @@ export default function AgrupacionCreateModal({
               <Typography>Cargando artículos...</Typography>
             ) : (
               (uiCategorias || []).map((catItem) => {
-                const catName = catItem?.categoria ?? "Sin categoría"; // TOP: categoría (subrubro Maxi)
-                const rubrosSafe = (catItem?.rubros || []).filter(Boolean); // CHILD: rubro (rubro Maxi)
+                const catName = catItem?.categoria ?? "Sin categoría";
+                const rubrosSafe = (catItem?.rubros || []).filter(Boolean);
 
                 const idsCategoria = [];
                 let categoriaTieneAlgunoSeleccionable = false;
@@ -571,11 +571,10 @@ export default function AgrupacionCreateModal({
                     }
                   }
                 }
+
                 const catAllBlocked = !categoriaTieneAlgunoSeleccionable;
-                const {
-                  checked: catCheckedTop,
-                  indeterminate: catIndTop,
-                } = estadoCheckbox(idsCategoria, selectedIds);
+                const { checked: catCheckedTop, indeterminate: catIndTop } =
+                  estadoCheckbox(idsCategoria, selectedIds);
                 const isCatExpanded = expandedCategoria === catName;
 
                 return (
@@ -583,16 +582,12 @@ export default function AgrupacionCreateModal({
                     key={catName}
                     expanded={isCatExpanded && !catAllBlocked}
                     onChange={(_, exp) =>
-                      !catAllBlocked &&
-                      setExpandedCategoria(exp ? catName : null)
+                      !catAllBlocked && setExpandedCategoria(exp ? catName : null)
                     }
                     sx={catAllBlocked ? disabledBlockSx : undefined}
-                    TransitionProps={{ unmountOnExit: true }} // 👈 desmonta contenido cuando se cierra
+                    TransitionProps={{ unmountOnExit: true }}
                   >
-                    <AccordionSummary
-                      component="div"
-                      expandIcon={<ExpandMoreIcon />}
-                    >
+                    <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                       <Checkbox
                         checked={catCheckedTop}
                         indeterminate={catIndTop}
@@ -601,22 +596,18 @@ export default function AgrupacionCreateModal({
                         disabled={catAllBlocked}
                       />
                       <Typography fontWeight="bold">
-                        {catName}{" "}
-                        {catAllBlocked
-                          ? "· (completo en otra agrupación)"
-                          : ""}
+                        {catName} {catAllBlocked ? "· (completo en otra agrupación)" : ""}
                       </Typography>
                     </AccordionSummary>
 
                     <AccordionDetails>
                       {rubrosSafe.map((rubro) => {
                         const rubroName = rubro?.rubro ?? "Sin subrubro";
-                        const artsSafe = (rubro?.articulos || []).filter(
-                          Boolean
-                        );
+                        const artsSafe = (rubro?.articulos || []).filter(Boolean);
 
                         const idsRubro = [];
                         const rows = [];
+
                         for (const a of artsSafe) {
                           const id = safeId(a);
                           if (id == null) continue;
@@ -624,13 +615,11 @@ export default function AgrupacionCreateModal({
                           rows.push({ id, a, bloqueado });
                           if (!bloqueado) idsRubro.push(id);
                         }
+
                         const rubroAllBlocked = idsRubro.length === 0;
-                        const {
-                          checked: rubroChecked,
-                          indeterminate: rubroInd,
-                        } = estadoCheckbox(idsRubro, selectedIds);
-                        const rubroIsExpanded =
-                          expandedRubro[catName] === rubroName;
+                        const { checked: rubroChecked, indeterminate: rubroInd } =
+                          estadoCheckbox(idsRubro, selectedIds);
+                        const rubroIsExpanded = expandedRubro[catName] === rubroName;
 
                         return (
                           <Accordion
@@ -647,12 +636,9 @@ export default function AgrupacionCreateModal({
                               mb: 1,
                               ...(rubroAllBlocked ? disabledBlockSx : {}),
                             }}
-                            TransitionProps={{ unmountOnExit: true }} // 👈 desmonta la VirtualList cerrada
+                            TransitionProps={{ unmountOnExit: true }}
                           >
-                            <AccordionSummary
-                              component="div"
-                              expandIcon={<ExpandMoreIcon />}
-                            >
+                            <AccordionSummary component="div" expandIcon={<ExpandMoreIcon />}>
                               <Checkbox
                                 checked={rubroChecked}
                                 indeterminate={rubroInd}
@@ -662,9 +648,7 @@ export default function AgrupacionCreateModal({
                               />
                               <Typography>
                                 {rubroName}{" "}
-                                {rubroAllBlocked
-                                  ? "· (completo en otra agrupación)"
-                                  : ""}
+                                {rubroAllBlocked ? "· (completo en otra agrupación)" : ""}
                               </Typography>
                             </AccordionSummary>
 
@@ -672,10 +656,7 @@ export default function AgrupacionCreateModal({
                               <VirtualList
                                 rows={rows}
                                 rowHeight={36}
-                                height={Math.min(
-                                  320,
-                                  Math.max(160, rows.length * 36)
-                                )}
+                                height={Math.min(320, Math.max(160, rows.length * 36))}
                                 overscan={6}
                                 renderRow={({ row, style }) => {
                                   const { id, a, bloqueado } = row;
@@ -688,9 +669,7 @@ export default function AgrupacionCreateModal({
                                         pl: 4,
                                         pr: 1,
                                         opacity: bloqueado ? 0.5 : 1,
-                                        pointerEvents: bloqueado
-                                          ? "none"
-                                          : "auto",
+                                        pointerEvents: bloqueado ? "none" : "auto",
                                         display: "flex",
                                         alignItems: "center",
                                       }}
@@ -701,12 +680,8 @@ export default function AgrupacionCreateModal({
                                         sx={{ mr: 1 }}
                                         disabled={bloqueado}
                                       />
-                                      <Typography
-                                        noWrap
-                                        title={a?.nombre || ""}
-                                      >
-                                        {a?.nombre ?? "—"}{" "}
-                                        {bloqueado && "(ya asignado)"}
+                                      <Typography noWrap title={a?.nombre || ""}>
+                                        {a?.nombre ?? "—"} {bloqueado && "(ya asignado)"}
                                       </Typography>
                                     </Box>
                                   );
@@ -751,9 +726,7 @@ export default function AgrupacionCreateModal({
               {saving
                 ? "Guardando…"
                 : saveButtonLabel ??
-                (mode === "create"
-                  ? "Guardar Agrupación"
-                  : "Agregar a la agrupación")}
+                  (mode === "create" ? "Guardar Agrupación" : "Agregar a la agrupación")}
             </Button>
           </Box>
         </Box>

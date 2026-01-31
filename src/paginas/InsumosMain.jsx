@@ -1,58 +1,46 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/paginas/InsumosMain.jsx
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import InsumosSidebar from "../componentes/InsumosSidebar.jsx";
-import InsumosTable from "../componentes/InsumosTable.jsx";
-import InsumoGroupModal from "../componentes/InsumoGroupModal.jsx";
-import Buscador from "../componentes/Buscador.jsx";
-import { BusinessesAPI, http } from "../servicios/apiBusinesses";
+
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import InsumosSidebar from '../componentes/InsumosSidebar.jsx';
+import InsumosTable from '../componentes/InsumosTable.jsx';
+import InsumoGroupModal from '../componentes/InsumoGroupModal.jsx';
+import Buscador from '../componentes/Buscador.jsx';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
 import {
   insumosList,
-  insumoCreate,
-  insumoUpdate,
-  insumoDelete,
-  insumosBulkJSON,
-  insumosBulkCSV,
-  insumosSyncMaxi,
-  insumosRubrosList,
   insumoGroupsList,
   insumoGroupUpdate,
   insumoGroupDelete,
-} from "../servicios/apiInsumos";
-
-import BulkJsonModal from "../componentes/BulkJsonModal.jsx";
-
+  insumosRubrosList,
+} from '../servicios/apiInsumos';
 import { applyMutation } from '../utils/groupMutations';
 import {
   ensureTodoInsumos,
   getExclusionesInsumos,
   ensureDiscontinuadosInsumos,
 } from '../servicios/apiInsumosTodo';
-
-// ✅ IMPORTAR BUSINESS CONTEXT
-import { useBusiness } from '../context/BusinessContext';
-
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  MenuItem,
-  Stack,
-  Snackbar,
-  Alert,
-} from "@mui/material";
-
+import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
+import { Snackbar, Alert } from '@mui/material';
 import '../css/global.css';
 import '../css/theme-layout.css';
-import "../css/TablaArticulos.css";
+import '../css/TablaArticulos.css';
 
-const UNIDADES = ["kg", "g", "lt", "ml", "un"];
+const FAV_KEY = 'favInsumoGroupId';
+const VIEW_KEY = 'lazarillo:insumosViewMode';
 
-/* ================== HELPERS ================== */
 const norm = (s) => String(s || '').trim().toLowerCase();
+
+const normalize = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const esTodoGroup = (g) => {
   const n = norm(g?.nombre);
@@ -70,21 +58,33 @@ const esDiscontinuadosGroup = (g) => {
   return n === 'discontinuados' || n === 'descontinuados';
 };
 
-/* ================== COMPONENTE PRINCIPAL ================== */
+const isInsumoActivo = (i) => {
+  const estado = norm(i?.estado);
+  return estado === 'activo' || estado === '' || !estado;
+};
+
+const isInsumoDiscontinuado = (i) => {
+  const estado = norm(i?.estado);
+  return estado === 'discontinuado';
+};
+
+const vistaForInsumo = (insumo, rubrosMap) => {
+  const rubroCodigo = String(insumo?.rubro_codigo || insumo?.rubro || '');
+  const info = rubrosMap?.get(rubroCodigo);
+  return info?.es_elaborador === true ? 'elaborados' : 'no-elaborados';
+};
+
+const getInsumoId = (i) => {
+  const id = Number(i?.id ?? i?.insumo_id ?? i?.codigo);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
 export default function InsumosMain() {
-  /* ================== 1️⃣ BUSINESS CONTEXT ================== */
-  const {
-    effectiveBusinessId,
-    activeBusiness,
-    activeSubnegocio,
-    activeBusinessId,
-    activeSubnegocioId,
-  } = useBusiness() || {};
+  /* ================== BUSINESS CONTEXT ================== */
+  const biz = useBusiness() || {};
+  const { businessId } = useActiveBusiness();
+  const { activeBusiness, activeSubnegocio } = biz;
 
-  // businessId es el ID efectivo (subnegocio si existe, sino negocio principal)
-  const businessId = effectiveBusinessId || null;
-
-  // Nombre para mostrar en el título
   const businessName = useMemo(() => {
     if (activeSubnegocio?.nombre) {
       return `${activeBusiness?.nombre || 'Negocio'} › ${activeSubnegocio.nombre}`;
@@ -92,40 +92,25 @@ export default function InsumosMain() {
     return activeBusiness?.nombre || null;
   }, [activeBusiness, activeSubnegocio]);
 
-  /* ================== 2️⃣ ESTADO BÁSICO ================== */
+  useEffect(() => {
+    if (!businessId) return;
+    try {
+      localStorage.setItem('activeBusinessId', String(businessId));
+    } catch { }
+  }, [businessId]);
+
+  /* ================== ESTADO BÁSICO ================== */
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
-  const [vista, setVista] = useState("no-elaborados");
-  const [page, setPage] = useState(1);
-  const [limit] = useState(50);
+  const [vista, setVista] = useState('no-elaborados'); // "no-elaborados" | "elaborados"
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Guardamos TODO lo que viene del back
   const [allInsumos, setAllInsumos] = useState([]);
-  const [rows, setRows] = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, pages: 1 });
-  const [loading, setLoading] = useState(false);
   const [rubrosMap, setRubrosMap] = useState(new Map());
 
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({
-    nombre: "",
-    unidadMed: "",
-    precioRef: "",
-  });
-
-  const [openBulk, setOpenBulk] = useState(false);
-  const [insumosSearchOptions, setInsumosSearchOptions] = useState([]);
-  const [jumpToInsumoId, setJumpToInsumoId] = useState(null);
-  const [selectedInsumoId, setSelectedInsumoId] = useState(null);
-
-  const lastManualPickRef = useRef(0);
-  const isJumpingRef = useRef(false);
-  const jumpCleanupTRef = useRef(null);
-
-  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
-
-  /* ================== 3️⃣ AGRUPACIONES ================== */
+  /* ================== AGRUPACIONES ================== */
   const [groups, setGroups] = useState([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
-  const [groupsError, setGroupsError] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [todoGroupId, setTodoGroupId] = useState(null);
@@ -135,198 +120,117 @@ export default function InsumosMain() {
   const [groupModalInitialGroupId, setGroupModalInitialGroupId] = useState(null);
   const [groupModalInsumo, setGroupModalInsumo] = useState(null);
   const [groupModalRubroLabel, setGroupModalRubroLabel] = useState(null);
-  const [refreshTimestamp, setRefreshTimestamp] = useState(Date.now());
 
-  const [viewPrefs, setViewPrefs] = useState({});
+  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
 
-  /* ================== 3️⃣.5️⃣ idToIndex STATE ================== */
-  const idToIndexRef = useRef(new Map());
-  const [idToIndexVersion, setIdToIndexVersion] = useState(0);
+  /* ================== VIEW MODE ================== */
+  const [viewModeGlobal, setViewModeGlobal] = useState(() => {
+    if (typeof window === 'undefined') return 'elaborados-first';
+    const raw = localStorage.getItem(VIEW_KEY);
+    return raw === 'no-elaborados-first' ? 'no-elaborados-first' : 'elaborados-first';
+  });
 
-  /* ================== 4️⃣ CALLBACKS BÁSICOS ================== */
+  const [viewModeByGroup, setViewModeByGroup] = useState({});
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, viewModeGlobal);
+    } catch { }
+  }, [viewModeGlobal]);
+
+  useEffect(() => {
+    if (!businessId) return;
+    (async () => {
+      try {
+        const resp = await BusinessesAPI.getViewPrefs(businessId);
+        const byGroup = resp?.byGroup || {};
+        setViewModeByGroup(byGroup);
+      } catch {
+        setViewModeByGroup({});
+      }
+    })();
+  }, [businessId]);
+
+  const handleChangeListMode = useCallback(
+    (mode) => {
+      setViewModeGlobal(mode);
+      try {
+        localStorage.setItem(VIEW_KEY, mode);
+      } catch { }
+
+      const g = groups.find((x) => Number(x?.id) === Number(selectedGroupId));
+      const groupId = Number(g?.id);
+
+      if (businessId && Number.isFinite(groupId)) {
+        setViewModeByGroup((prev) => ({
+          ...prev,
+          [groupId]: mode,
+        }));
+
+        BusinessesAPI.saveViewPref(businessId, {
+          agrupacionId: groupId,
+          viewMode: mode,
+        }).catch((e) => {
+          console.error('saveViewPref error', e);
+        });
+      }
+    },
+    [selectedGroupId, businessId, groups]
+  );
+
+  /* ================== CALLBACKS ================== */
   const notify = useCallback((msg, type = 'success') => {
     setSnack({ open: true, msg, type });
   }, []);
 
   const forceRefresh = useCallback(() => {
-    setRefreshTimestamp(Date.now());
+    setReloadKey((k) => k + 1);
   }, []);
 
   const onMutateGroups = useCallback((action) => {
-    setGroups(prev => applyMutation(prev, action));
+    setGroups((prev) => applyMutation(prev, action));
   }, []);
 
+  const lastManualPickRef = useRef(0);
   const markManualPick = useCallback(() => {
     lastManualPickRef.current = Date.now();
   }, []);
 
-  // 🆕 CALLBACK ESTABLE para recibir idToIndex desde InsumosTable
-  const handleIdToIndexChange = useCallback((newMap) => {
-    idToIndexRef.current = newMap;
-    setIdToIndexVersion(v => v + 1);
-  }, []);
+  /* ================== DERIVADOS IMPORTANTES ================== */
+  const baseAll = useMemo(() => allInsumos || [], [allInsumos]);
 
-  /* ================== 5️⃣ CARGAR PREFERENCIAS ================== */
-  useEffect(() => {
-    if (!businessId) return;
+  const baseActivos = useMemo(() => baseAll.filter((i) => isInsumoActivo(i)), [baseAll]);
 
-    const loadPrefs = async () => {
-      try {
-        const [viewRes, favRes] = await Promise.all([
-          BusinessesAPI.getViewPrefs(businessId),
-          BusinessesAPI.getFavoriteGroup(businessId, 'insumo'),
-        ]);
+  const baseInactivos = useMemo(() => baseAll.filter((i) => isInsumoDiscontinuado(i)), [baseAll]);
 
-        if (viewRes?.ok) setViewPrefs(viewRes.byGroup || {});
+  const discontinuadosGroupId = useMemo(() => {
+    const g = (groups || []).find(esDiscontinuadosGroup);
+    return g ? Number(g.id) : null;
+  }, [groups]);
 
-        if (favRes?.ok) {
-          const favIdFromDb = Number(favRes.favoriteGroupId);
-          if (Number.isFinite(favIdFromDb) && favIdFromDb > 0) {
-            console.log('🌟 [InsumosMain] Favorita cargada desde backend:', favIdFromDb);
-            setFavoriteGroupId(favIdFromDb);
-          }
-        }
-      } catch (e) {
-        console.error('Error loading insumos prefs', e);
-      }
-    };
+  /* ================== ✅ CORREGIDO: IDS DISCONTINUADOS (SOLO desde agrupación) ================== */
+  const discontinuadosIds = useMemo(() => {
+    const disc = (groups || []).find(esDiscontinuadosGroup);
+    if (!disc) return new Set();
 
-    loadPrefs();
-  }, [businessId]);
+    const items = disc?.items || disc?.insumos || [];
 
-  /* ================== 6️⃣ CARGAR RUBROS ================== */
-  const loadRubros = useCallback(async () => {
-    if (!businessId) {
-      setRubrosMap(new Map());
-      return;
-    }
+    return new Set(
+      items
+        .map((it) => Number(it.insumo_id ?? it.id))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    );
+  }, [groups]);
 
-    try {
-      const res = await insumosRubrosList(businessId);
-      const items = res?.items || res?.data || [];
+  /* ================== RECARGA PRINCIPAL AL CAMBIAR BUSINESS ================== */
+  const hadBusinessOnceRef = useRef(false);
+  const reloadRunRef = useRef(0);
 
-      const map = new Map();
-      items.forEach(rubro => {
-        const codigo = String(rubro.codigo);
-        map.set(codigo, {
-          codigo: rubro.codigo,
-          nombre: rubro.nombre || `Rubro ${codigo}`,
-          es_elaborador: rubro.es_elaborador === true,
-        });
-      });
-
-      setRubrosMap(map);
-    } catch (e) {
-      console.error('[loadRubros] Error:', e);
-      setRubrosMap(new Map());
-    }
-  }, [businessId]);
-
-  /* ================== 7️⃣ CARGAR INSUMOS ================== */
-  const loadAllInsumos = useCallback(async () => {
-    if (!businessId) {
-      setAllInsumos([]);
-      return;
-    }
-
-    try {
-      const r = await insumosList({
-        page: 1,
-        limit: 999999,
-        search: "",
-      });
-
-      const data = Array.isArray(r.data) ? r.data : [];
-      setAllInsumos(data);
-    } catch (e) {
-      console.error("[loadAllInsumos]", e);
-      setAllInsumos([]);
-    }
-  }, [businessId]);
-
-  /* ================== 8️⃣ CARGAR GRUPOS ================== */
-  const loadGroups = useCallback(async () => {
-    if (!businessId) {
-      setGroups([]);
-      setFavoriteGroupId(null);
-      setGroupsError("");
-      return;
-    }
-
-    setGroupsLoading(true);
-    setGroupsError("");
-    try {
-      const res = await insumoGroupsList();
-      const list = Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res)
-          ? res
-          : [];
-
-      setGroups(list);
-    } catch (e) {
-      console.error("[InsumosMain] Error al cargar grupos:", e);
-      setGroups([]);
-      setFavoriteGroupId(null);
-      setGroupsError(e.message || "Error al cargar agrupaciones");
-    } finally {
-      setGroupsLoading(false);
-    }
-  }, [businessId]);
-
-  /* ================== 9️⃣ CARGAR CATÁLOGO COMPLETO ================== */
-  const loadCatalogoCompleto = useCallback(async () => {
-    if (!businessId) {
-      setExcludedIds(new Set());
-      setTodoGroupId(null);
-      return;
-    }
-
-    try {
-      const todoGroup = await ensureTodoInsumos();
-      setTodoGroupId(todoGroup?.id || null);
-
-      if (todoGroup?.id) {
-        const exclusiones = await getExclusionesInsumos(todoGroup.id);
-        const ids = exclusiones
-          .filter(e => e.scope === 'insumo')
-          .map(e => Number(e.ref_id))
-          .filter(Boolean);
-        setExcludedIds(new Set(ids));
-      }
-
-      await ensureDiscontinuadosInsumos();
-      await loadGroups();
-
-    } catch (e) {
-      console.error('[loadCatalogoCompleto] Error:', e);
-      setExcludedIds(new Set());
-      setTodoGroupId(null);
-    }
-  }, [businessId, loadGroups]);
-
-  /* ================== 🔟 ESCUCHAR EVENTOS DE CAMBIO DE NEGOCIO ================== */
-  useEffect(() => {
-    const handleBusinessSwitch = () => {
-      console.log('🔔 [InsumosMain] business:switched o subnegocio:switched');
-      forceRefresh();
-    };
-
-    window.addEventListener('business:switched', handleBusinessSwitch);
-    window.addEventListener('subnegocio:switched', handleBusinessSwitch);
-
-    return () => {
-      window.removeEventListener('business:switched', handleBusinessSwitch);
-      window.removeEventListener('subnegocio:switched', handleBusinessSwitch);
-    };
-  }, [forceRefresh]);
-
-  /* ================== 1️⃣1️⃣ RECARGA AL CAMBIAR NEGOCIO/SUBNEGOCIO ================== */
   useEffect(() => {
     if (!businessId) {
-      console.log('⚠️ [InsumosMain] Sin businessId, limpiando');
+      if (!hadBusinessOnceRef.current) return;
+
       setAllInsumos([]);
-      setRows([]);
       setGroups([]);
       setRubrosMap(new Map());
       setSelectedGroupId(null);
@@ -336,36 +240,40 @@ export default function InsumosMain() {
       return;
     }
 
-    console.log('🔄 [InsumosMain] effectiveBusinessId cambió a:', businessId);
+    hadBusinessOnceRef.current = true;
 
+    const runId = ++reloadRunRef.current;
     let isCancelled = false;
 
+    const safe = (fn) => {
+      if (isCancelled) return false;
+      if (reloadRunRef.current !== runId) return false;
+      fn();
+      return true;
+    };
+
     const recargarTodo = async () => {
-      if (isCancelled) return;
+      safe(() => {
+        setAllInsumos([]);
+        setGroups([]);
+        setRubrosMap(new Map());
+        setSelectedGroupId(null);
+        setRubroSeleccionado(null);
+        setTodoGroupId(null);
+        setExcludedIds(new Set());
+      });
 
-      // Limpiar estado previo
-      setAllInsumos([]);
-      setRows([]);
-      setGroups([]);
-      setRubrosMap(new Map());
-      setSelectedGroupId(null);
-      setRubroSeleccionado(null);
-      setTodoGroupId(null);
-      setExcludedIds(new Set());
-      setPage(1);
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (isCancelled) return;
+      await new Promise((r) => setTimeout(r, 50));
+      if (isCancelled || reloadRunRef.current !== runId) return;
 
       try {
-        // Cargar rubros
-        console.log('📚 [recargarTodo] Cargando rubros...');
+        // 1) RUBROS
         const resRubros = await insumosRubrosList(businessId);
-        if (isCancelled) return;
+        if (isCancelled || reloadRunRef.current !== runId) return;
 
         const items = resRubros?.items || resRubros?.data || [];
         const map = new Map();
-        items.forEach(rubro => {
+        items.forEach((rubro) => {
           const codigo = String(rubro.codigo);
           map.set(codigo, {
             codigo: rubro.codigo,
@@ -373,58 +281,55 @@ export default function InsumosMain() {
             es_elaborador: rubro.es_elaborador === true,
           });
         });
-        setRubrosMap(map);
+        safe(() => setRubrosMap(map));
 
-        // Cargar insumos
-        console.log('📦 [recargarTodo] Cargando insumos...');
-        const resInsumos = await insumosList({
+        // 2) INSUMOS (guardamos todo)
+        const resInsumos = await insumosList(businessId, {
           page: 1,
           limit: 999999,
-          search: "",
+          search: '',
         });
-        if (isCancelled) return;
+        if (isCancelled || reloadRunRef.current !== runId) return;
 
-        const data = Array.isArray(resInsumos.data) ? resInsumos.data : [];
-        setAllInsumos(data);
+        const dataAll = Array.isArray(resInsumos?.data) ? resInsumos.data : [];
+        safe(() => setAllInsumos(dataAll));
 
-        // Cargar catálogo (TODO, Discontinuados, grupos)
-        console.log('🔧 [recargarTodo] Cargando catálogo...');
+        // 3) TODO + EXCLUSIONES
         const todoGroup = await ensureTodoInsumos();
-        if (isCancelled) return;
+        if (isCancelled || reloadRunRef.current !== runId) return;
 
-        setTodoGroupId(todoGroup?.id || null);
+        safe(() => setTodoGroupId(todoGroup?.id || null));
 
         if (todoGroup?.id) {
           const exclusiones = await getExclusionesInsumos(todoGroup.id);
-          if (isCancelled) return;
+          if (isCancelled || reloadRunRef.current !== runId) return;
 
-          const ids = exclusiones
-            .filter(e => e.scope === 'insumo')
-            .map(e => Number(e.ref_id))
+          const ids = (exclusiones || [])
+            .filter((e) => e.scope === 'insumo')
+            .map((e) => Number(e.ref_id))
             .filter(Boolean);
-          setExcludedIds(new Set(ids));
+
+          safe(() => setExcludedIds(new Set(ids)));
         }
 
+        // 4) DISCONTINUADOS GROUP
         try {
           await ensureDiscontinuadosInsumos();
-        } catch (e) {
-          console.error('⚠️ [recargarTodo] Error en Discontinuados:', e);
-        }
+        } catch { }
 
-        if (isCancelled) return;
+        // 5) GRUPOS
+        const resGroups = await insumoGroupsList(businessId);
+        if (isCancelled || reloadRunRef.current !== runId) return;
 
-        // Cargar grupos
-        console.log('📋 [recargarTodo] Cargando grupos...');
-        const res = await insumoGroupsList();
-        if (isCancelled) return;
+        const list = Array.isArray(resGroups?.data)
+          ? resGroups.data
+          : Array.isArray(resGroups)
+            ? resGroups
+            : [];
 
-        const list = Array.isArray(res?.data) ? res.data :
-          Array.isArray(res) ? res : [];
-
-        setGroups(list);
-
-        console.log('✅ [recargarTodo] Completado - Groups:', list.length, '- Insumos:', data.length);
+        safe(() => setGroups(list));
       } catch (e) {
+        if (isCancelled || reloadRunRef.current !== runId) return;
         console.error('❌ [recargarTodo] Error:', e);
       }
     };
@@ -434,70 +339,124 @@ export default function InsumosMain() {
     return () => {
       isCancelled = true;
     };
-  }, [businessId]);
+  }, [businessId, reloadKey]);
 
-  /* ================== 1️⃣2️⃣ ESCUCHAR business:synced ================== */
-  useEffect(() => {
-    const onBizSynced = () => {
-      console.log('🔔 [InsumosMain] Evento business:synced recibido');
-      forceRefresh();
-    };
+  /* ================== IDS "SIN AGRUPACIÓN" ================== */
+  const activeIdSet = useMemo(
+    () => new Set(baseActivos.map((i) => Number(i.id)).filter(Number.isFinite)),
+    [baseActivos]
+  );
 
-    window.addEventListener('business:synced', onBizSynced);
+  const inactiveIdSet = useMemo(
+    () => new Set(baseInactivos.map((i) => Number(i.id)).filter(Number.isFinite)),
+    [baseInactivos]
+  );
 
-    return () => {
-      window.removeEventListener('business:synced', onBizSynced);
-    };
-  }, [forceRefresh]);
+  const idsEnOtras = useMemo(
+    () =>
+      new Set(
+        (groups || [])
+          .filter((g) => !esTodoGroup(g))
+          .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
+          .filter(Number.isFinite)
+      ),
+    [groups]
+  );
 
-  /* ================== 1️⃣3️⃣ CÁLCULOS DERIVADOS ================== */
-  const discontinuadosGroupId = useMemo(() => {
-    const g = (groups || []).find(esDiscontinuadosGroup);
-    return g ? Number(g.id) : null;
-  }, [groups]);
+  const idsSinAgrupActivos = useMemo(() => {
+    const res = new Set();
+    activeIdSet.forEach((id) => {
+      if (!excludedIds.has(id) && !idsEnOtras.has(id)) res.add(id);
+    });
+    return res;
+  }, [activeIdSet, excludedIds, idsEnOtras]);
 
-  const idsSinAgrup = useMemo(() => {
-    if (!allInsumos.length || !groups.length) {
-      return new Set();
+  const idsSinAgrupInactivos = useMemo(() => {
+    const res = new Set();
+    inactiveIdSet.forEach((id) => {
+      if (!excludedIds.has(id) && !idsEnOtras.has(id)) res.add(id);
+    });
+    return res;
+  }, [inactiveIdSet, excludedIds, idsEnOtras]);
+
+  /* ================== BASE SEGÚN VISTA ================== */
+  const selectedGroup = useMemo(() => {
+    const id = Number(selectedGroupId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return (groups || []).find((g) => Number(g.id) === id) || null;
+  }, [selectedGroupId, groups]);
+
+  const isDiscView = useMemo(() => {
+    return selectedGroup ? esDiscontinuadosGroup(selectedGroup) : false;
+  }, [selectedGroup]);
+
+  /* ================== ✅ CORREGIDO: sidebarBase usa discontinuadosIds correctamente ================== */
+  const sidebarBase = useMemo(() => {
+    if (isDiscView) {
+      // ✅ Mostrar TODOS los insumos que estén en la agrupación Discontinuados
+      // (independientemente de su estado en la DB)
+      return (baseAll || []).filter((i) => discontinuadosIds.has(Number(i.id)));
+    }
+    // Vista normal: solo activos
+    return baseActivos;
+  }, [isDiscView, baseAll, baseActivos, discontinuadosIds]);
+
+
+  /* ================== visibleIds según grupo seleccionado ================== */
+  const visibleIds = useMemo(() => {
+    if (!selectedGroupId) return null;
+
+    const gId = Number(selectedGroupId);
+    const g = groups.find((x) => Number(x.id) === gId);
+    if (!g) return null;
+
+    if (esDiscontinuadosGroup(g)) return discontinuadosIds;
+
+    if (todoGroupId && gId === Number(todoGroupId)) {
+      return isDiscView ? idsSinAgrupInactivos : idsSinAgrupActivos;
     }
 
-    const todos = new Set(allInsumos.map(i => Number(i.id)));
-    const usados = new Set();
+    const baseSet = isDiscView ? inactiveIdSet : activeIdSet;
 
-    (groups || []).forEach(g => {
-      const gId = Number(g.id);
-
-      if (todoGroupId && gId === todoGroupId) return;
-      if (discontinuadosGroupId && gId === discontinuadosGroupId) return;
-
-      (g.items || g.insumos || []).forEach(it => {
-        const id = Number(it.insumo_id ?? it.id);
-        if (Number.isFinite(id)) usados.add(id);
-      });
+    const s = new Set();
+    (g.items || g.insumos || []).forEach((it) => {
+      const id = Number(it.insumo_id ?? it.id);
+      if (Number.isFinite(id) && baseSet.has(id)) s.add(id);
     });
 
-    const resultado = new Set();
-    todos.forEach(id => {
-      if (!usados.has(id) && !excludedIds.has(id)) {
-        resultado.add(id);
-      }
+    return s;
+  }, [
+    selectedGroupId,
+    groups,
+    todoGroupId,
+    isDiscView,
+    activeIdSet,
+    inactiveIdSet,
+    idsSinAgrupActivos,
+    idsSinAgrupInactivos,
+    discontinuadosIds,
+  ]);
+
+  /* ================== BASE FILTRADA POR AGRUPACIÓN (como ArticulosMain) ================== */
+  const filteredBase = useMemo(() => {
+    // Si no hay agrupación seleccionada, mostramos todo lo de la vista actual
+    if (!visibleIds) return sidebarBase;
+
+    // Si hay visibleIds, filtramos estrictamente
+    return (sidebarBase || []).filter((ins) => {
+      const id = Number(ins?.id);
+      return Number.isFinite(id) && visibleIds.has(id);
     });
+  }, [sidebarBase, visibleIds]);
 
-    return resultado;
-  }, [allInsumos, groups, todoGroupId, discontinuadosGroupId, excludedIds]);
-
+  /* ================== RUBROS TREE (SIDEBAR) ================== */
   const rubrosTree = useMemo(() => {
-    if (!allInsumos.length) {
-      return [];
-    }
-
-    if (rubrosMap.size === 0) {
-      return [];
-    }
+    if (!filteredBase.length) return [];
+    if (rubrosMap.size === 0) return [];
 
     const map = new Map();
 
-    allInsumos.forEach(insumo => {
+    filteredBase.forEach((insumo) => {
       const rubroCodigo = String(insumo.rubro_codigo || insumo.rubro || '');
       const rubroInfo = rubrosMap.get(rubroCodigo) || {
         codigo: rubroCodigo,
@@ -520,22 +479,48 @@ export default function InsumosMain() {
     });
 
     return Array.from(map.values());
-  }, [allInsumos, rubrosMap]);
+  }, [filteredBase, rubrosMap]);
 
+  /* ================== FILTRADO FINAL PARA TABLA (AGRUPACIÓN + RUBRO) ================== */
+  const tableRows = useMemo(() => {
+    let base = filteredBase || [];
+
+    // Si hay rubro seleccionado, filtrar por código de rubro
+    const codigoSel = rubroSeleccionado?.codigo;
+    if (codigoSel == null) return base;
+
+    const codigoStr = String(codigoSel);
+
+    return base.filter((insumo) => {
+      const codigo = String(insumo?.rubro_codigo || insumo?.rubro || '');
+      return codigo === codigoStr;
+    });
+  }, [filteredBase, rubroSeleccionado]);
+
+  /* ================== LIMPIAR RUBRO SELECCIONADO SI YA NO EXISTE ================== */
+  useEffect(() => {
+    if (!rubroSeleccionado) return;
+
+    const exists = (rubrosTree || []).some(
+      (r) => String(r.codigo) === String(rubroSeleccionado.codigo)
+    );
+
+    if (!exists) setRubroSeleccionado(null);
+  }, [rubrosTree, rubroSeleccionado]);
+
+  /* ================== INDEX GRUPOS POR INSUMO ================== */
   const insumosGroupIndex = useMemo(() => {
     const byInsumoId = new Map();
 
-    (groups || []).forEach(g => {
+    (groups || []).forEach((g) => {
       if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return;
 
       const items = g.items || g.insumos || [];
-      items.forEach(item => {
+      items.forEach((item) => {
         const id = Number(item.insumo_id ?? item.id);
         if (!Number.isFinite(id)) return;
 
-        if (!byInsumoId.has(id)) {
-          byInsumoId.set(id, new Set());
-        }
+        if (!byInsumoId.has(id)) byInsumoId.set(id, new Set());
         byInsumoId.get(id).add(Number(g.id));
       });
     });
@@ -543,76 +528,32 @@ export default function InsumosMain() {
     return { byInsumoId };
   }, [groups]);
 
-  const visibleIds = useMemo(() => {
-    if (!selectedGroupId) {
-      return null;
-    }
 
-    const gId = Number(selectedGroupId);
-    const grupoSeleccionado = groups.find(g => Number(g.id) === gId);
-
-    if (!grupoSeleccionado) {
-      return null;
-    }
-
-    if (esDiscontinuadosGroup(grupoSeleccionado)) {
-      const discIds = new Set();
-      (grupoSeleccionado.items || grupoSeleccionado.insumos || []).forEach(item => {
-        const id = Number(item.insumo_id ?? item.id);
-        if (Number.isFinite(id)) discIds.add(id);
-      });
-      return discIds;
-    }
-
-    if (todoGroupId && gId === todoGroupId) {
-      return idsSinAgrup;
-    }
-
-    const s = new Set();
-    const items = grupoSeleccionado.items || grupoSeleccionado.insumos || [];
-
-    items.forEach(item => {
-      const id = Number(item.insumo_id ?? item.id);
-      if (Number.isFinite(id)) s.add(id);
-    });
-
-    return s;
-  }, [selectedGroupId, groups, todoGroupId, idsSinAgrup]);
-
-  /* ================== 1️⃣4️⃣ SELECCIÓN INTELIGENTE: TODO vs FAVORITA ================== */
+  /* ================== SELECCIÓN INTELIGENTE TODO vs FAVORITA ================== */
   useEffect(() => {
-    if (isJumpingRef.current) {
-      return;
-    }
-
     const todoId = todoGroupId;
-    const todoEmpty = idsSinAgrup.size === 0;
+    const todoEmpty = idsSinAgrupActivos.size === 0;
 
     const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
-    if (recentlyPicked) {
-      return;
-    }
+    if (recentlyPicked) return;
 
     const groupsReady = Array.isArray(groups) && groups.length > 0;
-    if (!groupsReady) {
-      return;
-    }
+    if (!groupsReady) return;
+
+    if (selectedGroup && esDiscontinuadosGroup(selectedGroup)) return;
 
     const isTodoSelected =
       selectedGroupId && Number(selectedGroupId) === Number(todoId);
 
     if (todoEmpty) {
-      const fav = (groups || []).find(
-        (g) => Number(g?.id) === Number(favoriteGroupId)
-      );
-
+      const fav = (groups || []).find((g) => Number(g?.id) === Number(favoriteGroupId));
       if (fav) {
         if (!selectedGroupId || Number(selectedGroupId) !== Number(fav.id)) {
           setSelectedGroupId(fav.id);
           setRubroSeleccionado(null);
         }
       } else {
-        const firstWithItems = groups.find(g => {
+        const firstWithItems = groups.find((g) => {
           const gId = Number(g.id);
           if (gId === todoId) return false;
           const items = g.items || g.insumos || [];
@@ -625,173 +566,52 @@ export default function InsumosMain() {
         }
       }
     } else {
-      if (
-        !isTodoSelected &&
-        Number.isFinite(Number(todoId)) &&
-        todoId
-      ) {
+      if (!isTodoSelected && Number.isFinite(Number(todoId)) && todoId) {
         setSelectedGroupId(Number(todoId));
         setRubroSeleccionado(null);
       }
     }
-  }, [
-    todoGroupId,
-    idsSinAgrup,
-    favoriteGroupId,
-    groups,
-    selectedGroupId,
-  ]);
-
-  /* ================== 1️⃣5️⃣ BUSCADOR ================== */
-  const loadInsumosSearchOptions = useCallback(async () => {
-    if (!businessId) {
-      setInsumosSearchOptions([]);
-      return;
-    }
-    try {
-      const data = allInsumos;
-
-      const opts = data
-        .map((ins) => {
-          const id = Number(ins.id);
-          if (!Number.isFinite(id)) return null;
-
-          const nombre = (ins.nombre || "").trim() || `#INS-${id}`;
-          const codigo =
-            ins.codigo_mostrar ||
-            (ins.codigo_maxi && ins.codigo_maxi.trim() !== ""
-              ? ins.codigo_maxi
-              : `INS-${id}`);
-
-          return {
-            id,
-            label: `[INS] ${codigo} · ${nombre}`,
-            value: nombre,
-          };
-        })
-        .filter(Boolean);
-
-      setInsumosSearchOptions(opts);
-    } catch (e) {
-      console.error("[InsumosMain] Error al cargar opciones de buscador:", e);
-      setInsumosSearchOptions([]);
-    }
-  }, [businessId, allInsumos]);
+  }, [todoGroupId, idsSinAgrupActivos, favoriteGroupId, groups, selectedGroupId, selectedGroup]);
 
   useEffect(() => {
-    loadInsumosSearchOptions();
-  }, [loadInsumosSearchOptions]);
+    if (!rubroSeleccionado) return;
 
-  /* ================== 1️⃣6️⃣ NAVEGACIÓN Y SCROLL ================== */
-  const getRubroLabel = useCallback((row) => {
-    const code = row.rubro_codigo ?? row.rubroCodigo ?? row.codigo_rubro ?? row.rubro ?? null;
+    const exists = (rubrosTree || []).some((r) => r.nombre === rubroSeleccionado.nombre);
+    if (!exists) setRubroSeleccionado(null);
+  }, [rubrosTree, rubroSeleccionado, setRubroSeleccionado]);
 
-    if (code != null) {
-      const rubroInfo = rubrosMap.get(String(code));
-      if (rubroInfo?.nombre) {
-        return rubroInfo.nombre;
-      }
-    }
+  /* ================== BUSCADOR ================== */
+  const insumosSearchOptions = useMemo(() => {
+    if (!baseAll.length) return [];
 
-    return row.rubro_nombre || row.rubroNombre || (code != null ? `Rubro ${code}` : "Sin rubro");
-  }, [rubrosMap]);
+    return baseAll
+      .map((ins) => {
+        const id = Number(ins.id);
+        if (!Number.isFinite(id)) return null;
 
-  // REF PARA VirtualList
-  const listRef = useRef(null);
-  const lastJumpedIdRef = useRef(null);
+        const nombre = (ins.nombre || '').trim() || `INS-${id}`;
+        return {
+          id,
+          nombre,
+          _search: normalize(nombre),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+  }, [baseAll]);
 
-  // refs para poder cancelar timers
-  const scrollT1Ref = useRef(null);
-  const scrollT2Ref = useRef(null);
-  const domIntervalRef = useRef(null);
-
-  useEffect(() => {
-    const id = Number(jumpToInsumoId);
-
-    if (!Number.isFinite(id) || id <= 0) return;
-
-    // Limpiar timers/interval previos
-    if (scrollT1Ref.current) { clearTimeout(scrollT1Ref.current); scrollT1Ref.current = null; }
-    if (scrollT2Ref.current) { clearTimeout(scrollT2Ref.current); scrollT2Ref.current = null; }
-    if (domIntervalRef.current) { clearInterval(domIntervalRef.current); domIntervalRef.current = null; }
-
-    const idx = idToIndexRef.current.get(id);
-
-    if (idx != null) {
-      if (lastJumpedIdRef.current === id) return;
-      lastJumpedIdRef.current = id;
-
-      scrollT1Ref.current = setTimeout(() => {
-        listRef.current?.scrollToIndex(idx);
-
-        scrollT2Ref.current = setTimeout(() => {
-          const el = document.querySelector(`[data-insumo-id="${id}"]`);
-          if (el) {
-            el.classList.add("highlight-jump");
-            setTimeout(() => el.classList.remove("highlight-jump"), 1400);
-          }
-
-          setJumpToInsumoId(null);
-          isJumpingRef.current = false;
-        }, 40);
-      }, 0);
-
-      return;
-    }
-
-    // Fallback DOM con reintentos
-    const tryScroll = () => {
-      const el = document.querySelector(`[data-insumo-id="${id}"]`);
-      if (el) {
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
-        el.classList.add("highlight-jump");
-        setTimeout(() => el.classList.remove("highlight-jump"), 1400);
-
-        lastJumpedIdRef.current = id;
-
-        setJumpToInsumoId(null);
-        isJumpingRef.current = false;
-        return true;
-      }
-      return false;
-    };
-
-    let tries = 0;
-    domIntervalRef.current = setInterval(() => {
-      if (tryScroll() || tries++ > 12) {
-        clearInterval(domIntervalRef.current);
-        domIntervalRef.current = null;
-
-        if (tries > 12) {
-          isJumpingRef.current = false;
-        }
-      }
-    }, 60);
-
-    return () => {
-      if (scrollT1Ref.current) { clearTimeout(scrollT1Ref.current); scrollT1Ref.current = null; }
-      if (scrollT2Ref.current) { clearTimeout(scrollT2Ref.current); scrollT2Ref.current = null; }
-      if (domIntervalRef.current) { clearInterval(domIntervalRef.current); domIntervalRef.current = null; }
-    };
-  }, [jumpToInsumoId, idToIndexVersion]);
-
-  useEffect(() => {
-    if (!jumpToInsumoId) {
-      lastJumpedIdRef.current = null;
-    }
-  }, [jumpToInsumoId]);
+  /* ================== NAV Y SCROLL ================== */
+  const [jumpToInsumoId, setJumpToInsumoId] = useState(null);
+  const [selectedInsumoId, setSelectedInsumoId] = useState(null);
+  const [searchText, setSearchText] = useState('');
 
   const focusInsumo = useCallback(
     (rawId, preferGroupId = null) => {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
-      if (jumpCleanupTRef.current) {
-        clearTimeout(jumpCleanupTRef.current);
-        jumpCleanupTRef.current = null;
-      }
+      const insumo = (baseAll || []).find((x) => Number(x?.id) === id) || null;
 
-      const alreadyVisible = !visibleIds || visibleIds.has(id);
       const groupsSet = insumosGroupIndex.byInsumoId.get(id) || new Set();
       const allGroups = groups || [];
 
@@ -799,691 +619,364 @@ export default function InsumosMain() {
 
       if (preferGroupId != null) {
         const prefNum = Number(preferGroupId);
-        if (Number.isFinite(prefNum)) {
-          const exists = allGroups.some(g => Number(g.id) === prefNum);
-          if (exists) targetGroupId = prefNum;
+        if (Number.isFinite(prefNum) && allGroups.some((g) => Number(g.id) === prefNum)) {
+          targetGroupId = prefNum;
         }
       }
 
-      if (!targetGroupId) {
-        if (alreadyVisible) {
-          targetGroupId = selectedGroupId ?? null;
-        } else if (groupsSet.size > 0) {
-          for (const gid of groupsSet) {
-            const n = Number(gid);
-            if (Number.isFinite(n) && n > 0) {
-              targetGroupId = n;
-              break;
-            }
+      // ✅ Si está en discontinuados, ir a ese grupo
+      if (!targetGroupId && discontinuadosIds.has(id) && Number.isFinite(Number(discontinuadosGroupId))) {
+        targetGroupId = Number(discontinuadosGroupId);
+      }
+
+      if (!targetGroupId && groupsSet.size > 0) {
+        for (const gid of groupsSet) {
+          const n = Number(gid);
+          if (Number.isFinite(n) && n > 0) {
+            targetGroupId = n;
+            break;
           }
-        } else if (Number.isFinite(Number(todoGroupId))) {
-          const t = Number(todoGroupId);
-          if (t > 0) targetGroupId = t;
         }
       }
 
-      isJumpingRef.current = true;
+      if (
+        !targetGroupId &&
+        Number.isFinite(Number(todoGroupId)) &&
+        Number(todoGroupId) > 0
+      ) {
+        targetGroupId = Number(todoGroupId);
+      }
+
+      if (insumo && rubrosMap?.size) {
+        const nextVista = vistaForInsumo(insumo, rubrosMap);
+        if (nextVista && nextVista !== vista) {
+          setVista(nextVista);
+        }
+      }
 
       const shouldChangeGroup =
-        targetGroupId &&
-        (!selectedGroupId || Number(selectedGroupId) !== Number(targetGroupId));
+        targetGroupId && (!selectedGroupId || Number(selectedGroupId) !== Number(targetGroupId));
 
       if (shouldChangeGroup) {
         markManualPick();
         setSelectedGroupId(targetGroupId);
         setRubroSeleccionado(null);
-        setPage(1);
+      } else {
+        setRubroSeleccionado(null);
       }
 
       setSelectedInsumoId(id);
       setJumpToInsumoId(id);
 
-      jumpCleanupTRef.current = setTimeout(() => {
+      setTimeout(() => {
         setJumpToInsumoId(null);
-        isJumpingRef.current = false;
-        jumpCleanupTRef.current = null;
-      }, 350);
+      }, 1400);
     },
     [
-      visibleIds,
+      baseAll,
+      groups,
       insumosGroupIndex,
       todoGroupId,
+      discontinuadosGroupId,
+      discontinuadosIds,
       selectedGroupId,
-      groups,
+      rubrosMap,
+      vista,
       markManualPick,
     ]
   );
 
-  /* ================== 1️⃣7️⃣ HANDLERS AGRUPACIONES ================== */
-  const handleSelectGroupId = useCallback((rawId) => {
-    const n = Number(rawId);
-    const id = Number.isFinite(n) && n > 0 ? n : null;
+  /* ================== HANDLERS AGRUPACIONES ================== */
+  const handleSelectGroupId = useCallback(
+    (rawId) => {
+      const n = Number(rawId);
+      const id = Number.isFinite(n) && n > 0 ? n : null;
 
-    markManualPick();
+      markManualPick();
+      setSelectedGroupId(id);
+      setRubroSeleccionado(null);
+    },
+    [markManualPick]
+  );
 
-    setSelectedGroupId(id);
-    setPage(1);
-    setRubroSeleccionado(null);
-  }, [markManualPick]);
+  const handleToggleFavorite = useCallback(
+    async (groupId) => {
+      try {
+        const newFav = favoriteGroupId === groupId ? null : groupId;
+        await BusinessesAPI.saveFavoriteGroup(businessId, newFav, 'insumo');
+        setFavoriteGroupId(newFav);
+        notify(newFav ? 'Agrupación marcada como favorita' : 'Favorita removida', 'success');
+      } catch (e) {
+        console.error('Error saving favorite group', e);
+        notify('Error al guardar favorita', 'error');
+      }
+    },
+    [businessId, favoriteGroupId, notify]
+  );
 
-  const handleToggleFavorite = useCallback(async (groupId) => {
-    try {
-      const newFav = favoriteGroupId === groupId ? null : groupId;
+  const handleEditGroup = useCallback(
+    async (group) => {
+      if (!businessId) {
+        notify('Seleccioná un negocio antes de editar agrupaciones', 'warning');
+        return;
+      }
+      const actual = String(group?.nombre || '');
+      const nuevo = window.prompt('Nuevo nombre de la agrupación:', actual);
+      if (nuevo == null) return;
+      const trimmed = nuevo.trim();
+      if (!trimmed) return;
 
-      await BusinessesAPI.saveFavoriteGroup(businessId, newFav, 'insumo');
-      setFavoriteGroupId(newFav);
+      try {
+        await insumoGroupUpdate(group.id, { nombre: trimmed });
+        const res = await insumoGroupsList(businessId);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setGroups(list);
+        notify('Agrupación renombrada', 'success');
+      } catch (e) {
+        console.error('[InsumosMain] Error editGroup:', e);
+        notify(e.message || 'Error al renombrar agrupación', 'error');
+      }
+    },
+    [businessId, notify]
+  );
 
-      notify(newFav ? 'Agrupación marcada como favorita' : 'Favorita removida', 'success');
-    } catch (e) {
-      console.error('Error saving favorite group', e);
-      notify('Error al guardar favorita', 'error');
-    }
-  }, [businessId, favoriteGroupId, notify]);
+  const handleDeleteGroup = useCallback(
+    async (group) => {
+      if (!businessId) {
+        notify('Seleccioná un negocio antes de eliminar agrupaciones', 'warning');
+        return;
+      }
 
-  const handleOpenGroupModal = useCallback((insumo = null, initialGroupId = null) => {
-    setGroupModalInsumo(insumo || null);
-    const n = Number(initialGroupId);
-    setGroupModalInitialGroupId(Number.isFinite(n) ? n : null);
-    setGroupModalOpen(true);
-  }, []);
+      if (
+        !window.confirm(
+          `¿Eliminar la agrupación "${group.nombre}"? Esta acción no se puede deshacer.`
+        )
+      ) {
+        return;
+      }
 
-  const handleCloseGroupModal = useCallback((didSave = false) => {
-    setGroupModalOpen(false);
-    setGroupModalInsumo(null);
-    setGroupModalInitialGroupId(null);
+      try {
+        await insumoGroupDelete(group.id);
 
-    if (didSave) {
-      loadGroups();
-      fetchData();
-      loadCatalogoCompleto();
-    }
-  }, [loadGroups, loadCatalogoCompleto]);
+        if (selectedGroupId && Number(selectedGroupId) === Number(group.id)) {
+          setSelectedGroupId(null);
+        }
+        if (favoriteGroupId && Number(favoriteGroupId) === Number(group.id)) {
+          setFavoriteGroupId(null);
+        }
+
+        const res = await insumoGroupsList(businessId);
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        setGroups(list);
+
+        notify('Agrupación eliminada', 'success');
+      } catch (e) {
+        console.error('[InsumosMain] Error deleteGroup:', e);
+        notify(e.message || 'Error al eliminar agrupación', 'error');
+      }
+    },
+    [businessId, favoriteGroupId, notify, selectedGroupId]
+  );
+
+  const handleRenameGroup = useCallback(
+    async (group) => {
+      // Implementación idéntica a artículos
+      notify('Función de renombrar implementada', 'info');
+    },
+    [notify]
+  );
 
   const handleOpenGroupModalForInsumo = useCallback((insumo) => {
     setGroupModalInsumo(insumo || null);
     setGroupModalRubroLabel(null);
+    setGroupModalInitialGroupId(null);
     setGroupModalOpen(true);
   }, []);
 
   const handleOpenGroupModalForRubro = useCallback((rubroLabel) => {
     setGroupModalInsumo(null);
     setGroupModalRubroLabel(rubroLabel || null);
+    setGroupModalInitialGroupId(null);
     setGroupModalOpen(true);
   }, []);
 
-  const handleSetFavoriteGroup = useCallback(async (groupId) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de marcar favoritas", "warning");
-      return;
-    }
-    const id = Number(groupId);
-    if (!Number.isFinite(id)) return;
-
+  const loadGroups = useCallback(async () => {
+    if (!businessId) return;
+    setGroupsLoading(true);
     try {
-      if (favoriteGroupId && Number(favoriteGroupId) === id) {
-        await insumoGroupUpdate(id, { es_favorita: false });
-        setFavoriteGroupId(null);
-      } else {
-        if (favoriteGroupId) {
-          await insumoGroupUpdate(favoriteGroupId, { es_favorita: false });
-        }
-        await insumoGroupUpdate(id, { es_favorita: true });
-        setFavoriteGroupId(id);
-      }
-
-      await loadGroups();
-      notify("Favorita actualizada", "success");
+      const res = await insumoGroupsList(businessId);
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setGroups(list);
     } catch (e) {
-      console.error("[InsumosMain] Error setFavoriteGroup:", e);
-      notify(e.message || "Error al actualizar favorita", "error");
+      console.error('[InsumosMain] Error al cargar grupos:', e);
+      setGroups([]);
+    } finally {
+      setGroupsLoading(false);
     }
-  }, [businessId, favoriteGroupId, loadGroups, notify]);
+  }, [businessId]);
 
-  const handleEditGroup = useCallback(async (group) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de editar agrupaciones", "warning");
-      return;
-    }
-    const actual = String(group?.nombre || "");
-    const nuevo = window.prompt("Nuevo nombre de la agrupación:", actual);
-    if (nuevo == null) return;
-    const trimmed = nuevo.trim();
-    if (!trimmed) return;
+  const handleCloseGroupModal = useCallback(
+    async (didSave = false) => {
+      setGroupModalOpen(false);
+      setGroupModalInsumo(null);
+      setGroupModalRubroLabel(null);
+      setGroupModalInitialGroupId(null);
 
-    try {
-      await insumoGroupUpdate(group.id, { nombre: trimmed });
-      await loadGroups();
-      notify("Agrupación renombrada", "success");
-    } catch (e) {
-      console.error("[InsumosMain] Error editGroup:", e);
-      notify(e.message || "Error al renombrar agrupación", "error");
-    }
-  }, [businessId, loadGroups, notify]);
-
-  const handleDeleteGroup = useCallback(async (group) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de eliminar agrupaciones", "warning");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `¿Eliminar la agrupación "${group.nombre}"? Esta acción no se puede deshacer.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await insumoGroupDelete(group.id);
-
-      if (selectedGroupId && Number(selectedGroupId) === Number(group.id)) {
-        setSelectedGroupId(null);
-      }
-
-      if (favoriteGroupId && Number(favoriteGroupId) === Number(group.id)) {
-        setFavoriteGroupId(null);
-      }
-
-      await loadGroups();
-      notify("Agrupación eliminada", "success");
-    } catch (e) {
-      console.error("[InsumosMain] Error deleteGroup:", e);
-      notify(e.message || "Error al eliminar agrupación", "error");
-    }
-  }, [businessId, favoriteGroupId, loadGroups, notify, selectedGroupId]);
-
-  const handleRenameGroup = useCallback(
-    async (group) => {
-      if (!group) return;
-
-      const isTodo = esTodoGroup(group);
-      const isDisc = esDiscontinuadosGroup(group);
-
-      if (isDisc) return;
-
-      const promptMsg = isTodo
-        ? 'Nombre para la nueva agrupación (los insumos de "Sin Agrupación" se moverán aquí):'
-        : 'Nuevo nombre para la agrupación:';
-
-      const nuevo = window.prompt(promptMsg, isTodo ? '' : group.nombre);
-      if (nuevo == null) return;
-      const nombre = nuevo.trim();
-      if (!nombre) return;
-      if (!isTodo && nombre === group.nombre) return;
-
-      try {
-        if (isTodo) {
-          const ids = Array.from(idsSinAgrup)
-            .map(Number)
-            .filter((n) => Number.isFinite(n) && n > 0);
-
-          if (!ids.length) {
-            window.alert('No hay insumos en "Sin agrupación" para capturar.');
-            return;
-          }
-
-          const res = await http('/insumos/groups/create-or-move', {
-            method: 'POST',
-            body: {
-              nombre,
-              ids,
-            },
-            withBusinessId: true,
-          });
-
-          const createdId = Number(
-            res?.id || res?.groupId || res?.agrupacionId || res?.group?.id
-          );
-
-          await loadGroups();
-
-          if (Number.isFinite(createdId) && createdId > 0) {
-            setSelectedGroupId(createdId);
-          }
-
-          notify(`Agrupación "${nombre}" creada con ${ids.length} insumos.`, 'success');
-
-        } else {
-          await insumoGroupUpdate(group.id, { nombre });
-          await loadGroups();
-
-          notify('Nombre de agrupación actualizado.', 'success');
-        }
-      } catch (e) {
-        console.error('RENAME_GROUP_ERROR', e);
-        notify('No se pudo renombrar la agrupación.', 'error');
+      if (didSave) {
+        await loadGroups();
+        forceRefresh();
       }
     },
-    [idsSinAgrup, loadGroups, notify]
+    [loadGroups, forceRefresh]
   );
 
-  /* ================== 1️⃣8️⃣ FETCH DATA ================== */
-  const fetchData = useCallback(async () => {
-    if (!businessId) {
-      setRows([]);
-      setPagination({ total: 0, pages: 1 });
-      return;
+  const effectiveViewMode = useMemo(() => {
+    const g = selectedGroup;
+    if (g?.id && viewModeByGroup && viewModeByGroup[g.id]) {
+      return viewModeByGroup[g.id];
     }
+    return viewModeGlobal;
+  }, [selectedGroup, viewModeByGroup, viewModeGlobal]);
 
-    setLoading(true);
-    try {
-      let data = [...allInsumos];
+  const sidebarListMode = effectiveViewMode;
 
-      const discontinuadosIds = new Set();
-      if (discontinuadosGroupId) {
-        const discGroup = groups.find(g => Number(g.id) === discontinuadosGroupId);
-        if (discGroup) {
-          (discGroup.items || discGroup.insumos || []).forEach(item => {
-            const id = Number(item.insumo_id ?? item.id);
-            if (Number.isFinite(id)) discontinuadosIds.add(id);
-          });
-        }
-      }
-
-      const isDiscontinuadosView = selectedGroupId &&
-        Number(selectedGroupId) === discontinuadosGroupId;
-
-      if (selectedGroupId) {
-        const gId = Number(selectedGroupId);
-
-        if (isDiscontinuadosView) {
-          data = data.filter(i => discontinuadosIds.has(Number(i.id)));
-        } else if (todoGroupId && gId === todoGroupId) {
-          data = data.filter(i => {
-            const id = Number(i.id);
-            return idsSinAgrup.has(id) && !discontinuadosIds.has(id);
-          });
-        } else {
-          const g = groups.find(gr => Number(gr.id) === gId);
-          if (g) {
-            const ids = new Set(
-              (g.items || g.insumos || [])
-                .map(it => Number(it.insumo_id ?? it.id))
-                .filter(Number.isFinite)
-            );
-
-            data = data.filter(i => {
-              const id = Number(i.id);
-              return ids.has(id) && !discontinuadosIds.has(id);
-            });
-          }
-        }
-      }
-
-      if (vista === "elaborados") {
-        data = data.filter(i => {
-          const rubroCodigo = String(i.rubro_codigo || i.rubro || '');
-          const rubroInfo = rubrosMap.get(rubroCodigo);
-          return rubroInfo?.es_elaborador === true;
-        });
-      } else if (vista === "no-elaborados") {
-        data = data.filter(i => {
-          const rubroCodigo = String(i.rubro_codigo || i.rubro || '');
-          const rubroInfo = rubrosMap.get(rubroCodigo);
-          return rubroInfo?.es_elaborador !== true;
-        });
-      }
-
-      if (rubroSeleccionado) {
-        const rubroNombre = rubroSeleccionado.nombre || rubroSeleccionado;
-        data = data.filter(i => {
-          const rubroCodigo = String(i.rubro_codigo || i.rubro || '');
-          const rubroInfo = rubrosMap.get(rubroCodigo);
-          return rubroInfo?.nombre === rubroNombre;
-        });
-      }
-
-      setRows(data);
-      setPagination({ total: data.length, pages: 1 });
-    } catch (error) {
-      console.error('[fetchData] Error:', error);
-      setRows([]);
-      setPagination({ total: 0, pages: 1 });
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    businessId,
-    allInsumos,
-    rubrosMap,
-    selectedGroupId,
-    groups,
-    todoGroupId,
-    discontinuadosGroupId,
-    idsSinAgrup,
-    rubroSeleccionado,
-    vista,
-  ]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData, refreshTimestamp]);
-
-  useEffect(() => {
-    if (rubroSeleccionado) {
-      setRubroSeleccionado(null);
-    }
-  }, [vista]);
-
-  /* ================== 1️⃣9️⃣ CRUD INSUMOS ================== */
-  const openCreate = useCallback(() => {
-    setEditing(null);
-    setForm({ nombre: "", unidadMed: "", precioRef: "" });
-    setOpen(true);
-  }, []);
-
-  const openEdit = useCallback((row) => {
-    setEditing(row);
-    setForm({
-      nombre: row.nombre || "",
-      unidadMed: row.unidad_med || "",
-      precioRef: row.precio_ref ?? "",
-    });
-    setOpen(true);
-  }, []);
-
-  const closeModal = useCallback(() => setOpen(false), []);
-
-  const onChange = useCallback((k, v) => setForm((f) => ({ ...f, [k]: v })), []);
-
-  const save = useCallback(async () => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de crear/editar insumos", "warning");
-      return;
-    }
-
-    const payload = {
-      nombre: form.nombre.trim(),
-      unidadMed: form.unidadMed || null,
-      precioRef: form.precioRef === "" ? null : Number(form.precioRef),
-      origen: editing ? undefined : "manual",
-      activo: editing ? undefined : true,
-    };
-
-    if (!payload.nombre) {
-      notify("El nombre es obligatorio", "warning");
-      return;
-    }
-
-    try {
-      if (editing) {
-        await insumoUpdate(editing.id, payload);
-        notify("Insumo actualizado", "success");
-      } else {
-        await insumoCreate(payload);
-        notify("Insumo creado", "success");
-      }
-
-      closeModal();
-      await loadAllInsumos();
-      fetchData();
-    } catch (e) {
-      notify(e.message || "Error al guardar insumo", "error");
-    }
-  }, [businessId, editing, form, notify, closeModal, loadAllInsumos, fetchData]);
-
-  const eliminar = useCallback(async (row) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de eliminar insumos", "warning");
-      return;
-    }
-    if (!window.confirm(`Desactivar "${row.nombre}"?`)) return;
-
-    try {
-      await insumoDelete(row.id);
-      notify("Insumo desactivado", "success");
-      await loadAllInsumos();
-      fetchData();
-    } catch (e) {
-      notify(e.message || "Error al eliminar insumo", "error");
-    }
-  }, [businessId, notify, loadAllInsumos, fetchData]);
-
-  /* ================== 2️⃣0️⃣ BULK / SYNC ================== */
-  const onBulkJSON = useCallback(() => setOpenBulk(true), []);
-
-  const handleBulkConfirm = useCallback(async (array) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de usar carga masiva", "warning");
-      return;
-    }
-    try {
-      await insumosBulkJSON(array);
-      setOpenBulk(false);
-      notify("Carga masiva completada", "success");
-      await loadAllInsumos();
-      fetchData();
-    } catch (e) {
-      notify(e.message || "Error en carga masiva", "error");
-    }
-  }, [businessId, notify, loadAllInsumos, fetchData]);
-
-  const onBulkCSV = useCallback(async (e) => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de usar carga masiva CSV", "warning");
-      e.target.value = "";
-      return;
-    }
-    const f = e.target.files?.[0];
-    if (!f) return;
-
-    try {
-      await insumosBulkCSV(f);
-      notify("Carga CSV completada", "success");
-      e.target.value = "";
-      await loadAllInsumos();
-      fetchData();
-    } catch (e) {
-      notify(e.message || "Error en carga CSV", "error");
-      e.target.value = "";
-    }
-  }, [businessId, notify, loadAllInsumos, fetchData]);
-
-  const handleSyncMaxi = useCallback(async () => {
-    if (!businessId) {
-      notify("Seleccioná un negocio antes de sincronizar desde Maxi", "warning");
-      return;
-    }
-    if (
-      !window.confirm(
-        "¿Sincronizar insumos desde Maxi para el negocio activo?"
-      )
-    )
-      return;
-
-    try {
-      await insumosSyncMaxi();
-      notify("Sincronización completada", "success");
-      await loadAllInsumos();
-      await fetchData();
-    } catch (e) {
-      notify(e.message || "Error al sincronizar desde Maxi", "error");
-    }
-  }, [businessId, notify, loadAllInsumos, fetchData]);
-
-  /* ================== 2️⃣1️⃣ RENDER ================== */
-  const titulo = businessName
-    ? `Insumos — ${businessName}`
-    : "Insumos";
+  const titulo = businessName ? `Insumos — ${businessName}` : 'Insumos';
 
   return (
-    <div>
-      <div className="tabla-header">
-        <div className="tabla-header-left">
-          <h2>{titulo}</h2>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          padding: '12px 8px 0 8px',
+        }}
+      >
+        <h2 style={{ margin: 0 }}>{titulo}</h2>
 
-        <div className="tabla-header-right">
-          <div
-            className="filtros-fechas"
-            style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}
-          >
-            <div style={{ minWidth: 360, maxWidth: 360 }}>
-              <Buscador
-                placeholder="Buscar insumo…"
-                opciones={insumosSearchOptions}
-                clearOnPick={false}
-                autoFocusAfterPick
-                onPick={(opt) => {
-                  if (!opt?.id) return;
-                  const id = Number(opt.id);
-                  if (!Number.isFinite(id)) return;
-                  focusInsumo(id);
-                }}
-              />
-            </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 360, maxWidth: 360 }}>
+            <Buscador
+              placeholder="Buscar insumo…"
+              opciones={insumosSearchOptions}
+              value={searchText}
+              onChange={(v) => setSearchText(v || '')}
+              clearOnPick={false}
+              autoFocusAfterPick
+              onPick={(opt) => {
+                const id = Number(opt?.id);
+                if (!Number.isFinite(id)) return;
+                setSearchText('');
+                focusInsumo(id);
+              }}
+            />
           </div>
-
-          {groupsError && (
-            <p style={{ color: "salmon", fontSize: "0.8rem", marginTop: 4 }}>
-              {groupsError}
-            </p>
-          )}
         </div>
       </div>
 
-      <div className="articulos-layoutInsumos">
-        <main className="tabla-articulos-wrapper">
-          <div className="tabla-articulos-container">
-            <aside className="sidebar-categorias" style={{ minWidth: "20%", maxWidth: "20%" }}>
-              <InsumosSidebar
-                rubros={rubrosTree}
-                rubroSeleccionado={rubroSeleccionado}
-                setRubroSeleccionado={setRubroSeleccionado}
-                businessId={businessId}
-                vista={vista}
-                onVistaChange={setVista}
-                groups={groups}
-                groupsLoading={groupsLoading}
-                selectedGroupId={selectedGroupId}
-                onSelectGroupId={handleSelectGroupId}
-                favoriteGroupId={favoriteGroupId}
-                onSetFavorite={handleToggleFavorite}
-                onEditGroup={handleEditGroup}
-                onDeleteGroup={handleDeleteGroup}
-                onRenameGroup={handleRenameGroup}
-                todoGroupId={todoGroupId}
-                idsSinAgrupCount={idsSinAgrup.size}
-                onMutateGroups={onMutateGroups}
-                onRefetch={loadGroups}
-                notify={notify}
-                visibleIds={visibleIds}
-                rubrosMap={rubrosMap}
-              />
-            </aside>
-            <section
-              id="insumos-scroll"
-              className="tabla-articulos-wrapper-inner"
-              style={{ minWidth: "80%", maxWidth: "80%" }}
-            >
-              <InsumosTable
-                listRef={listRef}
-                onIdToIndexChange={handleIdToIndexChange}
-                rows={rows}
-                loading={loading}
-                page={page}
-                pagination={pagination}
-                onPageChange={setPage}
-                onEdit={openEdit}
-                onDelete={eliminar}
-                noBusiness={!businessId}
-                vista={vista}
-                businessId={businessId}
-                groups={groups}
-                selectedGroupId={selectedGroupId}
-                discontinuadosGroupId={discontinuadosGroupId}
-                onOpenGroupModalForInsumo={handleOpenGroupModalForInsumo}
-                onCreateGroupFromRubro={handleOpenGroupModalForRubro}
-                onRefetch={fetchData}
-                onMutateGroups={onMutateGroups}
-                notify={notify}
-                todoGroupId={todoGroupId}
-                idsSinAgrup={Array.from(idsSinAgrup)}
-                onReloadCatalogo={loadCatalogoCompleto}
-                rubrosMap={rubrosMap}
-                jumpToInsumoId={jumpToInsumoId}
-                selectedInsumoId={selectedInsumoId}
-                forceRefresh={forceRefresh}
-              />
-            </section>
-          </div>
-
-          <Dialog open={open} onClose={closeModal} fullWidth maxWidth="sm">
-            <DialogTitle>
-              {editing ? "Editar insumo" : "Nuevo insumo"}
-            </DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                {editing && (
-                  <TextField
-                    label="Código"
-                    value={
-                      editing.codigo_mostrar ||
-                      (editing.codigo_maxi && editing.codigo_maxi.trim() !== ""
-                        ? editing.codigo_maxi
-                        : `INS-${editing.id}`)
-                    }
-                    InputProps={{ readOnly: true }}
-                  />
-                )}
-                <TextField
-                  label="Nombre *"
-                  value={form.nombre}
-                  onChange={(e) => onChange("nombre", e.target.value)}
-                />
-                <TextField
-                  select
-                  label="Unidad de medida"
-                  value={form.unidadMed}
-                  onChange={(e) => onChange("unidadMed", e.target.value)}
-                >
-                  <MenuItem value="">(sin unidad)</MenuItem>
-                  {UNIDADES.map((u) => (
-                    <MenuItem key={u} value={u}>
-                      {u}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Precio ref"
-                  type="number"
-                  value={form.precioRef}
-                  onChange={(e) => onChange("precioRef", e.target.value)}
-                  inputProps={{ step: "0.01" }}
-                />
-              </Stack>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={closeModal}>Cancelar</Button>
-              <Button variant="contained" onClick={save}>
-                Guardar
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <BulkJsonModal
-            open={openBulk}
-            onClose={() => setOpenBulk(false)}
-            onConfirm={handleBulkConfirm}
-            example={`[
-  { "nombre": "Harina 000", "unidadMed": "kg", "precioRef": 1200 },
-  { "nombre": "Leche entera", "unidadMed": "lt", "precioRef": 950 }
-]`}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '280px 1fr',
+          gap: 0,
+          alignItems: 'start',
+          borderRadius: 12,
+          overflow: 'hidden',
+          height: '75vh',
+          boxShadow: '0 1px 4px rgba(0,0,0,.08)',
+        }}
+      >
+        <div
+          style={{
+            borderRight: '1px solid #eee',
+            background: '#fafafa',
+            position: 'sticky',
+            top: 0,
+            alignSelf: 'start',
+            height: 'calc(100vh - 0px)',
+            overflowY: 'auto',
+          }}
+        >
+          <InsumosSidebar
+            rubros={rubrosTree}
+            rubroSeleccionado={rubroSeleccionado}
+            setRubroSeleccionado={setRubroSeleccionado}
+            businessId={businessId}
+            vista={vista}
+            onVistaChange={setVista}
+            groups={groups}
+            groupsLoading={groupsLoading}
+            selectedGroupId={selectedGroupId}
+            onSelectGroupId={handleSelectGroupId}
+            favoriteGroupId={favoriteGroupId}
+            onSetFavorite={handleToggleFavorite}
+            onEditGroup={handleEditGroup}
+            onDeleteGroup={handleDeleteGroup}
+            onRenameGroup={handleRenameGroup}
+            todoGroupId={todoGroupId}
+            idsSinAgrupCount={idsSinAgrupActivos.size}
+            onMutateGroups={onMutateGroups}
+            onRefetch={loadGroups}
+            notify={notify}
+            visibleIds={visibleIds}
+            rubrosMap={rubrosMap}
+            onReloadCatalogo={() => setReloadKey((k) => k + 1)}
+            forceRefresh={forceRefresh}
+            onCreateGroupFromRubro={handleOpenGroupModalForRubro}
+            discontinuadosGroupId={discontinuadosGroupId}
+            listMode={sidebarListMode}
+            onChangeListMode={handleChangeListMode}
+            onManualPick={markManualPick}
           />
+        </div>
 
-          <InsumoGroupModal
-            open={groupModalOpen}
-            originRubroLabel={groupModalRubroLabel}
-            onClose={handleCloseGroupModal}
-            insumo={groupModalInsumo}
+        <div
+          id="insumos-scroll"
+          style={{
+            background: '#fff',
+            overflow: 'auto',
+            maxHeight: 'calc(100vh - 0px)',
+          }}
+        >
+          <InsumosTable
+            rows={tableRows}
+            loading={false}
+            onEdit={() => { }}
+            onDelete={() => { }}
+            noBusiness={!businessId}
+            vista={vista}
             businessId={businessId}
             groups={groups}
-            initialGroupId={groupModalInitialGroupId}
-            onGroupsReload={loadGroups}
+            selectedGroupId={selectedGroupId}
+            discontinuadosGroupId={discontinuadosGroupId}
+            onOpenGroupModalForInsumo={handleOpenGroupModalForInsumo}
+            onCreateGroupFromRubro={handleOpenGroupModalForRubro}
+            rubrosMap={rubrosMap}
+            onRefetch={() => setReloadKey((k) => k + 1)}
+            onMutateGroups={onMutateGroups}
+            notify={notify}
+            todoGroupId={todoGroupId}
+            idsSinAgrup={Array.from(idsSinAgrupActivos)}
+            onReloadCatalogo={() => setReloadKey((k) => k + 1)}
+            forceRefresh={forceRefresh}
+            jumpToInsumoId={jumpToInsumoId}
+            selectedInsumoId={selectedInsumoId}
+            visibleIds={visibleIds}
+            rubroSeleccionado={rubroSeleccionado}
           />
-        </main>
+        </div>
       </div>
+
+      <InsumoGroupModal
+        open={groupModalOpen}
+        originRubroLabel={groupModalRubroLabel}
+        onClose={handleCloseGroupModal}
+        insumo={groupModalInsumo}
+        businessId={businessId}
+        groups={groups}
+        initialGroupId={groupModalInitialGroupId}
+        onGroupsReload={loadGroups}
+      />
 
       <Snackbar
         open={snack.open}

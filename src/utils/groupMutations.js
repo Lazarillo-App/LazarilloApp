@@ -122,7 +122,6 @@ export function applyCreateGroup(groups, newGroup) {
   // Evitar duplicados
   const exists = groups.find(g => Number(g.id) === Number(newGroup.id));
   if (exists) {
-    console.warn('[groupMutations] applyCreateGroup: grupo ya existe', newGroup.id);
     return groups;
   }
   

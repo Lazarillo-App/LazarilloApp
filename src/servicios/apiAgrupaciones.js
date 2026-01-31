@@ -35,49 +35,63 @@ export async function obtenerAgrupaciones(businessId, divisionId = null) {
   const headers = {};
   if (divisionId != null) headers['X-Division-Id'] = String(divisionId);
 
-  const resp = await httpBiz(
-    `/agrupaciones`,
-    { method: 'GET', headers },
-    businessId
-  );
-
+  const resp = await httpBiz(`/agrupaciones`, { method: 'GET', headers }, businessId);
   return unwrapList(resp);
 }
 
 // POST /api/businesses/:businessId/agrupaciones
-export async function crearAgrupacion(businessId, nombre) {
+// ✅ acepta:
+//   - crearAgrupacion(businessId, "Nombre")
+//   - crearAgrupacion(businessId, { nombre, articulos })
+export async function crearAgrupacion(businessId, payloadOrName) {
+  const payload =
+    typeof payloadOrName === 'string' ? { nombre: payloadOrName } : (payloadOrName || {});
+
   const resp = await httpBiz(
     `/agrupaciones`,
-    { method: 'POST', body: { nombre } },
-    businessId
+    { method: 'POST', body: payload },
+    businessId // 👈 si viene, lo usa; si no, usa el activeBusinessId
   );
 
-  // tu controller actual devuelve row directo (no {ok:true})
   return unwrapOne(resp, 'Error creando agrupación');
 }
 
 // PUT /api/businesses/:businessId/agrupaciones/:id
-export async function actualizarAgrupacion(businessId, groupId, updates) {
+export async function actualizarAgrupacion(businessId, groupOrId, updates) {
+  const id = Number(
+    typeof groupOrId === 'object' && groupOrId
+      ? (groupOrId.id ?? groupOrId.agrupacionId)
+      : groupOrId
+  );
+
+  if (!Number.isFinite(id) || id <= 0) {
+    console.error('[actualizarAgrupacion] id inválido:', groupOrId);
+    throw new Error('id_agrupacion_invalido');
+  }
+
   const resp = await httpBiz(
-    `/agrupaciones/${groupId}`,
+    `/agrupaciones/${id}`,
     { method: 'PUT', body: updates },
     businessId
   );
 
-  // tu controller devuelve row directo
   return unwrapOne(resp, 'Error actualizando agrupación');
 }
 
 // DELETE /api/businesses/:businessId/agrupaciones/:id
-export async function eliminarAgrupacion(businessId, groupId) {
-  const resp = await httpBiz(
-    `/agrupaciones/${groupId}`,
-    { method: 'DELETE' },
-    businessId
+export async function eliminarAgrupacion(groupOrId) {
+  const id = Number(
+    typeof groupOrId === 'object' && groupOrId
+      ? (groupOrId.id ?? groupOrId.agrupacionId)
+      : groupOrId
   );
 
-  // tu controller devuelve {ok:true}
-  return unwrapOne(resp, 'Error eliminando agrupación');
+  if (!Number.isFinite(id) || id <= 0) {
+    console.error('[eliminarAgrupacion] id inválido:', groupOrId);
+    throw new Error('id_agrupacion_invalido');
+  }
+
+  return httpBiz(`/agrupaciones/${id}`, { method: 'DELETE' });
 }
 
 // PUT /api/businesses/:businessId/agrupaciones/:id/articulos

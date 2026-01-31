@@ -1,6 +1,5 @@
 // src/componentes/TablaArticulos.jsx
 /* eslint-disable no-empty */
-/* eslint-disable no-useless-catch */
 /* eslint-disable no-unused-vars */
 import React, {
   useEffect,
@@ -266,6 +265,8 @@ export default function TablaArticulos({
 
   // Carga catálogo + exclusiones
   useEffect(() => {
+    console.log('[TablaArticulos] cargando con activeBizId:', activeBizId);
+
     let cancel = false;
     loadReqId.current += 1;
     const myId = loadReqId.current;
@@ -937,7 +938,7 @@ export default function TablaArticulos({
 
     const a = row.art;
     const id = a.id;
-    const isSelected = Number(selectedArticleId) === Number(id);
+    const isSelected = Number(id) === Number(selectedArticleId);
 
     const overrideQty = getVentasQty(id);
     const overrideAmount = getVentasAmount(id);
@@ -968,6 +969,7 @@ export default function TablaArticulos({
       <div
         key={row.key}
         data-article-id={id}
+        className={isSelected ? "row-selected" : ""}
         style={{
           ...style,
           display: "grid",

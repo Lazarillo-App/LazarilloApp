@@ -4,11 +4,19 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
-  Snackbar, Alert, LinearProgress
+  Snackbar, Alert, LinearProgress, Badge
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+
+// ⚠️ Si tu proyecto NO tiene alias "@/":
+// cambiá estas rutas a rutas relativas reales (ej: ../assets/...)
+// o configurá alias en vite.config.js
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
+
+import { useBusiness } from '@/context/BusinessContext';
+import { useNotifications } from '@/hooks/useNotifications';
+
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 
 /* ==== helpers ==== */
@@ -34,12 +42,12 @@ const luminance = (rgb) => {
 
 const onColorFor = (bgHex) => (luminance(hexToRgb(bgHex)) > 0.179 ? '#000000' : '#ffffff');
 
-const getUser = () => { 
-  try { 
-    return JSON.parse(localStorage.getItem('user') || 'null') || null; 
-  } catch { 
-    return null; 
-  } 
+const getUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null') || null;
+  } catch {
+    return null;
+  }
 };
 
 const getUserRole = () => getUser()?.role || null;
@@ -50,7 +58,6 @@ const getUserAvatarUrl = () => {
 };
 
 export default function Navbar() {
-  // Menús
   const [navEl, setNavEl] = React.useState(null);
   const [userEl, setUserEl] = React.useState(null);
 
@@ -59,10 +66,17 @@ export default function Navbar() {
   const role = getUserRole();
   const isAppAdmin = role === 'app_admin';
 
-  // Contraste dinámico
-  const [colors, setColors] = React.useState(() => ({ 
-    primary: '#111111', 
-    onPrimary: '#ffffff' 
+  const { activeId } = useBusiness() || {};
+  const { unreadCount } = useNotifications({
+    businessId: activeId,
+    mode: 'count', // 👈 solo necesitamos el puntito
+  });
+
+  const hasUnread = !isAppAdmin && logged && Number(unreadCount || 0) > 0;
+
+  const [colors, setColors] = React.useState(() => ({
+    primary: '#111111',
+    onPrimary: '#ffffff'
   }));
 
   const recomputeColors = React.useCallback(() => {
@@ -72,50 +86,30 @@ export default function Navbar() {
     const onPrimary = onColorFor(primary);
     root.style.setProperty('--on-primary', onPrimary);
 
-    setColors(prev => {
-      if (prev.primary === primary && prev.onPrimary === onPrimary) {
-        return prev;
-      }
-      return { primary, onPrimary };
-    });
+    setColors(prev => (prev.primary === primary && prev.onPrimary === onPrimary ? prev : { primary, onPrimary }));
   }, []);
 
-  // Avatar usuario
   const [userAvatar, setUserAvatar] = React.useState(getUserAvatarUrl());
 
-  // Estado de sincronización global
   const [syncRunning, setSyncRunning] = React.useState(false);
   const [syncTotal, setSyncTotal] = React.useState(0);
-  const [snack, setSnack] = React.useState({ 
-    open: false, 
-    msg: '', 
-    sev: 'success' 
+  const [snack, setSnack] = React.useState({
+    open: false,
+    msg: '',
+    sev: 'success'
   });
 
   const isLightBg = colors.onPrimary === '#000000';
   const brandSrc = isLightBg ? logoDark : logoLight;
 
-  // 🔧 Efecto principal para tema + listeners
   React.useEffect(() => {
     recomputeColors();
     setUserAvatar(getUserAvatarUrl());
 
-    const onThemeUpdated = () => {
-      recomputeColors();
-    };
-
-    const onPaletteChanged = () => {
-      recomputeColors();
-    };
-
-    const onLogin = () => {
-      setUserAvatar(getUserAvatarUrl());
-    };
-
-    const onLogout = () => {
-      setUserAvatar('');
-      recomputeColors();
-    };
+    const onThemeUpdated = () => recomputeColors();
+    const onPaletteChanged = () => recomputeColors();
+    const onLogin = () => setUserAvatar(getUserAvatarUrl());
+    const onLogout = () => { setUserAvatar(''); recomputeColors(); };
 
     window.addEventListener('theme:updated', onThemeUpdated);
     window.addEventListener('palette:changed', onPaletteChanged);
@@ -130,14 +124,13 @@ export default function Navbar() {
     };
   }, [recomputeColors]);
 
-  // Escuchar inicio/fin del auto-sync
   React.useEffect(() => {
     const onStart = (e) => {
       const total = Number(e?.detail?.total || 0);
       setSyncTotal(total);
       setSyncRunning(true);
     };
-    
+
     const onDone = (e) => {
       const ok = Number(e?.detail?.ok || 0);
       const fail = Number(e?.detail?.fail || 0);
@@ -150,10 +143,10 @@ export default function Navbar() {
           : `Sincronización completa: ${ok} OK.`
       });
     };
-    
+
     window.addEventListener('business:auto-sync-start', onStart);
     window.addEventListener('business:auto-sync-done', onDone);
-    
+
     return () => {
       window.removeEventListener('business:auto-sync-start', onStart);
       window.removeEventListener('business:auto-sync-done', onDone);
@@ -162,15 +155,10 @@ export default function Navbar() {
 
   const logout = () => {
     const uid = getUser()?.id || null;
-    
-    // Solo borramos token, user y bizTheme
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('bizTheme');
     if (uid) localStorage.removeItem(`bizTheme:${uid}`);
-    
-    // NO borramos activeBusinessId (persiste entre sesiones)
-    
     window.dispatchEvent(new Event('auth:logout'));
     navigate('/login', { replace: true });
   };
@@ -190,7 +178,6 @@ export default function Navbar() {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
-            
             {/* Logo */}
             <Box
               component={NavLink}
@@ -230,6 +217,7 @@ export default function Navbar() {
               >
                 <MenuIcon />
               </IconButton>
+
               <Menu
                 anchorEl={navEl}
                 open={Boolean(navEl)}
@@ -238,45 +226,27 @@ export default function Navbar() {
                 transformOrigin={{ vertical: 'top', horizontal: 'left' }}
                 sx={{
                   display: { xs: 'block', md: 'none' },
-                  '& .MuiPaper-root': { 
-                    background: 'var(--color-primary)', 
-                    color: 'var(--on-primary)' 
+                  '& .MuiPaper-root': {
+                    background: 'var(--color-primary)',
+                    color: 'var(--on-primary)'
                   }
                 }}
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  <MenuItem 
-                    component={NavLink} 
-                    to={homeTo} 
-                    onClick={() => setNavEl(null)}
-                  >
+                  <MenuItem component={NavLink} to={homeTo} onClick={() => setNavEl(null)}>
                     Menú
                   </MenuItem>
-                  {!isAppAdmin && (
-                    <>
-                      <MenuItem 
-                        component={NavLink} 
-                        to="/agrupaciones" 
-                        onClick={() => setNavEl(null)}
-                      >
-                        Agrupaciones
-                      </MenuItem>
-                      <MenuItem 
-                        component={NavLink} 
-                        to="/insumos" 
-                        onClick={() => setNavEl(null)}
-                      >
-                        Insumos
-                      </MenuItem>
-                    </>
-                  )}
+
+                  {/* ✅ SIN Fragment: usamos array */}
+                  {!isAppAdmin && [
+                    <MenuItem key="m-insumos" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
+                      Insumos
+                    </MenuItem>,
+                  ]}
+
                   {isAppAdmin && (
-                    <MenuItem 
-                      component={NavLink} 
-                      to="/admin" 
-                      onClick={() => setNavEl(null)}
-                    >
+                    <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
                       Admin
                     </MenuItem>
                   )}
@@ -286,52 +256,30 @@ export default function Navbar() {
 
             {/* Desktop – links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
-              <Button 
-                color="inherit" 
-                sx={{ color: 'inherit' }} 
-                component={NavLink} 
-                to={homeTo}
-              >
+              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to={homeTo}>
                 Menú
               </Button>
+
               {!isAppAdmin && (
-                <>
-                  <Button 
-                    color="inherit" 
-                    sx={{ color: 'inherit' }} 
-                    component={NavLink} 
-                    to="/agrupaciones"
-                  >
-                    Agrupaciones
-                  </Button>
-                  <Button 
-                    color="inherit" 
-                    sx={{ color: 'inherit' }} 
-                    component={NavLink} 
-                    to="/insumos"
-                  >
-                    Insumos
-                  </Button>
-                </>
+                <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/insumos">
+                  Insumos
+                </Button>
               )}
+
               {isAppAdmin && (
-                <Button 
-                  color="inherit" 
-                  sx={{ color: 'inherit' }} 
-                  component={NavLink} 
-                  to="/admin"
-                >
+                <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/admin">
                   Admin
                 </Button>
               )}
             </Box>
 
-            {/* ====== 🆕 Selector Unificado (Negocio + Divisiones) ====== */}
             {!isAppAdmin && logged && (
-              <BusinessDivisionSelector />
+              <Box sx={{ ml: 1, flexShrink: 0 }}>
+                <BusinessDivisionSelector />
+              </Box>
             )}
 
-            {/* ====== Botón PERFIL ====== */}
+            {/* Perfil */}
             <Box sx={{ flexGrow: 0 }}>
               <Tooltip title="Perfil">
                 <IconButton
@@ -339,23 +287,39 @@ export default function Navbar() {
                   sx={{ p: 0, color: 'inherit' }}
                   aria-label="Abrir menú de perfil"
                 >
-                  <Avatar
-                    src={userAvatar || undefined}
-                    sx={{ 
-                      width: 32, 
-                      height: 32, 
-                      bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)' 
+                  <Badge
+                    variant="dot"
+                    color="error"
+                    overlap="circular"
+                    invisible={!hasUnread}
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        width: 15,
+                        height: 15,
+                        borderRadius: '50%',
+                        border: '2px solid var(--color-primary, #111111)',
+                      }
                     }}
-                  />
+                  >
+                    <Avatar
+                      src={userAvatar || undefined}
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)'
+                      }}
+                    />
+                  </Badge>
                 </IconButton>
               </Tooltip>
+
               <Menu
-                sx={{ 
-                  mt: '45px', 
-                  '& .MuiPaper-root': { 
-                    background: 'var(--color-primary)', 
-                    color: 'var(--on-primary)' 
-                  } 
+                sx={{
+                  mt: '45px',
+                  '& .MuiPaper-root': {
+                    background: 'var(--color-primary)',
+                    color: 'var(--on-primary)'
+                  }
                 }}
                 anchorEl={userEl}
                 open={Boolean(userEl)}
@@ -365,44 +329,25 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Opciones de perfil' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  {logged
-                    ? [
-                      <MenuItem 
-                        key="perfil" 
-                        component={NavLink} 
-                        to="/perfil" 
-                        onClick={() => setUserEl(null)}
-                      >
+                  {logged ? (
+                    <>
+                      <MenuItem component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
                         Perfil
-                      </MenuItem>,
-                      <Divider 
-                        key="divp" 
-                        sx={{ 
-                          my: 0.5, 
-                          borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' 
-                        }} 
-                      />,
-                      <MenuItem key="logout" onClick={logout}>
-                        Salir
-                      </MenuItem>,
-                    ]
-                    : [
-                      <MenuItem 
-                        key="login" 
-                        component={NavLink} 
-                        to="/login" 
-                        onClick={() => setUserEl(null)}
-                      >
-                        Login
-                      </MenuItem>,
-                    ]}
+                      </MenuItem>
+                      <Divider sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />
+                      <MenuItem onClick={logout}>Salir</MenuItem>
+                    </>
+                  ) : (
+                    <MenuItem component={NavLink} to="/login" onClick={() => setUserEl(null)}>
+                      Login
+                    </MenuItem>
+                  )}
                 </MenuList>
               </Menu>
             </Box>
           </Toolbar>
         </Container>
 
-        {/* Línea de progreso visible mientras corre el auto-sync */}
         {syncRunning && (
           <LinearProgress
             color="inherit"
@@ -415,7 +360,6 @@ export default function Navbar() {
         )}
       </AppBar>
 
-      {/* Snackbar al finalizar la sincronización */}
       <Snackbar
         open={snack.open}
         autoHideDuration={3200}

@@ -1,88 +1,135 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext, useContext, useEffect, useMemo, useState, useCallback
+} from 'react';
+
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { useAuth } from './AuthContext';
 import * as apiDivisions from '../servicios/apiDivisions';
+import { setActiveBusiness as setActiveBusinessSvc } from '../servicios/setActiveBusiness';
 
 const BizCtx = createContext(null);
 export const useBusiness = () => useContext(BizCtx);
 
-// 🔹 Hook unificado para obtener el negocio activo
 export function useActiveBusiness() {
   const bizCtx = useBusiness();
-
   const active = bizCtx?.active || null;
   const activeIdFromCtx = bizCtx?.activeId || '';
   const activeIdFromStorage = localStorage.getItem('activeBusinessId') || '';
-
-  const businessId =
-    active?.id ||
-    activeIdFromCtx ||
-    activeIdFromStorage ||
-    '';
-
-  return {
-    businessId,
-    business: active,
-  };
+  const businessId = active?.id || activeIdFromCtx || activeIdFromStorage || '';
+  return { businessId, business: active };
 }
 
 export function BusinessProvider({ children }) {
   const { isLogged } = useAuth();
-  
-  // Estados de negocios
+
+  // Negocios
   const [items, setItems] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem('activeBusinessId') || '');
   const [loading, setLoading] = useState(false);
 
-  // 🆕 Estados de divisiones
+  // Divisiones
   const [divisions, setDivisions] = useState([]);
   const [activeDivisionId, setActiveDivisionId] = useState(null);
   const [activeDivisionGroupIds, setActiveDivisionGroupIds] = useState([]);
   const [divisionsLoading, setDivisionsLoading] = useState(false);
 
-  console.log('[BusinessContext] 🏗️ Render:', {
-    activeId,
-    activeDivisionId,
-    divisionsCount: divisions.length,
-    groupIdsCount: activeDivisionGroupIds.length,
-  });
+  const loadDivisionGroups = useCallback(async (divisionId) => {
+    if (!divisionId) {
+      setActiveDivisionGroupIds([]);
+      return;
+    }
+    try {
+      const result = await apiDivisions.getGroupsByDivision(divisionId);
+      const groupIds = result?.groups?.map(g => g.id) || [];
+      setActiveDivisionGroupIds(groupIds);
+    } catch (error) {
+      console.error('[BusinessContext] ❌ Error cargando grupos:', error);
+      setActiveDivisionGroupIds([]);
+    }
+  }, []);
 
-  // ============================================================================
-  // CARGAR NEGOCIOS
-  // ============================================================================
+  const setDivision = useCallback(async (divisionId) => {
+    const newId = divisionId === null || divisionId === '' ? null : Number(divisionId);
+
+    setActiveDivisionId(newId);
+
+    const storageKey = `activeDivisionId:businessId:${activeId}`;
+    if (newId === null) {
+      localStorage.removeItem(storageKey);
+      setActiveDivisionGroupIds([]);
+    } else {
+      localStorage.setItem(storageKey, String(newId));
+      await loadDivisionGroups(newId);
+    }
+  }, [activeId, loadDivisionGroups]);
+
+  // Cargar negocios al login
   useEffect(() => {
-    if (!isLogged) { 
+    if (!isLogged) {
       setItems([]);
-      setActiveId(''); 
+      setActiveId('');
       setDivisions([]);
       setActiveDivisionId(null);
-      return; 
+      setActiveDivisionGroupIds([]);
+      return;
     }
-    
+
     let alive = true;
     setLoading(true);
-    
+
     BusinessesAPI.listMine()
       .then(list => {
         if (!alive) return;
-        setItems(list || []);
-        if (!activeId && list?.[0]?.id) {
-          localStorage.setItem('activeBusinessId', list[0].id);
-          setActiveId(list[0].id);
-        }
+
+        const arr = Array.isArray(list) ? list : [];
+        setItems(arr);
+
+        setActiveId(prev => {
+          const prevTrim = String(prev || '').trim();
+          if (prevTrim) return prevTrim;
+
+          const stored = String(localStorage.getItem('activeBusinessId') || '').trim();
+          if (stored) return stored;
+
+          const first = arr?.[0]?.id ? String(arr[0].id) : '';
+          if (first) localStorage.setItem('activeBusinessId', first);
+          return first;
+        });
       })
       .finally(() => alive && setLoading(false));
-    
-    return () => { alive = false; };
-  }, [isLogged, activeId]);
 
-  // ============================================================================
-  // CARGAR DIVISIONES cuando cambia el negocio activo
-  // ============================================================================
+    return () => { alive = false; };
+  }, [isLogged]);
+
+  // 👂 Escuchar cambios globales (por si algo llama setActiveBusiness afuera del Context)
+  useEffect(() => {
+    const onSwitched = (ev) => {
+      const bizId = ev?.detail?.bizId;
+      if (!bizId) return;
+
+      setActiveId(String(bizId));
+      localStorage.setItem('activeBusinessId', String(bizId));
+
+      const biz = ev?.detail?.biz;
+      if (biz?.id) {
+        setItems(prev =>
+          prev.map(b => String(b.id) === String(biz.id) ? { ...b, ...biz } : b)
+        );
+      }
+
+      // reset división al cambiar negocio
+      setActiveDivisionId(null);
+      setActiveDivisionGroupIds([]);
+    };
+
+    window.addEventListener('business:switched', onSwitched);
+    return () => window.removeEventListener('business:switched', onSwitched);
+  }, []);
+
+  // Cargar divisiones cuando cambia el negocio activo
   useEffect(() => {
     if (!activeId) {
-      console.log('[BusinessContext] ⚠️ No hay activeId, limpiando divisiones');
       setDivisions([]);
       setActiveDivisionId(null);
       setActiveDivisionGroupIds([]);
@@ -92,37 +139,26 @@ export function BusinessProvider({ children }) {
     let alive = true;
     setDivisionsLoading(true);
 
-    console.log('[BusinessContext] 🔄 Cargando divisiones para negocio:', activeId);
-
     apiDivisions.getDivisions(activeId)
-      .then((result) => {
+      .then(async (result) => {
         if (!alive) return;
-        
+
         const divisionsList = result?.divisions || [];
-        console.log('[BusinessContext] ✅ Divisiones cargadas:', divisionsList.length);
-        
         setDivisions(divisionsList);
 
-        // Restaurar división activa desde localStorage
         const storageKey = `activeDivisionId:businessId:${activeId}`;
         const saved = localStorage.getItem(storageKey);
-        
+
         if (saved && saved !== 'null') {
           const savedId = Number(saved);
-          // Verificar que la división guardada existe en la lista
           const exists = divisionsList.some(d => d.id === savedId);
-          
           if (exists) {
-            console.log('[BusinessContext] 📂 Restaurando división guardada:', savedId);
             setActiveDivisionId(savedId);
-            // Cargar groupIds de esta división
-            loadDivisionGroups(savedId);
+            await loadDivisionGroups(savedId);
             return;
           }
         }
 
-        // Si no hay división guardada o no existe, resetear a Principal
-        console.log('[BusinessContext] 🏠 Reseteando a Principal (null)');
         setActiveDivisionId(null);
         setActiveDivisionGroupIds([]);
       })
@@ -137,146 +173,81 @@ export function BusinessProvider({ children }) {
         if (alive) setDivisionsLoading(false);
       });
 
-    return () => {
-      alive = false;
-    };
-  }, [activeId]);
+    return () => { alive = false; };
+  }, [activeId, loadDivisionGroups]);
 
-  // ============================================================================
-  // FUNCIÓN: Cargar groupIds de una división
-  // ============================================================================
-  const loadDivisionGroups = async (divisionId) => {
-    if (!divisionId) {
-      setActiveDivisionGroupIds([]);
-      return;
-    }
-
-    try {
-      console.log('[BusinessContext] 📦 Cargando grupos de división:', divisionId);
-      
-      const result = await apiDivisions.getGroupsByDivision(divisionId);
-      const groupIds = result?.groups?.map(g => g.id) || [];
-      
-      console.log('[BusinessContext] ✅ Grupos cargados:', groupIds.length);
-      setActiveDivisionGroupIds(groupIds);
-    } catch (error) {
-      console.error('[BusinessContext] ❌ Error cargando grupos:', error);
-      setActiveDivisionGroupIds([]);
-    }
-  };
-
-  // ============================================================================
-  // FUNCIÓN: Cambiar división activa
-  // ============================================================================
-  const setDivision = async (divisionId) => {
-    const newId = divisionId === null ? null : Number(divisionId);
-    
-    console.log('[BusinessContext] 🔄 Cambiando división:', {
-      anterior: activeDivisionId,
-      nueva: newId,
-    });
-
-    setActiveDivisionId(newId);
-
-    // Guardar en localStorage
-    const storageKey = `activeDivisionId:businessId:${activeId}`;
-    if (newId === null) {
-      localStorage.removeItem(storageKey);
-      setActiveDivisionGroupIds([]);
-      console.log('[BusinessContext] 🗑️ División Principal, removiendo de localStorage');
-    } else {
-      localStorage.setItem(storageKey, String(newId));
-      console.log('[BusinessContext] 💾 División guardada en localStorage:', newId);
-      // Cargar groupIds de la nueva división
-      await loadDivisionGroups(newId);
-    }
-  };
-
-  // ============================================================================
-  // VALORES DERIVADOS
-  // ============================================================================
-  
+  // Derivados
   const active = useMemo(
     () => items.find(b => String(b.id) === String(activeId)) || null,
     [items, activeId]
   );
 
-  // División activa completa (objeto)
   const activeDivision = useMemo(() => {
     if (activeDivisionId === null) return null;
     return divisions.find(d => d.id === activeDivisionId) || null;
   }, [activeDivisionId, divisions]);
 
-  // ¿Estamos viendo la división principal?
   const isMainDivision = activeDivisionId === null;
 
-  // Nombre de la división activa
   const activeDivisionName = useMemo(() => {
     if (isMainDivision) return 'Principal';
     return activeDivision?.name || 'Principal';
   }, [isMainDivision, activeDivision]);
 
-  // ============================================================================
-  // FUNCIONES DE NEGOCIO (mantener existentes)
-  // ============================================================================
-  
-  const select = async (id) => {
-    await BusinessesAPI.select(id);
-    localStorage.setItem('activeBusinessId', id);
-    setActiveId(id);
+  // ✅ ÚNICA forma de cambiar negocio (para Navbar + Cards + Perfil)
+  const select = useCallback(async (id) => {
+    const { id: finalId, biz } = await setActiveBusinessSvc(id, { fetchBiz: true, broadcast: true });
+
+    setActiveId(String(finalId));
+    localStorage.setItem('activeBusinessId', String(finalId));
+
+    if (biz?.id) {
+      setItems(prev =>
+        prev.map(b => String(b.id) === String(biz.id) ? { ...b, ...biz } : b)
+      );
+    }
+
     // Resetear división al cambiar de negocio
     setActiveDivisionId(null);
     setActiveDivisionGroupIds([]);
-  };
+  }, []);
 
-  const addBusiness = (biz) => {
+  const addBusiness = useCallback((biz) => {
     setItems(prev => [biz, ...prev]);
-    localStorage.setItem('activeBusinessId', biz.id);
-    setActiveId(biz.id);
-  };
+    localStorage.setItem('activeBusinessId', String(biz.id));
+    setActiveId(String(biz.id));
+  }, []);
 
-  // ============================================================================
-  // PROVIDER VALUE
-  // ============================================================================
-  
-  const value = useMemo(
-    () => ({
-      // Negocios
-      items,
-      active,
-      activeId,
-      select,
-      addBusiness,
-      loading,
-      
-      // 🆕 Divisiones
-      divisions,
-      activeDivisionId,
-      activeDivision,
-      activeDivisionName,
-      activeDivisionGroupIds,
-      isMainDivision,
-      divisionsLoading,
-      setDivision,
-    }),
-    [
-      items,
-      active,
-      activeId,
-      loading,
-      divisions,
-      activeDivisionId,
-      activeDivision,
-      activeDivisionName,
-      activeDivisionGroupIds,
-      isMainDivision,
-      divisionsLoading,
-    ]
-  );
+  // Alias “claros” para Navbar
+  const selectBusiness = useCallback(async (id) => select(id), [select]);
+  const selectDivision = useCallback(async (divisionId) => setDivision(divisionId), [setDivision]);
 
-  return (
-    <BizCtx.Provider value={value}>
-      {children}
-    </BizCtx.Provider>
-  );
+  const value = useMemo(() => ({
+    items,
+    active,
+    activeId,
+    activeBusinessId: activeId,
+    select,           // si algo viejo lo usa
+    selectBusiness,   // Navbar + Perfil + Cards
+    addBusiness,
+    loading,
+
+    divisions,
+    activeDivisionId,
+    activeDivision,
+    activeDivisionName,
+    activeDivisionGroupIds,
+    isMainDivision,
+    divisionsLoading,
+
+    setDivision,
+    selectDivision,
+  }), [
+    items, active, activeId, select, selectBusiness, addBusiness, loading,
+    divisions, activeDivisionId, activeDivision, activeDivisionName,
+    activeDivisionGroupIds, isMainDivision, divisionsLoading,
+    setDivision, selectDivision,
+  ]);
+
+  return <BizCtx.Provider value={value}>{children}</BizCtx.Provider>;
 }

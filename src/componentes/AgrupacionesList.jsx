@@ -14,6 +14,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
+
 import { emitGroupsChanged } from "@/utils/groupsBus";
 import {
   actualizarAgrupacion,
@@ -90,8 +91,8 @@ function groupItemsByLayout(items = [], layout = 'sub-cat') {
 
       if (!byRubro.has(key)) {
         byRubro.set(key, {
-          subrubro: rubroBase,   // usamos el rubro base como "subrubro" visible
-          categorias: [],        // acá vamos a meter *una* categoría con todo
+          subrubro: rubroBase,
+          categorias: [],
         });
       }
       const entry = byRubro.get(key);
@@ -171,6 +172,7 @@ const AgrupacionesList = ({
   onSetFavorite,
   todoVirtualArticulos = [],
   notify,
+  businessId,
 }) => {
 
   // edición de nombre por grupo
@@ -216,7 +218,6 @@ const AgrupacionesList = ({
     if (typeof notify === 'function') {
       notify(msg, type);
     } else if (typeof window !== 'undefined') {
-      // fallback simple si no pasaste notify
       window.alert(msg);
     } else {
       console.log(`[${type}]`, msg);
@@ -243,28 +244,27 @@ const AgrupacionesList = ({
       return;
     }
 
-    // 👉 A partir de acá ya es un rename válido (incluye al TODO)
     const baseArticulos = isTodo
       ? (todoVirtualArticulos || [])
       : (g.articulos || []);
 
-    // 1) Mutación optimista
+    // Mutación optimista
     onMutateGroups?.({
-      type: 'create',          // lo dejamos igual que estaba, para no romper tu handler
+      type: 'create',
       id: g.id,
       nombre: nuevo,
       articulos: baseArticulos,
     });
 
     const payload = isTodo
-      ? { nombre: nuevo, articulos: baseArticulos } // TODO: se promueve con sus artículos actuales
+      ? { nombre: nuevo, articulos: baseArticulos }
       : { nombre: nuevo };
 
     try {
-      await actualizarAgrupacion(businessId, g.id, payload);
+      await actualizarAgrupacion(g.id, payload);
       emitGroupsChanged("rename", { groupId: g.id });
       setEditing((s) => ({ ...s, [g.id]: false }));
-      onActualizar?.(); // 👈 acá el padre debería refetch → trae nuevo todoGroupId + agrupaciones
+      onActualizar?.();
       showMsg('Nombre de agrupación actualizado.', 'success');
     } catch (err) {
       console.error('ERROR_UPDATE_GROUP_NAME', err);
@@ -274,14 +274,24 @@ const AgrupacionesList = ({
     }
   };
 
-
   const removeGroup = async (g) => {
-    // ⬇ ahora usamos la misma regla que en el resto:
+    if (!g?.id) return;
+
+    // NO borrar TODO ni Discontinuados
     if (isRealTodoGroup(g, todoGroupId) || isDiscontinuadosGroup(g)) return;
+
     if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
-    await eliminarAgrupacion(businessId, g.id);
-    emitGroupsChanged("delete", { groupId: g.id });
-    onActualizar?.();
+
+    try {
+      // ✅ antes funcionaba así: eliminarAgrupacion(group)
+      await eliminarAgrupacion(g);
+      emitGroupsChanged("delete", { groupId: g.id });
+      onActualizar?.();
+      showMsg('Agrupación eliminada.', 'success');
+    } catch (e) {
+      console.error('ERROR_DELETE_GROUP', e);
+      showMsg('No se pudo eliminar la agrupación.', 'error');
+    }
   };
 
   const toggleArticle = (groupId, artId) => {
@@ -293,7 +303,9 @@ const AgrupacionesList = ({
   };
 
   const selectAllInGroup = (g) => {
-    const allIds = (g.articulos || []).map((a) => Number(a.id)).filter(Boolean);
+    const itemsForGroup = isRealTodoGroup(g, todoGroupId) ? (todoVirtualArticulos || []) : (g.articulos || []);
+    const allIds = itemsForGroup.map((a) => Number(a.id)).filter(Boolean);
+
     setSelectedByGroup((prev) => {
       const cur = prev[g.id] || new Set();
       const every = allIds.every((id) => cur.has(id));
@@ -301,14 +313,20 @@ const AgrupacionesList = ({
     });
   };
 
-  const removeOne = async (groupId, articuloId) => {
-    onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] }); // instantáneo
+  const removeOne = async (groupId, articuloId, isTodo) => {
+    if (isTodo) return;
+
+    onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] });
+
     try {
-      await quitarArticulo(businessId, groupId, articuloId);
+      // ✅ antes funcionaba así: quitarArticulo(groupId, articuloId)
+      await quitarArticulo(groupId, articuloId);
       emitGroupsChanged("remove", { groupId, ids: [articuloId] });
-    } catch {
-      // opcional: revertir mutación optimista si quisieras
+    } catch (e) {
+      console.error('REMOVE_ONE_FAIL', e);
+      showMsg('No se pudo quitar el artículo.', 'error');
     }
+
     setSelectedByGroup(prev => {
       const set = new Set(prev[groupId] || []);
       set.delete(Number(articuloId));
@@ -316,20 +334,31 @@ const AgrupacionesList = ({
     });
   };
 
-  const moveSelected = async (fromId) => {
+  const moveSelected = async (fromId, isTodo) => {
+    if (isTodo) return;
+
     const ids = Array.from(selectedByGroup[fromId] || []);
     const toId = Number(targetByGroup[fromId]);
     if (!ids.length || !Number.isFinite(toId) || toId === fromId) return;
 
     onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById: null });
+
     try {
-      await httpBiz(`/agrupaciones/${fromId}/move-items`, { method: 'POST', body: { toId, ids } });
+      await httpBiz(`/agrupaciones/${fromId}/move-items`, {
+        method: 'POST',
+        body: { toId, ids }
+      });
       emitGroupsChanged("move", { fromId, toId, ids });
-    } catch { }
+      showMsg(`Movidos ${ids.length} artículo(s).`, 'success');
+    } catch (e) {
+      console.error('MOVE_SELECTED_FAIL', e);
+      showMsg('No se pudo mover.', 'error');
+    }
+
     setSelectedByGroup((s) => ({ ...s, [fromId]: new Set() }));
   };
 
-  // 🔒 Bloqueo para "Agregar": bloquea artículos asignados a cualquier agrupación (incluida la actual), excepto TODO.
+  // 🔒 Bloqueo para "Agregar": bloquea artículos asignados a cualquier agrupación, excepto TODO.
   const isArticuloBloqueadoForAppend = useMemo(() => {
     const assigned = new Set();
     (Array.isArray(agrupaciones) ? agrupaciones : [])
@@ -372,6 +401,7 @@ const AgrupacionesList = ({
           const selected = selectedByGroup[g.id] || new Set();
           const itemsForGroup = isTodo ? (todoVirtualArticulos || []) : (g.articulos || []);
           const isOpen = expanded.has(g.id);
+
           const allIds = itemsForGroup.map((a) => Number(a.id)).filter(Boolean);
           const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const someChecked = allIds.some((id) => selected.has(id)) && !allChecked;
@@ -391,11 +421,9 @@ const AgrupacionesList = ({
                 <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2} flexWrap="wrap">
                   <Box display="flex" alignItems="center" gap={1}>
                     {!editing[g.id] ? (
-                      <>
-                        <Typography variant="h6" sx={{ mr: 1 }}>
-                          {g.nombre}
-                        </Typography>
-                      </>
+                      <Typography variant="h6" sx={{ mr: 1 }}>
+                        {g.nombre}
+                      </Typography>
                     ) : (
                       <TextField
                         size="small"
@@ -412,32 +440,20 @@ const AgrupacionesList = ({
                   <Box>
                     {!editing[g.id] ? (
                       <>
-                        {/* ✏️ Renombrar (no se muestra para Discontinuados) */}
                         {!isDiscontinuadosGroup(g) && (
-                          <Tooltip
-                            title={
-                              isTodo
-                                ? "Renombrar grupo automático de sobrantes"
-                                : "Renombrar"
-                            }
-                          >
+                          <Tooltip title={isTodo ? "Renombrar grupo automático de sobrantes" : "Renombrar"}>
                             <span>
-                              <IconButton
-                                onClick={(e) => { stop(e); startEdit(g); }}
-                              >
+                              <IconButton onClick={(e) => { stop(e); startEdit(g); }}>
                                 <EditIcon />
                               </IconButton>
                             </span>
                           </Tooltip>
                         )}
 
-                        {/* ➕ Agregar artículos */}
                         <Tooltip
-                          title={
-                            isTodo
-                              ? "No se agregan artículos directamente en este grupo; se llena solo con lo que no pertenece a ninguna agrupación"
-                              : "Agregar artículos"
-                          }
+                          title={isTodo
+                            ? "No se agregan artículos directamente en este grupo"
+                            : "Agregar artículos"}
                         >
                           <span>
                             <Button
@@ -452,7 +468,6 @@ const AgrupacionesList = ({
                           </span>
                         </Tooltip>
 
-                        {/* 🗑️ Eliminar agrupación (no se puede borrar TODO ni Discontinuados) */}
                         {!isTodo && !isDiscontinuadosGroup(g) && (
                           <Tooltip title="Eliminar agrupación">
                             <span>
@@ -467,15 +482,12 @@ const AgrupacionesList = ({
                           </Tooltip>
                         )}
 
-                        {/* ⭐ Favorita */}
                         <IconButton
                           size="small"
                           onClick={(e) => { stop(e); onSetFavorite?.(g.id); }}
-                          title={
-                            Number(favoriteGroupId) === Number(g.id)
-                              ? 'Quitar como favorita'
-                              : 'Marcar como favorita'
-                          }
+                          title={Number(favoriteGroupId) === Number(g.id)
+                            ? 'Quitar como favorita'
+                            : 'Marcar como favorita'}
                           sx={{ mr: 1 }}
                         >
                           {Number(favoriteGroupId) === Number(g.id)
@@ -484,10 +496,7 @@ const AgrupacionesList = ({
                         </IconButton>
                       </>
                     ) : (
-                      <IconButton
-                        color="primary"
-                        onClick={(e) => { stop(e); saveName(g); }}
-                      >
+                      <IconButton color="primary" onClick={(e) => { stop(e); saveName(g); }}>
                         <SaveIcon />
                       </IconButton>
                     )}
@@ -499,6 +508,7 @@ const AgrupacionesList = ({
                 <Card variant="outlined">
                   <CardContent>
                     <Divider sx={{ mb: 1.5 }} />
+
                     <Box display="flex" justifyContent="flex-end" alignItems="center" mb={1}>
                       <Typography variant="caption" sx={{ mr: 1 }}>
                         Vista:
@@ -517,20 +527,19 @@ const AgrupacionesList = ({
                     {isTodo && (
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                         Esta agrupación es <strong>virtual</strong>: muestra todos los artículos que aún no pertenecen a ninguna agrupación.
-                        No admite <strong>edición de artículos</strong> desde aquí (solo se renombra y se usan otras agrupaciones para sacarlos de este grupo).
                       </Typography>
                     )}
+
                     <Box display="flex" alignItems="center" mb={1}>
                       <Checkbox
                         checked={allChecked}
                         indeterminate={someChecked}
-                        onChange={() => !isTodo && selectAllInGroup(g)}
+                        onChange={() => selectAllInGroup(g)}
                         disabled={isTodo}
                       />
                       <Typography variant="body2">Seleccionar todos</Typography>
                     </Box>
 
-                    {/* Lista agrupada */}
                     <Stack spacing={1.5}>
                       {grouped.map((sub) => (
                         <Box key={`sub-${sub.subrubro}`}>
@@ -580,29 +589,21 @@ const AgrupacionesList = ({
                                           />
                                           <Typography variant="body2" noWrap title={a?.nombre}>
                                             {a.nombre}{' '}
-                                            <Typography
-                                              component="span"
-                                              variant="caption"
-                                              color="text.secondary"
-                                            >
+                                            <Typography component="span" variant="caption" color="text.secondary">
                                               #{a.id}
                                             </Typography>
                                           </Typography>
                                         </Box>
 
                                         <Tooltip
-                                          title={
-                                            isTodo
-                                              ? 'No se pueden quitar artículos directamente de este grupo automático'
-                                              : 'Quitar del grupo'
-                                          }
+                                          title={isTodo ? 'No se pueden quitar artículos desde este grupo automático' : 'Quitar del grupo'}
                                         >
                                           <span>
                                             <Button
                                               size="small"
                                               color="error"
                                               variant="text"
-                                              onClick={() => removeOne(g.id, Number(a.id))}
+                                              onClick={() => removeOne(g.id, Number(a.id), isTodo)}
                                               disabled={isTodo}
                                             >
                                               Quitar
@@ -621,7 +622,6 @@ const AgrupacionesList = ({
                     </Stack>
                   </CardContent>
 
-                  {/* Acciones: mover seleccionados */}
                   <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
                     <FormControl size="small" sx={{ minWidth: 220 }} disabled={isTodo}>
                       <InputLabel>Mover seleccionados a…</InputLabel>
@@ -644,7 +644,7 @@ const AgrupacionesList = ({
                       size="small"
                       variant="contained"
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => moveSelected(g.id)}
+                      onClick={() => moveSelected(g.id, isTodo)}
                       disabled={
                         isTodo ||
                         !(selectedByGroup[g.id]?.size) ||

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
 // src/componentes/InsumosTable.jsx
-import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import InsumoAccionesMenu from "./InsumoAccionesMenu";
 import InsumoRubroAccionesMenu from "./InsumoRubroAccionesMenu";
 import { insumosRubrosList } from "../servicios/apiInsumos";
@@ -51,8 +51,57 @@ const esDiscontinuadosGroup = (g) => {
   return n === 'discontinuados' || n === 'descontinuados';
 };
 
-export default function InsumosTable({
-  listRef,  // 🆕 AGREGADO: recibir listRef desde InsumosMain
+/* ================== ✅ NUEVO: resolveInsumoMonto ================== */
+/**
+ * Devuelve el monto total gastado de un insumo
+ * Prioridad: total_gastos_periodo > total_gastos > importe_total > fallback qty*precio
+ */
+const resolveInsumoMonto = (insumo, metaById) => {
+  if (!insumo) return 0;
+
+  // Usar campos directos del insumo
+  const monto = Number(
+    insumo.total_gastos_periodo ??
+    insumo.total_gastos ??
+    insumo.importe_total ??
+    insumo.monto ??
+    0
+  );
+
+  if (Number.isFinite(monto) && monto !== 0) return monto;
+
+  // Fallback: qty * precio
+  const qty = Number(insumo.unidades_compradas ?? insumo.total_unidades ?? 0);
+  const precio = Number(insumo.precio_ref ?? insumo.precio ?? 0);
+
+  if (Number.isFinite(qty) && Number.isFinite(precio)) {
+    return qty * precio;
+  }
+
+  // Si metaById está disponible, intentar desde ahí
+  if (metaById && typeof metaById.get === 'function') {
+    const id = Number(insumo.id);
+    if (Number.isFinite(id)) {
+      const meta = metaById.get(id);
+      if (meta) {
+        const metaMonto = Number(
+          meta.total_gastos_periodo ?? meta.total_gastos ?? meta.importe_total ?? 0
+        );
+        if (Number.isFinite(metaMonto) && metaMonto !== 0) return metaMonto;
+
+        const metaQty = Number(meta.unidades_compradas ?? meta.total_unidades ?? 0);
+        const metaPrecio = Number(meta.precio ?? 0);
+        if (Number.isFinite(metaQty) && Number.isFinite(metaPrecio)) {
+          return metaQty * metaPrecio;
+        }
+      }
+    }
+  }
+
+  return 0;
+};
+
+const InsumosTable = forwardRef(function InsumosTable({
   rows = [],
   loading = false,
   onEdit,
@@ -80,7 +129,9 @@ export default function InsumosTable({
   jumpToInsumoId = null,
   selectedInsumoId = null,
   onIdToIndexChange,
-}) {
+  metaById, // ✅ NUEVO
+  getAmountForId, // ✅ NUEVO
+}, ref) {
   const isElaborados = vista === "elaborados";
 
   const [rubros, setRubros] = useState([]);
@@ -143,18 +194,20 @@ export default function InsumosTable({
     return m;
   }, [rubros]);
 
-  const getRubroLabel = (row) => {
-    const code = row.rubro_codigo ?? row.rubroCodigo ?? row.codigo_rubro ?? row.rubro ?? null;
+  const getRubroLabel = useCallback(
+    (row) => {
+      const code =
+        row?.rubro_codigo ?? row?.rubroCodigo ?? row?.codigo_rubro ?? row?.rubro ?? null;
 
-    if (code != null) {
-      const rubroInfo = rubrosMap.get(String(code));
-      if (rubroInfo?.nombre) {
-        return rubroInfo.nombre;
+      if (code != null) {
+        const rubroInfo = rubrosMap.get(String(code));
+        if (rubroInfo?.nombre) return rubroInfo.nombre;
       }
-    }
 
-    return row.rubro_nombre || row.rubroNombre || (code != null ? `Rubro ${code}` : "Sin rubro");
-  };
+      return row?.rubro_nombre || row?.rubroNombre || (code != null ? `Rubro ${code}` : "Sin rubro");
+    },
+    [rubrosMap]
+  );
 
   const GRID_NO_ELAB = ".4fr 1.2fr .5fr .6fr .5fr .5fr .6fr .6fr .6fr .6fr .4fr";
   const GRID_ELAB = ".4fr 1.2fr .5fr .6fr .6fr .6fr .5fr .6fr .6fr .4fr";
@@ -271,10 +324,33 @@ export default function InsumosTable({
   };
 
   const sortedRows = useMemo(() => {
+    const getSortValueLocal = (r) => {
+      switch (sortBy) {
+        case "codigo":
+          return Number(r.codigo_maxi ?? r.id ?? 0);
+        case "nombre":
+          return String(r.nombre || "").toLowerCase();
+        case "precio": {
+          const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
+          const v =
+            precioMode === "promedio"
+              ? (r.precio_promedio_periodo ?? r.precio_promedio ?? base)
+              : precioMode === "ultima"
+                ? (r.precio_ultima_compra ?? r.precio_ultimo ?? base)
+                : base;
+          return num(v);
+        }
+        case "fecha":
+          return new Date(r.updated_at || r.created_at || 0).getTime();
+        default:
+          return 0;
+      }
+    };
+
     const arr = [...rows];
     arr.sort((a, b) => {
-      const va = getSortValue(a);
-      const vb = getSortValue(b);
+      const va = getSortValueLocal(a);
+      const vb = getSortValueLocal(b);
 
       if (typeof va === "string" || typeof vb === "string") {
         const r = String(va).localeCompare(String(vb), "es", {
@@ -288,11 +364,14 @@ export default function InsumosTable({
       const nb = Number(vb ?? 0);
       return sortDir === "asc" ? na - nb : nb - na;
     });
-    return arr;
-  }, [rows, sortBy, sortDir, getSortValue]);
 
+    return arr;
+  }, [rows, sortBy, sortDir, precioMode]);
+
+  /* ================== ✅ NUEVO: groupedRows con __ventasMonto ================== */
   const groupedRows = useMemo(() => {
     const map = new Map();
+
     for (const r of sortedRows) {
       const rubroLabel = getRubroLabel(r);
       if (!map.has(rubroLabel)) {
@@ -300,12 +379,38 @@ export default function InsumosTable({
       }
       map.get(rubroLabel).push(r);
     }
-    return Array.from(map.entries()).map(([label, groupRows]) => ({
-      label,
-      rows: groupRows,
-    }));
-  }, [sortedRows, getRubroLabel]);
 
+    // Convertir a array y calcular monto por rubro
+    const groups = Array.from(map.entries()).map(([label, groupRows]) => {
+      let ventasMonto = 0;
+
+      groupRows.forEach((r) => {
+        ventasMonto += resolveInsumoMonto(r, metaById);
+      });
+
+      return {
+        label,
+        rows: groupRows,
+        __ventasMonto: ventasMonto,
+      };
+    });
+
+    // ✅ Ordenar por monto descendente
+    groups.sort((a, b) => {
+      if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
+        return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
+      }
+      // Si empatan por monto, alfabético
+      return String(a.label).localeCompare(String(b.label), "es", {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+
+    return groups;
+  }, [sortedRows, getRubroLabel, metaById]);
+
+  /* ================== ✅ flatRows con __ventasMonto ================== */
   const flatRows = useMemo(() => {
     const out = [];
 
@@ -314,14 +419,15 @@ export default function InsumosTable({
         type: "rubro",
         label: group.label,
         rows: group.rows,
-        key: `rubro-${group.label || "sin-rubro"}`, // ✅ key estable
+        key: `rubro-${group.label || "sin-rubro"}`,
+        __ventasMonto: group.__ventasMonto || 0, // ✅ propagamos el monto
       });
 
       group.rows.forEach((r) => {
         out.push({
           type: "insumo",
           data: r,
-          key: `insumo-${r.id}`, // ✅ key estable
+          key: `insumo-${r.id}`,
         });
       });
     });
@@ -329,6 +435,7 @@ export default function InsumosTable({
     return out;
   }, [groupedRows]);
 
+  /* ================== ✅ idToIndex ================== */
   const idToIndex = useMemo(() => {
     const m = new Map();
     flatRows.forEach((row, i) => {
@@ -340,18 +447,20 @@ export default function InsumosTable({
     return m;
   }, [flatRows]);
 
-const lastNotifiedSizeRef = useRef(-1);
+  const lastIndexSigRef = useRef("");
 
-useEffect(() => {
-  if (!onIdToIndexChange) return;
+  useEffect(() => {
+    if (!onIdToIndexChange) return;
 
-  // ✅ solo notifico cuando cambia algo real (tamaño)
-  if (idToIndex.size !== lastNotifiedSizeRef.current) {
-    lastNotifiedSizeRef.current = idToIndex.size;
+    // firma barata: size + primer id + último id
+    const keys = Array.from(idToIndex.keys());
+    const sig = `${idToIndex.size}|${keys[0] ?? ""}|${keys[keys.length - 1] ?? ""}`;
+
+    if (sig === lastIndexSigRef.current) return;
+    lastIndexSigRef.current = sig;
+
     onIdToIndexChange(idToIndex);
-  }
-}, [idToIndex, onIdToIndexChange]);
-
+  }, [idToIndex, onIdToIndexChange]);
 
   useEffect(() => {
     if (jumpToInsumoId) {
@@ -485,7 +594,7 @@ useEffect(() => {
           </div>
         ) : (
           <VirtualList
-            ref={listRef}
+            ref={ref}
             rows={flatRows}
             rowHeight={ITEM_HEIGHT}
             overscan={10}
@@ -499,11 +608,23 @@ useEffect(() => {
                 const id = Number(row?.data?.id);
                 return Number.isFinite(id) ? id : null;
               }
-              return null; // rubro headers no tienen id numérico
+              return null;
             }}
             renderRow={({ row, style }) => {
-              // HEADER DE RUBRO
+              // ✅ HEADER DE RUBRO con totales
               if (row.type === "rubro") {
+                const totalQty = row.rows.reduce((acc, r) => {
+                  const qty = Number(
+                    r.total_unidades_periodo ??
+                    r.unidades_compradas ??
+                    r.total_unidades ??
+                    0
+                  );
+                  return acc + qty;
+                }, 0);
+
+                const totalAmount = row.__ventasMonto || 0; 
+
                 return (
                   <div
                     style={{
@@ -531,21 +652,26 @@ useEffect(() => {
                     >
                       <span>{row.label || "Sin rubro"}</span>
 
-                      <InsumoRubroAccionesMenu
-                        rubroLabel={row.label || "Sin rubro"}
-                        insumoIds={row.rows.map((r) => r.id)}
-                        groups={groups}
-                        selectedGroupId={selectedGroupId}
-                        discontinuadosGroupId={discontinuadosGroupId}
-                        onRefetch={handleAfterAction}
-                        notify={notify}
-                        onMutateGroups={onMutateGroups}
-                        onCreateGroupFromRubro={onCreateGroupFromRubro}
-                        todoGroupId={todoGroupId}
-                        isTodoView={isTodoView}
-                        onReloadCatalogo={onReloadCatalogo}
-                        onAfterAction={handleAfterAction}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <small style={{ opacity: 0.7 }}>
+                          {formatNumber(totalQty, 0)} u. · {formatMoney(totalAmount, 0)}
+                        </small>
+                        <InsumoRubroAccionesMenu
+                          rubroLabel={row.label || "Sin rubro"}
+                          insumoIds={row.rows.map((r) => r.id)}
+                          groups={groups}
+                          selectedGroupId={selectedGroupId}
+                          discontinuadosGroupId={discontinuadosGroupId}
+                          onRefetch={handleAfterAction}
+                          notify={notify}
+                          onMutateGroups={onMutateGroups}
+                          onCreateGroupFromRubro={onCreateGroupFromRubro}
+                          todoGroupId={todoGroupId}
+                          isTodoView={isTodoView}
+                          onReloadCatalogo={onReloadCatalogo}
+                          onAfterAction={handleAfterAction}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -554,13 +680,14 @@ useEffect(() => {
               // FILA DE INSUMO
               const r = row.data;
 
-              // 🆕 Determinar si esta fila debe tener highlight
+              const isJumping = jumpToInsumoId != null && Number(r.id) === Number(jumpToInsumoId);
+              const isSelected = Number(r.id) === Number(selectedInsumoId);
               const shouldHighlight = jumpToInsumoId && Number(r.id) === Number(jumpToInsumoId);
 
               return (
                 <div
                   data-insumo-id={r.id}
-                  className={`tabla-row-insumo ${shouldHighlight ? 'highlight-jump' : ''}`}
+                  className={`tabla-row-insumo ${shouldHighlight ? "highlight-jump" : ""}`}
                   style={{
                     ...style,
                     display: "grid",
@@ -570,8 +697,29 @@ useEffect(() => {
                     padding: "6px 8px",
                     fontSize: "0.9rem",
                     gap: 8,
+
+                    ...(isSelected
+                      ? {
+                        background: "rgba(59,130,246,0.10)",
+                        boxShadow: "inset 0 0 0 1px rgba(59,130,246,0.35)",
+                        position: "relative",
+                      }
+                      : {}),
                   }}
                 >
+                  {isSelected && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 4,
+                        background: "rgba(59,130,246,0.95)",
+                        borderRadius: 2,
+                      }}
+                    />
+                  )}
                   <div>{displayCode(r)}</div>
                   <div title={r.nombre}>{r.nombre}</div>
                   <div>{r.unidad_med || "-"}</div>
@@ -606,4 +754,6 @@ useEffect(() => {
       </div>
     </div>
   );
-}
+});
+
+export default InsumosTable;

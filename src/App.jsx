@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
-import Agrupaciones from './componentes/Agrupaciones';
+//import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
 import RequireMaxi from './componentes/RequireMaxi';
@@ -224,10 +224,10 @@ export default function App() {
                   </RequireMaxi>
                 }
               />
-              <Route
+              {/* <Route
                 path="/agrupaciones"
                 element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
-              />
+              /> */}
               <Route
                 path="/agrupacioneslist"
                 element={<AgrupacionesList agrupaciones={agrupaciones} />}

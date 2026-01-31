@@ -1,446 +1,647 @@
 // src/servicios/apiInsumos.js
+/**
+ * 🔥 API CLIENT PARA INSUMOS
+ * Espejo exacto de la estructura de Artículos/Agrupaciones
+ * Fecha: 2026-01-29
+ */
+
 import { BASE } from './apiBase';
+import { getActiveBusinessId } from './apiBusinesses';
+
+// ==================== HELPERS ====================
 
 function authHeaders(bizId) {
   const token = localStorage.getItem('token') || '';
-  const bid = bizId || localStorage.getItem('activeBusinessId') || '';
+  const bidRaw = bizId ?? getActiveBusinessId() ?? localStorage.getItem('activeBusinessId') ?? '';
+  const bidNum = Number(bidRaw);
+  const bid = Number.isFinite(bidNum) && bidNum > 0 ? bidNum : '';
+  
   const h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = `Bearer ${token}`;
-  if (bid) h['X-Business-Id'] = bid;
+  if (bid) h['X-Business-Id'] = String(bid);
+  
   return h;
 }
 
-/* ================== INSUMOS (CRUD + LISTADO) ================== */
-
-export const insumosList = async (params = {}) => {
-  const qs = new URLSearchParams(params).toString();
-  const url = `${BASE}/insumos${qs ? `?${qs}` : ''}`;
-
-  const res = await fetch(url, {
-    headers: authHeaders(),
+function qs(params = {}) {
+  const u = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === '') return;
+    u.append(k, String(v));
   });
+  const s = u.toString();
+  return s ? `?${s}` : '';
+}
 
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
+// ==================== NUEVOS ENDPOINTS (OPTIMIZADOS) ====================
 
+/**
+ * 🆕 GET /api/insumos/tree-view
+ * Vista de árbol para sidebar (Elaborados/No Elaborados + Rubros)
+ */
+export const insumosTreeView = async (bizId) => {
+  const url = `${BASE}/insumos/tree-view`;
+  const res = await fetch(url, { headers: authHeaders(bizId) });
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumosList error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al listar insumos');
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Error al obtener vista de árbol');
   }
-
-  return data; // { ok, data, pagination }
+  
+  return res.json();
 };
 
+/**
+ * 🆕 GET /api/insumos/stats
+ * Estadísticas para dashboard y badges
+ */
+export const insumosStats = async (bizId) => {
+  const url = `${BASE}/insumos/stats`;
+  const res = await fetch(url, { headers: authHeaders(bizId) });
+  
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Error al obtener estadísticas');
+  }
+  
+  return res.json();
+};
+
+// ==================== CRUD INSUMOS ====================
+
+/**
+ * GET /api/insumos
+ * Lista insumos con filtros avanzados (ahora con datos enriquecidos)
+ */
+export const insumosList = async (bizId, params = {}) => {
+  const queryString = qs(params);
+  const url = `${BASE}/insumos${queryString}`;
+  
+  const res = await fetch(url, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  
+  if (!res.ok) {
+    throw new Error((data && data.error) || 'Error al listar insumos');
+  }
+  
+  return data;
+};
+
+/**
+ * POST /api/insumos
+ * Crea un insumo manual
+ */
 export const insumoCreate = async (payload) => {
   const url = `${BASE}/insumos`;
-  console.log('[apiInsumos] POST', url, payload);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumoCreate error:', res.status, data);
     throw new Error((data && data.error) || 'Error al crear insumo');
   }
+  
   return data;
 };
 
+/**
+ * PUT /api/insumos/:id
+ * Actualiza un insumo
+ */
 export const insumoUpdate = async (id, payload) => {
   const url = `${BASE}/insumos/${id}`;
-  console.log('[apiInsumos] PUT', url, payload);
-
+  
   const res = await fetch(url, {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumoUpdate error:', res.status, data);
     throw new Error((data && data.error) || 'Error al actualizar insumo');
   }
+  
   return data;
 };
 
+/**
+ * DELETE /api/insumos/:id
+ * Discontinúa un insumo (soft delete)
+ */
 export const insumoDelete = async (id) => {
   const url = `${BASE}/insumos/${id}`;
-  console.log('[apiInsumos] DELETE', url);
-
+  
   const res = await fetch(url, {
     method: 'DELETE',
     headers: authHeaders(),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumoDelete error:', res.status, data);
     throw new Error((data && data.error) || 'Error al eliminar insumo');
   }
+  
   return data;
 };
 
-/* ================== BULK JSON / CSV ================== */
+// ==================== BULK OPERATIONS ====================
 
+/**
+ * POST /api/insumos/bulk
+ * Carga masiva JSON
+ */
 export const insumosBulkJSON = async (items) => {
   const url = `${BASE}/insumos/bulk`;
-  console.log('[apiInsumos] POST bulk JSON', url, items);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(items),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumosBulkJSON error:', res.status, data);
     throw new Error((data && data.error) || 'Error en bulk JSON');
   }
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/bulk-csv
+ * Carga masiva CSV
+ */
 export const insumosBulkCSV = async (file) => {
   const url = `${BASE}/insumos/bulk-csv`;
   const fd = new FormData();
   fd.append('file', file);
+  
   const headers = authHeaders();
-  delete headers['Content-Type']; // ✅ importante: FormData pone el boundary solo
-
-  console.log('[apiInsumos] POST bulk CSV', url, file?.name);
-
+  delete headers['Content-Type']; // Dejar que el browser setee boundary
+  
   const res = await fetch(url, {
     method: 'POST',
     headers,
     body: fd,
   });
+  
   const data = await res.json().catch(() => null);
-
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumosBulkCSV error:', res.status, data);
     throw new Error((data && data.error) || 'Error en bulk CSV');
   }
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/admin/cleanup-null
+ * Limpia insumos con datos nulos/duplicados
+ */
 export const insumosCleanup = async () => {
   const url = `${BASE}/insumos/admin/cleanup-null`;
-  console.log('[apiInsumos] POST', url);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok) {
-    console.error('[apiInsumos] insumosCleanup error:', res.status, data);
     throw new Error((data && data.error) || 'Error en cleanup');
   }
+  
   return data;
 };
 
-/* ================== SYNC INSUMOS DESDE MAXI ================== */
+// ==================== MAXI SYNC ====================
 
+/**
+ * POST /api/insumos/maxi-sync
+ * Sincroniza insumos desde Maxi
+ */
 export const insumosSyncMaxi = async (bizId) => {
   const url = `${BASE}/insumos/maxi-sync`;
-  console.log('[apiInsumos] POST syncMaxi', url, 'bizId=', bizId);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(bizId),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumosSyncMaxi error:', res.status, data);
     throw new Error((data && data.error) || 'Error al sincronizar insumos');
   }
+  
   return data;
 };
 
-/* ================== RUBROS DE INSUMOS (MAXI) ================== */
+/**
+ * GET /api/insumos/maxi
+ * Lista insumos sincronizados desde Maxi
+ */
+export const insumosListMaxi = async (bizId) => {
+  const url = `${BASE}/insumos/maxi`;
+  
+  const res = await fetch(url, {
+    headers: authHeaders(bizId),
+  });
+  
+  const data = await res.json().catch(() => null);
+  
+  if (!res.ok) {
+    throw new Error((data && data.error) || 'Error al listar insumos Maxi');
+  }
+  
+  return data;
+};
 
+// ==================== RUBROS MAXI ====================
+
+/**
+ * GET /api/insumos/maxi/rubros
+ * Lista rubros de insumos
+ */
 export const insumosRubrosList = async (businessId) => {
-  const params = new URLSearchParams();
-  if (businessId) params.set('businessId', businessId);
-  const qs = params.toString();
-
-  const url = `${BASE}/insumos/maxi/rubros${qs ? `?${qs}` : ''}`;
-
+  const url = `${BASE}/insumos/maxi/rubros`;
+  
   const res = await fetch(url, {
     method: 'GET',
     headers: authHeaders(businessId),
   });
-
+  
   const data = await res.json().catch(() => null);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumosRubrosList error:', res.status, data);
     throw new Error((data && data.error) || 'Error al listar rubros de insumos');
   }
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/maxi/rubros/sync
+ * Sincroniza rubros desde Maxi
+ */
 export const insumosRubrosSync = async (bizId) => {
   const url = `${BASE}/insumos/maxi/rubros/sync`;
-  console.log('[apiInsumos] POST rubros sync', url, 'bizId=', bizId);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(bizId),
   });
+  
   const data = await res.json().catch(() => null);
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumosRubrosSync error:', res.status, data);
     throw new Error((data && data.error) || 'Error al sincronizar rubros de insumos');
   }
+  
   return data;
 };
 
-/* ================== AGRUPACIONES DE INSUMOS ================== */
+// ==================== AGRUPACIONES (GROUPS) ====================
 
-export const insumoGroupsList = async () => {
+/**
+ * GET /api/insumos/groups
+ * Lista agrupaciones de insumos
+ */
+export const insumoGroupsList = async (bizId) => {
   const url = `${BASE}/insumos/groups`;
-
+  
   const res = await fetch(url, {
     method: 'GET',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
-
+  
   const data = await res.json().catch(() => null);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupsList error:', res.status, data);
     throw new Error((data && data.error) || 'Error al listar agrupaciones de insumos');
   }
-
+  
   return data;
 };
 
+/**
+ * GET /api/insumos/groups/:id
+ * Obtiene una agrupación por ID
+ */
 export const insumoGroupGetOne = async (id) => {
   const url = `${BASE}/insumos/groups/${id}`;
-
-  console.log('[apiInsumos] GET group one', url);
-
+  
   const res = await fetch(url, {
     method: 'GET',
     headers: authHeaders(),
   });
-
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupGetOne raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupGetOne error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al obtener la agrupación de insumos');
+    throw new Error((data && data.error) || 'Error al obtener agrupación');
   }
-
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/groups
+ * Crea una nueva agrupación
+ */
 export const insumoGroupCreate = async (payload) => {
   const url = `${BASE}/insumos/groups`;
-  console.log('[apiInsumos] POST group', url, payload);
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupCreate raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupCreate error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al crear agrupación de insumos');
+    throw new Error((data && data.error) || 'Error al crear agrupación');
   }
+  
   return data;
 };
 
+/**
+ * PUT /api/insumos/groups/:id
+ * Actualiza una agrupación
+ */
 export const insumoGroupUpdate = async (id, payload) => {
   const url = `${BASE}/insumos/groups/${id}`;
-  console.log('[apiInsumos] PUT group', url, payload);
-
+  
   const res = await fetch(url, {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupUpdate raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupUpdate error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al actualizar agrupación de insumos');
+    throw new Error((data && data.error) || 'Error al actualizar agrupación');
   }
+  
   return data;
 };
 
+/**
+ * DELETE /api/insumos/groups/:id
+ * Elimina una agrupación
+ */
 export const insumoGroupDelete = async (id) => {
   const url = `${BASE}/insumos/groups/${id}`;
-  console.log('[apiInsumos] DELETE group', url);
-
+  
   const res = await fetch(url, {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupDelete raw:', res.status, data);
-
-  if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupDelete error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al eliminar agrupación de insumos');
-  }
-  return data;
-};
-
-export const insumoGroupAddMultipleItems = async (groupId, insumoIds) => {
-  const url = `${BASE}/insumos/groups/${groupId}/items/bulk`; // 👈 Verificar esta URL
-  console.log('[apiInsumos] POST group items bulk', url, { insumoIds });
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ insumoIds }), // 👈 Backend espera "insumoIds"
-  });
   
   const data = await res.json().catch(() => null);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupAddMultipleItems error:', res.status, data);
-    throw new Error((data && data.error) || `Error ${res.status}: not_found`);
+    throw new Error((data && data.error) || 'Error al eliminar agrupación');
   }
   
   return data;
 };
 
-/* Items dentro de agrupaciones */
+// ==================== ITEMS DENTRO DE AGRUPACIONES ====================
 
+/**
+ * POST /api/insumos/groups/:id/items
+ * Agrega un insumo a una agrupación
+ */
 export const insumoGroupAddItem = async (groupId, insumoId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items`;
-  console.log('[apiInsumos] POST group item', url, { insumoId });
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ insumoId }),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupAddItem raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupAddItem error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al agregar insumo a agrupación');
+    throw new Error((data && data.error) || 'Error al agregar insumo');
   }
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/groups/:id/items/bulk
+ * Agrega múltiples insumos a una agrupación
+ */
+export const insumoGroupAddMultipleItems = async (groupId, insumoIds) => {
+  const url = `${BASE}/insumos/groups/${groupId}/items/bulk`;
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ insumoIds }),
+  });
+  
+  const data = await res.json().catch(() => null);
+  
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || `Error ${res.status}: ${data?.error || 'unknown'}`);
+  }
+  
+  return data;
+};
+
+/**
+ * DELETE /api/insumos/groups/:id/items/:insumoId
+ * Quita un insumo de una agrupación
+ */
 export const insumoGroupRemoveItem = async (groupId, insumoId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items/${insumoId}`;
-  console.log('[apiInsumos] DELETE group item', url);
-
+  
   const res = await fetch(url, {
     method: 'DELETE',
     headers: authHeaders(),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupRemoveItem raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupRemoveItem error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al quitar insumo de agrupación');
+    throw new Error((data && data.error) || 'Error al quitar insumo');
   }
+  
   return data;
 };
 
-/* ================== REEMPLAZAR ITEMS (bulk) ================== */
-
+/**
+ * PUT /api/insumos/groups/:id/items
+ * Reemplaza todos los items de una agrupación
+ */
 export const insumoGroupReplaceItems = async (groupId, insumoIds) => {
   const url = `${BASE}/insumos/groups/${groupId}/items`;
-  console.log('[apiInsumos] PUT group items', url, { insumoIds });
-
+  
   const res = await fetch(url, {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify({ insumoIds }),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupReplaceItems raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupReplaceItems error:', res.status, data);
-    throw new Error((data && data.error) || 'Error al reemplazar items de agrupación');
+    throw new Error((data && data.error) || 'Error al reemplazar items');
   }
+  
   return data;
 };
 
-/* ================== EXCLUSIONES (para TODO) ================== */
+// ==================== EXCLUSIONES ====================
 
+/**
+ * GET /api/insumos/groups/:id/exclusions
+ * Obtiene exclusiones de una agrupación
+ */
 export const insumoGroupGetExclusions = async (groupId) => {
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  console.log('[apiInsumos] GET exclusions', url);
-
+  
   const res = await fetch(url, {
     method: 'GET',
     headers: authHeaders(),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupGetExclusions raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupGetExclusions error:', res.status, data);
     throw new Error((data && data.error) || 'Error al obtener exclusiones');
   }
+  
   return data;
 };
 
+/**
+ * POST /api/insumos/groups/:id/exclusions
+ * Agrega exclusiones a una agrupación
+ */
 export const insumoGroupAddExclusions = async (groupId, exclusions) => {
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  console.log('[apiInsumos] POST exclusions', url, { exclusions });
-
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ exclusions }),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupAddExclusions raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupAddExclusions error:', res.status, data);
     throw new Error((data && data.error) || 'Error al agregar exclusiones');
   }
+  
   return data;
 };
 
+/**
+ * DELETE /api/insumos/groups/:id/exclusions
+ * Quita exclusiones de una agrupación
+ */
 export const insumoGroupRemoveExclusions = async (groupId, ids, scope = 'insumo') => {
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  console.log('[apiInsumos] DELETE exclusions', url, { ids, scope });
-
+  
   const res = await fetch(url, {
     method: 'DELETE',
     headers: authHeaders(),
     body: JSON.stringify({ ids, scope }),
   });
+  
   const data = await res.json().catch(() => null);
-
-  console.log('[apiInsumos] insumoGroupRemoveExclusions raw:', res.status, data);
-
+  
   if (!res.ok || (data && data.ok === false)) {
-    console.error('[apiInsumos] insumoGroupRemoveExclusions error:', res.status, data);
     throw new Error((data && data.error) || 'Error al quitar exclusiones');
   }
+  
   return data;
+};
+
+// ==================== CREATE OR MOVE ====================
+
+/**
+ * POST /api/insumos/groups/create-or-move
+ * Crea una agrupación o mueve insumos a una existente
+ */
+export const insumoGroupCreateOrMove = async (nombre, ids) => {
+  const url = `${BASE}/insumos/groups/create-or-move`;
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ nombre, ids }),
+  });
+  
+  const data = await res.json().catch(() => null);
+  
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al crear/mover agrupación');
+  }
+  
+  return data;
+};
+
+// ==================== EXPORTS ====================
+
+export default {
+  // Tree & Stats
+  insumosTreeView,
+  insumosStats,
+  
+  // CRUD
+  insumosList,
+  insumoCreate,
+  insumoUpdate,
+  insumoDelete,
+  
+  // Bulk
+  insumosBulkJSON,
+  insumosBulkCSV,
+  insumosCleanup,
+  
+  // Maxi
+  insumosSyncMaxi,
+  insumosListMaxi,
+  insumosRubrosList,
+  insumosRubrosSync,
+  
+  // Agrupaciones
+  insumoGroupsList,
+  insumoGroupGetOne,
+  insumoGroupCreate,
+  insumoGroupUpdate,
+  insumoGroupDelete,
+  
+  // Items
+  insumoGroupAddItem,
+  insumoGroupAddMultipleItems,
+  insumoGroupRemoveItem,
+  insumoGroupReplaceItems,
+  
+  // Exclusiones
+  insumoGroupGetExclusions,
+  insumoGroupAddExclusions,
+  insumoGroupRemoveExclusions,
+  
+  // Create or Move
+  insumoGroupCreateOrMove,
 };

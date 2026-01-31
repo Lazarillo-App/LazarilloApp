@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { useActiveBusiness } from '../context/ActiveBusinessProvider';
 import { useDebouncedValue } from './useDebouncedValue';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
-import { qk, STALE } from '@/lib/reactQueryClient'; // ⬅️ MISMO ARCHIVO
+import { qk, STALE } from '@/lib/reactQueryClient'; 
 
 export function useVentasSummary({ from, to, limit = 1000, enabled = true }) {
   const { businessId } = useActiveBusiness();

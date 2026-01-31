@@ -137,6 +137,10 @@ h2 {
   background: color-mix(in srgb, var(--color-secondary) 70%, transparent);
 }
 
+.css-19mkosu-MuiButtonBase-root-MuiButton-root {
+  border: none !important;
+}
+
 /* Mobile menu */
 @media (max-width:768px) {
   .burger {
@@ -259,7 +263,7 @@ element.style {
   position: sticky !important;
   align-self: start;
   overflow: auto;
-  height: 74vh;
+  height: 80vh;
   background: var(--color-bg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -681,12 +685,13 @@ input[type="number"]:focus {
 
 .sidebar-categorias {
   width: 280px;
+  height: 80vh !important;
 }
 
 .articulos-layoutInsumos {
-  grid-template-columns: var(--sidebar-width) 1fr;
-  gap: 16px;
-  height: calc(100vh - var(--navbar-height));
-  padding: 8px;
-  box-sizing: border-box;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    gap: 16px;
+    height: calc(88vh - var(--navbar-height));
+    padding: 8px;
+    box-sizing: border-box;
 }

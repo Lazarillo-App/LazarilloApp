@@ -4,6 +4,7 @@ import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
 } from '@mui/material';
+
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
@@ -94,8 +95,17 @@ function SubrubroAccionesMenu({
   loading = false,
   onMutateGroups,
   baseById,
-  treeMode = "cat-first"
+  treeMode = "cat-first",
+  businessId,
 }) {
+  /* ==================== businessId efectivo ==================== */
+  const effectiveBusinessId =
+    businessId ??
+    localStorage.getItem('activeBusinessId') ??
+    localStorage.getItem('effectiveBusinessId') ??
+    null;
+
+  /* ==================== UI menu states ==================== */
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
@@ -121,9 +131,7 @@ function SubrubroAccionesMenu({
     : null;
 
   const subDisplayName = useMemo(() => {
-    if (typeof subrubro === 'string') {
-      return subrubro.trim() || 'este subrubro';
-    }
+    if (typeof subrubro === 'string') return subrubro.trim() || 'este subrubro';
     if (subrubro && typeof subrubro === 'object') {
       if (subrubro.nombre) return String(subrubro.nombre).trim();
       if (subrubro.label) return String(subrubro.label).trim();
@@ -159,9 +167,7 @@ function SubrubroAccionesMenu({
 
     const out = new Set(baseIds);
 
-    // 🟢 MODO RUBRO (tableHeaderMode === "cat-first")
-    // Queremos: todos los artículos cuyo SUBRUBRO se llame igual
-    // que el que cliqueaste (ej: "AGUAS-ISO"), sin importar el rubro.
+    // 🟢 MODO RUBRO (cat-first)
     if (treeMode === "cat-first") {
       if (!subName || !Array.isArray(todosArticulos) || !todosArticulos.length) {
         return baseIds;
@@ -182,8 +188,7 @@ function SubrubroAccionesMenu({
       return Array.from(out);
     }
 
-    // 🟣 MODO SUBRUBRO (tableHeaderMode === "sr-first")
-    // Queremos: todo el RUBRO real (ej: "Cafeteria"), como ya te funciona bien.
+    // 🟣 MODO SUBRUBRO (sr-first)
     const firstBase = baseById ? baseById.get(baseIds[0]) : null;
     const rubroNameNorm = norm(
       firstBase?.categoria ||
@@ -214,6 +219,7 @@ function SubrubroAccionesMenu({
     handleClose();
     setTimeout(() => setDlgMoverOpen(true), 0);
   }, [handleClose]);
+
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
   async function mover() {
@@ -233,29 +239,37 @@ function SubrubroAccionesMenu({
     try {
       if (fromId) {
         onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
+
         try {
-          await httpBiz(`/agrupaciones/${fromId}/move-items`, {
-            method: 'POST',
-            body: { toId, ids },
-          });
+          await httpBiz(
+            `/agrupaciones/${fromId}/move-items`,
+            { method: 'POST', body: { toId, ids } },
+            effectiveBusinessId
+          );
         } catch {
-          await httpBiz(`/agrupaciones/${toId}/articulos`, {
-            method: 'PUT',
-            body: { ids },
-          });
+          await httpBiz(
+            `/agrupaciones/${toId}/articulos`,
+            { method: 'PUT', body: { ids } },
+            effectiveBusinessId
+          );
+
           for (const id of ids) {
             try {
-              await httpBiz(`/agrupaciones/${fromId}/articulos/${id}`, {
-                method: 'DELETE',
-              });
+              await httpBiz(
+                `/agrupaciones/${fromId}/articulos/${id}`,
+                { method: 'DELETE' },
+                effectiveBusinessId
+              );
             } catch { }
           }
         }
       } else {
-        await httpBiz(`/agrupaciones/${toId}/articulos`, {
-          method: 'PUT',
-          body: { ids },
-        });
+        await httpBiz(
+          `/agrupaciones/${toId}/articulos`,
+          { method: 'PUT', body: { ids } },
+          effectiveBusinessId
+        );
+
         onMutateGroups?.({
           type: 'append',
           groupId: toId,
@@ -279,7 +293,7 @@ function SubrubroAccionesMenu({
   async function quitarDeActual() {
     const ids = articuloIds.map(getNum).filter(Boolean);
 
-    // TODO → exclusiones (equivale a "Sin agrupación" para TODO)
+    // TODO → exclusiones
     if (isTodo && todoGroupId && ids.length) {
       try {
         await addExclusiones(
@@ -299,23 +313,29 @@ function SubrubroAccionesMenu({
     }
 
     if (!currentGroupId) return;
+
     try {
       onMutateGroups?.({
         type: 'remove',
         groupId: Number(currentGroupId),
         ids,
       });
+
       for (const id of ids) {
         try {
-          await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${id}`, {
-            method: 'DELETE',
-          });
+          await httpBiz(
+            `/agrupaciones/${currentGroupId}/articulos/${id}`,
+            { method: 'DELETE' },
+            effectiveBusinessId
+          );
         } catch { }
       }
+
       notify?.(
         `Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`,
         'success'
       );
+
       onAfterMutation?.(ids);
       onRefetch?.();
     } catch (e) {
@@ -340,11 +360,11 @@ function SubrubroAccionesMenu({
 
     try {
       if (!isInDiscontinuadosView) {
-        // Discontinuar
-        await httpBiz(`/agrupaciones/${discontinuadosId}/articulos`, {
-          method: 'PUT',
-          body: { ids },
-        });
+        await httpBiz(
+          `/agrupaciones/${discontinuadosId}/articulos`,
+          { method: 'PUT', body: { ids } },
+          effectiveBusinessId
+        );
 
         onMutateGroups?.({
           type: 'append',
@@ -355,12 +375,13 @@ function SubrubroAccionesMenu({
 
         notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
       } else {
-        // Reactivar
         for (const id of ids) {
           try {
-            await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${id}`, {
-              method: 'DELETE',
-            });
+            await httpBiz(
+              `/agrupaciones/${discontinuadosId}/articulos/${id}`,
+              { method: 'DELETE' },
+              effectiveBusinessId
+            );
           } catch { }
         }
 
@@ -404,15 +425,17 @@ function SubrubroAccionesMenu({
     (async () => {
       try {
         setLoadingLocal(true);
-        const bizId = localStorage.getItem('activeBusinessId');
-        if (!bizId) {
-          setTreeLocal([]);
+
+        if (!effectiveBusinessId) {
+          if (alive) setTreeLocal([]);
           return;
         }
-        const res = await BusinessesAPI.articlesFromDB(bizId);
+
+        const res = await BusinessesAPI.articlesFromDB(effectiveBusinessId);
         const flat = (res?.items || [])
           .map(mapRowToArticle)
           .filter((a) => Number.isFinite(a.id));
+
         if (alive) {
           setTreeLocal(buildTree(flat));
           loadedRef.current = true;
@@ -425,10 +448,8 @@ function SubrubroAccionesMenu({
       }
     })();
 
-    return () => {
-      alive = false;
-    };
-  }, [openCrearAgr, haveExternalTree, loading]);
+    return () => { alive = false; };
+  }, [openCrearAgr, haveExternalTree, loading, effectiveBusinessId]);
 
   return (
     <>
@@ -449,7 +470,7 @@ function SubrubroAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 2. Quitar de esta agrupación (incluye TODO: lo manda a “Sin agrupación” lógico) */}
+        {/* 2. Quitar de esta agrupación */}
         <MenuItem onClick={quitarDeActual}>
           <ListItemIcon>
             <UndoIcon fontSize="small" />
@@ -472,8 +493,7 @@ function SubrubroAccionesMenu({
             const ids = allArticleIdsForSub;
             setPreselect({
               articleIds: ids,
-              fromGroupId:
-                !isTodo && currentGroupId ? Number(currentGroupId) : null,
+              fromGroupId: !isTodo && currentGroupId ? Number(currentGroupId) : null,
               allowAssigned: true,
             });
             setOpenCrearAgr(true);
@@ -482,9 +502,7 @@ function SubrubroAccionesMenu({
           <ListItemIcon>
             <GroupAddIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>
-            {`Crear agrupación a partir de “${subDisplayName}”`}
-          </ListItemText>
+          <ListItemText>{`Crear agrupación a partir de “${subDisplayName}”`}</ListItemText>
         </MenuItem>
       </Menu>
 
@@ -499,25 +517,15 @@ function SubrubroAccionesMenu({
             fullWidth
             sx={{ mt: 1 }}
           >
-            <option value="" disabled>
-              Seleccionar…
-            </option>
+            <option value="" disabled>Seleccionar…</option>
             {gruposDestino.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nombre}
-              </option>
+              <option key={g.id} value={g.id}>{g.nombre}</option>
             ))}
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeMover} disabled={isMoving}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={mover}
-            variant="contained"
-            disabled={!destId || isMoving}
-          >
+          <Button onClick={closeMover} disabled={isMoving}>Cancelar</Button>
+          <Button onClick={mover} variant="contained" disabled={!destId || isMoving}>
             {isMoving ? 'Moviendo…' : 'Mover'}
           </Button>
         </DialogActions>
@@ -526,6 +534,7 @@ function SubrubroAccionesMenu({
       <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
+        businessId={effectiveBusinessId}   
         mode="create"
         preselect={preselect}
         todosArticulos={effectiveTree}

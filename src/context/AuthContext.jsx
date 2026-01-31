@@ -46,7 +46,6 @@ export function AuthProvider({ children }) {
         setUser(null);
       } finally {
         setBooting(false);
-        console.log('[AuthContext] ✅ Boot completo');
       }
     })();
   }, []);

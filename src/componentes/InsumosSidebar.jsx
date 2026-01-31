@@ -59,7 +59,9 @@ const fmtCurrency = (v) => {
 /**
  * ✅ Helper: resolver monto de un insumo
  */
-const resolveInsumoMonto = (insumo, rubrosMap) => {
+const resolveInsumoMonto = (insumo, metaById) => {
+  if (!insumo) return 0;
+
   // Prioridad: usar campos del insumo directamente
   const monto = Number(
     insumo?.total_gastos_periodo ??
@@ -77,6 +79,26 @@ const resolveInsumoMonto = (insumo, rubrosMap) => {
 
   if (Number.isFinite(qty) && Number.isFinite(precio)) {
     return qty * precio;
+  }
+
+  // Si metaById está disponible, intentar desde ahí
+  if (metaById && typeof metaById.get === 'function') {
+    const id = safeId(insumo);
+    if (Number.isFinite(id)) {
+      const meta = metaById.get(id);
+      if (meta) {
+        const metaMonto = Number(
+          meta.total_gastos_periodo ?? meta.total_gastos ?? meta.importe_total ?? 0
+        );
+        if (Number.isFinite(metaMonto) && metaMonto !== 0) return metaMonto;
+
+        const metaQty = Number(meta.unidades_compradas ?? meta.total_unidades ?? 0);
+        const metaPrecio = Number(meta.precio ?? 0);
+        if (Number.isFinite(metaQty) && Number.isFinite(metaPrecio)) {
+          return metaQty * metaPrecio;
+        }
+      }
+    }
   }
 
   return 0;
@@ -105,9 +127,18 @@ function InsumosSidebar({
   notify,
   visibleIds,
   rubrosMap,
+  onReloadCatalogo,
+  forceRefresh,
+  onCreateGroupFromRubro,
+  discontinuadosGroupId = null,
+  listMode = 'elaborados-first', // ✅ NUEVO
+  onChangeListMode, // ✅ NUEVO
+  onManualPick,
+  metaById, // ✅ NUEVO
+  getAmountForId, // ✅ NUEVO (opcional, puede usar resolveInsumoMonto)
 }) {
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
-  const loading = groupsLoading || rubrosSafe.length === 0;
+  const loading = groupsLoading;
 
   // ✅ Select de grupos
   const opcionesSelect = useMemo(() => {
@@ -189,61 +220,144 @@ function InsumosSidebar({
     return ids;
   }, [visibleIds, selectedGroupId, groups, todoGroupId]);
 
+  // ✅ Catálogo de rubros desde rubrosMap
+  const catalogRubros = useMemo(() => {
+    if (!rubrosMap || typeof rubrosMap.get !== 'function') return [];
+
+    const arr = [];
+    for (const [codigo, info] of rubrosMap.entries()) {
+      const codigoNum = Number(codigo);
+      if (!Number.isFinite(codigoNum)) continue;
+
+      arr.push({
+        codigo: codigoNum,
+        nombre: info?.nombre || String(codigoNum),
+        insumos: [],
+      });
+    }
+
+    arr.sort((a, b) =>
+      String(a.nombre).localeCompare(String(b.nombre), 'es', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+    );
+
+    return arr;
+  }, [rubrosMap]);
+
+  // ✅ treeByRubro: muestra catálogo completo o solo con insumos según keepEmpty
   const treeByRubro = useMemo(() => {
-    // PASO 1: Filtrar por vista
-    let rubrosFiltrados = rubrosSafe;
+    const keepEmpty = !activeIds; // si no hay activeIds, mostramos todo
+
+    // PASO 0: base rubros = catálogo (57) si existe; si no, lo que venga del backend
+    let baseRubros = keepEmpty ? catalogRubros : rubrosSafe;
+
+    // Inyectar insumos reales dentro del catálogo por código
+    if (keepEmpty && rubrosSafe.length) {
+      const byCodigo = new Map(rubrosSafe.map(r => [Number(r.codigo), r]));
+      baseRubros = catalogRubros.map(r => {
+        const real = byCodigo.get(Number(r.codigo));
+        return real
+          ? { ...r, ...real, insumos: Array.isArray(real.insumos) ? real.insumos : [] }
+          : { ...r, insumos: [] }; // importante para no tener undefined
+      });
+    } else {
+      // Asegurar insumos array
+      baseRubros = (baseRubros || []).map(r => ({
+        ...r,
+        insumos: Array.isArray(r?.insumos) ? r.insumos : [],
+      }));
+    }
+
+    // PASO 1: Filtrar por vista (elaborados / no-elaborados)
+    let rubrosFiltrados = baseRubros;
 
     if (vista === 'elaborados') {
-      rubrosFiltrados = rubrosSafe.filter(rubro => {
+      rubrosFiltrados = rubrosFiltrados.filter(rubro => {
         const codigo = String(rubro.codigo || '');
-        const rubroInfo = rubrosMap.get(codigo);
-        return rubroInfo?.es_elaborador === true;
+        const info = rubrosMap?.get(codigo);
+        return info?.es_elaborador === true;
       });
     } else if (vista === 'no-elaborados') {
-      rubrosFiltrados = rubrosSafe.filter(rubro => {
+      rubrosFiltrados = rubrosFiltrados.filter(rubro => {
         const codigo = String(rubro.codigo || '');
-        const rubroInfo = rubrosMap.get(codigo);
-        return rubroInfo?.es_elaborador !== true;
+        const info = rubrosMap?.get(codigo);
+        return info?.es_elaborador !== true;
       });
     }
 
-    // PASO 2: Filtrar por activeIds
-    if (!activeIds) {
-      return rubrosFiltrados;
-    }
+    // PASO 2: Filtrar por activeIds (solo si NO estamos mostrando rubros vacíos)
+    // ✅ Clave: si keepEmpty=true, NO podés podar rubros por activeIds, porque querés verlos igual.
+    // Si igual querés "podar insumos" (no rubros), lo hacemos sin matar discontinuados.
+    const pruned = rubrosFiltrados.map((rubro) => {
+      const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
 
-    const pruned = rubrosFiltrados
-      .map((rubro) => {
-        const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
-        const filtered = insumos.filter((insumo) => {
-          const id = safeId(insumo);
-          return id != null && activeIds.has(id);
-        });
-        return { ...rubro, insumos: filtered };
-      })
-      .filter((rubro) => (rubro?.insumos?.length || 0) > 0);
+      // Si no hay activeIds (por ejemplo grupo Todo), mantenemos todos los insumos.
+      if (!activeIds) return rubro;
 
-    // PASO 3: Ordenar
-    const withVentas = pruned.map((rubro) => {
+      // Si hay activeIds, filtramos solo por pertenencia al grupo,
+      // pero SIN filtrar por estado (activo/discontinuado).
+      const filtered = insumos.filter((insumo) => {
+        const id = safeId(insumo);
+        return id != null && activeIds.has(id);
+      });
+
+      return { ...rubro, insumos: filtered };
+    });
+
+    // PASO 3: decidir si ocultamos rubros sin insumos
+    // ✅ si keepEmpty=true, mostramos todos aunque insumos.length=0
+    const finalRubros = pruned.filter((rubro) => {
+      if (keepEmpty) return true;
+      return (rubro?.insumos?.length || 0) > 0;
+    });
+
+    // PASO 4: ✅ CALCULAR __ventasMonto y ORDENAR por monto descendente
+    const withVentas = finalRubros.map((rubro) => {
       let ventasMonto = 0;
       (rubro.insumos || []).forEach(insumo => {
-        ventasMonto += resolveInsumoMonto(insumo, rubrosMap);
+        ventasMonto += resolveInsumoMonto(insumo, metaById);
       });
       return { ...rubro, __ventasMonto: ventasMonto };
     });
 
+    // ✅ Ordenar por monto descendente (igual que artículos)
     withVentas.sort((a, b) => {
-      if (b.__ventasMonto !== a.__ventasMonto) {
-        return b.__ventasMonto - a.__ventasMonto;
+      // primero los que tienen monto
+      if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
+        return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
       }
-      return String(a.nombre).localeCompare(String(b.nombre), 'es', {
+      // si ambos 0, por nombre
+      return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', {
         sensitivity: 'base',
         numeric: true,
       });
     });
 
     return withVentas;
-  }, [rubrosSafe, activeIds, rubrosMap, vista]);
+  }, [catalogRubros, rubrosSafe, vista, rubrosMap, activeIds, metaById]);
+
+  const handleAfterAction = useCallback(async () => {
+    console.log('🔄 [InsumosSidebar] Acción completada, iniciando refresh...');
+
+    try {
+      console.log('🔄 [1/3] Recargando catálogo...');
+      await onReloadCatalogo?.();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      console.log('🔄 [2/3] Recargando datos...');
+      await onRefetch?.();
+
+      console.log('🔄 [3/3] Forzando re-render...');
+      forceRefresh?.();
+
+      console.log('✅ Refresh completado');
+    } catch (e) {
+      console.error('[handleAfterAction] Error:', e);
+    }
+  }, [onReloadCatalogo, onRefetch, forceRefresh]);
 
   // ✅ Handlers
   const handleGroupChange = useCallback(
@@ -251,8 +365,9 @@ function InsumosSidebar({
       const idSel = Number(event.target.value);
       onSelectGroupId?.(idSel);
       setRubroSeleccionado?.(null);
+      onManualPick?.(); // ✅ NUEVO
     },
-    [onSelectGroupId, setRubroSeleccionado]
+    [onSelectGroupId, setRubroSeleccionado, onManualPick]
   );
 
   const handleRubroClick = useCallback(
@@ -268,15 +383,12 @@ function InsumosSidebar({
   };
 
   const montoInsumosRubro = (rubro) => {
-    let total = 0;
-    const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
-
-    for (const insumo of insumos) {
-      total += resolveInsumoMonto(insumo, rubrosMap);
-    }
-
-    return total;
+    // ✅ Ya lo tenemos pre-calculado en __ventasMonto
+    return rubro?.__ventasMonto ?? 0;
   };
+
+  const isTodoView =
+    todoGroupId && selectedGroupId && Number(selectedGroupId) === Number(todoGroupId);
 
   return (
     <div className="sidebar">
@@ -478,22 +590,18 @@ function InsumosSidebar({
                   </small>
                   <InsumoRubroAccionesMenu
                     rubroLabel={rubro.nombre}
-                    insumoIds={rubro.insumos?.map(safeId).filter(Boolean) || []}
+                    insumoIds={rubro.insumos.map((i) => safeId(i)).filter(Boolean)}
                     groups={groups}
                     selectedGroupId={selectedGroupId}
-                    discontinuadosGroupId={
-                      groups.find(esDiscontinuadosGroup)?.id || null
-                    }
-                    todoGroupId={todoGroupId}
-                    isTodoView={
-                      todoGroupId &&
-                      selectedGroupId &&
-                      Number(selectedGroupId) === Number(todoGroupId)
-                    }
-                    onRefetch={onRefetch}
+                    discontinuadosGroupId={discontinuadosGroupId}
+                    onRefetch={handleAfterAction}
                     notify={notify}
                     onMutateGroups={onMutateGroups}
-                    fromSidebar={true}
+                    onCreateGroupFromRubro={onCreateGroupFromRubro}
+                    todoGroupId={todoGroupId}
+                    isTodoView={isTodoView}
+                    onReloadCatalogo={onReloadCatalogo}
+                    onAfterAction={handleAfterAction}
                   />
                 </div>
               </li>

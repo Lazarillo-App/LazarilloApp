@@ -5,12 +5,12 @@
  * Estructura del menú:
  * ┌─────────────────────────┐
  * │ 🏢 Negocio 1            │ ← Cambiar negocio
- * │   ├─ 🏠 Principal        │ ← División principal
+ * │   ├─ 🏠 Principal       │ ← División principal
  * │   ├─ 📁 Cafetería       │ ← División 1
  * │   └─ 📁 Delivery        │ ← División 2
  * ├─────────────────────────┤
  * │ 🏢 Negocio 2            │
- * │   └─ 🏠 Principal        │
+ * │   └─ 🏠 Principal       │
  * └─────────────────────────┘
  */
 
@@ -43,19 +43,21 @@ const getBizLogoUrl = (biz) =>
   biz?.photo_url ||
   getBranding(biz)?.cover_url ||
   biz?.image_url || '';
-
 export default function BusinessDivisionSelector() {
+
+  const biz = useBusiness() || {};
+
   const {
     activeBusinessId,
-    activeBusiness,
+    active,
     selectBusiness,
     divisions = [],
-    loadingDivisions,
+    divisionsLoading: loadingDivisions,
     activeDivisionId,
     activeDivision,
-    selectDivision,
     isMainDivision,
-  } = useBusiness() || {};
+    selectDivision,
+  } = biz;
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [bizList, setBizList] = useState([]);
@@ -64,29 +66,20 @@ export default function BusinessDivisionSelector() {
 
   const open = Boolean(anchorEl);
 
-  // Label principal del botón
-  const businessName = activeBusiness?.name || 'Local';
+  const businessName = active?.name || 'Local';
   const divisionName = activeDivision?.name || 'Principal';
-  
-  // Logo del negocio
-  const logoUrl = getBizLogoUrl(activeBusiness);
+  const logoUrl = getBizLogoUrl(active);
 
-  // Mostrar división solo si NO es la principal
   const showDivisionLabel = !isMainDivision && activeDivision;
 
   const handleOpen = async (e) => {
     setAnchorEl(e.currentTarget);
-    
-    // Cargar lista de negocios
     try {
       setLoadingBiz(true);
       const items = await BusinessesAPI.listMine();
-      setBizList(items);
-      
-      // Auto-expandir el negocio activo
-      if (activeBusinessId) {
-        setExpandedBizId(String(activeBusinessId));
-      }
+      setBizList(items || []);
+
+      if (activeBusinessId) setExpandedBizId(String(activeBusinessId));
     } finally {
       setLoadingBiz(false);
     }
@@ -98,18 +91,23 @@ export default function BusinessDivisionSelector() {
   };
 
   const handleToggleBusiness = (bizId) => {
-    setExpandedBizId(prev => prev === String(bizId) ? null : String(bizId));
+    setExpandedBizId(prev => (prev === String(bizId) ? null : String(bizId)));
   };
 
   const handleSelectBusiness = async (bizId) => {
     if (String(bizId) === String(activeBusinessId)) {
-      // Si ya está activo, solo expandir/contraer
       handleToggleBusiness(bizId);
-    } else {
-      // Cambiar de negocio
-      await selectBusiness(bizId);
-      setExpandedBizId(String(bizId));
+      return;
     }
+
+    // 1) Reset a Principal (tu contexto usa null para principal)
+    await selectDivision(null);
+
+    // 2) Cambiar negocio
+    await selectBusiness(bizId);
+
+    // 3) Expandir el nuevo negocio
+    setExpandedBizId(String(bizId));
   };
 
   const handleSelectDivision = async (divisionId) => {
@@ -117,9 +115,7 @@ export default function BusinessDivisionSelector() {
     handleClose();
   };
 
-  if (!activeBusinessId) {
-    return null;
-  }
+  if (!activeBusinessId) return null;
 
   return (
     <>
@@ -148,10 +144,10 @@ export default function BusinessDivisionSelector() {
               src={logoUrl}
               alt={businessName}
               sx={{
-                width: 22, 
-                height: 22, 
+                width: 22,
+                height: 22,
                 objectFit: 'contain',
-                borderRadius: '6px', 
+                borderRadius: '6px',
                 p: 0.5,
                 background: 'rgba(255,255,255,0.92)',
                 border: '1px solid',
@@ -162,15 +158,15 @@ export default function BusinessDivisionSelector() {
           ) : (
             <span
               style={{
-                display: 'inline-grid', 
+                display: 'inline-grid',
                 placeItems: 'center',
-                width: 22, 
-                height: 22, 
+                width: 22,
+                height: 22,
                 borderRadius: 6,
                 border: '1px solid color-mix(in srgb, var(--on-primary) 25%, transparent)',
                 background: 'color-mix(in srgb, var(--on-primary) 10%, transparent)',
-                fontSize: 11, 
-                fontWeight: 800, 
+                fontSize: 11,
+                fontWeight: 800,
                 color: 'var(--on-primary)'
               }}
               aria-hidden
@@ -178,13 +174,13 @@ export default function BusinessDivisionSelector() {
               {String(businessName || '#').slice(0, 1).toUpperCase()}
             </span>
           )}
-          
+
           {/* Nombre del negocio y división */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.2 }}>
             <span style={{ fontSize: '0.875rem' }}>{businessName}</span>
             {showDivisionLabel && (
-              <span style={{ 
-                fontSize: '0.7rem', 
+              <span style={{
+                fontSize: '0.7rem',
                 opacity: 0.75,
                 fontWeight: 500,
               }}>
@@ -235,7 +231,7 @@ export default function BusinessDivisionSelector() {
           const isActiveBiz = String(activeBusinessId) === String(biz.id);
           const isExpanded = String(expandedBizId) === String(biz.id);
           const bizLogoUrl = getBizLogoUrl(biz);
-          
+
           // Divisiones de este negocio (solo si está activo y expandido)
           const bizDivisions = isActiveBiz ? divisions : [];
           const mainDiv = bizDivisions.find(d => d.is_main);
@@ -266,10 +262,10 @@ export default function BusinessDivisionSelector() {
                       src={bizLogoUrl}
                       alt={biz.name}
                       sx={{
-                        width: 22, 
-                        height: 22, 
+                        width: 22,
+                        height: 22,
                         objectFit: 'contain',
-                        borderRadius: '6px', 
+                        borderRadius: '6px',
                         p: 0.5,
                         background: 'rgba(255,255,255,0.92)',
                         border: '1px solid',
@@ -281,13 +277,13 @@ export default function BusinessDivisionSelector() {
                     <BusinessIcon fontSize="small" />
                   )}
                 </ListItemIcon>
-                
+
                 <ListItemText
                   primary={biz.name}
                   secondary={biz.slug}
                   secondaryTypographyProps={{ sx: { opacity: .6, fontSize: '0.75rem' } }}
                 />
-                
+
                 {/* Indicador de expansión */}
                 {isActiveBiz && bizDivisions.length > 1 && (
                   isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />
@@ -298,7 +294,7 @@ export default function BusinessDivisionSelector() {
               {isActiveBiz && (
                 <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                   <Box sx={{ pl: 2, bgcolor: 'color-mix(in srgb, var(--on-primary) 5%, transparent)' }}>
-                    
+
                     {loadingDivisions && (
                       <MenuItem disabled sx={{ pl: 4 }}>
                         <ListItemIcon sx={{ minWidth: 28 }}>
@@ -309,10 +305,11 @@ export default function BusinessDivisionSelector() {
                     )}
 
                     {/* Principal */}
-                    {!loadingDivisions && mainDiv && (
+                    {/* Principal */}
+                    {!loadingDivisions && (
                       <MenuItem
-                        onClick={() => handleSelectDivision(mainDiv.id)}
-                        selected={String(activeDivisionId) === String(mainDiv.id)}
+                        onClick={() => handleSelectDivision(null)}
+                        selected={activeDivisionId === null}
                         sx={{
                           pl: 4,
                           '&.Mui-selected': {
@@ -326,7 +323,7 @@ export default function BusinessDivisionSelector() {
                         <ListItemText
                           primary={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <span>{mainDiv.name || 'Principal'}</span>
+                              <span>{mainDiv?.name || 'Principal'}</span>
                               <Chip
                                 label="Todo"
                                 size="small"
@@ -340,12 +337,11 @@ export default function BusinessDivisionSelector() {
                             </Box>
                           }
                         />
-                        {String(activeDivisionId) === String(mainDiv.id) && (
+                        {activeDivisionId === null && (
                           <CheckIcon fontSize="small" sx={{ opacity: .8 }} />
                         )}
                       </MenuItem>
                     )}
-
                     {/* Otras divisiones */}
                     {!loadingDivisions && otherDivs.map(div => {
                       const isActiveDivision = String(activeDivisionId) === String(div.id);
@@ -395,7 +391,7 @@ export default function BusinessDivisionSelector() {
 
                     {!loadingDivisions && bizDivisions.length === 0 && (
                       <MenuItem disabled sx={{ pl: 4 }}>
-                        <ListItemText 
+                        <ListItemText
                           primary="Sin divisiones"
                           primaryTypographyProps={{ sx: { fontSize: '0.85rem', opacity: 0.7 } }}
                         />
@@ -416,7 +412,7 @@ export default function BusinessDivisionSelector() {
 
         {/* Footer informativo */}
         {!loadingBiz && bizList.length > 0 && (
-          <>
+          <Box>
             <Divider sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 20%, transparent)' }} />
             <MenuItem disableRipple disableGutters>
               <Box sx={{ px: 2, py: 1 }}>
@@ -425,7 +421,7 @@ export default function BusinessDivisionSelector() {
                 </Typography>
               </Box>
             </MenuItem>
-          </>
+          </Box>
         )}
       </Menu>
     </>

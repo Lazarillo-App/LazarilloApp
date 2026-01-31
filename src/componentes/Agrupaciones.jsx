@@ -480,6 +480,7 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         />
 
         <AgrupacionesList
+          businessId={activeBusinessId}
           onMutateGroups={onMutateGroups}
           agrupaciones={agrupaciones}
           onActualizar={cargarAgrupaciones}

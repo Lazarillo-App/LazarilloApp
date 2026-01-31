@@ -25,7 +25,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
 
 import {
-  insumoGroupAddMultipleItems, // 👈 NUEVO: bulk
+  insumoGroupAddMultipleItems,
   insumoGroupRemoveItem,
 } from "../servicios/apiInsumos";
 

@@ -6,13 +6,14 @@ import { BusinessesAPI } from "@/servicios/apiBusinesses";
  * - Llama a BusinessesAPI.setActive (POST /businesses/:id/select o similar)
  * - Actualiza localStorage.activeBusinessId con lo que devuelva el back
  * - Opcionalmente trae los datos del negocio
- * - Lanza eventos globales para que el resto de la UI reaccione
+ * - Lanza eventos globales para que el resto de la UI reaccione (Navbar incluido)
  */
 export async function setActiveBusiness(
   id,
   {
     fetchBiz = true,
     broadcast = true,
+    source = "ui", // "ui" | "navbar" | "perfil" | "boot" | etc.
   } = {}
 ) {
   // 1) Backend: marca activo y nos devuelve el id final
@@ -23,31 +24,34 @@ export async function setActiveBusiness(
   localStorage.setItem("activeBusinessId", String(finalId));
 
   // 3) Opcional: traer datos del negocio
-  let biz = null;
+  let business = null;
   if (fetchBiz) {
     try {
-      biz = await BusinessesAPI.get(finalId);
+      business = await BusinessesAPI.get(finalId);
     } catch {
-      // no rompemos nada si falla
+      business = null;
     }
   }
 
-  // 4) Eventos globales para tema / tablas / etc.
+  // 4) Eventos globales (contrato único)
   if (broadcast) {
     try {
-      window.dispatchEvent(
-        new CustomEvent("business:switched", {
-          detail: { bizId: finalId, biz },
-        })
-      );
-      window.dispatchEvent(
-        new CustomEvent("palette:changed", { detail: { bizId: finalId } })
-      );
+      const detail = {
+        businessId: String(finalId),
+        business,
+        source,
+
+        // ✅ compat legacy (para no romper listeners viejos)
+        bizId: finalId,
+        biz: business,
+      };
+
+      window.dispatchEvent(new CustomEvent("business:switched", { detail }));
+      window.dispatchEvent(new CustomEvent("palette:changed", { detail }));
     } catch {
-      // por si el objeto window no está disponible en algún contexto raro
+      // por si window no está disponible
     }
   }
 
-  // Devolvemos ambos por comodidad
-  return { id: finalId, biz };
+  return { id: finalId, biz: business, business };
 }

@@ -74,30 +74,61 @@ export default function InsumoGroupModal({
     /* ================== RUBROS ================== */
     useEffect(() => {
         if (!open || !businessId) {
-            setRubros([]);
+            setRows([]);
             return;
         }
 
         let canceled = false;
 
         (async () => {
+            setLoading(true);
             try {
-                const res = await insumosRubrosList();
+                const pageSize = 5000;
+                let page = 1;
+                let all = [];
+                let total = null;
+
+                while (!canceled) {
+                    const params = { page, limit: pageSize, search: "" };
+
+                    if (vista === "elaborados") params.elaborados = "true";
+                    else if (vista === "no-elaborados") params.elaborados = "false";
+
+                    const r = await insumosList(businessId, params);
+
+                    const chunk = Array.isArray(r?.data) ? r.data : [];
+                    const pag = r?.pagination;
+                    if (total == null && pag?.total != null) total = Number(pag.total);
+
+                    all = all.concat(chunk);
+
+                    // condición de salida:
+                    if (!chunk.length) break;
+                    if (total != null && all.length >= total) break;
+
+                    page++;
+                    // safety guard
+                    if (page > 200) break;
+                }
+
                 if (!canceled) {
-                    setRubros(res.items || []);
+                    setRows(all);
+                    console.log(`📦 [InsumoGroupModal] rows cargados total: ${all.length} (vista=${vista})`);
                 }
             } catch (e) {
                 if (!canceled) {
-                    console.error("[InsumoGroupModal] Error rubros:", e);
-                    setRubros([]);
+                    console.error("[InsumoGroupModal] Error insumos:", e);
+                    setRows([]);
                 }
+            } finally {
+                if (!canceled) setLoading(false);
             }
         })();
 
         return () => {
             canceled = true;
         };
-    }, [open, businessId]);
+    }, [open, businessId, vista]);
 
     const rubroNombreMap = useMemo(() => {
         const m = new Map();
@@ -131,58 +162,32 @@ export default function InsumoGroupModal({
         );
     };
 
-    /* ================== CARGAR INSUMOS ================== */
     useEffect(() => {
-        if (!open || !businessId) {
-            setRows([]);
-            return;
-        }
-
+        if (!open || !businessId) { setRubros([]); return; }
         let canceled = false;
 
         (async () => {
-            setLoading(true);
             try {
-                const params = {
-                    page: 1,
-                    limit: 8000,
-                };
-
-                if (vista === "elaborados") {
-                    params.elaborados = "true";
-                } else if (vista === "no-elaborados") {
-                    params.elaborados = "false";
-                }
-
-                const r = await insumosList(params);
-                const data = r.data || [];
-                if (!canceled) {
-                    setRows(data);
-                }
+                const res = await insumosRubrosList(businessId);
+                if (!canceled) setRubros(res.items || []);
             } catch (e) {
-                if (!canceled) {
-                    console.error("[InsumoGroupModal] Error insumos:", e);
-                    setRows([]);
-                }
-            } finally {
-                if (!canceled) setLoading(false);
+                if (!canceled) setRubros([]);
+                console.error("[InsumoGroupModal] Error rubros:", e);
             }
         })();
 
-        return () => {
-            canceled = true;
-        };
-    }, [open, businessId, vista]);
+        return () => { canceled = true; };
+    }, [open, businessId]);
 
-    /* ================== 🆕 CALCULAR YA AGRUPADOS ================== */
+    /* ================== YA AGRUPADOS ================== */
     const yaAgrupados = useMemo(() => {
         const set = new Set();
 
-        groups.forEach(g => {
+        groups.forEach((g) => {
             // Permitir los del grupo actual si estamos editando
             if (editingGroupId && Number(g.id) === Number(editingGroupId)) return;
 
-            (g.items || g.insumos || []).forEach(item => {
+            (g.items || g.insumos || []).forEach((item) => {
                 const id = Number(item.insumo_id ?? item.id);
                 if (Number.isFinite(id)) set.add(id);
             });
@@ -191,66 +196,63 @@ export default function InsumoGroupModal({
         return set;
     }, [groups, editingGroupId]);
 
-    /* ================== FILTRAR DISPONIBLES ================== */
-    const insumosDisponibles = useMemo(() => {
-        if (!rows?.length) return [];
-
-        const disponibles = rows.filter(insumo => {
-            const id = Number(insumo.id);
-            return !yaAgrupados.has(id);
-        });
-
-        console.log(`📦 [InsumoGroupModal] Disponibles: ${disponibles.length} de ${rows.length} (${yaAgrupados.size} ya agrupados)`);
-        return disponibles;
-    }, [rows, yaAgrupados]);
-
-    /* ================== AGRUPAR POR RUBRO ================== */
+    /* ================== AGRUPAR POR RUBRO (MOSTRAR TODO) ================== */
     const groupedRows = useMemo(() => {
         const map = new Map();
-        
-        // 🆕 Incluir TODOS los rows (no solo disponibles)
+
+        // ✅ Incluir TODOS los rows (agrupados o no)
         for (const r of rows || []) {
             const label = getRubroLabel(r);
             if (!map.has(label)) map.set(label, []);
             map.get(label).push(r);
         }
-        
+
         return Array.from(map.entries()).map(([label, groupRows]) => ({
             label,
             rows: groupRows,
         }));
-    }, [rows, rubroNombreMap]);
+    }, [rows, rubroNombreMap]); // rubroNombreMap cambia cuando cambia rubros
 
-    /* 🆕 PRESELECCIÓN CUANDO SE ABRE DESDE UN RUBRO */
+    /* ================== PRESELECCIÓN DESDE UN RUBRO (SOLO DISPONIBLES) ================== */
     useEffect(() => {
         if (!open) return;
         if (!originRubroLabel) return;
-        if (!insumosDisponibles || insumosDisponibles.length === 0) return;
+        if (!rows || rows.length === 0) return;
 
         const labelNorm = originRubroLabel.trim().toLowerCase();
 
         setSelectedIds((prev) => {
             const next = new Set(prev);
 
-            for (const r of insumosDisponibles) {
+            for (const r of rows) {
+                const id = Number(r.id);
+                if (!Number.isFinite(id)) continue;
+
+                // Solo preseleccionar si NO está ya agrupado
+                if (yaAgrupados.has(id)) continue;
+
                 const rl = (getRubroLabel(r) || "").trim().toLowerCase();
-                if (rl === labelNorm && r.id != null) {
-                    next.add(Number(r.id));
+                if (rl === labelNorm) {
+                    next.add(id);
                 }
             }
 
-            console.log(`🎯 [Preselección] Rubro "${originRubroLabel}": ${next.size - prev.size} insumos agregados`);
+            console.log(
+                `🎯 [Preselección] Rubro "${originRubroLabel}": ${next.size - prev.size
+                } insumos agregados`
+            );
             return next;
         });
-    }, [open, originRubroLabel, insumosDisponibles, rubroNombreMap]);
+    }, [open, originRubroLabel, rows, yaAgrupados, rubroNombreMap]);
 
-    /* ================== HANDLERS DE CHECKBOX ================== */
+    /* ================== HANDLERS CHECKBOX ================== */
     const toggleInsumo = (id) => {
         const numId = Number(id);
-        
-        // No permitir seleccionar ya agrupados
+        if (!Number.isFinite(numId)) return;
+
+        // ❌ no permitir seleccionar ya agrupados
         if (yaAgrupados.has(numId)) return;
-        
+
         setSelectedIds((prev) => {
             const n = new Set(prev);
             if (n.has(numId)) n.delete(numId);
@@ -259,26 +261,21 @@ export default function InsumoGroupModal({
         });
     };
 
-    const toggleRubroGroup = (ids, allSelectedNow) => {
+    const toggleRubroGroup = (idsDisponibles, allSelectedNow) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
 
-            ids.forEach((id) => {
-                // Solo permitir toggle de los disponibles
-                if (!yaAgrupados.has(id)) {
-                    if (allSelectedNow) {
-                        next.delete(id);
-                    } else {
-                        next.add(id);
-                    }
-                }
+            idsDisponibles.forEach((id) => {
+                if (!Number.isFinite(id)) return;
+                if (allSelectedNow) next.delete(id);
+                else next.add(id);
             });
 
             return next;
         });
     };
 
-    /* ================== GUARDAR / CERRAR ================== */
+    /* ================== CERRAR / GUARDAR ================== */
     const handleClose = () => {
         if (saving) return;
         onClose && onClose(false);
@@ -331,14 +328,16 @@ export default function InsumoGroupModal({
                 throw new Error("ID de agrupación inválido.");
             }
 
-            // 2) 🆕 Agregar TODOS los insumos en BULK
+            // 2) Agregar en BULK solo los seleccionados (que ya garantizamos que son disponibles)
             const idsArray = Array.from(selectedIds);
-            console.log(`📦 [InsumoGroupModal] Agregando ${idsArray.length} insumos en BULK al grupo ${groupIdToUse}`);
-            
+            console.log(
+                `📦 [InsumoGroupModal] Agregando ${idsArray.length} insumos en BULK al grupo ${groupIdToUse}`
+            );
+
             await insumoGroupAddMultipleItems(groupIdToUse, idsArray);
 
             alert(`✅ ${idsArray.length} insumos agrupados correctamente.`);
-            onClose && onClose(true);
+           onClose && onClose({ ok: true, groupId: groupIdToUse });
         } catch (e) {
             console.error("[InsumoGroupModal] Error guardando agrupación:", e);
             alert(e.message || "Error al agrupar insumos.");
@@ -351,6 +350,7 @@ export default function InsumoGroupModal({
     return (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
             <DialogTitle>Agrupar insumos</DialogTitle>
+
             <DialogContent dividers>
                 {insumo && (
                     <Typography variant="body2" sx={{ mb: 1, opacity: 0.8 }}>
@@ -377,7 +377,7 @@ export default function InsumoGroupModal({
                     </ToggleButtonGroup>
                 </div>
 
-                {/* Agrupación destino */}
+                {/* Crear nueva agrupación */}
                 <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
                     <TextField
                         fullWidth
@@ -402,20 +402,16 @@ export default function InsumoGroupModal({
                             .map((r) => Number(r.id))
                             .filter(Number.isFinite);
 
-                        // 🆕 Solo contar los disponibles
-                        const idsDisponibles = ids.filter(id => !yaAgrupados.has(id));
-                        
-                        const total = idsDisponibles.length;
-                        const selectedCount = idsDisponibles.filter((id) =>
-                            selectedIds.has(id)
-                        ).length;
+                        const totalAll = ids.length;
 
-                        const allSelected = total > 0 && selectedCount === total;
-                        const partiallySelected =
-                            selectedCount > 0 && selectedCount < total;
+                        // ✅ Disponibles = los que NO están ya agrupados
+                        const idsDisponibles = ids.filter((id) => !yaAgrupados.has(id));
+                        const totalDisponibles = idsDisponibles.length;
 
-                        // 🆕 No mostrar rubros sin insumos disponibles
-                        if (total === 0) return null;
+                        const selectedCount = idsDisponibles.filter((id) => selectedIds.has(id)).length;
+
+                        const allSelected = totalDisponibles > 0 && selectedCount === totalDisponibles;
+                        const partiallySelected = selectedCount > 0 && selectedCount < totalDisponibles;
 
                         return (
                             <Accordion
@@ -436,15 +432,14 @@ export default function InsumoGroupModal({
                                             checked={allSelected}
                                             indeterminate={partiallySelected}
                                             onClick={(e) => e.stopPropagation()}
-                                            onChange={() =>
-                                                toggleRubroGroup(idsDisponibles, allSelected)
-                                            }
+                                            onChange={() => toggleRubroGroup(idsDisponibles, allSelected)}
+                                            disabled={totalDisponibles === 0}
                                         />
 
                                         <Typography variant="subtitle2" style={{ flex: 1 }}>
                                             {group.label || "Sin rubro"}{" "}
                                             <span style={{ opacity: 0.7, fontSize: "0.8rem" }}>
-                                                ({total} disponibles)
+                                                ({totalAll} total · {totalDisponibles} disponibles)
                                             </span>
                                         </Typography>
                                     </div>
@@ -462,7 +457,7 @@ export default function InsumoGroupModal({
                                         {group.rows.map((r) => {
                                             const id = Number(r.id);
                                             const yaAgrupado = yaAgrupados.has(id);
-                                            
+
                                             return (
                                                 <FormControlLabel
                                                     key={r.id}
@@ -485,8 +480,7 @@ export default function InsumoGroupModal({
                                                             {!yaAgrupado && (
                                                                 <span style={{ opacity: 0.7, fontSize: "0.8rem" }}>
                                                                     {r.unidad_med ? `· ${r.unidad_med}` : ""}{" "}
-                                                                    {r.precio_ref != null &&
-                                                                        `· $ ${formatMoney(r.precio_ref)}`}
+                                                                    {r.precio_ref != null && `· $ ${formatMoney(r.precio_ref)}`}
                                                                 </span>
                                                             )}
                                                         </span>
@@ -501,6 +495,7 @@ export default function InsumoGroupModal({
                     })
                 )}
             </DialogContent>
+
             <DialogActions>
                 <Button onClick={handleClose} disabled={saving}>
                     Cancelar
