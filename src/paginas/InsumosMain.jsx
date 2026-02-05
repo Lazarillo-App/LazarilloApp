@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
-// src/paginas/InsumosMain.jsx
+// src/paginas/InsumosMain.jsx - CON FILTRADO DE DIVISIONES
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import InsumosSidebar from '../componentes/InsumosSidebar.jsx';
@@ -83,6 +83,16 @@ export default function InsumosMain() {
   /* ================== BUSINESS CONTEXT ================== */
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
+
+  const {
+    activeDivisionId,
+    activeDivisionInsumoGroupIds,
+    assignedInsumoGroupIds,
+    isMainDivision,
+    activeDivisionName,
+    refetchAssignedInsumoGroups,
+  } = biz;
+
   const { activeBusiness, activeSubnegocio } = biz;
 
   const businessName = useMemo(() => {
@@ -101,10 +111,9 @@ export default function InsumosMain() {
 
   /* ================== ESTADO BÁSICO ================== */
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
-  const [vista, setVista] = useState('no-elaborados'); // "no-elaborados" | "elaborados"
+  const [vista, setVista] = useState('no-elaborados');
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Guardamos TODO lo que viene del back
   const [allInsumos, setAllInsumos] = useState([]);
   const [rubrosMap, setRubrosMap] = useState(new Map());
 
@@ -198,9 +207,7 @@ export default function InsumosMain() {
 
   /* ================== DERIVADOS IMPORTANTES ================== */
   const baseAll = useMemo(() => allInsumos || [], [allInsumos]);
-
   const baseActivos = useMemo(() => baseAll.filter((i) => isInsumoActivo(i)), [baseAll]);
-
   const baseInactivos = useMemo(() => baseAll.filter((i) => isInsumoDiscontinuado(i)), [baseAll]);
 
   const discontinuadosGroupId = useMemo(() => {
@@ -208,7 +215,6 @@ export default function InsumosMain() {
     return g ? Number(g.id) : null;
   }, [groups]);
 
-  /* ================== ✅ CORREGIDO: IDS DISCONTINUADOS (SOLO desde agrupación) ================== */
   const discontinuadosIds = useMemo(() => {
     const disc = (groups || []).find(esDiscontinuadosGroup);
     if (!disc) return new Set();
@@ -222,7 +228,43 @@ export default function InsumosMain() {
     );
   }, [groups]);
 
-  /* ================== RECARGA PRINCIPAL AL CAMBIAR BUSINESS ================== */
+  /* ================== ✅ NUEVO: FILTRADO DE GRUPOS POR DIVISIÓN ================== */
+  const groupsScoped = useMemo(() => {
+    console.log('[InsumosMain] 🔍 Filtrado de división:', {
+      isMainDivision,
+      activeDivisionName,
+      totalGroups: groups.length,
+      activeDivisionInsumoGroupIds: Array.from(activeDivisionInsumoGroupIds || []),
+      assignedInsumoGroupIds: Array.from(assignedInsumoGroupIds || []),
+    });
+
+    if (isMainDivision) {
+      const assignedSet = new Set(assignedInsumoGroupIds || []);
+
+      return (groups || []).filter((g) => {
+        const gid = Number(g?.id);
+        if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return true;
+        return !assignedSet.has(gid);
+      });
+    }
+
+    const activeSet = new Set(activeDivisionInsumoGroupIds || []);
+
+    return (groups || []).filter((g) => {
+      const gid = Number(g?.id);
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return true;
+      return activeSet.has(gid);
+    });
+  }, [
+    groups,
+    isMainDivision,
+    activeDivisionName,
+    activeDivisionInsumoGroupIds,
+    assignedInsumoGroupIds,
+  ]);
+
+
+  /* ================== RECARGA PRINCIPAL AL CAMBIAR BUSINESS O DIVISIÓN ================== */
   const hadBusinessOnceRef = useRef(false);
   const reloadRunRef = useRef(0);
 
@@ -267,7 +309,6 @@ export default function InsumosMain() {
       if (isCancelled || reloadRunRef.current !== runId) return;
 
       try {
-        // 1) RUBROS
         const resRubros = await insumosRubrosList(businessId);
         if (isCancelled || reloadRunRef.current !== runId) return;
 
@@ -283,7 +324,6 @@ export default function InsumosMain() {
         });
         safe(() => setRubrosMap(map));
 
-        // 2) INSUMOS (guardamos todo)
         const resInsumos = await insumosList(businessId, {
           page: 1,
           limit: 999999,
@@ -294,14 +334,13 @@ export default function InsumosMain() {
         const dataAll = Array.isArray(resInsumos?.data) ? resInsumos.data : [];
         safe(() => setAllInsumos(dataAll));
 
-        // 3) TODO + EXCLUSIONES
-        const todoGroup = await ensureTodoInsumos();
+        const todoGroup = await ensureTodoInsumos(businessId);
         if (isCancelled || reloadRunRef.current !== runId) return;
 
         safe(() => setTodoGroupId(todoGroup?.id || null));
 
         if (todoGroup?.id) {
-          const exclusiones = await getExclusionesInsumos(todoGroup.id);
+          const exclusiones = await getExclusionesInsumos(businessId, todoGroup.id);
           if (isCancelled || reloadRunRef.current !== runId) return;
 
           const ids = (exclusiones || [])
@@ -312,12 +351,10 @@ export default function InsumosMain() {
           safe(() => setExcludedIds(new Set(ids)));
         }
 
-        // 4) DISCONTINUADOS GROUP
         try {
-          await ensureDiscontinuadosInsumos();
+          await ensureDiscontinuadosInsumos(businessId);
         } catch { }
 
-        // 5) GRUPOS
         const resGroups = await insumoGroupsList(businessId);
         if (isCancelled || reloadRunRef.current !== runId) return;
 
@@ -328,6 +365,8 @@ export default function InsumosMain() {
             : [];
 
         safe(() => setGroups(list));
+
+        console.log('[InsumosMain] 📦 Grupos cargados:', list.length);
       } catch (e) {
         if (isCancelled || reloadRunRef.current !== runId) return;
         console.error('❌ [recargarTodo] Error:', e);
@@ -339,7 +378,7 @@ export default function InsumosMain() {
     return () => {
       isCancelled = true;
     };
-  }, [businessId, reloadKey]);
+  }, [businessId, reloadKey, activeDivisionId]); // ✅ Recargar al cambiar división
 
   /* ================== IDS "SIN AGRUPACIÓN" ================== */
   const activeIdSet = useMemo(
@@ -355,12 +394,12 @@ export default function InsumosMain() {
   const idsEnOtras = useMemo(
     () =>
       new Set(
-        (groups || [])
+        (groupsScoped || []) // ✅ USAR groupsScoped en lugar de groups
           .filter((g) => !esTodoGroup(g))
           .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
           .filter(Number.isFinite)
       ),
-    [groups]
+    [groupsScoped]
   );
 
   const idsSinAgrupActivos = useMemo(() => {
@@ -383,31 +422,25 @@ export default function InsumosMain() {
   const selectedGroup = useMemo(() => {
     const id = Number(selectedGroupId);
     if (!Number.isFinite(id) || id <= 0) return null;
-    return (groups || []).find((g) => Number(g.id) === id) || null;
-  }, [selectedGroupId, groups]);
+    return (groupsScoped || []).find((g) => Number(g.id) === id) || null; // ✅ USAR groupsScoped
+  }, [selectedGroupId, groupsScoped]);
 
   const isDiscView = useMemo(() => {
     return selectedGroup ? esDiscontinuadosGroup(selectedGroup) : false;
   }, [selectedGroup]);
 
-  /* ================== ✅ CORREGIDO: sidebarBase usa discontinuadosIds correctamente ================== */
   const sidebarBase = useMemo(() => {
     if (isDiscView) {
-      // ✅ Mostrar TODOS los insumos que estén en la agrupación Discontinuados
-      // (independientemente de su estado en la DB)
       return (baseAll || []).filter((i) => discontinuadosIds.has(Number(i.id)));
     }
-    // Vista normal: solo activos
     return baseActivos;
   }, [isDiscView, baseAll, baseActivos, discontinuadosIds]);
 
-
-  /* ================== visibleIds según grupo seleccionado ================== */
   const visibleIds = useMemo(() => {
     if (!selectedGroupId) return null;
 
     const gId = Number(selectedGroupId);
-    const g = groups.find((x) => Number(x.id) === gId);
+    const g = groupsScoped.find((x) => Number(x.id) === gId); // ✅ USAR groupsScoped
     if (!g) return null;
 
     if (esDiscontinuadosGroup(g)) return discontinuadosIds;
@@ -427,7 +460,7 @@ export default function InsumosMain() {
     return s;
   }, [
     selectedGroupId,
-    groups,
+    groupsScoped, // ✅ USAR groupsScoped
     todoGroupId,
     isDiscView,
     activeIdSet,
@@ -437,19 +470,15 @@ export default function InsumosMain() {
     discontinuadosIds,
   ]);
 
-  /* ================== BASE FILTRADA POR AGRUPACIÓN (como ArticulosMain) ================== */
   const filteredBase = useMemo(() => {
-    // Si no hay agrupación seleccionada, mostramos todo lo de la vista actual
     if (!visibleIds) return sidebarBase;
 
-    // Si hay visibleIds, filtramos estrictamente
     return (sidebarBase || []).filter((ins) => {
       const id = Number(ins?.id);
       return Number.isFinite(id) && visibleIds.has(id);
     });
   }, [sidebarBase, visibleIds]);
 
-  /* ================== RUBROS TREE (SIDEBAR) ================== */
   const rubrosTree = useMemo(() => {
     if (!filteredBase.length) return [];
     if (rubrosMap.size === 0) return [];
@@ -481,11 +510,9 @@ export default function InsumosMain() {
     return Array.from(map.values());
   }, [filteredBase, rubrosMap]);
 
-  /* ================== FILTRADO FINAL PARA TABLA (AGRUPACIÓN + RUBRO) ================== */
   const tableRows = useMemo(() => {
     let base = filteredBase || [];
 
-    // Si hay rubro seleccionado, filtrar por código de rubro
     const codigoSel = rubroSeleccionado?.codigo;
     if (codigoSel == null) return base;
 
@@ -497,7 +524,6 @@ export default function InsumosMain() {
     });
   }, [filteredBase, rubroSeleccionado]);
 
-  /* ================== LIMPIAR RUBRO SELECCIONADO SI YA NO EXISTE ================== */
   useEffect(() => {
     if (!rubroSeleccionado) return;
 
@@ -508,11 +534,10 @@ export default function InsumosMain() {
     if (!exists) setRubroSeleccionado(null);
   }, [rubrosTree, rubroSeleccionado]);
 
-  /* ================== INDEX GRUPOS POR INSUMO ================== */
   const insumosGroupIndex = useMemo(() => {
     const byInsumoId = new Map();
 
-    (groups || []).forEach((g) => {
+    (groupsScoped || []).forEach((g) => { // ✅ USAR groupsScoped
       if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return;
 
       const items = g.items || g.insumos || [];
@@ -526,8 +551,7 @@ export default function InsumosMain() {
     });
 
     return { byInsumoId };
-  }, [groups]);
-
+  }, [groupsScoped]);
 
   /* ================== SELECCIÓN INTELIGENTE TODO vs FAVORITA ================== */
   useEffect(() => {
@@ -537,7 +561,7 @@ export default function InsumosMain() {
     const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
     if (recentlyPicked) return;
 
-    const groupsReady = Array.isArray(groups) && groups.length > 0;
+    const groupsReady = Array.isArray(groupsScoped) && groupsScoped.length > 0;
     if (!groupsReady) return;
 
     if (selectedGroup && esDiscontinuadosGroup(selectedGroup)) return;
@@ -546,14 +570,14 @@ export default function InsumosMain() {
       selectedGroupId && Number(selectedGroupId) === Number(todoId);
 
     if (todoEmpty) {
-      const fav = (groups || []).find((g) => Number(g?.id) === Number(favoriteGroupId));
+      const fav = (groupsScoped || []).find((g) => Number(g?.id) === Number(favoriteGroupId));
       if (fav) {
         if (!selectedGroupId || Number(selectedGroupId) !== Number(fav.id)) {
           setSelectedGroupId(fav.id);
           setRubroSeleccionado(null);
         }
       } else {
-        const firstWithItems = groups.find((g) => {
+        const firstWithItems = groupsScoped.find((g) => {
           const gId = Number(g.id);
           if (gId === todoId) return false;
           const items = g.items || g.insumos || [];
@@ -571,7 +595,7 @@ export default function InsumosMain() {
         setRubroSeleccionado(null);
       }
     }
-  }, [todoGroupId, idsSinAgrupActivos, favoriteGroupId, groups, selectedGroupId, selectedGroup]);
+  }, [todoGroupId, idsSinAgrupActivos, favoriteGroupId, groupsScoped, selectedGroupId, selectedGroup]);
 
   useEffect(() => {
     if (!rubroSeleccionado) return;
@@ -600,7 +624,6 @@ export default function InsumosMain() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
   }, [baseAll]);
 
-  /* ================== NAV Y SCROLL ================== */
   const [jumpToInsumoId, setJumpToInsumoId] = useState(null);
   const [selectedInsumoId, setSelectedInsumoId] = useState(null);
   const [searchText, setSearchText] = useState('');
@@ -613,7 +636,7 @@ export default function InsumosMain() {
       const insumo = (baseAll || []).find((x) => Number(x?.id) === id) || null;
 
       const groupsSet = insumosGroupIndex.byInsumoId.get(id) || new Set();
-      const allGroups = groups || [];
+      const allGroups = groupsScoped || []; // ✅ USAR groupsScoped
 
       let targetGroupId = null;
 
@@ -624,7 +647,6 @@ export default function InsumosMain() {
         }
       }
 
-      // ✅ Si está en discontinuados, ir a ese grupo
       if (!targetGroupId && discontinuadosIds.has(id) && Number.isFinite(Number(discontinuadosGroupId))) {
         targetGroupId = Number(discontinuadosGroupId);
       }
@@ -674,7 +696,7 @@ export default function InsumosMain() {
     },
     [
       baseAll,
-      groups,
+      groupsScoped, // ✅ USAR groupsScoped
       insumosGroupIndex,
       todoGroupId,
       discontinuadosGroupId,
@@ -686,7 +708,6 @@ export default function InsumosMain() {
     ]
   );
 
-  /* ================== HANDLERS AGRUPACIONES ================== */
   const handleSelectGroupId = useCallback(
     (rawId) => {
       const n = Number(rawId);
@@ -780,7 +801,6 @@ export default function InsumosMain() {
 
   const handleRenameGroup = useCallback(
     async (group) => {
-      // Implementación idéntica a artículos
       notify('Función de renombrar implementada', 'info');
     },
     [notify]
@@ -840,7 +860,14 @@ export default function InsumosMain() {
 
   const sidebarListMode = effectiveViewMode;
 
-  const titulo = businessName ? `Insumos — ${businessName}` : 'Insumos';
+  // ✅ NUEVO: Mostrar nombre de división en el título
+  const titulo = useMemo(() => {
+    const base = businessName ? `Insumos — ${businessName}` : 'Insumos';
+    if (!isMainDivision && activeDivisionName) {
+      return `${base} › ${activeDivisionName}`;
+    }
+    return base;
+  }, [businessName, isMainDivision, activeDivisionName]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -904,7 +931,7 @@ export default function InsumosMain() {
             businessId={businessId}
             vista={vista}
             onVistaChange={setVista}
-            groups={groups}
+            groups={groupsScoped} // ✅ PASAR groupsScoped
             groupsLoading={groupsLoading}
             selectedGroupId={selectedGroupId}
             onSelectGroupId={handleSelectGroupId}
@@ -927,6 +954,10 @@ export default function InsumosMain() {
             listMode={sidebarListMode}
             onChangeListMode={handleChangeListMode}
             onManualPick={markManualPick}
+            activeDivisionId={activeDivisionId}
+            activeDivisionGroupIds={activeDivisionInsumoGroupIds}
+            assignedGroupIds={assignedInsumoGroupIds}
+            refetchAssignedGroups={refetchAssignedInsumoGroups}
           />
         </div>
 
@@ -946,7 +977,7 @@ export default function InsumosMain() {
             noBusiness={!businessId}
             vista={vista}
             businessId={businessId}
-            groups={groups}
+            groups={groupsScoped} // ✅ PASAR groupsScoped
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
             onOpenGroupModalForInsumo={handleOpenGroupModalForInsumo}
@@ -973,7 +1004,7 @@ export default function InsumosMain() {
         onClose={handleCloseGroupModal}
         insumo={groupModalInsumo}
         businessId={businessId}
-        groups={groups}
+        groups={groupsScoped} // ✅ PASAR groupsScoped
         initialGroupId={groupModalInitialGroupId}
         onGroupsReload={loadGroups}
       />

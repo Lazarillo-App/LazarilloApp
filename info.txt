@@ -16,5 +16,3 @@ $env:PGPASSWORD = "qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc"
 lazarillo_app=> \d
 
 tree /F /A
-
-

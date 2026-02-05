@@ -130,6 +130,7 @@ export default function TablaArticulos({
   filtroBusqueda = "",
   agrupacionSeleccionada,
   agrupaciones = [],
+  agrupacionesAll = null,
   categoriaSeleccionada,
   refetchAgrupaciones,
   fechaDesdeProp,
@@ -266,6 +267,11 @@ export default function TablaArticulos({
   // Carga catálogo + exclusiones
   useEffect(() => {
     console.log('[TablaArticulos] cargando con activeBizId:', activeBizId);
+
+    // ✅ NUEVO: Limpiar estado al cambiar negocio
+    setCategorias([]);
+    setTodoGroupId(null);
+    setExcludedIds(new Set());
 
     let cancel = false;
     loadReqId.current += 1;
@@ -417,15 +423,19 @@ export default function TablaArticulos({
     [getVentaForId, baseById]
   );
 
+  const agrupacionesParaTodo = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
+
   const idsEnOtras = useMemo(
     () =>
       new Set(
-        (agrupaciones || [])
-          .filter((g) => !esTodoGroup(g))
+        (agrupacionesParaTodo || [])
+          .filter((g) => g && !esTodoGroup(g))
           .flatMap((g) => (g.articulos || []).map(getId))
+          .filter((id) => Number.isFinite(id) && id > 0)   // ✅ importante
       ),
-    [agrupaciones]
+    [agrupacionesParaTodo]
   );
+
 
   const idsSinAgrup = useMemo(() => {
     const s = new Set();
@@ -678,7 +688,7 @@ export default function TablaArticulos({
     const sections = [];
 
     for (const blq of bloques) {
-      const subList = blq.subrUbros || blq.subrubros || [];
+      const subList = blq.subrubros || [];
       for (const sr of subList) {
         const artsOrdenados = (sr?.arts || [])
           .slice()

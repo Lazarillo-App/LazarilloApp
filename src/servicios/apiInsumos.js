@@ -338,20 +338,26 @@ export const insumoGroupsList = async (bizId) => {
  * GET /api/insumos/groups/:id
  * Obtiene una agrupación por ID
  */
-export const insumoGroupGetOne = async (id) => {
+export const insumoGroupGetOne = async (bizId, id) => {
+  // Permitir firma vieja: insumoGroupGetOne(id)
+  if (id === undefined) {
+    id = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups/${id}`;
-  
+
   const res = await fetch(url, {
     method: 'GET',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al obtener agrupación');
   }
-  
+
   return data;
 };
 
@@ -359,21 +365,27 @@ export const insumoGroupGetOne = async (id) => {
  * POST /api/insumos/groups
  * Crea una nueva agrupación
  */
-export const insumoGroupCreate = async (payload) => {
+export const insumoGroupCreate = async (bizId, payload) => {
+  // Permitir firma vieja: insumoGroupCreate(payload)
+  if (payload === undefined) {
+    payload = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups`;
-  
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify(payload),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al crear agrupación');
   }
-  
+
   return data;
 };
 
@@ -381,21 +393,28 @@ export const insumoGroupCreate = async (payload) => {
  * PUT /api/insumos/groups/:id
  * Actualiza una agrupación
  */
-export const insumoGroupUpdate = async (id, payload) => {
+export const insumoGroupUpdate = async (bizId, id, payload) => {
+  // Permitir firma vieja: insumoGroupUpdate(id, payload)
+  if (payload === undefined) {
+    payload = id;
+    id = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups/${id}`;
-  
+
   const res = await fetch(url, {
     method: 'PUT',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify(payload),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al actualizar agrupación');
   }
-  
+
   return data;
 };
 
@@ -403,20 +422,26 @@ export const insumoGroupUpdate = async (id, payload) => {
  * DELETE /api/insumos/groups/:id
  * Elimina una agrupación
  */
-export const insumoGroupDelete = async (id) => {
+export const insumoGroupDelete = async (bizId, id) => {
+  // Permitir firma vieja: insumoGroupDelete(id)
+  if (id === undefined) {
+    id = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups/${id}`;
-  
+
   const res = await fetch(url, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al eliminar agrupación');
   }
-  
+
   return data;
 };
 
@@ -515,20 +540,26 @@ export const insumoGroupReplaceItems = async (groupId, insumoIds) => {
  * GET /api/insumos/groups/:id/exclusions
  * Obtiene exclusiones de una agrupación
  */
-export const insumoGroupGetExclusions = async (groupId) => {
+export const insumoGroupGetExclusions = async (bizId, groupId) => {
+  // Permitir firma vieja: insumoGroupGetExclusions(groupId)
+  if (groupId === undefined) {
+    groupId = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  
+
   const res = await fetch(url, {
     method: 'GET',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al obtener exclusiones');
   }
-  
+
   return data;
 };
 
@@ -536,21 +567,28 @@ export const insumoGroupGetExclusions = async (groupId) => {
  * POST /api/insumos/groups/:id/exclusions
  * Agrega exclusiones a una agrupación
  */
-export const insumoGroupAddExclusions = async (groupId, exclusions) => {
+export const insumoGroupAddExclusions = async (bizId, groupId, exclusions) => {
+  // Permitir firma vieja: insumoGroupAddExclusions(groupId, exclusions)
+  if (exclusions === undefined) {
+    exclusions = groupId;
+    groupId = bizId;
+    bizId = undefined;
+  }
+
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ exclusions }),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al agregar exclusiones');
   }
-  
+
   return data;
 };
 
@@ -558,21 +596,31 @@ export const insumoGroupAddExclusions = async (groupId, exclusions) => {
  * DELETE /api/insumos/groups/:id/exclusions
  * Quita exclusiones de una agrupación
  */
-export const insumoGroupRemoveExclusions = async (groupId, ids, scope = 'insumo') => {
+export const insumoGroupRemoveExclusions = async (bizId, groupId, ids, scope = 'insumo') => {
+  // Permitir firma vieja: insumoGroupRemoveExclusions(groupId, ids, scope)
+  if (ids === undefined) {
+    // llamada vieja con (groupId, ids, scope)
+    ids = groupId;
+    groupId = bizId;
+    bizId = undefined;
+  } else if (Array.isArray(groupId) && typeof ids === 'string') {
+    // (groupId, ids, scope) edge raro, ignoramos
+  }
+
   const url = `${BASE}/insumos/groups/${groupId}/exclusions`;
-  
+
   const res = await fetch(url, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ ids, scope }),
   });
-  
+
   const data = await res.json().catch(() => null);
-  
+
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al quitar exclusiones');
   }
-  
+
   return data;
 };
 

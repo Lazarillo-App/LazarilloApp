@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
@@ -7,10 +6,6 @@ import {
   Snackbar, Alert, LinearProgress, Badge
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-
-// ⚠️ Si tu proyecto NO tiene alias "@/":
-// cambiá estas rutas a rutas relativas reales (ej: ../assets/...)
-// o configurá alias en vite.config.js
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 
@@ -66,9 +61,9 @@ export default function Navbar() {
   const role = getUserRole();
   const isAppAdmin = role === 'app_admin';
 
-  const { activeId } = useBusiness() || {};
+  const { activeBusinessId } = useBusiness() || {};
   const { unreadCount } = useNotifications({
-    businessId: activeId,
+    businessId: activeBusinessId,
     mode: 'count', // 👈 solo necesitamos el puntito
   });
 
@@ -342,6 +337,7 @@ export default function Navbar() {
                       Login
                     </MenuItem>
                   )}
+
                 </MenuList>
               </Menu>
             </Box>

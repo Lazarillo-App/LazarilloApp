@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import {
   FormControl,
   InputLabel,
@@ -13,15 +13,41 @@ import {
 } from '@mui/material';
 
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
+import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
 
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
 
 import '../css/SidebarCategorias.css';
 
+import { assignAgrupacionToDivision as assignAgrupacionToDivisionAPI } from '@/servicios/apiDivisions';
+import { BusinessesAPI } from '@/servicios/apiBusinesses'; // ✅ IMPORTAR
+
 const norm = (s) => String(s || '').trim().toLowerCase();
+
+// ✅ unifico nombre visible para grupos viejos/nuevos
+const groupLabel = (g) => String(g?.name ?? g?.nombre ?? '').trim();
+
+const esTodoGroup = (g) => {
+  const n = norm(groupLabel(g));
+  return (
+    n === 'todo' ||
+    n === 'sin agrupacion' ||
+    n === 'sin agrupación' ||
+    n === 'sin agrupar' ||
+    n === 'sin grupo'
+  );
+};
+
+const esDiscontinuadosGroup = (g) => {
+  const n = norm(groupLabel(g));
+  return n === 'discontinuados' || n === 'descontinuados';
+};
+
+const labelAgrup = (g) => groupLabel(g);
 
 const safeId = (a) => {
   const raw =
@@ -36,24 +62,6 @@ const safeId = (a) => {
   const id = Number(raw);
   return Number.isFinite(id) && id > 0 ? id : null;
 };
-
-const esTodoGroup = (g) => {
-  const n = norm(g?.nombre);
-  return (
-    n === 'todo' ||
-    n === 'sin agrupacion' ||
-    n === 'sin agrupación' ||
-    n === 'sin agrupar' ||
-    n === 'sin grupo'
-  );
-};
-
-const esDiscontinuadosGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'discontinuados' || n === 'descontinuados';
-};
-
-const labelAgrup = (g) => g?.nombre || '';
 
 const fmtCurrency = (v) => {
   try {
@@ -92,67 +100,102 @@ const resolveArticuloMonto = (art, getAmountForId, metaById) => {
   const qty = Number(art?.qty ?? art?.cantidad ?? art?.ventas_u ?? 0);
   const precio = Number(metaById?.get?.(id)?.precio ?? art?.precio ?? 0);
 
-  if (Number.isFinite(qty) && Number.isFinite(precio)) {
-    return qty * precio;
-  }
-
+  if (Number.isFinite(qty) && Number.isFinite(precio)) return qty * precio;
   return 0;
 };
 
 function SidebarCategorias({
   categorias = [],
   setCategoriaSeleccionada,
+
   agrupaciones = [],
   agrupacionSeleccionada,
   setAgrupacionSeleccionada,
+
   setFiltroBusqueda,
   setBusqueda,
   categoriaSeleccionada,
+
   todoGroupId,
   visibleIds,
   onManualPick,
+
   listMode = 'by-subrubro',
   onChangeListMode,
+
   favoriteGroupId,
   onSetFavorite,
   onEditGroup,
   onDeleteGroup,
   onRenameGroup,
+
   metaById,
   getAmountForId,
+
   onMutateGroups,
   onRefetch,
   notify,
+
+  businessId,
+  activeDivisionId,
+
+  // ✅ NUEVO (AGRUPACIONES POR DIVISIÓN)
+  activeDivisionAgrupacionIds = [],
+  assignedAgrupacionIds = [],
+  refetchAssignedAgrupaciones,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
 
-  /* ===================== Select de agrupaciones ===================== */
+  const [divisionModalOpen, setDivisionModalOpen] = useState(false);
+  const [groupToMove, setGroupToMove] = useState(null);
+
+  // ✅ NUEVO: Estado local del listMode mientras carga la preferencia
+  const [localListMode, setLocalListMode] = useState(listMode);
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
+
+  const divisionNum =
+    activeDivisionId === null || activeDivisionId === undefined || activeDivisionId === ''
+      ? null
+      : Number(activeDivisionId);
+
+  const isMainDivision =
+    divisionNum === null || !Number.isFinite(divisionNum) || divisionNum <= 0;
+
+  /* ===================== Select de agrupaciones (FILTRADO POR DIVISIÓN) ===================== */
 
   const opcionesSelect = useMemo(() => {
     const arr = (Array.isArray(agrupaciones) ? agrupaciones : []).filter(Boolean);
     if (!arr.length) return [];
 
     const todoIdNum = Number(todoGroupId);
-    const todo = arr.find((g) => Number(g.id) === todoIdNum) || null;
+    const todo = Number.isFinite(todoIdNum) ? arr.find((g) => Number(g.id) === todoIdNum) : null;
 
     const discontinuados = arr.filter(esDiscontinuadosGroup);
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
 
+    const assignedSet = new Set((assignedAgrupacionIds || []).map(Number));
+    const activeSet = new Set((activeDivisionAgrupacionIds || []).map(Number));
+
     const middle = arr.filter((g) => {
-      const idNum = Number(g.id);
+      const idNum = Number(g?.id);
+      if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
       if (discIds.has(idNum)) return false;
-      return true;
+
+      // ✅ Principal: mostrar NO asignadas
+      if (isMainDivision) return !assignedSet.has(idNum);
+
+      // ✅ División X: mostrar solo asignadas a esa división
+      return activeSet.has(idNum);
     });
 
     const ordered = [];
-    if (todo) ordered.push(todo);
+    if (isMainDivision && todo) ordered.push(todo);      // TODO solo visible en Principal
     ordered.push(...middle);
-    ordered.push(...discontinuados);
-
+    if (isMainDivision) ordered.push(...discontinuados); // Discontinuados solo visible en Principal
     return ordered;
-  }, [agrupaciones, todoGroupId]);
+  }, [agrupaciones, todoGroupId, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision]);
 
   const selectedAgrupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
@@ -160,6 +203,7 @@ function SidebarCategorias({
 
     if (actualId != null && idsOpciones.includes(actualId)) return actualId;
 
+    // fallback: si existe TODO en opciones, default a TODO
     const todoIdNum = Number(todoGroupId);
     if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) return todoIdNum;
 
@@ -174,6 +218,7 @@ function SidebarCategorias({
     const g = agrupacionSeleccionada;
     if (!g) return null;
 
+    // TODO => no filtra
     if (esTodoGroup(g)) return null;
 
     const gActual = (agrupaciones || []).find((x) => Number(x?.id) === Number(g?.id));
@@ -181,23 +226,82 @@ function SidebarCategorias({
 
     if (!arr.length) return new Set();
 
-    return new Set(
-      arr.map((a) => safeId(a)).filter((id) => id != null)
-    );
+    return new Set(arr.map((a) => safeId(a)).filter((id) => id != null));
   }, [visibleIds, agrupacionSeleccionada, agrupaciones]);
 
+  // Mantener referencia actualizada si cambia el objeto en "agrupaciones"
   useEffect(() => {
     if (!agrupacionSeleccionada) return;
+
     const g = (agrupaciones || []).find((x) => Number(x?.id) === Number(agrupacionSeleccionada.id));
     if (!g) return;
 
     const changed =
-      g.nombre !== agrupacionSeleccionada.nombre ||
+      groupLabel(g) !== groupLabel(agrupacionSeleccionada) ||
       (Array.isArray(g.articulos) ? g.articulos.length : 0) !==
-        (Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos.length : 0);
+      (Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos.length : 0);
 
     if (changed) setAgrupacionSeleccionada?.(g);
   }, [agrupaciones, agrupacionSeleccionada, setAgrupacionSeleccionada]);
+
+  /* ===================== ✅ CARGAR PREFERENCIA DE VISTA AL CAMBIAR AGRUPACIÓN ===================== */
+
+  useEffect(() => {
+    if (!businessId || !agrupacionSeleccionada) return;
+
+    const loadViewPref = async () => {
+      try {
+        setLoadingPrefs(true);
+        
+        const result = await BusinessesAPI.getViewPrefs(businessId, {
+          divisionId: divisionNum,
+        });
+
+        const agrupId = Number(agrupacionSeleccionada.id);
+        const savedMode = result?.byGroup?.[String(agrupId)];
+
+        if (savedMode === 'by-subrubro' || savedMode === 'by-categoria') {
+          setLocalListMode(savedMode);
+          onChangeListMode?.(savedMode);
+        } else {
+          // Si no hay preferencia guardada, usar el valor por defecto
+          setLocalListMode(listMode);
+        }
+      } catch (error) {
+        console.error('[SidebarCategorias] Error cargando preferencia de vista:', error);
+        setLocalListMode(listMode);
+      } finally {
+        setLoadingPrefs(false);
+      }
+    };
+
+    loadViewPref();
+  }, [businessId, agrupacionSeleccionada, divisionNum]);
+
+  /* ===================== ✅ GUARDAR PREFERENCIA AL CAMBIAR TOGGLE ===================== */
+
+  const handleListModeChange = useCallback(
+    async (newMode) => {
+      if (!newMode || !businessId || !agrupacionSeleccionada) return;
+
+      // Actualizar inmediatamente la UI
+      setLocalListMode(newMode);
+      onChangeListMode?.(newMode);
+
+      // Guardar en backend
+      try {
+        await BusinessesAPI.saveViewPref(businessId, {
+          agrupacionId: Number(agrupacionSeleccionada.id),
+          viewMode: newMode,
+          divisionId: divisionNum,
+        });
+      } catch (error) {
+        console.error('[SidebarCategorias] Error guardando preferencia de vista:', error);
+        notify?.('Error al guardar preferencia de vista', 'error');
+      }
+    },
+    [businessId, agrupacionSeleccionada, divisionNum, onChangeListMode, notify]
+  );
 
   /* ========================== Árbol según modo + ORDEN POR VENTAS ========================== */
 
@@ -221,7 +325,7 @@ function SidebarCategorias({
       })
       .filter((sub) => {
         let total = 0;
-        for (const c of sub?.categorias || []) total += (c?.articulos?.length || 0);
+        for (const c of sub?.categorias || []) total += c?.articulos?.length || 0;
         return total > 0;
       });
 
@@ -237,10 +341,7 @@ function SidebarCategorias({
 
     withVentas.sort((a, b) => {
       if (b.__ventasMonto !== a.__ventasMonto) return b.__ventasMonto - a.__ventasMonto;
-      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
-        sensitivity: 'base',
-        numeric: true,
-      });
+      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true });
     });
 
     return withVentas;
@@ -263,15 +364,13 @@ function SidebarCategorias({
       const filtered = !activeIds
         ? arts
         : arts.filter((a) => {
-            const id = safeId(a);
-            return id != null && activeIds.has(id);
-          });
+          const id = safeId(a);
+          return id != null && activeIds.has(id);
+        });
 
       if (filtered.length > 0) {
         let ventasMonto = 0;
-        for (const art of filtered) {
-          ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
-        }
+        for (const art of filtered) ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
 
         out.push({
           subrubro: catName,
@@ -283,16 +382,14 @@ function SidebarCategorias({
 
     out.sort((a, b) => {
       if (b.__ventasMonto !== a.__ventasMonto) return b.__ventasMonto - a.__ventasMonto;
-      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
-        sensitivity: 'base',
-        numeric: true,
-      });
+      return String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true });
     });
 
     return out;
   }, [categoriasSafe, activeIds, getAmountForId, metaById]);
 
-  const listaParaMostrar = listMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
+  // ✅ Usar localListMode en lugar de listMode
+  const listaParaMostrar = localListMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
 
   /* ========================== UX: selección & contadores ========================== */
 
@@ -324,9 +421,7 @@ function SidebarCategorias({
 
   const handleCategoriaClick = useCallback(
     (subItem) => {
-      setCategoriaSeleccionada?.(
-        categoriaSeleccionada?.subrubro === subItem?.subrubro ? null : subItem
-      );
+      setCategoriaSeleccionada?.(categoriaSeleccionada?.subrubro === subItem?.subrubro ? null : subItem);
       setFiltroBusqueda?.('');
       setBusqueda?.('');
     },
@@ -335,19 +430,53 @@ function SidebarCategorias({
 
   const countArticulosSub = (sub) => {
     let total = 0;
-    for (const c of sub?.categorias || []) total += (c?.articulos?.length || 0);
+    for (const c of sub?.categorias || []) total += c?.articulos?.length || 0;
     return total;
   };
 
   const montoArticulosSub = (sub) => {
     let total = 0;
     for (const c of sub?.categorias || []) {
-      for (const art of c?.articulos || []) {
-        total += resolveArticuloMonto(art, getAmountForId, metaById);
-      }
+      for (const art of c?.articulos || []) total += resolveArticuloMonto(art, getAmountForId, metaById);
     }
     return total;
   };
+
+  /* ========================== Modal asignación división ========================== */
+
+  const handleMoveGroupToDivision = useCallback((agrupacion) => {
+    setGroupToMove(agrupacion);
+    setDivisionModalOpen(true);
+  }, []);
+
+  const handleDivisionAssign = useCallback(
+    async (divisionId) => {
+      if (!groupToMove) return;
+
+      try {
+        await assignAgrupacionToDivisionAPI({
+          businessId,
+          agrupacionId: Number(groupToMove.id),
+          divisionId: divisionId === 'principal' ? null : Number(divisionId),
+        });
+
+        notify?.(`Agrupación "${labelAgrup(groupToMove)}" movida correctamente`, 'success');
+
+        // ✅ refrescar "quién está asignada a qué"
+        await refetchAssignedAgrupaciones?.();
+
+        // ✅ refrescar lista de agrupaciones (para que se re-scopee y/o se actualicen articulos)
+        await onRefetch?.();
+
+        setDivisionModalOpen(false);
+        setGroupToMove(null);
+      } catch (err) {
+        console.error('[SidebarCategorias] ❌ Error asignando agrupación:', err);
+        notify?.(err?.message || 'Error al asignar agrupación', 'error');
+      }
+    },
+    [groupToMove, businessId, notify, refetchAssignedAgrupaciones, onRefetch]
+  );
 
   return (
     <div className="sidebar">
@@ -390,7 +519,6 @@ function SidebarCategorias({
                   {(() => {
                     const isTodo = esTodoGroup(g);
                     const isDisc = esDiscontinuadosGroup(g);
-
                     if (isDisc) return null;
 
                     if (isTodo) {
@@ -466,6 +594,21 @@ function SidebarCategorias({
                             </span>
                           </Tooltip>
                         )}
+
+                        {/* ✅ asignar a división: solo en Principal y no para TODO/DISC */}
+                        {isMainDivision && !isTodo && !isDisc && (
+                          <Tooltip title="Asignar a división">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveGroupToDivision(g);
+                              }}
+                            >
+                              <ViewModuleIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </>
                     );
                   })()}
@@ -480,11 +623,11 @@ function SidebarCategorias({
         <ToggleButtonGroup
           size="small"
           exclusive
-          value={listMode}
+          value={localListMode}
           onChange={(_, val) => {
-            if (!val) return;
-            onChangeListMode?.(val);
+            handleListModeChange(val);
           }}
+          disabled={loadingPrefs}
         >
           <ToggleButton value="by-subrubro">Rubro</ToggleButton>
           <ToggleButton value="by-categoria">SubRubro</ToggleButton>
@@ -494,14 +637,14 @@ function SidebarCategorias({
       <ul className="sidebar-draggable-list">
         {loading && (
           <li style={{ opacity: 0.7 }}>
-            Cargando {listMode === 'by-categoria' ? 'categorías' : 'subrubros'}…
+            Cargando {localListMode === 'by-categoria' ? 'categorías' : 'subrubros'}…
           </li>
         )}
 
         {!loading &&
           listaParaMostrar.map((sub) => {
             const keyStr = String(
-              sub?.subrubro || (listMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')
+              sub?.subrubro || (localListMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro')
             );
             const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
 
@@ -553,7 +696,7 @@ function SidebarCategorias({
                     onRefetch={onRefetch}
                     notify={notify}
                     baseById={metaById}
-                    treeMode={listMode === 'by-categoria' ? 'cat-first' : 'sr-first'}
+                    treeMode={localListMode === 'by-categoria' ? 'cat-first' : 'sr-first'}
                   />
                 </div>
               </li>
@@ -562,12 +705,26 @@ function SidebarCategorias({
 
         {!loading && listaParaMostrar.length === 0 && (
           <li style={{ opacity: 0.7 }}>
-            {agrupacionSeleccionada && /discontinuad/i.test(agrupacionSeleccionada.nombre || '')
+            {agrupacionSeleccionada && /discontinuad/i.test(groupLabel(agrupacionSeleccionada) || '')
               ? 'No hay Rubros/Subrubros discontinuados.'
               : 'No hay Rubros/Subrubros en esta agrupación.'}
           </li>
         )}
       </ul>
+
+      {divisionModalOpen && (
+        <AssignGroupToDivisionModal
+          open={divisionModalOpen}
+          group={groupToMove}
+          businessId={businessId}
+          currentDivisionId={activeDivisionId ?? null}
+          onClose={() => {
+            setDivisionModalOpen(false);
+            setGroupToMove(null);
+          }}
+          onAssign={handleDivisionAssign}
+        />
+      )}
     </div>
   );
 }

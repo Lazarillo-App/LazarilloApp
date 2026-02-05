@@ -72,7 +72,7 @@ export default function Perfil() {
         });
 
         if (result.ok) {
-          showNotice('Sincronización completa', 'Artículos, ventas e insumos sincronizados correctamente');
+          showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
           window.dispatchEvent(new CustomEvent('sync:completed'));
         } else {
           const errorSteps = result.errors.map(e => e.step).join(', ');

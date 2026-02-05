@@ -2,28 +2,24 @@
 /* eslint-disable no-unused-vars */
 // src/componentes/BusinessCard.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import * as apiDivisions from "@/servicios/apiDivisions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
-import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-
-import SyncVentasButton from "./SyncVentasButton";
 import AutoGroupModal from "./AutoGroupModal";
+import IconButton from "@mui/material/IconButton";
+import TextField from "@mui/material/TextField";
+import SaveIcon from "@mui/icons-material/Save";
+import CloseIcon from "@mui/icons-material/Close";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-// ✅ USAR BusinessContext en lugar de DivisionContext
 import { useBusiness } from "@/context/BusinessContext";
-import DivisionCreateSimpleModal from './DivisionCreateSimpleModal';
 
-import {
-  syncArticulos,
-  syncVentas,
-  syncInsumos,
-  isMaxiConfigured,
-} from "@/servicios/syncService";
+import { syncArticulos, syncInsumos, isMaxiConfigured } from "@/servicios/syncService";
 
 import {
   checkNewArticlesAndSuggest,
@@ -39,13 +35,12 @@ export default function BusinessCard({
   onDelete,
   showNotice,
 }) {
-  // ✅ USAR BusinessContext
   const {
-    activeSubnegocioId,
-    selectSubnegocio,
-    subnegocios,
-    loadingSubnegocios,
-    refreshSubnegocios,
+    activeDivisionId,
+    selectDivision,
+    divisions,
+    divisionsLoading,
+    refetchDivisions,
   } = useBusiness() || {};
 
   const [syncingArt, setSyncingArt] = useState(false);
@@ -54,15 +49,18 @@ export default function BusinessCard({
   const [viewBiz, setViewBiz] = useState(biz);
   const [maxiLoading, setMaxiLoading] = useState(true);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
+  const [editDivisionId, setEditDivisionId] = useState(null);
+  const [editDivisionName, setEditDivisionName] = useState("");
+  const [divisionBusyId, setDivisionBusyId] = useState(null); // para bloquear UI mientras guarda/borra
 
-  // 🆕 Modal de auto-agrupación
+  // Modal de auto-agrupación
   const [autoGroupModal, setAutoGroupModal] = useState({
     open: false,
     suggestions: [],
     loading: false,
   });
 
-  // 🆕 Panel de subnegocios
+  // Panel de “subnegocios” (divisiones)
   const [divPanelOpen, setDivPanelOpen] = useState(false);
   const [showCreateDivModal, setShowCreateDivModal] = useState(false);
 
@@ -91,7 +89,7 @@ export default function BusinessCard({
 
   const isActive = String(activeId) === String(viewBiz?.id);
 
-  // ⚡ Auto-sincronización al tener negocio activo + Maxi configurado
+  // Auto-sync al tener negocio activo + Maxi configurado
   useEffect(() => {
     const bizId = viewBiz?.id;
     if (!bizId) return;
@@ -122,7 +120,6 @@ export default function BusinessCard({
           }
         }, 1500);
 
-        await syncVentas(viewBiz.id, { days: 7, onProgress: () => { } });
         await syncInsumos(viewBiz.id, { onProgress: () => { } });
 
         console.log("[BusinessCard] ✅ Auto-sync completado");
@@ -132,7 +129,7 @@ export default function BusinessCard({
     })();
   }, [viewBiz?.id, isActive, maxiLoading, maxiConfigured]);
 
-  // ▶ Chequear si Maxi está configurado
+  // Chequear si Maxi está configurado
   useEffect(() => {
     let mounted = true;
     const id = viewBiz?.id;
@@ -157,10 +154,7 @@ export default function BusinessCard({
     };
   }, [viewBiz?.id]);
 
-  const branding = useMemo(
-    () => viewBiz?.branding || viewBiz?.props?.branding || {},
-    [viewBiz]
-  );
+  const branding = useMemo(() => viewBiz?.branding || viewBiz?.props?.branding || {}, [viewBiz]);
 
   const name =
     viewBiz?.name ||
@@ -189,44 +183,33 @@ export default function BusinessCard({
   const thumbnail = hasLogo ? logo : photo;
   const isLogoThumb = hasLogo;
 
-  // -------------------- SUBNEGOCIOS --------------------
-  // ✅ Usamos los subnegocios del BusinessContext (ya cargados para el negocio activo)
-  // Solo mostramos subnegocios si este es el negocio activo
-  const divisions = isActive ? (subnegocios || []) : [];
-  const divLoading = isActive ? loadingSubnegocios : false;
-  const hasDivisions = divisions.length > 0;
+  // --------- DIVISIONES (Subnegocios) ----------
+  // Solo mostramos divisiones si este es el negocio activo
+  const divisionsList = isActive ? (divisions || []) : [];
+  const divLoading = isActive ? !!divisionsLoading : false;
+  const hasDivisions = divisionsList.length > 0;
 
   const toggleDivPanel = async () => {
     const next = !divPanelOpen;
     setDivPanelOpen(next);
-    
-    // Si abrimos el panel y es el negocio activo, refrescar subnegocios
+
+    // Si abrimos el panel y es el negocio activo, refrescar divisiones
     if (next && isActive) {
-      await refreshSubnegocios?.();
+      await refetchDivisions?.();
     }
   };
 
-  const handlePickSubnegocio = async (subnegocioId) => {
+  const handlePickDivision = async (divisionId) => {
     const bizId = viewBiz?.id;
     if (!bizId) return;
 
-    // Si el negocio no está activo, lo activamos primero
+    // Si no es el activo, activarlo primero
     if (!isActive) {
-      // Limpiar subnegocio previo
-      selectSubnegocio?.('');
       await onSetActive?.(bizId);
-      
-      // Después de activar, seleccionar el subnegocio si se eligió uno
-      if (subnegocioId) {
-        // Pequeño delay para que el contexto se actualice
-        setTimeout(() => {
-          selectSubnegocio?.(subnegocioId);
-        }, 100);
-      }
-    } else {
-      // Ya es el negocio activo, solo cambiar subnegocio
-      selectSubnegocio?.(subnegocioId || '');
     }
+
+    // Setear división (null = Principal)
+    await selectDivision?.(divisionId ?? null);
 
     setDivPanelOpen(false);
   };
@@ -238,19 +221,19 @@ export default function BusinessCard({
   const handleDivisionCreated = async () => {
     setShowCreateDivModal(false);
 
-    // Recargar subnegocios desde el contexto
-    await refreshSubnegocios?.();
+    // recargar divisiones
+    await refetchDivisions?.();
 
-    // Notificar
-    showNotice?.('✅ Subnegocio creado correctamente');
+    showNotice?.("✅ Subnegocio creado correctamente");
 
-    // Broadcast para que otros componentes se actualicen
-    window.dispatchEvent(new CustomEvent('subnegocio:created', {
-      detail: { businessId: viewBiz?.id }
-    }));
+    window.dispatchEvent(
+      new CustomEvent("division:created", {
+        detail: { businessId: viewBiz?.id },
+      })
+    );
   };
 
-  // -------------------- SYNC HANDLERS --------------------
+  // --------- SYNC HANDLERS ----------
   const handleSyncArticulos = async () => {
     if (syncingArt || syncingArtRef.current) return;
 
@@ -294,7 +277,7 @@ export default function BusinessCard({
     syncingInsumosRef.current = true;
 
     try {
-      const result = await syncInsumos(viewBiz.id, {
+      await syncInsumos(viewBiz.id, {
         force: true,
         onProgress: (msg, type) => {
           if (type === "success" || type === "error") showNotice?.(msg);
@@ -308,7 +291,7 @@ export default function BusinessCard({
     }
   };
 
-  // -------------------- AUTO GROUP HANDLERS --------------------
+  // --------- AUTO GROUP HANDLERS ----------
   const handleApplyAutoGrouping = async (selections) => {
     setAutoGroupModal((prev) => ({ ...prev, loading: true }));
     try {
@@ -344,14 +327,68 @@ export default function BusinessCard({
     }
   };
 
+  // --------- RENOMBRAR Y ELIMINAR HANDLERS ----------
+
+  const startRenameDivision = (d) => {
+    setEditDivisionId(String(d.id));
+    setEditDivisionName(String(d.name || d.nombre || ""));
+  };
+
+  const cancelRenameDivision = () => {
+    setEditDivisionId(null);
+    setEditDivisionName("");
+  };
+
+  const saveRenameDivision = async (divisionId) => {
+    const newName = String(editDivisionName || "").trim();
+    if (!newName) {
+      showNotice?.("⚠️ El nombre no puede estar vacío");
+      return;
+    }
+
+    try {
+      setDivisionBusyId(String(divisionId));
+      await apiDivisions.updateDivision(divisionId, { name: newName });
+      showNotice?.("✅ Nombre actualizado");
+      cancelRenameDivision();
+      await refetchDivisions?.();
+    } catch (e) {
+      showNotice?.(`❌ Error renombrando: ${e.message || "falló"}`);
+    } finally {
+      setDivisionBusyId(null);
+    }
+  };
+
+  const deleteDivision = async (divisionId) => {
+    const ok = window.confirm("¿Eliminar este subnegocio? Esta acción no se puede deshacer.");
+    if (!ok) return;
+
+    try {
+      setDivisionBusyId(String(divisionId));
+
+      // si estás parado en esa división, volvés a Principal antes
+      if (String(activeDivisionId ?? "") === String(divisionId)) {
+        await selectDivision?.(null);
+      }
+
+      await apiDivisions.deleteDivision(divisionId);
+
+      showNotice?.("🗑️ Subnegocio eliminado");
+      await refetchDivisions?.();
+    } catch (e) {
+      showNotice?.(`❌ Error eliminando: ${e.message || "falló"}`);
+    } finally {
+      setDivisionBusyId(null);
+    }
+  };
+
+
   return (
     <>
       <AutoGroupModal
         open={autoGroupModal.open}
         suggestions={autoGroupModal.suggestions}
-        onClose={() =>
-          setAutoGroupModal({ open: false, suggestions: [], loading: false })
-        }
+        onClose={() => setAutoGroupModal({ open: false, suggestions: [], loading: false })}
         onApply={handleApplyAutoGrouping}
         onCreateGroup={handleCreateGroup}
         loading={autoGroupModal.loading}
@@ -378,17 +415,9 @@ export default function BusinessCard({
             )}
           </div>
 
-          <div
-            className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"
-              }`}
-          >
+          <div className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"}`}>
             {thumbnail ? (
-              <img
-                className="bc-thumb"
-                src={thumbnail}
-                alt={name}
-                loading="lazy"
-              />
+              <img className="bc-thumb" src={thumbnail} alt={name} loading="lazy" />
             ) : (
               <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
             )}
@@ -401,9 +430,9 @@ export default function BusinessCard({
               <button
                 className="bc-btn bc-btn-outline"
                 onClick={async () => {
-                  // Al activar negocio, limpiar subnegocio previo
-                  selectSubnegocio?.('');
+                  // Al activar negocio, forzar Principal
                   await onSetActive?.(viewBiz.id);
+                  await selectDivision?.(null);
                 }}
               >
                 Activar
@@ -423,13 +452,12 @@ export default function BusinessCard({
               <DeleteIcon fontSize="small" />
             </button>
 
-            {/* 🆕 Subnegocios */}
+            {/* Botón para abrir panel */}
             <button
               className="bc-btn bc-btn-outline"
               onClick={toggleDivPanel}
-              title="Ver subnegocios"
+              title="Ver subnegocios (divisiones)"
             >
-              {divLoading ? <CircularProgress size={16} /> : <AccountTreeIcon fontSize="small" />}
               Subnegocios
             </button>
           </div>
@@ -438,7 +466,7 @@ export default function BusinessCard({
             <div className="bc-div-panel">
               <div className="bc-div-head">
                 <strong>Subnegocios</strong>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <button
                     className="bc-btn bc-btn-outline"
                     style={{ padding: "6px 10px" }}
@@ -457,9 +485,7 @@ export default function BusinessCard({
               </div>
 
               {!isActive ? (
-                <div className="bc-div-empty">
-                  Activá este negocio para ver sus subnegocios.
-                </div>
+                <div className="bc-div-empty">Activá este negocio para ver sus subnegocios.</div>
               ) : divLoading ? (
                 <div className="bc-div-loading">
                   <CircularProgress size={18} /> Cargando…
@@ -478,41 +504,125 @@ export default function BusinessCard({
                 </div>
               ) : (
                 <div className="bc-div-list">
-                  {/* Opción "Todas / Principal" */}
-                  <button
-                    className={`bc-btn bc-btn-outline ${!activeSubnegocioId ? 'bc-btn-selected' : ''}`}
-                    onClick={() => handlePickSubnegocio('')}
-                    title="Ver todo (principal)"
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      (Todas / Principal)
-                      {!activeSubnegocioId && <CheckCircleIcon fontSize="small" style={{ opacity: .8 }} />}
-                    </span>
-                  </button>
+                  {divisionsList.map((d) => {
+                    const isSel = String(activeDivisionId ?? "") === String(d.id);
+                    const isEditing = String(editDivisionId ?? "") === String(d.id);
+                    const busy = String(divisionBusyId ?? "") === String(d.id);
 
-                  {divisions.map((d) => {
-                    const isSel = String(activeSubnegocioId || '') === String(d.id);
                     return (
-                      <button
+                      <div
                         key={d.id}
-                        className={`bc-btn bc-btn-outline ${isSel ? 'bc-btn-selected' : ''}`}
-                        onClick={() => handlePickSubnegocio(String(d.id))}
-                        style={{ justifyContent: "space-between" }}
+                        className={`bc-btn bc-btn-outline ${isSel ? "bc-btn-selected" : ""}`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          padding: "10px 12px",
+                        }}
                         title={`Seleccionar ${d.name || d.nombre || `#${d.id}`}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => !isEditing && handlePickDivision(d.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !isEditing) handlePickDivision(d.id);
+                        }}
                       >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {d.name || d.nombre || `Subnegocio #${d.id}`}
-                          {isSel && <CheckCircleIcon fontSize="small" style={{ opacity: .8 }} />}
-                        </span>
-                        <span style={{ opacity: 0.6, fontSize: 12 }}>#{d.id}</span>
-                      </button>
+                        {/* IZQ: nombre */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                          {isEditing ? (
+                            <TextField
+                              size="small"
+                              value={editDivisionName}
+                              onChange={(e) => setEditDivisionName(e.target.value)}
+                              autoFocus
+                              disabled={busy}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveRenameDivision(d.id);
+                                if (e.key === "Escape") cancelRenameDivision();
+                              }}
+                              sx={{
+                                flex: 1,
+                                "& .MuiInputBase-root": { height: 34 },
+                              }}
+                            />
+                          ) : (
+                            <>
+                              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {d.name || d.nombre || `División #${d.id}`}
+                              </span>
+                              {isSel && <CheckCircleIcon fontSize="small" style={{ opacity: 0.8 }} />}
+                            </>
+                          )}
+                        </div>
+
+                        {/* DER: acciones */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ opacity: 0.6, fontSize: 12 }}>#{d.id}</span>
+
+                          {isEditing ? (
+                            <>
+                              <IconButton
+                                size="small"
+                                disabled={busy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveRenameDivision(d.id);
+                                }}
+                                title="Guardar"
+                              >
+                                <SaveIcon fontSize="small" />
+                              </IconButton>
+
+                              <IconButton
+                                size="small"
+                                disabled={busy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelRenameDivision();
+                                }}
+                                title="Cancelar"
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <>
+                              <IconButton
+                                size="small"
+                                disabled={busy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRenameDivision(d);
+                                }}
+                                title="Cambiar nombre"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+
+                              {!d.is_main && (
+                                <IconButton
+                                  size="small"
+                                  disabled={busy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteDivision(d.id);
+                                  }}
+                                  title="Eliminar"
+                                >
+                                  <DeleteForeverIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               )}
             </div>
           )}
-
           <div className="bc-actions-sync">
             <button
               className="bc-btn bc-btn-outline"
@@ -523,16 +633,6 @@ export default function BusinessCard({
               {syncingArt ? <CircularProgress size={16} /> : <AutorenewIcon fontSize="small" />}
               {syncingArt ? " Artículos…" : " Artículos"}
             </button>
-
-            {!maxiLoading && maxiConfigured && (
-              <SyncVentasButton
-                businessId={viewBiz.id}
-                onSuccess={() => {
-                  showNotice?.("✅ Ventas sincronizadas correctamente");
-                  window.dispatchEvent(new Event("ventas:updated"));
-                }}
-              />
-            )}
 
             {!maxiLoading && maxiConfigured && (
               <button
@@ -594,13 +694,6 @@ export default function BusinessCard({
 
           @media (max-width:720px){ .bc-thumb-wrap{ width:140px; } }
         `}</style>
-        
-        <DivisionCreateSimpleModal
-          open={showCreateDivModal}
-          businessId={viewBiz?.id}
-          onClose={() => setShowCreateDivModal(false)}
-          onSuccess={handleDivisionCreated}
-        />
       </div>
     </>
   );

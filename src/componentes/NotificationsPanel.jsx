@@ -14,6 +14,7 @@ import {
   Box,
   ListItemButton,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -93,7 +94,7 @@ export default function NotificationsPanel({ businessId }) {
     return () => clearInterval(t);
   }, [open, refresh, refreshCount]);
 
-  // ✅ CORREGIDO: Iconos actualizados con los tipos correctos del backend
+  // ✅ Iconos según tipo de notificación
   const getIcon = (notif) => {
     const t = notif?.type;
     const scope = notif?.metadata?.scope;
@@ -128,7 +129,7 @@ export default function NotificationsPanel({ businessId }) {
   }, [refresh, refreshCount]);
 
   const onNotifClick = useCallback(async (notif) => {
-    // ✅ MEJORADO: Solo marcar como leída si no está resuelta y no está leída
+    // ✅ Solo marcar como leída si no está resuelta y no está leída
     if (!notif?.read && !notif?.metadata?.resolution?.status) {
       try {
         await markAsRead([notif.id]);
@@ -276,6 +277,7 @@ export default function NotificationsPanel({ businessId }) {
                   const resolutionStatus = notif?.metadata?.resolution?.status || null;
                   const isResolved = !!resolutionStatus;
 
+                  // ✅ Los botones SOLO aparecen si es sync de insumos Y no está resuelta
                   const showActions = isSyncInsumos && !isResolved;
 
                   const buttonsDisabled = !businessId || !hasCS || !!busy || isResolved;
@@ -328,26 +330,34 @@ export default function NotificationsPanel({ businessId }) {
                                   {formatDate(notif.created_at)}
                                 </Typography>
 
+                                {/* ✅ NUEVO: Mensaje claro según el estado de resolución */}
                                 {isResolved && (
-                                  <Typography
-                                    component="span"
-                                    variant="caption"
-                                    sx={{
-                                      display: 'block',
-                                      mt: 0.5,
-                                      fontWeight: 700,
-                                      color: resolutionStatus === 'applied' ? 'success.main' : 'error.main',
-                                    }}
+                                  <Alert 
+                                    severity={resolutionStatus === 'applied' ? 'success' : 'warning'}
+                                    sx={{ mt: 1, py: 0.5 }}
                                   >
-                                    {resolutionStatus === 'applied' && '✅ Aplicado'}
-                                    {resolutionStatus === 'rejected' && '❌ Rechazado'}
-                                    {resolutionStatus === 'approved' && '✓ Aprobado'}
-                                  </Typography>
+                                    {resolutionStatus === 'applied' && (
+                                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                        ✅ Cambios aplicados correctamente
+                                      </Typography>
+                                    )}
+                                    {resolutionStatus === 'rejected' && (
+                                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                        ❌ Cambios rechazados - Realizar agrupación de manera manual
+                                      </Typography>
+                                    )}
+                                    {resolutionStatus === 'approved' && (
+                                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                        ✓ Aprobado
+                                      </Typography>
+                                    )}
+                                  </Alert>
                                 )}
                               </Box>
                             )}
                           />
 
+                          {/* ✅ Los botones solo se muestran si showActions es true */}
                           {showActions && (
                             <Box
                               sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}

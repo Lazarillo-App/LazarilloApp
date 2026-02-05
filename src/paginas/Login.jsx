@@ -45,27 +45,28 @@ export default function Login() {
     }
 
     setBusy(true);
+
     try {
-      // 👉 ahora AuthAPI.login devuelve { user, token, ... }
+      // ✅ AuthAPI.login ya guarda token/user/activeBusinessId y dispara auth:login con detail
       const data = await AuthAPI.login(email.trim(), password);
+
       const user =
         data?.user ??
         (JSON.parse(localStorage.getItem('user') || 'null') || {});
 
       // ───── Post-login: negocio activo + paleta ─────
+      let activeBizId = null;
+
       try {
         const uid = user?.id;
 
-        const resp = await BusinessesAPI.listMine();
-        const list = Array.isArray(resp) ? resp : (resp?.items || []);
+        const list = await BusinessesAPI.listMine(); // ya devuelve array (según tu API)
+        activeBizId = localStorage.getItem('activeBusinessId') || list?.[0]?.id || null;
 
-        const active =
-          localStorage.getItem('activeBusinessId') || list[0]?.id;
+        if (activeBizId) {
+          localStorage.setItem('activeBusinessId', String(activeBizId));
 
-        if (active) {
-          localStorage.setItem('activeBusinessId', active);
-
-          const full = await BusinessesAPI.get?.(active);
+          const full = await BusinessesAPI.get?.(activeBizId);
           const branding = full?.branding || {};
           const pal = brandingToPalette(branding);
 
@@ -80,17 +81,12 @@ export default function Login() {
         // no rompemos login por errores de branding
       }
 
-      // 🆕 ───── EMITIR EVENTOS POST-LOGIN ─────
-      console.log('✅ Login exitoso, emitiendo eventos...');
-      
-      // Evento 1: Notificar que hay login (Navbar escucha esto)
-      window.dispatchEvent(new Event('auth:login'));
-      
-      // Evento 2: Forzar recarga del negocio activo (con delay para asegurar que todo esté listo)
-      setTimeout(() => {
-        window.dispatchEvent(new Event('business:switched'));
-        console.log('✅ Eventos post-login emitidos correctamente');
-      }, 100);
+      // ✅ (Opcional) si querés forzar que el BusinessContext se entere YA del biz activo:
+      if (activeBizId) {
+        window.dispatchEvent(new CustomEvent('business:switched', {
+          detail: { bizId: activeBizId }
+        }));
+      }
 
       // ───── Auto-sync NO bloqueante ─────
       syncAllBusinesses({ scope: 'articles', alsoSalesDays: 14, concurrency: 2 })
@@ -107,7 +103,7 @@ export default function Login() {
 
       nav(to, { replace: true });
     } catch (e2) {
-      console.error('LOGIN ERROR >>>', e2); 
+      console.error('LOGIN ERROR >>>', e2);
       setErr(e2.message || 'Error de inicio de sesión');
     } finally {
       setBusy(false);

@@ -1,7 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
-// src/componentes/InsumosSidebar.jsx
-import React, { useMemo, useCallback } from 'react';
+// src/componentes/InsumosSidebar.jsx - CON PERSISTENCIA DE VISTA + ASIGNACIÓN A DIVISIONES
+
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   FormControl,
   InputLabel,
@@ -12,11 +13,18 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
+
 import InsumoRubroAccionesMenu from './InsumoRubroAccionesMenu';
+import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
+
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
+
+import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
+import { BusinessesAPI } from '@/servicios/apiBusinesses'; // ✅ IMPORTAR
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -56,47 +64,33 @@ const fmtCurrency = (v) => {
   }
 };
 
-/**
- * ✅ Helper: resolver monto de un insumo
- */
 const resolveInsumoMonto = (insumo, metaById) => {
   if (!insumo) return 0;
 
-  // Prioridad: usar campos del insumo directamente
   const monto = Number(
     insumo?.total_gastos_periodo ??
-    insumo?.total_gastos ??
-    insumo?.importe_total ??
-    insumo?.monto ??
-    0
+      insumo?.total_gastos ??
+      insumo?.importe_total ??
+      insumo?.monto ??
+      0
   );
-
   if (Number.isFinite(monto) && monto !== 0) return monto;
 
-  // Fallback: qty * precio
   const qty = Number(insumo?.unidades_compradas ?? insumo?.total_unidades ?? 0);
   const precio = Number(insumo?.precio_ref ?? insumo?.precio ?? 0);
+  if (Number.isFinite(qty) && Number.isFinite(precio)) return qty * precio;
 
-  if (Number.isFinite(qty) && Number.isFinite(precio)) {
-    return qty * precio;
-  }
-
-  // Si metaById está disponible, intentar desde ahí
   if (metaById && typeof metaById.get === 'function') {
     const id = safeId(insumo);
     if (Number.isFinite(id)) {
       const meta = metaById.get(id);
       if (meta) {
-        const metaMonto = Number(
-          meta.total_gastos_periodo ?? meta.total_gastos ?? meta.importe_total ?? 0
-        );
+        const metaMonto = Number(meta.total_gastos_periodo ?? meta.total_gastos ?? meta.importe_total ?? 0);
         if (Number.isFinite(metaMonto) && metaMonto !== 0) return metaMonto;
 
         const metaQty = Number(meta.unidades_compradas ?? meta.total_unidades ?? 0);
         const metaPrecio = Number(meta.precio ?? 0);
-        if (Number.isFinite(metaQty) && Number.isFinite(metaPrecio)) {
-          return metaQty * metaPrecio;
-        }
+        if (Number.isFinite(metaQty) && Number.isFinite(metaPrecio)) return metaQty * metaPrecio;
       }
     }
   }
@@ -108,119 +102,190 @@ function InsumosSidebar({
   rubros = [],
   rubroSeleccionado,
   setRubroSeleccionado,
+
   businessId,
   vista,
   onVistaChange,
+
   groups = [],
   groupsLoading,
   selectedGroupId,
   onSelectGroupId,
+
   favoriteGroupId,
   onSetFavorite,
   onEditGroup,
   onDeleteGroup,
   onRenameGroup,
+
   todoGroupId,
   idsSinAgrupCount,
+
   onMutateGroups,
   onRefetch,
   notify,
+
   visibleIds,
   rubrosMap,
   onReloadCatalogo,
   forceRefresh,
   onCreateGroupFromRubro,
+
   discontinuadosGroupId = null,
-  listMode = 'elaborados-first', // ✅ NUEVO
-  onChangeListMode, // ✅ NUEVO
+
   onManualPick,
-  metaById, // ✅ NUEVO
-  getAmountForId, // ✅ NUEVO (opcional, puede usar resolveInsumoMonto)
+  metaById,
+
+  // ✅ División-aware
+  activeDivisionId,
+  activeDivisionGroupIds = [],
+  assignedGroupIds = [],
+  refetchAssignedGroups,
 }) {
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
   const loading = groupsLoading;
 
-  // ✅ Select de grupos
+  // ✅ Modal para asignar a división
+  const [divisionModalOpen, setDivisionModalOpen] = useState(false);
+  const [groupToMove, setGroupToMove] = useState(null);
+
+  // ✅ NUEVO: Estado local de vista mientras carga la preferencia
+  const [localVista, setLocalVista] = useState(vista);
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
+
+  const divisionNum =
+    activeDivisionId === null || activeDivisionId === undefined || activeDivisionId === ''
+      ? null
+      : Number(activeDivisionId);
+
+  const isMainDivision =
+    divisionNum === null || !Number.isFinite(divisionNum) || divisionNum <= 0;
+
+  /* ===================== Select de grupos (FILTRADO POR DIVISIÓN) ===================== */
   const opcionesSelect = useMemo(() => {
     const arr = (Array.isArray(groups) ? groups : []).filter(Boolean);
     if (!arr.length) return [];
 
     const todoIdNum = Number(todoGroupId);
-    const todo = arr.find((g) => Number(g.id) === todoIdNum) || null;
+    const todo = Number.isFinite(todoIdNum) ? arr.find((g) => Number(g.id) === todoIdNum) : null;
 
     const discontinuados = arr.filter(esDiscontinuadosGroup);
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
 
+    const assignedSet = new Set((assignedGroupIds || []).map(Number));
+    const activeSet = new Set((activeDivisionGroupIds || []).map(Number));
+
     const middle = arr.filter((g) => {
-      const idNum = Number(g.id);
+      const idNum = Number(g?.id);
+      if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
       if (discIds.has(idNum)) return false;
-      return true;
+
+      if (isMainDivision) return !assignedSet.has(idNum);
+      return activeSet.has(idNum);
     });
 
     const ordered = [];
-    if (todo) ordered.push(todo);
+    if (isMainDivision && todo) ordered.push(todo);
     ordered.push(...middle);
-    ordered.push(...discontinuados);
-
+    if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [groups, todoGroupId]);
+  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision]);
 
-  // ✅ Valor seleccionado en el Select
   const selectedGroupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
-
     const actualId = selectedGroupId ? Number(selectedGroupId) : null;
 
-    if (actualId != null && idsOpciones.includes(actualId)) {
-      return actualId;
-    }
+    if (actualId != null && idsOpciones.includes(actualId)) return actualId;
 
     const todoIdNum = Number(todoGroupId);
-    if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) {
-      return todoIdNum;
-    }
+    if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) return todoIdNum;
 
     return '';
   }, [opcionesSelect, selectedGroupId, todoGroupId]);
 
-  // ✅ Set de IDs activos (igual que ArticulosMain)
+  /* ===================== ActiveIds ===================== */
   const activeIds = useMemo(() => {
-    // 1. Si tenemos visibleIds del padre, usarlo
-    if (visibleIds && visibleIds.size) {
-      return visibleIds;
-    }
+    if (visibleIds && visibleIds.size) return visibleIds;
 
-    // 2. Si no hay grupo seleccionado, mostrar todos
-    if (!selectedGroupId) {
-      return null;
-    }
+    if (!selectedGroupId) return null;
 
-    // 3. Si es grupo TODO, retornar null (se maneja en padre)
-    const grupoSeleccionado = groups.find((g) => Number(g.id) === Number(selectedGroupId));
-    if (esTodoGroup(grupoSeleccionado)) {
-      return visibleIds || null;
-    }
+    const grupoSeleccionado = (groups || []).find((g) => Number(g.id) === Number(selectedGroupId));
+    if (!grupoSeleccionado) return null;
 
-    // 4. Si es otro grupo, extraer sus IDs
+    if (esTodoGroup(grupoSeleccionado)) return null;
+
     const items = grupoSeleccionado?.items || grupoSeleccionado?.insumos || [];
-    if (!items.length) {
-      return new Set();
-    }
+    if (!items.length) return new Set();
 
-    const ids = new Set(
+    return new Set(
       items
-        .map((item) => {
-          const id = Number(item.insumo_id ?? item.id);
-          return Number.isFinite(id) && id > 0 ? id : null;
-        })
-        .filter(Boolean)
+        .map((item) => Number(item.insumo_id ?? item.id))
+        .filter((n) => Number.isFinite(n) && n > 0)
     );
+  }, [visibleIds, selectedGroupId, groups]);
 
-    return ids;
-  }, [visibleIds, selectedGroupId, groups, todoGroupId]);
+  /* ===================== ✅ NUEVO: CARGAR PREFERENCIA DE VISTA AL CAMBIAR GRUPO ===================== */
 
-  // ✅ Catálogo de rubros desde rubrosMap
+  useEffect(() => {
+    if (!businessId || !selectedGroupId) return;
+
+    const loadViewPref = async () => {
+      try {
+        setLoadingPrefs(true);
+        
+        const result = await BusinessesAPI.getViewPrefs(businessId, {
+          divisionId: divisionNum,
+        });
+
+        const groupId = Number(selectedGroupId);
+        const savedVista = result?.byGroup?.[String(groupId)];
+
+        // ✅ Para insumos, la preferencia se guarda como 'elaborados' o 'no-elaborados'
+        if (savedVista === 'elaborados' || savedVista === 'no-elaborados') {
+          setLocalVista(savedVista);
+          onVistaChange?.(savedVista);
+        } else {
+          // Si no hay preferencia guardada, usar el valor por defecto
+          setLocalVista(vista);
+        }
+      } catch (error) {
+        console.error('[InsumosSidebar] Error cargando preferencia de vista:', error);
+        setLocalVista(vista);
+      } finally {
+        setLoadingPrefs(false);
+      }
+    };
+
+    loadViewPref();
+  }, [businessId, selectedGroupId, divisionNum]);
+
+  /* ===================== ✅ NUEVO: GUARDAR PREFERENCIA AL CAMBIAR TOGGLE ===================== */
+
+  const handleVistaChange = useCallback(
+    async (newVista) => {
+      if (!newVista || !businessId || !selectedGroupId) return;
+
+      // Actualizar inmediatamente la UI
+      setLocalVista(newVista);
+      onVistaChange?.(newVista);
+
+      // Guardar en backend
+      try {
+        await BusinessesAPI.saveViewPref(businessId, {
+          agrupacionId: Number(selectedGroupId),
+          viewMode: newVista, // 'elaborados' o 'no-elaborados'
+          divisionId: divisionNum,
+        });
+      } catch (error) {
+        console.error('[InsumosSidebar] Error guardando preferencia de vista:', error);
+        notify?.('Error al guardar preferencia de vista', 'error');
+      }
+    },
+    [businessId, selectedGroupId, divisionNum, onVistaChange, notify]
+  );
+
+  /* ===================== Catálogo rubros ===================== */
   const catalogRubros = useMemo(() => {
     if (!rubrosMap || typeof rubrosMap.get !== 'function') return [];
 
@@ -237,67 +302,53 @@ function InsumosSidebar({
     }
 
     arr.sort((a, b) =>
-      String(a.nombre).localeCompare(String(b.nombre), 'es', {
-        sensitivity: 'base',
-        numeric: true,
-      })
+      String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base', numeric: true })
     );
 
     return arr;
   }, [rubrosMap]);
 
-  // ✅ treeByRubro: muestra catálogo completo o solo con insumos según keepEmpty
   const treeByRubro = useMemo(() => {
-    const keepEmpty = !activeIds; // si no hay activeIds, mostramos todo
+    const keepEmpty = !activeIds;
 
-    // PASO 0: base rubros = catálogo (57) si existe; si no, lo que venga del backend
     let baseRubros = keepEmpty ? catalogRubros : rubrosSafe;
 
-    // Inyectar insumos reales dentro del catálogo por código
     if (keepEmpty && rubrosSafe.length) {
-      const byCodigo = new Map(rubrosSafe.map(r => [Number(r.codigo), r]));
-      baseRubros = catalogRubros.map(r => {
+      const byCodigo = new Map(rubrosSafe.map((r) => [Number(r.codigo), r]));
+      baseRubros = catalogRubros.map((r) => {
         const real = byCodigo.get(Number(r.codigo));
         return real
           ? { ...r, ...real, insumos: Array.isArray(real.insumos) ? real.insumos : [] }
-          : { ...r, insumos: [] }; // importante para no tener undefined
+          : { ...r, insumos: [] };
       });
     } else {
-      // Asegurar insumos array
-      baseRubros = (baseRubros || []).map(r => ({
+      baseRubros = (baseRubros || []).map((r) => ({
         ...r,
         insumos: Array.isArray(r?.insumos) ? r.insumos : [],
       }));
     }
 
-    // PASO 1: Filtrar por vista (elaborados / no-elaborados)
     let rubrosFiltrados = baseRubros;
 
-    if (vista === 'elaborados') {
-      rubrosFiltrados = rubrosFiltrados.filter(rubro => {
+    // ✅ Usar localVista en lugar de vista
+    if (localVista === 'elaborados') {
+      rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
         const codigo = String(rubro.codigo || '');
         const info = rubrosMap?.get(codigo);
         return info?.es_elaborador === true;
       });
-    } else if (vista === 'no-elaborados') {
-      rubrosFiltrados = rubrosFiltrados.filter(rubro => {
+    } else if (localVista === 'no-elaborados') {
+      rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
         const codigo = String(rubro.codigo || '');
         const info = rubrosMap?.get(codigo);
         return info?.es_elaborador !== true;
       });
     }
 
-    // PASO 2: Filtrar por activeIds (solo si NO estamos mostrando rubros vacíos)
-    // ✅ Clave: si keepEmpty=true, NO podés podar rubros por activeIds, porque querés verlos igual.
-    // Si igual querés "podar insumos" (no rubros), lo hacemos sin matar discontinuados.
     const pruned = rubrosFiltrados.map((rubro) => {
       const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
-
-      // Si no hay activeIds (por ejemplo grupo Todo), mantenemos todos los insumos.
       if (!activeIds) return rubro;
 
-      // Si hay activeIds, filtramos solo por pertenencia al grupo,
-      // pero SIN filtrar por estado (activo/discontinuado).
       const filtered = insumos.filter((insumo) => {
         const id = safeId(insumo);
         return id != null && activeIds.has(id);
@@ -306,66 +357,33 @@ function InsumosSidebar({
       return { ...rubro, insumos: filtered };
     });
 
-    // PASO 3: decidir si ocultamos rubros sin insumos
-    // ✅ si keepEmpty=true, mostramos todos aunque insumos.length=0
     const finalRubros = pruned.filter((rubro) => {
       if (keepEmpty) return true;
       return (rubro?.insumos?.length || 0) > 0;
     });
 
-    // PASO 4: ✅ CALCULAR __ventasMonto y ORDENAR por monto descendente
-    const withVentas = finalRubros.map((rubro) => {
+    const withMonto = finalRubros.map((rubro) => {
       let ventasMonto = 0;
-      (rubro.insumos || []).forEach(insumo => {
+      (rubro.insumos || []).forEach((insumo) => {
         ventasMonto += resolveInsumoMonto(insumo, metaById);
       });
       return { ...rubro, __ventasMonto: ventasMonto };
     });
 
-    // ✅ Ordenar por monto descendente (igual que artículos)
-    withVentas.sort((a, b) => {
-      // primero los que tienen monto
-      if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
-        return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
-      }
-      // si ambos 0, por nombre
-      return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', {
-        sensitivity: 'base',
-        numeric: true,
-      });
+    withMonto.sort((a, b) => {
+      if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
+      return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base', numeric: true });
     });
 
-    return withVentas;
-  }, [catalogRubros, rubrosSafe, vista, rubrosMap, activeIds, metaById]);
+    return withMonto;
+  }, [catalogRubros, rubrosSafe, localVista, rubrosMap, activeIds, metaById]);
 
-  const handleAfterAction = useCallback(async () => {
-    console.log('🔄 [InsumosSidebar] Acción completada, iniciando refresh...');
-
-    try {
-      console.log('🔄 [1/3] Recargando catálogo...');
-      await onReloadCatalogo?.();
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      console.log('🔄 [2/3] Recargando datos...');
-      await onRefetch?.();
-
-      console.log('🔄 [3/3] Forzando re-render...');
-      forceRefresh?.();
-
-      console.log('✅ Refresh completado');
-    } catch (e) {
-      console.error('[handleAfterAction] Error:', e);
-    }
-  }, [onReloadCatalogo, onRefetch, forceRefresh]);
-
-  // ✅ Handlers
   const handleGroupChange = useCallback(
     (event) => {
       const idSel = Number(event.target.value);
       onSelectGroupId?.(idSel);
       setRubroSeleccionado?.(null);
-      onManualPick?.(); // ✅ NUEVO
+      onManualPick?.();
     },
     [onSelectGroupId, setRubroSeleccionado, onManualPick]
   );
@@ -378,17 +396,43 @@ function InsumosSidebar({
     [rubroSeleccionado, setRubroSeleccionado]
   );
 
-  const countInsumosRubro = (rubro) => {
-    return Array.isArray(rubro?.insumos) ? rubro.insumos.length : 0;
-  };
-
-  const montoInsumosRubro = (rubro) => {
-    // ✅ Ya lo tenemos pre-calculado en __ventasMonto
-    return rubro?.__ventasMonto ?? 0;
-  };
+  const countInsumosRubro = (rubro) => (Array.isArray(rubro?.insumos) ? rubro.insumos.length : 0);
+  const montoInsumosRubro = (rubro) => rubro?.__ventasMonto ?? 0;
 
   const isTodoView =
     todoGroupId && selectedGroupId && Number(selectedGroupId) === Number(todoGroupId);
+
+  /* ===================== Modal asignación división ===================== */
+  const handleMoveGroupToDivision = useCallback((group) => {
+    setGroupToMove(group);
+    setDivisionModalOpen(true);
+  }, []);
+
+  const handleDivisionAssign = useCallback(
+    async (divisionId) => {
+      if (!groupToMove) return;
+
+      try {
+        await assignInsumoGroupToDivisionAPI({
+          businessId,
+          insumoGroupId: Number(groupToMove.id),
+          divisionId: divisionId === 'principal' ? null : Number(divisionId),
+        });
+
+        notify?.(`Agrupación "${groupToMove.nombre}" movida correctamente`, 'success');
+
+        await refetchAssignedGroups?.();
+        await onRefetch?.();
+
+        setDivisionModalOpen(false);
+        setGroupToMove(null);
+      } catch (err) {
+        console.error('[InsumosSidebar] ❌ Error asignando insumo_group:', err);
+        notify?.(err?.message || 'Error al asignar agrupación', 'error');
+      }
+    },
+    [groupToMove, businessId, notify, refetchAssignedGroups, onRefetch]
+  );
 
   return (
     <div className="sidebar">
@@ -406,34 +450,15 @@ function InsumosSidebar({
         >
           {opcionesSelect.map((g) => (
             <MenuItem key={g.id} value={Number(g.id)}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  gap: 8,
-                }}
-              >
-                <span
-                  style={{
-                    fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal',
-                    color: esDiscontinuadosGroup(g) ? '#555' : 'inherit',
-                  }}
-                >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
+                <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
                   {g.nombre}
-                  {esTodoGroup(g) && idsSinAgrupCount > 0 && (
-                    <span style={{ opacity: 0.6, fontSize: '0.85em' }}>
-                      {' '}
-                      ({idsSinAgrupCount})
-                    </span>
+                  {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
+                    <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
                   )}
                 </span>
 
-                <span
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                >
+                <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {(() => {
                     const isTodo = esTodoGroup(g);
                     const isDisc = esDiscontinuadosGroup(g);
@@ -442,15 +467,10 @@ function InsumosSidebar({
 
                     if (isTodo) {
                       return (
+                        isMainDivision &&
                         onRenameGroup && (
                           <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRenameGroup(g);
-                              }}
-                            >
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                               <EditIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
@@ -461,20 +481,8 @@ function InsumosSidebar({
                     return (
                       <>
                         {onSetFavorite && (
-                          <Tooltip
-                            title={
-                              Number(favoriteGroupId) === Number(g.id)
-                                ? 'Quitar como favorita'
-                                : 'Marcar como favorita'
-                            }
-                          >
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSetFavorite(g.id);
-                              }}
-                            >
+                          <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
                               {Number(favoriteGroupId) === Number(g.id) ? (
                                 <StarIcon fontSize="inherit" color="warning" />
                               ) : (
@@ -486,13 +494,7 @@ function InsumosSidebar({
 
                         {onEditGroup && (
                           <Tooltip title="Renombrar agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEditGroup(g);
-                              }}
-                            >
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEditGroup(g); }}>
                               <EditIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
@@ -500,14 +502,17 @@ function InsumosSidebar({
 
                         {onDeleteGroup && (
                           <Tooltip title="Eliminar agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteGroup(g);
-                              }}
-                            >
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDeleteGroup(g); }}>
                               <DeleteIcon fontSize="inherit" color="error" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {/* ✅ asignar a división (solo en Principal y no para TODO/DISC) */}
+                        {isMainDivision && !isTodo && !isDisc && (
+                          <Tooltip title="Asignar a división">
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleMoveGroupToDivision(g); }}>
+                              <ViewModuleIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -521,22 +526,17 @@ function InsumosSidebar({
         </Select>
       </FormControl>
 
-      <div
-        style={{
-          padding: '2px 0 8px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-        }}
-      >
+      {/* ✅ ACTUALIZADO: usar localVista y handleVistaChange con disabled */}
+      <div style={{ padding: '2px 0 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <ToggleButtonGroup
           size="small"
           exclusive
-          value={vista}
+          value={localVista}
           onChange={(_, val) => {
             if (!val) return;
-            onVistaChange?.(val);
+            handleVistaChange(val);
           }}
+          disabled={loadingPrefs}
         >
           <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
           <ToggleButton value="elaborados">Elaborados</ToggleButton>
@@ -559,24 +559,9 @@ function InsumosSidebar({
                 key={keyStr}
                 className={active ? 'categoria-activa' : ''}
                 title={rubro.nombre}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
               >
-                <span
-                  onClick={() => handleRubroClick(rubro)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    flex: 1,
-                  }}
-                >
+                <span onClick={() => handleRubroClick(rubro)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
                   <span className="icono" />
                   {rubro.nombre}
                 </span>
@@ -584,24 +569,22 @@ function InsumosSidebar({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <small style={{ opacity: 0.65 }}>
                     {count}
-                    {typeof monto === 'number' && monto > 0
-                      ? ` · ${fmtCurrency(monto)}`
-                      : ''}
+                    {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
                   </small>
+
                   <InsumoRubroAccionesMenu
                     rubroLabel={rubro.nombre}
-                    insumoIds={rubro.insumos.map((i) => safeId(i)).filter(Boolean)}
+                    insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
                     groups={groups}
                     selectedGroupId={selectedGroupId}
                     discontinuadosGroupId={discontinuadosGroupId}
-                    onRefetch={handleAfterAction}
+                    onRefetch={onRefetch}
                     notify={notify}
                     onMutateGroups={onMutateGroups}
                     onCreateGroupFromRubro={onCreateGroupFromRubro}
                     todoGroupId={todoGroupId}
                     isTodoView={isTodoView}
                     onReloadCatalogo={onReloadCatalogo}
-                    onAfterAction={handleAfterAction}
                   />
                 </div>
               </li>
@@ -611,15 +594,28 @@ function InsumosSidebar({
         {!loading && treeByRubro.length === 0 && (
           <li style={{ opacity: 0.7 }}>
             {selectedGroupId &&
-              groups.find((g) => Number(g.id) === Number(selectedGroupId)) &&
-              esDiscontinuadosGroup(
-                groups.find((g) => Number(g.id) === Number(selectedGroupId))
-              )
+            (groups || []).find((g) => Number(g.id) === Number(selectedGroupId)) &&
+            esDiscontinuadosGroup((groups || []).find((g) => Number(g.id) === Number(selectedGroupId)))
               ? 'No hay rubros discontinuados.'
               : 'No hay rubros en esta agrupación.'}
           </li>
         )}
       </ul>
+
+      {/* ✅ Modal de asignación a división */}
+      {divisionModalOpen && (
+        <AssignGroupToDivisionModal
+          open={divisionModalOpen}
+          group={groupToMove}
+          businessId={businessId}
+          currentDivisionId={activeDivisionId ?? null}
+          onClose={() => {
+            setDivisionModalOpen(false);
+            setGroupToMove(null);
+          }}
+          onAssign={handleDivisionAssign}
+        />
+      )}
     </div>
   );
 }

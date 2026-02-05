@@ -2,14 +2,14 @@
 import { BASE } from './apiBase';
 
 /* ───────── helpers de fecha (front) ───────── */
-const pad2 = (n) => String(n).padStart(2, '0');
-const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d; };
-function last7dUntilYesterday() {
-  const y = yesterday();
-  const from = new Date(y); from.setDate(from.getDate() - 6);
-  return { from: iso(from), to: iso(y) };
-}
+//const pad2 = (n) => String(n).padStart(2, '0');
+// const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d; };
+// function last7dUntilYesterday() {
+//   const y = yesterday();
+//   const from = new Date(y); from.setDate(from.getDate() - 6);
+//   return { from: iso(from), to: iso(y) };
+// }
 
 /* ───────── utils ───────── */
 function getUser() {
@@ -19,6 +19,14 @@ function getUser() {
 
 // Normaliza la respuesta del helper http (algunos devuelven {data}, otros body plano)
 const pick = (r) => (r && typeof r === 'object' && 'data' in r ? r.data : r);
+
+const normalizeDivisionId = (divisionId) => {
+  const n = Number(divisionId);
+  // Principal => null
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+};
+
 
 /* ───────── headers/auth ───────── */
 export function authHeaders(
@@ -350,321 +358,337 @@ export const BusinessesAPI = {
     };
   },
 
-  // ───────── Ventas (requieren X-Business-Id, no llevan /:id en la URL base) ─────────
-  salesSummary: (id, { from, to, limit = 1000 } = {}) =>
-    http(
-      `/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`,
-      { withBusinessId: false }
-    ),
-  salesSeries: (id, articuloId, { from, to, groupBy = 'day' } = {}) =>
-    http(
-      `/businesses/${id}/sales/${encodeURIComponent(articuloId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${encodeURIComponent(groupBy)}`,
-      { withBusinessId: false }
-    ),
+  // // ───────── Ventas (requieren X-Business-Id, no llevan /:id en la URL base) ─────────
+  // salesSummary: (id, { from, to, limit = 1000 } = {}) =>
+  //   http(
+  //     `/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`,
+  //     { withBusinessId: false }
+  //   ),
+  // salesSeries: (id, articuloId, { from, to, groupBy = 'day' } = {}) =>
+  //   http(
+  //     `/businesses/${id}/sales/${encodeURIComponent(articuloId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${encodeURIComponent(groupBy)}`,
+  //     { withBusinessId: false }
+  //   ),
 
   // ───────── Top artículos por ventas usando /businesses/:id/sales/summary ─────────
-  async topArticulos(businessId, { from, to, limit = 100 } = {}) {
-    if (!businessId) {
-      const bid = Number(getActiveBusinessId());
-      if (Number.isFinite(bid)) businessId = bid;
-    }
-    if (!businessId) {
-      throw new Error('businessId requerido en topArticulos');
-    }
+  // async topArticulos(businessId, { from, to, limit = 100 } = {}) {
+  //   if (!businessId) {
+  //     const bid = Number(getActiveBusinessId());
+  //     if (Number.isFinite(bid)) businessId = bid;
+  //   }
+  //   if (!businessId) {
+  //     throw new Error('businessId requerido en topArticulos');
+  //   }
 
-    // Usamos la ruta que ya tenemos en el back:
-    // GET /businesses/:id/sales/summary?from=...&to=...&limit=...
-    const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
-    const data = pick(raw);
+  //   // Usamos la ruta que ya tenemos en el back:
+  //   // GET /businesses/:id/sales/summary?from=...&to=...&limit=...
+  //   const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
+  //   const data = pick(raw);
 
-    // Normalizamos a un array "items"
-    const rows = Array.isArray(data?.items)
-      ? data.items
-      : Array.isArray(data?.ranking)
-        ? data.ranking
-        : Array.isArray(data?.peek)
-          ? data.peek
-          : [];
+  //   // Normalizamos a un array "items"
+  //   const rows = Array.isArray(data?.items)
+  //     ? data.items
+  //     : Array.isArray(data?.ranking)
+  //       ? data.ranking
+  //       : Array.isArray(data?.peek)
+  //         ? data.peek
+  //         : [];
 
-    const items = Array.isArray(rows) ? rows : [];
+  //   const items = Array.isArray(rows) ? rows : [];
 
-    // 🔍 log de diagnóstico: vas a ver en consola los primeros 5 registros
-    try {
-      console.log('[topArticulos] sample rows:', items.slice(0, 5));
-    } catch { }
+  //   // 🔍 log de diagnóstico: vas a ver en consola los primeros 5 registros
+  //   try {
+  //     console.log('[topArticulos] sample rows:', items.slice(0, 5));
+  //   } catch { }
 
-    return {
-      ...data,
-      items,
-    };
-  },
+  //   return {
+  //     ...data,
+  //     items,
+  //   };
+  // },
 
   // ───────── Totales simples de ventas por artículo (summary plano) ─────────
-  // ───────── Totales simples de ventas por artículo (summary plano) ─────────
-  async getSalesItems(businessId, { from, to, limit = 5000 } = {}) {
-    // Si no me pasan id, intento usar el activo
-    if (!businessId) {
-      const bid = Number(getActiveBusinessId());
-      if (Number.isFinite(bid)) businessId = bid;
-    }
-    if (!businessId) {
-      throw new Error('businessId requerido en getSalesItems');
-    }
+  // async getSalesItems(businessId, { from, to, limit = 5000 } = {}) {
+  //   // Si no me pasan id, intento usar el activo
+  //   if (!businessId) {
+  //     const bid = Number(getActiveBusinessId());
+  //     if (Number.isFinite(bid)) businessId = bid;
+  //   }
+  //   if (!businessId) {
+  //     throw new Error('businessId requerido en getSalesItems');
+  //   }
 
-    // 🎯 CAMBIO TEMPORAL: usar CSV mientras Maxi esté deshabilitado
-    // 📌 Controlado por VITE_MAXI_ENABLED en .env
-    const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+  //   // 🎯 CAMBIO TEMPORAL: usar CSV mientras Maxi esté deshabilitado
+  //   // 📌 Controlado por VITE_MAXI_ENABLED en .env
+  //   const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
 
-    if (!MAXI_ENABLED) {
-      // ═══════════════════════════════════════════════════════════════
-      // 🔴 MODO CSV (temporal)
-      // ═══════════════════════════════════════════════════════════════
-      try {
-        const token = localStorage.getItem('token') || '';
-        const url = `${BASE}/api/ventas-csv/top-articles?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`;
-        
-        const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'X-Business-Id': String(businessId),
-          },
-        });
+  //   if (!MAXI_ENABLED) {
+  //     // ═══════════════════════════════════════════════════════════════
+  //     // 🔴 MODO CSV (temporal)
+  //     // ═══════════════════════════════════════════════════════════════
+  //     try {
+  //       const token = localStorage.getItem('token') || '';
+  //       const url = `${BASE}/api/ventas-csv/top-articles?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`;
 
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}`);
-        }
+  //       const response = await fetch(url, {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //           'X-Business-Id': String(businessId),
+  //         },
+  //       });
 
-        const result = await response.json();
-        
-        // Transformar formato CSV a formato esperado
-        if (result.ok && result.articles) {
-          return result.articles.map(art => ({
-            article_id: art.article_id,
-            articulo_id: art.article_id,
-            nombre: art.article_name,
-            qty: parseFloat(art.total_qty) || 0,
-            cantidad: parseFloat(art.total_qty) || 0,
-            amount: parseFloat(art.total_amount) || 0,
-            importe: parseFloat(art.total_amount) || 0,
-          }));
-        }
-        
-        return [];
-      } catch (error) {
-        console.error('[getSalesItems CSV] Error:', error);
-        return [];
-      }
-    }
+  //       if (!response.ok) {
+  //         throw new Error(`Error ${response.status}`);
+  //       }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 🟢 MODO MAXI (normal) - se restaura automáticamente cuando
-    //    VITE_MAXI_ENABLED=true en .env
-    // ═══════════════════════════════════════════════════════════════
-    const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
-    const data = pick(raw);
+  //       const result = await response.json();
 
-    // Normalizamos a un array de filas
-    const rows = Array.isArray(data?.items)
-      ? data.items
-      : Array.isArray(data?.ranking)
-        ? data.ranking
-        : Array.isArray(data?.peek)
-          ? data.peek
-          : [];
+  //       // Transformar formato CSV a formato esperado
+  //       if (result.ok && result.articles) {
+  //         return result.articles.map(art => ({
+  //           article_id: art.article_id,
+  //           articulo_id: art.article_id,
+  //           nombre: art.article_name,
+  //           qty: parseFloat(art.total_qty) || 0,
+  //           cantidad: parseFloat(art.total_qty) || 0,
+  //           amount: parseFloat(art.total_amount) || 0,
+  //           importe: parseFloat(art.total_amount) || 0,
+  //         }));
+  //       }
 
-    return rows;
-  },
-  
+  //       return [];
+  //     } catch (error) {
+  //       console.error('[getSalesItems CSV] Error:', error);
+  //       return [];
+  //     }
+  //   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🟢 MODO MAXI (normal) - se restaura automáticamente cuando
+  //    VITE_MAXI_ENABLED=true en .env
+  // ═══════════════════════════════════════════════════════════════
+  //   const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
+  //   const data = pick(raw);
+
+  //   // Normalizamos a un array de filas
+  //   const rows = Array.isArray(data?.items)
+  //     ? data.items
+  //     : Array.isArray(data?.ranking)
+  //       ? data.ranking
+  //       : Array.isArray(data?.peek)
+  //         ? data.peek
+  //         : [];
+
+  //   return rows;
+  // },
+
   // Sync catálogo (Maxi → DB)
-  syncNow: (id, body) =>
-    http(`/businesses/${id}/sync`, {
-      method: 'POST',
-      body,
-      withBusinessId: false,
-    }),
+  // syncNow: (id, body) =>
+  //   http(`/businesses/${id}/sync`, {
+  //     method: 'POST',
+  //     body,
+  //     withBusinessId: false,
+  //   }),
 
-  // Sync ventas
-  syncSales: async (id, options = {}) => {
-    const {
-      mode = 'auto',
-      from = null,
-      to = null,
-      dryrun = false,
-      maxiToken = null,
-      signal = null,
-    } = options;
+  // // Sync ventas
+  // syncSales: async (id, options = {}) => {
+  //   const {
+  //     mode = 'auto',
+  //     from = null,
+  //     to = null,
+  //     dryrun = false,
+  //     maxiToken = null,
+  //     signal = null,
+  //   } = options;
 
-    const body = { mode };
-    if (from) body.from = from;
-    if (to) body.to = to;
-    if (dryrun) body.dryrun = true;
+  //   const body = { mode };
+  //   if (from) body.from = from;
+  //   if (to) body.to = to;
+  //   if (dryrun) body.dryrun = true;
 
-    const extraHeaders = {
-      'X-Business-Id': String(id),
-      ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
-    };
+  //   const extraHeaders = {
+  //     'X-Business-Id': String(id),
+  //     ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
+  //   };
+
+  //   try {
+  //     const response = await http(`/businesses/${id}/sync-sales`, {
+  //       method: 'POST',
+  //       body,
+  //       withBusinessId: false,
+  //       headers: extraHeaders,
+  //       signal,
+  //     });
+  //     return response;
+  //   } catch (error) {
+  //     console.error('[BusinessesAPI.syncSales] error:', error);
+  //     throw error;
+  //   }
+  // },
+
+  // /**
+  //  * Sincronización automática diaria (backfill + últimos días)
+  //  * POST /api/businesses/:id/sync-sales/daily-auto
+  //  */
+  // syncSalesDaily: async (id) => {
+  //   try {
+  //     const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
+  //       method: 'POST',
+  //       withBusinessId: false,
+  //     });
+  //     return response;
+  //   } catch (error) {
+  //     console.error('[BusinessesAPI.syncSalesDaily] error:', error);
+  //     throw error;
+  //   }
+  // },
+
+  // /**
+  //  * Sincronizar ventana específica de fechas
+  //  * POST /api/businesses/:id/sync-sales/window
+  //  */
+  // syncSalesWindow: async (id, { from, to, dryrun = false }) => {
+  //   if (!from || !to) {
+  //     throw new Error('from y to son requeridos');
+  //   }
+
+  //   try {
+  //     const response = await http(`/businesses/${id}/sync-sales/window`, {
+  //       method: 'POST',
+  //       body: { from, to, dryrun },
+  //       withBusinessId: false,
+  //     });
+  //     return response;
+  //   } catch (error) {
+  //     console.error('[BusinessesAPI.syncSalesWindow] error:', error);
+  //     throw error;
+  //   }
+  // },
+
+  // /**
+  //  * Backfill inicial (primeros 90 días)
+  //  * POST /api/businesses/:id/sync-sales/backfill-once
+  //  */
+  // syncSalesBackfill: async (id) => {
+  //   try {
+  //     const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
+  //       method: 'POST',
+  //       withBusinessId: false,
+  //     });
+  //     return response;
+  //   } catch (error) {
+  //     console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
+  //     throw error;
+  //   }
+  // },
+
+  // // Helpers de conveniencia (front)
+  // syncSalesRange: (id, from, to, opts = {}) => {
+  //   if (!(typeof from === 'string' && typeof to === 'string')) {
+  //     return Promise.reject(new Error('from/to requeridos (YYYY-MM-DD)'));
+  //   }
+  //   return BusinessesAPI.syncSales(id, { ...opts, mode: 'range', from, to });
+  // },
+
+  // // 🔹 NUEVO: usar endpoint V2 /sync-sales/window para “Ventas 7 días”
+  // syncSalesLast7d: (id, opts = {}) => {
+  //   const { from, to } = last7dUntilYesterday();
+
+  //   return http(`/businesses/${id}/sync-sales/window`, {
+  //     method: 'POST',
+  //     withBusinessId: false,
+  //     body: {
+  //       windowDays: 7,
+  //       from,
+  //       to,
+  //       ...(opts || {}),
+  //     },
+  //   });
+  // },
+
+  async getViewPrefs(businessId, { divisionId = null } = {}) {
+    if (!businessId) return { ok: true, byGroup: {} };
 
     try {
-      const response = await http(`/businesses/${id}/sync-sales`, {
-        method: 'POST',
-        body,
-        withBusinessId: false,
-        headers: extraHeaders,
-        signal,
-      });
-      return response;
-    } catch (error) {
-      console.error('[BusinessesAPI.syncSales] error:', error);
-      throw error;
-    }
-  },
+      const div = normalizeDivisionId(divisionId);
 
-  /**
-   * Sincronización automática diaria (backfill + últimos días)
-   * POST /api/businesses/:id/sync-sales/daily-auto
-   */
-  syncSalesDaily: async (id) => {
-    try {
-      const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
-        method: 'POST',
-        withBusinessId: false,
-      });
-      return response;
-    } catch (error) {
-      console.error('[BusinessesAPI.syncSalesDaily] error:', error);
-      throw error;
-    }
-  },
+      const qs = new URLSearchParams();
+      if (div != null) qs.set('divisionId', String(div));
 
-  /**
-   * Sincronizar ventana específica de fechas
-   * POST /api/businesses/:id/sync-sales/window
-   */
-  syncSalesWindow: async (id, { from, to, dryrun = false }) => {
-    if (!from || !to) {
-      throw new Error('from y to son requeridos');
-    }
-
-    try {
-      const response = await http(`/businesses/${id}/sync-sales/window`, {
-        method: 'POST',
-        body: { from, to, dryrun },
-        withBusinessId: false,
-      });
-      return response;
-    } catch (error) {
-      console.error('[BusinessesAPI.syncSalesWindow] error:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Backfill inicial (primeros 90 días)
-   * POST /api/businesses/:id/sync-sales/backfill-once
-   */
-  syncSalesBackfill: async (id) => {
-    try {
-      const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
-        method: 'POST',
-        withBusinessId: false,
-      });
-      return response;
-    } catch (error) {
-      console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
-      throw error;
-    }
-  },
-
-  // Helpers de conveniencia (front)
-  syncSalesRange: (id, from, to, opts = {}) => {
-    if (!(typeof from === 'string' && typeof to === 'string')) {
-      return Promise.reject(new Error('from/to requeridos (YYYY-MM-DD)'));
-    }
-    return BusinessesAPI.syncSales(id, { ...opts, mode: 'range', from, to });
-  },
-
-  // 🔹 NUEVO: usar endpoint V2 /sync-sales/window para “Ventas 7 días”
-  syncSalesLast7d: (id, opts = {}) => {
-    const { from, to } = last7dUntilYesterday();
-
-    return http(`/businesses/${id}/sync-sales/window`, {
-      method: 'POST',
-      withBusinessId: false,
-      body: {
-        windowDays: 7,
-        from,
-        to,
-        ...(opts || {}),
-      },
-    });
-  },
-
-  async getViewPrefs(businessId) {
-  if (!businessId) return { ok: true, byGroup: {} };
-
-  try {
-    const resp = await http(
-      `/businesses/${businessId}/view-prefs`,
-      { method: 'GET', withBusinessId: false }
-    );
-    return resp || { ok: true, byGroup: {} };
-  } catch (e) {
-    console.error('[BusinessesAPI.getViewPrefs] Error:', e);
-    return { ok: false, byGroup: {} };
-  }
-},
-
-  async saveViewPref(businessId, { agrupacionId, viewMode }) {
-    if (!businessId || !agrupacionId || !viewMode) return;
-    try {
-      await http(
-        `/businesses/${businessId}/view-prefs`,
-        {
-          method: 'POST',
-          body: { agrupacionId, viewMode },
-          withBusinessId: false,
-        }
+      const resp = await http(
+        `/businesses/${businessId}/view-prefs${qs.toString() ? `?${qs}` : ''}`,
+        { method: 'GET', withBusinessId: false }
       );
+
+      return resp || { ok: true, byGroup: {} };
+    } catch (e) {
+      console.error('[BusinessesAPI.getViewPrefs] Error:', e);
+      return { ok: false, byGroup: {} };
+    }
+  },
+
+  async saveViewPref(businessId, { agrupacionId, viewMode, divisionId = null }) {
+    if (!businessId || !agrupacionId || !viewMode) return;
+
+    try {
+      const div = normalizeDivisionId(divisionId);
+
+      await http(`/businesses/${businessId}/view-prefs`, {
+        method: 'POST',
+        body: { agrupacionId, viewMode, divisionId: div },
+        withBusinessId: false,
+      });
     } catch (e) {
       console.error('saveViewPref failed', e);
     }
   },
 
-  // servicios/apiBusinesses.js
-
-  // 🔹 FAVORITA por usuario + negocio (con scope opcional)
-  async getFavoriteGroup(businessId, scope = 'articulo') {
+  async getFavoriteGroup(businessId, { scope = 'articulo', divisionId = null } = {}) {
     if (!businessId) return { ok: true, favoriteGroupId: null };
 
     try {
-      const resp = await http(
-        `/businesses/${businessId}/fav-group?scope=${scope}`,  // 🆕 Agregar scope al query
-        { method: 'GET', withBusinessId: false }
+      const div = normalizeDivisionId(divisionId);
+
+      const qs = new URLSearchParams();
+      qs.set('scope', scope);
+      if (div != null) qs.set('divisionId', String(div));
+
+      // ✅ Usar httpBiz que ya maneja /businesses/:id automáticamente
+      const resp = await httpBiz(
+        `/fav-group?${qs.toString()}`,
+        { method: 'GET' },
+        businessId
       );
+
       return resp || { ok: true, favoriteGroupId: null };
     } catch (e) {
-      console.error('getFavoriteGroup failed', e);
+      console.error('[getFavoriteGroup] Error:', e);
       return { ok: false, favoriteGroupId: null };
     }
   },
 
-  async saveFavoriteGroup(businessId, agrupacionId, scope = 'articulo') {
+  async saveFavoriteGroup(businessId, agrupacionId, { scope = 'articulo', divisionId = null } = {}) {
     if (!businessId) return;
 
     try {
-      await http(
-        `/businesses/${businessId}/fav-group`,
+      const div = normalizeDivisionId(divisionId);
+
+      // ✅ Usar httpBiz
+      await httpBiz(
+        '/fav-group',
         {
           method: 'POST',
           body: {
             agrupacionId: agrupacionId ?? null,
-            scope  // 🆕 Agregar scope al body
+            scope,
+            divisionId: div,
           },
-          withBusinessId: false,
-        }
+        },
+        businessId
       );
     } catch (e) {
-      console.error('saveFavoriteGroup failed', e);
+      console.error('[saveFavoriteGroup] Error:', e);
+      throw e;
     }
   },
 };

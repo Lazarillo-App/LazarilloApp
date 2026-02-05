@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     (async () => {
       try {
         const token = localStorage.getItem('token');
-        
+
         if (token) {
           // ✅ OPTIMISTIC RESTORE: Leer user de localStorage INMEDIATAMENTE
           const userStr = localStorage.getItem('user');
@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
           console.log('[AuthContext] 🔄 Validando sesión con backend...');
           const freshUser = await me();
           console.log('[AuthContext] ✅ Sesión validada:', freshUser.email);
-          
+
           // Actualizar con datos frescos del backend
           setUser(freshUser);
           localStorage.setItem('user', JSON.stringify(freshUser));
@@ -48,6 +48,42 @@ export function AuthProvider({ children }) {
         setBooting(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const onLogin = async (ev) => {
+      try {
+        // 1) set inmediato (optimista) desde el evento o localStorage
+        const fromEvent = ev?.detail || null;
+        if (fromEvent) setUser(fromEvent);
+        else {
+          const userStr = localStorage.getItem('user');
+          if (userStr) setUser(JSON.parse(userStr));
+        }
+
+        // 2) validar con backend (si hay token)
+        const token = localStorage.getItem('token');
+        if (token) {
+          const freshUser = await me();
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+          }
+        }
+      } catch (e) {
+        console.error('[AuthContext] ❌ Error post-login hydrate:', e);
+      }
+    };
+
+    const onLogout = () => setUser(null);
+
+    window.addEventListener('auth:login', onLogin);
+    window.addEventListener('auth:logout', onLogout);
+
+    return () => {
+      window.removeEventListener('auth:login', onLogin);
+      window.removeEventListener('auth:logout', onLogout);
+    };
   }, []);
 
   const login = async (email, password) => {

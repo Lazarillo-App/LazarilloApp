@@ -1,13 +1,10 @@
 /**
- * apiAgrupaciones - Servicio (agrupaciones) con filtro opcional por división
- *
- * IMPORTANTE:
- * - httpBiz YA arma la base /api/businesses/:businessId (según tu wrapper)
- * - Este servicio soporta back que devuelve:
- *    a) array directo              -> res.json(rows)
- *    b) objeto { ok, agrupaciones } -> recomendado
- *    c) objeto directo (agrupación) -> res.json(row) en create/update/etc.
+ * apiAgrupaciones - Servicio de agrupaciones
+ * ✅ FILTRADO POR DIVISIÓN: Solo en frontend, no en backend
+ * ✅ Backend siempre devuelve TODAS las agrupaciones del negocio
+ * ✅ Frontend filtra según división activa
  */
+
 import { httpBiz } from './apiBusinesses';
 
 /* ========================= helpers ========================= */
