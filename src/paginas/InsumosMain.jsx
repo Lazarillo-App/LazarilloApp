@@ -391,16 +391,14 @@ export default function InsumosMain() {
     [baseInactivos]
   );
 
-  const idsEnOtras = useMemo(
-    () =>
-      new Set(
-        (groupsScoped || []) // ✅ USAR groupsScoped en lugar de groups
-          .filter((g) => !esTodoGroup(g))
-          .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
-          .filter(Number.isFinite)
-      ),
-    [groupsScoped]
-  );
+  const idsEnOtras = useMemo(() => {
+    return new Set(
+      (groups || []) // ✅ usar TODOS los grupos, no los scoped
+        .filter((g) => !esTodoGroup(g) && !esDiscontinuadosGroup(g))
+        .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    );
+  }, [groups]);
 
   const idsSinAgrupActivos = useMemo(() => {
     const res = new Set();
