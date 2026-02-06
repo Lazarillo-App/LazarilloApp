@@ -4,6 +4,7 @@ import { obtenerVentasSeriesDB } from '../servicios/apiVentas';
 import { useActiveBusiness } from '../context/BusinessContext';
 
 export function useVentasSeries({
+  
   articuloId,
   from,
   to,
