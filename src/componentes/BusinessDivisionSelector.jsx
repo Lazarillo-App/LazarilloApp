@@ -11,7 +11,7 @@ import {
   Divider,
   Chip,
   Collapse,
-  IconButton, 
+  IconButton,
 } from '@mui/material';
 
 import BusinessIcon from '@mui/icons-material/Business';
@@ -24,13 +24,26 @@ import FolderIcon from '@mui/icons-material/Folder';
 import { useBusiness } from '@/context/BusinessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 
+const API_BASE =
+  import.meta.env.VITE_ASSETS_BASE_URL || import.meta.env.VITE_API_BASE_URL || "https://lazarilloapp-backend.onrender.com";
+
+const toAbsolute = (u) => {
+  const raw = String(u || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return `${API_BASE}${raw}`;
+  return `${API_BASE}/${raw}`;
+};
+
 const getBranding = (biz) => biz?.branding || biz?.props?.branding || {};
 const getBizLogoUrl = (biz) =>
-  getBranding(biz)?.logo_url ||
-  biz?.photo_url ||
-  getBranding(biz)?.cover_url ||
-  biz?.image_url ||
-  '';
+  toAbsolute(
+    getBranding(biz)?.logo_url ||
+    biz?.photo_url ||
+    getBranding(biz)?.cover_url ||
+    biz?.image_url ||
+    ""
+  );
 
 export default function BusinessDivisionSelector() {
   const biz = useBusiness() || {};
@@ -68,7 +81,7 @@ export default function BusinessDivisionSelector() {
       setLoadingBiz(true);
       const items = await BusinessesAPI.listMine();
       setBizList(items || []);
-      if (activeBusinessId) setExpandedBizId(String(activeBusinessId)); 
+      if (activeBusinessId) setExpandedBizId(String(activeBusinessId));
     } finally {
       setLoadingBiz(false);
     }

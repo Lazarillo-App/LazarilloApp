@@ -395,10 +395,6 @@ export const syncInsumos = preventMaxiSync(
   MAXI_INSUMOS_ENABLED
 );
 
-export const syncAll = preventMaxiSync(
-  _syncAll, 
-  'syncAll', 
-  MAXI_ARTICULOS_ENABLED && MAXI_VENTAS_ENABLED && MAXI_INSUMOS_ENABLED
-);
+export const syncAll = _syncAll; 
 
 export { clearSyncCache, wasAlreadySynced, isMaxiConfigured };

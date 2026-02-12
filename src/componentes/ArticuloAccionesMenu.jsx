@@ -10,7 +10,7 @@ import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-
+import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
@@ -20,6 +20,18 @@ const norm = (s) => String(s || '').trim().toLowerCase();
 const isDiscontinuadosGroup = (g) => {
   const n = norm(g?.nombre);
   return n === 'discontinuados' || n === 'descontinuados';
+};
+
+const safeUUID = () => {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+};
+
+const toBizId = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 const mapRowToArticle = (row) => {
@@ -51,6 +63,7 @@ const buildTree = (flatList = []) => {
       subrubro: sub,
     });
   }
+
   const tree = [];
   for (const [subrubro, byCat] of bySub.entries()) {
     const categorias = [];
@@ -58,19 +71,15 @@ const buildTree = (flatList = []) => {
       categorias.push({ categoria, articulos });
     }
     categorias.sort((a, b) =>
-      String(a.categoria).localeCompare(String(b.categoria), 'es', {
-        sensitivity: 'base',
-        numeric: true,
-      })
+      String(a.categoria).localeCompare(String(b.categoria), 'es', { sensitivity: 'base', numeric: true })
     );
     tree.push({ subrubro, categorias });
   }
+
   tree.sort((a, b) =>
-    String(a.subrubro).localeCompare(String(b.subrubro), 'es', {
-      sensitivity: 'base',
-      numeric: true,
-    })
+    String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true })
   );
+
   return tree;
 };
 
@@ -91,6 +100,7 @@ function ArticuloAccionesMenu({
   onDiscontinuadoChange,
   treeMode = 'cat-first',
   businessId,
+  allowedIds,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -110,9 +120,7 @@ function ArticuloAccionesMenu({
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleClose = useCallback(() => setAnchorEl(null), []);
 
-  const currentGroupId = agrupacionSeleccionada?.id
-    ? Number(agrupacionSeleccionada.id)
-    : null;
+  const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
   const discontinuadosGroup = useMemo(
     () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)),
@@ -122,14 +130,15 @@ function ArticuloAccionesMenu({
 
   const articuloIdNum = getNum(articulo?.id);
 
-  /* ==================== businessId efectivo ==================== */
-  const effectiveBusinessId =
+  // ==================== businessId efectivo ====================
+  const effectiveBusinessIdRaw =
     businessId ??
     localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ??
     null;
 
-  // Nombre del artículo para usar en el menú / modal
+  const effectiveBusinessId = toBizId(effectiveBusinessIdRaw);
+
   const articuloDisplayName = useMemo(() => {
     if (!articulo) return `Artículo #${articuloIdNum || ''}`;
     const raw = articulo.raw || {};
@@ -164,6 +173,19 @@ function ArticuloAccionesMenu({
   }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
+  // ✅ helper único para emitir notificación (con actionId)
+  const pushUi = useCallback((payload) => {
+    try {
+      emitUiAction({
+        actionId: safeUUID(),
+        businessId: effectiveBusinessId,
+        createdAt: new Date().toISOString(),
+        ...payload,
+      });
+    } catch {}
+  }, [effectiveBusinessId]);
+
+  // ✅ CLAVE: discontinuar/reactivar SIN tocar agrupación seleccionada
   async function toggleDiscontinuado() {
     const idNum = articuloIdNum;
     if (!Number.isFinite(idNum)) return;
@@ -176,7 +198,7 @@ function ArticuloAccionesMenu({
 
     try {
       if (!isInDiscontinuados) {
-        // Discontinuar: agregar al grupo Discontinuados (NO quitamos de otros grupos)
+        // Discontinuar: agregar a Discontinuados (NO quitamos de otros grupos)
         await httpBiz(`/agrupaciones/${discontinuadosId}/articulos`, {
           method: 'PUT',
           body: { ids: [idNum] },
@@ -190,7 +212,31 @@ function ArticuloAccionesMenu({
         });
 
         notify?.(`Artículo #${idNum} marcado como discontinuado`, 'success');
-        onDiscontinuadoChange?.(idNum, true);
+
+        pushUi({
+          kind: 'discontinue',
+          scope: 'articulo',
+          title: `${articuloDisplayName} discontinuado`,
+          message: `“${articuloDisplayName}” se movió a Discontinuados.`,
+          payload: {
+            ids: [idNum],
+            originId: currentGroupId ?? null,
+            discontinuadosGroupId: Number(discontinuadosId),
+            prev: {
+              fromGroupId: currentGroupId ?? null,
+              discontinuadosGroupId: Number(discontinuadosId),
+              wasInDiscontinuados: false,
+            },
+          },
+        });
+
+        onDiscontinuadoChange?.(idNum, true, {
+          stay: true,
+          originGroupId: currentGroupId,
+          discontinuadosId,
+          source: 'menu',
+          name: articuloDisplayName,
+        });
       } else {
         // Reactivar: quitar de Discontinuados
         await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
@@ -204,10 +250,32 @@ function ArticuloAccionesMenu({
         });
 
         notify?.(`Artículo #${idNum} reactivado`, 'success');
-        onDiscontinuadoChange?.(idNum, false);
+
+        pushUi({
+          kind: 'info',
+          scope: 'articulo',
+          title: `✅ ${articuloDisplayName} reactivado`,
+          message: `“${articuloDisplayName}” volvió a estar disponible.`,
+          payload: {
+            ids: [idNum],
+            discontinuadosGroupId: Number(discontinuadosId),
+            prev: {
+              fromGroupId: currentGroupId ?? null,
+              discontinuadosGroupId: Number(discontinuadosId),
+              wasInDiscontinuados: true,
+            },
+          },
+        });
+
+        onDiscontinuadoChange?.(idNum, false, {
+          stay: true,
+          originGroupId: currentGroupId,
+          discontinuadosId,
+          source: 'menu',
+          name: articuloDisplayName,
+        });
       }
 
-      onAfterMutation?.([idNum]);
       if (onRefetch) await onRefetch();
     } catch (e) {
       console.error('TOGGLE_DISCONTINUADO_ERROR', e);
@@ -219,6 +287,7 @@ function ArticuloAccionesMenu({
 
   async function mover() {
     if (!destId) return;
+
     const idNum = articuloIdNum;
     const toId = Number(destId);
     const fromId = !isTodo && currentGroupId ? Number(currentGroupId) : null;
@@ -246,8 +315,9 @@ function ArticuloAccionesMenu({
             await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, {
               method: 'DELETE',
             });
-          } catch { }
+          } catch {}
         }
+
         onMutateGroups?.({
           type: 'move',
           fromId,
@@ -268,7 +338,19 @@ function ArticuloAccionesMenu({
         });
       }
 
+      const destGroup = (agrupaciones || []).find((g) => Number(g.id) === toId);
+
       notify?.(`Artículo #${idNum} movido`, 'success');
+
+      // ✅ SOLO emitUiAction (sin dispatch manual)
+      pushUi({
+        kind: 'move',
+        scope: 'articulo',
+        title: 'Artículo movido',
+        message: `Movido a "${destGroup?.nombre || 'agrupación'}".`,
+        payload: { ids: [idNum], fromId, toId },
+      });
+
       onAfterMutation?.([idNum]);
       onRefetch?.();
     } catch (e) {
@@ -283,11 +365,19 @@ function ArticuloAccionesMenu({
   async function quitarDeActual() {
     const idNum = articuloIdNum;
 
-    // TODO → exclusiones (equivale a "Sin agrupación")
     if (isTodo && todoGroupId) {
       try {
         await addExclusiones(todoGroupId, [{ scope: 'articulo', ref_id: idNum }]);
         notify?.(`Artículo #${idNum} ocultado de TODO`, 'success');
+
+        pushUi({
+          kind: 'info',
+          scope: 'articulo',
+          title: 'Artículo excluido',
+          message: `Artículo #${idNum} oculto de TODO.`,
+          payload: { ids: [idNum], todoGroupId: Number(todoGroupId) },
+        });
+
         onMutateGroups?.({ type: 'excludeFromTodo', ids: [idNum] });
         onAfterMutation?.([idNum]);
         onRefetch?.();
@@ -305,15 +395,23 @@ function ArticuloAccionesMenu({
       await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${idNum}`, {
         method: 'DELETE',
       });
-      notify?.(
-        `Artículo #${idNum} quitado de ${agrupacionSeleccionada?.nombre}`,
-        'success'
-      );
+
+      notify?.(`Artículo #${idNum} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');
+
+      pushUi({
+        kind: 'info',
+        scope: 'articulo',
+        title: 'Artículo removido',
+        message: `Quitado de "${agrupacionSeleccionada?.nombre}".`,
+        payload: { ids: [idNum], fromGroupId: currentGroupId },
+      });
+
       onMutateGroups?.({
         type: 'remove',
         groupId: currentGroupId,
         ids: [idNum],
       });
+
       onAfterMutation?.([idNum]);
       onRefetch?.();
     } catch (e) {
@@ -417,8 +515,7 @@ function ArticuloAccionesMenu({
             if (!Number.isFinite(articuloIdNum)) return;
             setPreselect({
               articleIds: [articuloIdNum],
-              fromGroupId:
-                !isTodo && currentGroupId ? Number(currentGroupId) : null,
+              fromGroupId: !isTodo && currentGroupId ? Number(currentGroupId) : null,
               allowAssigned: true,
             });
             setOpenCrearAgr(true);
@@ -478,6 +575,16 @@ function ArticuloAccionesMenu({
         isArticuloBloqueado={isArticuloBloqueadoCreate}
         onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
+
+          // ✅ SOLO emitUiAction (sin dispatch manual)
+          pushUi({
+            kind: 'group_create',
+            scope: 'articulo',
+            title: 'Agrupación creada',
+            message: `"${nombreCreado}" desde artículo #${articuloIdNum}.`,
+            payload: { groupId: Number(newId), groupName: nombreCreado },
+          });
+
           onMutateGroups?.({
             type: 'create',
             id: Number(newId),
@@ -487,12 +594,11 @@ function ArticuloAccionesMenu({
           onGroupCreated?.(nombreCreado, newId, articulos);
           onRefetch?.();
         }}
-        existingNames={(agrupaciones || [])
-          .map((g) => String(g?.nombre || ''))
-          .filter(Boolean)}
+        existingNames={(agrupaciones || []).map((g) => String(g?.nombre || '')).filter(Boolean)}
         treeMode={treeMode}
         groupName={articuloDisplayName}
         businessId={effectiveBusinessId}
+        allowedIds={allowedIds || null}
       />
     </>
   );

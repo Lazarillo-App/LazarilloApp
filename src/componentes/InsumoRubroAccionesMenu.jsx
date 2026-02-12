@@ -23,7 +23,7 @@ import UndoIcon from "@mui/icons-material/Undo";
 import BlockIcon from "@mui/icons-material/Block";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
-
+import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddMultipleItems,
   insumoGroupRemoveItem,
@@ -52,6 +52,7 @@ export default function InsumoRubroAccionesMenu({
   isTodoView = false,
   onReloadCatalogo,
   fromSidebar = false,
+  businessId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -95,40 +96,80 @@ export default function InsumoRubroAccionesMenu({
       : `${normalizedIds.length} insumos`;
 
   /* ========== 🆕 DISCONTINUAR (CON BULK) ========== */
+
   const handleToggleDiscontinuar = async () => {
     handleMenuClose();
 
     if (!normalizedIds.length) return;
 
-    if (!discontinuadosGroupId) {
+    const discId = Number(discontinuadosGroupId);
+    if (!Number.isFinite(discId) || discId <= 0) {
       notify?.('No existe la agrupación "Discontinuados"', "error");
       return;
     }
 
     try {
-      if (!isInDiscontinuadosView) {
-        // ✅ DISCONTINUAR: SOLO agregar (NO quitar)
-        console.log(`🗑️ [Discontinuar rubro] ${normalizedIds.length} insumos (se ocultan visualmente)`);
+      const wasInDiscontinuados = !!isInDiscontinuadosView;
 
-        await insumoGroupAddMultipleItems(discontinuadosGroupId, normalizedIds);
+      if (!wasInDiscontinuados) {
+        // ✅ DISCONTINUAR: agregar a Discontinuados
+        await insumoGroupAddMultipleItems(discId, normalizedIds);
 
-        notify?.(`Rubro discontinuado (${labelCount})`, "success");
+        emitUiAction({
+          businessId,
+          kind: "discontinue",
+          scope: "insumo",
+          title: `⛔ Rubro "${rubroLabel || 'Sin rubro'}" discontinuado`,
+          message: `${labelCount} movido(s) a Discontinuados.`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids: normalizedIds,
+            undo: {
+              payload: {
+                prev: {
+                  wasInDiscontinuados: false,
+                  discontinuadosGroupId: discId,
+                  fromGroupId: currentGroupId ?? null,
+                },
+              },
+            },
+          },
+        });
+
+        console.log(`✅ Rubro discontinuado (${labelCount})`);
       } else {
-        // ✅ REACTIVAR
-        console.log(`♻️ [Reactivar rubro] ${normalizedIds.length} insumos`);
-
+        // ✅ REACTIVAR: quitar de Discontinuados
         const results = await Promise.allSettled(
-          normalizedIds.map(id => insumoGroupRemoveItem(discontinuadosGroupId, id))
+          normalizedIds.map((id) => insumoGroupRemoveItem(discId, id))
         );
 
-        const exitosos = results.filter(r => r.status === 'fulfilled').length;
-        console.log(`✅ Reactivados: ${exitosos} de ${normalizedIds.length}`);
+        const exitosos = results.filter((r) => r.status === "fulfilled").length;
 
-        notify?.(`Rubro reactivado (${labelCount})`, "success");
+        emitUiAction({
+          businessId,
+          kind: "discontinue",
+          scope: "insumo",
+          title: `✅ Rubro "${rubroLabel || 'Sin rubro'}" reactivado`,
+          message: `${exitosos}/${normalizedIds.length} reactivado(s).`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids: normalizedIds,
+            undo: {
+              payload: {
+                prev: {
+                  wasInDiscontinuados: true,
+                  discontinuadosGroupId: discId,
+                  fromGroupId: currentGroupId ?? null,
+                },
+              },
+            },
+          },
+        });
+
+        console.log(`✅ Rubro reactivado (${labelCount})`);
       }
 
-      // ✅ FORZAR REFRESH COMPLETO
-      console.log('🔄 Forzando refresh...');
+      // ✅ Refrescar SIN cambiar vista
       await onReloadCatalogo?.();
       await onRefetch?.();
     } catch (e) {

@@ -10,7 +10,7 @@ import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import BlockIcon from '@mui/icons-material/Block';
-
+import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
@@ -97,6 +97,7 @@ function SubrubroAccionesMenu({
   baseById,
   treeMode = "cat-first",
   businessId,
+  allowedIds,
 }) {
   /* ==================== businessId efectivo ==================== */
   const effectiveBusinessId =
@@ -279,6 +280,22 @@ function SubrubroAccionesMenu({
       }
 
       notify?.(`Subrubro movido (${ids.length} artículo/s)`, 'success');
+      try {
+        const destGroup = (agrupaciones || []).find(g => Number(g.id) === toId);
+        window.dispatchEvent(
+          new CustomEvent('ui:action', {
+            detail: {
+              kind: 'move',
+              scope: 'articulo',
+              businessId: effectiveBusinessId,
+              createdAt: new Date().toISOString(),
+              title: 'Subrubro movido',
+              message: `${ids.length} artículo(s) movido(s) a "${destGroup?.nombre || 'agrupación'}".`,
+              payload: { ids, fromId, toId },
+            },
+          })
+        );
+      } catch { }
       onAfterMutation?.(ids);
       onRefetch?.();
     } catch (e) {
@@ -301,6 +318,21 @@ function SubrubroAccionesMenu({
           ids.map((id) => ({ scope: 'articulo', ref_id: id }))
         );
         notify?.(`Quitados ${ids.length} artículo(s) de TODO`, 'success');
+        try {
+          window.dispatchEvent(
+            new CustomEvent('ui:action', {
+              detail: {
+                kind: 'info',
+                scope: 'articulo',
+                businessId: effectiveBusinessId,
+                createdAt: new Date().toISOString(),
+                title: 'Quitados de TODO',
+                message: `${ids.length} artículo(s) excluidos.`,
+                payload: { ids },
+              },
+            })
+          );
+        } catch { }
         onAfterMutation?.(ids);
         onRefetch?.();
       } catch (e) {
@@ -335,7 +367,21 @@ function SubrubroAccionesMenu({
         `Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`,
         'success'
       );
-
+      try {
+        window.dispatchEvent(
+          new CustomEvent('ui:action', {
+            detail: {
+              kind: 'info',
+              scope: 'articulo',
+              businessId: effectiveBusinessId,
+              createdAt: new Date().toISOString(),
+              title: 'Artículos removidos',
+              message: `${ids.length} quitado(s) de "${agrupacionSeleccionada?.nombre}".`,
+              payload: { ids, fromGroupId: currentGroupId },
+            },
+          })
+        );
+      } catch { }
       onAfterMutation?.(ids);
       onRefetch?.();
     } catch (e) {
@@ -346,6 +392,8 @@ function SubrubroAccionesMenu({
     }
   }
 
+  // ✅ CLAVE: discontinuar bloque SIN tocar selección actual
+  // y SIN llamar onAfterMutation (porque eso te “remueve” del grupo actual)
   async function toggleDiscontinuarBloque() {
     const ids = (articuloIds || []).map(getNum).filter(Boolean);
     if (!ids.length) return;
@@ -360,12 +408,18 @@ function SubrubroAccionesMenu({
 
     try {
       if (!isInDiscontinuadosView) {
+        // ===========================
+        // ✅ DISCONTINUAR (SIN navegar)
+        // ===========================
+
+        // 1️⃣ Agregar a Discontinuados (backend)
         await httpBiz(
           `/agrupaciones/${discontinuadosId}/articulos`,
           { method: 'PUT', body: { ids } },
           effectiveBusinessId
         );
 
+        // 2️⃣ Actualizar state local (optimista)
         onMutateGroups?.({
           type: 'append',
           groupId: discontinuadosId,
@@ -373,8 +427,41 @@ function SubrubroAccionesMenu({
           baseById,
         });
 
+        // 3️⃣ Notificar (pero NO cambiar vista)
         notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
+
+        // 3️⃣ ✅ EMITIR EVENTO UI:ACTION para NotificationsPanel (SIN llamar a notify)
+        try {
+          emitUiAction({
+            businessId: effectiveBusinessId,
+            kind: 'discontinue',
+            scope: 'articulo',
+            title: `⛔ ${subDisplayName} discontinuado`,
+            message: `“${subDisplayName}”: ${labelCount} movido(s) a Discontinuados.`,
+            createdAt: new Date().toISOString(),
+            payload: {
+              ids,
+              discontinuadosGroupId: Number(discontinuadosId),
+              prev: {
+                fromGroupId: currentGroupId ?? null,
+                discontinuadosGroupId: Number(discontinuadosId),
+                wasInDiscontinuados: false,
+              },
+            },
+          });
+
+        } catch (e) {
+          console.warn('[SubrubroAccionesMenu] Error emitiendo ui:action', e);
+        }
+        // 5️⃣ Recargar para reflejar cambios
+        onRefetch?.();
+
       } else {
+        // ===========================
+        // ✅ REACTIVAR (desde Discontinuados)
+        // ===========================
+
+        // 1️⃣ Quitar de Discontinuados (backend)
         for (const id of ids) {
           try {
             await httpBiz(
@@ -385,17 +472,38 @@ function SubrubroAccionesMenu({
           } catch { }
         }
 
+        // 2️⃣ Actualizar state local
         onMutateGroups?.({
           type: 'remove',
           groupId: discontinuadosId,
           ids,
         });
 
+        // 3️⃣ Notificar
         notify?.(`Subrubro reactivado (${labelCount})`, 'success');
-      }
+        try {
+          emitUiAction({
+            businessId: effectiveBusinessId,
+            kind: 'discontinue',
+            scope: 'articulo',
+            title: `✅ ${subDisplayName} reactivado`,
+            message: `“${subDisplayName}”: ${labelCount} disponible(s) nuevamente.`,
+            createdAt: new Date().toISOString(),
+            payload: {
+              ids,
+              discontinuadosGroupId: Number(discontinuadosId),
+              prev: {
+                fromGroupId: currentGroupId ?? null,
+                discontinuadosGroupId: Number(discontinuadosId),
+                wasInDiscontinuados: true,
+              },
+            },
+          });
 
-      onAfterMutation?.(ids);
-      onRefetch?.();
+        } catch { }
+        // 4️⃣ Recargar
+        onRefetch?.();
+      }
     } catch (e) {
       console.error('DISCONTINUAR_BLOQUE_ERROR', e);
       notify?.('No se pudo cambiar el estado del subrubro', 'error');
@@ -534,7 +642,7 @@ function SubrubroAccionesMenu({
       <AgrupacionCreateModal
         open={openCrearAgr}
         onClose={() => setOpenCrearAgr(false)}
-        businessId={effectiveBusinessId}   
+        businessId={effectiveBusinessId}
         mode="create"
         preselect={preselect}
         todosArticulos={effectiveTree}
@@ -542,6 +650,21 @@ function SubrubroAccionesMenu({
         isArticuloBloqueado={isArticuloBloqueadoCreate}
         onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
+          try {
+            window.dispatchEvent(
+              new CustomEvent('ui:action', {
+                detail: {
+                  kind: 'group_create',
+                  scope: 'articulo',
+                  businessId: effectiveBusinessId,
+                  createdAt: new Date().toISOString(),
+                  title: 'Agrupación creada',
+                  message: `"${nombreCreado}" con ${(articulos || []).length} artículo(s).`,
+                  payload: { groupId: newId, groupName: nombreCreado },
+                },
+              })
+            );
+          } catch { }
           onGroupCreated?.(nombreCreado, newId, articulos);
           onMutateGroups?.({
             type: 'create',
@@ -556,6 +679,7 @@ function SubrubroAccionesMenu({
           .filter(Boolean)}
         treeMode="cat-first"
         groupName={subDisplayName}
+        allowedIds={allowedIds || null}
       />
     </>
   );

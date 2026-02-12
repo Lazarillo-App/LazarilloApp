@@ -941,6 +941,8 @@ export default function TablaArticulos({
             notify={(m, t = "success") => openSnack(m, t)}
             onGroupCreated={onGroupCreated}
             treeMode={tableHeaderMode}
+            onDiscontinuarBloque={onDiscontinuarBloque}
+            allowedIds={filterIds}
           />
         </div>
       );
@@ -989,7 +991,7 @@ export default function TablaArticulos({
           padding: "4px 8px",
           color: "#373737ff",
           fontWeight: 500,
-          fontSize: "0.95rem",
+          fontSize: "0.85rem",
           ...(selectedStyle || {}),
         }}
       >
@@ -1054,6 +1056,7 @@ export default function TablaArticulos({
             onGroupCreated={onGroupCreated}
             onDiscontinuadoChange={onDiscontinuadoChange}
             treeMode={modalTreeMode}
+            allowedIds={filterIds}
           />
         </div>
       </div>

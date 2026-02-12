@@ -43,6 +43,17 @@ export default function BusinessCard({
     refetchDivisions,
   } = useBusiness() || {};
 
+  const API_BASE =
+    import.meta.env.VITE_API_BASE_URL || "https://lazarilloapp-backend.onrender.com";
+
+  const toAbsolute = (u) => {
+    const raw = String(u || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;          // ya es absoluta
+    if (raw.startsWith("/")) return `${API_BASE}${raw}`; // ruta relativa del backend
+    return `${API_BASE}/${raw}`;
+  };
+
   const [syncingArt, setSyncingArt] = useState(false);
   const [syncingSales, setSyncingSales] = useState(false);
   const [syncingInsumos, setSyncingInsumos] = useState(false);
@@ -177,8 +188,8 @@ export default function BusinessCard({
     return String(raw || "");
   }, [viewBiz]);
 
-  const photo = viewBiz?.photo_url || branding?.cover_url || viewBiz?.image_url || "";
-  const logo = branding?.logo_url || "";
+  const photo = toAbsolute(viewBiz?.photo_url || branding?.cover_url || viewBiz?.image_url || "");
+  const logo = toAbsolute(branding?.logo_url || "");
   const hasLogo = !!logo;
   const thumbnail = hasLogo ? logo : photo;
   const isLogoThumb = hasLogo;
@@ -417,7 +428,16 @@ export default function BusinessCard({
 
           <div className={`bc-thumb-wrap ${isLogoThumb ? "logo-mode" : "photo-mode"}`}>
             {thumbnail ? (
-              <img className="bc-thumb" src={thumbnail} alt={name} loading="lazy" />
+              <img
+                className="bc-thumb"
+                src={thumbnail}
+                alt={name}
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = photo || "";
+                }}
+              />
             ) : (
               <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
             )}
@@ -438,20 +458,22 @@ export default function BusinessCard({
                 Activar
               </button>
             )}
-
             <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(viewBiz)}>
               <EditIcon fontSize="small" />
               Editar
             </button>
-
             <button
               className="bc-icon bc-icon-danger"
-              onClick={() => onDelete?.(viewBiz)}
+              onClick={(e) => {
+                // ✅ soltá el foco ANTES de borrar (evita warning aria-hidden)
+                try { e.currentTarget.blur(); } catch { }
+                e.stopPropagation();
+                onDelete?.(viewBiz);
+              }}
               title="Eliminar negocio"
             >
               <DeleteIcon fontSize="small" />
             </button>
-
             {/* Botón para abrir panel */}
             <button
               className="bc-btn bc-btn-outline"

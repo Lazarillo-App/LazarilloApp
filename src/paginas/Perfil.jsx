@@ -1,13 +1,12 @@
 /* eslint-disable no-empty */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 
 import BusinessCard from '../componentes/BusinessCard';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import SyncDialog from '../componentes/SyncDialog';
-import NotificationsPanel from '../componentes/NotificationsPanel';
-
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { useBusiness } from '@/context/BusinessContext';
 
 export default function Perfil() {
@@ -16,10 +15,17 @@ export default function Perfil() {
     active,
     activeId,
     selectBusiness,
+
     divisions,
     divisionsLoading,
     activeDivisionId,
     selectDivision,
+
+    // ✅ nuevos del Context
+    refetchBusinesses,
+    removeBusinessFromState,
+
+    loading: businessesLoading,
   } = useBusiness() || {};
 
   const [showCreate, setShowCreate] = useState(false);
@@ -34,9 +40,17 @@ export default function Perfil() {
     catch { return {}; }
   }, []);
 
+  // ✅ para arreglar warning aria-hidden: un “ancla” segura para devolver el foco
+  const newLocalBtnRef = useRef(null);
+
+  // ✅ opcional: al entrar, traemos verdad del server (si querés)
+  useEffect(() => {
+    refetchBusinesses?.();
+  }, [refetchBusinesses]);
+
   const onSetActive = async (id) => {
     try {
-      await selectBusiness?.(id); // ✅ esto actualiza Context → Navbar también
+      await selectBusiness?.(id);
     } catch (e) {
       console.error(e);
       alert('No se pudo activar.');
@@ -45,12 +59,11 @@ export default function Perfil() {
 
   const onSwitchDivision = (divisionId) => {
     selectDivision?.(divisionId);
-    // Si querés mantener tu evento legado:
     try {
       window.dispatchEvent(new CustomEvent('division:switched', {
         detail: { businessId: String(activeId || ''), divisionId: String(divisionId || '') }
       }));
-    } catch {}
+    } catch { }
   };
 
   const onCreateComplete = async (biz) => {
@@ -59,6 +72,9 @@ export default function Perfil() {
     // activar recién creado
     await onSetActive(biz.id);
 
+    // ✅ aseguramos lista fresca
+    await refetchBusinesses?.();
+
     try {
       const maxiOk = await isMaxiConfigured(biz.id);
 
@@ -66,18 +82,18 @@ export default function Perfil() {
         showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
 
         const result = await syncAll(biz.id, {
-          onProgress: (msg, type, step) => {
-            console.log(`[AUTO-SYNC] [${step}] ${msg}`);
-          },
+          onProgress: (msg, type, step) => console.log(`[AUTO-SYNC] [${step}] ${msg}`),
         });
 
-        if (result.ok) {
+        if (result?.ok) {
           showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
           window.dispatchEvent(new CustomEvent('sync:completed'));
         } else {
-          const errorSteps = result.errors.map(e => e.step).join(', ');
+          const errors = Array.isArray(result?.errors) ? result.errors : [];
+          const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
           showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
         }
+
       } else {
         showNotice('Negocio creado', 'Configurá las credenciales de Maxi para habilitar la sincronización automática');
       }
@@ -88,8 +104,90 @@ export default function Perfil() {
 
     try {
       window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } }));
-    } catch {}
+    } catch { }
   };
+  const handleDeleteBusiness = async (biz) => {
+  const id = biz?.id;
+  if (!id) return;
+
+  const name = biz?.name || biz?.nombre || `#${id}`;
+  const ok = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
+  if (!ok) return;
+
+  // ✅ mover foco antes de borrar para evitar warning aria-hidden
+  try {
+    newLocalBtnRef.current?.focus?.();
+  } catch {
+    try { document.activeElement?.blur?.(); } catch { }
+  }
+
+  try {
+    const currentActiveId = Number(activeId);
+    const deletedId = Number(id);
+    const isActive = currentActiveId === deletedId;
+
+    // 1️⃣ Borrar el negocio
+    await BusinessesAPI.remove(id);
+
+    // 2️⃣ Remover del state inmediatamente
+    removeBusinessFromState?.(id);
+
+    // 3️⃣ Si era el activo, seleccionar otro automáticamente
+    if (isActive) {
+      console.log('[Delete] Negocio activo borrado, seleccionando otro...');
+
+      // Obtener lista actualizada del servidor
+      const businesses = await BusinessesAPI.listMine();
+
+      if (businesses && businesses.length > 0) {
+        // Seleccionar el primero disponible
+        const newBiz = businesses[0];
+        console.log(`[Delete] Activando negocio: ${newBiz.id}`);
+
+        await BusinessesAPI.setActive(newBiz.id);
+
+        // Despachar evento para que todos los componentes se actualicen
+        window.dispatchEvent(
+          new CustomEvent('business:switched', {
+            detail: { bizId: newBiz.id, biz: newBiz }
+          })
+        );
+
+        showNotice("Listo", `🗑️ Local eliminado. Ahora activo: "${newBiz.name}"`);
+      } else {
+        // No hay más negocios
+        console.log('[Delete] No quedan negocios');
+        localStorage.removeItem('activeBusinessId');
+
+        await selectBusiness?.(null);
+        await selectDivision?.(null);
+
+        window.dispatchEvent(
+          new CustomEvent('business:switched', {
+            detail: { bizId: null, biz: null }
+          })
+        );
+
+        showNotice("Listo", "🗑️ Local eliminado. No quedan más locales.");
+      }
+    } else {
+      // No era el activo, solo notificar
+      showNotice("Listo", `🗑️ Local "${name}" eliminado`);
+    }
+
+    // 4️⃣ Refrescar lista completa
+    await refetchBusinesses?.();
+
+    // 5️⃣ Notificar evento de borrado
+    window.dispatchEvent(
+      new CustomEvent("business:deleted", { detail: { id } })
+    );
+
+  } catch (e) {
+    console.error('[Delete] Error:', e);
+    showNotice("Error", e?.message || "No se pudo eliminar el local");
+  }
+};
 
   const activeBiz = active || null;
 
@@ -111,6 +209,8 @@ export default function Perfil() {
     const d = (divisions || []).find(x => String(x.id) === String(activeDivisionId));
     return d?.name || '';
   }, [divisions, activeDivisionId]);
+
+  const list = Array.isArray(items) ? items : [];
 
   return (
     <div className="profile-wrap">
@@ -161,37 +261,39 @@ export default function Perfil() {
               ))}
             </div>
           )}
-
-          <button className="cta-wide" onClick={() => setShowCreate(true)}>
+          <button
+            className="cta-wide"
+            ref={newLocalBtnRef}
+            onClick={() => setShowCreate(true)}
+          >
             Nuevo Local
           </button>
         </div>
-
-        <div className="notifications-container">
-          <NotificationsPanel businessId={activeId} />
-        </div>
       </header>
-
       <section className="section">
         <h3>Mis locales</h3>
+        {businessesLoading && (
+          <div style={{ opacity: 0.7, fontSize: 13, padding: '6px 0' }}>
+            Cargando locales…
+          </div>
+        )}
         <div className="grid">
-          {(items || []).map(biz => (
+          {list.map(biz => (
             <BusinessCard
               key={biz.id}
               biz={biz}
               activeId={activeId}
               onSetActive={onSetActive}
               onEdit={setEditing}
-              onDelete={() => {}}
+              onDelete={handleDeleteBusiness}
               showNotice={(msg) => showNotice('Aviso', msg)}
             />
           ))}
-          {(!items || items.length === 0) && (
+          {list.length === 0 && !businessesLoading && (
             <div className="empty">Aún no tenés locales. Creá el primero.</div>
           )}
         </div>
       </section>
-
       <BusinessCreateModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
@@ -201,16 +303,18 @@ export default function Perfil() {
         open={!!editing}
         business={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => setEditing(null)}
+        onSaved={async () => {
+          setEditing(null);
+          await refetchBusinesses?.();
+          try { window.dispatchEvent(new Event('business:updated')); } catch { }
+        }}
       />
-
       <SyncDialog
         open={notice.open}
         title={notice.title}
         message={notice.message}
         onClose={closeNotice}
       />
-
       <style>{`
         .profile-wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:18px}
         .profile-header{
@@ -228,36 +332,19 @@ export default function Perfil() {
         .who h2{margin:0; font-size:18px; font-weight:800}
         .who .mail{font-size:12px; color:#6b7280}
 
-        .division-row{
-          margin-top:10px;
-          display:flex;
-          align-items:center;
-          gap:10px;
-          flex-wrap:wrap;
-        }
-        .division-label{
-          font-size:12px;
-          font-weight:800;
-          color:#64748b;
-        }
+        .division-row{ margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .division-label{ font-size:12px; font-weight:800; color:#64748b; }
         .division-loading, .division-single{
-          font-size:12px;
-          font-weight:800;
-          color:#111827;
-          padding:8px 10px;
-          border-radius:10px;
+          font-size:12px; font-weight:800; color:#111827;
+          padding:8px 10px; border-radius:10px;
           border:1px solid var(--color-border,#e5e7eb);
           background:var(--color-surface,#fff);
         }
         .division-select{
-          height:36px;
-          padding:0 10px;
-          border-radius:10px;
+          height:36px; padding:0 10px; border-radius:10px;
           border:1px solid var(--color-border,#e5e7eb);
           background:var(--color-surface,#fff);
-          font-weight:800;
-          color:#111827;
-          outline:none;
+          font-weight:800; color:#111827; outline:none;
         }
 
         .notifications-container{display:flex;align-items:center;justify-content:center}

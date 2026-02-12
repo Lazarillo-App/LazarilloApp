@@ -3,16 +3,15 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
-  Snackbar, Alert, LinearProgress, Badge
+  Snackbar, Alert, LinearProgress
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 
 import { useBusiness } from '@/context/BusinessContext';
-import { useNotifications } from '@/hooks/useNotifications';
-
 import BusinessDivisionSelector from './BusinessDivisionSelector';
+import NotificationsPanel from '@/componentes/NotificationsPanel';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -62,16 +61,10 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   const { activeBusinessId } = useBusiness() || {};
-  const { unreadCount } = useNotifications({
-    businessId: activeBusinessId,
-    mode: 'count', // 👈 solo necesitamos el puntito
-  });
-
-  const hasUnread = !isAppAdmin && logged && Number(unreadCount || 0) > 0;
 
   const [colors, setColors] = React.useState(() => ({
     primary: '#111111',
-    onPrimary: '#ffffff'
+    onPrimary: '#ffffff',
   }));
 
   const recomputeColors = React.useCallback(() => {
@@ -81,7 +74,7 @@ export default function Navbar() {
     const onPrimary = onColorFor(primary);
     root.style.setProperty('--on-primary', onPrimary);
 
-    setColors(prev => (prev.primary === primary && prev.onPrimary === onPrimary ? prev : { primary, onPrimary }));
+    setColors((prev) => (prev.primary === primary && prev.onPrimary === onPrimary ? prev : { primary, onPrimary }));
   }, []);
 
   const [userAvatar, setUserAvatar] = React.useState(getUserAvatarUrl());
@@ -91,7 +84,7 @@ export default function Navbar() {
   const [snack, setSnack] = React.useState({
     open: false,
     msg: '',
-    sev: 'success'
+    sev: 'success',
   });
 
   const isLightBg = colors.onPrimary === '#000000';
@@ -104,7 +97,10 @@ export default function Navbar() {
     const onThemeUpdated = () => recomputeColors();
     const onPaletteChanged = () => recomputeColors();
     const onLogin = () => setUserAvatar(getUserAvatarUrl());
-    const onLogout = () => { setUserAvatar(''); recomputeColors(); };
+    const onLogout = () => {
+      setUserAvatar('');
+      recomputeColors();
+    };
 
     window.addEventListener('theme:updated', onThemeUpdated);
     window.addEventListener('palette:changed', onPaletteChanged);
@@ -133,9 +129,10 @@ export default function Navbar() {
       setSnack({
         open: true,
         sev: fail > 0 ? 'warning' : 'success',
-        msg: fail > 0
-          ? `Sincronización completa: ${ok} OK, ${fail} con aviso.`
-          : `Sincronización completa: ${ok} OK.`
+        msg:
+          fail > 0
+            ? `Sincronización completa: ${ok} OK, ${fail} con aviso.`
+            : `Sincronización completa: ${ok} OK.`,
       });
     };
 
@@ -183,7 +180,7 @@ export default function Navbar() {
                 display: { xs: 'none', md: 'flex' },
                 alignItems: 'center',
                 textDecoration: 'none',
-                pr: '50px'
+                pr: '50px',
               }}
             >
               <Box
@@ -197,7 +194,7 @@ export default function Navbar() {
                     ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
                     : 'drop-shadow(0 0 1px rgba(255,255,255,.35))',
                   outline: isLightBg ? '1px solid rgba(0,0,0,.06)' : 'transparent',
-                  outlineOffset: -1
+                  outlineOffset: -1,
                 }}
               />
             </Box>
@@ -223,8 +220,8 @@ export default function Navbar() {
                   display: { xs: 'block', md: 'none' },
                   '& .MuiPaper-root': {
                     background: 'var(--color-primary)',
-                    color: 'var(--on-primary)'
-                  }
+                    color: 'var(--on-primary)',
+                  },
                 }}
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
@@ -233,12 +230,11 @@ export default function Navbar() {
                     Menú
                   </MenuItem>
 
-                  {/* ✅ SIN Fragment: usamos array */}
-                  {!isAppAdmin && [
-                    <MenuItem key="m-insumos" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
+                  {!isAppAdmin && (
+                    <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
-                    </MenuItem>,
-                  ]}
+                    </MenuItem>
+                  )}
 
                   {isAppAdmin && (
                     <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
@@ -268,6 +264,7 @@ export default function Navbar() {
               )}
             </Box>
 
+            {/* Selector negocio/división */}
             {!isAppAdmin && logged && (
               <Box sx={{ ml: 1, flexShrink: 0 }}>
                 <BusinessDivisionSelector />
@@ -275,36 +272,21 @@ export default function Navbar() {
             )}
 
             {/* Perfil */}
-            <Box sx={{ flexGrow: 0 }}>
+            <Box sx={{ flexGrow: 0, ml: 0.5 }}>
               <Tooltip title="Perfil">
                 <IconButton
                   onClick={(e) => setUserEl(e.currentTarget)}
                   sx={{ p: 0, color: 'inherit' }}
                   aria-label="Abrir menú de perfil"
                 >
-                  <Badge
-                    variant="dot"
-                    color="error"
-                    overlap="circular"
-                    invisible={!hasUnread}
+                  <Avatar
+                    src={userAvatar || undefined}
                     sx={{
-                      '& .MuiBadge-badge': {
-                        width: 15,
-                        height: 15,
-                        borderRadius: '50%',
-                        border: '2px solid var(--color-primary, #111111)',
-                      }
+                      width: 32,
+                      height: 32,
+                      bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)',
                     }}
-                  >
-                    <Avatar
-                      src={userAvatar || undefined}
-                      sx={{
-                        width: 32,
-                        height: 32,
-                        bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)'
-                      }}
-                    />
-                  </Badge>
+                  />
                 </IconButton>
               </Tooltip>
 
@@ -313,8 +295,8 @@ export default function Navbar() {
                   mt: '45px',
                   '& .MuiPaper-root': {
                     background: 'var(--color-primary)',
-                    color: 'var(--on-primary)'
-                  }
+                    color: 'var(--on-primary)',
+                  },
                 }}
                 anchorEl={userEl}
                 open={Boolean(userEl)}
@@ -325,22 +307,35 @@ export default function Navbar() {
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
                   {logged ? (
-                    <>
-                      <MenuItem component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
+                    [
+                      <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
                         Perfil
-                      </MenuItem>
-                      <Divider sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />
-                      <MenuItem onClick={logout}>Salir</MenuItem>
-                    </>
+                      </MenuItem>,
+                      <Divider
+                        key="div"
+                        sx={{
+                          my: 0.5,
+                          borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
+                        }}
+                      />,
+                      <MenuItem key="salir" onClick={logout}>
+                        Salir
+                      </MenuItem>,
+                    ]
                   ) : (
                     <MenuItem component={NavLink} to="/login" onClick={() => setUserEl(null)}>
                       Login
                     </MenuItem>
                   )}
-
                 </MenuList>
               </Menu>
             </Box>
+            {/* 🔔 Notificaciones siempre visibles */}
+            {!isAppAdmin && logged && (
+              <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <NotificationsPanel businessId={activeBusinessId} />
+              </Box>
+            )}
           </Toolbar>
         </Container>
 
@@ -349,7 +344,7 @@ export default function Navbar() {
             color="inherit"
             sx={{
               bgcolor: 'color-mix(in srgb, var(--on-primary) 20%, transparent)',
-              '& .MuiLinearProgress-bar': { backgroundColor: 'var(--on-primary)' }
+              '& .MuiLinearProgress-bar': { backgroundColor: 'var(--on-primary)' },
             }}
             aria-label={syncTotal > 0 ? `Sincronizando ${syncTotal} locales…` : 'Sincronizando…'}
           />
@@ -359,11 +354,11 @@ export default function Navbar() {
       <Snackbar
         open={snack.open}
         autoHideDuration={3200}
-        onClose={() => setSnack(s => ({ ...s, open: false }))}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
         <Alert
-          onClose={() => setSnack(s => ({ ...s, open: false }))}
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
           severity={snack.sev}
           sx={{ width: '100%' }}
         >

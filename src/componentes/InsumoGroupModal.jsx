@@ -1,5 +1,4 @@
 // src/componentes/InsumoGroupModal.jsx
-/* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Dialog,
@@ -306,6 +305,9 @@ export default function InsumoGroupModal({
 
             let groupIdToUse = hasExisting ? Number(selectedGroupId) : null;
 
+            // ✅ MOVER ESTO ARRIBA (antes del if)
+            const idsArray = Array.from(selectedIds);
+
             // 1) Crear agrupación si escribió un nombre
             if (hasNewGroup) {
                 console.log(`📦 [InsumoGroupModal] Creando grupo "${trimmedName}"`);
@@ -321,6 +323,29 @@ export default function InsumoGroupModal({
                 }
                 groupIdToUse = newId;
 
+                // ✅ EMITIR NOTIFICACIÓN (ahora idsArray está definido)
+                try {
+                    window.dispatchEvent(
+                        new CustomEvent('ui:action', {
+                            detail: {
+                                businessId,
+                                kind: 'group_create',
+                                scope: 'insumo',
+                                title: '🆕 Agrupación creada',
+                                message: `"${trimmedName}" con ${idsArray.length} insumo(s).`,
+                                createdAt: new Date().toISOString(),
+                                payload: {
+                                    groupId: newId,
+                                    groupName: trimmedName,
+                                    count: idsArray.length,
+                                },
+                            },
+                        })
+                    );
+                } catch (e) {
+                    console.warn('[InsumoGroupModal] Error emitiendo notificación:', e);
+                }
+
                 onGroupsReload && (await onGroupsReload());
             }
 
@@ -328,16 +353,12 @@ export default function InsumoGroupModal({
                 throw new Error("ID de agrupación inválido.");
             }
 
-            // 2) Agregar en BULK solo los seleccionados (que ya garantizamos que son disponibles)
-            const idsArray = Array.from(selectedIds);
-            console.log(
-                `📦 [InsumoGroupModal] Agregando ${idsArray.length} insumos en BULK al grupo ${groupIdToUse}`
-            );
-
+            // 2) Agregar en BULK
+            console.log(`📦 [InsumoGroupModal] Agregando ${idsArray.length} insumos en BULK al grupo ${groupIdToUse}`);
             await insumoGroupAddMultipleItems(groupIdToUse, idsArray);
 
             alert(`✅ ${idsArray.length} insumos agrupados correctamente.`);
-           onClose && onClose({ ok: true, groupId: groupIdToUse });
+            onClose && onClose({ ok: true, groupId: groupIdToUse });
         } catch (e) {
             console.error("[InsumoGroupModal] Error guardando agrupación:", e);
             alert(e.message || "Error al agrupar insumos.");

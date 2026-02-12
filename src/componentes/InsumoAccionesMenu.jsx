@@ -11,6 +11,7 @@ import UndoIcon from '@mui/icons-material/Undo';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddItem,
   insumoGroupRemoveItem,
@@ -37,6 +38,7 @@ function InsumoAccionesMenu({
   onMutateGroups,
   onAfterMutation,
   onCreateGroupFromInsumo,
+  businessId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -50,6 +52,7 @@ function InsumoAccionesMenu({
   const insumoId = getNum(insumo?.id);
   const currentGroupId = selectedGroupId ? Number(selectedGroupId) : null;
   const isTodoView = todoGroupId && currentGroupId === todoGroupId;
+  const insumoNombre = String(insumo?.nombre || '').trim() || `INS-${insumoId}`;
 
   // ✅ Verificar si está en Discontinuados
   const isInDiscontinuados = useMemo(() => {
@@ -73,85 +76,121 @@ function InsumoAccionesMenu({
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
   /* ========== DISCONTINUAR / REACTIVAR ========== */
- /* ========== DISCONTINUAR / REACTIVAR ========== */
-async function toggleDiscontinuar() {
-  if (!discontinuadosGroupId) {
-    notify?.('No existe la agrupación "Discontinuados"', 'error');
-    handleClose();
-    return;
-  }
-
-  try {
-    if (!isInDiscontinuados) {
-      // ✅ DISCONTINUAR
-      console.log(`🗑️ [Discontinuar] Insumo ${insumoId}`);
-      
-      await insumoGroupAddItem(discontinuadosGroupId, insumoId);
-      
-      notify?.(`Insumo discontinuado`, 'success');
-    } else {
-      // ✅ REACTIVAR
-      console.log(`♻️ [Reactivar] Insumo ${insumoId}`);
-      
-      await insumoGroupRemoveItem(discontinuadosGroupId, insumoId);
-      
-      notify?.(`Insumo reactivado`, 'success');
+  async function toggleDiscontinuar() {
+    if (!discontinuadosGroupId) {
+      notify?.('No existe la agrupación "Discontinuados"', 'error');
+      handleClose();
+      return;
     }
 
-    // ✅ SECUENCIA CORRECTA (esperar TODO antes de cerrar)
-    console.log('🔄 [1/2] Recargando catálogo...');
-    await onReloadCatalogo?.();
-    
-    console.log('🔄 [2/2] Forzando refresh...');
-    await onRefetch?.(); // Este ejecuta forceRefresh dentro
-    
-    console.log('✅ Refresh completado');
-  } catch (e) {
-    console.error('TOGGLE_DISCONTINUAR_ERROR', e);
-    notify?.('Error al cambiar estado', 'error');
-    await onRefetch?.();
-  } finally {
-    handleClose();
-  }
-}
+    try {
+      if (!isInDiscontinuados) {
+        // ✅ DISCONTINUAR
+        await insumoGroupAddItem(discontinuadosGroupId, insumoId);
 
-/* ========== QUITAR DE AGRUPACIÓN ========== */
-async function quitarDeActual() {
-  if (isTodoView) {
-    notify?.('El insumo ya está en "Sin agrupación"', 'info');
-    handleClose();
-    return;
+        // ✅ Emitir evento con estructura correcta
+        emitUiAction({
+          businessId,
+          kind: 'discontinue',
+          scope: 'insumo',
+          title: `⛔ ${insumoNombre} discontinuado`,
+          message: `“${insumoNombre}” se movió a Discontinuados.`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids: [insumoId],
+            undo: {
+              payload: {
+                prev: {
+                  wasInDiscontinuados: false,
+                  discontinuadosGroupId: Number(discontinuadosGroupId),
+                  fromGroupId: currentGroupId ?? null,
+                },
+              },
+            },
+          },
+        });
+
+        console.log('✅ Insumo discontinuado');
+      } else {
+        // ✅ REACTIVAR
+        await insumoGroupRemoveItem(discontinuadosGroupId, insumoId);
+
+        emitUiAction({
+          businessId,
+          kind: 'discontinue',
+          scope: 'insumo',
+          title: `✅ ${insumoNombre} reactivado`,
+          message: `“${insumoNombre}” volvió a estar disponible.`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids: [insumoId],
+            undo: {
+              payload: {
+                prev: {
+                  wasInDiscontinuados: true,
+                  discontinuadosGroupId: Number(discontinuadosGroupId),
+                  fromGroupId: currentGroupId ?? null,
+                },
+              },
+            },
+          },
+        });
+
+        console.log('✅ Insumo reactivado');
+      }
+
+      // ✅ Refrescar SIN cambiar vista
+      await onReloadCatalogo?.();
+      await onRefetch?.();
+
+      // ❌ NO llamar onAfterMutation (que dispara focusInsumo)
+      // ❌ NO llamar focusInsumo directamente
+
+    } catch (e) {
+      console.error('TOGGLE_DISCONTINUAR_ERROR', e);
+      notify?.('Error al cambiar estado', 'error');
+    } finally {
+      handleClose();
+    }
   }
 
-  if (!currentGroupId) {
-    handleClose();
-    return;
-  }
+  /* ========== QUITAR DE AGRUPACIÓN ========== */
+  async function quitarDeActual() {
+    if (isTodoView) {
+      notify?.('El insumo ya está en "Sin agrupación"', 'info');
+      handleClose();
+      return;
+    }
 
-  try {
-    console.log(`🗑️ [Quitar] Insumo ${insumoId} del grupo ${currentGroupId}`);
-    
-    await insumoGroupRemoveItem(currentGroupId, insumoId);
-    
-    const groupName = groups.find(g => Number(g.id) === currentGroupId)?.nombre || 'agrupación';
-    notify?.(`Insumo quitado de ${groupName}`, 'success');
+    if (!currentGroupId) {
+      handleClose();
+      return;
+    }
 
-    // ✅ SECUENCIA CORRECTA
-    console.log('🔄 [1/2] Recargando catálogo...');
-    await onReloadCatalogo?.();
-    
-    console.log('🔄 [2/2] Forzando refresh...');
-    await onRefetch?.();
-    
-    console.log('✅ Refresh completado');
-  } catch (e) {
-    console.error('QUITAR_INSUMO_ERROR', e);
-    notify?.('Error al quitar insumo', 'error');
-    await onRefetch?.();
-  } finally {
-    handleClose();
+    try {
+      console.log(`🗑️ [Quitar] Insumo ${insumoId} del grupo ${currentGroupId}`);
+
+      await insumoGroupRemoveItem(currentGroupId, insumoId);
+
+      const groupName = groups.find(g => Number(g.id) === currentGroupId)?.nombre || 'agrupación';
+      notify?.(`Insumo quitado de ${groupName}`, 'success');
+
+      // ✅ SECUENCIA CORRECTA
+      console.log('🔄 [1/2] Recargando catálogo...');
+      await onReloadCatalogo?.();
+
+      console.log('🔄 [2/2] Forzando refresh...');
+      await onRefetch?.();
+
+      console.log('✅ Refresh completado');
+    } catch (e) {
+      console.error('QUITAR_INSUMO_ERROR', e);
+      notify?.('Error al quitar insumo', 'error');
+      await onRefetch?.();
+    } finally {
+      handleClose();
+    }
   }
-}
   /* ========== MOVER A OTRA AGRUPACIÓN ========== */
   async function mover() {
     if (!destId) return;
@@ -164,6 +203,12 @@ async function quitarDeActual() {
       onAfterMutation?.([insumoId]);
       return closeMover();
     }
+
+    // ✅ Nombres de agrupaciones
+    const fromGroupName = fromId
+      ? groups.find(g => Number(g.id) === fromId)?.nombre || `Agrupación ${fromId}`
+      : 'Sin agrupación';
+    const toGroupName = groups.find(g => Number(g.id) === toId)?.nombre || `Agrupación ${toId}`;
 
     setIsMoving(true);
     try {
@@ -180,6 +225,38 @@ async function quitarDeActual() {
           toId,
           ids: [insumoId],
         });
+
+        // ✅ Emitir notificación CON UNDO
+        try {
+          window.dispatchEvent(
+            new CustomEvent('ui:action', {
+              detail: {
+                businessId,
+                kind: 'move',
+                scope: 'insumo',
+                title: `📦 ${insumoNombre} movido`,
+                message: `"${fromGroupName}" → "${toGroupName}"`,
+                createdAt: new Date().toISOString(),
+                payload: {
+                  ids: [insumoId],
+                  originGroupId: fromId,
+                  toGroupId: toId,
+                  // ✅ Payload para UNDO
+                  undo: {
+                    payload: {
+                      prev: {
+                        fromGroupId: fromId,
+                        toGroupId: toId,
+                      },
+                    },
+                  },
+                },
+              },
+            })
+          );
+        } catch (err) {
+          console.warn('[InsumoAccionesMenu] Error emitiendo notificación:', err);
+        }
       } else {
         // Agregar desde TODO
         console.log(`➕ [Agregar] Insumo ${insumoId} a ${toId}`);
@@ -191,6 +268,28 @@ async function quitarDeActual() {
           groupId: toId,
           insumos: [{ id: insumoId }],
         });
+
+        // ✅ Notificación simple (sin undo porque viene de TODO)
+        try {
+          window.dispatchEvent(
+            new CustomEvent('ui:action', {
+              detail: {
+                businessId,
+                kind: 'move',
+                scope: 'insumo',
+                title: `📦 ${insumoNombre} agregado`,
+                message: `Agregado a "${toGroupName}"`,
+                createdAt: new Date().toISOString(),
+                payload: {
+                  ids: [insumoId],
+                  toGroupId: toId,
+                },
+              },
+            })
+          );
+        } catch (err) {
+          console.warn('[InsumoAccionesMenu] Error emitiendo notificación:', err);
+        }
       }
 
       notify?.(`Insumo #${insumoId} movido`, 'success');
@@ -260,10 +359,10 @@ async function quitarDeActual() {
             Crear agrupación desde este insumo
           </ListItemText>
         </MenuItem>
-    </Menu >
+      </Menu >
 
-      {/* Dialog Mover */ }
-      < Dialog open = { dlgMoverOpen } onClose = { closeMover } keepMounted >
+      {/* Dialog Mover */}
+      < Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted >
         <DialogTitle>Mover insumo #{insumo?.id} a…</DialogTitle>
         <DialogContent>
           <TextField

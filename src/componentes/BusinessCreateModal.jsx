@@ -72,7 +72,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const [mxCod, setMxCod] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  const { setPaletteForBiz } = useBizTheme?.() || { setPaletteForBiz: () => {} };
+  const { setPaletteForBiz } = useBizTheme?.() || { setPaletteForBiz: () => { } };
   const fileInputRef = useRef(null);
   const prevRestoreRef = useRef(null);
   const tempObjectUrlRef = useRef(null);
@@ -91,6 +91,17 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     font: br.font,
     logo_url: br.logo_url || null,
   });
+
+  const API_BASE =
+    import.meta.env.VITE_ASSETS_BASE_URL || import.meta.env.VITE_API_BASE_URL || "https://lazarilloapp-backend.onrender.com";
+
+  const toAbsoluteUrl = (u) => {
+    const raw = String(u || "").trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;         // ya es absoluta
+    if (raw.startsWith("/")) return `${API_BASE}${raw}`; // relativa del backend
+    return `${API_BASE}/${raw}`;
+  };
 
   /* ─── reset al cerrar ─── */
   useEffect(() => {
@@ -123,7 +134,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (tempObjectUrlRef.current) {
       try {
         URL.revokeObjectURL(tempObjectUrlRef.current);
-      } catch {}
+      } catch { }
       tempObjectUrlRef.current = null;
     }
   }, [open]);
@@ -144,7 +155,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     // Aplica preview UNA vez al entrar al paso 1
     try {
       setPaletteForBiz(draft, { persist: false });
-    } catch {}
+    } catch { }
 
     // para restaurar después si hace falta
     prevRestoreRef.current = () => {
@@ -156,7 +167,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (busy) return;
     try {
       prevRestoreRef.current?.();
-    } catch {}
+    } catch { }
     onClose?.();
   };
 
@@ -205,13 +216,47 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     const biz = resp?.business ?? resp;
     if (!biz?.id) throw new Error("No se pudo crear el local.");
 
+    // 🔥 GUARDAR CREDENCIALES MAXI PRIMERO
+    if (mxEmail && mxPass && mxCod) {
+      console.log('💾 Guardando credenciales de Maxi...');
+      await BusinessesAPI.maxiSave(biz.id, {
+        email: mxEmail,
+        password: mxPass,
+        codcli: mxCod,
+      });
+      console.log('✅ Credenciales guardadas');
+    }
+
     // Subir logo si hay archivo
     let finalLogoUrl = draftBranding.logo_url || null;
     if (logoFile) {
+      console.log('📤 Intentando subir logo:', {
+        name: logoFile.name,
+        type: logoFile.type,
+        size: logoFile.size,
+      });
+
+      // Validar tipo de archivo
+      if (!logoFile.type.startsWith('image/')) {
+        console.error('❌ Archivo no es una imagen válida');
+        throw new Error('El archivo debe ser una imagen');
+      }
+
+      // Validar tamaño (máx 2MB según backend)
+      if (logoFile.size > 2 * 1024 * 1024) {
+        console.error('❌ Archivo muy grande:', logoFile.size);
+        throw new Error('La imagen no puede superar 2MB');
+      }
+
       try {
+        console.log('🚀 Llamando a BusinessesAPI.uploadLogo...');
         const up = await BusinessesAPI.uploadLogo(biz.id, logoFile);
-        finalLogoUrl =
+        console.log('✅ Respuesta de uploadLogo:', up);
+
+        const rawLogo =
           up?.url || up?.logo_url || up?.secure_url || finalLogoUrl;
+
+        finalLogoUrl = toAbsoluteUrl(rawLogo) || finalLogoUrl;
 
         if (finalLogoUrl) {
           await BusinessesAPI.update(biz.id, {
@@ -222,7 +267,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
           });
         }
       } catch (eUp) {
-        console.warn("Falló subida de logo (continúo):", eUp);
+        console.error('❌ Error completo al subir logo:', eUp);
+        throw new Error(`No se pudo subir el logo: ${eUp.message}`);
       }
     }
 
@@ -295,10 +341,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
       // 3️⃣ Sincronizar catálogo (artículos + mapeos)
       setNotice("Sincronizando artículos…");
-      const syncRes = await BusinessesAPI.syncNow(biz.id, { scope: "articles" });
-      const up = Number(syncRes?.upserted ?? 0);
-      const mp = Number(syncRes?.mapped ?? 0);
-      setNotice(`Sync OK. Artículos: ${up} · Mapeos: ${mp}`);
 
       // 4️⃣ AHORA sí: marcar negocio como activo y persistir tema
       const branding =
@@ -323,7 +365,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
         setPaletteForBiz(palette, { persist: true, biz: biz.id });
         // espejo del tema actual para evitar flash en recarga
         localStorage.setItem("bizTheme:current", JSON.stringify(palette));
-      } catch {}
+      } catch { }
 
       // notificar cambio de negocio activo
       window.dispatchEvent(
@@ -361,9 +403,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
           {steps.map((label, i) => (
             <div
               key={label}
-              className={`gc-step ${
-                i === step ? "active" : i < step ? "done" : ""
-              }`}
+              className={`gc-step ${i === step ? "active" : i < step ? "done" : ""
+                }`}
             >
               <span className="gc-step-index">{i + 1}</span>
               <span className="gc-step-label">{label}</span>
@@ -517,15 +558,24 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (!f) return;
+
+                        console.log('📁 Archivo seleccionado:', {
+                          name: f.name,
+                          type: f.type,
+                          size: f.size
+                        });
+
                         if (tempObjectUrlRef.current) {
                           try {
                             URL.revokeObjectURL(tempObjectUrlRef.current);
-                          } catch {}
+                          } catch { }
                         }
                         setLogoFile(f);
                         const temp = URL.createObjectURL(f);
                         tempObjectUrlRef.current = temp;
                         setLogoUrl(temp);
+
+                        console.log('🖼️ Preview URL generada:', temp);
                       }}
                     />
                   </div>

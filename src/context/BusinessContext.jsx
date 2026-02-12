@@ -36,6 +36,7 @@ export function BusinessProvider({ children }) {
   // Divisiones
   const [divisions, setDivisions] = useState([]);
   const [activeDivisionId, setActiveDivisionIdState] = useState(null);
+  const [divisionsLoading, setDivisionsLoading] = useState(false);
 
   // Artículos: legacy groups (business_groups)
   const [activeDivisionGroupIds, setActiveDivisionGroupIds] = useState([]);
@@ -45,11 +46,9 @@ export function BusinessProvider({ children }) {
   const [activeDivisionAgrupacionIds, setActiveDivisionAgrupacionIds] = useState([]);
   const [assignedAgrupacionIds, setAssignedAgrupacionIds] = useState([]);
 
-  // ✅ NUEVO: Insumos groups (insumo_groups)
+  // ✅ INSUMOS groups (insumo_groups)
   const [activeDivisionInsumoGroupIds, setActiveDivisionInsumoGroupIds] = useState([]);
   const [assignedInsumoGroupIds, setAssignedInsumoGroupIds] = useState([]);
-
-  const [divisionsLoading, setDivisionsLoading] = useState(false);
 
   const pickInsumoGroupList = (res) => {
     return (
@@ -174,7 +173,6 @@ export function BusinessProvider({ children }) {
 
       const result = await apiDivisions.getInsumoGroupsByDivision(divisionId, activeId);
 
-      // 🔎 debug para ver la forma real (te salva la vida 1 vez)
       console.log('[BusinessContext] 🧩 getInsumoGroupsByDivision keys:', Object.keys(result || {}), result);
 
       const list = pickInsumoGroupList(result);
@@ -227,7 +225,6 @@ export function BusinessProvider({ children }) {
         ? null
         : Number(divisionId);
 
-    // state primero
     setActiveDivisionIdState(Number.isFinite(newId) ? newId : null);
 
     if (!activeId) return;
@@ -235,13 +232,8 @@ export function BusinessProvider({ children }) {
     if (newId === null || !Number.isFinite(newId)) {
       clearActiveDivisionIdLS(activeId);
 
-      // artículos legacy
       setActiveDivisionGroupIds([]);
-
-      // artículos agrupaciones
       setActiveDivisionAgrupacionIds([]);
-
-      // ✅ insumos
       setActiveDivisionInsumoGroupIds([]);
 
       return;
@@ -249,13 +241,8 @@ export function BusinessProvider({ children }) {
 
     setActiveDivisionIdLS(activeId, newId);
 
-    // artículos legacy
     await loadDivisionGroups(newId);
-
-    // artículos agrupaciones
     await loadDivisionAgrupaciones(newId);
-
-    // ✅ insumos
     await loadDivisionInsumoGroups(newId);
   }, [
     activeId,
@@ -263,6 +250,65 @@ export function BusinessProvider({ children }) {
     loadDivisionAgrupaciones,
     loadDivisionInsumoGroups,
   ]);
+
+  /* ===========================
+   *  ✅ Businesses: refetch / remove
+   *  (DEBE estar antes de listeners que lo usan)
+   * =========================== */
+  const refetchBusinesses = useCallback(async () => {
+    const token = localStorage.getItem('token') || '';
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      const list = await BusinessesAPI.listMine();
+      const arr = Array.isArray(list) ? list : [];
+      setItems(arr);
+
+      setActiveId((prev) => {
+        const prevTrim = String(prev || '').trim();
+        if (prevTrim && arr.some(b => String(b.id) === prevTrim)) return prevTrim;
+
+        const stored = String(localStorage.getItem('activeBusinessId') || '').trim();
+        if (stored && arr.some(b => String(b.id) === stored)) return stored;
+
+        const first = arr?.[0]?.id ? String(arr[0].id) : '';
+        if (first) localStorage.setItem('activeBusinessId', first);
+        return first;
+      });
+    } catch (e) {
+      console.error('[BusinessContext] ❌ refetchBusinesses:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const removeBusinessFromState = useCallback((bizId) => {
+    const idStr = String(bizId || '').trim();
+    if (!idStr) return;
+
+    setItems(prev => prev.filter(b => String(b.id) !== idStr));
+
+    setActiveId(prev => {
+      if (String(prev || '') !== idStr) return prev;
+      localStorage.removeItem('activeBusinessId');
+      return '';
+    });
+
+    if (String(activeId || '') === idStr) {
+      setDivisions([]);
+      setActiveDivisionIdState(null);
+
+      setActiveDivisionGroupIds([]);
+      setAssignedGroupIds([]);
+
+      setActiveDivisionAgrupacionIds([]);
+      setAssignedAgrupacionIds([]);
+
+      setActiveDivisionInsumoGroupIds([]);
+      setAssignedInsumoGroupIds([]);
+    }
+  }, [activeId]);
 
   /* ===========================
    *  Sync active business from LS
@@ -293,10 +339,8 @@ export function BusinessProvider({ children }) {
       setActiveDivisionAgrupacionIds([]);
       setAssignedAgrupacionIds([]);
 
-      // ✅ insumos reset
       setActiveDivisionInsumoGroupIds([]);
       setAssignedInsumoGroupIds([]);
-
       return;
     }
 
@@ -348,10 +392,7 @@ export function BusinessProvider({ children }) {
         );
       }
 
-      // reset división al cambiar negocio
       setActiveDivisionIdState(null);
-
-      // reset scopes por división
       setActiveDivisionGroupIds([]);
       setActiveDivisionAgrupacionIds([]);
       setActiveDivisionInsumoGroupIds([]);
@@ -360,6 +401,52 @@ export function BusinessProvider({ children }) {
     window.addEventListener('business:switched', onSwitched);
     return () => window.removeEventListener('business:switched', onSwitched);
   }, []);
+
+  /* ===========================
+   *  ✅ Keep businesses fresh on mutations
+   * =========================== */
+  useEffect(() => {
+    if (booting) return;
+    if (!isLogged) return;
+
+    const onCreated = () => refetchBusinesses();
+    const onUpdated = () => refetchBusinesses();
+    const onDeleted = async (ev) => {
+  const id = ev?.detail?.id;
+  if (!id) return;
+
+  // 1️⃣ Remover del state
+  removeBusinessFromState(id);
+
+  // 2️⃣ Verificar si quedó un activeId inválido
+  const currentActive = localStorage.getItem('activeBusinessId');
+  if (String(currentActive) === String(id)) {
+    console.warn('[BusinessContext] activeId apuntando a negocio borrado, limpiando...');
+    localStorage.removeItem('activeBusinessId');
+    setActiveId('');
+    
+    // Limpiar estado de divisiones también
+    setDivisions([]);
+    setActiveDivisionIdState(null);
+    setActiveDivisionGroupIds([]);
+    setActiveDivisionAgrupacionIds([]);
+    setActiveDivisionInsumoGroupIds([]);
+  }
+
+  // 3️⃣ Refrescar lista
+  await refetchBusinesses();
+};
+
+    window.addEventListener('business:created', onCreated);
+    window.addEventListener('business:updated', onUpdated);
+    window.addEventListener('business:deleted', onDeleted);
+
+    return () => {
+      window.removeEventListener('business:created', onCreated);
+      window.removeEventListener('business:updated', onUpdated);
+      window.removeEventListener('business:deleted', onDeleted);
+    };
+  }, [booting, isLogged, refetchBusinesses, removeBusinessFromState]);
 
   /* ===========================
    *  Load divisions when active business changes
@@ -380,10 +467,8 @@ export function BusinessProvider({ children }) {
       setActiveDivisionAgrupacionIds([]);
       setAssignedAgrupacionIds([]);
 
-      // ✅ insumos
       setActiveDivisionInsumoGroupIds([]);
       setAssignedInsumoGroupIds([]);
-
       return;
     }
 
@@ -397,16 +482,10 @@ export function BusinessProvider({ children }) {
         const divisionsList = result?.divisions || [];
         setDivisions(divisionsList);
 
-        // ARTÍCULOS legacy
         await loadAssignedGroupIds(divisionsList);
-
-        // AGRUPACIONES artículos
         await loadAssignedAgrupacionIds(divisionsList);
-
-        // ✅ INSUMOS
         await loadAssignedInsumoGroupIds(divisionsList);
 
-        // restaurar división guardada
         const saved = getActiveDivisionIdLS(activeId);
         if (saved && saved !== 'null') {
           const savedId = Number(saved);
@@ -414,22 +493,14 @@ export function BusinessProvider({ children }) {
           if (exists) {
             setActiveDivisionIdState(savedId);
 
-            // ARTÍCULOS legacy
             await loadDivisionGroups(savedId);
-
-            // AGRUPACIONES artículos
             await loadDivisionAgrupaciones(savedId);
-
-            // ✅ INSUMOS
             await loadDivisionInsumoGroups(savedId);
-
             return;
           }
         }
 
-        // si no hay saved válido => principal
         setActiveDivisionIdState(null);
-
         setActiveDivisionGroupIds([]);
         setActiveDivisionAgrupacionIds([]);
         setActiveDivisionInsumoGroupIds([]);
@@ -501,7 +572,6 @@ export function BusinessProvider({ children }) {
       );
     }
 
-    // Resetear división
     setActiveDivisionIdState(null);
     setActiveDivisionGroupIds([]);
     setActiveDivisionAgrupacionIds([]);
@@ -518,7 +588,7 @@ export function BusinessProvider({ children }) {
   const selectDivision = useCallback(async (divisionId) => setDivision(divisionId), [setDivision]);
 
   /* ===========================
-   *  Refetch helpers
+   *  Refetch helpers (divisiones)
    * =========================== */
   const refetchAssignedGroups = useCallback(async () => {
     if (!activeId) return;
@@ -566,7 +636,6 @@ export function BusinessProvider({ children }) {
     }
   }, [activeId, activeDivisionId, loadAssignedAgrupacionIds, loadDivisionAgrupaciones]);
 
-  // ✅ NUEVO: Insumos
   const refetchAssignedInsumoGroups = useCallback(async () => {
     if (!activeId) return;
 
@@ -599,9 +668,15 @@ export function BusinessProvider({ children }) {
     active,
     activeId,
     activeBusinessId: activeId,
+
     select,
     selectBusiness,
     addBusiness,
+
+    // ✅ negocios
+    refetchBusinesses,
+    removeBusinessFromState,
+
     loading,
 
     divisions,
@@ -621,7 +696,7 @@ export function BusinessProvider({ children }) {
     assignedAgrupacionIds,
     refetchAssignedAgrupaciones,
 
-    // ✅ INSUMOS groups
+    // INSUMOS groups
     activeDivisionInsumoGroupIds,
     assignedInsumoGroupIds,
     refetchAssignedInsumoGroups,
@@ -635,6 +710,8 @@ export function BusinessProvider({ children }) {
     select,
     selectBusiness,
     addBusiness,
+    refetchBusinesses,
+    removeBusinessFromState,
     loading,
     divisions,
     activeDivisionId,

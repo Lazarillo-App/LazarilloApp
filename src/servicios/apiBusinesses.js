@@ -43,6 +43,10 @@ export function authHeaders(
   if (!opts.isFormData) {
     h['Content-Type'] = 'application/json';
   }
+  // 🔥 Si es FormData, ELIMINAR cualquier Content-Type que venga en extra
+  else if (h['Content-Type']) {
+    delete h['Content-Type'];
+  }
 
   if (opts.includeAuth && token) h.Authorization = `Bearer ${token}`;
 
@@ -91,7 +95,6 @@ export async function http(
 
   const isAuthPublic = AUTH_PUBLIC_PATHS.has(p);
 
-
   const isFormData =
     typeof FormData !== 'undefined' && body instanceof FormData;
 
@@ -106,6 +109,16 @@ export async function http(
       includeAuth: true,
       isFormData,
     });
+
+  // 🔍 DEBUG: Ver headers que se envían (temporal)
+  if (isFormData) {
+    console.log('🔍 Enviando FormData:', {
+      url,
+      method,
+      headers: Object.keys(hdrs),
+      hasContentType: 'Content-Type' in hdrs,
+    });
+  }
 
   // AbortController + timeout + cancel externo
   const ctrl = new AbortController();
@@ -311,19 +324,52 @@ export const BusinessesAPI = {
     return serverResp || { activeBusinessId: id };
   },
 
-  // ---- Logo: subir archivo (FormData) ----
-  uploadLogo: (id, file) => {
-    const fd = new FormData();
-    // el backend acepta 'file', 'logo' o 'image'
-    fd.append('file', file, file?.name || 'logo.png');
+// ---- Logo: subir archivo (FormData) ----
+uploadLogo: async (id, file) => {
+  const fd = new FormData();
+  fd.append('file', file, file?.name || 'logo.png');
 
-    return http(`/businesses/${id}/logo`, {
-      method: 'POST',
-      body: fd,
-      withBusinessId: false,   // usamos :id en la ruta; no forzar header
-      headers: undefined,      // ¡no metas Content-Type!
-    });
-  },
+  // 🔍 Verificar que el FormData tenga el archivo
+  console.log('🔍 FormData entries:');
+  for (let [key, value] of fd.entries()) {
+    console.log(`  - ${key}:`, value instanceof File ? {
+      name: value.name,
+      type: value.type,
+      size: value.size
+    } : value);
+  }
+
+  const token = localStorage.getItem('token') || '';
+  
+  const url = `${BASE}/businesses/${id}/logo`;
+  
+  console.log('🚀 Upload directo:', {
+    url,
+    fileName: file?.name,
+    fileType: file?.type,
+    fileSize: file?.size,
+    hasToken: !!token,
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      // ⚠️ NO incluir Content-Type - el browser lo setea automáticamente con boundary
+    },
+    body: fd,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    console.error('❌ Error del servidor:', error);
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  console.log('✅ Upload exitoso:', result);
+  return result;
+},
 
   // ---- Branding URL directa del logo (PATCH /:id/branding-url) ----
   setBrandingUrl: (id, logo_url) =>
@@ -483,12 +529,12 @@ export const BusinessesAPI = {
   // },
 
   // Sync catálogo (Maxi → DB)
-  // syncNow: (id, body) =>
-  //   http(`/businesses/${id}/sync`, {
-  //     method: 'POST',
-  //     body,
-  //     withBusinessId: false,
-  //   }),
+  syncNow: (id, body) =>
+    http(`/businesses/${id}/sync`, {
+      method: 'POST',
+      body,
+      withBusinessId: false,
+    }),
 
   // // Sync ventas
   // syncSales: async (id, options = {}) => {

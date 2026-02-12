@@ -23,7 +23,7 @@ const norm = (s) =>
 function buildTree(items = []) {
   // Esta es una implementación básica - adaptá según tu estructura real
   const bySubRubro = new Map();
-  
+
   items.forEach(item => {
     const sub = item.subrubro || 'Sin clasificar';
     if (!bySubRubro.has(sub)) {
@@ -32,20 +32,20 @@ function buildTree(items = []) {
         categorias: new Map(),
       });
     }
-    
+
     const cat = item.categoria || 'Sin categoría';
     const subNode = bySubRubro.get(sub);
-    
+
     if (!subNode.categorias.has(cat)) {
       subNode.categorias.set(cat, {
         categoria: cat,
         articulos: [],
       });
     }
-    
+
     subNode.categorias.get(cat).articulos.push(item);
   });
-  
+
   return Array.from(bySubRubro.values()).map(sub => ({
     subrubro: sub.subrubro,
     categorias: Array.from(sub.categorias.values()),
@@ -187,19 +187,19 @@ export function groupSuggestionsByTarget(suggestions = []) {
  */
 export async function checkNewArticlesAndSuggest(businessId) {
   console.log('[autoGrouping] 🔍 Verificando artículos nuevos...');
-  
+
   try {
     // 1️⃣ Cargar todos los artículos desde la BD
     const articlesRes = await BusinessesAPI.articlesFromDB(businessId);
     const items = articlesRes?.items || [];
-    
+
     if (!items.length) {
       console.log('[autoGrouping] ℹ️ No hay artículos en la BD');
       return [];
     }
 
     // 2️⃣ Cargar agrupaciones actuales
-    const agrupacionesRes = await httpBiz(`/businesses/${businessId}/articulos/agrupaciones`);
+    const agrupacionesRes = await httpBiz(`/articulos/agrupaciones`, {}, businessId);
     const agrupaciones = agrupacionesRes?.agrupaciones || [];
 
     if (!agrupaciones.length) {
@@ -252,7 +252,7 @@ export async function checkNewArticlesAndSuggest(businessId) {
     }
 
     return [];
-    
+
   } catch (error) {
     console.error('[autoGrouping] ❌ Error verificando artículos nuevos:', error);
     return [];
@@ -268,7 +268,7 @@ export async function checkNewArticlesAndSuggest(businessId) {
  */
 export async function applyAutoGrouping(selections, httpClient) {
   console.log('[autoGrouping] ✅ Aplicando auto-agrupación...', selections);
-  
+
   if (!selections || typeof selections !== 'object') {
     return { success: 0, failed: 0 };
   }
@@ -278,11 +278,11 @@ export async function applyAutoGrouping(selections, httpClient) {
 
   // Agrupar por groupId para hacer bulk updates
   const byGroup = new Map();
-  
+
   Object.entries(selections).forEach(([articleId, data]) => {
     const groupId = data?.groupId;
     if (!groupId) return;
-    
+
     if (!byGroup.has(groupId)) {
       byGroup.set(groupId, []);
     }
@@ -294,7 +294,7 @@ export async function applyAutoGrouping(selections, httpClient) {
     try {
       await httpClient(`/agrupaciones/${groupId}/articulos`, {
         method: 'PUT',
-        body: JSON.stringify({ articulos: articleIds }),
+        body: { articulos: articleIds },
       });
       success += articleIds.length;
       console.log(`[autoGrouping] ✅ ${articleIds.length} artículo(s) agregado(s) al grupo ${groupId}`);
@@ -317,15 +317,15 @@ export async function applyAutoGrouping(selections, httpClient) {
  */
 export async function createNewAgrupacion(businessId, nombre, articulos = []) {
   console.log(`[autoGrouping] 📝 Creando nueva agrupación: "${nombre}"`);
-  
+
   try {
-    const response = await httpBiz(`/businesses/${businessId}/articulos/agrupaciones`, {
+    const response = await httpBiz(`/articulos/agrupaciones`, {
       method: 'POST',
-      body: JSON.stringify({
+      body: {
         nombre: nombre.trim(),
         articulos,
-      }),
-    });
+      },
+    }, businessId);
 
     const newId = response?.id || response?.agrupacion?.id;
     console.log('[autoGrouping] ✅ Agrupación creada:', newId);

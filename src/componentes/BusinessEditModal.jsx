@@ -92,6 +92,15 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     logo_url: br.logo_url || null,
   });
 
+  const API_BASE = (import.meta?.env?.VITE_API_URL || '').replace(/\/$/, '');
+  const absUrl = (u) => {
+    const s = String(u || '').trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('/')) return API_BASE ? `${API_BASE}${s}` : s;
+    return s;
+  };
+
   /* ───────────────── Dirty check ───────────────── */
   const snapshotRef = useRef(null);
   const makeSnapshot = () => ({
@@ -125,7 +134,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     setSecondary(br.secondary ?? "#1f2923");
     setBackground(br.background ?? "#f6f8f7");
     setFont(br.font ?? "Inter, system-ui, sans-serif");
-    setLogoUrl(br.logo_url ?? "");
+    setLogoUrl(absUrl(br.logo_url ?? ""));
     setLogoFile(null);
 
     setPhone(contact.phone || "");
@@ -151,7 +160,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         secondary: br.secondary ?? "#1f2923",
         background: br.background ?? "#f6f8f7",
         font: br.font ?? "Inter, system-ui, sans-serif",
-        logoUrl: br.logo_url ?? "",
+        logoUrl: absUrl(br.logo_url ?? ""),
         phone: contact.phone || "",
         description: business?.props?.description || "",
         addrLine1: address.line1 || "",
@@ -180,6 +189,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
 
   /* ───────────────── Handlers ───────────────── */
   const handleClose = () => {
+    if (busy) return; // ✅ evita cerrar mientras guarda
     if (tempObjectUrlRef.current) {
       try { URL.revokeObjectURL(tempObjectUrlRef.current); } catch { }
       tempObjectUrlRef.current = null;
@@ -203,21 +213,26 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
   async function saveBrandingAndInfo(bizId) {
     // 1) subir logo si corresponde
     let finalLogoUrl = logoUrl || null;
+
     if (logoFile) {
       const up = await BusinessesAPI.uploadLogo(bizId, logoFile);
-      finalLogoUrl = up?.url || up?.logo_url || up?.secure_url || finalLogoUrl;
+
+      const raw = up?.url || up?.logo_url || up?.secure_url || finalLogoUrl;
+      finalLogoUrl = raw ? absUrl(raw) : null;
+    } else if (finalLogoUrl) {
+      finalLogoUrl = absUrl(finalLogoUrl);
     }
 
-    // 2) armar branding
+    // 2) branding
     const branding = { primary, secondary, background, font, logo_url: finalLogoUrl };
 
-    // 3) patch: ACTUALIZAMOS raíz y props
+    // 3) payload: raíz + props
     const prevProps = business?.props || {};
     const payload = {
       name,
-      branding, // ⬅️ NUEVO: reflejamos también en la raíz del negocio
+      branding,
       props: {
-        ...prevProps,                  // mantenemos maxi, etc.
+        ...prevProps,
         branding,
         contact: { phone: normalizeEmpty(phone) },
         description: normalizeEmpty(description),
@@ -235,38 +250,81 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
       },
     };
 
-    const res = await BusinessesAPI.update(bizId, payload);
+    // 4) update
+    await BusinessesAPI.update(bizId, payload);
 
-    // 4) persistir tema para el refresh
+    // 5) traer negocio fresh (✅ evita “actualizo en navbar pero no en perfil”)
+    const fresh = await BusinessesAPI.get(bizId);
+
+    // 6) persistir tema para evitar flash
     try {
-      const palette = brandingToPalette(branding);
+      const brFresh = fresh?.props?.branding || fresh?.branding || branding;
+      const palette = brandingToPalette({
+        ...brFresh,
+        logo_url: absUrl(brFresh?.logo_url || finalLogoUrl || ''),
+      });
       setPaletteForBiz(palette, { persist: true, biz: bizId });
       window.dispatchEvent(new CustomEvent("theme:updated"));
     } catch { }
 
-    return res?.business ?? res ?? { id: bizId, ...payload };
+    return fresh;
   }
 
   async function saveMaxi(bizId) {
     const changes = {};
-    if (mxEmail.trim()) changes.email = mxEmail.trim();
-    if (mxCod.trim()) changes.codcli = mxCod.trim();
-    if (mxPass.trim()) changes.password = mxPass.trim();
-    if (Object.keys(changes).length) {
+
+    // ✅ Solo agregar si hay valor
+    const trimmedEmail = mxEmail.trim();
+    const trimmedCod = mxCod.trim();
+    const trimmedPass = mxPass.trim();
+
+    if (trimmedEmail) changes.email = trimmedEmail;
+    if (trimmedCod) changes.codcli = trimmedCod;
+    if (trimmedPass) changes.password = trimmedPass;
+
+    // ✅ Validar que haya AL MENOS email o codcli
+    if (!changes.email && !changes.codcli && !changes.password) {
+      console.log('⏭️ No hay cambios en Maxi');
+      return; // ← salir sin hacer nada
+    }
+
+    console.log('📤 [saveMaxi] Enviando:', {
+      hasEmail: !!changes.email,
+      hasCodcli: !!changes.codcli,
+      hasPassword: !!changes.password,
+    });
+
+    try {
       await BusinessesAPI.maxiSave(bizId, changes);
+      console.log('✅ Maxi credentials guardadas');
+    } catch (error) {
+      console.error('❌ Error guardando Maxi:', error);
+      throw error;
     }
   }
 
   async function handleTestMaxi(e) {
     e?.preventDefault?.();
     if (!business?.id) return;
-    setErr(""); setNotice("Chequeando credenciales de Maxi…");
+
+    // ✅ Validar que haya credenciales mínimas
+    if (!mxEmail.trim() || !mxCod.trim()) {
+      setErr("Ingresá email y código de cliente para probar");
+      return;
+    }
+
+    setErr("");
+    setNotice("Chequeando credenciales de Maxi…");
+
     try {
+      // ✅ Solo guardar si hay cambios
       await saveMaxi(business.id);
+
       const st = await BusinessesAPI.maxiStatus(business.id);
       setMaxiStatus(st || null);
       setNotice(st?.ok ? "Maxi: OK" : (st?.detail || "Maxi: error"));
     } catch (e2) {
+      console.error('[handleTestMaxi] Error:', e2);
       setMaxiStatus({ ok: false, detail: String(e2?.message || "error") });
       setNotice("");
       setErr("No se pudo validar con Maxi. Revisá email/codcli/clave.");
@@ -277,44 +335,62 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     e?.preventDefault?.();
     if (!business?.id || busy || !isDirty) return;
 
-    setBusy(true); setErr(""); setNotice("");
+    setBusy(true);
+    setErr("");
+    setNotice("");
+
     try {
-      // 1) Guardar branding + info (y logo si hay)
-      const saved = await saveBrandingAndInfo(business.id);
-      await saveMaxi(business.id);
+      // 1️⃣ Guardar branding + info (siempre)
+      const fresh = await saveBrandingAndInfo(business.id);
 
-      // 2) Persistir tema como en create
-      const branding = saved?.props?.branding || saved?.branding || {
-        primary, secondary, background, font, logo_url: logoUrl || null,
-      };
-      const persisted = brandingToPalette(branding);
+      // 2️⃣ ✅ SOLO guardar Maxi si hay cambios reales
+      const hasMaxiChanges =
+        (mxEmail.trim() && mxEmail.trim() !== (business?.props?.maxi?.email || '')) ||
+        (mxCod.trim() && mxCod.trim() !== (business?.props?.maxi?.codcli || '')) ||
+        (mxPass.trim().length > 0);
 
-      // aplica y guarda en LS (por-biz y mirror CURRENT)
-      setPaletteForBiz(persisted, { persist: true, biz: business.id });
-
-      // si este negocio es el activo, mantenerlo
-      const active = localStorage.getItem("activeBusinessId");
-      if (String(active) === String(business.id)) {
-        // espejo para evitar flash en recarga
-        try { localStorage.setItem("bizTheme:current", JSON.stringify(persisted)); } catch { }
+      if (hasMaxiChanges) {
+        console.log('💾 Guardando cambios de Maxi...');
+        await saveMaxi(business.id);
+      } else {
+        console.log('⏭️ No hay cambios en Maxi, skipping');
       }
 
-      // 3) Notificar a toda la app
+      // 3️⃣ Persistir tema
+      const branding = fresh?.props?.branding || fresh?.branding || {
+        primary, secondary, background, font, logo_url: logoUrl || null,
+      };
+
+      const persisted = brandingToPalette({
+        ...branding,
+        logo_url: absUrl(branding?.logo_url || ''),
+      });
+
+      setPaletteForBiz(persisted, { persist: true, biz: business.id });
+
+      const active = localStorage.getItem("activeBusinessId");
+      if (String(active) === String(business.id)) {
+        try {
+          localStorage.setItem("bizTheme:current", JSON.stringify(persisted));
+        } catch { }
+      }
+
+      // 4️⃣ Eventos
       window.dispatchEvent(new CustomEvent("business:branding-updated", {
         detail: { id: business.id, branding }
       }));
+
       window.dispatchEvent(new CustomEvent("business:updated", {
-        detail: { id: business.id, business: saved }
+        detail: { id: business.id, business: fresh }
       }));
 
-      // 4) Notificar al padre y cerrar
       snapshotRef.current = makeSnapshot();
-      onSaved?.(saved);
-      onClose?.();
+      onSaved?.(fresh);
+
+      handleClose();
     } catch (e2) {
       console.error(e2);
-      const msg = String(e2?.message || "");
-      setErr(msg || "No se pudo guardar.");
+      setErr(String(e2?.message || "No se pudo guardar."));
     } finally {
       setBusy(false);
     }
@@ -330,13 +406,26 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
       <div className="gx-modal" onClick={(e) => e.stopPropagation()}>
         <div className="gx-header">
           <h3>Editar local — {["Datos", "Estilos", "Información", "Redes", "Maxi"][step - 1]}</h3>
-          <div className="gx-steps">
-            {[1, 2, 3, 4, 5].map(n => (
-              <span key={n} className={n === step ? "on" : (n < step ? "done" : "")}>{n}</span>
-            ))}
+
+          <div className="gx-header-right">
+            <div className="gx-steps">
+              {[1, 2, 3, 4, 5].map(n => (
+                <span key={n} className={n === step ? "on" : (n < step ? "done" : "")}>{n}</span>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="gx-x"
+              onClick={handleClose}
+              disabled={busy}
+              aria-label="Cerrar"
+              title="Cerrar"
+            >
+              ✕
+            </button>
           </div>
         </div>
-
         {/* STEP 1: Datos */}
         {step === 1 && (
           <form onSubmit={(e) => { e.preventDefault(); if (canNextDatos) next(); }} className="gx-body">

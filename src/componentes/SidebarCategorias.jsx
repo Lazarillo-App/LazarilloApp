@@ -24,7 +24,7 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import '../css/SidebarCategorias.css';
 
 import { assignAgrupacionToDivision as assignAgrupacionToDivisionAPI } from '@/servicios/apiDivisions';
-import { BusinessesAPI } from '@/servicios/apiBusinesses'; // ✅ IMPORTAR
+import { BusinessesAPI } from '@/servicios/apiBusinesses';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -210,16 +210,70 @@ function SidebarCategorias({
     return '';
   }, [opcionesSelect, agrupacionSeleccionada, todoGroupId]);
 
+  // ✅ Auto-fix: si cambian las opciones (por división) y la agrupación actual ya no es válida,
+  // elegir una válida y resetear filtros como si el usuario lo hubiera cambiado.
+  useEffect(() => {
+    const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
+    if (!opts.length) {
+      // si no hay opciones, limpiar selección para no quedar pegada a una vieja
+      if (agrupacionSeleccionada) {
+        setAgrupacionSeleccionada?.(null);
+        setCategoriaSeleccionada?.(null);
+        setFiltroBusqueda?.('');
+        setBusqueda?.('');
+        onManualPick?.();
+      }
+      return;
+    }
+
+    const currentId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
+    const exists = currentId != null && opts.some(o => Number(o.id) === currentId);
+
+    if (exists) return;
+
+    // elegir default
+    const todoIdNum = Number(todoGroupId);
+    const todoOpt =
+      Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
+
+    const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
+
+    // 🚀 aplicar selección y resetear estado igual que en handleAgrupacionChange
+    setAgrupacionSeleccionada?.(next);
+    setCategoriaSeleccionada?.(null);
+    setFiltroBusqueda?.('');
+    setBusqueda?.('');
+    onManualPick?.();
+  }, [
+    opcionesSelect,
+    agrupacionSeleccionada,
+    setAgrupacionSeleccionada,
+    isMainDivision,
+    todoGroupId,
+    setCategoriaSeleccionada,
+    setFiltroBusqueda,
+    setBusqueda,
+    onManualPick
+  ]);
+
+  useEffect(() => {
+    // cada vez que cambia la división, limpiamos la selección de categoría
+    setCategoriaSeleccionada?.(null);
+  }, [divisionNum]);
+
   /* ===================== VisibleIds / activeIds ===================== */
 
   const activeIds = useMemo(() => {
+    // 1) si viene desde TablaArticulos, manda siempre
     if (visibleIds && visibleIds.size) return visibleIds;
 
     const g = agrupacionSeleccionada;
     if (!g) return null;
 
-    // TODO => no filtra
-    if (esTodoGroup(g)) return null;
+    // ✅ TODO/Sin agrupación: NO es "sin filtro"
+    // si no vino visibleIds, por compatibilidad devolvemos Set vacío
+    // (esto hace que el árbol quede vacío y no confunda)
+    if (esTodoGroup(g)) return new Set();
 
     const gActual = (agrupaciones || []).find((x) => Number(x?.id) === Number(g?.id));
     const arr = Array.isArray(gActual?.articulos) ? gActual.articulos : [];
@@ -228,6 +282,7 @@ function SidebarCategorias({
 
     return new Set(arr.map((a) => safeId(a)).filter((id) => id != null));
   }, [visibleIds, agrupacionSeleccionada, agrupaciones]);
+
 
   // Mantener referencia actualizada si cambia el objeto en "agrupaciones"
   useEffect(() => {
@@ -252,7 +307,7 @@ function SidebarCategorias({
     const loadViewPref = async () => {
       try {
         setLoadingPrefs(true);
-        
+
         const result = await BusinessesAPI.getViewPrefs(businessId, {
           divisionId: divisionNum,
         });
@@ -291,6 +346,7 @@ function SidebarCategorias({
       // Guardar en backend
       try {
         await BusinessesAPI.saveViewPref(businessId, {
+          scope: 'articulo',
           agrupacionId: Number(agrupacionSeleccionada.id),
           viewMode: newMode,
           divisionId: divisionNum,
@@ -460,6 +516,35 @@ function SidebarCategorias({
           divisionId: divisionId === 'principal' ? null : Number(divisionId),
         });
 
+        // ✅ Nombre de la división destino
+        const divisionName = divisionId === 'principal'
+          ? 'División Principal'
+          : `División ${divisionId}`;
+
+        // ✅ Emitir notificación
+        try {
+          window.dispatchEvent(
+            new CustomEvent('ui:action', {
+              detail: {
+                businessId,
+                kind: 'group_move_division',
+                scope: 'articulo',
+                title: 'Agrupación movida a división',
+                message: `"${labelAgrup(groupToMove)}" → ${divisionName}`,
+                createdAt: new Date().toISOString(),
+                payload: {
+                  groupId: Number(groupToMove.id),
+                  groupName: labelAgrup(groupToMove),
+                  divisionId: divisionId === 'principal' ? null : Number(divisionId),
+                  divisionName,
+                },
+              },
+            })
+          );
+        } catch (err) {
+          console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+        }
+
         notify?.(`Agrupación "${labelAgrup(groupToMove)}" movida correctamente`, 'success');
 
         // ✅ refrescar "quién está asignada a qué"
@@ -553,6 +638,31 @@ function SidebarCategorias({
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
+
+                                // ✅ Emitir notificación ANTES de cambiar favorita
+                                const isFavorite = Number(favoriteGroupId) !== Number(g.id);
+                                try {
+                                  window.dispatchEvent(
+                                    new CustomEvent('ui:action', {
+                                      detail: {
+                                        businessId,
+                                        kind: isFavorite ? 'group_favorite_set' : 'group_favorite_unset',
+                                        scope: 'articulo',
+                                        title: isFavorite ? 'Marcada como favorita' : 'Desmarcada como favorita',
+                                        message: `"${labelAgrup(g)}"`,
+                                        createdAt: new Date().toISOString(),
+                                        payload: {
+                                          groupId: Number(g.id),
+                                          groupName: labelAgrup(g),
+                                          isFavorite,
+                                        },
+                                      },
+                                    })
+                                  );
+                                } catch (err) {
+                                  console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+                                }
+
                                 onSetFavorite(g.id);
                               }}
                             >
@@ -571,7 +681,41 @@ function SidebarCategorias({
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onEditGroup(g);
+
+                                // ✅ Guardar nombre anterior
+                                const oldName = labelAgrup(g);
+
+                                // ✅ Función wrapper para emitir después de renombrar
+                                const handleRename = async () => {
+                                  const result = await onEditGroup(g);
+
+                                  // Si onEditGroup devuelve el nuevo nombre, emitimos
+                                  if (result && result.newName && result.newName !== oldName) {
+                                    try {
+                                      window.dispatchEvent(
+                                        new CustomEvent('ui:action', {
+                                          detail: {
+                                            businessId,
+                                            kind: 'group_rename',
+                                            scope: 'articulo',
+                                            title: 'Agrupación renombrada',
+                                            message: `"${oldName}" → "${result.newName}"`,
+                                            createdAt: new Date().toISOString(),
+                                            payload: {
+                                              groupId: Number(g.id),
+                                              oldName,
+                                              newName: result.newName,
+                                            },
+                                          },
+                                        })
+                                      );
+                                    } catch (err) {
+                                      console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+                                    }
+                                  }
+                                };
+
+                                handleRename();
                               }}
                             >
                               <EditIcon fontSize="inherit" />
@@ -586,6 +730,29 @@ function SidebarCategorias({
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
+
+                                  // ✅ Emitir notificación ANTES de eliminar
+                                  try {
+                                    window.dispatchEvent(
+                                      new CustomEvent('ui:action', {
+                                        detail: {
+                                          businessId,
+                                          kind: 'group_delete',
+                                          scope: 'articulo',
+                                          title: 'Agrupación eliminada',
+                                          message: `"${labelAgrup(g)}" fue eliminada.`,
+                                          createdAt: new Date().toISOString(),
+                                          payload: {
+                                            groupId: Number(g.id),
+                                            groupName: labelAgrup(g),
+                                          },
+                                        },
+                                      })
+                                    );
+                                  } catch (err) {
+                                    console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+                                  }
+
                                   onDeleteGroup(g);
                                 }}
                               >

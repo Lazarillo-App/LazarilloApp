@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
 // src/componentes/InsumosTable.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef } from "react";
@@ -133,7 +132,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   getAmountForId, // ✅ NUEVO
 }, ref) {
   const isElaborados = vista === "elaborados";
-
+  const listRef = useRef(null);
   const [rubros, setRubros] = useState([]);
 
   useEffect(() => {
@@ -447,6 +446,75 @@ const InsumosTable = forwardRef(function InsumosTable({
     return m;
   }, [flatRows]);
 
+  const pendingJumpRef = useRef(null);
+  const jumpTriesRef = useRef(0);
+
+  useEffect(() => {
+    if (!jumpToInsumoId) return;
+
+    pendingJumpRef.current = Number(jumpToInsumoId);
+    jumpTriesRef.current = 0;
+
+    const tick = () => {
+      const id = Number(pendingJumpRef.current);
+      if (!Number.isFinite(id) || id <= 0) return;
+
+      const index = idToIndex.get(id);
+
+      // todavía no existe el índice (render no terminó / cambió grupo)
+      if (index == null) {
+        jumpTriesRef.current += 1;
+        if (jumpTriesRef.current > 25) {
+          pendingJumpRef.current = null;
+          return;
+        }
+        setTimeout(tick, 80);
+        return;
+      }
+
+      // ✅ scroll real: VirtualList
+      if (listRef.current?.scrollToIndex) {
+        listRef.current.scrollToIndex(index);
+      }
+
+      pendingJumpRef.current = null;
+    };
+
+    const t0 = setTimeout(tick, 40);
+    return () => clearTimeout(t0);
+  }, [jumpToInsumoId, idToIndex]);
+
+  useEffect(() => {
+    const id = Number(pendingJumpRef.current);
+    if (!Number.isFinite(id) || id <= 0) return;
+
+    const tick = () => {
+      const idx = idToIndex.get(id);
+
+      // todavía no existe en la lista actual (cambio de grupo / refresh)
+      if (idx == null) {
+        jumpTriesRef.current += 1;
+        if (jumpTriesRef.current > 25) {
+          pendingJumpRef.current = null;
+          return;
+        }
+        setTimeout(tick, 80);
+        return;
+      }
+
+      // ✅ ahora sí: scrollear
+      listRef.current?.scrollToIndex?.(idx);
+
+      // opcional: volver a intentar 1 vez más por si VirtualList necesita un frame
+      setTimeout(() => listRef.current?.scrollToIndex?.(idx), 60);
+
+      pendingJumpRef.current = null;
+    };
+
+    const t0 = setTimeout(tick, 40);
+    return () => clearTimeout(t0);
+  }, [idToIndex]);
+
   const lastIndexSigRef = useRef("");
 
   useEffect(() => {
@@ -594,7 +662,7 @@ const InsumosTable = forwardRef(function InsumosTable({
           </div>
         ) : (
           <VirtualList
-            ref={ref}
+            ref={listRef}
             rows={flatRows}
             rowHeight={ITEM_HEIGHT}
             overscan={10}
@@ -623,7 +691,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   return acc + qty;
                 }, 0);
 
-                const totalAmount = row.__ventasMonto || 0; 
+                const totalAmount = row.__ventasMonto || 0;
 
                 return (
                   <div
@@ -670,6 +738,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           isTodoView={isTodoView}
                           onReloadCatalogo={onReloadCatalogo}
                           onAfterAction={handleAfterAction}
+                          businessId={businessId}
                         />
                       </div>
                     </div>
@@ -744,6 +813,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                       onMutateGroups={onMutateGroups}
                       onAfterMutation={handleAfterAction}
                       onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                      businessId={businessId}
                     />
                   </div>
                 </div>

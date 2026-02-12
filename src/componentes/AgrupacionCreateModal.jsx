@@ -1,4 +1,3 @@
-/* eslint-disable no-empty */
 import React, {
   useMemo,
   useState,
@@ -125,6 +124,7 @@ export default function AgrupacionCreateModal({
 
   // ✅ NUEVO: para no depender de localStorage
   businessId: businessIdProp,
+  allowedIds = null, // Set<number> | null
 }) {
   /* ---------- businessId efectivo ---------- */
   const effectiveBusinessId = useMemo(() => {
@@ -174,14 +174,14 @@ export default function AgrupacionCreateModal({
     (art) => {
       const id = safeId(art);
       if (id == null) return true;
+
+      // ✅ si no está permitido por división, bloqueado
+      if (allowedIds && !allowedIds.has(id)) return true;
+
       if (preselect?.allowAssigned && preselectedIds.has(id)) return false;
-      try {
-        return !!isArticuloBloqueado(art);
-      } catch {
-        return false;
-      }
+      try { return !!isArticuloBloqueado(art); } catch { return false; }
     },
-    [isArticuloBloqueado, preselect, preselectedIds]
+    [isArticuloBloqueado, preselect, preselectedIds, allowedIds]
   );
 
   // Index por id para armar payload
@@ -210,46 +210,68 @@ export default function AgrupacionCreateModal({
       ? todosArticulos
       : todosArticulos?.tree || [];
 
+    const allow = (a) => {
+      if (!allowedIds) return true;
+      const id = safeId(a);
+      return id != null && allowedIds.has(id);
+    };
+
     // 🟣 sr-first: Subrubro → Rubro → Artículos
     if (treeMode === "sr-first") {
       const out = [];
+
       for (const sub of fuente || []) {
         const subName = String(sub?.subrubro || "Sin subrubro");
         const rubros = [];
+
         for (const cat of sub?.categorias || []) {
           const rubroName = String(cat?.categoria || "Sin categoría");
-          rubros.push({
-            rubro: rubroName,
-            articulos: cat?.articulos || [],
-          });
+
+          const articulos = (cat?.articulos || []).filter(allow);
+          if (!articulos.length) continue;
+
+          rubros.push({ rubro: rubroName, articulos });
         }
+
+        if (!rubros.length) continue;
+
         rubros.sort((a, b) =>
           String(a.rubro).localeCompare(String(b.rubro), "es", {
             sensitivity: "base",
             numeric: true,
           })
         );
+
         out.push({ categoria: subName, rubros });
       }
+
       out.sort((a, b) =>
         String(a.categoria).localeCompare(String(b.categoria), "es", {
           sensitivity: "base",
           numeric: true,
         })
       );
+
       return out;
     }
 
     // 🟢 cat-first: Categoría → Rubro → Artículos
     const byCat = new Map();
+
     for (const sub of fuente || []) {
       const rubroFromSub = String(sub?.subrubro || "Sin subrubro");
+
       for (const cat of sub?.categorias || []) {
         const catName = String(cat?.categoria || "Sin categoría");
+
         for (const a of cat?.articulos || []) {
+          if (!allow(a)) continue;
+
           const rubroName = String(a?.subrubro || rubroFromSub || "Sin subrubro");
+
           if (!byCat.has(catName)) byCat.set(catName, new Map());
           const byRubro = byCat.get(catName);
+
           if (!byRubro.has(rubroName)) byRubro.set(rubroName, []);
           byRubro.get(rubroName).push(a);
         }
@@ -260,24 +282,31 @@ export default function AgrupacionCreateModal({
     for (const [categoria, byRubro] of byCat.entries()) {
       const rubros = [];
       for (const [rubro, articulos] of byRubro.entries()) {
+        if (!articulos.length) continue;
         rubros.push({ rubro, articulos });
       }
+
+      if (!rubros.length) continue;
+
       rubros.sort((a, b) =>
         String(a.rubro).localeCompare(String(b.rubro), "es", {
           sensitivity: "base",
           numeric: true,
         })
       );
+
       out.push({ categoria, rubros });
     }
+
     out.sort((a, b) =>
       String(a.categoria).localeCompare(String(b.categoria), "es", {
         sensitivity: "base",
         numeric: true,
       })
     );
+
     return out;
-  }, [todosArticulos, open, treeMode]);
+  }, [todosArticulos, open, treeMode, allowedIds]);
 
   // Filtro por búsqueda
   const uiCategorias = useMemo(() => {
@@ -286,17 +315,22 @@ export default function AgrupacionCreateModal({
     if (!q) return uiCategoriasRaw;
 
     const res = [];
+
     for (const cat of uiCategoriasRaw) {
       const rubrosFiltrados = [];
+
       for (const r of cat.rubros || []) {
         const arts = (r.articulos || []).filter((a) => {
           const name = String(a?.nombre || "").toLowerCase();
           return name.includes(q) || String(safeId(a) ?? "").includes(q);
         });
+
         if (arts.length) rubrosFiltrados.push({ ...r, articulos: arts });
       }
+
       if (rubrosFiltrados.length) res.push({ ...cat, rubros: rubrosFiltrados });
     }
+
     return res;
   }, [uiCategoriasRaw, queryDeferred, open]);
 
@@ -351,6 +385,17 @@ export default function AgrupacionCreateModal({
     });
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!allowedIds) return;
+
+    setSelectedIds((prev) => {
+      const next = new Set();
+      for (const id of prev) if (allowedIds.has(Number(id))) next.add(id);
+      return next;
+    });
+  }, [open, allowedIds]);
+
   /* ---------- guardar ---------- */
   const guardar = async () => {
     if (saving) return;
@@ -362,7 +407,8 @@ export default function AgrupacionCreateModal({
         return;
       }
 
-      const selectedAsArray = Array.from(selectedIds).filter(Number.isFinite);
+      let selectedAsArray = Array.from(selectedIds).filter(Number.isFinite);
+      if (allowedIds) selectedAsArray = selectedAsArray.filter((id) => allowedIds.has(Number(id)));
 
       // ===== CREATE =====
       if (mode === "create") {
@@ -726,7 +772,7 @@ export default function AgrupacionCreateModal({
               {saving
                 ? "Guardando…"
                 : saveButtonLabel ??
-                  (mode === "create" ? "Guardar Agrupación" : "Agregar a la agrupación")}
+                (mode === "create" ? "Guardar Agrupación" : "Agregar a la agrupación")}
             </Button>
           </Box>
         </Box>

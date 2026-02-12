@@ -69,10 +69,10 @@ const resolveInsumoMonto = (insumo, metaById) => {
 
   const monto = Number(
     insumo?.total_gastos_periodo ??
-      insumo?.total_gastos ??
-      insumo?.importe_total ??
-      insumo?.monto ??
-      0
+    insumo?.total_gastos ??
+    insumo?.importe_total ??
+    insumo?.monto ??
+    0
   );
   if (Number.isFinite(monto) && monto !== 0) return monto;
 
@@ -204,6 +204,45 @@ function InsumosSidebar({
     return '';
   }, [opcionesSelect, selectedGroupId, todoGroupId]);
 
+  // ✅ Auto-fix: si cambian las opciones (por división) y el grupo actual ya no es válido,
+  // elegir uno válido y resetear rubro, etc. como si el usuario lo hubiera cambiado.
+  useEffect(() => {
+    const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
+
+    if (!opts.length) {
+      if (selectedGroupId) {
+        onSelectGroupId?.(null);
+        setRubroSeleccionado?.(null);
+        onManualPick?.();
+      }
+      return;
+    }
+
+    const currentId = selectedGroupId != null ? Number(selectedGroupId) : null;
+    const exists = currentId != null && opts.some(o => Number(o.id) === currentId);
+
+    if (exists) return;
+
+    // elegir default: Principal -> TODO si existe, sino primera opción
+    const todoIdNum = Number(todoGroupId);
+    const todoOpt =
+      Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
+
+    const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
+
+    onSelectGroupId?.(next ? Number(next.id) : null);
+    setRubroSeleccionado?.(null);
+    onManualPick?.();
+  }, [
+    opcionesSelect,
+    selectedGroupId,
+    onSelectGroupId,
+    setRubroSeleccionado,
+    onManualPick,
+    isMainDivision,
+    todoGroupId
+  ]);
+
   /* ===================== ActiveIds ===================== */
   const activeIds = useMemo(() => {
     if (visibleIds && visibleIds.size) return visibleIds;
@@ -233,13 +272,13 @@ function InsumosSidebar({
     const loadViewPref = async () => {
       try {
         setLoadingPrefs(true);
-        
+
         const result = await BusinessesAPI.getViewPrefs(businessId, {
           divisionId: divisionNum,
         });
 
         const groupId = Number(selectedGroupId);
-        const savedVista = result?.byGroup?.[String(groupId)];
+        const savedVista = result?.byInsumoGroup?.[String(groupId)];
 
         // ✅ Para insumos, la preferencia se guarda como 'elaborados' o 'no-elaborados'
         if (savedVista === 'elaborados' || savedVista === 'no-elaborados') {
@@ -273,8 +312,9 @@ function InsumosSidebar({
       // Guardar en backend
       try {
         await BusinessesAPI.saveViewPref(businessId, {
+          scope: 'insumo',
           agrupacionId: Number(selectedGroupId),
-          viewMode: newVista, // 'elaborados' o 'no-elaborados'
+          viewMode: newVista,
           divisionId: divisionNum,
         });
       } catch (error) {
@@ -419,6 +459,35 @@ function InsumosSidebar({
           divisionId: divisionId === 'principal' ? null : Number(divisionId),
         });
 
+        // ✅ Nombre de la división destino
+        const divisionName = divisionId === 'principal'
+          ? 'División Principal'
+          : `División ${divisionId}`;
+
+        // ✅ Emitir notificación
+        try {
+          window.dispatchEvent(
+            new CustomEvent('ui:action', {
+              detail: {
+                businessId,
+                kind: 'group_move_division',
+                scope: 'insumo',
+                title: 'Agrupación movida a división',
+                message: `"${groupToMove.nombre}" → ${divisionName}`,
+                createdAt: new Date().toISOString(),
+                payload: {
+                  groupId: Number(groupToMove.id),
+                  groupName: groupToMove.nombre,
+                  divisionId: divisionId === 'principal' ? null : Number(divisionId),
+                  divisionName,
+                },
+              },
+            })
+          );
+        } catch (err) {
+          console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+        }
+
         notify?.(`Agrupación "${groupToMove.nombre}" movida correctamente`, 'success');
 
         await refetchAssignedGroups?.();
@@ -494,7 +563,47 @@ function InsumosSidebar({
 
                         {onEditGroup && (
                           <Tooltip title="Renombrar agrupación">
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEditGroup(g); }}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+
+                                // ✅ Guardar nombre anterior
+                                const oldName = g.nombre;
+
+                                // ✅ Función wrapper para emitir después de renombrar
+                                const handleRename = async () => {
+                                  const result = await onEditGroup(g);
+
+                                  // Si onEditGroup devuelve el nuevo nombre, emitimos
+                                  if (result && result.newName && result.newName !== oldName) {
+                                    try {
+                                      window.dispatchEvent(
+                                        new CustomEvent('ui:action', {
+                                          detail: {
+                                            businessId,
+                                            kind: 'group_rename',
+                                            scope: 'insumo',
+                                            title: 'Agrupación renombrada',
+                                            message: `"${oldName}" → "${result.newName}"`,
+                                            createdAt: new Date().toISOString(),
+                                            payload: {
+                                              groupId: Number(g.id),
+                                              oldName,
+                                              newName: result.newName,
+                                            },
+                                          },
+                                        })
+                                      );
+                                    } catch (err) {
+                                      console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                    }
+                                  }
+                                };
+
+                                handleRename();
+                              }}
+                            >
                               <EditIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
@@ -502,7 +611,36 @@ function InsumosSidebar({
 
                         {onDeleteGroup && (
                           <Tooltip title="Eliminar agrupación">
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDeleteGroup(g); }}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+
+                                // ✅ Emitir notificación ANTES de eliminar
+                                try {
+                                  window.dispatchEvent(
+                                    new CustomEvent('ui:action', {
+                                      detail: {
+                                        businessId,
+                                        kind: 'group_delete',
+                                        scope: 'insumo',
+                                        title: 'Agrupación eliminada',
+                                        message: `"${g.nombre}" fue eliminada.`,
+                                        createdAt: new Date().toISOString(),
+                                        payload: {
+                                          groupId: Number(g.id),
+                                          groupName: g.nombre,
+                                        },
+                                      },
+                                    })
+                                  );
+                                } catch (err) {
+                                  console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                }
+
+                                onDeleteGroup(g);
+                              }}
+                            >
                               <DeleteIcon fontSize="inherit" color="error" />
                             </IconButton>
                           </Tooltip>
@@ -594,8 +732,8 @@ function InsumosSidebar({
         {!loading && treeByRubro.length === 0 && (
           <li style={{ opacity: 0.7 }}>
             {selectedGroupId &&
-            (groups || []).find((g) => Number(g.id) === Number(selectedGroupId)) &&
-            esDiscontinuadosGroup((groups || []).find((g) => Number(g.id) === Number(selectedGroupId)))
+              (groups || []).find((g) => Number(g.id) === Number(selectedGroupId)) &&
+              esDiscontinuadosGroup((groups || []).find((g) => Number(g.id) === Number(selectedGroupId)))
               ? 'No hay rubros discontinuados.'
               : 'No hay rubros en esta agrupación.'}
           </li>

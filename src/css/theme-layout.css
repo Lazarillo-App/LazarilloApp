@@ -263,7 +263,7 @@ element.style {
   position: sticky !important;
   align-self: start;
   overflow: auto;
-  height: 80vh;
+  height: 74vh;
   background: var(--color-bg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -330,7 +330,7 @@ element.style {
 }
 
 .sidebar li span {
-  font-size: 0.92rem;
+  font-size: 0.85rem;
   font-weight: 700;
 }
 
@@ -343,6 +343,10 @@ element.style {
 .icono {
   margin-right: .5rem;
   opacity: .8;
+}
+
+.css-trm6af-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input {
+  font-size: 0.85rem !important;
 }
 
 /* Select dentro del sidebar */
@@ -689,9 +693,9 @@ input[type="number"]:focus {
 }
 
 .articulos-layoutInsumos {
-    grid-template-columns: var(--sidebar-width) 1fr;
-    gap: 16px;
-    height: calc(88vh - var(--navbar-height));
-    padding: 8px;
-    box-sizing: border-box;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  gap: 16px;
+  height: calc(88vh - var(--navbar-height));
+  padding: 8px;
+  box-sizing: border-box;
 }
