@@ -256,13 +256,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       return '📌';
     }
 
-    // backend notifs
-    const t = notif?.type;
-    const scope = notif?.metadata?.scope;
-    if (t === 'sync_articles' && scope === 'insumos') return '🔔';
-    if (t === 'auto_assign') return '🧠';
-    if (t === 'error') return '⚠️';
-    return '📌';
+   
   };
 
   // ✅ MEJORA: Helper para formatear el título según scope
@@ -340,10 +334,10 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   // 4) Merge UI + backend
   const merged = useMemo(() => {
-  const ui = (uiNotifs || []).filter((n) => !n.resolved);
-  const back = (notifications || []).filter((n) => !businessId || Number(n.business_id) === Number(businessId));
-  return [...ui, ...back];
-}, [uiNotifs, notifications, businessId]);
+    const ui = (uiNotifs || []).filter((n) => !n.resolved);
+    const back = (notifications || []).filter((n) => !businessId || Number(n.business_id) === Number(businessId));
+    return [...ui, ...back];
+  }, [uiNotifs, notifications, businessId]);
 
   const unreadUiCount = useMemo(
     () => (uiNotifs || []).filter((n) => !n.read && !n.resolved).length,
@@ -416,7 +410,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   Marcar como leídas ({unreadUiCount})
                 </Button>
               )}
-              
+
             </Box>
           )}
           <Divider />
@@ -435,137 +429,132 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
               {merged.map((notif) => {
                 const isUi = notif?.source === 'ui';
 
-                // UI notif
+                // ✅ UI notif
                 if (isUi) {
-                  // ✅ antes estaba fijo a 'insumo' y te rompía la UX en artículos
+                  // Función auxiliar para determinar si se puede deshacer
                   const canUndo = (notif) => {
                     if (!notif || notif.source !== 'ui') return false;
-
                     const kind = notif.kind;
                     const scope = notif.scope || notif.payload?.scope || 'articulo';
 
-                    // Por ahora solo discontinuar es deshacer
+                    // Solo discontinuar es reversible
                     return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
                   };
 
-                  // En el renderizado de UI notifs (dentro del map):
-                  <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
-                    <ListItemButton
-                      onClick={() =>
-                        setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)))
-                      }
-                      sx={{
-                        borderRadius: 2,
-                        alignItems: 'flex-start',
-                        backgroundColor: notif.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
-                        border: '1px solid rgba(25, 118, 210, 0.15)',
-                        transition: 'all 0.2s ease',
-                        '&:hover': {
-                          backgroundColor: notif.read
-                            ? 'rgba(25, 118, 210, 0.04)'
-                            : 'rgba(25, 118, 210, 0.12)',
-                        },
-                      }}
-                    >
-                      <div style={{ marginRight: 12, fontSize: 22, marginTop: 2 }}>
-                        {getIcon(notif)}
-                      </div>
+                  // ✅ IMPORTANTE: return explícito del JSX
+                  return (
+                    <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
+                      <ListItemButton
+                        onClick={() =>
+                          setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)))
+                        }
+                        sx={{
+                          borderRadius: 2,
+                          alignItems: 'flex-start',
+                          backgroundColor: notif.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
+                          border: '1px solid rgba(25, 118, 210, 0.15)',
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            backgroundColor: notif.read
+                              ? 'rgba(25, 118, 210, 0.04)'
+                              : 'rgba(25, 118, 210, 0.12)',
+                          },
+                        }}
+                      >
+                        <div style={{ marginRight: 12, fontSize: 22, marginTop: 2 }}>
+                          {getIcon(notif)}
+                        </div>
 
-                      <Box sx={{ flex: 1 }}>
-                        <ListItemText
-                          secondaryTypographyProps={{ component: 'div' }}
-                          primaryTypographyProps={{ component: 'div' }}
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography
-                                component="span"
-                                variant="subtitle2"
-                                sx={{
-                                  fontWeight: notif.read ? 600 : 900,
-                                  color: notif.read ? 'text.secondary' : 'text.primary',
-                                }}
-                              >
-                                {formatTitle(notif)}
-                              </Typography>
-
-                              {/* ✅ Badge para scope si no es articulo */}
-                              {notif.scope === 'insumo' && (
-                                <Chip
-                                  label="Insumo"
-                                  size="small"
-                                  sx={{
-                                    height: 18,
-                                    fontSize: '0.7rem',
-                                    bgcolor: 'info.light',
-                                    color: 'info.contrastText',
-                                  }}
-                                />
-                              )}
-                            </Box>
-                          }
-                          secondary={
-                            <Box component="span">
-                              {notif.message && (
+                        <Box sx={{ flex: 1 }}>
+                          <ListItemText
+                            secondaryTypographyProps={{ component: 'div' }}
+                            primaryTypographyProps={{ component: 'div' }}
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Typography
                                   component="span"
-                                  variant="body2"
+                                  variant="subtitle2"
                                   sx={{
-                                    display: 'block',
-                                    whiteSpace: 'pre-line',
-                                    mt: 0.5,
-                                    color: 'text.secondary',
+                                    fontWeight: notif.read ? 600 : 900,
+                                    color: notif.read ? 'text.secondary' : 'text.primary',
                                   }}
                                 >
-                                  {notif.message}
+                                  {formatTitle(notif)}
                                 </Typography>
-                              )}
 
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                sx={{
-                                  display: 'block',
-                                  mt: 0.75,
-                                  opacity: 0.8,
-                                  color: 'text.disabled',
-                                }}
-                              >
-                                {formatDate(notif.created_at)}
-                              </Typography>
-
-                              {/* ✅ Botón Deshacer si aplica */}
-                              {canUndo(notif) && (
-                                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                                  <Button
+                                {/* ✅ Badge para scope si es insumo */}
+                                {notif.scope === 'insumo' && (
+                                  <Chip
+                                    label="Insumo"
                                     size="small"
-                                    variant="outlined"
-                                    color="warning"
-                                    startIcon={<UndoIcon />}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      undoUiNotif(notif);
+                                    sx={{
+                                      height: 18,
+                                      fontSize: '0.7rem',
+                                      bgcolor: 'info.light',
+                                      color: 'info.contrastText',
                                     }}
-                                    sx={{ textTransform: 'none' }}
+                                  />
+                                )}
+                              </Box>
+                            }
+                            secondary={
+                              <Box component="span">
+                                {notif.message && (
+                                  <Typography
+                                    component="span"
+                                    variant="body2"
+                                    sx={{
+                                      display: 'block',
+                                      whiteSpace: 'pre-line',
+                                      mt: 0.5,
+                                      color: 'text.secondary',
+                                    }}
                                   >
-                                    Deshacer
-                                  </Button>
-                                </Box>
-                              )}
-                            </Box>
-                          }
-                        />
-                      </Box>
-                    </ListItemButton>
-                  </ListItem>
-                  {
-                    uiNotifs.length > 0 && notifications.length > 0 && (
-                      <Divider sx={{ my: 2 }}>
-                        <Chip label="Sistema" size="small" />
-                      </Divider>
-                    )
-                  }
+                                    {notif.message}
+                                  </Typography>
+                                )}
+
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  sx={{
+                                    display: 'block',
+                                    mt: 0.75,
+                                    opacity: 0.8,
+                                    color: 'text.disabled',
+                                  }}
+                                >
+                                  {formatDate(notif.created_at)}
+                                </Typography>
+
+                                {/* ✅ Botón Deshacer SOLO para discontinue */}
+                                {canUndo(notif) && (
+                                  <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="warning"
+                                      startIcon={<UndoIcon />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        undoUiNotif(notif);
+                                      }}
+                                      sx={{ textTransform: 'none' }}
+                                    >
+                                      Deshacer
+                                    </Button>
+                                  </Box>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </Box>
+                      </ListItemButton>
+                    </ListItem>
+                  );
                 }
-                // Backend notif
+
+                // ✅ Backend notif (código existente sin cambios)
                 const busy = rowBusy[notif.id] || '';
                 const csId = pickChangeSetId(notif);
                 const hasCS = !!csId;
@@ -642,29 +631,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                             sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {/* Descomentá si querés acciones backend
-                            <Button
-                              size="small"
-                              variant="contained"
-                              startIcon={busy === 'apply' ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}
-                              disabled={buttonsDisabled}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => { e.stopPropagation(); acceptAndApplyInline(notif); }}
-                            >
-                              {busy === 'apply' ? 'Aplicando…' : 'Aceptar y aplicar'}
-                            </Button>
-
-                            <Button
-                              size="small"
-                              color="error"
-                              startIcon={busy === 'reject' ? <CircularProgress size={14} color="inherit" /> : <ThumbDownAltIcon />}
-                              disabled={buttonsDisabled}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => { e.stopPropagation(); rejectInline(notif); }}
-                            >
-                              {busy === 'reject' ? 'Rechazando…' : 'Rechazar'}
-                            </Button>
-                            */}
+                            {/* Acciones backend comentadas */}
                           </Box>
                         )}
                       </Box>
@@ -672,6 +639,11 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   </ListItem>
                 );
               })}
+              {uiNotifs.length > 0 && notifications.length > 0 && (
+                <Divider sx={{ my: 2 }}>
+                  <Chip label="Sistema" size="small" />
+                </Divider>
+              )}
             </List>
           )}
         </div>
@@ -679,409 +651,3 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     </>
   );
 }
-
-
-
-
-
-// /* eslint-disable no-unused-vars */
-// // src/componentes/NotificationsPanel.jsx
-// // ✅ VERSIÓN PERMANENTE - Las notificaciones NUNCA se borran
-
-// import React, { useState, useEffect, useCallback, useMemo } from 'react';
-// import {
-//   Drawer,
-//   IconButton,
-//   Typography,
-//   Box,
-//   List,
-//   ListItem,
-//   ListItemText,
-//   Chip,
-//   Divider,
-//   Badge,
-// } from '@mui/material';
-// import CloseIcon from '@mui/icons-material/Close';
-
-// // Iconos para tipos de notificación
-// import StarIcon from '@mui/icons-material/Star';
-// import StarBorderIcon from '@mui/icons-material/StarBorder';
-// import DeleteIcon from '@mui/icons-material/Delete';
-// import EditIcon from '@mui/icons-material/Edit';
-// import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-// import AddCircleIcon from '@mui/icons-material/AddCircle';
-// import InfoIcon from '@mui/icons-material/Info';
-// import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-// import WarningIcon from '@mui/icons-material/Warning';
-// import ErrorIcon from '@mui/icons-material/Error';
-
-// const STORAGE_KEY = 'lazarillo:uiNotifs';
-// const MAX_NOTIFS = 500; // Aumentado porque no se borran
-
-// /* ===================== Helpers ===================== */
-
-// function getStorageKey(businessId) {
-//   return `${STORAGE_KEY}:${businessId}`;
-// }
-
-// function loadNotifications(businessId) {
-//   if (!businessId) return [];
-//   try {
-//     const key = getStorageKey(businessId);
-//     const raw = localStorage.getItem(key);
-//     if (!raw) return [];
-//     const parsed = JSON.parse(raw);
-//     return Array.isArray(parsed) ? parsed : [];
-//   } catch (err) {
-//     console.warn('[NotificationsPanel] Error cargando notificaciones:', err);
-//     return [];
-//   }
-// }
-
-// function saveNotifications(businessId, notifications) {
-//   if (!businessId) return;
-//   try {
-//     const key = getStorageKey(businessId);
-//     // Mantener solo las últimas MAX_NOTIFS
-//     const toSave = notifications.slice(0, MAX_NOTIFS);
-//     localStorage.setItem(key, JSON.stringify(toSave));
-//   } catch (err) {
-//     console.warn('[NotificationsPanel] Error guardando notificaciones:', err);
-//   }
-// }
-
-// // Hash simple para deduplicación por contenido
-// function simpleHash(str) {
-//   let hash = 0;
-//   for (let i = 0; i < str.length; i++) {
-//     const char = str.charCodeAt(i);
-//     hash = (hash << 5) - hash + char;
-//     hash = hash & hash;
-//   }
-//   return hash.toString(36);
-// }
-
-// function getSignature(notif) {
-//   const key = [
-//     notif.kind,
-//     notif.scope,
-//     JSON.stringify(notif.payload?.groupId || ''),
-//     notif.title,
-//     notif.message,
-//   ].join('|');
-//   return simpleHash(key);
-// }
-
-// /* ===================== Iconos ===================== */
-
-// function getNotificationIcon(kind) {
-//   switch (kind) {
-//     case 'group_favorite_set':
-//       return <StarIcon sx={{ color: '#f59e0b' }} />;
-//     case 'group_favorite_unset':
-//       return <StarBorderIcon sx={{ color: '#9ca3af' }} />;
-//     case 'group_delete':
-//       return <DeleteIcon sx={{ color: '#ef4444' }} />;
-//     case 'group_rename':
-//       return <EditIcon sx={{ color: '#3b82f6' }} />;
-//     case 'group_move_division':
-//       return <SwapHorizIcon sx={{ color: '#8b5cf6' }} />;
-//     case 'group_create':
-//       return <AddCircleIcon sx={{ color: '#10b981' }} />;
-//     case 'success':
-//       return <CheckCircleIcon sx={{ color: '#10b981' }} />;
-//     case 'warning':
-//       return <WarningIcon sx={{ color: '#f59e0b' }} />;
-//     case 'error':
-//       return <ErrorIcon sx={{ color: '#ef4444' }} />;
-//     default:
-//       return <InfoIcon sx={{ color: '#6b7280' }} />;
-//   }
-// }
-
-// /* ===================== Formatters ===================== */
-
-// function formatTitle(notif) {
-//   const scope = notif.scope || '';
-//   const title = notif.title || '';
-  
-//   if (!scope) return title;
-  
-//   // Determinar si es artículo o insumo
-//   const isInsumo = scope === 'insumo';
-//   const prefix = isInsumo ? '[Insumos]' : '[Artículos]';
-  
-//   return `${prefix} ${title}`;
-// }
-
-// function formatTimestamp(isoStr) {
-//   if (!isoStr) return '';
-//   try {
-//     const date = new Date(isoStr);
-//     const now = new Date();
-//     const diffMs = now - date;
-//     const diffMins = Math.floor(diffMs / 60000);
-    
-//     if (diffMins < 1) return 'Hace un momento';
-//     if (diffMins < 60) return `Hace ${diffMins} min`;
-    
-//     const diffHours = Math.floor(diffMins / 60);
-//     if (diffHours < 24) return `Hace ${diffHours}h`;
-    
-//     const diffDays = Math.floor(diffHours / 24);
-//     if (diffDays < 7) return `Hace ${diffDays}d`;
-    
-//     // Formato corto para fechas antiguas
-//     return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-//   } catch {
-//     return '';
-//   }
-// }
-
-// /* ===================== Componente Principal ===================== */
-
-// export default function NotificationsPanel({ open, onClose, businessId }) {
-//   const [notifications, setNotifications] = useState([]);
-
-//   // Cargar notificaciones al montar o cambiar businessId
-//   useEffect(() => {
-//     if (!businessId) {
-//       setNotifications([]);
-//       return;
-//     }
-//     const loaded = loadNotifications(businessId);
-//     setNotifications(loaded);
-//   }, [businessId]);
-
-//   // Escuchar eventos ui:action
-//   useEffect(() => {
-//     const handleUiAction = (event) => {
-//       const detail = event.detail;
-//       if (!detail || !businessId) return;
-
-//       // Validar que sea del negocio correcto
-//       if (detail.businessId && String(detail.businessId) !== String(businessId)) {
-//         return;
-//       }
-
-//       const newNotif = {
-//         id: detail.actionId || `notif_${Date.now()}_${Math.random()}`,
-//         kind: detail.kind || 'info',
-//         scope: detail.scope || '',
-//         title: detail.title || 'Acción realizada',
-//         message: detail.message || '',
-//         createdAt: detail.createdAt || new Date().toISOString(),
-//         payload: detail.payload || {},
-//         read: false, // Por compatibilidad, aunque no se usa
-//       };
-
-//       setNotifications((prev) => {
-//         // Deduplicar por ID
-//         if (prev.some((n) => n.id === newNotif.id)) {
-//           return prev;
-//         }
-
-//         // Deduplicar por signature en ventana de 2 segundos
-//         const signature = getSignature(newNotif);
-//         const recentMatch = prev.find((n) => {
-//           if (getSignature(n) !== signature) return false;
-//           const age = Date.now() - new Date(n.createdAt).getTime();
-//           return age < 2000; // 2 segundos
-//         });
-
-//         if (recentMatch) {
-//           console.log('[NotificationsPanel] Notificación duplicada ignorada:', signature);
-//           return prev;
-//         }
-
-//         // Agregar al inicio (más recientes primero)
-//         const updated = [newNotif, ...prev];
-        
-//         // Guardar en localStorage
-//         saveNotifications(businessId, updated);
-        
-//         return updated;
-//       });
-//     };
-
-//     window.addEventListener('ui:action', handleUiAction);
-//     return () => window.removeEventListener('ui:action', handleUiAction);
-//   }, [businessId]);
-
-//   // Separar notificaciones UI vs backend
-//   const { uiNotifs, backendNotifs } = useMemo(() => {
-//     const ui = [];
-//     const backend = [];
-
-//     for (const notif of notifications) {
-//       // Consideramos UI si tiene scope 'articulo' o 'insumo'
-//       if (notif.scope === 'articulo' || notif.scope === 'insumo') {
-//         ui.push(notif);
-//       } else {
-//         backend.push(notif);
-//       }
-//     }
-
-//     return { uiNotifs: ui, backendNotifs: backend };
-//   }, [notifications]);
-
-//   const totalCount = notifications.length;
-
-//   return (
-//     <Drawer
-//       anchor="right"
-//       open={open}
-//       onClose={onClose}
-//       PaperProps={{
-//         sx: {
-//           width: { xs: '100%', sm: 400 },
-//           maxWidth: '100%',
-//         },
-//       }}
-//     >
-//       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-//         <Typography variant="h6" component="h2">
-//           Notificaciones
-//           {totalCount > 0 && (
-//             <Chip
-//               label={totalCount}
-//               size="small"
-//               color="primary"
-//               sx={{ ml: 1 }}
-//             />
-//           )}
-//         </Typography>
-//         <IconButton onClick={onClose} size="small">
-//           <CloseIcon />
-//         </IconButton>
-//       </Box>
-
-//       <Divider />
-
-//       {/* Info: notificaciones permanentes */}
-//       <Box sx={{ p: 2, bgcolor: '#f3f4f6' }}>
-//         <Typography variant="caption" color="text.secondary">
-//           📌 Las notificaciones se mantienen permanentemente como historial de acciones.
-//         </Typography>
-//       </Box>
-
-//       <Box sx={{ flex: 1, overflow: 'auto' }}>
-//         {totalCount === 0 ? (
-//           <Box sx={{ p: 3, textAlign: 'center' }}>
-//             <Typography variant="body2" color="text.secondary">
-//               No hay notificaciones
-//             </Typography>
-//           </Box>
-//         ) : (
-//           <List sx={{ p: 0 }}>
-//             {/* Notificaciones UI (acciones de agrupaciones) */}
-//             {uiNotifs.length > 0 && (
-//               <>
-//                 <Box sx={{ px: 2, py: 1, bgcolor: '#fef3c7' }}>
-//                   <Typography variant="caption" fontWeight="600" color="text.secondary">
-//                     🎯 ACCIONES DE AGRUPACIONES
-//                   </Typography>
-//                 </Box>
-//                 {uiNotifs.map((notif, index) => (
-//                   <ListItem
-//                     key={notif.id || index}
-//                     sx={{
-//                       borderBottom: '1px solid #f3f4f6',
-//                       '&:hover': { bgcolor: '#f9fafb' },
-//                       py: 1.5,
-//                     }}
-//                   >
-//                     <Box sx={{ mr: 2, display: 'flex', alignItems: 'center' }}>
-//                       {getNotificationIcon(notif.kind)}
-//                     </Box>
-
-//                     <ListItemText
-//                       primary={
-//                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-//                           <Typography variant="body2" fontWeight="500">
-//                             {formatTitle(notif)}
-//                           </Typography>
-//                           {notif.scope === 'insumo' && (
-//                             <Chip
-//                               label="Insumo"
-//                               size="small"
-//                               variant="outlined"
-//                               sx={{
-//                                 height: 20,
-//                                 fontSize: '0.7rem',
-//                                 borderColor: '#9ca3af',
-//                                 color: '#6b7280',
-//                               }}
-//                             />
-//                           )}
-//                         </Box>
-//                       }
-//                       secondary={
-//                         <Box sx={{ mt: 0.5 }}>
-//                           <Typography variant="body2" color="text.primary" sx={{ mb: 0.5 }}>
-//                             {notif.message}
-//                           </Typography>
-//                           <Typography variant="caption" color="text.secondary">
-//                             {formatTimestamp(notif.createdAt)}
-//                           </Typography>
-//                         </Box>
-//                       }
-//                     />
-//                   </ListItem>
-//                 ))}
-//               </>
-//             )}
-
-//             {/* Separador si hay ambos tipos */}
-//             {uiNotifs.length > 0 && backendNotifs.length > 0 && (
-//               <Divider sx={{ my: 2 }} />
-//             )}
-
-//             {/* Notificaciones Backend (sync, errores, etc) */}
-//             {backendNotifs.length > 0 && (
-//               <>
-//                 <Box sx={{ px: 2, py: 1, bgcolor: '#e0f2fe' }}>
-//                   <Typography variant="caption" fontWeight="600" color="text.secondary">
-//                     🔔 NOTIFICACIONES DEL SISTEMA
-//                   </Typography>
-//                 </Box>
-//                 {backendNotifs.map((notif, index) => (
-//                   <ListItem
-//                     key={notif.id || index}
-//                     sx={{
-//                       borderBottom: '1px solid #f3f4f6',
-//                       '&:hover': { bgcolor: '#f9fafb' },
-//                       py: 1.5,
-//                     }}
-//                   >
-//                     <Box sx={{ mr: 2, display: 'flex', alignItems: 'center' }}>
-//                       {getNotificationIcon(notif.kind || notif.type)}
-//                     </Box>
-
-//                     <ListItemText
-//                       primary={
-//                         <Typography variant="body2" fontWeight="500">
-//                           {notif.title}
-//                         </Typography>
-//                       }
-//                       secondary={
-//                         <Box sx={{ mt: 0.5 }}>
-//                           <Typography variant="body2" color="text.primary" sx={{ mb: 0.5 }}>
-//                             {notif.message}
-//                           </Typography>
-//                           <Typography variant="caption" color="text.secondary">
-//                             {formatTimestamp(notif.createdAt)}
-//                           </Typography>
-//                         </Box>
-//                       }
-//                     />
-//                   </ListItem>
-//                 ))}
-//               </>
-//             )}
-//           </List>
-//         )}
-//       </Box>
-//     </Drawer>
-//   );
-// }

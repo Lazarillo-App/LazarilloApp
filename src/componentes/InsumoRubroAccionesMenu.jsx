@@ -335,24 +335,22 @@ export default function InsumoRubroAccionesMenu({
             </MenuItem>,
 
             // 2️⃣ Quitar de esta agrupación
-            currentGroupId && !isInDiscontinuadosView && !isTodoView && (
-              <MenuItem key="quitar" onClick={handleQuitarDeActual}>
-                <ListItemIcon>
-                  <UndoIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="Quitar de esta agrupación" />
-              </MenuItem>
-            ),
-
-            // 2B - Quitar del TODO
-            isTodoView && (
-              <MenuItem key="quitar-todo" onClick={handleQuitarDelTodo}>
-                <ListItemIcon>
-                  <RemoveCircleOutlineIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="Quitar este rubro de Sin agrupación" />
-              </MenuItem>
-            ),
+            <MenuItem
+              key="quitar"
+              onClick={handleQuitarDeActual}
+              disabled={isTodoView} // ✅ Deshabilitar si está en TODO
+            >
+              <ListItemIcon>
+                <UndoIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  isTodoView
+                    ? "Ya está en Sin agrupación"
+                    : "Quitar de esta agrupación"
+                }
+              />
+            </MenuItem>,
 
             // Divider
             <Divider key="divider" />,

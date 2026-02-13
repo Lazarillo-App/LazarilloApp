@@ -204,35 +204,61 @@ function InsumosSidebar({
     return '';
   }, [opcionesSelect, selectedGroupId, todoGroupId]);
 
-  // ✅ Auto-fix: si cambian las opciones (por división) y el grupo actual ya no es válido,
-  // elegir uno válido y resetear rubro, etc. como si el usuario lo hubiera cambiado.
   useEffect(() => {
     const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
 
+    // 🔴 Si no hay opciones, limpiar selección
     if (!opts.length) {
       if (selectedGroupId) {
+        console.log('[InsumosSidebar] 🔄 Sin opciones, limpiando selección');
         onSelectGroupId?.(null);
         setRubroSeleccionado?.(null);
-        onManualPick?.();
       }
       return;
     }
 
     const currentId = selectedGroupId != null ? Number(selectedGroupId) : null;
-    const exists = currentId != null && opts.some(o => Number(o.id) === currentId);
 
-    if (exists) return;
+    // ✅ Si NO hay grupo seleccionado, elegir default
+    if (currentId === null) {
+      const todoIdNum = Number(todoGroupId);
+      const todoOpt = Number.isFinite(todoIdNum)
+        ? opts.find(o => Number(o.id) === todoIdNum)
+        : null;
 
-    // elegir default: Principal -> TODO si existe, sino primera opción
+      const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
+
+      if (next) {
+        console.log('[InsumosSidebar] 📌 Seleccionando default:', next.nombre);
+        onSelectGroupId?.(Number(next.id));
+        setRubroSeleccionado?.(null);
+      }
+      return;
+    }
+
+    // ✅ Si el grupo actual EXISTE en las opciones, NO hacer nada
+    const exists = opts.some(o => Number(o.id) === currentId);
+    if (exists) {
+      console.log('[InsumosSidebar] ✅ Grupo actual válido:', currentId);
+      return;
+    }
+
+    // 🔴 El grupo actual ya NO está en las opciones -> elegir alternativa
+    console.log('[InsumosSidebar] ⚠️ Grupo actual inválido, buscando alternativa:', currentId);
+
     const todoIdNum = Number(todoGroupId);
-    const todoOpt =
-      Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
+    const todoOpt = Number.isFinite(todoIdNum)
+      ? opts.find(o => Number(o.id) === todoIdNum)
+      : null;
 
     const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
 
-    onSelectGroupId?.(next ? Number(next.id) : null);
-    setRubroSeleccionado?.(null);
-    onManualPick?.();
+    if (next) {
+      console.log('[InsumosSidebar] 🔄 Cambiando a:', next.nombre);
+      onSelectGroupId?.(Number(next.id));
+      setRubroSeleccionado?.(null);
+      onManualPick?.();
+    }
   }, [
     opcionesSelect,
     selectedGroupId,
@@ -242,7 +268,12 @@ function InsumosSidebar({
     isMainDivision,
     todoGroupId
   ]);
-
+console.log('[InsumosSidebar] 🔍 Debug:', {
+  opcionesSelectCount: opcionesSelect.length,
+  selectedGroupId,
+  exists: opcionesSelect.some(o => Number(o.id) === Number(selectedGroupId)),
+  opciones: opcionesSelect.map(o => ({ id: o.id, nombre: o.nombre })),
+});
   /* ===================== ActiveIds ===================== */
   const activeIds = useMemo(() => {
     if (visibleIds && visibleIds.size) return visibleIds;

@@ -847,8 +847,7 @@ function SidebarCategorias({
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <small style={{ opacity: 0.65 }}>
-                    {count}
-                    {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
+                    {typeof monto === 'number' && monto > 0 ? `  ${fmtCurrency(monto)}` : ''}
                   </small>
 
                   <SubrubroAccionesMenu

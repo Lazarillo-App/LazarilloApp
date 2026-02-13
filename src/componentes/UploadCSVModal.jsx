@@ -23,7 +23,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import CloseIcon from '@mui/icons-material/Close';
 
 // Modal de instrucciones
-function InstructionsModal({ open, onClose, image1Url, image2Url }) {
+function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors }) {
   const [activeStep] = useState(0);
 
   const steps = [
@@ -54,7 +54,7 @@ function InstructionsModal({ open, onClose, image1Url, image2Url }) {
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Box display="flex" alignItems="center" gap={1}>
-            <HelpOutlineIcon color="primary" />
+            <HelpOutlineIcon sx={{ color: themeColors.primary }} />
             <Typography variant="h6">
               ¿Cómo exportar el archivo desde MaxiRest?
             </Typography>
@@ -126,7 +126,17 @@ function InstructionsModal({ open, onClose, image1Url, image2Url }) {
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} variant="contained" color="primary">
+        <Button 
+          onClick={onClose} 
+          variant="contained"
+          sx={{
+            bgcolor: themeColors.primary,
+            '&:hover': {
+              bgcolor: themeColors.primary,
+              filter: 'brightness(0.9)',
+            },
+          }}
+        >
           Entendido
         </Button>
       </DialogActions>
@@ -140,8 +150,8 @@ export default function UploadCSVModal({
   onClose, 
   businessId, 
   onSuccess,
-  instructionImage1, // URL de la primera imagen
-  instructionImage2, // URL de la segunda imagen
+  instructionImage1,
+  instructionImage2,
 }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -149,6 +159,25 @@ export default function UploadCSVModal({
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+
+  // ✅ Obtener colores del tema del negocio
+  const themeColors = React.useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        primary: '#1976d2',
+        secondary: '#10b981',
+      };
+    }
+
+    const root = document.documentElement;
+    const styles = getComputedStyle(root);
+    
+    return {
+      primary: styles.getPropertyValue('--color-primary')?.trim() || '#1976d2',
+      secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
+      onPrimary: styles.getPropertyValue('--on-primary')?.trim() || '#ffffff',
+    };
+  }, []);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -183,21 +212,51 @@ export default function UploadCSVModal({
       );
 
       const result = await response.json();
+      
+      console.log('[UploadCSVModal] Respuesta del servidor:', result);
 
-      if (result.ok) {
+      if (result.ok || response.ok) {
+        // ✅ Capturar datos de múltiples formatos de respuesta
+        const summary = result.summary || result.data?.summary || result;
+        
+        const inserted = Number(
+          summary.inserted || 
+          summary.insertados || 
+          summary.rows_inserted ||
+          summary.ventas_insertadas ||
+          summary.count ||
+          0
+        );
+
+        const total = Number(
+          summary.total_rows || 
+          summary.total || 
+          summary.rows_processed ||
+          summary.filas_procesadas ||
+          inserted
+        );
+
+        const failed = Number(
+          summary.failed || 
+          summary.errors || 
+          summary.fallidos ||
+          0
+        );
+
+        console.log('[UploadCSVModal] Datos procesados:', { inserted, total, failed });
+
         setProgress({
-          inserted: result.summary.inserted || 0,
-          total: result.summary.total_rows || 0,
-          failed: result.summary.failed || 0,
+          inserted,
+          total: total || inserted, // Si no hay total, usar inserted
+          failed,
         });
         setSuccess(true);
 
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-          handleClose();
-        }, 8000);
+        // ✅ YA NO cerramos automáticamente - el usuario tiene control
+        // if (onSuccess) onSuccess();
+        
       } else {
-        throw new Error(result.message || 'Error al importar CSV');
+        throw new Error(result.message || result.error || 'Error al importar CSV');
       }
     } catch (err) {
       console.error('Error uploading CSV:', err);
@@ -209,6 +268,11 @@ export default function UploadCSVModal({
 
   const handleClose = () => {
     if (!uploading) {
+      // ✅ Si hubo éxito, ejecutar onSuccess antes de cerrar
+      if (success && onSuccess) {
+        onSuccess();
+      }
+      
       setFile(null);
       setProgress(null);
       setError(null);
@@ -227,24 +291,39 @@ export default function UploadCSVModal({
         <DialogTitle>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Box display="flex" alignItems="center" gap={1}>
-              <CloudUploadIcon color="primary" />
+              <CloudUploadIcon sx={{ color: themeColors.primary }} />
               <Typography variant="h6">
-                Importar Ventas desde Archivo
+                {success ? '✓ Importación Completada' : 'Importar Ventas desde Archivo'}
               </Typography>
             </Box>
-            <IconButton
-              onClick={() => setShowInstructions(true)}
-              color="primary"
-              title="¿Cómo exportar desde MaxiRest?"
-              sx={{
-                backgroundColor: '#e3f2fd',
-                '&:hover': {
-                  backgroundColor: '#bbdefb',
-                },
-              }}
-            >
-              <HelpOutlineIcon />
-            </IconButton>
+            <Box display="flex" gap={1}>
+              {!success && (
+                <IconButton
+                  onClick={() => setShowInstructions(true)}
+                  sx={{
+                    color: themeColors.primary,
+                    backgroundColor: `${themeColors.primary}15`,
+                    '&:hover': {
+                      backgroundColor: `${themeColors.primary}25`,
+                    },
+                  }}
+                  title="¿Cómo exportar desde MaxiRest?"
+                >
+                  <HelpOutlineIcon />
+                </IconButton>
+              )}
+              <IconButton
+                onClick={handleClose}
+                disabled={uploading}
+                size="small"
+                sx={{
+                  color: uploading ? 'text.disabled' : 'text.secondary',
+                }}
+                title={uploading ? 'Esperando...' : 'Cerrar'}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
           </Box>
         </DialogTitle>
 
@@ -266,7 +345,7 @@ export default function UploadCSVModal({
                 </Typography>
                 <Typography variant="caption" display="block" sx={{ mb: 1 }}>
                   Haz clic en el ícono de ayuda{' '}
-                  <HelpOutlineIcon sx={{ fontSize: 16, verticalAlign: 'middle', color: '#1976d2' }} />{' '}
+                  <HelpOutlineIcon sx={{ fontSize: 16, verticalAlign: 'middle', color: themeColors.primary }} />{' '}
                   arriba para ver las instrucciones detalladas paso a paso sobre cómo exportar el archivo desde MaxiRest.
                 </Typography>
               </Alert>
@@ -276,23 +355,23 @@ export default function UploadCSVModal({
             {!file && !success && (
               <Box
                 sx={{
-                  border: '2px dashed #1976d2',
+                  border: `2px dashed ${themeColors.primary}`,
                   borderRadius: 2,
                   p: 5,
                   textAlign: 'center',
                   cursor: 'pointer',
-                  backgroundColor: '#f5f9ff',
+                  backgroundColor: `${themeColors.primary}08`,
                   transition: 'all 0.3s',
                   '&:hover': {
-                    borderColor: '#1565c0',
-                    backgroundColor: '#e3f2fd',
+                    borderColor: themeColors.primary,
+                    backgroundColor: `${themeColors.primary}15`,
                     transform: 'scale(1.01)',
                   },
                 }}
                 onClick={() => document.getElementById('csv-file-input').click()}
               >
-                <CloudUploadIcon sx={{ fontSize: 64, color: '#1976d2', mb: 2 }} />
-                <Typography variant="h6" color="primary" gutterBottom fontWeight="medium">
+                <CloudUploadIcon sx={{ fontSize: 64, color: themeColors.primary, mb: 2 }} />
+                <Typography variant="h6" sx={{ color: themeColors.primary }} gutterBottom fontWeight="medium">
                   Selecciona tu archivo
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -317,7 +396,17 @@ export default function UploadCSVModal({
             {/* Estado: Archivo seleccionado */}
             {file && !success && (
               <Box>
-                <Alert severity="success" sx={{ mb: 2 }}>
+                <Alert 
+                  severity="success" 
+                  sx={{ 
+                    mb: 2,
+                    bgcolor: `${themeColors.secondary}15`,
+                    color: themeColors.secondary,
+                    '& .MuiAlert-icon': {
+                      color: themeColors.secondary,
+                    },
+                  }}
+                >
                   <Typography variant="body2" fontWeight="medium">
                     📄 Archivo seleccionado: {file.name}
                   </Typography>
@@ -332,7 +421,7 @@ export default function UploadCSVModal({
                       <Typography variant="body2" fontWeight="medium">
                         Procesando...
                       </Typography>
-                      <Typography variant="body2" color="primary" fontWeight="bold">
+                      <Typography variant="body2" sx={{ color: themeColors.primary, fontWeight: 'bold' }}>
                         {progressPercent}%
                       </Typography>
                     </Box>
@@ -343,6 +432,9 @@ export default function UploadCSVModal({
                         height: 10, 
                         borderRadius: 1,
                         backgroundColor: '#e0e0e0',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: themeColors.primary,
+                        },
                       }}
                     />
                     <Typography variant="caption" align="center" display="block" sx={{ mt: 1 }} color="text.secondary">
@@ -360,22 +452,54 @@ export default function UploadCSVModal({
 
             {/* Estado: Éxito */}
             {success && progress && (
-              <Alert severity="success" icon={<CheckCircleIcon fontSize="large" />}>
-                <Typography variant="h6" gutterBottom fontWeight="bold">
-                  ✅ Importación exitosa
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  Se importaron <strong>{progress.inserted}</strong> registros correctamente
-                  {progress.failed > 0 && (
-                    <span>
-                      {' '}· <span style={{ color: '#d32f2f' }}>{progress.failed} fallidos</span>
-                    </span>
+              <Box>
+                <Alert 
+                  severity="success" 
+                  icon={<CheckCircleIcon fontSize="large" />}
+                  sx={{
+                    bgcolor: `${themeColors.secondary}15`,
+                    color: themeColors.secondary,
+                    '& .MuiAlert-icon': {
+                      color: themeColors.secondary,
+                    },
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom fontWeight="bold">
+                    ✅ Importación completada
+                  </Typography>
+                  {progress.total > 0 && progress.total !== progress.inserted && (
+                    <Typography variant="caption" display="block" color="text.secondary">
+                      Total de filas procesadas: {progress.total}
+                    </Typography>
                   )}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                  Esta ventana se cerrará automáticamente en unos segundos...
-                </Typography>
-              </Alert>
+                  {progress.failed > 0 && (
+                    <Typography variant="caption" display="block" sx={{ color: '#d32f2f', fontWeight: 'bold', mt: 0.5 }}>
+                      ⚠️ {progress.failed} registro{progress.failed === 1 ? '' : 's'} no pudo{progress.failed === 1 ? '' : 'ieron'} ser importado{progress.failed === 1 ? '' : 's'}
+                    </Typography>
+                  )}
+                </Alert>
+
+                {/* Información adicional del archivo */}
+                <Box 
+                  sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: `${themeColors.primary}08`,
+                    borderRadius: 1,
+                    border: `1px solid ${themeColors.primary}20`
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    📄 Archivo procesado:
+                  </Typography>
+                  <Typography variant="body2" fontWeight="medium">
+                    {file.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Tamaño: {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </Typography>
+                </Box>
+              </Box>
             )}
 
             {/* Estado: Error */}
@@ -393,23 +517,55 @@ export default function UploadCSVModal({
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-          <Button 
-            onClick={handleClose} 
-            disabled={uploading}
-            variant="outlined"
-          >
-            {success ? 'Cerrar' : 'Cancelar'}
-          </Button>
-          {!success && (
-            <Button
-              onClick={handleUpload}
-              disabled={!file || uploading}
+          {/* Si hubo éxito, mostrar botón para finalizar */}
+          {success ? (
+            <Button 
+              onClick={handleClose}
               variant="contained"
-              startIcon={uploading ? null : <CloudUploadIcon />}
+              fullWidth
               size="large"
+              sx={{
+                bgcolor: themeColors.secondary,
+                color: themeColors.onPrimary,
+                '&:hover': {
+                  bgcolor: themeColors.secondary,
+                  filter: 'brightness(0.9)',
+                },
+              }}
             >
-              {uploading ? 'Importando...' : 'Importar Ventas'}
+              ✓ Finalizar y actualizar datos
             </Button>
+          ) : (
+            <>
+              <Button 
+                onClick={handleClose} 
+                disabled={uploading}
+                variant="outlined"
+                sx={{
+                  borderColor: 'text.secondary',
+                  color: 'text.secondary',
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpload}
+                disabled={!file || uploading}
+                variant="contained"
+                startIcon={uploading ? null : <CloudUploadIcon />}
+                size="large"
+                sx={{
+                  bgcolor: themeColors.primary,
+                  color: themeColors.onPrimary,
+                  '&:hover': {
+                    bgcolor: themeColors.primary,
+                    filter: 'brightness(0.9)',
+                  },
+                }}
+              >
+                {uploading ? 'Importando...' : 'Importar Ventas'}
+              </Button>
+            </>
           )}
         </DialogActions>
       </Dialog>
@@ -420,6 +576,7 @@ export default function UploadCSVModal({
         onClose={() => setShowInstructions(false)}
         image1Url={instructionImage1}
         image2Url={instructionImage2}
+        themeColors={themeColors}
       />
     </>
   );

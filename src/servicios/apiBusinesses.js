@@ -404,129 +404,37 @@ uploadLogo: async (id, file) => {
     };
   },
 
-  // // ───────── Ventas (requieren X-Business-Id, no llevan /:id en la URL base) ─────────
-  // salesSummary: (id, { from, to, limit = 1000 } = {}) =>
-  //   http(
-  //     `/businesses/${id}/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`,
-  //     { withBusinessId: false }
-  //   ),
-  // salesSeries: (id, articuloId, { from, to, groupBy = 'day' } = {}) =>
-  //   http(
-  //     `/businesses/${id}/sales/${encodeURIComponent(articuloId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&groupBy=${encodeURIComponent(groupBy)}`,
-  //     { withBusinessId: false }
-  //   ),
+  // ───────── ✅ NUEVO: Serie de ventas por artículo ─────────
+  /**
+   * GET /businesses/:id/sales/:articuloId?from=YYYY-MM-DD&to=YYYY-MM-DD&groupBy=day
+   * 
+   * Devuelve serie de ventas para un artículo específico de un negocio.
+   * Respuesta esperada: { total?, items: [{label, qty, amount}] }
+   * 
+   * @param {number} businessId - ID del negocio
+   * @param {number|string} articuloId - ID del artículo
+   * @param {object} options - { from, to, groupBy }
+   * @returns {Promise} Respuesta del servidor con la serie de ventas
+   */
+  salesSeries: (businessId, articuloId, { from, to, groupBy = 'day' } = {}) => {
+    if (!businessId || !articuloId || !from || !to) {
+      throw new Error('salesSeries requiere: businessId, articuloId, from, to');
+    }
 
-  // ───────── Top artículos por ventas usando /businesses/:id/sales/summary ─────────
-  // async topArticulos(businessId, { from, to, limit = 100 } = {}) {
-  //   if (!businessId) {
-  //     const bid = Number(getActiveBusinessId());
-  //     if (Number.isFinite(bid)) businessId = bid;
-  //   }
-  //   if (!businessId) {
-  //     throw new Error('businessId requerido en topArticulos');
-  //   }
+    const qs = new URLSearchParams({
+      from,
+      to,
+      groupBy,
+    });
 
-  //   // Usamos la ruta que ya tenemos en el back:
-  //   // GET /businesses/:id/sales/summary?from=...&to=...&limit=...
-  //   const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
-  //   const data = pick(raw);
-
-  //   // Normalizamos a un array "items"
-  //   const rows = Array.isArray(data?.items)
-  //     ? data.items
-  //     : Array.isArray(data?.ranking)
-  //       ? data.ranking
-  //       : Array.isArray(data?.peek)
-  //         ? data.peek
-  //         : [];
-
-  //   const items = Array.isArray(rows) ? rows : [];
-
-  //   // 🔍 log de diagnóstico: vas a ver en consola los primeros 5 registros
-  //   try {
-  //     console.log('[topArticulos] sample rows:', items.slice(0, 5));
-  //   } catch { }
-
-  //   return {
-  //     ...data,
-  //     items,
-  //   };
-  // },
-
-  // ───────── Totales simples de ventas por artículo (summary plano) ─────────
-  // async getSalesItems(businessId, { from, to, limit = 5000 } = {}) {
-  //   // Si no me pasan id, intento usar el activo
-  //   if (!businessId) {
-  //     const bid = Number(getActiveBusinessId());
-  //     if (Number.isFinite(bid)) businessId = bid;
-  //   }
-  //   if (!businessId) {
-  //     throw new Error('businessId requerido en getSalesItems');
-  //   }
-
-  //   // 🎯 CAMBIO TEMPORAL: usar CSV mientras Maxi esté deshabilitado
-  //   // 📌 Controlado por VITE_MAXI_ENABLED en .env
-  //   const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
-
-  //   if (!MAXI_ENABLED) {
-  //     // ═══════════════════════════════════════════════════════════════
-  //     // 🔴 MODO CSV (temporal)
-  //     // ═══════════════════════════════════════════════════════════════
-  //     try {
-  //       const token = localStorage.getItem('token') || '';
-  //       const url = `${BASE}/api/ventas-csv/top-articles?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${encodeURIComponent(limit)}`;
-
-  //       const response = await fetch(url, {
-  //         headers: {
-  //           Authorization: `Bearer ${token}`,
-  //           'X-Business-Id': String(businessId),
-  //         },
-  //       });
-
-  //       if (!response.ok) {
-  //         throw new Error(`Error ${response.status}`);
-  //       }
-
-  //       const result = await response.json();
-
-  //       // Transformar formato CSV a formato esperado
-  //       if (result.ok && result.articles) {
-  //         return result.articles.map(art => ({
-  //           article_id: art.article_id,
-  //           articulo_id: art.article_id,
-  //           nombre: art.article_name,
-  //           qty: parseFloat(art.total_qty) || 0,
-  //           cantidad: parseFloat(art.total_qty) || 0,
-  //           amount: parseFloat(art.total_amount) || 0,
-  //           importe: parseFloat(art.total_amount) || 0,
-  //         }));
-  //       }
-
-  //       return [];
-  //     } catch (error) {
-  //       console.error('[getSalesItems CSV] Error:', error);
-  //       return [];
-  //     }
-  //   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // 🟢 MODO MAXI (normal) - se restaura automáticamente cuando
-  //    VITE_MAXI_ENABLED=true en .env
-  // ═══════════════════════════════════════════════════════════════
-  //   const raw = await BusinessesAPI.salesSummary(businessId, { from, to, limit });
-  //   const data = pick(raw);
-
-  //   // Normalizamos a un array de filas
-  //   const rows = Array.isArray(data?.items)
-  //     ? data.items
-  //     : Array.isArray(data?.ranking)
-  //       ? data.ranking
-  //       : Array.isArray(data?.peek)
-  //         ? data.peek
-  //         : [];
-
-  //   return rows;
-  // },
+    return http(
+      `/businesses/${encodeURIComponent(businessId)}/sales/${encodeURIComponent(articuloId)}?${qs.toString()}`,
+      {
+        method: 'GET',
+        withBusinessId: false, // Ya está en la URL
+      }
+    );
+  },
 
   // Sync catálogo (Maxi → DB)
   syncNow: (id, body) =>
@@ -535,122 +443,6 @@ uploadLogo: async (id, file) => {
       body,
       withBusinessId: false,
     }),
-
-  // // Sync ventas
-  // syncSales: async (id, options = {}) => {
-  //   const {
-  //     mode = 'auto',
-  //     from = null,
-  //     to = null,
-  //     dryrun = false,
-  //     maxiToken = null,
-  //     signal = null,
-  //   } = options;
-
-  //   const body = { mode };
-  //   if (from) body.from = from;
-  //   if (to) body.to = to;
-  //   if (dryrun) body.dryrun = true;
-
-  //   const extraHeaders = {
-  //     'X-Business-Id': String(id),
-  //     ...(maxiToken ? { 'X-Maxi-Token': maxiToken } : {}),
-  //   };
-
-  //   try {
-  //     const response = await http(`/businesses/${id}/sync-sales`, {
-  //       method: 'POST',
-  //       body,
-  //       withBusinessId: false,
-  //       headers: extraHeaders,
-  //       signal,
-  //     });
-  //     return response;
-  //   } catch (error) {
-  //     console.error('[BusinessesAPI.syncSales] error:', error);
-  //     throw error;
-  //   }
-  // },
-
-  // /**
-  //  * Sincronización automática diaria (backfill + últimos días)
-  //  * POST /api/businesses/:id/sync-sales/daily-auto
-  //  */
-  // syncSalesDaily: async (id) => {
-  //   try {
-  //     const response = await http(`/businesses/${id}/sync-sales/daily-auto`, {
-  //       method: 'POST',
-  //       withBusinessId: false,
-  //     });
-  //     return response;
-  //   } catch (error) {
-  //     console.error('[BusinessesAPI.syncSalesDaily] error:', error);
-  //     throw error;
-  //   }
-  // },
-
-  // /**
-  //  * Sincronizar ventana específica de fechas
-  //  * POST /api/businesses/:id/sync-sales/window
-  //  */
-  // syncSalesWindow: async (id, { from, to, dryrun = false }) => {
-  //   if (!from || !to) {
-  //     throw new Error('from y to son requeridos');
-  //   }
-
-  //   try {
-  //     const response = await http(`/businesses/${id}/sync-sales/window`, {
-  //       method: 'POST',
-  //       body: { from, to, dryrun },
-  //       withBusinessId: false,
-  //     });
-  //     return response;
-  //   } catch (error) {
-  //     console.error('[BusinessesAPI.syncSalesWindow] error:', error);
-  //     throw error;
-  //   }
-  // },
-
-  // /**
-  //  * Backfill inicial (primeros 90 días)
-  //  * POST /api/businesses/:id/sync-sales/backfill-once
-  //  */
-  // syncSalesBackfill: async (id) => {
-  //   try {
-  //     const response = await http(`/businesses/${id}/sync-sales/backfill-once`, {
-  //       method: 'POST',
-  //       withBusinessId: false,
-  //     });
-  //     return response;
-  //   } catch (error) {
-  //     console.error('[BusinessesAPI.syncSalesBackfill] error:', error);
-  //     throw error;
-  //   }
-  // },
-
-  // // Helpers de conveniencia (front)
-  // syncSalesRange: (id, from, to, opts = {}) => {
-  //   if (!(typeof from === 'string' && typeof to === 'string')) {
-  //     return Promise.reject(new Error('from/to requeridos (YYYY-MM-DD)'));
-  //   }
-  //   return BusinessesAPI.syncSales(id, { ...opts, mode: 'range', from, to });
-  // },
-
-  // // 🔹 NUEVO: usar endpoint V2 /sync-sales/window para “Ventas 7 días”
-  // syncSalesLast7d: (id, opts = {}) => {
-  //   const { from, to } = last7dUntilYesterday();
-
-  //   return http(`/businesses/${id}/sync-sales/window`, {
-  //     method: 'POST',
-  //     withBusinessId: false,
-  //     body: {
-  //       windowDays: 7,
-  //       from,
-  //       to,
-  //       ...(opts || {}),
-  //     },
-  //   });
-  // },
 
   async getViewPrefs(businessId, { divisionId = null } = {}) {
     if (!businessId) return { ok: true, byGroup: {} };

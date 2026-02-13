@@ -25,7 +25,7 @@ const isDiscontinuadosGroup = (g) => {
 const safeUUID = () => {
   try {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  } catch {}
+  } catch { }
   return `ui_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
@@ -182,10 +182,9 @@ function ArticuloAccionesMenu({
         createdAt: new Date().toISOString(),
         ...payload,
       });
-    } catch {}
+    } catch { }
   }, [effectiveBusinessId]);
 
-  // ✅ CLAVE: discontinuar/reactivar SIN tocar agrupación seleccionada
   async function toggleDiscontinuado() {
     const idNum = articuloIdNum;
     if (!Number.isFinite(idNum)) return;
@@ -198,7 +197,9 @@ function ArticuloAccionesMenu({
 
     try {
       if (!isInDiscontinuados) {
-        // Discontinuar: agregar a Discontinuados (NO quitamos de otros grupos)
+        // ===========================
+        // ✅ DISCONTINUAR
+        // ===========================
         await httpBiz(`/agrupaciones/${discontinuadosId}/articulos`, {
           method: 'PUT',
           body: { ids: [idNum] },
@@ -211,34 +212,34 @@ function ArticuloAccionesMenu({
           baseById,
         });
 
-        notify?.(`Artículo #${idNum} marcado como discontinuado`, 'success');
-
+        // ✅ Emitir evento UI
         pushUi({
           kind: 'discontinue',
           scope: 'articulo',
-          title: `${articuloDisplayName} discontinuado`,
-          message: `“${articuloDisplayName}” se movió a Discontinuados.`,
+          title: `⛔ ${articuloDisplayName} discontinuado`,
+          message: `"${articuloDisplayName}" → Discontinuados.`,
           payload: {
             ids: [idNum],
-            originId: currentGroupId ?? null,
             discontinuadosGroupId: Number(discontinuadosId),
-            prev: {
-              fromGroupId: currentGroupId ?? null,
-              discontinuadosGroupId: Number(discontinuadosId),
-              wasInDiscontinuados: false,
+            undo: {
+              payload: {
+                prev: {
+                  fromGroupId: currentGroupId ?? null,
+                  discontinuadosGroupId: Number(discontinuadosId),
+                  wasInDiscontinuados: false,
+                },
+              },
             },
           },
         });
 
-        onDiscontinuadoChange?.(idNum, true, {
-          stay: true,
-          originGroupId: currentGroupId,
-          discontinuadosId,
-          source: 'menu',
-          name: articuloDisplayName,
-        });
+        // ✅ Llamar handler SIN navegar (stay: true)
+        onDiscontinuadoChange?.(idNum, true, { stay: true });
+
       } else {
-        // Reactivar: quitar de Discontinuados
+        // ===========================
+        // ✅ REACTIVAR
+        // ===========================
         await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
           method: 'DELETE',
         });
@@ -249,13 +250,12 @@ function ArticuloAccionesMenu({
           ids: [idNum],
         });
 
-        notify?.(`Artículo #${idNum} reactivado`, 'success');
-
+        // ✅ Emitir evento UI
         pushUi({
           kind: 'info',
           scope: 'articulo',
           title: `✅ ${articuloDisplayName} reactivado`,
-          message: `“${articuloDisplayName}” volvió a estar disponible.`,
+          message: `"${articuloDisplayName}" volvió a estar disponible.`,
           payload: {
             ids: [idNum],
             discontinuadosGroupId: Number(discontinuadosId),
@@ -267,13 +267,8 @@ function ArticuloAccionesMenu({
           },
         });
 
-        onDiscontinuadoChange?.(idNum, false, {
-          stay: true,
-          originGroupId: currentGroupId,
-          discontinuadosId,
-          source: 'menu',
-          name: articuloDisplayName,
-        });
+        // ✅ Llamar handler SIN navegar (stay: true)
+        onDiscontinuadoChange?.(idNum, false, { stay: true });
       }
 
       if (onRefetch) await onRefetch();
@@ -315,7 +310,7 @@ function ArticuloAccionesMenu({
             await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, {
               method: 'DELETE',
             });
-          } catch {}
+          } catch { }
         }
 
         onMutateGroups?.({
@@ -492,12 +487,14 @@ function ArticuloAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 2. Quitar de esta agrupación (incluye TODO) */}
-        <MenuItem onClick={quitarDeActual}>
+        { /* 2. Quitar de esta agrupación */}
+        <MenuItem onClick={quitarDeActual} disabled={isTodo}>
           <ListItemIcon>
             <UndoIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Quitar de esta agrupación</ListItemText>
+          <ListItemText>
+            {isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}
+          </ListItemText>
         </MenuItem>
 
         {/* 3. Mover a… */}

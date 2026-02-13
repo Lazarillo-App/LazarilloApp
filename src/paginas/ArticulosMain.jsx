@@ -12,9 +12,9 @@ import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from ".
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
 import { Snackbar, Alert, Button } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
+import VentasActionsMenu from '../componentes/VentasActionsMenu';
 import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import Buscador from '@/componentes/Buscador';
@@ -64,7 +64,7 @@ const esTodoGroup = (g) => {
   return (
     n === 'todo' ||
     n === 'sin agrupacion' ||
-    n === 'sin agrupaciÃ³n' ||
+    n === 'sin agrupación' ||
     n === 'sin agrupar' ||
     n === 'sin grupo'
   );
@@ -848,7 +848,7 @@ export default function ArticulosMain(props) {
       setJumpToId(id);
       scheduleJump(id);
 
-      // ðŸ†• LIMPIAR despuÃ©s de 2 segundos para evitar re-scrolls
+      //  LIMPIAR despuÃ©s de 2 segundos para evitar re-scrolls
       setTimeout(() => {
         setJumpToId(null);
       }, 800);
@@ -868,121 +868,143 @@ export default function ArticulosMain(props) {
   );
 
   const handleDiscontinuadoChange = useCallback(
-    async (rawId, isNowDiscontinuado) => {
+    async (rawId, isNowDiscontinuado, opts = {}) => {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
-      const allGroups = agrupacionesRich || [];
+      // ✅ IMPORTANTE: NO cambiar de vista
+      // El usuario se queda donde está (cualquier agrupación, incluso Sin Agrupación)
 
-      const findOriginGroup = () => {
-        return (
-          allGroups.find((g) => {
-            if (!g || !g.id) return false;
-            if (esTodoGroup(g)) return false;
-            if (isDiscontinuadosGroup(g)) return false;
-            return (g.articulos || []).some((a) => getArtId(a) === id);
-          }) || null
-        );
-      };
+      // ✅ Solo refrescar datos para que la tabla se actualice
+      try {
+        await refetchAgrupaciones();
+      } catch (e) {
+        console.error('Error refrescando agrupaciones:', e);
+      }
 
-      // ===========================
-      // âœ… DISCONTINUAR
-      // ===========================
+      // ✅ Mensaje informativo SIN navegar
       if (isNowDiscontinuado) {
-        // âœ… IMPORTANTÃSIMO: primero bloquear autopiloto
-        try { markManualPick(); } catch { }
+        showMiss(`Artículo discontinuado correctamente`);
+      } else {
+        showMiss(`Artículo reactivado correctamente`);
+      }
+    },
+    [refetchAgrupaciones, showMiss]
+  );
 
-        setDiscoOrigenById((prev) => {
-          if (prev[id]) return prev;
+  useEffect(() => {
+    const onUndo = async (ui) => {
+      const kind = ui.detail.kind;
+      const scope = ui.detail.scope;
+      const payload = ui.detail.payload || {};
 
-          const origen = findOriginGroup();
-          if (!origen) return prev;
+      if (kind !== 'discontinue' || scope !== 'articulo') return;
 
-          return { ...prev, [id]: Number(origen.id) };
-        });
+      const ids = payload?.ids || [];
+      const prev = payload?.undo?.payload?.prev || {};
+      const wasInDiscontinuados = prev.wasInDiscontinuados === true;
+      const discontinuadosGroupId = Number(prev.discontinuadosGroupId);
+      const fromGroupId = Number(prev.fromGroupId);
 
-        if (discGroup) {
-          setAgrupacionSeleccionada(discGroup);
-          setCategoriaSeleccionada(null);
-          setFiltroBusqueda('');
-          focusArticle(id, discGroup.id);
-        } else {
-          focusArticle(id);
-        }
+      console.log('🔄 [UNDO discontinue]', {
+        ids,
+        wasInDiscontinuados,
+        discontinuadosGroupId,
+        fromGroupId,
+      });
 
+      if (!ids.length) {
+        showMiss('No hay artículos para deshacer');
         return;
       }
 
-      // ===========================
-      // âœ… REACTIVAR
-      // ===========================
-      // (Opcional pero recomendado: tambiÃ©n bloquear autopiloto al volver)
-      try { markManualPick(); } catch { }
+      try {
+        if (wasInDiscontinuados) {
+          if (!Number.isFinite(discontinuadosGroupId) || discontinuadosGroupId <= 0) {
+            showMiss('No se encontró el grupo Discontinuados');
+            return;
+          }
 
-      let originId = null;
-
-      setDiscoOrigenById((prev) => {
-        originId = prev[id] ?? null;
-        if (!originId) return prev;
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-
-      if (!originId) {
-        const origen = findOriginGroup();
-        if (origen) originId = Number(origen.id);
-      }
-
-      if (originId) {
-        try {
-          await httpBiz(`/agrupaciones/${originId}/articulos`, {
+          await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos`, {
             method: 'PUT',
-            body: { ids: [id] },
+            body: { ids },
           });
 
           mutateGroups({
             type: 'append',
-            groupId: originId,
-            articulos: [{ id }],
+            groupId: discontinuadosGroupId,
+            articulos: ids.map(id => ({ id })),
             baseById: metaById,
           });
-        } catch (e) {
-          console.error('REACTIVAR_APPEND_ORIGEN_ERROR', e);
+
+          const label = ids.length === 1 ? 'Artículo devuelto' : `${ids.length} artículos devueltos`;
+          showMiss(`${label} a Discontinuados`);
+
+        } else {
+          if (!Number.isFinite(fromGroupId) || fromGroupId <= 0) {
+            for (const id of ids) {
+              try {
+                await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos/${id}`, {
+                  method: 'DELETE',
+                });
+              } catch (e) {
+                console.error(`Error quitando ${id} de Discontinuados:`, e);
+              }
+            }
+
+            mutateGroups({
+              type: 'remove',
+              groupId: discontinuadosGroupId,
+              ids,
+            });
+
+            const label = ids.length === 1 ? 'Artículo reactivado' : `${ids.length} artículos reactivados`;
+            showMiss(label);
+
+          } else {
+            await httpBiz(`/agrupaciones/${fromGroupId}/articulos`, {
+              method: 'PUT',
+              body: { ids },
+            });
+
+            for (const id of ids) {
+              try {
+                await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos/${id}`, {
+                  method: 'DELETE',
+                });
+              } catch { }
+            }
+
+            mutateGroups({
+              type: 'move',
+              fromId: discontinuadosGroupId,
+              toId: fromGroupId,
+              ids,
+              baseById: metaById,
+            });
+
+            const label = ids.length === 1 ? 'Artículo devuelto' : `${ids.length} artículos devueltos`;
+            showMiss(`${label} a su grupo original`);
+          }
         }
 
-        const originGroup =
-          allGroups.find((g) => Number(g.id) === Number(originId)) || {
-            id: originId,
-            nombre: 'AgrupaciÃ³n',
-            articulos: [],
-          };
+        await refetchAgrupaciones();
 
-        setAgrupacionSeleccionada(originGroup);
-        setCategoriaSeleccionada(null);
-        setFiltroBusqueda('');
-
-        focusArticle(id, originId);
-
-        showMiss(`ArtÃ­culo reactivado. Ahora lo ves en "${originGroup.nombre}".`);
-      } else {
-        focusArticle(id);
-        showMiss('ArtÃ­culo reactivado. Ya no estÃ¡ en "Discontinuados".');
+      } catch (error) {
+        console.error('[UNDO discontinue] Error:', error);
+        showMiss('Error al deshacer: ' + error.message);
       }
-    },
-    [
-      agrupacionesRich,
-      discGroup,
-      mutateGroups,
-      metaById,
-      focusArticle,
-      showMiss,
-      markManualPick,
-      setAgrupacionSeleccionada,
-      setCategoriaSeleccionada,
-      setFiltroBusqueda,
-    ]
-  );
+    };
+
+    window.addEventListener('ui:undo', onUndo);
+    return () => window.removeEventListener('ui:undo', onUndo);
+  }, [
+    activeBizId,
+    showMiss,
+    refetchAgrupaciones,
+    mutateGroups,
+    metaById,
+  ]);
 
   const handleDiscontinuarBloque = useCallback(
     async (idsRaw = []) => {
@@ -1388,19 +1410,16 @@ export default function ArticulosMain(props) {
         )}
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SalesPickerIcon value={rango} onChange={setRango} />
-          <Button
-            variant="contained"
-            startIcon={<CloudUploadIcon />}
-            onClick={() => setUploadModalOpen(true)}
-            sx={{ textTransform: 'none' }}
-          >
-            Importar CSV
-          </Button>
-
-          <button onClick={handleDownloadVentasCsv}>
-            Descargar ventas (CSV)
-          </button>
+          <SalesPickerIcon
+            value={rango}
+            onChange={setRango}
+          />
+          <VentasActionsMenu
+            rango={rango}
+            onImport={() => setUploadModalOpen(true)}
+            onExport={handleDownloadVentasCsv}
+            disabled={!activeBizId || ventasLoading}
+          />
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
               placeholder="Buscar artículos..."
@@ -1523,7 +1542,7 @@ export default function ArticulosMain(props) {
         onSuccess={() => {
           clearVentasCache();
           setSyncVersion(v => v + 1);
-          showMiss('âœ… Ventas importadas correctamente');
+          showMiss('✅ Ventas importadas correctamente');
         }}
         instructionImage1={instructionImage1}
         instructionImage2={instructionImage2}

@@ -1,5 +1,3 @@
-/* eslint-disable no-empty */
-/* eslint-disable no-unused-vars */
 // src/componentes/VentasCell.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { IconButton, Tooltip, Stack, CircularProgress, Typography } from '@mui/material';
@@ -49,7 +47,7 @@ function VentasCell({
     );
   }, [data]);
 
-  // 🔍 Total unidades desde la serie
+  // 🔍 Total unidades desde la serie (alineado con TablaArticulos y VentasMiniGraficoModal)
   const totalFromSeries = useMemo(() => {
     if (!data) return 0;
 
@@ -64,12 +62,13 @@ function VentasCell({
     return seriesItems.reduce((acc, it) => {
       const v = toNum(
         it.qty ??
-        it.qtyMap ??
+        it.quantity ??      // ✅ quantity antes que cantidad
         it.cantidad ??
         it.unidades ??
         it.total_u ??
         it.total_qty ??
         it.qty_sum ??
+        it.qtyMap ??        // ✅ qtyMap al final
         0
       );
       return acc + v;

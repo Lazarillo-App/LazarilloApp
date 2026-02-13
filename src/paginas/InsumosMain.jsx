@@ -656,6 +656,12 @@ export default function InsumosMain() {
     const groupsReady = Array.isArray(groupsScoped) && groupsScoped.length > 0;
     if (!groupsReady) return;
 
+    // ✅ Si ya hay una selección válida, NO tocar nada (crítico)
+    if (selectedGroupId && groupsScoped.some(g => Number(g.id) === Number(selectedGroupId))) {
+      console.log('[InsumosMain] ✅ Ya hay selección válida, no autopilotear');
+      return;
+    }
+
     if (selectedGroup && esDiscontinuadosGroup(selectedGroup)) return;
 
     const isTodoSelected =
@@ -665,6 +671,7 @@ export default function InsumosMain() {
       const fav = (groupsScoped || []).find((g) => Number(g?.id) === Number(favoriteGroupId));
       if (fav) {
         if (!selectedGroupId || Number(selectedGroupId) !== Number(fav.id)) {
+          console.log('[InsumosMain] 🔄 Seleccionando favorita:', fav.nombre);
           setSelectedGroupId(fav.id);
           setRubroSeleccionado(null);
         }
@@ -677,12 +684,14 @@ export default function InsumosMain() {
         });
 
         if (firstWithItems && (!selectedGroupId || Number(selectedGroupId) === Number(todoId))) {
+          console.log('[InsumosMain] 🔄 Seleccionando primera con items:', firstWithItems.nombre);
           setSelectedGroupId(firstWithItems.id);
           setRubroSeleccionado(null);
         }
       }
     } else {
       if (!isTodoSelected && Number.isFinite(Number(todoId)) && todoId) {
+        console.log('[InsumosMain] 🔄 Seleccionando TODO (hay items sin agrupar)');
         setSelectedGroupId(Number(todoId));
         setRubroSeleccionado(null);
       }

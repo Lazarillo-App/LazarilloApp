@@ -143,9 +143,6 @@ function InsumoAccionesMenu({
       await onReloadCatalogo?.();
       await onRefetch?.();
 
-      // ❌ NO llamar onAfterMutation (que dispara focusInsumo)
-      // ❌ NO llamar focusInsumo directamente
-
     } catch (e) {
       console.error('TOGGLE_DISCONTINUAR_ERROR', e);
       notify?.('Error al cambiar estado', 'error');

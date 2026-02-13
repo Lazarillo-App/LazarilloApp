@@ -392,8 +392,7 @@ function SubrubroAccionesMenu({
     }
   }
 
-  // ✅ CLAVE: discontinuar bloque SIN tocar selección actual
-  // y SIN llamar onAfterMutation (porque eso te “remueve” del grupo actual)
+  // ✅ DISCONTINUAR/REACTIVAR BLOQUE (sin cambiar vista)
   async function toggleDiscontinuarBloque() {
     const ids = (articuloIds || []).map(getNum).filter(Boolean);
     if (!ids.length) return;
@@ -409,17 +408,14 @@ function SubrubroAccionesMenu({
     try {
       if (!isInDiscontinuadosView) {
         // ===========================
-        // ✅ DISCONTINUAR (SIN navegar)
+        // ✅ DISCONTINUAR
         // ===========================
-
-        // 1️⃣ Agregar a Discontinuados (backend)
         await httpBiz(
           `/agrupaciones/${discontinuadosId}/articulos`,
           { method: 'PUT', body: { ids } },
           effectiveBusinessId
         );
 
-        // 2️⃣ Actualizar state local (optimista)
         onMutateGroups?.({
           type: 'append',
           groupId: discontinuadosId,
@@ -427,41 +423,38 @@ function SubrubroAccionesMenu({
           baseById,
         });
 
-        // 3️⃣ Notificar (pero NO cambiar vista)
-        notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
+        // ❌ NO notify (evita duplicado)
+        // notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
 
-        // 3️⃣ ✅ EMITIR EVENTO UI:ACTION para NotificationsPanel (SIN llamar a notify)
-        try {
-          emitUiAction({
-            businessId: effectiveBusinessId,
-            kind: 'discontinue',
-            scope: 'articulo',
-            title: `⛔ ${subDisplayName} discontinuado`,
-            message: `“${subDisplayName}”: ${labelCount} movido(s) a Discontinuados.`,
-            createdAt: new Date().toISOString(),
-            payload: {
-              ids,
-              discontinuadosGroupId: Number(discontinuadosId),
-              prev: {
-                fromGroupId: currentGroupId ?? null,
-                discontinuadosGroupId: Number(discontinuadosId),
-                wasInDiscontinuados: false,
+        // ✅ SOLO emitUiAction con estructura correcta
+        emitUiAction({
+          businessId: effectiveBusinessId,
+          kind: 'discontinue',
+          scope: 'articulo',
+          title: `⛔ ${subDisplayName} discontinuado`,
+          message: `"${subDisplayName}": ${labelCount} → Discontinuados.`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids,
+            discontinuadosGroupId: Number(discontinuadosId),
+            undo: { // ✅ Estructura correcta para undo
+              payload: {
+                prev: {
+                  fromGroupId: currentGroupId ?? null,
+                  discontinuadosGroupId: Number(discontinuadosId),
+                  wasInDiscontinuados: false,
+                },
               },
             },
-          });
+          },
+        });
 
-        } catch (e) {
-          console.warn('[SubrubroAccionesMenu] Error emitiendo ui:action', e);
-        }
-        // 5️⃣ Recargar para reflejar cambios
         onRefetch?.();
 
       } else {
         // ===========================
-        // ✅ REACTIVAR (desde Discontinuados)
+        // ✅ REACTIVAR
         // ===========================
-
-        // 1️⃣ Quitar de Discontinuados (backend)
         for (const id of ids) {
           try {
             await httpBiz(
@@ -472,36 +465,34 @@ function SubrubroAccionesMenu({
           } catch { }
         }
 
-        // 2️⃣ Actualizar state local
         onMutateGroups?.({
           type: 'remove',
           groupId: discontinuadosId,
           ids,
         });
 
-        // 3️⃣ Notificar
-        notify?.(`Subrubro reactivado (${labelCount})`, 'success');
-        try {
-          emitUiAction({
-            businessId: effectiveBusinessId,
-            kind: 'discontinue',
-            scope: 'articulo',
-            title: `✅ ${subDisplayName} reactivado`,
-            message: `“${subDisplayName}”: ${labelCount} disponible(s) nuevamente.`,
-            createdAt: new Date().toISOString(),
-            payload: {
-              ids,
-              discontinuadosGroupId: Number(discontinuadosId),
-              prev: {
-                fromGroupId: currentGroupId ?? null,
-                discontinuadosGroupId: Number(discontinuadosId),
-                wasInDiscontinuados: true,
-              },
-            },
-          });
+        // ❌ NO notify (evita duplicado)
+        // notify?.(`Subrubro reactivado (${labelCount})`, 'success');
 
-        } catch { }
-        // 4️⃣ Recargar
+        // ✅ SOLO emitUiAction
+        emitUiAction({
+          businessId: effectiveBusinessId,
+          kind: 'info', // ← NO 'discontinue' porque es reactivación
+          scope: 'articulo',
+          title: `✅ ${subDisplayName} reactivado`,
+          message: `"${subDisplayName}": ${labelCount} disponible(s) nuevamente.`,
+          createdAt: new Date().toISOString(),
+          payload: {
+            ids,
+            discontinuadosGroupId: Number(discontinuadosId),
+            prev: {
+              fromGroupId: currentGroupId ?? null,
+              discontinuadosGroupId: Number(discontinuadosId),
+              wasInDiscontinuados: true,
+            },
+          },
+        });
+
         onRefetch?.();
       }
     } catch (e) {
@@ -579,11 +570,16 @@ function SubrubroAccionesMenu({
         </MenuItem>
 
         {/* 2. Quitar de esta agrupación */}
-        <MenuItem onClick={quitarDeActual}>
+        <MenuItem
+          onClick={quitarDeActual}
+          disabled={isTodo} // ✅ Deshabilitar si está en TODO
+        >
           <ListItemIcon>
             <UndoIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Quitar de esta agrupación</ListItemText>
+          <ListItemText>
+            {isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}
+          </ListItemText>
         </MenuItem>
 
         {/* 3. Mover a… */}
@@ -610,7 +606,7 @@ function SubrubroAccionesMenu({
           <ListItemIcon>
             <GroupAddIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>{`Crear agrupación a partir de “${subDisplayName}”`}</ListItemText>
+          <ListItemText>{`Crear agrupación a partir de "${subDisplayName}"`}</ListItemText>
         </MenuItem>
       </Menu>
 

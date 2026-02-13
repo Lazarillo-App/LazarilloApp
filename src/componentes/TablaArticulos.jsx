@@ -1057,6 +1057,7 @@ export default function TablaArticulos({
             onDiscontinuadoChange={onDiscontinuadoChange}
             treeMode={modalTreeMode}
             allowedIds={filterIds}
+            businessId={activeBizId} 
           />
         </div>
       </div>
