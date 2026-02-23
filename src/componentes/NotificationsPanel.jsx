@@ -23,11 +23,11 @@ import {
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import CheckIcon from '@mui/icons-material/Check';
 import UndoIcon from '@mui/icons-material/Undo';
+import CloseIcon from '@mui/icons-material/Close';
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
 import { emitUiUndo } from '@/servicios/uiEvents';
-import CloseIcon from '@mui/icons-material/Close';
 
 /* =========================
    API helpers (sync change-sets)
@@ -88,14 +88,14 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   } = useNotifications({ businessId });
 
   const [rowBusy, setRowBusy] = useState({});
-  const [uiNotifs, setUiNotifs] = useState([]); // UI notifs capturadas por eventos
+  const [uiNotifs, setUiNotifs] = useState([]);
 
   /* =========================
      ✅ Persistencia + DEDUPE UI
   ========================= */
   const UI_KEY = useCallback((bid) => `lazarillo:uiNotifs:${bid || 'na'}`, []);
 
-  // cargar persistido por negocio
+  // cargar persistido por negocio (limpiando notificaciones > 30 días)
   useEffect(() => {
     if (!businessId) return;
     try {
@@ -105,8 +105,17 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         return;
       }
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setUiNotifs(parsed);
-      else setUiNotifs([]);
+      if (Array.isArray(parsed)) {
+        const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const filtered = parsed.filter(n => {
+          const age = now - new Date(n.created_at || 0).getTime();
+          return age < THIRTY_DAYS;
+        });
+        setUiNotifs(filtered);
+      } else {
+        setUiNotifs([]);
+      }
     } catch {
       setUiNotifs([]);
     }
@@ -120,9 +129,31 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     } catch { }
   }, [uiNotifs, businessId, UI_KEY]);
 
-  // 1) Escuchar eventos globales ui:action (con dedupe)
+  // ✅ Helper para formatear título (necesario para usar en merged)
+  const formatTitle = useCallback((notif) => {
+    const scope = notif?.scope || notif?.payload?.scope || 'articulo';
+    const scopeLabel = scope === 'insumo' ? 'Insumo' : 'Artículo';
+    const kind = notif?.kind;
+
+    if (kind === 'group_favorite_set') return `⭐ Marcada como favorita`;
+    if (kind === 'group_favorite_unset') return `☆ Desmarcada como favorita`;
+    if (kind === 'group_create') return `🆕 Nueva agrupación`;
+    if (kind === 'group_delete') return `🗑️ Agrupación eliminada`;
+    if (kind === 'group_rename') return `✏️ Agrupación renombrada`;
+    if (kind === 'group_move_division') return `🔀 Enviada a división`;
+    if (kind === 'discontinue') return `⛔ ${scopeLabel}${notif.payload?.ids?.length > 1 ? 's' : ''} discontinuado${notif.payload?.ids?.length > 1 ? 's' : ''}`;
+    if (kind === 'move') return `📦 ${scopeLabel}${notif.payload?.ids?.length > 1 ? 's' : ''} movido${notif.payload?.ids?.length > 1 ? 's' : ''}`;
+
+    return notif?.title || 'Notificación';
+  }, []);
+
+  // 1) Escuchar eventos globales ui:action (con dedupe mejorado)
   useEffect(() => {
     const makeSig = (d) => {
+      // ✅ Firma mejorada: kind + scope + groupId + groupName
+      const groupId = String(d?.payload?.groupId ?? '');
+      const groupName = String(d?.payload?.groupName ?? d?.message ?? '').toLowerCase().trim();
+      
       const ids = (d?.payload?.ids || [])
         .map(Number)
         .filter((n) => Number.isFinite(n) && n > 0)
@@ -132,11 +163,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       return [
         d?.kind || '',
         d?.scope || d?.payload?.scope || '',
+        groupId,
+        groupName,
         ids,
-        d?.title || '',
-        d?.message || '',
-        String(d?.payload?.originId ?? d?.payload?.originGroupId ?? ''),
-        String(d?.payload?.toId ?? ''),
       ].join('|');
     };
 
@@ -144,13 +173,22 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       const d = e?.detail;
       if (!d) return;
 
-      // filtrar negocio (si viene businessId en el evento)
-      if (businessId && d.businessId && Number(d.businessId) !== Number(businessId)) return;
+      console.log('🔔 [NotificationsPanel] Evento recibido:', {
+        kind: d.kind,
+        scope: d.scope,
+        title: d.title,
+        message: d.message,
+        groupId: d.payload?.groupId,
+        groupName: d.payload?.groupName,
+      });
 
-      // ✅ scope por defecto coherente con tu pantalla de artículos
+      // filtrar negocio
+      if (businessId && d.businessId && Number(d.businessId) !== Number(businessId)) {
+        console.log('⏭️ [NotificationsPanel] Ignorado: negocio diferente');
+        return;
+      }
+
       const scope = d.scope ?? d.payload?.scope ?? (d.kind === 'discontinue' ? 'articulo' : null);
-
-      // ✅ actionId: si no viene, NO pasa nada: dedupe por firma+ventana
       const actionId = d.actionId || d.id || null;
       const sig = makeSig(d);
 
@@ -176,19 +214,32 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       setUiNotifs((prev) => {
         const arr = Array.isArray(prev) ? prev : [];
 
-        // ✅ 1) dedupe fuerte por actionId si existe
-        if (actionId && arr.some((n) => n?._actionId === actionId)) return arr;
+        // ✅ 1) dedupe por actionId
+        if (actionId && arr.some((n) => n?._actionId === actionId)) {
+          console.log('🚫 [NotificationsPanel] DUPLICADO por actionId:', actionId);
+          return arr;
+        }
 
-        // ✅ 2) dedupe por firma en ventana corta (evita doble dispatch)
+        // ✅ 2) dedupe por firma en ventana de 5s
         const now = Date.now();
         const repeated = arr.find((n) => {
           if (!n?._sig || n._sig !== sig) return false;
           const t = new Date(n.created_at).getTime();
-          return Number.isFinite(t) && now - t < 2000; // 2s
+          const diff = now - t;
+          return Number.isFinite(t) && diff < 5000; // 5s
         });
-        if (repeated) return arr;
+        
+        if (repeated) {
+          console.log('🚫 [NotificationsPanel] DUPLICADO por firma:', {
+            sig,
+            diff: now - new Date(repeated.created_at).getTime(),
+            existing: repeated.title,
+            new: item.title,
+          });
+          return arr;
+        }
 
-        // ✅ mantené historial (no “desaparece” tan rápido)
+        console.log('✅ [NotificationsPanel] Notificación añadida:', item.title);
         return [item, ...arr].slice(0, 200);
       });
     };
@@ -206,13 +257,13 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     });
   }, []);
 
-  // 2) Al abrir panel, traer backend list+count
+  // 2) Al abrir panel, traer backend list+count (opcional)
   useEffect(() => {
     if (!open) return;
     refreshAll?.();
   }, [open, refreshAll]);
 
-  // 3) Auto-refresh backend mientras esté abierto
+  // 3) Auto-refresh backend (opcional)
   useEffect(() => {
     if (!open) return;
     const t = setInterval(() => {
@@ -235,47 +286,19 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   }, [markAsRead]);
 
   const getIcon = (notif) => {
-    // UI notifs
     if (notif?.source === 'ui') {
       const kind = notif.kind;
-
-      // Artículos/Insumos discontinuados
       if (kind === 'discontinue') return '⛔';
-
-      // Agrupaciones
       if (kind === 'group_create') return '🆕';
       if (kind === 'group_delete') return '🗑️';
       if (kind === 'group_rename') return '✏️';
       if (kind === 'group_move_division') return '🔀';
       if (kind === 'group_favorite_set') return '⭐';
       if (kind === 'group_favorite_unset') return '☆';
-
-      // Movimientos entre agrupaciones
       if (kind === 'move') return '📦';
-
       return '📌';
     }
-
-   
-  };
-
-  // ✅ MEJORA: Helper para formatear el título según scope
-  const formatTitle = (notif) => {
-    const scope = notif?.scope || notif?.payload?.scope || 'articulo';
-    const scopeLabel = scope === 'insumo' ? 'Insumo' : 'Artículo';
-
-    const kind = notif?.kind;
-
-    if (kind === 'group_favorite_set') return `⭐ Marcada como favorita`;
-    if (kind === 'group_favorite_unset') return `☆ Desmarcada como favorita`;
-    if (kind === 'group_create') return `🆕 Nueva agrupación`;
-    if (kind === 'group_delete') return `🗑️ Agrupación eliminada`;
-    if (kind === 'group_rename') return `✏️ Agrupación renombrada`;
-    if (kind === 'group_move_division') return `🔀 Enviada a división`;
-    if (kind === 'discontinue') return `⛔ ${scopeLabel}${notif.payload?.ids?.length > 1 ? 's' : ''} discontinuado${notif.payload?.ids?.length > 1 ? 's' : ''}`;
-    if (kind === 'move') return `📦 ${scopeLabel}${notif.payload?.ids?.length > 1 ? 's' : ''} movido${notif.payload?.ids?.length > 1 ? 's' : ''}`;
-
-    return notif?.title || 'Notificación';
+    return '🔔';
   };
 
   const rejectInline = useCallback(async (notif) => {
@@ -332,18 +355,36 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     }
   }, [businessId, patchNotification, safeRefreshAfterAction, setBusy]);
 
-  // 4) Merge UI + backend
+  // ✅ 4) SOLO UI notifs con scope válido
   const merged = useMemo(() => {
     const ui = (uiNotifs || []).filter((n) => !n.resolved);
-    const back = (notifications || []).filter((n) => !businessId || Number(n.business_id) === Number(businessId));
-    return [...ui, ...back];
-  }, [uiNotifs, notifications, businessId]);
+    
+    // ✅ Filtrar: solo mostrar notifs con scope válido
+    const filtered = ui.filter(n => {
+      const scope = n.scope || n.payload?.scope;
+      return scope === 'insumo' || scope === 'articulo';
+    });
+    
+    // ✅ Log para debugging
+    console.log('📊 [NotificationsPanel] Mostrando:', 
+      filtered.map(n => ({
+        kind: n.kind,
+        scope: n.scope,
+        title: formatTitle(n),
+        read: n.read,
+      }))
+    );
+    
+    return filtered;
+  }, [uiNotifs, formatTitle]);
 
   const unreadUiCount = useMemo(
     () => (uiNotifs || []).filter((n) => !n.read && !n.resolved).length,
     [uiNotifs]
   );
-  const badgeCount = (Number(unreadCount || 0) + Number(unreadUiCount || 0));
+  
+  // ✅ Badge solo cuenta UI notifs
+  const badgeCount = unreadUiCount;
 
   const markAllUiAsRead = () => {
     setUiNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -362,7 +403,6 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     );
   };
 
-  // (opcional) cerrar UI notif sin deshacer
   const dismissUiNotif = (uiNotif) => {
     setUiNotifs((prev) =>
       prev.map((n) => (n.id === uiNotif.id ? { ...n, resolved: true, read: true } : n))
@@ -387,7 +427,6 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           }}>
             <Typography variant="h6">Notificaciones</Typography>
 
-            {/* ✅ Botón cerrar arriba a la derecha */}
             <IconButton
               onClick={() => setOpen(false)}
               size="small"
@@ -397,20 +436,16 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
             </IconButton>
           </div>
 
-          {/* ✅ Botones "Marcar como leídas" debajo del título */}
-          {(unreadUiCount > 0 || unreadCount > 0) && (
+          {unreadUiCount > 0 && (
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              {unreadUiCount > 0 && (
-                <Button
-                  size="small"
-                  startIcon={<CheckIcon />}
-                  onClick={markAllUiAsRead}
-                  variant="outlined"
-                >
-                  Marcar como leídas ({unreadUiCount})
-                </Button>
-              )}
-
+              <Button
+                size="small"
+                startIcon={<CheckIcon />}
+                onClick={markAllUiAsRead}
+                variant="outlined"
+              >
+                Marcar como leídas ({unreadUiCount})
+              </Button>
             </Box>
           )}
           <Divider />
@@ -427,157 +462,30 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           ) : (
             <List>
               {merged.map((notif) => {
-                const isUi = notif?.source === 'ui';
-
-                // ✅ UI notif
-                if (isUi) {
-                  // Función auxiliar para determinar si se puede deshacer
-                  const canUndo = (notif) => {
-                    if (!notif || notif.source !== 'ui') return false;
-                    const kind = notif.kind;
-                    const scope = notif.scope || notif.payload?.scope || 'articulo';
-
-                    // Solo discontinuar es reversible
-                    return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
-                  };
-
-                  // ✅ IMPORTANTE: return explícito del JSX
-                  return (
-                    <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
-                      <ListItemButton
-                        onClick={() =>
-                          setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)))
-                        }
-                        sx={{
-                          borderRadius: 2,
-                          alignItems: 'flex-start',
-                          backgroundColor: notif.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
-                          border: '1px solid rgba(25, 118, 210, 0.15)',
-                          transition: 'all 0.2s ease',
-                          '&:hover': {
-                            backgroundColor: notif.read
-                              ? 'rgba(25, 118, 210, 0.04)'
-                              : 'rgba(25, 118, 210, 0.12)',
-                          },
-                        }}
-                      >
-                        <div style={{ marginRight: 12, fontSize: 22, marginTop: 2 }}>
-                          {getIcon(notif)}
-                        </div>
-
-                        <Box sx={{ flex: 1 }}>
-                          <ListItemText
-                            secondaryTypographyProps={{ component: 'div' }}
-                            primaryTypographyProps={{ component: 'div' }}
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography
-                                  component="span"
-                                  variant="subtitle2"
-                                  sx={{
-                                    fontWeight: notif.read ? 600 : 900,
-                                    color: notif.read ? 'text.secondary' : 'text.primary',
-                                  }}
-                                >
-                                  {formatTitle(notif)}
-                                </Typography>
-
-                                {/* ✅ Badge para scope si es insumo */}
-                                {notif.scope === 'insumo' && (
-                                  <Chip
-                                    label="Insumo"
-                                    size="small"
-                                    sx={{
-                                      height: 18,
-                                      fontSize: '0.7rem',
-                                      bgcolor: 'info.light',
-                                      color: 'info.contrastText',
-                                    }}
-                                  />
-                                )}
-                              </Box>
-                            }
-                            secondary={
-                              <Box component="span">
-                                {notif.message && (
-                                  <Typography
-                                    component="span"
-                                    variant="body2"
-                                    sx={{
-                                      display: 'block',
-                                      whiteSpace: 'pre-line',
-                                      mt: 0.5,
-                                      color: 'text.secondary',
-                                    }}
-                                  >
-                                    {notif.message}
-                                  </Typography>
-                                )}
-
-                                <Typography
-                                  component="span"
-                                  variant="caption"
-                                  sx={{
-                                    display: 'block',
-                                    mt: 0.75,
-                                    opacity: 0.8,
-                                    color: 'text.disabled',
-                                  }}
-                                >
-                                  {formatDate(notif.created_at)}
-                                </Typography>
-
-                                {/* ✅ Botón Deshacer SOLO para discontinue */}
-                                {canUndo(notif) && (
-                                  <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      color="warning"
-                                      startIcon={<UndoIcon />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        undoUiNotif(notif);
-                                      }}
-                                      sx={{ textTransform: 'none' }}
-                                    >
-                                      Deshacer
-                                    </Button>
-                                  </Box>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </Box>
-                      </ListItemButton>
-                    </ListItem>
-                  );
-                }
-
-                // ✅ Backend notif (código existente sin cambios)
-                const busy = rowBusy[notif.id] || '';
-                const csId = pickChangeSetId(notif);
-                const hasCS = !!csId;
-
-                const scope = notif?.metadata?.scope || notif?.metadata?.scope_name || '';
-                const isSyncInsumos = scope === 'insumos' && hasCS;
-
-                const resolutionStatus = notif?.metadata?.resolution?.status || null;
-                const isResolved = !!resolutionStatus;
-
-                const showActions = isSyncInsumos && !isResolved;
-                const buttonsDisabled = !businessId || !hasCS || !!busy || isResolved;
+                const canUndo = (notif) => {
+                  if (!notif) return false;
+                  const kind = notif.kind;
+                  const scope = notif.scope || notif.payload?.scope || 'articulo';
+                  return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
+                };
 
                 return (
                   <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
                     <ListItemButton
-                      onClick={() => onNotifClick(notif)}
+                      onClick={() =>
+                        setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)))
+                      }
                       sx={{
                         borderRadius: 2,
                         alignItems: 'flex-start',
                         backgroundColor: notif.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
-                        opacity: notif.read ? 0.8 : 1,
-                        border: hasCS ? '1px solid rgba(25, 118, 210, 0.15)' : '1px solid transparent',
+                        border: '1px solid rgba(25, 118, 210, 0.15)',
+                        transition: 'all 0.2s ease',
+                        '&:hover': {
+                          backgroundColor: notif.read
+                            ? 'rgba(25, 118, 210, 0.04)'
+                            : 'rgba(25, 118, 210, 0.12)',
+                        },
                       }}
                     >
                       <div style={{ marginRight: 12, fontSize: 22, marginTop: 2 }}>
@@ -588,62 +496,88 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                         <ListItemText
                           secondaryTypographyProps={{ component: 'div' }}
                           primaryTypographyProps={{ component: 'div' }}
-                          primary={(
-                            <Typography component="span" variant="subtitle2" sx={{ fontWeight: notif.read ? 600 : 900 }}>
-                              {notif.title}
-                              {isSyncInsumos && !isResolved && (
-                                <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.85 }}>
-                                  • cambios detectados
-                                </span>
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography
+                                component="span"
+                                variant="subtitle2"
+                                sx={{
+                                  fontWeight: notif.read ? 600 : 900,
+                                  color: notif.read ? 'text.secondary' : 'text.primary',
+                                }}
+                              >
+                                {formatTitle(notif)}
+                              </Typography>
+
+                              {notif.scope === 'insumo' && (
+                                <Chip
+                                  label="Insumo"
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '0.7rem',
+                                    bgcolor: 'info.light',
+                                    color: 'info.contrastText',
+                                  }}
+                                />
                               )}
-                            </Typography>
-                          )}
-                          secondary={(
+                            </Box>
+                          }
+                          secondary={
                             <Box component="span">
                               {notif.message && (
-                                <Typography component="span" variant="body2" sx={{ display: 'block', whiteSpace: 'pre-line', mt: 0.5 }}>
+                                <Typography
+                                  component="span"
+                                  variant="body2"
+                                  sx={{
+                                    display: 'block',
+                                    whiteSpace: 'pre-line',
+                                    mt: 0.5,
+                                    color: 'text.secondary',
+                                  }}
+                                >
                                   {notif.message}
                                 </Typography>
                               )}
 
-                              <Typography component="span" variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.8 }}>
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  mt: 0.75,
+                                  opacity: 0.8,
+                                  color: 'text.disabled',
+                                }}
+                              >
                                 {formatDate(notif.created_at)}
                               </Typography>
 
-                              {isResolved && (
-                                <Alert
-                                  severity={resolutionStatus === 'applied' ? 'success' : 'warning'}
-                                  sx={{ mt: 1, py: 0.5 }}
-                                >
-                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                                    {resolutionStatus === 'applied' && '✅ Cambios aplicados correctamente'}
-                                    {resolutionStatus === 'rejected' && '❌ Cambios rechazados - Realizar agrupación manual'}
-                                    {resolutionStatus === 'approved' && '✓ Aprobado'}
-                                  </Typography>
-                                </Alert>
+                              {canUndo(notif) && (
+                                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="warning"
+                                    startIcon={<UndoIcon />}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      undoUiNotif(notif);
+                                    }}
+                                    sx={{ textTransform: 'none' }}
+                                  >
+                                    Deshacer
+                                  </Button>
+                                </Box>
                               )}
                             </Box>
-                          )}
+                          }
                         />
-
-                        {showActions && (
-                          <Box
-                            sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {/* Acciones backend comentadas */}
-                          </Box>
-                        )}
                       </Box>
                     </ListItemButton>
                   </ListItem>
                 );
               })}
-              {uiNotifs.length > 0 && notifications.length > 0 && (
-                <Divider sx={{ my: 2 }}>
-                  <Chip label="Sistema" size="small" />
-                </Divider>
-              )}
             </List>
           )}
         </div>

@@ -410,7 +410,6 @@ export default function AgrupacionCreateModal({
       let selectedAsArray = Array.from(selectedIds).filter(Number.isFinite);
       if (allowedIds) selectedAsArray = selectedAsArray.filter((id) => allowedIds.has(Number(id)));
 
-      // ===== CREATE =====
       if (mode === "create") {
         if (!nombreRubro.trim() || selectedAsArray.length === 0) {
           showSnack("Debes ingresar un nombre y seleccionar artículos", "error");
@@ -420,10 +419,9 @@ export default function AgrupacionCreateModal({
         const nombreBase = nombreRubro.trim();
         let finalName = nextAvailableName(nombreBase, existingNames);
         if (finalName !== nombreBase) {
-          showSnack(`El nombre ya existía. Usando “${finalName}”.`, "info");
+          showSnack(`El nombre ya existía. Usando "${finalName}".`, "info");
         }
 
-        // armamos detalle para callbacks / mutaciones
         const articulosDetallados = selectedAsArray.map((id) => {
           const a = articleById.get(id) || {};
           return {
@@ -435,11 +433,9 @@ export default function AgrupacionCreateModal({
           };
         });
 
-        // ✅ si venimos desde una agrupación: crear VACÍA + mover con move-items
         const fromId = Number(preselect?.fromGroupId);
         const haveFrom = Number.isFinite(fromId) && fromId > 0;
 
-        // 1) crear agrupación (solo nombre)
         const nuevo = await httpBiz(
           `/agrupaciones`,
           { method: "POST", body: { nombre: finalName } },
@@ -451,18 +447,15 @@ export default function AgrupacionCreateModal({
           throw new Error("No se pudo obtener id de la agrupación creada");
         }
 
-        // 2) mover o agregar ids
         const ids = selectedAsArray;
 
         if (haveFrom) {
-          // 🔥 esto evita duplicados: saca del fromId y mete en newGroupId
           await httpBiz(
             `/agrupaciones/${fromId}/move-items`,
             { method: "POST", body: { toId: newGroupId, ids } },
             effectiveBusinessId
           );
         } else {
-          // desde TODO: sólo agregamos al nuevo grupo (TODO no se “vacía”)
           await httpBiz(
             `/agrupaciones/${newGroupId}/articulos`,
             { method: "PUT", body: { ids } },
@@ -470,7 +463,35 @@ export default function AgrupacionCreateModal({
           );
         }
 
-        // UI callbacks
+        // ✅ EMITIR NOTIFICACIÓN
+        try {
+          const notifyBizId = effectiveBusinessId ||
+            localStorage.getItem("activeBusinessId") ||
+            null;
+
+          if (notifyBizId) {
+            window.dispatchEvent(
+              new CustomEvent('ui:action', {
+                detail: {
+                  businessId: Number(notifyBizId),
+                  kind: 'group_create',
+                  scope: 'articulo',
+                  title: '🆕 Nueva agrupación',
+                  message: `"${finalName}" con ${ids.length} artículo${ids.length !== 1 ? 's' : ''}`,
+                  createdAt: new Date().toISOString(),
+                  payload: {
+                    groupId: newGroupId,
+                    groupName: finalName,
+                    itemCount: ids.length,
+                  },
+                },
+              })
+            );
+          }
+        } catch (err) {
+          console.warn('[AgrupacionCreateModal] Error emitiendo notificación:', err);
+        }
+
         setNombreRubro("");
         setSelectedIds(new Set());
         onCreated?.(finalName, newGroupId, articulosDetallados);

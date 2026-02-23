@@ -1,6 +1,8 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import OrgDashboard from '../componentes/OrgDashboard';
+import { useOrganization } from '../context/OrganizationContext';
 import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
 import SalesPickerIcon from '../componentes/SalesPickerIcon';
@@ -31,7 +33,8 @@ import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
-const FAV_KEY = 'favGroupId';
+// ✅ CAMBIO 1: Favorita ahora es por negocio
+const getFavKey = (bizId) => `favGroupId_${bizId || 'default'}`;
 const VIEW_KEY = 'lazarillo:ventasViewMode';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -98,6 +101,7 @@ export default function ArticulosMain(props) {
   const [categorias, setCategorias] = useState([]);
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
+  const [showDiscView, setShowDiscView] = useState(false); // fuerza salida del OrgDashboard a discontinuados
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [discoOrigenById, setDiscoOrigenById] = useState({});
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
@@ -108,8 +112,9 @@ export default function ArticulosMain(props) {
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
 
-  const { activeBusinessId } = useBusiness();
+  const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
+  const { rootBusiness, allBusinesses } = useOrganization();
 
   usePersistUiActions(activeBizId);
 
@@ -119,15 +124,10 @@ export default function ArticulosMain(props) {
     return { mode: '7', from: def.from, to: def.to };
   });
 
-  // Ya NO necesitamos el useEffect porque inicializamos con valores reales
-  // useEffect(() => { ... }, []); â† ELIMINAR ESTO
-
   const periodo = useMemo(() => {
-    // Siempre debe haber from/to porque lo inicializamos arriba
     if (rango.from && rango.to) {
       return { from: rango.from, to: rango.to };
     }
-    // Fallback por si acaso
     return lastNDaysUntilYesterday(daysByMode(rango.mode || '7'));
   }, [rango]);
 
@@ -136,7 +136,6 @@ export default function ArticulosMain(props) {
     periodoRef.current = periodo;
   }, [periodo]);
 
-  //  AHORA SÃ: useSalesData (despuÃ©s de declarar periodo)
   const {
     ventasMap,
     ventasPorArticulo,
@@ -227,15 +226,13 @@ export default function ArticulosMain(props) {
     }
 
     try {
-      console.log('[ArticulosMain] 🔄 Recargando agrupaciones:', {
-        businessId: activeBizId,
-        divisionId: activeDivisionId ?? 'principal',
-      });
-
       const list = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
 
-      if (Array.isArray(list)) setAgrupaciones(list);
-      return list || [];
+      // ✅ FILTRAR agrupaciones que fueron movidas a otro negocio
+      const filtered = (list || []).filter(ag => !ag.moved_to_business_id);
+
+      if (Array.isArray(filtered)) setAgrupaciones(filtered);
+      return filtered || [];
     } catch (e) {
       console.error('[ArticulosMain] ❌ Error cargando agrupaciones:', e);
       setAgrupaciones([]);
@@ -247,6 +244,7 @@ export default function ArticulosMain(props) {
     setAgrupacionSeleccionada(null);
     setCategoriaSeleccionada(null);
     setFiltroBusqueda('');
+    setShowDiscView(false);
     setSearchText('');
   }, [activeBizId]);
 
@@ -309,13 +307,15 @@ export default function ArticulosMain(props) {
     }
   }, [ventasMap]);
 
+  // ✅ CAMBIO 2: Guardar/cargar favorita por negocio
   useEffect(() => {
+    const key = getFavKey(activeBizId);
     if (Number.isFinite(Number(favoriteGroupId))) {
-      localStorage.setItem(FAV_KEY, String(favoriteGroupId));
+      localStorage.setItem(key, String(favoriteGroupId));
     } else {
-      localStorage.removeItem(FAV_KEY);
+      localStorage.removeItem(key);
     }
-  }, [favoriteGroupId]);
+  }, [favoriteGroupId, activeBizId]);
 
   const mutateGroups = useCallback(async (action) => {
     setAgrupaciones(prev => {
@@ -349,22 +349,27 @@ export default function ArticulosMain(props) {
       }
     });
 
-    try { await refetchAgrupaciones(); } catch { }
+    // ✅ NO refetch automático — la mutación optimista ya actualizó el estado local.
+    // El caller (ArticuloAccionesMenu, SubrubroAccionesMenu) llama onRefetch si lo necesita.
+    // Refetch automático causa que artículos discontinuados reaparezcan.
     try { emitGroupsChanged(action.type, { action }); } catch { }
-  }, [refetchAgrupaciones]);
+  }, []);
 
   useEffect(() => {
     if (!activeBizId) return;
     refetchAgrupaciones();
   }, [activeBizId, reloadKey, refetchAgrupaciones]);
 
+  // Cargar favorita por negocio desde backend o localStorage
   useEffect(() => {
-    const bid =
-      activeBizId ||
-      localStorage.getItem('activeBusinessId') ||
-      null;
+    const bid = activeBizId;
+    if (!bid) {
+      setFavoriteGroupId(null);
+      return;
+    }
 
-    if (!bid) return;
+    // ✅ Resetear inmediatamente al cambiar de negocio para evitar selección cruzada
+    setFavoriteGroupId(null);
 
     (async () => {
       try {
@@ -373,12 +378,14 @@ export default function ArticulosMain(props) {
         if (Number.isFinite(favIdFromDb) && favIdFromDb > 0) {
           setFavoriteGroupId(favIdFromDb);
         } else {
-          const localFav = Number(localStorage.getItem(FAV_KEY));
+          const key = getFavKey(bid);
+          const localFav = Number(localStorage.getItem(key));
           setFavoriteGroupId(Number.isFinite(localFav) ? localFav : null);
         }
       } catch (e) {
         console.error('Error cargando favorita desde backend', e);
-        const localFav = Number(localStorage.getItem(FAV_KEY));
+        const key = getFavKey(bid);
+        const localFav = Number(localStorage.getItem(key));
         setFavoriteGroupId(Number.isFinite(localFav) ? localFav : null);
       }
     })();
@@ -386,11 +393,7 @@ export default function ArticulosMain(props) {
 
   const handleDownloadVentasCsv = async () => {
     try {
-      const bid =
-        activeBizId ||
-        localStorage.getItem('activeBusinessId') ||
-        0;
-
+      const bid = activeBizId;
       const { from, to } = periodo || {};
 
       if (!bid || !from || !to) {
@@ -405,7 +408,7 @@ export default function ArticulosMain(props) {
       console.log('[handleDownloadVentasCsv] blob size', blob.size);
 
       if (!blob || blob.size === 0) {
-        alert('El CSV vino vacÃ­o.');
+        alert('El CSV vino vacío.');
         return;
       }
 
@@ -529,13 +532,38 @@ export default function ArticulosMain(props) {
   const discIds = useMemo(() => {
     const s = new Set();
     if (!discGroup) return s;
-
     for (const art of getGroupItemsRaw(discGroup)) {
       const id = getArtId(art);
       if (id != null) s.add(id);
     }
     return s;
   }, [discGroup]);
+
+  const [localDiscIds, setLocalDiscIds] = useState(() => new Set());
+  const effectiveDiscIds = useMemo(() => {
+    if (discIds.size > 0) return discIds;
+    return localDiscIds;
+  }, [discIds, localDiscIds]);
+
+  // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
+  // y hay subnegocios creados (created_from === 'from_group')
+  const isOrgView = useMemo(() => {
+    if (showDiscView) return false; // el usuario clickeó "ver discontinuados"
+    const principalId = rootBusiness?.id;
+    if (!principalId || String(principalId) !== activeBizId) return false;
+
+    const hasSubNegocios = (allBusinesses || []).some(
+      (b) => b.id !== principalId && b.created_from === 'from_group'
+    );
+    if (!hasSubNegocios) return false;
+
+    // El principal solo tiene agrupaciones especiales (Sin Agrupacion, Discontinuados)
+    const SPECIAL = new Set(['sin agrupacion', 'sin agrupación', 'discontinuados', 'todo']);
+    const realGroups = (agrupaciones || []).filter(
+      (ag) => !SPECIAL.has(String(ag.nombre || '').trim().toLowerCase())
+    );
+    return realGroups.length === 0;
+  }, [rootBusiness, activeBizId, allBusinesses, agrupaciones]);
 
   const articuloIds = useMemo(
     () =>
@@ -555,30 +583,22 @@ export default function ArticulosMain(props) {
     return out;
   }, [ventasMap, agrupacionSeleccionada, articuloIds]);
 
-  // =========================
-  // NUEVO: obtener monto fiable por artÃ­culo
-  // =========================
   const getAmountForId = useCallback((id) => {
     const k = Number(id);
     if (!Number.isFinite(k) || k <= 0) return 0;
 
-    // use helper available in hooks
     try {
       const { qty, amount } = getVentasFromMap(ventasMap, k);
-      // si la fuente trae monto, lo usamos
       if (Number.isFinite(Number(amount)) && Number(amount) !== 0) {
         return Number(amount);
       }
-      // fallback: si no hay monto, usamos qty * precio desde metaById
       const precio = metaById.get(k)?.precio ?? 0;
       return Number(qty || 0) * Number(precio || 0);
     } catch (e) {
-      // en error, devolvemos 0 por seguridad
       return 0;
     }
   }, [ventasMap, metaById]);
 
-  // âœ… HELPER ACTUALIZADO: usa getVentasFromMap
   const getQtyForId = useCallback(
     (id) => {
       const k = Number(id);
@@ -589,7 +609,6 @@ export default function ArticulosMain(props) {
     [ventasMap]
   );
 
-  // Mantengo getGroupQty por compatibilidad (cantidad)
   const getGroupQty = useCallback(
     (g) => {
       const items = getGroupItemsRaw(g);
@@ -604,9 +623,6 @@ export default function ArticulosMain(props) {
     [getQtyForId]
   );
 
-  // =========================
-  // NUEVO: sumar monto ($) por agrupaciÃ³n
-  // =========================
   const getGroupAmount = useCallback(
     (g) => {
       const items = getGroupItemsRaw(g);
@@ -640,12 +656,10 @@ export default function ArticulosMain(props) {
       if (discA && !discB) return 1;
       if (!discA && discB) return -1;
 
-      // ahora comparamos por MONTOS (desc)
       const ma = getGroupAmount(a);
       const mb = getGroupAmount(b);
       if (mb !== ma) return mb - ma;
 
-      // fallback: si empatan por monto, usar alfabÃ©tico
       return String(a.nombre || '').localeCompare(String(b.nombre || ''));
     });
   }, [agrupacionesRich, todoInfo?.todoGroupId, getGroupAmount]);
@@ -681,14 +695,12 @@ export default function ArticulosMain(props) {
     const qtyOk = Number.isFinite(qty) ? qty : 0;
     const amountOk = Number.isFinite(amount) ? amount : 0;
 
-    // Si vino todo 0, no ensuciamos el override
     if (qtyOk === 0 && amountOk === 0) return;
 
     setVentasOverrides(prev => {
       const next = new Map(prev);
       const prevVal = next.get(key) || {};
 
-      // Evita rerenders inÃºtiles si no cambiÃ³
       if ((prevVal.qty ?? 0) === qtyOk && (prevVal.amount ?? 0) === amountOk) return prev;
 
       next.set(key, { ...prevVal, qty: qtyOk, amount: amountOk });
@@ -848,7 +860,6 @@ export default function ArticulosMain(props) {
       setJumpToId(id);
       scheduleJump(id);
 
-      //  LIMPIAR despuÃ©s de 2 segundos para evitar re-scrolls
       setTimeout(() => {
         setJumpToId(null);
       }, 800);
@@ -872,17 +883,12 @@ export default function ArticulosMain(props) {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
-      // ✅ IMPORTANTE: NO cambiar de vista
-      // El usuario se queda donde está (cualquier agrupación, incluso Sin Agrupación)
-
-      // ✅ Solo refrescar datos para que la tabla se actualice
       try {
         await refetchAgrupaciones();
       } catch (e) {
         console.error('Error refrescando agrupaciones:', e);
       }
 
-      // ✅ Mensaje informativo SIN navegar
       if (isNowDiscontinuado) {
         showMiss(`Artículo discontinuado correctamente`);
       } else {
@@ -906,6 +912,10 @@ export default function ArticulosMain(props) {
       const discontinuadosGroupId = Number(prev.discontinuadosGroupId);
       const fromGroupId = Number(prev.fromGroupId);
 
+      // ✅ Los grupos de Discontinuados y los originales viven en el principal
+      // Usar el rootBusinessId para las llamadas HTTP del UNDO
+      const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
+
       console.log('🔄 [UNDO discontinue]', {
         ids,
         wasInDiscontinuados,
@@ -928,7 +938,7 @@ export default function ArticulosMain(props) {
           await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos`, {
             method: 'PUT',
             body: { ids },
-          });
+          }, rootBizId);
 
           mutateGroups({
             type: 'append',
@@ -946,7 +956,7 @@ export default function ArticulosMain(props) {
               try {
                 await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos/${id}`, {
                   method: 'DELETE',
-                });
+                }, rootBizId);
               } catch (e) {
                 console.error(`Error quitando ${id} de Discontinuados:`, e);
               }
@@ -965,13 +975,13 @@ export default function ArticulosMain(props) {
             await httpBiz(`/agrupaciones/${fromGroupId}/articulos`, {
               method: 'PUT',
               body: { ids },
-            });
+            }, rootBizId);
 
             for (const id of ids) {
               try {
                 await httpBiz(`/agrupaciones/${discontinuadosGroupId}/articulos/${id}`, {
                   method: 'DELETE',
-                });
+                }, rootBizId);
               } catch { }
             }
 
@@ -1004,6 +1014,7 @@ export default function ArticulosMain(props) {
     refetchAgrupaciones,
     mutateGroups,
     metaById,
+    rootBusiness,
   ]);
 
   const handleDiscontinuarBloque = useCallback(
@@ -1015,12 +1026,12 @@ export default function ArticulosMain(props) {
       if (!ids.length) return;
 
       if (!discGroup || !discGroup.id) {
-        window.alert('No existe la agrupaciÃ³n "Discontinuados". Creala primero.');
+        window.alert('No existe la agrupación "Discontinuados". Creala primero.');
         return;
       }
 
       const ok = window.confirm(
-        `Â¿Marcar como DISCONTINUADOS ${ids.length} artÃ­culo(s) de este bloque?`
+        `¿Marcar como DISCONTINUADOS ${ids.length} artículo(s) de este bloque?`
       );
       if (!ok) return;
 
@@ -1046,7 +1057,7 @@ export default function ArticulosMain(props) {
           focusArticle(ids[0], discGroup.id);
         }
 
-        showMiss(`Bloque discontinuado (${ids.length} artÃ­culo/s).`);
+        showMiss(`Bloque discontinuado (${ids.length} artículo/s).`);
       } catch (e) {
         console.error('DISCONTINUAR_BLOQUE_ERROR', e);
         window.alert('No se pudo discontinuar el bloque.');
@@ -1121,7 +1132,7 @@ export default function ArticulosMain(props) {
     return Array.from(nameById.entries()).map(([id, nombre]) => ({
       id,
       nombre,
-      _search: normalize(nombre), // ðŸ‘ˆ CLAVE
+      _search: normalize(nombre),
     }));
   }, [nameById]);
 
@@ -1150,9 +1161,18 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada(null);
   }, [mutateGroups]);
 
+  // Ref para leer agrupacionSeleccionada sin que sea una dep del efecto
+  const agrupSelRef = useRef(agrupacionSeleccionada);
+  useEffect(() => { agrupSelRef.current = agrupacionSeleccionada; }, [agrupacionSeleccionada]);
+
+  // Selección inteligente: Sin Agrupación tiene prioridad, luego favorita al cargar negocio
   useEffect(() => {
+    // No interferir si el usuario clickeó "ver discontinuados"
+    if (showDiscView) return;
+
     const todoId = todoInfo?.todoGroupId;
-    const todoEmpty = (todoInfo?.idsSinAgrupCount || 0) === 0;
+    const todoCount = todoInfo?.idsSinAgrupCount || 0;
+    const todoEmpty = todoCount === 0;
 
     const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
     if (recentlyPicked) return;
@@ -1161,51 +1181,54 @@ export default function ArticulosMain(props) {
     const groupsReady = Array.isArray(agrupacionesRich) && agrupacionesRich.length > 0;
     if (!catsReady || !groupsReady) return;
 
-    // âœ… NO sacar al usuario de Discontinuados
-    if (agrupacionSeleccionada && isDiscontinuadosGroup(agrupacionSeleccionada)) return;
+    const currentSel = agrupSelRef.current;
 
-    const isTodoSelected =
-      agrupacionSeleccionada &&
-      Number(agrupacionSeleccionada.id) === Number(todoId);
+    // No sacar al usuario de Discontinuados
+    if (currentSel && isDiscontinuadosGroup(currentSel)) return;
 
-    if (todoEmpty) {
+    // PRIORIDAD 1: Si hay artículos en Sin Agrupación → ir ahí siempre
+    if (!todoEmpty && todoId) {
+      const isTodoSelected = currentSel && Number(currentSel.id) === Number(todoId);
+      if (!isTodoSelected) {
+        console.log(`[ArticulosMain] 📌 Hay ${todoCount} en Sin Agrupación → seleccionando TODO`);
+        setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
+        setCategoriaSeleccionada(null);
+        setFiltroBusqueda('');
+      }
+      return;
+    }
+
+    // PRIORIDAD 2: TODO vacío → mostrar favorita SI el usuario no tiene una selección activa
+    // (solo al cargar/cambiar negocio, no durante la navegación del usuario)
+    if (todoEmpty && favoriteGroupId) {
       const fav = (agrupacionesRich || []).find(
         (g) => Number(g?.id) === Number(favoriteGroupId)
       );
 
-      if (
-        fav &&
-        (!agrupacionSeleccionada ||
-          Number(agrupacionSeleccionada.id) !== Number(fav.id))
-      ) {
-        setAgrupacionSeleccionada(fav);
-        setCategoriaSeleccionada(null);
-        setFiltroBusqueda('');
-      } else if (!fav) {
+      if (fav) {
+        // Solo navegar a favorita si no hay nada seleccionado actualmente
+        // o si la selección actual ya no existe en la lista (negocio cambió)
+        const selExistsInList = currentSel &&
+          (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
+
+        if (!selExistsInList) {
+          console.log(`[ArticulosMain] ⭐ Seleccionando favorita: ${fav.nombre}`);
+          setAgrupacionSeleccionada(fav);
+          setCategoriaSeleccionada(null);
+          setFiltroBusqueda('');
+        }
+      } else {
+        console.log('[ArticulosMain] ⚠️ Favorita no encontrada → limpiando');
         setFavoriteGroupId(null);
-      }
-    } else {
-      if (
-        !isTodoSelected &&
-        Number.isFinite(Number(todoId)) &&
-        todoId
-      ) {
-        setAgrupacionSeleccionada({
-          id: Number(todoId),
-          nombre: 'TODO',
-          articulos: [],
-        });
-        setCategoriaSeleccionada(null);
-        setFiltroBusqueda('');
       }
     }
   }, [
+    activeBizId,
     todoInfo?.todoGroupId,
     todoInfo?.idsSinAgrupCount,
     favoriteGroupId,
     agrupacionesRich,
     categorias,
-    agrupacionSeleccionada,
     setAgrupacionSeleccionada,
     setCategoriaSeleccionada,
     setFiltroBusqueda,
@@ -1245,22 +1268,25 @@ export default function ArticulosMain(props) {
     ) {
       return;
     }
-    const ok = window.confirm(`Eliminar la agrupaciÃ³n "${group.nombre}"?`);
+    const ok = window.confirm(`Eliminar la agrupación "${group.nombre}"?`);
     if (!ok) return;
 
     try {
       await eliminarAgrupacion(group);
+
+      // ✅ NO emitir aquí, SidebarCategorias ya lo hace
+
       await refetchAgrupaciones();
       if (Number(agrupacionSeleccionada?.id) === Number(group.id)) {
         setAgrupacionSeleccionada(null);
       }
     } catch (e) {
-      console.error('Error al eliminar agrupaciÃ³n', e);
+      console.error('Error al eliminar agrupación', e);
     }
   }, [todoInfo?.todoGroupId, refetchAgrupaciones, agrupacionSeleccionada]);
 
   const handleRenameGroup = useCallback(async (group) => {
-    if (!group) return null; // ✅ devolver null explícitamente
+    if (!group) return null;
 
     const currentName = String(group.nombre || '');
     const isTodo = esTodoGroup(group);
@@ -1268,7 +1294,6 @@ export default function ArticulosMain(props) {
 
     if (isDisc) return null;
 
-    // ✅ UN SOLO PROMPT para ambos casos
     const promptMsg = isTodo
       ? 'Nombre para la nueva agrupación (los artículos de "Sin Agrupación" se moverán aquí):'
       : 'Nuevo nombre para la agrupación:';
@@ -1281,7 +1306,6 @@ export default function ArticulosMain(props) {
 
     try {
       if (isTodo) {
-        // Crear nueva agrupación con artículos de "Sin agrupación"
         const baseSet =
           todoInfo?.todoIds && todoInfo.todoIds.size
             ? todoInfo.todoIds
@@ -1329,19 +1353,17 @@ export default function ArticulosMain(props) {
           setFiltroBusqueda('');
         }
 
+        // ✅ NO emitir aquí, SidebarCategorias ya lo hace
         showMiss(`Agrupación "${nombre}" creada a partir de "Sin agrupación".`);
 
-        // ✅ NO devolver newName para crear desde TODO
-        // La notificación de "create" se maneja en otro lado
         return null;
 
       } else {
-        // Renombrar agrupación existente
         await actualizarAgrupacion(activeBizId, group.id, { nombre });
         await refetchAgrupaciones();
         showMiss('Nombre de agrupación actualizado.');
 
-        // ✅ IMPORTANTE: devolver el nuevo nombre para notificación
+        // ✅ Devolver objeto para que SidebarCategorias emita
         return { newName: nombre };
       }
     } catch (e) {
@@ -1381,7 +1403,7 @@ export default function ArticulosMain(props) {
   );
 
   const ventasPorArticuloMerged = useMemo(() => {
-    const base = ventasMap || new Map();  // âœ… Usar ventasMap
+    const base = ventasMap || new Map();
     if (!ventasOverrides || ventasOverrides.size === 0) return base;
 
     const merged = new Map(base);
@@ -1397,6 +1419,26 @@ export default function ArticulosMain(props) {
     console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
     console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
+
+  // Vista de organización: early return cuando el principal está vacío y hay subnegocios
+  if (isOrgView) {
+    const effectiveDiscIds = discIds.size > 0 ? discIds : localDiscIds;
+    return (
+      <OrgDashboard
+        discGroup={discGroup}
+        discCount={effectiveDiscIds.size}
+        onSelectBusiness={async (biz) => {
+          try { await (selectBusiness ?? setActiveBusiness)?.(biz.id); } catch { }
+        }}
+        onSelectDiscontinuados={() => {
+          // Salir del OrgView y mostrar la tabla con discontinuados seleccionados
+          setShowDiscView(true);
+          markManualPick(); // bloquea el autoselect por 2500ms
+          if (discGroup) setAgrupacionSeleccionada(discGroup);
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1472,7 +1514,6 @@ export default function ArticulosMain(props) {
             onEditGroup={handleRenameGroup}
             onDeleteGroup={handleDeleteGroup}
             onRenameGroup={handleRenameGroup}
-            // NUEVAS PROPS para ordenar por monto sin suponer campos locales
             ventasMap={ventasMap}
             metaById={metaById}
             getAmountForId={getAmountForId}
@@ -1489,7 +1530,7 @@ export default function ArticulosMain(props) {
 
         <div
           id="tabla-scroll"
-          style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
+          style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
@@ -1522,6 +1563,7 @@ export default function ArticulosMain(props) {
             modalTreeMode={modalTreeMode}
             onDiscontinuarBloque={handleDiscontinuarBloque}
             getAmountForId={getAmountForId}
+            discIds={effectiveDiscIds}
           />
         </div>
       </div>

@@ -15,6 +15,7 @@ import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 import VentasCell from "./VentasCell";
 import VirtualList from "./shared/VirtualList";
+import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import "../css/TablaArticulos.css";
@@ -152,6 +153,7 @@ export default function TablaArticulos({
   modalTreeMode = "cat-first",
   onDiscontinuadoChange,
   onDiscontinuarBloque,
+  discIds: discIdsProp,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -183,6 +185,7 @@ export default function TablaArticulos({
     } catch { }
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
+  const [recetaArticulo, setRecetaArticulo] = useState(null);
 
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
@@ -439,11 +442,12 @@ export default function TablaArticulos({
 
   const idsSinAgrup = useMemo(() => {
     const s = new Set();
+    const discExclude = discIdsProp instanceof Set ? discIdsProp : new Set();
     for (const id of allArticulos.map(getId)) {
-      if (!idsEnOtras.has(id) && !excludedIds.has(id)) s.add(id);
+      if (!idsEnOtras.has(id) && !excludedIds.has(id) && !discExclude.has(id)) s.add(id);
     }
     return s;
-  }, [allArticulos, idsEnOtras, excludedIds]);
+  }, [allArticulos, idsEnOtras, excludedIds, discIdsProp]);
 
   const idsSinAgrupArray = useMemo(() => Array.from(idsSinAgrup), [idsSinAgrup]);
 
@@ -827,6 +831,14 @@ export default function TablaArticulos({
       }
       const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
       if (isTodo) {
+        // Excluir localmente para que desaparezcan sin esperar refetch
+        if (ids.length) {
+          setExcludedIds(prev => {
+            const next = new Set(prev);
+            ids.forEach(id => next.add(id));
+            return next;
+          });
+        }
         refetchLocal();
         return;
       }
@@ -839,7 +851,7 @@ export default function TablaArticulos({
 
       refetchLocal();
     },
-    [agrupSelView, onMutateGroups, refetchLocal]
+    [agrupSelView, onMutateGroups, refetchLocal, setExcludedIds]
   );
 
   const handleVisibleIds = useCallback(
@@ -997,8 +1009,18 @@ export default function TablaArticulos({
       >
         {leftBar}
         <div>{id}</div>
-        <div>{a.nombre}</div>
-
+        <div
+          onClick={() => setRecetaArticulo(a)}
+          style={{
+            cursor: 'pointer',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={`Ver receta de ${a.nombre}`}
+        >
+          {a.nombre}
+        </div>
         <div>
           <VentasCell
             articuloId={id}
@@ -1057,7 +1079,7 @@ export default function TablaArticulos({
             onDiscontinuadoChange={onDiscontinuadoChange}
             treeMode={modalTreeMode}
             allowedIds={filterIds}
-            businessId={activeBizId} 
+            businessId={activeBizId}
           />
         </div>
       </div>
@@ -1065,131 +1087,141 @@ export default function TablaArticulos({
   };
 
   return (
-    <div className="tabla-articulos-container">
-      <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
-        <div
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 3,
-            background: "#fff",
-            borderBottom: "1px solid #eee",
-            padding: "8px 8px 6px",
-          }}
-        >
+    <>
+      {recetaArticulo && (
+        <RecetaModal
+          open={!!recetaArticulo}
+          onClose={() => setRecetaArticulo(null)}
+          articulo={recetaArticulo}
+          businessId={activeBizId}
+        />
+      )}
+      <div className="tabla-articulos-container">
+        <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: gridTemplate,
-              gap: 0,
-              fontWeight: 700,
-              userSelect: "none",
-              alignItems: "center",
-              color: "black",
-              fontSize: "1rem",
+              position: "sticky",
+              top: 0,
+              
+              background: "#fff",
+              borderBottom: "1px solid #eee",
+              padding: "8px 8px 6px",
             }}
           >
-            <div onClick={() => toggleSort("codigo")} style={{ cursor: "pointer" }}>
-              Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div onClick={() => toggleSort("nombre")} style={{ cursor: "pointer" }}>
-              Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div onClick={() => toggleSort("ventas")} style={{ cursor: "pointer" }}>
-              Ventas U {ventasLoading ? "…" : ""}{" "}
-              {sortBy === "ventas" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: gridTemplate,
+                gap: 0,
+                fontWeight: 700,
+                userSelect: "none",
+                alignItems: "center",
+                color: "black",
+                fontSize: "1rem",
+              }}
+            >
+              <div onClick={() => toggleSort("codigo")} style={{ cursor: "pointer" }}>
+                Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div onClick={() => toggleSort("nombre")} style={{ cursor: "pointer" }}>
+                Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div onClick={() => toggleSort("ventas")} style={{ cursor: "pointer" }}>
+                Ventas U {ventasLoading ? "…" : ""}{" "}
+                {sortBy === "ventas" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
 
-            <div>Ventas $ {ventasLoading ? "…" : ""}</div>
+              <div>Ventas $ {ventasLoading ? "…" : ""}</div>
 
-            <div
-              onClick={() => toggleSort("precio")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Precio {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              <div
+                onClick={() => toggleSort("precio")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Precio {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div
+                onClick={() => toggleSort("costo")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Costo ($) {sortBy === "costo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div
+                onClick={() => toggleSort("costoPct")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Costo (%){" "}
+                {sortBy === "costoPct" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div
+                onClick={() => toggleSort("objetivo")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Objetivo (%){" "}
+                {sortBy === "objetivo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div
+                onClick={() => toggleSort("sugerido")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Sugerido ($){" "}
+                {sortBy === "sugerido" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div
+                onClick={() => toggleSort("manual")}
+                style={{ cursor: "pointer", textAlign: "center" }}
+              >
+                Manual ($){" "}
+                {sortBy === "manual" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+              <div style={{ textAlign: "center" }}>Acciones</div>
             </div>
-            <div
-              onClick={() => toggleSort("costo")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Costo ($) {sortBy === "costo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div
-              onClick={() => toggleSort("costoPct")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Costo (%){" "}
-              {sortBy === "costoPct" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div
-              onClick={() => toggleSort("objetivo")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Objetivo (%){" "}
-              {sortBy === "objetivo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div
-              onClick={() => toggleSort("sugerido")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Sugerido ($){" "}
-              {sortBy === "sugerido" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div
-              onClick={() => toggleSort("manual")}
-              style={{ cursor: "pointer", textAlign: "center" }}
-            >
-              Manual ($){" "}
-              {sortBy === "manual" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-            </div>
-            <div style={{ textAlign: "center" }}>Acciones</div>
           </div>
+
+          {flatRows.length === 0 ? (
+            <p
+              style={{
+                marginTop: "2rem",
+                fontSize: "1.2rem",
+                color: "#777",
+                padding: "0 8px",
+              }}
+            >
+              No hay artículos.
+            </p>
+          ) : (
+            <VirtualList
+              ref={listRef}
+              rows={flatRows}
+              rowHeight={ITEM_H}
+              height={
+                typeof window !== "undefined" && window.innerHeight
+                  ? Math.max(240, window.innerHeight - 220)
+                  : 520
+              }
+              overscan={8}
+              onVisibleItemsIds={handleVisibleIds}
+              getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
+              renderRow={renderRow}
+              extraData={ventasPorArticulo?.size || 0}
+            />
+          )}
         </div>
 
-        {flatRows.length === 0 ? (
-          <p
-            style={{
-              marginTop: "2rem",
-              fontSize: "1.2rem",
-              color: "#777",
-              padding: "0 8px",
-            }}
-          >
-            No hay artículos.
-          </p>
-        ) : (
-          <VirtualList
-            ref={listRef}
-            rows={flatRows}
-            rowHeight={ITEM_H}
-            height={
-              typeof window !== "undefined" && window.innerHeight
-                ? Math.max(240, window.innerHeight - 220)
-                : 520
-            }
-            overscan={8}
-            onVisibleItemsIds={handleVisibleIds}
-            getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
-            renderRow={renderRow}
-            extraData={ventasPorArticulo?.size || 0}
-          />
-        )}
-      </div>
-
-      <Snackbar
-        open={snack.open}
-        autoHideDuration={2600}
-        onClose={() => setSnack((s) => ({ ...s, open: false }))}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
+        <Snackbar
+          open={snack.open}
+          autoHideDuration={2600}
           onClose={() => setSnack((s) => ({ ...s, open: false }))}
-          severity={snack.type}
-          sx={{ width: "100%" }}
+          anchorOrigin={{ vertical: "top", horizontal: "center" }}
         >
-          {snack.msg}
-        </Alert>
-      </Snackbar>
-    </div>
+          <Alert
+            onClose={() => setSnack((s) => ({ ...s, open: false }))}
+            severity={snack.type}
+            sx={{ width: "100%" }}
+          >
+            {snack.msg}
+          </Alert>
+        </Snackbar>
+      </div>
+    </>
   );
 }

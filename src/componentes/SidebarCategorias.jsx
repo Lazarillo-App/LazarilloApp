@@ -13,14 +13,13 @@ import {
 } from '@mui/material';
 
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
-import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
-
+import SubBusinessCreateModal from './SubBusinessCreateModal';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
-
+import AddBusinessIcon from '@mui/icons-material/AddBusiness';
 import '../css/SidebarCategorias.css';
 
 import { assignAgrupacionToDivision as assignAgrupacionToDivisionAPI } from '@/servicios/apiDivisions';
@@ -153,6 +152,9 @@ function SidebarCategorias({
   // ✅ NUEVO: Estado local del listMode mientras carga la preferencia
   const [localListMode, setLocalListMode] = useState(listMode);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
+
+  const [subBizModalOpen, setSubBizModalOpen] = useState(false);
+  const [groupForSubBiz, setGroupForSubBiz] = useState(null);
 
   const divisionNum =
     activeDivisionId === null || activeDivisionId === undefined || activeDivisionId === ''
@@ -505,6 +507,11 @@ function SidebarCategorias({
     setDivisionModalOpen(true);
   }, []);
 
+  const handleCreateSubBusiness = useCallback((agrupacion) => {
+    setGroupForSubBiz(agrupacion);
+    setSubBizModalOpen(true);
+  }, []);
+
   const handleDivisionAssign = useCallback(
     async (divisionId) => {
       if (!groupToMove) return;
@@ -763,16 +770,17 @@ function SidebarCategorias({
                         )}
 
                         {/* ✅ asignar a división: solo en Principal y no para TODO/DISC */}
-                        {isMainDivision && !isTodo && !isDisc && (
-                          <Tooltip title="Asignar a división">
+                        {!isTodo && !isDisc && (
+                          <Tooltip title="Crear sub-negocio con esta agrupación">
                             <IconButton
                               size="small"
                               onClick={(e) => {
+                               document.activeElement?.blur();
                                 e.stopPropagation();
-                                handleMoveGroupToDivision(g);
+                                handleCreateSubBusiness(g);
                               }}
                             >
-                              <ViewModuleIcon fontSize="inherit" />
+                              <AddBusinessIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -878,17 +886,29 @@ function SidebarCategorias({
         )}
       </ul>
 
-      {divisionModalOpen && (
-        <AssignGroupToDivisionModal
-          open={divisionModalOpen}
-          group={groupToMove}
-          businessId={businessId}
-          currentDivisionId={activeDivisionId ?? null}
+      {subBizModalOpen && (
+        <SubBusinessCreateModal
+          open={subBizModalOpen}
+          agrupacion={groupForSubBiz}
           onClose={() => {
-            setDivisionModalOpen(false);
-            setGroupToMove(null);
+            setSubBizModalOpen(false);
+            setGroupForSubBiz(null);
           }}
-          onAssign={handleDivisionAssign}
+          onCreated={(newBiz) => {
+            notify?.(`Sub-negocio "${newBiz.name}" creado`, 'success');
+            setSubBizModalOpen(false);
+
+            // Quitar la agrupación convertida del estado local inmediatamente
+            if (groupForSubBiz?.id) {
+              onMutateGroups?.({
+                type: 'remove_group',
+                groupId: Number(groupForSubBiz.id),
+              });
+            }
+
+            setGroupForSubBiz(null);
+            onRefetch?.();
+          }}
         />
       )}
     </div>

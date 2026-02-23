@@ -13,6 +13,7 @@ import './index.css';
 // Contextos
 import { AuthProvider } from './context/AuthContext.jsx';
 import { BusinessProvider } from './context/BusinessContext.jsx';
+import { OrganizationProvider } from './context/OrganizationContext.jsx';
 
 bootApplySavedPalette();
 
@@ -20,12 +21,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BusinessProvider> 
-          <BrowserRouter basename={APP_BASENAME}>
-            <SearchProvider>
-              <App />
-            </SearchProvider>
-          </BrowserRouter>
+        <BusinessProvider>
+          {/* OrganizationProvider va DENTRO de BusinessProvider
+              porque necesita activeId del BusinessContext */}
+          <OrganizationProvider>
+            <BrowserRouter basename={APP_BASENAME}>
+              <SearchProvider>
+                <App />
+              </SearchProvider>
+            </BrowserRouter>
+          </OrganizationProvider>
         </BusinessProvider>
       </AuthProvider>
     </QueryClientProvider>

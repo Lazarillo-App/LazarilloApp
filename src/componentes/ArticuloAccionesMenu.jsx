@@ -14,6 +14,9 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
+import { useOrganization } from '../context/OrganizationContext';
+import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
+import BusinessIcon from '@mui/icons-material/Business';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -108,6 +111,10 @@ function ArticuloAccionesMenu({
   const [isMoving, setIsMoving] = useState(false);
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
   const [preselect, setPreselect] = useState(null);
+  const [dlgSubNegocioOpen, setDlgSubNegocioOpen] = useState(false);
+  const [targetBizId, setTargetBizId] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
+  const { allBusinesses, rootBusiness } = useOrganization();
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
@@ -189,28 +196,45 @@ function ArticuloAccionesMenu({
     const idNum = articuloIdNum;
     if (!Number.isFinite(idNum)) return;
 
-    if (!discontinuadosId) {
-      notify?.('No existe la agrupación "Discontinuados". Creala primero.', 'error');
-      handleClose();
-      return;
-    }
-
     try {
       if (!isInDiscontinuados) {
         // ===========================
         // ✅ DISCONTINUAR
         // ===========================
-        await httpBiz(`/agrupaciones/${discontinuadosId}/articulos`, {
-          method: 'PUT',
-          body: { ids: [idNum] },
-        });
+        let resolvedDiscId = discontinuadosId;
 
-        onMutateGroups?.({
-          type: 'append',
-          groupId: discontinuadosId,
-          articulos: [{ id: idNum }],
-          baseById,
-        });
+        if (!resolvedDiscId) {
+          // Subnegocio sin Discontinuados propio → create-or-move redirige al principal
+          const res = await httpBiz('/agrupaciones/create-or-move', {
+            method: 'POST',
+            body: { nombre: 'Discontinuados', ids: [idNum] },
+          });
+          resolvedDiscId = res?.id ? Number(res.id) : null;
+        } else {
+          // Discontinuados vive en el principal → usar discBizId
+          await httpBiz(`/agrupaciones/${resolvedDiscId}/articulos`, {
+            method: 'PUT',
+            body: { ids: [idNum] },
+          }, discBizId);
+        }
+
+        if (resolvedDiscId) {
+          onMutateGroups?.({
+            type: 'append',
+            groupId: resolvedDiscId,
+            articulos: [{ id: idNum }],
+            baseById,
+          });
+
+          // ✅ Quitar del grupo actual para que desaparezca de la tabla inmediatamente
+          if (currentGroupId && currentGroupId !== resolvedDiscId) {
+            onMutateGroups?.({
+              type: 'remove',
+              groupId: currentGroupId,
+              ids: [idNum],
+            });
+          }
+        }
 
         // ✅ Emitir evento UI
         pushUi({
@@ -220,12 +244,12 @@ function ArticuloAccionesMenu({
           message: `"${articuloDisplayName}" → Discontinuados.`,
           payload: {
             ids: [idNum],
-            discontinuadosGroupId: Number(discontinuadosId),
+            discontinuadosGroupId: Number(resolvedDiscId ?? discontinuadosId),
             undo: {
               payload: {
                 prev: {
                   fromGroupId: currentGroupId ?? null,
-                  discontinuadosGroupId: Number(discontinuadosId),
+                  discontinuadosGroupId: Number(resolvedDiscId ?? discontinuadosId),
                   wasInDiscontinuados: false,
                 },
               },
@@ -235,14 +259,17 @@ function ArticuloAccionesMenu({
 
         // ✅ Llamar handler SIN navegar (stay: true)
         onDiscontinuadoChange?.(idNum, true, { stay: true });
+        // ✅ Notificar afterMutation para excluir de Sin Agrupación inmediatamente
+        onAfterMutation?.([idNum]);
 
       } else {
         // ===========================
         // ✅ REACTIVAR
         // ===========================
+        // Discontinuados vive en el principal → usar discBizId
         await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
           method: 'DELETE',
-        });
+        }, discBizId);
 
         onMutateGroups?.({
           type: 'remove',
@@ -277,6 +304,73 @@ function ArticuloAccionesMenu({
       notify?.('No se pudo cambiar el estado de discontinuado', 'error');
     } finally {
       handleClose();
+    }
+  }
+
+  // BusinessId del principal - para todas las ops de Discontinuados
+  const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
+  // En subnegocio, Discontinuados vive en el principal → usar rootBizId
+  const discBizId = rootBizId || effectiveBusinessId;
+
+  // Subnegocios disponibles (excluir el actual y el principal)
+  const subNegocios = useMemo(() => {
+    const principalId = rootBusiness?.id;
+    return (allBusinesses || [])
+      .filter((b) => b.id !== principalId && String(b.id) !== String(effectiveBusinessId))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }, [allBusinesses, rootBusiness, effectiveBusinessId]);
+
+  const hasSubNegocios = subNegocios.length > 0;
+
+  async function asignarASubnegocio() {
+    const idNum = articuloIdNum;
+    if (!idNum || !targetBizId) return;
+    setIsAssigning(true);
+    try {
+      // Obtener (o crear) el grupo Sin Agrupación del subnegocio destino
+      const todo = await ensureTodo(Number(targetBizId));
+      if (!todo?.id) throw new Error('No se pudo obtener el grupo TODO del subnegocio');
+
+      // Agregar el artículo al grupo TODO del subnegocio destino
+      await httpBiz(`/agrupaciones/${todo.id}/articulos`, {
+        method: 'PUT',
+        body: { ids: [idNum] },
+      }, Number(targetBizId));
+
+      // Quitar del TODOS los grupos del negocio origen que contengan este artículo
+      // (puede estar en Sin Agrupación o en una agrupación específica)
+      const gruposConArticulo = (agrupaciones || []).filter(g =>
+        (g.articulos || []).some(a => Number(a?.id) === idNum)
+      );
+      for (const g of gruposConArticulo) {
+        try {
+          await httpBiz(`/agrupaciones/${g.id}/articulos/${idNum}`, {
+            method: 'DELETE',
+          }, effectiveBusinessId);
+          onMutateGroups?.({ type: 'remove', groupId: Number(g.id), ids: [idNum] });
+        } catch (e) {
+          console.warn(`No se pudo quitar del grupo ${g.id}:`, e);
+        }
+      }
+      // Si no estaba en ningún grupo (estaba en Sin Agrupación nativa)
+      // notificar afterMutation para que TablaArticulos lo excluya
+      onAfterMutation?.([idNum]);
+
+      const targetBiz = subNegocios.find(b => String(b.id) === String(targetBizId));
+      notify?.(`Artículo asignado a ${targetBiz?.name || 'subnegocio'}`, 'success');
+      pushUi({
+        kind: 'info',
+        scope: 'articulo',
+        title: 'Artículo asignado',
+        message: `"${articuloDisplayName}" → ${targetBiz?.name || 'subnegocio'}.`,
+        payload: { ids: [idNum], targetBizId: Number(targetBizId) },
+      });
+      setDlgSubNegocioOpen(false);
+    } catch (e) {
+      console.error('ASIGNAR_SUBNEGOCIO_ERROR', e);
+      notify?.('No se pudo asignar al subnegocio', 'error');
+    } finally {
+      setIsAssigning(false);
     }
   }
 
@@ -487,6 +581,16 @@ function ArticuloAccionesMenu({
           </ListItemText>
         </MenuItem>
 
+        {/* 1b. Asignar a subnegocio (solo si hay subnegocios) */}
+        {hasSubNegocios && (
+          <MenuItem onClick={() => { handleClose(); setTimeout(() => setDlgSubNegocioOpen(true), 0); }}>
+            <ListItemIcon>
+              <BusinessIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Asignar a subnegocio…</ListItemText>
+          </MenuItem>
+        )}
+
         { /* 2. Quitar de esta agrupación */}
         <MenuItem onClick={quitarDeActual} disabled={isTodo}>
           <ListItemIcon>
@@ -526,6 +630,36 @@ function ArticuloAccionesMenu({
           </ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Dialog: Asignar a subnegocio */}
+      <Dialog open={dlgSubNegocioOpen} onClose={() => setDlgSubNegocioOpen(false)}>
+        <DialogTitle>Asignar "{articuloDisplayName}" a subnegocio</DialogTitle>
+        <DialogContent>
+          <TextField
+            select
+            SelectProps={{ native: true }}
+            value={targetBizId}
+            onChange={(e) => setTargetBizId(e.target.value)}
+            fullWidth
+            sx={{ mt: 1 }}
+            label="Subnegocio destino"
+          >
+            <option value="" disabled></option>
+            {subNegocios.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </TextField>
+          <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+            El artículo aparecerá en "Sin Agrupación" del subnegocio destino.
+          </p>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlgSubNegocioOpen(false)} disabled={isAssigning}>Cancelar</Button>
+          <Button onClick={asignarASubnegocio} variant="contained" disabled={!targetBizId || isAssigning}>
+            {isAssigning ? 'Asignando…' : 'Asignar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>

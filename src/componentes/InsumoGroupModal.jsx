@@ -17,7 +17,7 @@ import {
     Typography,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-
+import { notifyGroupCreated } from '../servicios/notifyGroupActions';
 import {
     insumosList,
     insumoGroupCreate,
@@ -304,8 +304,6 @@ export default function InsumoGroupModal({
             setSaving(true);
 
             let groupIdToUse = hasExisting ? Number(selectedGroupId) : null;
-
-            // ✅ MOVER ESTO ARRIBA (antes del if)
             const idsArray = Array.from(selectedIds);
 
             // 1) Crear agrupación si escribió un nombre
@@ -323,28 +321,14 @@ export default function InsumoGroupModal({
                 }
                 groupIdToUse = newId;
 
-                // ✅ EMITIR NOTIFICACIÓN (ahora idsArray está definido)
-                try {
-                    window.dispatchEvent(
-                        new CustomEvent('ui:action', {
-                            detail: {
-                                businessId,
-                                kind: 'group_create',
-                                scope: 'insumo',
-                                title: '🆕 Agrupación creada',
-                                message: `"${trimmedName}" con ${idsArray.length} insumo(s).`,
-                                createdAt: new Date().toISOString(),
-                                payload: {
-                                    groupId: newId,
-                                    groupName: trimmedName,
-                                    count: idsArray.length,
-                                },
-                            },
-                        })
-                    );
-                } catch (e) {
-                    console.warn('[InsumoGroupModal] Error emitiendo notificación:', e);
-                }
+                // ✅ EMITIR NOTIFICACIÓN usando helper centralizado
+                notifyGroupCreated({
+                    businessId,
+                    groupId: newId,
+                    groupName: trimmedName,
+                    itemCount: idsArray.length,
+                    scope: 'insumo',
+                });
 
                 onGroupsReload && (await onGroupsReload());
             }

@@ -1,5 +1,5 @@
 // src/componentes/VentasActionsMenu.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     Button,
     Menu,
@@ -27,22 +27,27 @@ export default function VentasActionsMenu({
     const [anchorEl, setAnchorEl] = useState(null);
     const open = Boolean(anchorEl);
 
-    // ✅ Obtener colores del tema del negocio
-    const themeColors = useMemo(() => {
-        if (typeof window === 'undefined') {
-            return {
-                primary: '#3b82f6',
-                secondary: '#10b981',
-            };
-        }
-
-        const root = document.documentElement;
-        const styles = getComputedStyle(root);
-
+    const readColors = () => {
+        if (typeof window === 'undefined') return { primary: '#3b82f6', secondary: '#10b981', onPrimary: '#ffffff' };
+        const s = getComputedStyle(document.documentElement);
         return {
-            primary: styles.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
-            secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-            onPrimary: styles.getPropertyValue('--on-primary')?.trim() || '#ffffff',
+            primary: s.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
+            secondary: s.getPropertyValue('--color-secondary')?.trim() || '#10b981',
+            onPrimary: s.getPropertyValue('--on-primary')?.trim() || '#ffffff',
+        };
+    };
+
+    const [themeColors, setThemeColors] = useState(readColors);
+
+    useEffect(() => {
+        const update = () => setThemeColors(readColors());
+        window.addEventListener('palette:changed', update);
+        window.addEventListener('theme:updated', update);
+        window.addEventListener('business:switched', update);
+        return () => {
+            window.removeEventListener('palette:changed', update);
+            window.removeEventListener('theme:updated', update);
+            window.removeEventListener('business:switched', update);
         };
     }, []);
 

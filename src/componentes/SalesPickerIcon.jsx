@@ -1,5 +1,5 @@
 // src/componentes/SalesPickerIcon.jsx
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   IconButton, Tooltip, Popover, Box, Stack, Button, Typography, 
   ToggleButtonGroup, ToggleButton, Divider, Chip 
@@ -59,24 +59,29 @@ export default function SalesPickerIcon({ value, onChange }) {
   
   const open = Boolean(anchorEl);
 
-  // ✅ Obtener colores del tema del negocio
-  const themeColors = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return {
-        primary: '#3b82f6',
-        secondary: '#10b981',
-        background: '#f9fafb'
-      };
-    }
-
-    const root = document.documentElement;
-    const styles = getComputedStyle(root);
-    
+  // ✅ Colores del tema del negocio - reactivo a cambios de negocio
+  const readColors = () => {
+    if (typeof window === 'undefined') return { primary: '#3b82f6', secondary: '#10b981', background: '#f9fafb', onPrimary: '#ffffff' };
+    const s = getComputedStyle(document.documentElement);
     return {
-      primary: styles.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
-      secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-      background: styles.getPropertyValue('--color-background')?.trim() || '#f9fafb',
-      onPrimary: styles.getPropertyValue('--on-primary')?.trim() || '#ffffff',
+      primary: s.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
+      secondary: s.getPropertyValue('--color-secondary')?.trim() || '#10b981',
+      background: s.getPropertyValue('--color-background')?.trim() || '#f9fafb',
+      onPrimary: s.getPropertyValue('--on-primary')?.trim() || '#ffffff',
+    };
+  };
+
+  const [themeColors, setThemeColors] = useState(readColors);
+
+  useEffect(() => {
+    const update = () => setThemeColors(readColors());
+    window.addEventListener('palette:changed', update);
+    window.addEventListener('theme:updated', update);
+    window.addEventListener('business:switched', update);
+    return () => {
+      window.removeEventListener('palette:changed', update);
+      window.removeEventListener('theme:updated', update);
+      window.removeEventListener('business:switched', update);
     };
   }, []);
   

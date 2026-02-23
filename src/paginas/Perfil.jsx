@@ -20,8 +20,6 @@ export default function Perfil() {
     divisionsLoading,
     activeDivisionId,
     selectDivision,
-
-    // ✅ nuevos del Context
     refetchBusinesses,
     removeBusinessFromState,
 
@@ -75,119 +73,128 @@ export default function Perfil() {
     // ✅ aseguramos lista fresca
     await refetchBusinesses?.();
 
-    try {
-      const maxiOk = await isMaxiConfigured(biz.id);
+    // ✅ SOLO sincronizar si es un negocio NORMAL (no sub-negocio)
+    const isSubBusiness = biz.created_from === 'from_group';
 
-      if (maxiOk) {
-        showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
+    if (!isSubBusiness) {
+      try {
+        const maxiOk = await isMaxiConfigured(biz.id);
 
-        const result = await syncAll(biz.id, {
-          onProgress: (msg, type, step) => console.log(`[AUTO-SYNC] [${step}] ${msg}`),
-        });
+        if (maxiOk) {
+          showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
 
-        if (result?.ok) {
-          showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
-          window.dispatchEvent(new CustomEvent('sync:completed'));
+          const result = await syncAll(biz.id, {
+            onProgress: (msg, type, step) => console.log(`[AUTO-SYNC] [${step}] ${msg}`),
+          });
+
+          if (result?.ok) {
+            showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
+            window.dispatchEvent(new CustomEvent('sync:completed'));
+          } else {
+            const errors = Array.isArray(result?.errors) ? result.errors : [];
+            const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
+            showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
+          }
+
         } else {
-          const errors = Array.isArray(result?.errors) ? result.errors : [];
-          const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
-          showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
+          showNotice('Negocio creado', 'Configurá las credenciales de Maxi para habilitar la sincronización automática');
         }
-
-      } else {
-        showNotice('Negocio creado', 'Configurá las credenciales de Maxi para habilitar la sincronización automática');
+      } catch (e) {
+        console.error('Auto-sync on create error:', e);
+        showNotice('Error', 'No se pudo completar la sincronización automática');
       }
-    } catch (e) {
-      console.error('Auto-sync on create error:', e);
-      showNotice('Error', 'No se pudo completar la sincronización automática');
+    } else {
+      // Es sub-negocio, solo mostrar mensaje de éxito
+      showNotice('Sub-negocio creado', `"${biz.name}" fue creado correctamente y hereda las credenciales del principal.`);
     }
 
     try {
       window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } }));
     } catch { }
   };
+
   const handleDeleteBusiness = async (biz) => {
-  const id = biz?.id;
-  if (!id) return;
+    const id = biz?.id;
+    if (!id) return;
 
-  const name = biz?.name || biz?.nombre || `#${id}`;
-  const ok = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
-  if (!ok) return;
+    const name = biz?.name || biz?.nombre || `#${id}`;
+    const ok = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
+    if (!ok) return;
 
-  // ✅ mover foco antes de borrar para evitar warning aria-hidden
-  try {
-    newLocalBtnRef.current?.focus?.();
-  } catch {
-    try { document.activeElement?.blur?.(); } catch { }
-  }
-
-  try {
-    const currentActiveId = Number(activeId);
-    const deletedId = Number(id);
-    const isActive = currentActiveId === deletedId;
-
-    // 1️⃣ Borrar el negocio
-    await BusinessesAPI.remove(id);
-
-    // 2️⃣ Remover del state inmediatamente
-    removeBusinessFromState?.(id);
-
-    // 3️⃣ Si era el activo, seleccionar otro automáticamente
-    if (isActive) {
-      console.log('[Delete] Negocio activo borrado, seleccionando otro...');
-
-      // Obtener lista actualizada del servidor
-      const businesses = await BusinessesAPI.listMine();
-
-      if (businesses && businesses.length > 0) {
-        // Seleccionar el primero disponible
-        const newBiz = businesses[0];
-        console.log(`[Delete] Activando negocio: ${newBiz.id}`);
-
-        await BusinessesAPI.setActive(newBiz.id);
-
-        // Despachar evento para que todos los componentes se actualicen
-        window.dispatchEvent(
-          new CustomEvent('business:switched', {
-            detail: { bizId: newBiz.id, biz: newBiz }
-          })
-        );
-
-        showNotice("Listo", `🗑️ Local eliminado. Ahora activo: "${newBiz.name}"`);
-      } else {
-        // No hay más negocios
-        console.log('[Delete] No quedan negocios');
-        localStorage.removeItem('activeBusinessId');
-
-        await selectBusiness?.(null);
-        await selectDivision?.(null);
-
-        window.dispatchEvent(
-          new CustomEvent('business:switched', {
-            detail: { bizId: null, biz: null }
-          })
-        );
-
-        showNotice("Listo", "🗑️ Local eliminado. No quedan más locales.");
-      }
-    } else {
-      // No era el activo, solo notificar
-      showNotice("Listo", `🗑️ Local "${name}" eliminado`);
+    // ✅ mover foco antes de borrar para evitar warning aria-hidden
+    try {
+      newLocalBtnRef.current?.focus?.();
+    } catch {
+      try { document.activeElement?.blur?.(); } catch { }
     }
 
-    // 4️⃣ Refrescar lista completa
-    await refetchBusinesses?.();
+    try {
+      const currentActiveId = Number(activeId);
+      const deletedId = Number(id);
+      const isActive = currentActiveId === deletedId;
 
-    // 5️⃣ Notificar evento de borrado
-    window.dispatchEvent(
-      new CustomEvent("business:deleted", { detail: { id } })
-    );
+      // 1️⃣ Borrar el negocio
+      await BusinessesAPI.remove(id);
 
-  } catch (e) {
-    console.error('[Delete] Error:', e);
-    showNotice("Error", e?.message || "No se pudo eliminar el local");
-  }
-};
+      // 2️⃣ Remover del state inmediatamente
+      removeBusinessFromState?.(id);
+
+      // 3️⃣ Si era el activo, seleccionar otro automáticamente
+      if (isActive) {
+        console.log('[Delete] Negocio activo borrado, seleccionando otro...');
+
+        // Obtener lista actualizada del servidor
+        const businesses = await BusinessesAPI.listMine();
+
+        if (businesses && businesses.length > 0) {
+          // Seleccionar el primero disponible
+          const newBiz = businesses[0];
+          console.log(`[Delete] Activando negocio: ${newBiz.id}`);
+
+          await BusinessesAPI.setActive(newBiz.id);
+
+          // Despachar evento para que todos los componentes se actualicen
+          window.dispatchEvent(
+            new CustomEvent('business:switched', {
+              detail: { bizId: newBiz.id, biz: newBiz }
+            })
+          );
+
+          showNotice("Listo", `🗑️ Local eliminado. Ahora activo: "${newBiz.name}"`);
+        } else {
+          // No hay más negocios
+          console.log('[Delete] No quedan negocios');
+          localStorage.removeItem('activeBusinessId');
+
+          await selectBusiness?.(null);
+          await selectDivision?.(null);
+
+          window.dispatchEvent(
+            new CustomEvent('business:switched', {
+              detail: { bizId: null, biz: null }
+            })
+          );
+
+          showNotice("Listo", "🗑️ Local eliminado. No quedan más locales.");
+        }
+      } else {
+        // No era el activo, solo notificar
+        showNotice("Listo", `🗑️ Local "${name}" eliminado`);
+      }
+
+      // 4️⃣ Refrescar lista completa
+      await refetchBusinesses?.();
+
+      // 5️⃣ Notificar evento de borrado
+      window.dispatchEvent(
+        new CustomEvent("business:deleted", { detail: { id } })
+      );
+
+    } catch (e) {
+      console.error('[Delete] Error:', e);
+      showNotice("Error", e?.message || "No se pudo eliminar el local");
+    }
+  };
 
   const activeBiz = active || null;
 

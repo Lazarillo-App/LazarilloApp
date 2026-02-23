@@ -20,6 +20,10 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CheckIcon from '@mui/icons-material/Check';
 import HomeIcon from '@mui/icons-material/Home';
 import FolderIcon from '@mui/icons-material/Folder';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CloseIcon from '@mui/icons-material/Close';
+import { TextField } from '@mui/material';
 
 import { useBusiness } from '@/context/BusinessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
@@ -64,6 +68,9 @@ export default function BusinessDivisionSelector() {
   const [loadingBiz, setLoadingBiz] = useState(false);
   const [expandedBizId, setExpandedBizId] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [editingBizId, setEditingBizId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const open = Boolean(anchorEl);
 
@@ -118,6 +125,46 @@ export default function BusinessDivisionSelector() {
   const handleSelectDivision = async (divisionId) => {
     await selectDivision?.(divisionId ?? null);
     handleClose();
+  };
+
+  const startEdit = (e, b) => {
+    e.stopPropagation();
+    setEditingBizId(String(b.id));
+    setEditingName(b.name || '');
+  };
+
+  const cancelEdit = (e) => {
+    e?.stopPropagation();
+    setEditingBizId(null);
+    setEditingName('');
+  };
+
+  const saveEdit = async (e, bizId) => {
+    e?.stopPropagation();
+    const trimmed = editingName.trim();
+    if (!trimmed) return cancelEdit();
+    setSavingName(true);
+    try {
+      await BusinessesAPI.update(bizId, { name: trimmed });
+      // Actualizar la lista local y el negocio activo si corresponde
+      setBizList((prev) =>
+        prev.map((b) => String(b.id) === String(bizId) ? { ...b, name: trimmed } : b)
+      );
+      // Emitir evento para que Navbar y otros componentes actualicen el nombre
+      window.dispatchEvent(new CustomEvent('business:switched', {
+        detail: { bizId: String(activeBusinessId) === String(bizId) ? bizId : null }
+      }));
+      if (String(activeBusinessId) === String(bizId)) {
+        // Refrescar el negocio activo para que Navbar actualice el nombre
+        await selectBusiness?.(bizId);
+      }
+    } catch (e) {
+      console.error('Error renombrando negocio:', e);
+    } finally {
+      setSavingName(false);
+      setEditingBizId(null);
+      setEditingName('');
+    }
   };
 
   if (!activeBusinessId) return null;
@@ -210,7 +257,7 @@ export default function BusinessDivisionSelector() {
         <MenuItem disableRipple disableGutters>
           <Box sx={{ px: 2, py: 1 }}>
             <Typography variant="caption" sx={{ opacity: 0.8, color: 'inherit' }}>
-              Negocios y vistas
+              Negocios 
             </Typography>
           </Box>
         </MenuItem>
@@ -272,25 +319,61 @@ export default function BusinessDivisionSelector() {
                     )}
                   </ListItemIcon>
 
-                  <ListItemText
-                    primary={b.name}
-                    secondary={b.slug}
-                    secondaryTypographyProps={{ sx: { opacity: 0.6, fontSize: '0.75rem' } }}
-                  />
-
-                  {/* ✅ Flecha: solo expande/colapsa */}
-                  {isActiveBiz && bizDivisions.length > 1 && (
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleBusiness(b.id);
-                      }}
-                      sx={{ color: 'inherit' }}
-                      aria-label={isExpanded ? 'Contraer divisiones' : 'Expandir divisiones'}
+                  {editingBizId === String(b.id) ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                    </IconButton>
+                      <TextField
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit(e, b.id);
+                          if (e.key === 'Escape') cancelEdit(e);
+                        }}
+                        autoFocus
+                        size="small"
+                        variant="standard"
+                        sx={{
+                          flex: 1,
+                          '& input': { color: 'var(--on-primary)', fontSize: '0.875rem' },
+                          '& .MuiInput-underline:before': { borderColor: 'color-mix(in srgb, var(--on-primary) 40%, transparent)' },
+                          '& .MuiInput-underline:after': { borderColor: 'var(--on-primary)' },
+                        }}
+                      />
+                      <IconButton size="small" onClick={(e) => saveEdit(e, b.id)} disabled={savingName}
+                        sx={{ color: 'inherit' }} aria-label="Confirmar nombre">
+                        {savingName ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <CheckCircleOutlineIcon fontSize="small" />}
+                      </IconButton>
+                      <IconButton size="small" onClick={cancelEdit} sx={{ color: 'inherit' }} aria-label="Cancelar">
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <>
+                      <ListItemText
+                        primary={b.name}
+                      />
+                      {/* Lápiz de edición */}
+                      <IconButton
+                        size="small"
+                        onClick={(e) => startEdit(e, b)}
+                        sx={{ color: 'inherit', opacity: 0.5, '&:hover': { opacity: 1 } }}
+                        aria-label={`Editar nombre de ${b.name}`}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      {/* Flecha divisiones */}
+                      {isActiveBiz && bizDivisions.length > 1 && (
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { e.stopPropagation(); handleToggleBusiness(b.id); }}
+                          sx={{ color: 'inherit' }}
+                          aria-label={isExpanded ? 'Contraer divisiones' : 'Expandir divisiones'}
+                        >
+                          {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                        </IconButton>
+                      )}
+                    </>
                   )}
                 </MenuItem>
 

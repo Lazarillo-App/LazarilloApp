@@ -14,6 +14,7 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
+import { useOrganization } from '../context/OrganizationContext';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -105,6 +106,10 @@ function SubrubroAccionesMenu({
     localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ??
     null;
+
+  const { rootBusiness } = useOrganization();
+  // Discontinuados vive en el principal → usar su bizId para esas ops
+  const discBizId = rootBusiness?.id ? Number(rootBusiness.id) : effectiveBusinessId;
 
   /* ==================== UI menu states ==================== */
   const [anchorEl, setAnchorEl] = useState(null);
@@ -413,7 +418,7 @@ function SubrubroAccionesMenu({
         await httpBiz(
           `/agrupaciones/${discontinuadosId}/articulos`,
           { method: 'PUT', body: { ids } },
-          effectiveBusinessId
+          discBizId  // Discontinuados vive en el principal
         );
 
         onMutateGroups?.({
@@ -460,7 +465,7 @@ function SubrubroAccionesMenu({
             await httpBiz(
               `/agrupaciones/${discontinuadosId}/articulos/${id}`,
               { method: 'DELETE' },
-              effectiveBusinessId
+              discBizId  // Discontinuados vive en el principal
             );
           } catch { }
         }

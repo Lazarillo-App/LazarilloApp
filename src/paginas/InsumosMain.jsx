@@ -1,6 +1,6 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
-// src/paginas/InsumosMain.jsx - CON FILTRADO DE DIVISIONES
+// src/paginas/InsumosMain.jsx - CON FILTRADO DE DIVISIONES Y FAVORITOS POR NEGOCIO
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import InsumosSidebar from '../componentes/InsumosSidebar.jsx';
@@ -23,14 +23,22 @@ import {
   getExclusionesInsumos,
   ensureDiscontinuadosInsumos,
 } from '../servicios/apiInsumosTodo';
+import {
+  notifyGroupRenamed,
+  notifyGroupDeleted,
+  notifyGroupMovedToDivision,
+  notifyGroupFavoriteChanged
+} from '../servicios/notifyGroupActions';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { Snackbar, Alert } from '@mui/material';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
 
-const FAV_KEY = 'favInsumoGroupId';
+// ✅ CAMBIO 1: Favorita por negocio
+const getFavKey = (bizId) => `favInsumoGroupId_${bizId || 'default'}`;
 const VIEW_KEY = 'lazarillo:insumosViewMode';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -118,6 +126,9 @@ export default function InsumosMain() {
   /* ================== BUSINESS CONTEXT ================== */
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
+  const { rootBusiness } = useOrganization();
+  // Insumos son globales: siempre cargar desde el negocio raíz (principal)
+  const resolvedBizId = rootBusiness?.id ? String(rootBusiness.id) : businessId;
 
   const {
     activeDivisionId,
@@ -243,25 +254,51 @@ export default function InsumosMain() {
   const lastManualPickRef = useRef(0);
   const markManualPick = () => { lastManualPickRef.current = Date.now(); };
 
+  // ✅ CAMBIO 2: Guardar favorita con businessId
   useEffect(() => {
-    const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
-    if (recentlyPicked) return;
+    const key = getFavKey(businessId);
+    if (Number.isFinite(Number(favoriteGroupId))) {
+      localStorage.setItem(key, String(favoriteGroupId));
+    } else {
+      localStorage.removeItem(key);
+    }
+  }, [favoriteGroupId, businessId]);
 
-    // si está refrescando y groups está momentáneamente vacío -> NO tocar nada
-    if (!groups || groups.length === 0) return;
+  // Cargar favorita desde backend o localStorage
+  useEffect(() => {
+    const bid = businessId;
+    // ✅ Resetear al cambiar negocio para evitar selección cruzada
+    setFavoriteGroupId(null);
+    if (!bid) {
+      setFavoriteGroupId(null);
+      return;
+    }
 
-    // si ya hay una selección válida -> NO autopilotear
-    if (selectedGroupId && groups.some(g => Number(g.id) === Number(selectedGroupId))) return;
-
-    // elegir default SIN Discontinuados
-    const next =
-      groups.find(g => esTodoGroup(g)) ||
-      groups.find(g => !esDiscontinuadosGroup(g) && (g.items?.length || g.insumos?.length || 0) > 0) ||
-      groups.find(g => !esDiscontinuadosGroup(g)) ||
-      null;
-
-    if (next) setSelectedGroupId(Number(next.id));
-  }, [groups, selectedGroupId]);
+    (async () => {
+      try {
+        const res = await BusinessesAPI.getFavoriteGroup(bid, { scope: 'insumo' });
+        const favIdFromDb = Number(res?.favoriteGroupId);
+        if (Number.isFinite(favIdFromDb) && favIdFromDb > 0) {
+          console.log('[InsumosMain] ⭐ Favorita cargada desde backend:', favIdFromDb);
+          setFavoriteGroupId(favIdFromDb);
+        } else {
+          const key = getFavKey(bid);
+          const localFav = Number(localStorage.getItem(key));
+          if (Number.isFinite(localFav) && localFav > 0) {
+            console.log('[InsumosMain] ⭐ Favorita cargada desde localStorage:', localFav);
+            setFavoriteGroupId(localFav);
+          } else {
+            setFavoriteGroupId(null);
+          }
+        }
+      } catch (e) {
+        console.error('[InsumosMain] Error cargando favorita:', e);
+        const key = getFavKey(bid);
+        const localFav = Number(localStorage.getItem(key));
+        setFavoriteGroupId(Number.isFinite(localFav) ? localFav : null);
+      }
+    })();
+  }, [businessId]);
 
   /* ================== DERIVADOS IMPORTANTES ================== */
   const baseAll = useMemo(() => allInsumos || [], [allInsumos]);
@@ -286,7 +323,7 @@ export default function InsumosMain() {
     );
   }, [groups]);
 
-  /* ================== ✅ NUEVO: FILTRADO DE GRUPOS POR DIVISIÓN ================== */
+  /* ================== FILTRADO DE GRUPOS POR DIVISIÓN ================== */
   const groupsScoped = useMemo(() => {
     console.log('[InsumosMain] 🔍 Filtrado de división:', {
       isMainDivision,
@@ -324,13 +361,12 @@ export default function InsumosMain() {
   /* ================== RECARGA PRINCIPAL AL CAMBIAR BUSINESS O DIVISIÓN ================== */
   const hadBusinessOnceRef = useRef(false);
   const reloadRunRef = useRef(0);
-  const lastCtxRef = useRef({ businessId: null, activeDivisionId: null }); // ✅ NUEVO
+  const lastCtxRef = useRef({ businessId: null, activeDivisionId: null });
 
   useEffect(() => {
     if (!businessId) {
       if (!hadBusinessOnceRef.current) return;
 
-      // hard reset cuando se “sale” del negocio
       setAllInsumos([]);
       setGroups([]);
       setRubrosMap(new Map());
@@ -353,7 +389,6 @@ export default function InsumosMain() {
       return true;
     };
 
-    // ✅ Determinar si corresponde hard reset (solo si cambió negocio o división)
     const prevCtx = lastCtxRef.current;
     const hardReset =
       Number(prevCtx.businessId) !== Number(businessId) ||
@@ -362,8 +397,6 @@ export default function InsumosMain() {
     lastCtxRef.current = { businessId, activeDivisionId };
 
     const recargarTodo = async () => {
-      // ✅ SOLO hard reset al cambiar de negocio/división
-      // (esto evita el “flash” a Sin agrupación en refresh normales)
       if (hardReset) {
         safe(() => {
           setAllInsumos([]);
@@ -395,7 +428,7 @@ export default function InsumosMain() {
         });
         safe(() => setRubrosMap(map));
 
-        const resInsumos = await insumosList(businessId, {
+        const resInsumos = await insumosList(resolvedBizId, {
           page: 1,
           limit: 999999,
           search: '',
@@ -426,7 +459,7 @@ export default function InsumosMain() {
           await ensureDiscontinuadosInsumos(businessId);
         } catch { }
 
-        const resGroups = await insumoGroupsList(businessId);
+        const resGroups = await insumoGroupsList(resolvedBizId);
         if (isCancelled || reloadRunRef.current !== runId) return;
 
         const list = Array.isArray(resGroups?.data)
@@ -437,7 +470,6 @@ export default function InsumosMain() {
 
         safe(() => setGroups(list));
 
-        // ✅ Mantener selección si el grupo sigue existiendo
         safe(() => {
           if (
             selectedGroupId &&
@@ -460,7 +492,7 @@ export default function InsumosMain() {
     return () => {
       isCancelled = true;
     };
-  }, [businessId, reloadKey, activeDivisionId, selectedGroupId]); // ✅ agregamos selectedGroupId
+  }, [businessId, reloadKey, activeDivisionId, selectedGroupId]);
 
   /* ================== IDS "SIN AGRUPACIÓN" ================== */
   const activeIdSet = useMemo(
@@ -475,7 +507,7 @@ export default function InsumosMain() {
 
   const idsEnOtras = useMemo(() => {
     return new Set(
-      (groups || []) // ✅ usar TODOS los grupos, no los scoped
+      (groups || [])
         .filter((g) => !esTodoGroup(g) && !esDiscontinuadosGroup(g))
         .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
         .filter((n) => Number.isFinite(n) && n > 0)
@@ -502,7 +534,7 @@ export default function InsumosMain() {
   const selectedGroup = useMemo(() => {
     const id = Number(selectedGroupId);
     if (!Number.isFinite(id) || id <= 0) return null;
-    return (groupsScoped || []).find((g) => Number(g.id) === id) || null; // ✅ USAR groupsScoped
+    return (groupsScoped || []).find((g) => Number(g.id) === id) || null;
   }, [selectedGroupId, groupsScoped]);
 
   const isDiscView = useMemo(() => {
@@ -520,7 +552,7 @@ export default function InsumosMain() {
     if (!selectedGroupId) return null;
 
     const gId = Number(selectedGroupId);
-    const g = groupsScoped.find((x) => Number(x.id) === gId); // ✅ USAR groupsScoped
+    const g = groupsScoped.find((x) => Number(x.id) === gId);
     if (!g) return null;
 
     if (esDiscontinuadosGroup(g)) return discontinuadosIds;
@@ -540,7 +572,7 @@ export default function InsumosMain() {
     return s;
   }, [
     selectedGroupId,
-    groupsScoped, // ✅ USAR groupsScoped
+    groupsScoped,
     todoGroupId,
     isDiscView,
     activeIdSet,
@@ -550,21 +582,17 @@ export default function InsumosMain() {
     discontinuadosIds,
   ]);
 
-  // ✅ Agregar en línea ~369 (dentro de useMemo de filteredBase):
   const filteredBase = useMemo(() => {
     if (!visibleIds) return sidebarBase;
 
-    // ✅ Si NO estamos en Discontinuados, excluir los discontinuados
     const shouldExcludeDisc = !isDiscView;
 
     return (sidebarBase || []).filter((ins) => {
       const id = Number(ins?.id);
       if (!Number.isFinite(id)) return false;
 
-      // ✅ Verificar que esté en visibleIds
       if (!visibleIds.has(id)) return false;
 
-      // ✅ Si estamos en una agrupación normal, excluir discontinuados
       if (shouldExcludeDisc && discontinuadosIds.has(id)) return false;
 
       return true;
@@ -629,7 +657,7 @@ export default function InsumosMain() {
   const insumosGroupIndex = useMemo(() => {
     const byInsumoId = new Map();
 
-    (groupsScoped || []).forEach((g) => { // ✅ USAR groupsScoped
+    (groupsScoped || []).forEach((g) => {
       if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return;
 
       const items = g.items || g.insumos || [];
@@ -645,58 +673,64 @@ export default function InsumosMain() {
     return { byInsumoId };
   }, [groupsScoped]);
 
-  /* ================== SELECCIÓN INTELIGENTE TODO vs FAVORITA ================== */
+  /* ================== Selección inteligente: Sin Agrupación > Favorita ================== */
+  // Ref para leer selectedGroupId/Group sin que sea dep del efecto (evita override de navegación)
+  const selectedGroupIdRef = useRef(selectedGroupId);
+  useEffect(() => { selectedGroupIdRef.current = selectedGroupId; }, [selectedGroupId]);
+  const selectedGroupRef = useRef(selectedGroup);
+  useEffect(() => { selectedGroupRef.current = selectedGroup; }, [selectedGroup]);
+
   useEffect(() => {
     const todoId = todoGroupId;
-    const todoEmpty = idsSinAgrupActivos.size === 0;
+    const todoCount = idsSinAgrupActivos.size;
+    const todoEmpty = todoCount === 0;
 
-    const recentlyPicked = Date.now() - lastManualPickRef.current < 800;
+    const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
     if (recentlyPicked) return;
 
     const groupsReady = Array.isArray(groupsScoped) && groupsScoped.length > 0;
     if (!groupsReady) return;
 
-    // ✅ Si ya hay una selección válida, NO tocar nada (crítico)
-    if (selectedGroupId && groupsScoped.some(g => Number(g.id) === Number(selectedGroupId))) {
-      console.log('[InsumosMain] ✅ Ya hay selección válida, no autopilotear');
+    const currentSelId = selectedGroupIdRef.current;
+    const currentSel = selectedGroupRef.current;
+
+    // No sacar al usuario de Discontinuados
+    if (currentSel && esDiscontinuadosGroup(currentSel)) return;
+
+    // PRIORIDAD 1: Si hay insumos sin agrupar → ir a TODO siempre
+    if (!todoEmpty && todoId) {
+      const isTodoSelected = currentSelId && Number(currentSelId) === Number(todoId);
+      if (!isTodoSelected) {
+        console.log(`[InsumosMain] 📌 Hay ${todoCount} sin agrupar → seleccionando TODO`);
+        setSelectedGroupId(Number(todoId));
+        setRubroSeleccionado(null);
+      }
       return;
     }
 
-    if (selectedGroup && esDiscontinuadosGroup(selectedGroup)) return;
-
-    const isTodoSelected =
-      selectedGroupId && Number(selectedGroupId) === Number(todoId);
-
-    if (todoEmpty) {
+    // PRIORIDAD 2: TODO vacío → favorita solo si no hay selección válida actual
+    if (todoEmpty && favoriteGroupId) {
       const fav = (groupsScoped || []).find((g) => Number(g?.id) === Number(favoriteGroupId));
       if (fav) {
-        if (!selectedGroupId || Number(selectedGroupId) !== Number(fav.id)) {
-          console.log('[InsumosMain] 🔄 Seleccionando favorita:', fav.nombre);
+        const selExistsInList = currentSelId &&
+          (groupsScoped || []).some(g => Number(g.id) === Number(currentSelId));
+        if (!selExistsInList) {
+          console.log('[InsumosMain] ⭐ Seleccionando favorita:', fav.nombre);
           setSelectedGroupId(fav.id);
           setRubroSeleccionado(null);
         }
       } else {
-        const firstWithItems = groupsScoped.find((g) => {
-          const gId = Number(g.id);
-          if (gId === todoId) return false;
-          const items = g.items || g.insumos || [];
-          return items.length > 0;
-        });
-
-        if (firstWithItems && (!selectedGroupId || Number(selectedGroupId) === Number(todoId))) {
-          console.log('[InsumosMain] 🔄 Seleccionando primera con items:', firstWithItems.nombre);
-          setSelectedGroupId(firstWithItems.id);
-          setRubroSeleccionado(null);
-        }
-      }
-    } else {
-      if (!isTodoSelected && Number.isFinite(Number(todoId)) && todoId) {
-        console.log('[InsumosMain] 🔄 Seleccionando TODO (hay items sin agrupar)');
-        setSelectedGroupId(Number(todoId));
-        setRubroSeleccionado(null);
+        console.log('[InsumosMain] ⚠️ Favorita no encontrada → limpiando');
+        setFavoriteGroupId(null);
       }
     }
-  }, [todoGroupId, idsSinAgrupActivos, favoriteGroupId, groupsScoped, selectedGroupId, selectedGroup]);
+  }, [
+    businessId,
+    todoGroupId,
+    idsSinAgrupActivos.size,
+    favoriteGroupId,
+    groupsScoped,
+  ]);
 
   useEffect(() => {
     if (!rubroSeleccionado) return;
@@ -723,10 +757,8 @@ export default function InsumosMain() {
       })
       .filter(Boolean);
 
-    // ✅ Orden por relevancia según searchText
     const q = searchText || '';
     if (!q.trim()) {
-      // si no hay búsqueda, alfabético normal
       return options.sort((a, b) =>
         a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })
       );
@@ -745,7 +777,7 @@ export default function InsumosMain() {
   }, [baseAll, searchText]);
 
   const focusInsumo = useCallback(
-    (rawId, preferGroupId = null, opts = {}) => { // ✅ Agregar opts
+    (rawId, preferGroupId = null, opts = {}) => {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
@@ -788,9 +820,8 @@ export default function InsumosMain() {
         }
       }
 
-      // ✅ NUEVO: respetar stay (NO cambiar grupo)
       const shouldChangeGroup =
-        !opts.stay && // ← CLAVE
+        !opts.stay &&
         targetGroupId &&
         (!selectedGroupId || Number(selectedGroupId) !== Number(targetGroupId));
 
@@ -833,12 +864,12 @@ export default function InsumosMain() {
     [markManualPick]
   );
 
+  // ✅ CAMBIO 5: handleToggleFavorite con scope: 'insumo'
   const handleToggleFavorite = useCallback(
     async (groupId) => {
       try {
         const newFav = favoriteGroupId === groupId ? null : groupId;
 
-        // ✅ Buscar nombre del grupo
         const group = (groupsScoped || []).find((g) => Number(g.id) === Number(groupId));
         const groupName = group?.nombre || `Grupo ${groupId}`;
 
@@ -849,29 +880,15 @@ export default function InsumosMain() {
 
         setFavoriteGroupId(newFav);
 
-        // ✅ EMITIR NOTIFICACIÓN
-        try {
-          window.dispatchEvent(
-            new CustomEvent('ui:action', {
-              detail: {
-                businessId,
-                kind: newFav ? 'group_favorite' : 'group_unfavorite',
-                scope: 'insumo',
-                title: newFav ? 'Marcada como favorita' : '☆ Favorita removida',
-                message: `"${groupName}"`,
-                createdAt: new Date().toISOString(),
-                payload: {
-                  groupId: Number(groupId),
-                  groupName,
-                  isFavorite: !!newFav,
-                  divisionId: activeDivisionId,
-                },
-              },
-            })
-          );
-        } catch (err) {
-          console.warn('[InsumosMain] Error emitiendo notificación:', err);
-        }
+        // ✅ EMITIR usando helper
+        notifyGroupFavoriteChanged({
+          businessId,
+          groupId: Number(groupId),
+          groupName,
+          isFavorite: !!newFav,
+          divisionId: activeDivisionId,
+          scope: 'insumo',
+        });
 
         notify(
           newFav ? 'Agrupación marcada como favorita' : 'Favorita removida',
@@ -896,35 +913,21 @@ export default function InsumosMain() {
       if (nuevo == null) return;
       const trimmed = nuevo.trim();
       if (!trimmed) return;
-      if (trimmed === actual) return; // ✅ Sin cambios
+      if (trimmed === actual) return;
 
       try {
         await insumoGroupUpdate(group.id, { nombre: trimmed });
 
-        // ✅ EMITIR NOTIFICACIÓN
-        try {
-          window.dispatchEvent(
-            new CustomEvent('ui:action', {
-              detail: {
-                businessId,
-                kind: 'group_rename',
-                scope: 'insumo',
-                title: 'Agrupación renombrada',
-                message: `"${actual}" → "${trimmed}"`,
-                createdAt: new Date().toISOString(),
-                payload: {
-                  groupId: Number(group.id),
-                  oldName: actual,
-                  newName: trimmed,
-                },
-              },
-            })
-          );
-        } catch (err) {
-          console.warn('[InsumosMain] Error emitiendo notificación:', err);
-        }
+        // ✅ EMITIR usando helper
+        notifyGroupRenamed({
+          businessId,
+          groupId: Number(group.id),
+          oldName: actual,
+          newName: trimmed,
+          scope: 'insumo',
+        });
 
-        const res = await insumoGroupsList(businessId);
+        const res = await insumoGroupsList(resolvedBizId);
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
         setGroups(list);
         notify('Agrupación renombrada', 'success');
@@ -952,14 +955,18 @@ export default function InsumosMain() {
       }
 
       try {
+        const itemCount = (group.items || group.insumos || []).length;
+
         await insumoGroupDelete(group.id);
 
-        // ✅ EMITIR NOTIFICACIÓN
-        try {
-
-        } catch (err) {
-          console.warn('[InsumosMain] Error emitiendo notificación:', err);
-        }
+        // ✅ EMITIR usando helper
+        notifyGroupDeleted({
+          businessId,
+          groupId: Number(group.id),
+          groupName: group.nombre,
+          itemCount,
+          scope: 'insumo',
+        });
 
         if (selectedGroupId && Number(selectedGroupId) === Number(group.id)) {
           setSelectedGroupId(null);
@@ -968,7 +975,7 @@ export default function InsumosMain() {
           setFavoriteGroupId(null);
         }
 
-        const res = await insumoGroupsList(businessId);
+        const res = await insumoGroupsList(resolvedBizId);
         const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
         setGroups(list);
 
@@ -1006,8 +1013,10 @@ export default function InsumosMain() {
     if (!businessId) return;
     setGroupsLoading(true);
     try {
-      const res = await insumoGroupsList(businessId);
+      const res = await insumoGroupsList(resolvedBizId);
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+
+      // ✅ SOLO actualizar estado, SIN emitir notificaciones
       setGroups(list);
     } catch (e) {
       console.error('[InsumosMain] Error al cargar grupos:', e);
@@ -1039,13 +1048,11 @@ export default function InsumosMain() {
 
       console.log('🔙 [UNDO] Recibido:', ui);
 
-      // ✅ Filtrar por negocio
       if (businessId && ui.businessId && Number(ui.businessId) !== Number(businessId)) {
         console.log('🔙 [UNDO] Ignorado: negocio diferente');
         return;
       }
 
-      // ✅ Filtrar por scope (solo insumos)
       if (ui.scope !== 'insumo') {
         console.log('🔙 [UNDO] Ignorado: scope diferente');
         return;
@@ -1057,9 +1064,6 @@ export default function InsumosMain() {
         .map(Number)
         .filter((n) => Number.isFinite(n) && n > 0);
 
-      // ═══════════════════════════════════════════════════════════
-      // 🔴 UNDO: DISCONTINUAR / REACTIVAR
-      // ═══════════════════════════════════════════════════════════
       if (kind === 'discontinue') {
         const prev = payload?.undo?.payload?.prev || payload?.prev || {};
         const wasInDiscontinuados = !!prev.wasInDiscontinuados;
@@ -1072,14 +1076,10 @@ export default function InsumosMain() {
 
         try {
           if (wasInDiscontinuados) {
-            // Antes estaba en Discontinuados y lo REACTIVASTE
-            // Undo = volver a AGREGAR a Discontinuados
             console.log('🔙 [UNDO] Revertir reactivación: agregar a Discontinuados');
             await insumoGroupAddMultipleItems(discId, ids);
             notify?.('✅ Deshacer: vuelto a Discontinuados', 'info');
           } else {
-            // Antes NO estaba y lo DISCONTINUASTE
-            // Undo = QUITAR de Discontinuados
             console.log('🔙 [UNDO] Revertir discontinuación: quitar de Discontinuados');
             await Promise.allSettled(ids.map((id) => insumoGroupRemoveItem(discId, id)));
             notify?.('✅ Deshacer: quitado de Discontinuados', 'info');
@@ -1094,9 +1094,6 @@ export default function InsumosMain() {
         return;
       }
 
-      // ═══════════════════════════════════════════════════════════
-      // 🔵 UNDO: MOVER ENTRE AGRUPACIONES
-      // ═══════════════════════════════════════════════════════════
       if (kind === 'move') {
         const prev = payload?.undo?.payload?.prev || payload?.prev || {};
         const fromGroupId = Number(prev.fromGroupId);
@@ -1114,7 +1111,6 @@ export default function InsumosMain() {
             to: `${prev.toGroupName} (${toGroupId})`,
           });
 
-          // Deshacer: mover de vuelta (toGroupId → fromGroupId)
           for (const id of ids) {
             await insumoGroupRemoveItem(toGroupId, id);
             await insumoGroupUpdate(fromGroupId, id);
@@ -1154,7 +1150,6 @@ export default function InsumosMain() {
 
   const sidebarListMode = effectiveViewMode;
 
-  // ✅ NUEVO: Mostrar nombre de división en el título
   const titulo = useMemo(() => {
     const base = businessName ? `Insumos — ${businessName}` : 'Insumos';
     if (!isMainDivision && activeDivisionName) {
@@ -1225,7 +1220,7 @@ export default function InsumosMain() {
             businessId={businessId}
             vista={vista}
             onVistaChange={setVista}
-            groups={groupsScoped} // ✅ PASAR groupsScoped
+            groups={groupsScoped}
             groupsLoading={groupsLoading}
             selectedGroupId={selectedGroupId}
             onSelectGroupId={handleSelectGroupId}
@@ -1271,7 +1266,7 @@ export default function InsumosMain() {
             noBusiness={!businessId}
             vista={vista}
             businessId={businessId}
-            groups={groupsScoped} // ✅ PASAR groupsScoped
+            groups={groupsScoped}
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
             onOpenGroupModalForInsumo={handleOpenGroupModalForInsumo}
@@ -1298,7 +1293,7 @@ export default function InsumosMain() {
         onClose={handleCloseGroupModal}
         insumo={groupModalInsumo}
         businessId={businessId}
-        groups={groupsScoped} // ✅ PASAR groupsScoped
+        groups={groupsScoped}
         initialGroupId={groupModalInitialGroupId}
         onGroupsReload={loadGroups}
       />

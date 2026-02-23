@@ -16,7 +16,7 @@ import {
 
 import InsumoRubroAccionesMenu from './InsumoRubroAccionesMenu';
 import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
-
+import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
@@ -268,12 +268,12 @@ function InsumosSidebar({
     isMainDivision,
     todoGroupId
   ]);
-console.log('[InsumosSidebar] 🔍 Debug:', {
-  opcionesSelectCount: opcionesSelect.length,
-  selectedGroupId,
-  exists: opcionesSelect.some(o => Number(o.id) === Number(selectedGroupId)),
-  opciones: opcionesSelect.map(o => ({ id: o.id, nombre: o.nombre })),
-});
+  console.log('[InsumosSidebar] 🔍 Debug:', {
+    opcionesSelectCount: opcionesSelect.length,
+    selectedGroupId,
+    exists: opcionesSelect.some(o => Number(o.id) === Number(selectedGroupId)),
+    opciones: opcionesSelect.map(o => ({ id: o.id, nombre: o.nombre })),
+  });
   /* ===================== ActiveIds ===================== */
   const activeIds = useMemo(() => {
     if (visibleIds && visibleIds.size) return visibleIds;
@@ -490,34 +490,19 @@ console.log('[InsumosSidebar] 🔍 Debug:', {
           divisionId: divisionId === 'principal' ? null : Number(divisionId),
         });
 
-        // ✅ Nombre de la división destino
         const divisionName = divisionId === 'principal'
           ? 'División Principal'
           : `División ${divisionId}`;
 
-        // ✅ Emitir notificación
-        try {
-          window.dispatchEvent(
-            new CustomEvent('ui:action', {
-              detail: {
-                businessId,
-                kind: 'group_move_division',
-                scope: 'insumo',
-                title: 'Agrupación movida a división',
-                message: `"${groupToMove.nombre}" → ${divisionName}`,
-                createdAt: new Date().toISOString(),
-                payload: {
-                  groupId: Number(groupToMove.id),
-                  groupName: groupToMove.nombre,
-                  divisionId: divisionId === 'principal' ? null : Number(divisionId),
-                  divisionName,
-                },
-              },
-            })
-          );
-        } catch (err) {
-          console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
-        }
+        // ✅ EMITIR usando helper
+        notifyGroupMovedToDivision({
+          businessId,
+          groupId: Number(groupToMove.id),
+          groupName: groupToMove.nombre,
+          divisionId: divisionId === 'principal' ? null : Number(divisionId),
+          divisionName,
+          scope: 'insumo',
+        });
 
         notify?.(`Agrupación "${groupToMove.nombre}" movida correctamente`, 'success');
 
