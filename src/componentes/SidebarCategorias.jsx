@@ -13,7 +13,6 @@ import {
 } from '@mui/material';
 
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
-import SubBusinessCreateModal from './SubBusinessCreateModal';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
@@ -116,6 +115,7 @@ function SidebarCategorias({
   categoriaSeleccionada,
 
   todoGroupId,
+  todoCountOverride = {},
   visibleIds,
   onManualPick,
 
@@ -134,6 +134,7 @@ function SidebarCategorias({
   onMutateGroups,
   onRefetch,
   notify,
+  onCreateSubBusiness,
 
   businessId,
   activeDivisionId,
@@ -148,13 +149,13 @@ function SidebarCategorias({
 
   const [divisionModalOpen, setDivisionModalOpen] = useState(false);
   const [groupToMove, setGroupToMove] = useState(null);
+  const [selectOpen, setSelectOpen] = useState(false);
 
   // ✅ NUEVO: Estado local del listMode mientras carga la preferencia
   const [localListMode, setLocalListMode] = useState(listMode);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
-  const [subBizModalOpen, setSubBizModalOpen] = useState(false);
-  const [groupForSubBiz, setGroupForSubBiz] = useState(null);
+  // subBizModal movido a ArticulosMain para evitar re-renders que bloquean inputs
 
   const divisionNum =
     activeDivisionId === null || activeDivisionId === undefined || activeDivisionId === ''
@@ -192,12 +193,17 @@ function SidebarCategorias({
       return activeSet.has(idNum);
     });
 
+    const todoCount = todo
+      ? (todoCountOverride[todo.id] ?? todo.articulos?.length ?? 0)
+      : 0;
+
     const ordered = [];
-    if (isMainDivision && todo) ordered.push(todo);      // TODO solo visible en Principal
+    if (isMainDivision && todo && todoCount > 0) ordered.push(todo); // primero si tiene artículos
     ordered.push(...middle);
-    if (isMainDivision) ordered.push(...discontinuados); // Discontinuados solo visible en Principal
+    if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
+    if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [agrupaciones, todoGroupId, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision]);
+  }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision]);
 
   const selectedAgrupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
@@ -238,9 +244,21 @@ function SidebarCategorias({
     const todoOpt =
       Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
 
-    const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
+    // Intentar usar la favorita antes de caer a opts[0]
+    const favOpt = favoriteGroupId
+      ? opts.find(o => Number(o.id) === Number(favoriteGroupId))
+      : null;
 
-    // 🚀 aplicar selección y resetear estado igual que en handleAgrupacionChange
+    // Si todo está vacío no usarlo como default — ir a favorita u opts[0]
+    const todoCount = todoOpt
+      ? (todoCountOverride?.[todoOpt.id] ?? todoOpt.articulos?.length ?? 0)
+      : 0;
+
+    const next = (isMainDivision && todoOpt && todoCount > 0)
+      ? todoOpt
+      : (favOpt || opts[0] || null);
+
+    // aplicar selección y resetear estado igual que en handleAgrupacionChange
     setAgrupacionSeleccionada?.(next);
     setCategoriaSeleccionada?.(null);
     setFiltroBusqueda?.('');
@@ -252,6 +270,7 @@ function SidebarCategorias({
     setAgrupacionSeleccionada,
     isMainDivision,
     todoGroupId,
+    favoriteGroupId,
     setCategoriaSeleccionada,
     setFiltroBusqueda,
     setBusqueda,
@@ -266,23 +285,28 @@ function SidebarCategorias({
   /* ===================== VisibleIds / activeIds ===================== */
 
   const activeIds = useMemo(() => {
-    // 1) si viene desde TablaArticulos, manda siempre
+    const g = agrupacionSeleccionada;
+
+    // Sin Agrupación: siempre usar visibleIds si existe (puede ser Set vacío),
+    // nunca null — así el árbol queda vacío cuando no hay artículos sin agrupar
+    if (g && esTodoGroup(g)) {
+      return visibleIds instanceof Set ? visibleIds : new Set();
+    }
+
+    // Para el resto: si viene visibleIds con contenido, manda
     if (visibleIds && visibleIds.size) return visibleIds;
 
-    const g = agrupacionSeleccionada;
     if (!g) return null;
-
-    // ✅ TODO/Sin agrupación: NO es "sin filtro"
-    // si no vino visibleIds, por compatibilidad devolvemos Set vacío
-    // (esto hace que el árbol quede vacío y no confunda)
-    if (esTodoGroup(g)) return new Set();
 
     const gActual = (agrupaciones || []).find((x) => Number(x?.id) === Number(g?.id));
     const arr = Array.isArray(gActual?.articulos) ? gActual.articulos : [];
+    const appIds = Array.isArray(gActual?.app_articles_ids) ? gActual.app_articles_ids : [];
 
-    if (!arr.length) return new Set();
+    if (!arr.length && !appIds.length) return new Set();
 
-    return new Set(arr.map((a) => safeId(a)).filter((id) => id != null));
+    const s = new Set(arr.map((a) => safeId(a)).filter((id) => id != null));
+    appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
+    return s;
   }, [visibleIds, agrupacionSeleccionada, agrupaciones]);
 
 
@@ -304,61 +328,19 @@ function SidebarCategorias({
   /* ===================== ✅ CARGAR PREFERENCIA DE VISTA AL CAMBIAR AGRUPACIÓN ===================== */
 
   useEffect(() => {
-    if (!businessId || !agrupacionSeleccionada) return;
-
-    const loadViewPref = async () => {
-      try {
-        setLoadingPrefs(true);
-
-        const result = await BusinessesAPI.getViewPrefs(businessId, {
-          divisionId: divisionNum,
-        });
-
-        const agrupId = Number(agrupacionSeleccionada.id);
-        const savedMode = result?.byGroup?.[String(agrupId)];
-
-        if (savedMode === 'by-subrubro' || savedMode === 'by-categoria') {
-          setLocalListMode(savedMode);
-          onChangeListMode?.(savedMode);
-        } else {
-          // Si no hay preferencia guardada, usar el valor por defecto
-          setLocalListMode(listMode);
-        }
-      } catch (error) {
-        console.error('[SidebarCategorias] Error cargando preferencia de vista:', error);
-        setLocalListMode(listMode);
-      } finally {
-        setLoadingPrefs(false);
-      }
-    };
-
-    loadViewPref();
-  }, [businessId, agrupacionSeleccionada, divisionNum]);
+    // Sincronizar localListMode cuando cambia el prop listMode desde el padre
+    setLocalListMode(listMode);
+  }, [listMode]);
 
   /* ===================== ✅ GUARDAR PREFERENCIA AL CAMBIAR TOGGLE ===================== */
 
   const handleListModeChange = useCallback(
-    async (newMode) => {
-      if (!newMode || !businessId || !agrupacionSeleccionada) return;
-
-      // Actualizar inmediatamente la UI
+    (newMode) => {
+      if (!newMode) return;
       setLocalListMode(newMode);
       onChangeListMode?.(newMode);
-
-      // Guardar en backend
-      try {
-        await BusinessesAPI.saveViewPref(businessId, {
-          scope: 'articulo',
-          agrupacionId: Number(agrupacionSeleccionada.id),
-          viewMode: newMode,
-          divisionId: divisionNum,
-        });
-      } catch (error) {
-        console.error('[SidebarCategorias] Error guardando preferencia de vista:', error);
-        notify?.('Error al guardar preferencia de vista', 'error');
-      }
     },
-    [businessId, agrupacionSeleccionada, divisionNum, onChangeListMode, notify]
+    [onChangeListMode]
   );
 
   /* ========================== Árbol según modo + ORDEN POR VENTAS ========================== */
@@ -446,8 +428,14 @@ function SidebarCategorias({
     return out;
   }, [categoriasSafe, activeIds, getAmountForId, metaById]);
 
-  // ✅ Usar localListMode en lugar de listMode
-  const listaParaMostrar = localListMode === 'by-categoria' ? treeByCategoria : treeBySubrubro;
+  // Si está seleccionado "Sin Agrupación" y no tiene artículos, el árbol va vacío directo
+  // sin depender de que activeIds filtre correctamente (evita mostrar rubros/subrubros fantasma)
+  const todoVacio = agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada) &&
+    !(activeIds instanceof Set && activeIds.size > 0);
+
+  const listaParaMostrar = todoVacio
+    ? []
+    : (localListMode === 'by-categoria' ? treeByCategoria : treeBySubrubro);
 
   /* ========================== UX: selección & contadores ========================== */
 
@@ -479,6 +467,8 @@ function SidebarCategorias({
 
   const handleCategoriaClick = useCallback(
     (subItem) => {
+      console.log('[Sidebar] click:', subItem?.subrubro, '| setCat fn:', typeof setCategoriaSeleccionada);
+      window.__LAST_CLICK = subItem;
       setCategoriaSeleccionada?.(categoriaSeleccionada?.subrubro === subItem?.subrubro ? null : subItem);
       setFiltroBusqueda?.('');
       setBusqueda?.('');
@@ -508,9 +498,8 @@ function SidebarCategorias({
   }, []);
 
   const handleCreateSubBusiness = useCallback((agrupacion) => {
-    setGroupForSubBiz(agrupacion);
-    setSubBizModalOpen(true);
-  }, []);
+    onCreateSubBusiness?.(agrupacion);
+  }, [onCreateSubBusiness]);
 
   const handleDivisionAssign = useCallback(
     async (divisionId) => {
@@ -572,186 +561,109 @@ function SidebarCategorias({
 
   return (
     <div className="sidebar">
-      <FormControl size="small" fullWidth sx={{ mb: 2 }}>
-        <InputLabel>Agrupaciones</InputLabel>
-        <Select
-          label="Agrupaciones"
-          sx={{ fontWeight: '500' }}
-          value={selectedAgrupValue}
-          onChange={handleAgrupacionChange}
-          renderValue={(value) => {
-            const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
-            return g ? labelAgrup(g) : 'Sin agrupación';
-          }}
-        >
-          {opcionesSelect.map((g) => (
-            <MenuItem key={g.id} value={Number(g.id)}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  gap: 8,
-                }}
-              >
-                <span
+      {/* ── Controles fijos: Select de agrupación + Toggle rubro/subrubro ── */}
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        background: '#fafafa',
+        paddingBottom: 4,
+        borderBottom: '1px solid #eee',
+        marginBottom: 4,
+      }}>
+        <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
+          <InputLabel>Agrupaciones</InputLabel>
+          <Select
+            label="Agrupaciones"
+            sx={{ fontWeight: '500' }}
+            open={selectOpen}
+            onOpen={() => setSelectOpen(true)}
+            onClose={() => setSelectOpen(false)}
+            value={selectedAgrupValue}
+            onChange={handleAgrupacionChange}
+            renderValue={(value) => {
+              const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
+              return g ? labelAgrup(g) : 'Sin agrupación';
+            }}
+          >
+            {opcionesSelect.map((g) => (
+              <MenuItem key={g.id} value={Number(g.id)}>
+                <div
                   style={{
-                    fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal',
-                    color: esDiscontinuadosGroup(g) ? '#555' : 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    gap: 8,
                   }}
                 >
-                  {labelAgrup(g)}
-                </span>
+                  <span
+                    style={{
+                      fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal',
+                      color: esDiscontinuadosGroup(g) ? '#555' : 'inherit',
+                    }}
+                  >
+                    {labelAgrup(g)}
+                  </span>
 
-                <span
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                >
-                  {(() => {
-                    const isTodo = esTodoGroup(g);
-                    const isDisc = esDiscontinuadosGroup(g);
-                    if (isDisc) return null;
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {(() => {
+                      const isTodo = esTodoGroup(g);
+                      const isDisc = esDiscontinuadosGroup(g);
+                      if (isDisc) return null;
 
-                    if (isTodo) {
+                      if (isTodo) {
+                        return (
+                          onRenameGroup && (
+                            <Tooltip title='Convertir "Sin agrupación" en una nueva agrupación con esos artículos'>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRenameGroup(g);
+                                }}
+                              >
+                                <EditIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )
+                        );
+                      }
+
                       return (
-                        onRenameGroup && (
-                          <Tooltip title='Convertir "Sin agrupación" en una nueva agrupación con esos artículos'>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRenameGroup(g);
-                              }}
+                        <>
+                          {onSetFavorite && (
+                            <Tooltip
+                              title={
+                                Number(favoriteGroupId) === Number(g.id)
+                                  ? 'Quitar como favorita'
+                                  : 'Marcar como favorita'
+                              }
                             >
-                              <EditIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )
-                      );
-                    }
-
-                    return (
-                      <>
-                        {onSetFavorite && (
-                          <Tooltip
-                            title={
-                              Number(favoriteGroupId) === Number(g.id)
-                                ? 'Quitar como favorita'
-                                : 'Marcar como favorita'
-                            }
-                          >
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                // ✅ Emitir notificación ANTES de cambiar favorita
-                                const isFavorite = Number(favoriteGroupId) !== Number(g.id);
-                                try {
-                                  window.dispatchEvent(
-                                    new CustomEvent('ui:action', {
-                                      detail: {
-                                        businessId,
-                                        kind: isFavorite ? 'group_favorite_set' : 'group_favorite_unset',
-                                        scope: 'articulo',
-                                        title: isFavorite ? 'Marcada como favorita' : 'Desmarcada como favorita',
-                                        message: `"${labelAgrup(g)}"`,
-                                        createdAt: new Date().toISOString(),
-                                        payload: {
-                                          groupId: Number(g.id),
-                                          groupName: labelAgrup(g),
-                                          isFavorite,
-                                        },
-                                      },
-                                    })
-                                  );
-                                } catch (err) {
-                                  console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
-                                }
-
-                                onSetFavorite(g.id);
-                              }}
-                            >
-                              {Number(favoriteGroupId) === Number(g.id) ? (
-                                <StarIcon fontSize="inherit" color="warning" />
-                              ) : (
-                                <StarBorderIcon fontSize="inherit" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        )}
-
-                        {onEditGroup && (
-                          <Tooltip title="Renombrar agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                // ✅ Guardar nombre anterior
-                                const oldName = labelAgrup(g);
-
-                                // ✅ Función wrapper para emitir después de renombrar
-                                const handleRename = async () => {
-                                  const result = await onEditGroup(g);
-
-                                  // Si onEditGroup devuelve el nuevo nombre, emitimos
-                                  if (result && result.newName && result.newName !== oldName) {
-                                    try {
-                                      window.dispatchEvent(
-                                        new CustomEvent('ui:action', {
-                                          detail: {
-                                            businessId,
-                                            kind: 'group_rename',
-                                            scope: 'articulo',
-                                            title: 'Agrupación renombrada',
-                                            message: `"${oldName}" → "${result.newName}"`,
-                                            createdAt: new Date().toISOString(),
-                                            payload: {
-                                              groupId: Number(g.id),
-                                              oldName,
-                                              newName: result.newName,
-                                            },
-                                          },
-                                        })
-                                      );
-                                    } catch (err) {
-                                      console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
-                                    }
-                                  }
-                                };
-
-                                handleRename();
-                              }}
-                            >
-                              <EditIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-
-                        {onDeleteGroup && (
-                          <Tooltip title="Eliminar agrupación">
-                            <span>
                               <IconButton
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
 
-                                  // ✅ Emitir notificación ANTES de eliminar
+                                  // ✅ Emitir notificación ANTES de cambiar favorita
+                                  const isFavorite = Number(favoriteGroupId) !== Number(g.id);
                                   try {
                                     window.dispatchEvent(
                                       new CustomEvent('ui:action', {
                                         detail: {
                                           businessId,
-                                          kind: 'group_delete',
+                                          kind: isFavorite ? 'group_favorite_set' : 'group_favorite_unset',
                                           scope: 'articulo',
-                                          title: 'Agrupación eliminada',
-                                          message: `"${labelAgrup(g)}" fue eliminada.`,
+                                          title: isFavorite ? 'Marcada como favorita' : 'Desmarcada como favorita',
+                                          message: `"${labelAgrup(g)}"`,
                                           createdAt: new Date().toISOString(),
                                           payload: {
                                             groupId: Number(g.id),
                                             groupName: labelAgrup(g),
+                                            isFavorite,
                                           },
                                         },
                                       })
@@ -760,54 +672,145 @@ function SidebarCategorias({
                                     console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
                                   }
 
-                                  onDeleteGroup(g);
+                                  onSetFavorite(g.id);
                                 }}
                               >
-                                <DeleteIcon fontSize="inherit" color="error" />
+                                {Number(favoriteGroupId) === Number(g.id) ? (
+                                  <StarIcon fontSize="inherit" color="warning" />
+                                ) : (
+                                  <StarBorderIcon fontSize="inherit" />
+                                )}
                               </IconButton>
-                            </span>
-                          </Tooltip>
-                        )}
+                            </Tooltip>
+                          )}
 
-                        {/* ✅ asignar a división: solo en Principal y no para TODO/DISC */}
-                        {!isTodo && !isDisc && (
-                          <Tooltip title="Crear sub-negocio con esta agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                               document.activeElement?.blur();
-                                e.stopPropagation();
-                                handleCreateSubBusiness(g);
-                              }}
-                            >
-                              <AddBusinessIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </>
-                    );
-                  })()}
-                </span>
-              </div>
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+                          {onEditGroup && (
+                            <Tooltip title="Renombrar agrupación">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
 
-      <div style={{ padding: '2px 0 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={localListMode}
-          onChange={(_, val) => {
-            handleListModeChange(val);
-          }}
-          disabled={loadingPrefs}
-        >
-          <ToggleButton value="by-subrubro">Rubro</ToggleButton>
-          <ToggleButton value="by-categoria">SubRubro</ToggleButton>
-        </ToggleButtonGroup>
-      </div>
+                                  // ✅ Guardar nombre anterior
+                                  const oldName = labelAgrup(g);
+
+                                  // ✅ Función wrapper para emitir después de renombrar
+                                  const handleRename = async () => {
+                                    const result = await onEditGroup(g);
+
+                                    // Si onEditGroup devuelve el nuevo nombre, emitimos
+                                    if (result && result.newName && result.newName !== oldName) {
+                                      try {
+                                        window.dispatchEvent(
+                                          new CustomEvent('ui:action', {
+                                            detail: {
+                                              businessId,
+                                              kind: 'group_rename',
+                                              scope: 'articulo',
+                                              title: 'Agrupación renombrada',
+                                              message: `"${oldName}" → "${result.newName}"`,
+                                              createdAt: new Date().toISOString(),
+                                              payload: {
+                                                groupId: Number(g.id),
+                                                oldName,
+                                                newName: result.newName,
+                                              },
+                                            },
+                                          })
+                                        );
+                                      } catch (err) {
+                                        console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+                                      }
+                                    }
+                                  };
+
+                                  handleRename();
+                                }}
+                              >
+                                <EditIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
+                          {onDeleteGroup && (
+                            <Tooltip title="Eliminar agrupación">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+
+                                    // ✅ Emitir notificación ANTES de eliminar
+                                    try {
+                                      window.dispatchEvent(
+                                        new CustomEvent('ui:action', {
+                                          detail: {
+                                            businessId,
+                                            kind: 'group_delete',
+                                            scope: 'articulo',
+                                            title: 'Agrupación eliminada',
+                                            message: `"${labelAgrup(g)}" fue eliminada.`,
+                                            createdAt: new Date().toISOString(),
+                                            payload: {
+                                              groupId: Number(g.id),
+                                              groupName: labelAgrup(g),
+                                            },
+                                          },
+                                        })
+                                      );
+                                    } catch (err) {
+                                      console.warn('[SidebarCategorias] Error emitiendo notificación:', err);
+                                    }
+
+                                    onDeleteGroup(g);
+                                  }}
+                                >
+                                  <DeleteIcon fontSize="inherit" color="error" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
+
+                          {/* ✅ asignar a división: solo en Principal y no para TODO/DISC */}
+                          {!isTodo && !isDisc && (
+                            <Tooltip title="Crear sub-negocio con esta agrupación">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  setSelectOpen(false);
+                                  e.stopPropagation();
+                                  handleCreateSubBusiness(g);
+                                }}
+                              >
+                                <AddBusinessIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </span>
+                </div>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={localListMode}
+            onChange={(_, val) => {
+              handleListModeChange(val);
+            }}
+            disabled={loadingPrefs}
+          >
+            <ToggleButton value="by-subrubro">Rubro</ToggleButton>
+            <ToggleButton value="by-categoria">SubRubro</ToggleButton>
+          </ToggleButtonGroup>
+        </div>
+      </div>{/* fin sticky */}
 
       <ul className="sidebar-draggable-list">
         {loading && (
@@ -826,10 +829,28 @@ function SidebarCategorias({
             const count = countArticulosSub(sub);
             const monto = montoArticulosSub(sub);
 
+            // articuloIds: los ids del nodo visible (siempre desde sub.categorias)
             const articuloIds = (sub?.categorias || [])
               .flatMap((c) => c?.articulos || [])
               .map((a) => safeId(a))
               .filter(Boolean);
+
+            const subNormMenu = String(sub?.subrubro || '').trim().toLowerCase();
+
+            const todosArticulosParaMenu = localListMode === 'by-categoria'
+              // Vista by-categoria: sub.subrubro es el nombre de la categoria/rubro
+              // Filtramos en categoriasSafe solo esa categoria especifica
+              ? categoriasSafe
+                .map((node) => {
+                  const cats = (node?.categorias || []).filter(
+                    (c) => String(c?.categoria || '').trim().toLowerCase() === subNormMenu
+                  );
+                  if (!cats.length) return null;
+                  return { ...node, categorias: cats };
+                })
+                .filter(Boolean)
+              // Vista by-subrubro: pasamos el nodo actual ya filtrado
+              : [sub];
 
             return (
               <li
@@ -861,7 +882,7 @@ function SidebarCategorias({
                   <SubrubroAccionesMenu
                     subrubro={sub?.subrubro}
                     articuloIds={articuloIds}
-                    todosArticulos={listaParaMostrar}
+                    todosArticulos={todosArticulosParaMenu}
                     agrupaciones={agrupaciones}
                     agrupacionSeleccionada={agrupacionSeleccionada}
                     todoGroupId={todoGroupId}
@@ -871,6 +892,7 @@ function SidebarCategorias({
                     notify={notify}
                     baseById={metaById}
                     treeMode={localListMode === 'by-categoria' ? 'cat-first' : 'sr-first'}
+                    allowedIds={activeIds instanceof Set && activeIds.size > 0 ? activeIds : null}
                   />
                 </div>
               </li>
@@ -885,32 +907,6 @@ function SidebarCategorias({
           </li>
         )}
       </ul>
-
-      {subBizModalOpen && (
-        <SubBusinessCreateModal
-          open={subBizModalOpen}
-          agrupacion={groupForSubBiz}
-          onClose={() => {
-            setSubBizModalOpen(false);
-            setGroupForSubBiz(null);
-          }}
-          onCreated={(newBiz) => {
-            notify?.(`Sub-negocio "${newBiz.name}" creado`, 'success');
-            setSubBizModalOpen(false);
-
-            // Quitar la agrupación convertida del estado local inmediatamente
-            if (groupForSubBiz?.id) {
-              onMutateGroups?.({
-                type: 'remove_group',
-                groupId: Number(groupForSubBiz.id),
-              });
-            }
-
-            setGroupForSubBiz(null);
-            onRefetch?.();
-          }}
-        />
-      )}
     </div>
   );
 }

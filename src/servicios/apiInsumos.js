@@ -451,12 +451,12 @@ export const insumoGroupDelete = async (bizId, id) => {
  * POST /api/insumos/groups/:id/items
  * Agrega un insumo a una agrupación
  */
-export const insumoGroupAddItem = async (groupId, insumoId) => {
+export const insumoGroupAddItem = async (groupId, insumoId, bizId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items`;
   
   const res = await fetch(url, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ insumoId }),
   });
   
@@ -473,12 +473,12 @@ export const insumoGroupAddItem = async (groupId, insumoId) => {
  * POST /api/insumos/groups/:id/items/bulk
  * Agrega múltiples insumos a una agrupación
  */
-export const insumoGroupAddMultipleItems = async (groupId, insumoIds) => {
+export const insumoGroupAddMultipleItems = async (groupId, insumoIds, bizId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items/bulk`;
   
   const res = await fetch(url, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ insumoIds }),
   });
   
@@ -495,12 +495,12 @@ export const insumoGroupAddMultipleItems = async (groupId, insumoIds) => {
  * DELETE /api/insumos/groups/:id/items/:insumoId
  * Quita un insumo de una agrupación
  */
-export const insumoGroupRemoveItem = async (groupId, insumoId) => {
+export const insumoGroupRemoveItem = async (groupId, insumoId, bizId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items/${insumoId}`;
   
   const res = await fetch(url, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
   
   const data = await res.json().catch(() => null);
@@ -516,12 +516,12 @@ export const insumoGroupRemoveItem = async (groupId, insumoId) => {
  * PUT /api/insumos/groups/:id/items
  * Reemplaza todos los items de una agrupación
  */
-export const insumoGroupReplaceItems = async (groupId, insumoIds) => {
+export const insumoGroupReplaceItems = async (groupId, insumoIds, bizId) => {
   const url = `${BASE}/insumos/groups/${groupId}/items`;
   
   const res = await fetch(url, {
     method: 'PUT',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ insumoIds }),
   });
   
@@ -630,12 +630,12 @@ export const insumoGroupRemoveExclusions = async (bizId, groupId, ids, scope = '
  * POST /api/insumos/groups/create-or-move
  * Crea una agrupación o mueve insumos a una existente
  */
-export const insumoGroupCreateOrMove = async (nombre, ids) => {
+export const insumoGroupCreateOrMove = async (nombre, ids, bizId) => {
   const url = `${BASE}/insumos/groups/create-or-move`;
   
   const res = await fetch(url, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify({ nombre, ids }),
   });
   

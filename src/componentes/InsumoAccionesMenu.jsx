@@ -86,7 +86,7 @@ function InsumoAccionesMenu({
     try {
       if (!isInDiscontinuados) {
         // ✅ DISCONTINUAR
-        await insumoGroupAddItem(discontinuadosGroupId, insumoId);
+        await insumoGroupAddItem(discontinuadosGroupId, insumoId, businessId);
 
         // ✅ Emitir evento con estructura correcta
         emitUiAction({
@@ -113,7 +113,7 @@ function InsumoAccionesMenu({
         console.log('✅ Insumo discontinuado');
       } else {
         // ✅ REACTIVAR
-        await insumoGroupRemoveItem(discontinuadosGroupId, insumoId);
+        await insumoGroupRemoveItem(discontinuadosGroupId, insumoId, businessId);
 
         emitUiAction({
           businessId,
@@ -167,7 +167,7 @@ function InsumoAccionesMenu({
     try {
       console.log(`🗑️ [Quitar] Insumo ${insumoId} del grupo ${currentGroupId}`);
 
-      await insumoGroupRemoveItem(currentGroupId, insumoId);
+      await insumoGroupRemoveItem(currentGroupId, insumoId, businessId);
 
       const groupName = groups.find(g => Number(g.id) === currentGroupId)?.nombre || 'agrupación';
       notify?.(`Insumo quitado de ${groupName}`, 'success');
@@ -213,8 +213,8 @@ function InsumoAccionesMenu({
         // Mover desde grupo actual
         console.log(`🔄 [Mover] Insumo ${insumoId} de ${fromId} a ${toId}`);
 
-        await insumoGroupAddItem(toId, insumoId);
-        await insumoGroupRemoveItem(fromId, insumoId);
+        await insumoGroupAddItem(toId, insumoId, businessId);
+        await insumoGroupRemoveItem(fromId, insumoId, businessId);
 
         onMutateGroups?.({
           type: 'move',
@@ -258,7 +258,7 @@ function InsumoAccionesMenu({
         // Agregar desde TODO
         console.log(`➕ [Agregar] Insumo ${insumoId} a ${toId}`);
 
-        await insumoGroupAddItem(toId, insumoId);
+        await insumoGroupAddItem(toId, insumoId, businessId);
 
         onMutateGroups?.({
           type: 'append',

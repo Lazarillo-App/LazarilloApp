@@ -113,7 +113,7 @@ export default function InsumoRubroAccionesMenu({
 
       if (!wasInDiscontinuados) {
         // ✅ DISCONTINUAR: agregar a Discontinuados
-        await insumoGroupAddMultipleItems(discId, normalizedIds);
+        await insumoGroupAddMultipleItems(discId, normalizedIds, businessId);
 
         emitUiAction({
           businessId,
@@ -140,7 +140,7 @@ export default function InsumoRubroAccionesMenu({
       } else {
         // ✅ REACTIVAR: quitar de Discontinuados
         const results = await Promise.allSettled(
-          normalizedIds.map((id) => insumoGroupRemoveItem(discId, id))
+          normalizedIds.map((id) => insumoGroupRemoveItem(discId, id, businessId))
         );
 
         const exitosos = results.filter((r) => r.status === "fulfilled").length;
@@ -205,13 +205,13 @@ export default function InsumoRubroAccionesMenu({
       console.log(`🔄 [Mover] ${normalizedIds.length} insumos → grupo ${toId}`);
 
       // 1️⃣ Agregar a nuevo grupo en BULK
-      await insumoGroupAddMultipleItems(toId, normalizedIds);
+      await insumoGroupAddMultipleItems(toId, normalizedIds, businessId);
 
       // 2️⃣ Quitar de grupo actual (si no es TODO)
       if (currentGroupId && currentGroupId !== todoGroupId) {
         for (const id of normalizedIds) {
           try {
-            await insumoGroupRemoveItem(currentGroupId, id);
+            await insumoGroupRemoveItem(currentGroupId, id, businessId);
           } catch (err) {
             console.warn(`No se pudo quitar ${id} de grupo ${currentGroupId}`);
           }
@@ -239,7 +239,7 @@ export default function InsumoRubroAccionesMenu({
     try {
       for (const id of normalizedIds) {
         try {
-          await insumoGroupRemoveItem(currentGroupId, id);
+          await insumoGroupRemoveItem(currentGroupId, id, businessId);
         } catch {
           console.warn(`No se pudo quitar ${id}`);
         }

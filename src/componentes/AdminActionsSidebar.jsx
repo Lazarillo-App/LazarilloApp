@@ -1,5 +1,6 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
+import { showAlert } from '../servicios/appAlert';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Paper, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
@@ -153,15 +154,15 @@ export default function AdminActionsSidebar({ onSynced }) {
       window.dispatchEvent(new CustomEvent('business:synced', { detail: { activeBusinessId: bizId } }));
       onSynced?.(resp);
 
-      if (!silent) alert(`Sync artículos OK. Actualizados: ${resp?.upserted ?? 0} · Mapeos: ${resp?.mapped ?? 0}`);
+      if (!silent) showAlert(`Sync artículos OK. Actualizados: ${resp?.upserted ?? 0} · Mapeos: ${resp?.mapped ?? 0}`, 'success');
     } catch (e) {
       console.error('sync articles error', e);
       const msg = String(e?.message || '');
       if (!silent) {
         if (msg.includes('UNAUTHORIZED_ACCESS') || msg.includes('UNAUTHORIZED')) {
-          alert('Maxi 401: credenciales inválidas o token caído.');
+          showAlert('Maxi 401: credenciales inválidas o token caído.', 'error');
         } else {
-          alert('No se pudo sincronizar artículos. Probá nuevamente.');
+          showAlert('No se pudo sincronizar artículos. Probá nuevamente.', 'error');
         }
       }
       throw e;
@@ -185,11 +186,11 @@ export default function AdminActionsSidebar({ onSynced }) {
         upserted: Number(resp?.sales?.upserted ?? resp?.upserted ?? 0),
         updated: Number(resp?.sales?.updated ?? resp?.updated ?? 0),
       });
-      if (!silent) alert(`Ventas (7d) OK · ${from} → ${to}.`);
+      if (!silent) showAlert(`Ventas (7d) OK · ${from} → ${to}.`, 'success');
       window.dispatchEvent(new CustomEvent('business:synced', { detail: { activeBusinessId: bizId } }));
     } catch (e) {
       console.error('sync sales 7d error', e);
-      if (!silent) alert('No se pudieron sincronizar las ventas de los últimos 7 días.');
+      if (!silent) showAlert('No se pudieron sincronizar las ventas de los últimos 7 días.', 'error');
       throw e;
     } finally {
       setSyncingSales(false);
@@ -208,11 +209,11 @@ export default function AdminActionsSidebar({ onSynced }) {
         upserted: Number(resp?.sales?.upserted ?? 0),
         updated: Number(resp?.sales?.updated ?? 0),
       });
-      alert('Backfill de 30 días encolado/ejecutado correctamente.');
+      showAlert('Backfill de 30 días encolado/ejecutado correctamente.', 'success');
       window.dispatchEvent(new CustomEvent('business:synced', { detail: { activeBusinessId: bizId } }));
     } catch (e) {
       console.error('backfill 30d error', e);
-      alert('No se pudo ejecutar el backfill de 30 días.');
+      showAlert('No se pudo ejecutar el backfill de 30 días.', 'error');
     } finally {
       setSyncingSales(false);
     }
@@ -221,7 +222,7 @@ export default function AdminActionsSidebar({ onSynced }) {
   /* ================== UI ================== */
   const handleSyncArticlesClick = async () => {
     if (!selectedId || syncingArticles) return;
-    if (mx.hasCreds === false) { alert('Este local no tiene credenciales de Maxi.'); return; }
+    if (mx.hasCreds === false) { showAlert('Este local no tiene credenciales de Maxi.', 'warning'); return; }
     if (!window.confirm('¿Sincronizar artículos/categorías para este local?')) return;
     await doSyncArticles(selectedId);
   };

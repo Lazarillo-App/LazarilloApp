@@ -16,11 +16,11 @@ import TextField from "@mui/material/TextField";
 import SaveIcon from "@mui/icons-material/Save";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-
+import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import { purchasesSync } from "@/servicios/apiPurchases";
 import { useBusiness } from "@/context/BusinessContext";
-
 import { syncArticulos, syncInsumos, isMaxiConfigured } from "@/servicios/syncService";
-
+import { useOrganization } from "@/context/OrganizationContext";
 import {
   checkNewArticlesAndSuggest,
   applyAutoGrouping,
@@ -42,6 +42,8 @@ export default function BusinessCard({
     divisionsLoading,
     refetchDivisions,
   } = useBusiness() || {};
+
+  const { rootBusiness, allBusinesses } = useOrganization() || {};
 
   const API_BASE =
     import.meta.env.VITE_API_BASE_URL || "https://lazarilloapp-backend.onrender.com";
@@ -140,16 +142,36 @@ export default function BusinessCard({
     })();
   }, [viewBiz?.id, isActive, maxiLoading, maxiConfigured]);
 
-  // Chequear si Maxi está configurado
+  const resolvedMaxiBizId = useMemo(() => {
+    const bizId = Number(viewBiz?.id);
+
+    // Si el negocio pertenece a una organización, buscar el raíz
+    // El raíz es el que NO tiene created_from = 'from_group'
+    if (allBusinesses && allBusinesses.length > 1) {
+      const root = allBusinesses.find(
+        (b) => !b.created_from || b.created_from === 'manual' || b.created_from === 'onboarding'
+      );
+      if (root) return Number(root.id);
+    }
+
+    // Fallback: usar rootBusiness del contexto
+    if (rootBusiness?.id) return Number(rootBusiness.id);
+
+    return bizId;
+  }, [viewBiz?.id, allBusinesses, rootBusiness]);
+
+
   useEffect(() => {
     let mounted = true;
-    const id = viewBiz?.id;
-    if (!id) return;
+
+    // Usar el ID resuelto al negocio raíz para chequear Maxi
+    const idToCheck = resolvedMaxiBizId;
+    if (!idToCheck) return;
 
     (async () => {
       try {
         setMaxiLoading(true);
-        const configured = await isMaxiConfigured(id);
+        const configured = await isMaxiConfigured(idToCheck);
         if (!mounted) return;
         setMaxiConfigured(configured);
       } catch {
@@ -160,10 +182,8 @@ export default function BusinessCard({
       }
     })();
 
-    return () => {
-      mounted = false;
-    };
-  }, [viewBiz?.id]);
+    return () => { mounted = false; };
+  }, [resolvedMaxiBizId]);
 
   const branding = useMemo(() => viewBiz?.branding || viewBiz?.props?.branding || {}, [viewBiz]);
 
@@ -474,177 +494,7 @@ export default function BusinessCard({
             >
               <DeleteIcon fontSize="small" />
             </button>
-            {/* Botón para abrir panel */}
-            <button
-              className="bc-btn bc-btn-outline"
-              onClick={toggleDivPanel}
-              title="Ver subnegocios (divisiones)"
-            >
-              Subnegocios
-            </button>
           </div>
-
-          {divPanelOpen && (
-            <div className="bc-div-panel">
-              <div className="bc-div-head">
-                <strong>Subnegocios</strong>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    className="bc-btn bc-btn-outline"
-                    style={{ padding: "6px 10px" }}
-                    onClick={handleCreateDivision}
-                  >
-                    + Crear
-                  </button>
-                  <button
-                    className="bc-btn bc-btn-outline"
-                    style={{ padding: "6px 10px" }}
-                    onClick={() => setDivPanelOpen(false)}
-                  >
-                    Cerrar
-                  </button>
-                </div>
-              </div>
-
-              {!isActive ? (
-                <div className="bc-div-empty">Activá este negocio para ver sus subnegocios.</div>
-              ) : divLoading ? (
-                <div className="bc-div-loading">
-                  <CircularProgress size={18} /> Cargando…
-                </div>
-              ) : !hasDivisions ? (
-                <div className="bc-div-empty">
-                  Este negocio no tiene subnegocios.
-                  <br />
-                  <button
-                    className="bc-btn bc-btn-outline"
-                    style={{ marginTop: 8 }}
-                    onClick={handleCreateDivision}
-                  >
-                    Crear el primero
-                  </button>
-                </div>
-              ) : (
-                <div className="bc-div-list">
-                  {divisionsList.map((d) => {
-                    const isSel = String(activeDivisionId ?? "") === String(d.id);
-                    const isEditing = String(editDivisionId ?? "") === String(d.id);
-                    const busy = String(divisionBusyId ?? "") === String(d.id);
-
-                    return (
-                      <div
-                        key={d.id}
-                        className={`bc-btn bc-btn-outline ${isSel ? "bc-btn-selected" : ""}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          padding: "10px 12px",
-                        }}
-                        title={`Seleccionar ${d.name || d.nombre || `#${d.id}`}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => !isEditing && handlePickDivision(d.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !isEditing) handlePickDivision(d.id);
-                        }}
-                      >
-                        {/* IZQ: nombre */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                          {isEditing ? (
-                            <TextField
-                              size="small"
-                              value={editDivisionName}
-                              onChange={(e) => setEditDivisionName(e.target.value)}
-                              autoFocus
-                              disabled={busy}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") saveRenameDivision(d.id);
-                                if (e.key === "Escape") cancelRenameDivision();
-                              }}
-                              sx={{
-                                flex: 1,
-                                "& .MuiInputBase-root": { height: 34 },
-                              }}
-                            />
-                          ) : (
-                            <>
-                              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {d.name || d.nombre || `División #${d.id}`}
-                              </span>
-                              {isSel && <CheckCircleIcon fontSize="small" style={{ opacity: 0.8 }} />}
-                            </>
-                          )}
-                        </div>
-
-                        {/* DER: acciones */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ opacity: 0.6, fontSize: 12 }}>#{d.id}</span>
-
-                          {isEditing ? (
-                            <>
-                              <IconButton
-                                size="small"
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  saveRenameDivision(d.id);
-                                }}
-                                title="Guardar"
-                              >
-                                <SaveIcon fontSize="small" />
-                              </IconButton>
-
-                              <IconButton
-                                size="small"
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  cancelRenameDivision();
-                                }}
-                                title="Cancelar"
-                              >
-                                <CloseIcon fontSize="small" />
-                              </IconButton>
-                            </>
-                          ) : (
-                            <>
-                              <IconButton
-                                size="small"
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startRenameDivision(d);
-                                }}
-                                title="Cambiar nombre"
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-
-                              {!d.is_main && (
-                                <IconButton
-                                  size="small"
-                                  disabled={busy}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteDivision(d.id);
-                                  }}
-                                  title="Eliminar"
-                                >
-                                  <DeleteForeverIcon fontSize="small" />
-                                </IconButton>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
           <div className="bc-actions-sync">
             <button
               className="bc-btn bc-btn-outline"
@@ -657,22 +507,25 @@ export default function BusinessCard({
             </button>
 
             {!maxiLoading && maxiConfigured && (
-              <button
-                className="bc-btn bc-btn-outline"
-                onClick={handleSyncInsumos}
-                disabled={syncingInsumos}
-                title="Sincronizar insumos desde Maxi"
-              >
-                {syncingInsumos ? <CircularProgress size={16} /> : <Inventory2Icon fontSize="small" />}
-                {syncingInsumos ? " Insumos…" : " Insumos"}
-              </button>
+              <>
+                <button
+                  className="bc-btn bc-btn-outline"
+                  onClick={handleSyncInsumos}
+                  disabled={syncingInsumos}
+                  title="Sincronizar insumos desde Maxi"
+                >
+                  {syncingInsumos ? <CircularProgress size={16} /> : <Inventory2Icon fontSize="small" />}
+                  {syncingInsumos ? " Insumos…" : " Insumos"}
+                </button>
+
+              </>
             )}
 
             {!maxiLoading && !maxiConfigured && (
               <button
                 className="bc-btn bc-btn-outline"
                 disabled
-                title="Configura Maxi (email, codcli y clave) para habilitar la sincronización"
+                title="Configurá Maxi para habilitar la sincronización"
                 style={{ opacity: 0.5, cursor: "not-allowed" }}
               >
                 <PointOfSaleIcon fontSize="small" />

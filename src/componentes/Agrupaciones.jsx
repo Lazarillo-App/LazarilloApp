@@ -138,8 +138,8 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
 
   const cargarAgrupaciones = async () => {
     try {
-      const data = await obtenerAgrupaciones();
-      setAgrupaciones(Array.isArray(data) ? data : []);
+      const { list } = await obtenerAgrupaciones();
+      setAgrupaciones(Array.isArray(list) ? list : []);
     } catch (error) {
       console.error("Error al cargar agrupaciones:", error);
       showSnack("Error al cargar agrupaciones", "error");

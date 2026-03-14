@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { showAlert } from '../servicios/appAlert';
 
 export default function MaxiCredsCard() {
   const [bid, setBid] = useState(localStorage.getItem('activeBusinessId') || '');
@@ -18,17 +19,17 @@ export default function MaxiCredsCard() {
 
   const save = async (e) => {
     e.preventDefault();
-    if (!bid) return alert('Seleccioná un local primero');
+    if (!bid) return showAlert('Seleccioná un local primero.', 'warning');
     setBusy(true);
     try {
       await BusinessesAPI.maxiSave(bid, { email, pass, cod_cli: codCli });
       const st = await BusinessesAPI.maxiStatus(bid);
       setStatus(st);
       setEmail(''); setPass(''); setCodCli('');
-      alert('Credenciales guardadas');
+      showAlert('Credenciales guardadas.', 'success');
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Error guardando credenciales');
+      showAlert(err.message || 'Error guardando credenciales.', 'error');
     } finally {
       setBusy(false);
     }

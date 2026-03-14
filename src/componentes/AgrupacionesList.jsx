@@ -2,6 +2,7 @@
 /* eslint-disable no-empty */
 // src/componentes/AgrupacionesList.jsx
 import React, { useMemo, useState, useCallback } from "react";
+import { showAlert } from '../servicios/appAlert';
 import {
   Box, Card, CardContent, CardActions, Accordion, AccordionSummary, AccordionDetails,
   Typography, IconButton, TextField, Button, Checkbox, FormControl, InputLabel,
@@ -217,10 +218,8 @@ const AgrupacionesList = ({
   const showMsg = useCallback((msg, type = 'info') => {
     if (typeof notify === 'function') {
       notify(msg, type);
-    } else if (typeof window !== 'undefined') {
-      window.alert(msg);
     } else {
-      console.log(`[${type}]`, msg);
+      showAlert(msg, type);
     }
   }, [notify]);
 

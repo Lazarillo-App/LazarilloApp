@@ -81,14 +81,20 @@ export function OrganizationProvider({ children }) {
     return () => window.removeEventListener('auth:logout', onLogout);
   }, []);
 
-  // Recargar cuando cambia el negocio activo
+  // Recargar cuando cambia el negocio activo, se crea o se borra uno
   useEffect(() => {
-    const onSwitch = () => {
+    const onRefresh = () => {
       lastFetchedBizId.current = null;
       refetchOrg();
     };
-    window.addEventListener('business:switched', onSwitch);
-    return () => window.removeEventListener('business:switched', onSwitch);
+    window.addEventListener('business:switched', onRefresh);
+    window.addEventListener('business:deleted', onRefresh);
+    window.addEventListener('business:created', onRefresh);
+    return () => {
+      window.removeEventListener('business:switched', onRefresh);
+      window.removeEventListener('business:deleted', onRefresh);
+      window.removeEventListener('business:created', onRefresh);
+    };
   }, [refetchOrg]);
 
   /* ─────────────────────────────────────────────────

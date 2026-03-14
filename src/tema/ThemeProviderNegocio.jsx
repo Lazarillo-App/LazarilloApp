@@ -102,6 +102,21 @@ function applyCssVars(p) {
   root.style.setProperty('--on-bg', onBg);
   root.style.setProperty('--on-surface', onSurface);
 
+  // ── Derivados para tabla (calculados con contraste real) ──
+  // Header de columnas: fondo primario + texto sobre primario
+  root.style.setProperty('--table-header-bg', primary);
+  root.style.setProperty('--table-header-color', onPrimary);
+  // Filas de sección/rubro: fondo suave del primario + texto con buen contraste
+  // Usamos 18% del primario sobre blanco → calculamos el color resultante para bestOn
+  const sectionBgRgb = hexToRgb(primary).map((c, i) => Math.round(c * 0.18 + ([255, 255, 255][i]) * 0.82));
+  const sectionBgHex = '#' + sectionBgRgb.map(c => Math.min(255, c).toString(16).padStart(2, '0')).join('');
+  root.style.setProperty('--table-section-bg', sectionBgHex);
+  root.style.setProperty('--table-section-color', bestOn(sectionBgHex));
+  // Borde de separación de secciones: primario al 30%
+  const sectionBorderRgb = hexToRgb(primary).map((c, i) => Math.round(c * 0.30 + ([255, 255, 255][i]) * 0.70));
+  const sectionBorderHex = '#' + sectionBorderRgb.map(c => Math.min(255, c).toString(16).padStart(2, '0')).join('');
+  root.style.setProperty('--table-section-border', sectionBorderHex);
+
   const hover = supportsColorMix
     ? `color-mix(in srgb, ${secondary} 18%, transparent)`
     : 'rgba(0,0,0,.06)';
@@ -213,18 +228,24 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
 
   // 3) eventos globales
   useEffect(() => {
-    const onSwitch = () => {
-      const id = getActiveBizId();
+    const onSwitch = (e) => {
+      // Preferir el ID del evento sobre localStorage (llega antes que el prop se actualice)
+      const id = String(e?.detail?.id || getActiveBizId() || '');
       if (!id) return;
+
+      // Forzar re-aplicación aunque sea el mismo ID (limpiar lastAppliedRef)
+      lastAppliedRef.current = '';
 
       if (role === 'app_admin') {
         setPaletteForBiz(DEFAULTS, { persist: true, biz: id });
         return;
       }
 
+      setBizId(id);
+
       try {
         const cached = JSON.parse(localStorage.getItem(keyFor(id)) || 'null');
-        if (cached) { setBizId(id); setPaletteForBiz(cached, { persist: false, biz: id }); return; }
+        if (cached) { setPaletteForBiz(cached, { persist: false, biz: id }); return; }
       } catch { }
 
       refreshFromBackend(id);

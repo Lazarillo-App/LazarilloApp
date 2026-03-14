@@ -1,5 +1,7 @@
+/* eslint-disable no-unused-vars */
 // src/componentes/InsumoGroupModal.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import { showAlert } from '../servicios/appAlert';
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
     Dialog,
     DialogTitle,
@@ -45,6 +47,9 @@ export default function InsumoGroupModal({
     groups = [],
     onGroupsReload,
     editingGroupId = null,
+    // Props opcionales del padre — evitan fetches duplicados y race conditions
+    rubrosMap: rubrosMapProp = null,
+    allInsumos: allInsumosProp = null,
 }) {
     const [vista, setVista] = useState("no-elaborados");
     const [loading, setLoading] = useState(false);
@@ -55,9 +60,17 @@ export default function InsumoGroupModal({
     const [newGroupName, setNewGroupName] = useState("");
     const [saving, setSaving] = useState(false);
 
+    // Ref para saber si la preselección ya se aplicó en esta apertura del modal
+    const preseleccionAplicadaRef = useRef(false);
+
     /* ================== RESET AL ABRIR ================== */
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            preseleccionAplicadaRef.current = false;
+            return;
+        }
+
+        preseleccionAplicadaRef.current = false;
 
         const s = new Set();
         if (insumo && insumo.id) {
@@ -70,15 +83,36 @@ export default function InsumoGroupModal({
         setNewGroupName("");
     }, [open, insumo, groups]);
 
-    /* ================== RUBROS ================== */
+    /* ================== RUBROS (fetch propio solo si el padre no los pasó) ================== */
     useEffect(() => {
-        if (!open || !businessId) {
-            setRows([]);
+        if (!open || !businessId) { setRubros([]); return; }
+        // Si el padre ya pasó rubrosMap, no necesitamos fetch propio
+        if (rubrosMapProp) { setRubros([]); return; }
+
+        let canceled = false;
+        (async () => {
+            try {
+                const res = await insumosRubrosList(businessId);
+                if (!canceled) setRubros(res.items || []);
+            } catch (e) {
+                if (!canceled) setRubros([]);
+            }
+        })();
+        return () => { canceled = true; };
+    }, [open, businessId, rubrosMapProp]);
+
+    /* ================== INSUMOS (fetch propio solo si el padre no los pasó) ================== */
+    useEffect(() => {
+        if (!open || !businessId) { setRows([]); return; }
+
+        // Si el padre ya pasó allInsumos, usarlos directamente
+        if (allInsumosProp && allInsumosProp.length > 0) {
+            // Filtrar por vista
+            setRows(allInsumosProp);
             return;
         }
 
         let canceled = false;
-
         (async () => {
             setLoading(true);
             try {
@@ -89,47 +123,37 @@ export default function InsumoGroupModal({
 
                 while (!canceled) {
                     const params = { page, limit: pageSize, search: "" };
-
                     if (vista === "elaborados") params.elaborados = "true";
                     else if (vista === "no-elaborados") params.elaborados = "false";
 
                     const r = await insumosList(businessId, params);
-
                     const chunk = Array.isArray(r?.data) ? r.data : [];
                     const pag = r?.pagination;
                     if (total == null && pag?.total != null) total = Number(pag.total);
-
                     all = all.concat(chunk);
-
-                    // condición de salida:
                     if (!chunk.length) break;
                     if (total != null && all.length >= total) break;
-
                     page++;
-                    // safety guard
                     if (page > 200) break;
                 }
 
-                if (!canceled) {
-                    setRows(all);
-                    console.log(`📦 [InsumoGroupModal] rows cargados total: ${all.length} (vista=${vista})`);
-                }
+                if (!canceled) setRows(all);
             } catch (e) {
-                if (!canceled) {
-                    console.error("[InsumoGroupModal] Error insumos:", e);
-                    setRows([]);
-                }
+                if (!canceled) setRows([]);
             } finally {
                 if (!canceled) setLoading(false);
             }
         })();
+        return () => { canceled = true; };
+    }, [open, businessId, vista, allInsumosProp]);
 
-        return () => {
-            canceled = true;
-        };
-    }, [open, businessId, vista]);
-
+    /* ================== MAPA DE RUBROS ================== */
+    // Usar el del padre si está disponible, si no construir del fetch propio
     const rubroNombreMap = useMemo(() => {
+        // Prioridad 1: mapa del padre (Map con codigo → { nombre, ... })
+        if (rubrosMapProp && rubrosMapProp.size > 0) return rubrosMapProp;
+
+        // Prioridad 2: construir del fetch propio (array de rubros)
         const m = new Map();
         (rubros || []).forEach((r) => {
             if (r && r.codigo != null) {
@@ -137,19 +161,18 @@ export default function InsumoGroupModal({
             }
         });
         return m;
-    }, [rubros]);
+    }, [rubros, rubrosMapProp]);
 
+    /* ================== GET RUBRO LABEL ================== */
     const getRubroLabel = (row) => {
-        const code =
-            row.rubro_codigo ??
-            row.rubroCodigo ??
-            row.codigo_rubro ??
-            row.rubro ??
-            null;
+        const code = row.rubro_codigo ?? row.rubroCodigo ?? row.codigo_rubro ?? row.rubro ?? null;
 
         if (code != null) {
-            const fromMap = rubroNombreMap.get(String(code));
-            if (fromMap && fromMap.trim() !== "") return fromMap;
+            const val = rubroNombreMap.get(String(code));
+            // Si el mapa es del padre, val es un objeto { nombre, ... }
+            // Si es del fetch propio, val es un string
+            const nombre = typeof val === 'object' ? val?.nombre : val;
+            if (nombre && nombre.trim() !== "") return nombre;
         }
 
         return (
@@ -161,97 +184,92 @@ export default function InsumoGroupModal({
         );
     };
 
-    useEffect(() => {
-        if (!open || !businessId) { setRubros([]); return; }
-        let canceled = false;
-
-        (async () => {
-            try {
-                const res = await insumosRubrosList(businessId);
-                if (!canceled) setRubros(res.items || []);
-            } catch (e) {
-                if (!canceled) setRubros([]);
-                console.error("[InsumoGroupModal] Error rubros:", e);
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [open, businessId]);
+    /* ================== FILAS FILTRADAS POR VISTA ================== */
+    // Cuando los insumos vienen del padre (todos), filtrar por elaborado aquí
+    const rowsFiltradas = useMemo(() => {
+        if (!allInsumosProp) return rows; // el fetch propio ya filtró
+        if (vista === 'elaborados') {
+            return rows.filter((r) => {
+                const code = String(r.rubro_codigo || r.rubro || '');
+                const info = rubroNombreMap.get(code);
+                const esElab = typeof info === 'object' ? info?.es_elaborador : false;
+                return esElab === true;
+            });
+        }
+        if (vista === 'no-elaborados') {
+            return rows.filter((r) => {
+                const code = String(r.rubro_codigo || r.rubro || '');
+                const info = rubroNombreMap.get(code);
+                const esElab = typeof info === 'object' ? info?.es_elaborador : false;
+                return esElab !== true;
+            });
+        }
+        return rows;
+    }, [rows, vista, allInsumosProp, rubroNombreMap]);
 
     /* ================== YA AGRUPADOS ================== */
     const yaAgrupados = useMemo(() => {
         const set = new Set();
-
         groups.forEach((g) => {
-            // Permitir los del grupo actual si estamos editando
             if (editingGroupId && Number(g.id) === Number(editingGroupId)) return;
-
             (g.items || g.insumos || []).forEach((item) => {
                 const id = Number(item.insumo_id ?? item.id);
                 if (Number.isFinite(id)) set.add(id);
             });
         });
-
         return set;
     }, [groups, editingGroupId]);
 
-    /* ================== AGRUPAR POR RUBRO (MOSTRAR TODO) ================== */
+    /* ================== AGRUPAR POR RUBRO ================== */
     const groupedRows = useMemo(() => {
         const map = new Map();
-
-        // ✅ Incluir TODOS los rows (agrupados o no)
-        for (const r of rows || []) {
+        for (const r of rowsFiltradas || []) {
             const label = getRubroLabel(r);
             if (!map.has(label)) map.set(label, []);
             map.get(label).push(r);
         }
+        return Array.from(map.entries()).map(([label, groupRows]) => ({ label, rows: groupRows }));
+    }, [rowsFiltradas, rubroNombreMap]);
 
-        return Array.from(map.entries()).map(([label, groupRows]) => ({
-            label,
-            rows: groupRows,
-        }));
-    }, [rows, rubroNombreMap]); // rubroNombreMap cambia cuando cambia rubros
-
-    /* ================== PRESELECCIÓN DESDE UN RUBRO (SOLO DISPONIBLES) ================== */
+    /* ================== PRESELECCIÓN DESDE UN RUBRO ================== */
     useEffect(() => {
         if (!open) return;
         if (!originRubroLabel) return;
-        if (!rows || rows.length === 0) return;
+        if (preseleccionAplicadaRef.current) return; // ya se aplicó en esta apertura
+
+        // Necesitamos que rows Y rubroNombreMap estén listos
+        const sourceRows = allInsumosProp ? rowsFiltradas : rowsFiltradas;
+        if (!sourceRows || sourceRows.length === 0) return;
+        // Si el mapa de rubros está vacío y no vino del padre, esperar
+        if (!rubrosMapProp && rubroNombreMap.size === 0) return;
 
         const labelNorm = originRubroLabel.trim().toLowerCase();
 
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
+        const idsParaPreseleccionar = [];
+        for (const r of sourceRows) {
+            const id = Number(r.id);
+            if (!Number.isFinite(id)) continue;
+            if (yaAgrupados.has(id)) continue;
+            const rl = (getRubroLabel(r) || "").trim().toLowerCase();
+            if (rl === labelNorm) idsParaPreseleccionar.push(id);
+        }
 
-            for (const r of rows) {
-                const id = Number(r.id);
-                if (!Number.isFinite(id)) continue;
+        if (idsParaPreseleccionar.length > 0) {
+            preseleccionAplicadaRef.current = true;
+            setSelectedIds((prev) => {
+                const next = new Set(prev);
+                idsParaPreseleccionar.forEach((id) => next.add(id));
+                return next;
+            });
+            console.log(`🎯 [Preselección] Rubro "${originRubroLabel}": ${idsParaPreseleccionar.length} insumos preseleccionados`);
+        }
+    }, [open, originRubroLabel, rowsFiltradas, yaAgrupados, rubroNombreMap, rubrosMapProp, allInsumosProp]);
 
-                // Solo preseleccionar si NO está ya agrupado
-                if (yaAgrupados.has(id)) continue;
-
-                const rl = (getRubroLabel(r) || "").trim().toLowerCase();
-                if (rl === labelNorm) {
-                    next.add(id);
-                }
-            }
-
-            console.log(
-                `🎯 [Preselección] Rubro "${originRubroLabel}": ${next.size - prev.size
-                } insumos agregados`
-            );
-            return next;
-        });
-    }, [open, originRubroLabel, rows, yaAgrupados, rubroNombreMap]);
-
-    /* ================== HANDLERS CHECKBOX ================== */
+    /* ================== HANDLERS ================== */
     const toggleInsumo = (id) => {
         const numId = Number(id);
         if (!Number.isFinite(numId)) return;
-
-        // ❌ no permitir seleccionar ya agrupados
         if (yaAgrupados.has(numId)) return;
-
         setSelectedIds((prev) => {
             const n = new Set(prev);
             if (n.has(numId)) n.delete(numId);
@@ -263,13 +281,11 @@ export default function InsumoGroupModal({
     const toggleRubroGroup = (idsDisponibles, allSelectedNow) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
-
             idsDisponibles.forEach((id) => {
                 if (!Number.isFinite(id)) return;
                 if (allSelectedNow) next.delete(id);
                 else next.add(id);
             });
-
             return next;
         });
     };
@@ -281,71 +297,41 @@ export default function InsumoGroupModal({
     };
 
     const handleSave = async () => {
-        if (!businessId) {
-            alert("Seleccioná un negocio antes de guardar agrupaciones.");
-            return;
-        }
-
-        if (!selectedIds.size) {
-            alert("Seleccioná al menos un insumo para agrupar.");
-            return;
-        }
+        if (!businessId) { showAlert("Seleccioná un negocio antes de guardar agrupaciones.", 'warning'); return; }
+        if (!selectedIds.size) { showAlert("Seleccioná al menos un insumo para agrupar.", 'warning'); return; }
 
         const trimmedName = newGroupName.trim();
         const hasNewGroup = trimmedName.length > 0;
         const hasExisting = selectedGroupId !== "" && selectedGroupId != null;
 
         if (!hasNewGroup && !hasExisting) {
-            alert("Elegí una agrupación existente o ingresá un nombre nuevo.");
+            showAlert("Elegí una agrupación existente o ingresá un nombre nuevo.", 'warning');
             return;
         }
 
         try {
             setSaving(true);
-
             let groupIdToUse = hasExisting ? Number(selectedGroupId) : null;
             const idsArray = Array.from(selectedIds);
 
-            // 1) Crear agrupación si escribió un nombre
             if (hasNewGroup) {
-                console.log(`📦 [InsumoGroupModal] Creando grupo "${trimmedName}"`);
-                const res = await insumoGroupCreate({
-                    nombre: trimmedName,
-                    descripcion: null,
-                });
-
+                const res = await insumoGroupCreate({ nombre: trimmedName, descripcion: null });
                 const created = res?.data || res;
                 const newId = Number(created?.id);
-                if (!Number.isFinite(newId)) {
-                    throw new Error("No se pudo obtener el ID de la nueva agrupación.");
-                }
+                if (!Number.isFinite(newId)) throw new Error("No se pudo obtener el ID de la nueva agrupación.");
                 groupIdToUse = newId;
-
-                // ✅ EMITIR NOTIFICACIÓN usando helper centralizado
-                notifyGroupCreated({
-                    businessId,
-                    groupId: newId,
-                    groupName: trimmedName,
-                    itemCount: idsArray.length,
-                    scope: 'insumo',
-                });
-
+                notifyGroupCreated({ businessId, groupId: newId, groupName: trimmedName, itemCount: idsArray.length, scope: 'insumo' });
                 onGroupsReload && (await onGroupsReload());
             }
 
-            if (!Number.isFinite(groupIdToUse)) {
-                throw new Error("ID de agrupación inválido.");
-            }
+            if (!Number.isFinite(groupIdToUse)) throw new Error("ID de agrupación inválido.");
 
-            // 2) Agregar en BULK
-            console.log(`📦 [InsumoGroupModal] Agregando ${idsArray.length} insumos en BULK al grupo ${groupIdToUse}`);
             await insumoGroupAddMultipleItems(groupIdToUse, idsArray);
-
-            alert(`✅ ${idsArray.length} insumos agrupados correctamente.`);
+            showAlert(`${idsArray.length} insumos agrupados correctamente.`, 'success');
             onClose && onClose({ ok: true, groupId: groupIdToUse });
         } catch (e) {
             console.error("[InsumoGroupModal] Error guardando agrupación:", e);
-            alert(e.message || "Error al agrupar insumos.");
+            showAlert(e.message || "Error al agrupar insumos.", 'error');
         } finally {
             setSaving(false);
         }

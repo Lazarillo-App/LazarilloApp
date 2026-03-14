@@ -1,164 +1,294 @@
+/* eslint-disable no-dupe-keys */
 // src/componentes/SalesPickerIcon.jsx
+import { showAlert } from '../servicios/appAlert';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { 
-  IconButton, Tooltip, Popover, Box, Stack, Button, Typography, 
-  ToggleButtonGroup, ToggleButton, Divider, Chip 
-} from '@mui/material';
-import TodayIcon from '@mui/icons-material/Today';
+import { Popover, Box, Stack, Button, Typography, Divider, IconButton, Tooltip } from '@mui/material';
 import DateRangeIcon from '@mui/icons-material/DateRange';
-import { 
-  lastNDaysUntilYesterday, 
-  monthToDateUntilYesterday, 
-  yearToDateUntilYesterday,
-  getRangeLabel,
-  isValidRange
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
+import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight';
+import {
+  lastNDaysUntilYesterday, monthToDateUntilYesterday,
+  yearToDateUntilYesterday, getRangeLabel, isValidRange,
 } from '../utils/fechas';
-import { format, subDays, parseISO } from 'date-fns';
+import {
+  format, subDays, parseISO, addMonths, subMonths, addYears, subYears,
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
+  isSameMonth, isSameDay, isAfter, isBefore, isToday,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// ✅ Preset rápidos mejorados
-const PRESETS = [
-  { 
-    id: '7', 
-    label: '7 días', 
-    calc: () => lastNDaysUntilYesterday(7),
-    icon: '📅' 
-  },
-  { 
-    id: '30', 
-    label: '30 días', 
-    calc: () => lastNDaysUntilYesterday(30),
-    icon: '📊' 
-  },
-  { 
-    id: '90', 
-    label: '90 días', 
-    calc: () => lastNDaysUntilYesterday(90),
-    icon: '📈' 
-  },
-  { 
-    id: 'mtd', 
-    label: 'Mes actual', 
-    calc: monthToDateUntilYesterday,
-    icon: '🗓️' 
-  },
-  { 
-    id: 'ytd', 
-    label: 'Año actual', 
-    calc: yearToDateUntilYesterday,
-    icon: '📆' 
-  },
-];
+/* ─── helpers ─── */
+const ayer      = () => subDays(new Date(), 1);
+const ymd       = (d) => format(d, 'yyyy-MM-dd');
+const parseDate = (s) => s ? parseISO(s) : null;
 
-export default function SalesPickerIcon({ value, onChange }) {
-  const { mode, from, to } = value;
+function buildPresets(firstDate) {
+  const today = new Date();
+  const prevM = subMonths(new Date(today.getFullYear(), today.getMonth(), 1), 1);
+  const prevY = today.getFullYear() - 1;
 
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
-  
-  const open = Boolean(anchorEl);
+  return [
+    { id: '7',         label: '7 días',     calc: () => lastNDaysUntilYesterday(7) },
+    { id: '30',        label: '30 días',    calc: () => lastNDaysUntilYesterday(30) },
+    { id: '90',        label: '90 días',    calc: () => lastNDaysUntilYesterday(90) },
+    { id: 'mtd',       label: 'Mes actual', calc: () => monthToDateUntilYesterday() },
+    { id: 'ytd',       label: 'Año actual', calc: () => yearToDateUntilYesterday() },
+    {
+      id: 'prev_month',
+      label: format(prevM, 'MMMM yyyy', { locale: es }).replace(/^\w/, c => c.toUpperCase()),
+      calc: () => ({
+        from: ymd(new Date(prevM.getFullYear(), prevM.getMonth(), 1)),
+        to:   ymd(new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0)),
+      }),
+    },
+    {
+      id: 'prev_year',
+      label: `Año ${prevY}`,
+      calc: () => ({ from: `${prevY}-01-01`, to: `${prevY}-12-31` }),
+    },
+    {
+      id: 'all',
+      label: 'Histórico',
+      disabled: !firstDate,
+      calc: () => firstDate ? { from: firstDate, to: ymd(ayer()) } : lastNDaysUntilYesterday(365),
+    },
+  ];
+}
 
-  // ✅ Colores del tema del negocio - reactivo a cambios de negocio
-  const readColors = () => {
-    if (typeof window === 'undefined') return { primary: '#3b82f6', secondary: '#10b981', background: '#f9fafb', onPrimary: '#ffffff' };
-    const s = getComputedStyle(document.documentElement);
-    return {
-      primary: s.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
-      secondary: s.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-      background: s.getPropertyValue('--color-background')?.trim() || '#f9fafb',
-      onPrimary: s.getPropertyValue('--on-primary')?.trim() || '#ffffff',
-    };
+/* ─── Calendario visual ─── */
+function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc }) {
+  const days = useMemo(() => {
+    const start = startOfWeek(startOfMonth(viewDate), { weekStartsOn: 0 });
+    const end   = endOfWeek(endOfMonth(viewDate),     { weekStartsOn: 0 });
+    return eachDayOfInterval({ start, end });
+  }, [viewDate]);
+
+  const maxDate = ayer();
+  const fromD   = parseDate(fromDate);
+  const toD     = parseDate(toDate);
+
+  const isInRange = (day) => {
+    if (!fromD || !toD) return false;
+    return isAfter(day, fromD) && isBefore(day, toD);
   };
 
-  const [themeColors, setThemeColors] = useState(readColors);
+  const monthLabel = format(viewDate, 'MMMM yyyy', { locale: es }).toUpperCase();
 
-  useEffect(() => {
-    const update = () => setThemeColors(readColors());
-    window.addEventListener('palette:changed', update);
-    window.addEventListener('theme:updated', update);
-    window.addEventListener('business:switched', update);
-    return () => {
-      window.removeEventListener('palette:changed', update);
-      window.removeEventListener('theme:updated', update);
-      window.removeEventListener('business:switched', update);
+  return (
+    <Box>
+      {/* Navegación */}
+      <Stack direction="row" alignItems="center" sx={{ mb: 0.75 }}>
+        <Tooltip title="Año anterior">
+          <IconButton size="small" onClick={() => onViewChange(subYears(viewDate, 1))}
+            sx={{ color: tc.primary, p: '3px' }}>
+            <KeyboardDoubleArrowLeftIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Mes anterior">
+          <IconButton size="small" onClick={() => onViewChange(subMonths(viewDate, 1))}
+            sx={{ color: tc.primary, p: '3px' }}>
+            <ChevronLeftIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+
+        <Typography variant="caption" sx={{
+          flex: 1, textAlign: 'center', fontWeight: 700,
+          fontSize: '0.76rem', letterSpacing: '0.03em', color: tc.primary, userSelect: 'none',
+        }}>
+          {monthLabel}
+        </Typography>
+
+        <Tooltip title="Mes siguiente">
+          <span>
+            <IconButton size="small"
+              onClick={() => onViewChange(addMonths(viewDate, 1))}
+              disabled={isAfter(startOfMonth(addMonths(viewDate, 1)), maxDate)}
+              sx={{ color: tc.primary, p: '3px' }}>
+              <ChevronRightIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Año siguiente">
+          <span>
+            <IconButton size="small"
+              onClick={() => onViewChange(addYears(viewDate, 1))}
+              disabled={isAfter(startOfMonth(addYears(viewDate, 1)), maxDate)}
+              sx={{ color: tc.primary, p: '3px' }}>
+              <KeyboardDoubleArrowRightIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+
+      {/* Cabecera días */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', mb: '2px' }}>
+        {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'].map(d => (
+          <Typography key={d} sx={{
+            textAlign: 'center', fontWeight: 600, fontSize: '0.62rem',
+            color: 'text.secondary', py: '2px',
+          }}>
+            {d}
+          </Typography>
+        ))}
+      </Box>
+
+      {/* Grilla de días */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px' }}>
+        {days.map((day, i) => {
+          const outOfMonth = !isSameMonth(day, viewDate);
+          const isDisabled = isAfter(day, maxDate);
+          const isFrom     = fromD && isSameDay(day, fromD);
+          const isTo_      = toD   && isSameDay(day, toD);
+          const inRange    = isInRange(day);
+          const isEnd      = isFrom || isTo_;
+          const todayDay   = isToday(day);
+
+          return (
+            <Box
+              key={i}
+              onClick={() => !isDisabled && !outOfMonth && onDayClick(day)}
+              sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                height: 28, fontSize: '0.76rem', userSelect: 'none',
+                cursor: (isDisabled || outOfMonth) ? 'default' : 'pointer',
+                borderRadius: isEnd ? '50%' : inRange ? 0 : '50%',
+                bgcolor: isEnd
+                  ? tc.primary
+                  : inRange
+                    ? `${tc.primary}20`
+                    : 'transparent',
+                color: isEnd
+                  ? tc.onPrimary
+                  : outOfMonth
+                    ? '#ccc'
+                    : inRange
+                      ? tc.primary
+                      : todayDay
+                        ? tc.primary
+                        : '#333',
+                fontWeight: (isEnd || todayDay) ? 700 : 400,
+                opacity: isDisabled ? 0.3 : 1,
+                outline: todayDay && !isEnd ? `1px solid ${tc.primary}50` : 'none',
+                outlineOffset: '-2px',
+                borderRadius: isEnd ? '50%' : inRange ? 0 : undefined,
+                transition: 'background 0.1s',
+                '&:hover': (!isDisabled && !outOfMonth) ? {
+                  bgcolor: isEnd ? tc.primary : `${tc.primary}35`,
+                  borderRadius: '50%',
+                } : {},
+              }}
+            >
+              {format(day, 'd')}
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+}
+
+/* ─── Componente principal ─── */
+// firstDate y loadingFirst vienen del padre — cada contexto (ventas/compras) fetchea el suyo
+export default function SalesPickerIcon({ value, onChange, firstDate = null, loadingFirst = false }) {
+  const { mode, from, to } = value;
+
+  const [anchorEl,      setAnchorEl]      = useState(null);
+  const [customFrom,    setCustomFrom]    = useState('');
+  const [customTo,      setCustomTo]      = useState('');
+  const [viewDate,      setViewDate]      = useState(new Date());
+  const [selectingFrom, setSelectingFrom] = useState(true);
+
+  const open = Boolean(anchorEl);
+
+  /* ── tema ── */
+  const readColors = () => {
+    if (typeof window === 'undefined') return { primary: '#3b82f6', onPrimary: '#ffffff' };
+    const s = getComputedStyle(document.documentElement);
+    return {
+      primary:   s.getPropertyValue('--color-primary')?.trim()  || '#3b82f6',
+      onPrimary: s.getPropertyValue('--on-primary')?.trim()     || '#ffffff',
     };
+  };
+  const [tc, setTc] = useState(readColors);
+  useEffect(() => {
+    const upd = () => setTc(readColors());
+    ['palette:changed', 'theme:updated', 'business:switched'].forEach(e => window.addEventListener(e, upd));
+    return () => ['palette:changed', 'theme:updated', 'business:switched'].forEach(e => window.removeEventListener(e, upd));
   }, []);
-  
+
+  const presets = useMemo(() => buildPresets(firstDate), [firstDate]);
+
+  /* ── abrir ── */
   const handleOpen = useCallback((e) => {
     setAnchorEl(e.currentTarget);
-    // Pre-cargar valores custom si estamos en modo custom
-    if (mode === 'custom' && from && to) {
-      setCustomFrom(from);
-      setCustomTo(to);
-    }
-  }, [mode, from, to]);
-  
-  const handleClose = useCallback(() => {
-    setAnchorEl(null);
-  }, []);
+    const base = from ? parseISO(from) : new Date();
+    setViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
+    setCustomFrom(from || '');
+    setCustomTo(to || '');
+    setSelectingFrom(true);
+  }, [from, to]);
 
-  // ✅ Label inteligente que muestra el rango actual
-  const rangeLabel = useMemo(() => {
-    if (!from || !to) return 'Seleccionar período';
-    
-    // Primero intentar con la función centralizada
-    const label = getRangeLabel(mode, from, to);
-    if (label && label !== 'Período') return label;
-    
-    // Fallback: mostrar fechas formateadas
-    try {
-      const fromDate = parseISO(from);
-      const toDate = parseISO(to);
-      const fromStr = format(fromDate, 'dd/MM/yy', { locale: es });
-      const toStr = format(toDate, 'dd/MM/yy', { locale: es });
-      return `📅 ${fromStr} - ${toStr}`;
-    } catch {
-      return 'Período seleccionado';
-    }
-  }, [from, to, mode]);
+  const handleClose = useCallback(() => setAnchorEl(null), []);
 
-  // ✅ Aplicar preset rápido
+  /* ── click en día ── */
+  const handleDayClick = useCallback((day) => {
+    const d = ymd(day);
+    if (selectingFrom) {
+      setCustomFrom(d);
+      setCustomTo('');
+      setSelectingFrom(false);
+    } else {
+      if (d < customFrom) {
+        setCustomTo(customFrom);
+        setCustomFrom(d);
+      } else {
+        setCustomTo(d);
+      }
+    }
+  }, [selectingFrom, customFrom]);
+
+  /* ── preset ── */
   const applyPreset = useCallback((preset) => {
+    if (preset.disabled) return;
     const result = preset.calc();
-    onChange({ 
-      mode: preset.id, 
-      from: result.from, 
-      to: result.to 
-    });
+    onChange({ mode: preset.id, from: result.from, to: result.to });
     handleClose();
   }, [onChange, handleClose]);
 
-  // ✅ Aplicar rango custom (con validación mejorada)
+  /* ── aplicar rango ── */
   const applyCustomRange = useCallback(() => {
-    if (!customFrom || !customTo) {
-      alert('Por favor selecciona ambas fechas');
-      return;
-    }
-    
-    // Validar con la función centralizada
+    if (!customFrom || !customTo) return;
     if (!isValidRange(customFrom, customTo)) {
-      alert('Rango de fechas inválido. Verifica que "Desde" sea anterior a "Hasta" y que no sean fechas futuras.');
+      showAlert('Rango inválido: «Desde» debe ser anterior a «Hasta» y no puede ser fecha futura.', 'warning');
       return;
     }
-    
-    onChange({ 
-      mode: 'custom', 
-      from: customFrom, 
-      to: customTo 
-    });
-    
+    onChange({ mode: 'custom', from: customFrom, to: customTo });
     handleClose();
   }, [customFrom, customTo, onChange, handleClose]);
 
-  // ✅ Shortcuts de teclado en el custom range
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter') {
-      applyCustomRange();
-    } else if (e.key === 'Escape') {
-      handleClose();
-    }
-  }, [applyCustomRange, handleClose]);
+  /* ── label botón ── */
+  const rangeLabel = useMemo(() => {
+    if (!from || !to) return 'Seleccionar período';
+    const label = getRangeLabel(mode, from, to);
+    if (label && label !== 'Período') return label;
+    try {
+      return `${format(parseISO(from), 'dd/MM/yy', { locale: es })} — ${format(parseISO(to), 'dd/MM/yy', { locale: es })}`;
+    } catch { return 'Período seleccionado'; }
+  }, [from, to, mode]);
+
+  const fromLabel = customFrom ? format(parseISO(customFrom), 'dd/MM/yyyy') : '—';
+  const toLabel   = customTo   ? format(parseISO(customTo),   'dd/MM/yyyy') : '—';
+  const canApply  = customFrom && customTo && customFrom <= customTo;
+
+  const presetSx = (pid) => ({
+    textTransform: 'none', fontSize: 13, flex: '1 1 auto',
+    ...(mode === pid
+      ? { bgcolor: tc.primary, color: tc.onPrimary, '&:hover': { bgcolor: tc.primary, filter: 'brightness(.9)' } }
+      : { borderColor: `${tc.primary}50`, color: tc.primary, '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}0d` } }
+    ),
+  });
 
   return (
     <>
@@ -167,17 +297,11 @@ export default function SalesPickerIcon({ value, onChange }) {
           size="small"
           onClick={handleOpen}
           variant="outlined"
-          sx={{ 
-            textTransform: 'none',
-            minWidth: 180,
-            justifyContent: 'flex-start',
-            borderColor: themeColors.primary,
-            color: themeColors.primary,
-            '&:hover': {
-              borderColor: themeColors.primary,
-              bgcolor: `${themeColors.primary}10`
-            },
-            padding: '7.5px 9px',
+          sx={{
+            textTransform: 'none', minWidth: 185, justifyContent: 'flex-start',
+            borderColor: tc.primary, color: tc.primary,
+            '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
+            padding: '7px 9px', fontSize: 13,
           }}
         >
           {rangeLabel}
@@ -191,187 +315,140 @@ export default function SalesPickerIcon({ value, onChange }) {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         slotProps={{
-          paper: {
-            sx: { 
-              mt: 1,
-              borderRadius: 2,
-              boxShadow: 3,
-              border: `1px solid ${themeColors.primary}20`
-            }
-          }
+          paper: { sx: { mt: 1, borderRadius: 2, boxShadow: 6, border: `1px solid ${tc.primary}20`, overflow: 'hidden' } }
         }}
       >
-        <Box sx={{ p: 2.5, width: 340 }}>
+        <Box sx={{ p: 2.5, width: 360 }}>
           <Stack spacing={2}>
+
             {/* Título */}
-            <Typography 
-              variant="subtitle2" 
-              sx={{ 
-                fontWeight: 600, 
-                color: themeColors.primary 
-              }}
-            >
-              📅 Selecciona un período
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: tc.primary }}>
+              📅 Seleccionar período
             </Typography>
 
-            {/* Presets rápidos en grid */}
-            <Stack spacing={1}>
+            {/* Presets — fila 1 */}
+            <Stack spacing={0.75}>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                Rangos predefinidos
+                Rangos rápidos
               </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
-                {PRESETS.map((preset) => (
-                  <Button
-                    key={preset.id}
-                    variant={mode === preset.id ? 'contained' : 'outlined'}
-                    size="small"
-                    onClick={() => applyPreset(preset)}
-                    startIcon={<span>{preset.icon}</span>}
-                    sx={{ 
-                      textTransform: 'none',
-                      flex: preset.id === 'ytd' ? '1 1 100%' : '0 1 auto',
-                      minWidth: preset.id === 'ytd' ? '100%' : 'auto',
-                      ...(mode === preset.id ? {
-                        bgcolor: themeColors.primary,
-                        color: themeColors.onPrimary,
-                        '&:hover': {
-                          bgcolor: themeColors.primary,
-                          filter: 'brightness(0.9)'
-                        }
-                      } : {
-                        borderColor: themeColors.primary,
-                        color: themeColors.primary,
-                        '&:hover': {
-                          borderColor: themeColors.primary,
-                          bgcolor: `${themeColors.primary}10`
-                        }
-                      })
-                    }}
-                  >
-                    {preset.label}
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                {presets.slice(0, 5).map(p => (
+                  <Button key={p.id} variant={mode === p.id ? 'contained' : 'outlined'}
+                    size="small" onClick={() => applyPreset(p)} sx={presetSx(p.id)}>
+                    {p.label}
+                  </Button>
+                ))}
+              </Stack>
+              {/* Fila 2: mes anterior, año anterior, histórico */}
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                {presets.slice(5).map(p => (
+                  <Button key={p.id} variant={mode === p.id ? 'contained' : 'outlined'}
+                    size="small" onClick={() => applyPreset(p)} disabled={p.disabled}
+                    title={p.id === 'all' && !firstDate ? 'Sin datos históricos disponibles' : undefined}
+                    sx={{ ...presetSx(p.id), flex: '1 1 auto' }}>
+                    {p.id === 'all' && loadingFirst ? '…' : p.label}
                   </Button>
                 ))}
               </Stack>
             </Stack>
 
-            <Divider sx={{ borderColor: `${themeColors.primary}20` }} />
+            <Divider sx={{ borderColor: `${tc.primary}20` }} />
 
-            {/* Rango personalizado mejorado */}
-            <Stack spacing={1.5}>
-              <Typography 
-                variant="caption" 
-                sx={{ 
-                  color: themeColors.primary, 
-                  fontWeight: 500 
-                }}
-              >
-                📍 Rango personalizado
+            {/* Rango personalizado */}
+            <Stack spacing={1}>
+              <Typography variant="caption" sx={{ color: tc.primary, fontWeight: 600 }}>
+                Rango personalizado
               </Typography>
-              
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
-                    Desde
-                  </Typography>
-                  <input
-                    type="date"
-                    value={customFrom || from || ''}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    max={customTo || to || format(subDays(new Date(), 1), 'yyyy-MM-dd')}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      border: `1px solid ${themeColors.primary}40`,
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontFamily: 'inherit',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = themeColors.primary}
-                    onBlur={(e) => e.target.style.borderColor = `${themeColors.primary}40`}
-                  />
-                </Box>
-                
-                <DateRangeIcon 
-                  sx={{ color: themeColors.primary, mt: 2.5, opacity: 0.6 }} 
-                  fontSize="small" 
-                />
-                
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
-                    Hasta
-                  </Typography>
-                  <input
-                    type="date"
-                    value={customTo || to || ''}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    min={customFrom || from || ''}
-                    max={format(subDays(new Date(), 1), 'yyyy-MM-dd')}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      border: `1px solid ${themeColors.primary}40`,
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontFamily: 'inherit',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = themeColors.primary}
-                    onBlur={(e) => e.target.style.borderColor = `${themeColors.primary}40`}
-                  />
-                </Box>
-              </Stack>
 
-              {/* Hint informativo */}
-              <Typography 
-                variant="caption" 
-                sx={{ 
-                  color: 'text.secondary', 
-                  fontStyle: 'italic',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5
-                }}
-              >
-                <span style={{ color: themeColors.primary }}>💡</span> 
-                Selecciona cualquier rango histórico disponible
+              {/* Indicador DESDE → HASTA clickeable */}
+              <Box sx={{
+                p: '6px 10px', borderRadius: 1.5,
+                bgcolor: `${tc.primary}08`, border: `1px solid ${tc.primary}20`,
+              }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between">
+                  <Box
+                    onClick={() => setSelectingFrom(true)}
+                    sx={{
+                      textAlign: 'center', cursor: 'pointer', flex: 1,
+                      borderRadius: 1, p: '2px 6px',
+                      bgcolor: selectingFrom ? `${tc.primary}18` : 'transparent',
+                      border: selectingFrom ? `1px solid ${tc.primary}50` : '1px solid transparent',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.58rem', color: 'text.secondary', fontWeight: 600, letterSpacing: '0.06em' }}>
+                      DESDE
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: customFrom ? tc.primary : '#bbb' }}>
+                      {fromLabel}
+                    </Typography>
+                  </Box>
+
+                  <Typography sx={{ color: `${tc.primary}60`, fontSize: '1.1rem', mx: 0.75, lineHeight: 1 }}>→</Typography>
+
+                  <Box
+                    onClick={() => customFrom && setSelectingFrom(false)}
+                    sx={{
+                      textAlign: 'center', cursor: customFrom ? 'pointer' : 'default', flex: 1,
+                      borderRadius: 1, p: '2px 6px',
+                      bgcolor: !selectingFrom && customFrom ? `${tc.primary}18` : 'transparent',
+                      border: !selectingFrom && customFrom ? `1px solid ${tc.primary}50` : '1px solid transparent',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.58rem', color: 'text.secondary', fontWeight: 600, letterSpacing: '0.06em' }}>
+                      HASTA
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: customTo ? tc.primary : '#bbb' }}>
+                      {toLabel}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
+
+              {/* Calendario */}
+              <MiniCalendar
+                viewDate={viewDate}
+                onViewChange={setViewDate}
+                fromDate={customFrom}
+                toDate={customTo}
+                selectingFrom={selectingFrom}
+                onDayClick={handleDayClick}
+                tc={tc}
+              />
+
+              {/* Hint */}
+              <Typography variant="caption" sx={{ color: `${tc.primary}80`, fontStyle: 'italic', textAlign: 'center' }}>
+                {selectingFrom
+                  ? 'Hacé click en el día de inicio'
+                  : customTo
+                    ? 'Rango seleccionado — podés ajustarlo o aplicar'
+                    : 'Ahora seleccioná el día de fin'}
               </Typography>
             </Stack>
 
-            {/* Botones de acción */}
-            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ pt: 1 }}>
-              <Button 
-                onClick={handleClose} 
-                size="small"
-                sx={{ 
-                  textTransform: 'none',
-                  color: 'text.secondary'
-                }}
-              >
+            {/* Botones */}
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ pt: 0.5 }}>
+              <Button onClick={handleClose} size="small"
+                sx={{ textTransform: 'none', color: 'text.secondary' }}>
                 Cancelar
               </Button>
-              <Button 
-                onClick={applyCustomRange} 
-                variant="contained" 
+              <Button
+                onClick={applyCustomRange}
+                variant="contained"
                 size="small"
-                disabled={!customFrom || !customTo}
-                sx={{ 
+                disabled={!canApply}
+                sx={{
                   textTransform: 'none',
-                  bgcolor: themeColors.primary,
-                  color: themeColors.onPrimary,
-                  '&:hover': {
-                    bgcolor: themeColors.primary,
-                    filter: 'brightness(0.9)'
-                  }
+                  bgcolor: tc.primary, color: tc.onPrimary,
+                  '&:hover': { bgcolor: tc.primary, filter: 'brightness(.9)' },
+                  '&.Mui-disabled': { opacity: 0.4 },
                 }}
               >
                 Aplicar rango
               </Button>
             </Stack>
+
           </Stack>
         </Box>
       </Popover>

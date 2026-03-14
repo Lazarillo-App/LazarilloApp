@@ -578,7 +578,7 @@ export default function AgrupacionCreateModal({
           sx={{
             display: "flex",
             flexDirection: "column",
-            maxHeight: "80vh",
+            maxHeight: "85vh",
             width: "92%",
             maxWidth: 800,
             margin: "50px auto",

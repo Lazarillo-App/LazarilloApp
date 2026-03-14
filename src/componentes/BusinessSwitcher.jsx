@@ -1,11 +1,12 @@
-// src/componentes/BusinessSwitcher.jsx
+// src/componentes/BusinessSwitcher.jsx - FIXED: shows org grouping
+import { showAlert } from '../servicios/appAlert';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { setCssVarsFromPalette } from "@/tema/paletteBoot";
 import { setActiveBusiness } from "@/servicios/setActiveBusiness";
+import { useOrganization } from "@/context/OrganizationContext";
 
 function brandingToPalette(br = {}) {
-  // ajustá las claves si tu API devuelve otros nombres
   return {
     "color-primary": br.primary || "#111111",
     "color-secondary": br.secondary || "#6366f1",
@@ -17,10 +18,6 @@ function brandingToPalette(br = {}) {
 }
 
 async function fetchBusinessBranding(businessId) {
-  // intenta traer branding/paleta del negocio
-  // adapta al endpoint real que tengas:
-  // const { branding } = await BusinessesAPI.get(businessId);
-  // return branding || {};
   try {
     const full = await BusinessesAPI.get?.(businessId);
     return full?.branding || {};
@@ -40,6 +37,8 @@ export default function BusinessSwitcher({ className = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
+  const { organization } = useOrganization() || {};
+
   const hasToken = useMemo(() => !!localStorage.getItem('token'), []);
   const userId = useMemo(() => {
     try { return (JSON.parse(localStorage.getItem('user') || 'null') || {}).id } catch { return null }
@@ -49,15 +48,12 @@ export default function BusinessSwitcher({ className = '' }) {
     if (!hasToken) return;
     let alive = true;
     (async () => {
-      const resp = await BusinessesAPI.listMine(); // {items:[...]} o array
+      const resp = await BusinessesAPI.listMine();
       const list = Array.isArray(resp) ? resp : (resp?.items || []);
       if (!alive) return;
       setItems(list);
       if (!activeId && list[0]?.id) {
-        const { biz } = await setActiveBusiness(list[0].id, {
-          fetchBiz: true,
-          broadcast: true,
-        });
+        const { biz } = await setActiveBusiness(list[0].id, { fetchBiz: true, broadcast: true });
         setActiveId(String(list[0].id));
         const branding = biz?.branding || biz?.props?.branding || await fetchBusinessBranding(list[0].id);
         applyAndPersistPalette(brandingToPalette(branding), userId);
@@ -65,6 +61,21 @@ export default function BusinessSwitcher({ className = '' }) {
     })().catch(console.error);
     return () => { alive = false; };
   }, [hasToken, activeId]);
+
+  // Recargar lista cuando se crea un negocio
+  useEffect(() => {
+    const reload = async () => {
+      const resp = await BusinessesAPI.listMine();
+      const list = Array.isArray(resp) ? resp : (resp?.items || []);
+      setItems(list);
+    };
+    window.addEventListener('business:created', reload);
+    window.addEventListener('business:deleted', reload);
+    return () => {
+      window.removeEventListener('business:created', reload);
+      window.removeEventListener('business:deleted', reload);
+    };
+  }, []);
 
   // cerrar dropdown al click fuera
   useEffect(() => {
@@ -75,35 +86,32 @@ export default function BusinessSwitcher({ className = '' }) {
 
   const current = items.find(b => String(b.id) === String(activeId));
 
+  // IDs de negocios que están en la org
+  const orgBizIds = useMemo(() => {
+    if (!organization?.businesses) return new Set();
+    return new Set(organization.businesses.map(b => String(b.id)));
+  }, [organization]);
+
+  // Negocios dentro y fuera de la org
+  const inOrg = useMemo(() => items.filter(b => orgBizIds.has(String(b.id))), [items, orgBizIds]);
+  const standalone = useMemo(() => items.filter(b => !orgBizIds.has(String(b.id))), [items, orgBizIds]);
+
   const pick = async (id) => {
     try {
-      // 1) Cambiar negocio activo en backend + localStorage + eventos globales
-      const { biz } = await setActiveBusiness(id, {
-        fetchBiz: true,   // así ya tenemos el negocio para el branding
-        broadcast: true,  // dispara business:switched + palette:changed
-      });
-
-      // 2) Aplicar paleta a partir del negocio devuelto
+      const { biz } = await setActiveBusiness(id, { fetchBiz: true, broadcast: true });
       const branding = biz?.branding || biz?.props?.branding || {};
-      const palette = brandingToPalette({
-        primary: branding.primary,
-        secondary: branding.secondary,
-        background: branding.background,
-        fg: branding.fg || branding.primary,
-      });
-
-      applyAndPersistPalette(palette, userId);
-
-      // 3) Estado local del switcher
+      applyAndPersistPalette(brandingToPalette(branding), userId);
       setActiveId(String(id));
       setOpen(false);
     } catch (e) {
       console.error(e);
-      alert('No se pudo cambiar de local');
+      showAlert('No se pudo cambiar de local.', 'error');
     }
   };
 
   if (!hasToken) return null;
+
+  const hasOrg = organization && inOrg.length > 0;
 
   return (
     <div className={`biz-avatar ${className}`} ref={ref}>
@@ -113,19 +121,64 @@ export default function BusinessSwitcher({ className = '' }) {
 
       {open && (
         <div className="menu">
-          <div className="hdr">Mis locales</div>
-          <div className="list">
-            {items.map(it => (
-              <button
-                key={it.id}
-                className={`item ${String(it.id) === String(activeId) ? 'active' : ''}`}
-                onClick={() => pick(it.id)}
-              >
-                <span className="dot" />
-                <span className="name">{it.name}</span>
-              </button>
-            ))}
-          </div>
+          {hasOrg ? (
+            <>
+              {/* Grupo de la organización */}
+              <div className="org-header">
+                <span className="org-icon">🏢</span>
+                <span className="org-name">{organization.name || 'Mi Organización'}</span>
+              </div>
+              <div className="list">
+                {inOrg.map(it => (
+                  <button
+                    key={it.id}
+                    className={`item ${String(it.id) === String(activeId) ? 'active' : ''}`}
+                    onClick={() => pick(it.id)}
+                  >
+                    <span className="dot" />
+                    <span className="name">{it.name}</span>
+                    {String(it.id) === String(activeId) && <span className="badge-active">Activo</span>}
+                  </button>
+                ))}
+              </div>
+
+              {/* Negocios fuera de la org (si hay) */}
+              {standalone.length > 0 && (
+                <>
+                  <div className="sep" />
+                  <div className="hdr">Otros locales</div>
+                  <div className="list">
+                    {standalone.map(it => (
+                      <button
+                        key={it.id}
+                        className={`item ${String(it.id) === String(activeId) ? 'active' : ''}`}
+                        onClick={() => pick(it.id)}
+                      >
+                        <span className="dot" style={{ background: '#94a3b8' }} />
+                        <span className="name">{it.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="hdr">Mis locales</div>
+              <div className="list">
+                {items.map(it => (
+                  <button
+                    key={it.id}
+                    className={`item ${String(it.id) === String(activeId) ? 'active' : ''}`}
+                    onClick={() => pick(it.id)}
+                  >
+                    <span className="dot" />
+                    <span className="name">{it.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -134,17 +187,27 @@ export default function BusinessSwitcher({ className = '' }) {
         .circle{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
           background:#222;color:#fff;font-weight:700}
         .menu{position:absolute;right:0;top:40px;background:#fff;border:1px solid #e6e6e6;
-          border-radius:12px;box-shadow:0 10px 30px #0002;min-width:260px;z-index:9999}
-        .hdr{padding:10px 12px;font-weight:600;border-bottom:1px solid #f1f1f1}
+          border-radius:12px;box-shadow:0 10px 30px #0002;min-width:260px;z-index:9999;overflow:hidden}
+        .hdr{padding:10px 12px;font-weight:600;border-bottom:1px solid #f1f1f1;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+        .org-header{
+          display:flex;align-items:center;gap:6px;
+          padding:10px 12px;
+          background:var(--color-primary,#111);
+          color:var(--on-primary,#fff);
+          border-bottom:1px solid rgba(255,255,255,.15);
+        }
+        .org-icon{font-size:14px}
+        .org-name{font-weight:700;font-size:13px}
         .list{max-height:280px;overflow:auto}
         .item{width:100%;text-align:left;padding:10px 12px;background:#fff;border:0;
-          display:flex;align-items:center;gap:8px;cursor:pointer}
+          display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px}
         .item:hover{background:#fafafa}
-        .item.active{background:#f0f8ff}
-        .dot{width:8px;height:8px;border-radius:50%;background:#2ecc71}
+        .item.active{background:#f0fff8}
+        .dot{width:8px;height:8px;border-radius:50%;background:#2ecc71;flex-shrink:0}
         .name{flex:1}
+        .badge-active{font-size:10px;font-weight:700;color:#059669;background:#d1fae5;
+          padding:2px 6px;border-radius:999px}
         .sep{height:1px;background:#f1f1f1;margin:4px 0}
-        .new{font-weight:600}
       `}</style>
     </div>
   );

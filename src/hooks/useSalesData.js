@@ -2,8 +2,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 /**
- * ✅ OPTIMIZADO: Usa /summary (537 artículos) en lugar de /items (13.461 filas)
- * Mejora: 96% menos datos, 10x más rápido
+ * ✅ OPTIMIZADO: Usa /summary en lugar de /items
+ *
+ * FIX doble llamada:
+ * - syncVersion se lee desde un ref DENTRO del fetch (no es dep de useCallback)
+ * - Así fetchData solo se recrea cuando cambia businessId/from/to
+ * - Cuando sube syncVersion, el useEffect lo re-ejecuta con la MISMA referencia
+ *   de fetchData → exactamente UNA llamada por evento
+ *
+ * El problema anterior: cambiar período disparaba setSyncVersion() en un useEffect
+ * separado, lo que causaba que fetchData se recreara DOS veces en el mismo ciclo
+ * (una por from/to, otra por syncVersion) → doble HTTP request.
  */
 export function useSalesData({
   businessId,
@@ -17,21 +26,27 @@ export function useSalesData({
   const [error, setError] = useState(null);
 
   const reqIdRef = useRef(0);
-  const cacheRef = useRef(new Map()); // cacheKey -> Map
+  const cacheRef = useRef(new Map());
+
+  // ✅ syncVersion como ref: fetchData puede leer su valor sin ser dep de useCallback
+  const syncVersionRef = useRef(syncVersion);
+  useEffect(() => {
+    syncVersionRef.current = syncVersion;
+  }, [syncVersion]);
 
   const fetchData = useCallback(async () => {
     if (!businessId || !from || !to) {
-      setVentasMap(new Map()); // ✅ new ref
+      setVentasMap(new Map());
       return;
     }
 
-    const cacheKey = `${businessId}|${from}|${to}`;
+    // La cacheKey incluye syncVersion del ref → invalida cache en cada sync
+    const cacheKey = `${businessId}|${from}|${to}|${syncVersionRef.current}`;
 
-    // ✅ CACHE: CLONAR para forzar re-render (no pasar la misma referencia)
     if (cacheRef.current.has(cacheKey)) {
       console.log("🔄 [useSalesData] Usando CACHE");
       const cached = cacheRef.current.get(cacheKey);
-      setVentasMap(new Map(cached)); // ✅ new ref SIEMPRE
+      setVentasMap(new Map(cached));
       return;
     }
 
@@ -45,7 +60,6 @@ export function useSalesData({
       const token = localStorage.getItem("token");
       const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === "true";
 
-      // ✅ USAR /summary (optimizado: 537 artículos en lugar de 13.461 filas)
       const url = MAXI_ENABLED
         ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/items?from=${from}&to=${to}`
         : `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv`;
@@ -67,21 +81,16 @@ export function useSalesData({
         return;
       }
 
-      // Normalizar respuesta a rows
       let rows = [];
       if (Array.isArray(resp)) rows = resp;
       else if (resp?.items) rows = Array.isArray(resp.items) ? resp.items : [];
 
-      // 🗺️ Construir mapa NUEVO (y objetos nuevos)
-      // NOTA: Con /summary, cada fila ya es el total por artículo
-      // No necesitamos sumar, solo mapear directamente
       const map = new Map();
 
       for (const r of rows) {
         const id = Number(r.article_id ?? r.articuloId ?? r.articulo_id ?? r.id);
         if (!Number.isFinite(id) || id <= 0) continue;
 
-        // ✅ Con /summary, total_qty y total_amount ya vienen agregados
         const qty = Number(r.total_qty ?? r.qty ?? r.cantidad ?? r.unidades ?? 0);
         const amount = Number(
           r.total_amount ??
@@ -95,45 +104,43 @@ export function useSalesData({
 
         if (!Number.isFinite(qty) || !Number.isFinite(amount)) continue;
 
-        // Con /summary no necesitamos sumar, solo guardar
         map.set(id, { qty, amount });
       }
 
-      // duplicar keys string (si querés compat)
+      // Duplicar keys como string para compatibilidad
       for (const [id, data] of Array.from(map.entries())) {
-        // OJO: Array.from para no iterar sobre el map mientras lo mutás
         if (typeof id === "number") map.set(String(id), { ...data });
       }
 
       window.__DEBUG_VENTAS_MAP = map;
 
-      // ✅ GUARDAR EN CACHE como Map, ok
       cacheRef.current.set(cacheKey, map);
 
-      // Limitar cache
       if (cacheRef.current.size > 20) {
         const firstKey = cacheRef.current.keys().next().value;
         cacheRef.current.delete(firstKey);
       }
 
-      // ✅ SETEAR state con un MAP NUEVO (clonado) para garantizar re-render
       setVentasMap(new Map(map));
     } catch (err) {
       console.error("❌ [useSalesData] error:", err);
       setError(err?.message || "Error al cargar ventas");
-      setVentasMap(new Map()); // ✅ new ref
+      setVentasMap(new Map());
     } finally {
       if (myId === reqIdRef.current) setIsLoading(false);
     }
   }, [businessId, from, to]);
+  // ✅ syncVersion NO está en las deps — se lee del ref adentro
 
   useEffect(() => {
     if (!enabled) {
-      setVentasMap(new Map()); // ✅ new ref
+      setVentasMap(new Map());
       return;
     }
     fetchData();
-  }, [enabled, syncVersion, fetchData]);
+    // syncVersion acá dispara re-ejecución del efecto,
+    // pero fetchData NO se recrea por eso → UNA sola llamada HTTP
+  }, [enabled, fetchData, syncVersion]);
 
   const clearCache = useCallback(() => {
     cacheRef.current.clear();

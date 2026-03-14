@@ -5,6 +5,7 @@ import InsumoAccionesMenu from "./InsumoAccionesMenu";
 import InsumoRubroAccionesMenu from "./InsumoRubroAccionesMenu";
 import { insumosRubrosList } from "../servicios/apiInsumos";
 import VirtualList from "./shared/VirtualList";
+import ComprasCell from './ComprasCell';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -107,7 +108,8 @@ const InsumosTable = forwardRef(function InsumosTable({
   onDelete,
   noBusiness = false,
   vista = "no-elaborados",
-  businessId,
+  businessId,          // siempre el principal (para CRUD de grupos)
+  originalBusinessId,  // el subnegocio si aplica (para Discontinuados y items)
   groups = [],
   selectedGroupId = null,
   discontinuadosGroupId = null,
@@ -128,8 +130,11 @@ const InsumosTable = forwardRef(function InsumosTable({
   jumpToInsumoId = null,
   selectedInsumoId = null,
   onIdToIndexChange,
-  metaById, // ✅ NUEVO
-  getAmountForId, // ✅ NUEVO
+  metaById, 
+  getAmountForId, 
+  comprasMap = new Map(),
+  comprasLoading = false,
+  rangoCompras = null,
 }, ref) {
   const isElaborados = vista === "elaborados";
   const listRef = useRef(null);
@@ -208,8 +213,9 @@ const InsumosTable = forwardRef(function InsumosTable({
     [rubrosMap]
   );
 
-  const GRID_NO_ELAB = ".4fr 1.2fr .5fr .6fr .5fr .5fr .6fr .6fr .6fr .6fr .4fr";
-  const GRID_ELAB = ".4fr 1.2fr .5fr .6fr .6fr .6fr .5fr .6fr .6fr .4fr";
+  // Código | Nombre | U.med | Precio | %Desp | Total | Cant.comprada | Neto | IVA | Total compras | Acciones
+  const GRID_NO_ELAB = ".4fr 2fr .45fr .7fr .5fr .65fr 1fr .4fr"
+  const GRID_ELAB = ".4fr 2fr .45fr .7fr .6fr .7fr  .6fr .6fr .55fr .65fr .4fr";
 
   const displayCode = (r) =>
     r.codigo_mostrar ||
@@ -297,15 +303,27 @@ const InsumosTable = forwardRef(function InsumosTable({
   }, [vista]);
 
   const toggleSort = (key) => {
-    setSortBy((prev) => {
-      if (prev === key) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
+    if (sortBy === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
       setSortDir("asc");
-      return key;
-    });
+    }
   };
+
+  const sortIcon = (key) => {
+    if (sortBy !== key) return <span style={{ opacity: 0.25, fontSize: '0.75rem' }}>↕</span>;
+    return <span style={{ fontSize: '0.85rem' }}>{sortDir === "asc" ? "▲" : "▼"}</span>;
+  };
+
+  const colStyle = (key) => ({
+    cursor: "pointer",
+    userSelect: "none",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    whiteSpace: "nowrap",
+  });
 
   const getSortValue = (r) => {
     switch (sortBy) {
@@ -329,6 +347,8 @@ const InsumosTable = forwardRef(function InsumosTable({
           return Number(r.codigo_maxi ?? r.id ?? 0);
         case "nombre":
           return String(r.nombre || "").toLowerCase();
+        case "unidad":
+          return String(r.unidad_med || "").toLowerCase();
         case "precio": {
           const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
           const v =
@@ -337,7 +357,30 @@ const InsumosTable = forwardRef(function InsumosTable({
               : precioMode === "ultima"
                 ? (r.precio_ultima_compra ?? r.precio_ultimo ?? base)
                 : base;
-          return num(v);
+          return num(v) ?? 0;
+        }
+        case "desperdicio":
+          return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+        case "total":
+          return num(
+            r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ??
+            r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0
+          ) ?? 0;
+        case "cant_comprada": {
+          const c = comprasMap.get(Number(r.id));
+          return num(c?.cantidad ?? 0) ?? 0;
+        }
+        case "neto_compras": {
+          const c = comprasMap.get(Number(r.id));
+          return num(c?.neto ?? 0) ?? 0;
+        }
+        case "iva_compras": {
+          const c = comprasMap.get(Number(r.id));
+          return num(c?.iva ?? 0) ?? 0;
+        }
+        case "total_compras": {
+          const c = comprasMap.get(Number(r.id));
+          return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0;
         }
         case "fecha":
           return new Date(r.updated_at || r.created_at || 0).getTime();
@@ -365,7 +408,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     });
 
     return arr;
-  }, [rows, sortBy, sortDir, precioMode]);
+  }, [rows, sortBy, sortDir, precioMode, comprasMap]);
 
   /* ================== ✅ NUEVO: groupedRows con __ventasMonto ================== */
   const groupedRows = useMemo(() => {
@@ -394,20 +437,64 @@ const InsumosTable = forwardRef(function InsumosTable({
       };
     });
 
-    // ✅ Ordenar por monto descendente
+    // ✅ Ordenar grupos según el criterio del usuario
+    // Por defecto (sin sort activo o monto) → por __ventasMonto desc
+    // Con sort activo → por el valor del primer insumo del grupo en esa columna
     groups.sort((a, b) => {
-      if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
-        return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
+      // Si el sort es por monto o no hay criterio, usar monto descendente
+      if (!sortBy || sortBy === 'monto') {
+        if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
+          return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
+        }
+        return String(a.label).localeCompare(String(b.label), "es", { sensitivity: "base", numeric: true });
       }
-      // Si empatan por monto, alfabético
-      return String(a.label).localeCompare(String(b.label), "es", {
-        sensitivity: "base",
-        numeric: true,
-      });
+
+      // Con sort activo: tomar el valor representativo del grupo
+      // (primer insumo ya ordenado dentro del grupo)
+      const repA = a.rows[0];
+      const repB = b.rows[0];
+      if (!repA || !repB) return 0;
+
+      const getSortValueGroup = (r) => {
+        switch (sortBy) {
+          case "codigo": return Number(r.codigo_maxi ?? r.id ?? 0);
+          case "nombre": return String(r.nombre || "").toLowerCase();
+          case "unidad": return String(r.unidad_med || "").toLowerCase();
+          case "precio": {
+            const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
+            const v = precioMode === "promedio"
+              ? (r.precio_promedio_periodo ?? r.precio_promedio ?? base)
+              : precioMode === "ultima"
+                ? (r.precio_ultima_compra ?? r.precio_ultimo ?? base)
+                : base;
+            return num(v) ?? 0;
+          }
+          case "desperdicio": return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+          case "total": return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? 0) ?? 0;
+          case "cant_comprada": { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
+          case "neto_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
+          case "iva_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
+          case "total_compras": { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
+          case "fecha": return new Date(r.updated_at || r.created_at || 0).getTime();
+          default: return 0;
+        }
+      };
+
+      const va = getSortValueGroup(repA);
+      const vb = getSortValueGroup(repB);
+
+      if (typeof va === "string" || typeof vb === "string") {
+        const r = String(va).localeCompare(String(vb), "es", { sensitivity: "base", numeric: true });
+        return sortDir === "asc" ? r : -r;
+      }
+
+      const na = Number(va ?? 0);
+      const nb = Number(vb ?? 0);
+      return sortDir === "asc" ? na - nb : nb - na;
     });
 
     return groups;
-  }, [sortedRows, getRubroLabel, metaById]);
+  }, [sortedRows, getRubroLabel, metaById, sortBy, sortDir, precioMode, comprasMap]);
 
   /* ================== ✅ flatRows con __ventasMonto ================== */
   const flatRows = useMemo(() => {
@@ -572,80 +659,55 @@ const InsumosTable = forwardRef(function InsumosTable({
         }}
       >
         {/* HEADER sticky */}
-        <div
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 3,
-            background: "#fff",
-            borderBottom: "1px solid #eee",
-            padding: "8px 8px 6px",
-          }}
-        >
+        <div className="table-col-header">
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
-              gap: 8,
-              fontWeight: 700,
-              userSelect: "none",
-              alignItems: "center",
-              color: "black",
-              fontSize: "0.95rem",
-            }}
+            className="table-col-header-inner"
+            style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
           >
-            <div
-              onClick={() => toggleSort("codigo")}
-              style={{ cursor: "pointer" }}
-            >
-              Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+            <div onClick={() => toggleSort("codigo")} className="col-sortable">
+              Código {sortIcon("codigo")}
             </div>
 
-            <div
-              onClick={() => toggleSort("nombre")}
-              style={{ cursor: "pointer" }}
-            >
-              Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+            <div onClick={() => toggleSort("nombre")} className="col-sortable">
+              Nombre {sortIcon("nombre")}
             </div>
 
-            <div>U. medida</div>
+            <div onClick={() => toggleSort("unidad")} className="col-sortable">
+              U. medida {sortIcon("unidad")}
+            </div>
 
-            <div
-              onClick={() => toggleSort("precio")}
-              style={{ cursor: "pointer" }}
-            >
-              {precioHeaderLabel}{" "}
-              {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+            <div onClick={() => toggleSort("precio")} className="col-sortable">
+              {precioHeaderLabel} {sortIcon("precio")}
             </div>
 
             {isElaborados ? (
               <>
                 <div>Precio final desp.</div>
-                <div>{totalHeaderLabel}</div>
+                <div onClick={() => toggleSort("total")} className="col-sortable">
+                  {totalHeaderLabel} {sortIcon("total")}
+                </div>
                 <div>Vencimiento</div>
                 <div>¿En recetas?</div>
-                <div
-                  onClick={() => toggleSort("fecha")}
-                  style={{ cursor: "pointer" }}
-                >
-                  Fecha{" "}
-                  {sortBy === "fecha" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                <div onClick={() => toggleSort("fecha")} className="col-sortable">
+                  Fecha {sortIcon("fecha")}
                 </div>
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
             ) : (
               <>
-                <div>% Desperdicio</div>
-                <div>{totalHeaderLabel}</div>
-                <div>Precio final M2</div>
-                <div>Precio final M1</div>
-                <div>¿En recetas?</div>
+                <div onClick={() => toggleSort("desperdicio")} className="col-sortable">
+                  % Desperdicio {sortIcon("desperdicio")}
+                </div>
+                <div onClick={() => toggleSort("total")} className="col-sortable">
+                  {totalHeaderLabel} {sortIcon("total")}
+                </div>
                 <div
-                  onClick={() => toggleSort("fecha")}
-                  style={{ cursor: "pointer" }}
+                  onClick={() => toggleSort("total_compras")}
+                  className="col-sortable"
+                  style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
+                  title="Total compras del período (clic para ver detalle)"
                 >
-                  Fecha{" "}
-                  {sortBy === "fecha" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  Compras{comprasLoading ? ' ⟳' : ''} {sortIcon("total_compras")}
                 </div>
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
@@ -695,18 +757,12 @@ const InsumosTable = forwardRef(function InsumosTable({
 
                 return (
                   <div
+                    className="table-section-row"
                     style={{
                       ...style,
                       display: "grid",
-                      gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
-                      padding: "6px 8px",
-                      background: "#f5f5f5",
-                      borderTop: "1px solid #ddd",
-                      borderBottom: "1px solid #ddd",
-                      fontWeight: 600,
-                      fontSize: "0.9rem",
-                      color: "#555",
                       alignItems: "center",
+                      gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
                     }}
                   >
                     <div />
@@ -738,7 +794,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           isTodoView={isTodoView}
                           onReloadCatalogo={onReloadCatalogo}
                           onAfterAction={handleAfterAction}
-                          businessId={businessId}
+                          businessId={originalBusinessId || businessId}
                         />
                       </div>
                     </div>
@@ -756,49 +812,48 @@ const InsumosTable = forwardRef(function InsumosTable({
               return (
                 <div
                   data-insumo-id={r.id}
-                  className={`tabla-row-insumo ${shouldHighlight ? "highlight-jump" : ""}`}
+                  className={`table-item-row${isSelected ? " is-selected" : ""}${shouldHighlight ? " highlight-jump" : ""}`}
                   style={{
                     ...style,
                     display: "grid",
-                    gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
                     alignItems: "center",
-                    borderTop: "1px dashed #f0f0f0",
-                    padding: "6px 8px",
+                    gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
                     fontSize: "0.9rem",
                     gap: 8,
-
-                    ...(isSelected
-                      ? {
-                        background: "rgba(59,130,246,0.10)",
-                        boxShadow: "inset 0 0 0 1px rgba(59,130,246,0.35)",
-                        position: "relative",
-                      }
-                      : {}),
+                    ...(isSelected ? { position: "relative" } : {}),
                   }}
                 >
                   {isSelected && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 4,
-                        background: "rgba(59,130,246,0.95)",
-                        borderRadius: 2,
-                      }}
-                    />
+                    <div className="row-left-bar" />
                   )}
                   <div>{displayCode(r)}</div>
                   <div title={r.nombre}>{r.nombre}</div>
                   <div>{r.unidad_med || "-"}</div>
-                  <div>{formatMoney(getDisplayedPrice(r), 2)}</div>
+                  <div
+                    title={
+                      r.precio_promedio
+                        ? `Promedio compras 90d: ${formatMoney(r.precio_promedio, 4)}\nÚltima compra: ${formatMoney(r.precio_ultima_compra, 4)}`
+                        : 'Precio de referencia (sin compras registradas)'
+                    }
+                    style={{ cursor: 'help' }}
+                  >
+                    {formatMoney(getDisplayedPrice(r), 2)}
+                    {r.precio_promedio && Math.abs(Number(r.precio_promedio) - Number(r.precio_ref)) / (Number(r.precio_ref) || 1) > 0.05 && (
+                      <span title="Diferencia >5% entre precio ref y promedio de compras" style={{ color: '#f59e0b', marginLeft: 3, fontSize: '0.75rem' }}>⚠</span>
+                    )}
+                  </div>
                   <div>-</div>
                   <div>{renderTotalValue(r)}</div>
-                  <div>-</div>
-                  <div>-</div>
-                  <div>-</div>
-                  <div>{formatDate(r.updated_at || r.created_at)}</div>
+                  {/* ── Columna de compras ── */}
+                  <ComprasCell
+                    insumoId={r.id}
+                    insumoNombre={r.nombre}
+                    comprasEntry={comprasMap.get(Number(r.id))}
+                    from={rangoCompras?.from}
+                    to={rangoCompras?.to}
+                    businessId={originalBusinessId || businessId}
+                    loading={comprasLoading}
+                  />
 
                   <div style={{ textAlign: "center" }}>
                     <InsumoAccionesMenu
@@ -813,7 +868,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                       onMutateGroups={onMutateGroups}
                       onAfterMutation={handleAfterAction}
                       onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
-                      businessId={businessId}
+                      businessId={originalBusinessId || businessId}
                     />
                   </div>
                 </div>

@@ -1,8 +1,9 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography
 } from '@mui/material';
 
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -98,6 +99,7 @@ function SubrubroAccionesMenu({
   baseById,
   treeMode = "cat-first",
   businessId,
+  rootBizId: rootBizIdProp = null,
   allowedIds,
 }) {
   /* ==================== businessId efectivo ==================== */
@@ -107,9 +109,25 @@ function SubrubroAccionesMenu({
     localStorage.getItem('effectiveBusinessId') ??
     null;
 
-  const { rootBusiness } = useOrganization();
-  // Discontinuados vive en el principal → usar su bizId para esas ops
-  const discBizId = rootBusiness?.id ? Number(rootBusiness.id) : effectiveBusinessId;
+  // Para operaciones de agrupaciones, siempre usar el negocio activo REAL del localStorage
+  const realActiveBizId =
+    localStorage.getItem('activeBusinessId') ??
+    localStorage.getItem('effectiveBusinessId') ??
+    businessId ??
+    null;
+
+  const { rootBusiness, allBusinesses } = useOrganization();
+  // Prioridad: 1) negocio activo real (localStorage), 2) prop rootBizId, 3) context, 4) fallback
+  const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
+  const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
+  const agrupBizId = Number(realActiveBizId) || rootBizId || Number(effectiveBusinessId);
+  // Discontinuados vive siempre en el negocio principal
+  const discBizId = rootBizId || agrupBizId;
+
+  const activeBusinessName = React.useMemo(() => {
+    const biz = (allBusinesses || []).find(b => Number(b.id) === Number(realActiveBizId || effectiveBusinessId));
+    return biz?.nombre || biz?.name || `Negocio #${realActiveBizId || effectiveBusinessId || '?'}`;
+  }, [allBusinesses, realActiveBizId, effectiveBusinessId]);
 
   /* ==================== UI menu states ==================== */
   const [anchorEl, setAnchorEl] = useState(null);
@@ -118,6 +136,8 @@ function SubrubroAccionesMenu({
   const [isMoving, setIsMoving] = useState(false);
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
   const [preselect, setPreselect] = useState(null);
+  const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
+  const [origenReactivar, setOrigenReactivar] = useState(null);
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
@@ -173,53 +193,29 @@ function SubrubroAccionesMenu({
 
     const out = new Set(baseIds);
 
-    // 🟢 MODO RUBRO (cat-first)
     if (treeMode === "cat-first") {
+      // En modo cat-first, subName es el nombre de la CATEGORÍA
+      // Buscamos por categoría dentro de todosArticulos (ya filtrado al nodo específico)
       if (!subName || !Array.isArray(todosArticulos) || !todosArticulos.length) {
         return baseIds;
       }
-
       for (const node of todosArticulos) {
-        const nodeSubNorm = norm(node?.subrubro);
-        if (nodeSubNorm !== subName) continue;
-
         for (const cat of node.categorias || []) {
+          const catNorm = norm(cat?.categoria);
+          if (catNorm !== subName) continue;
           for (const art of cat.articulos || []) {
             const id = safeId(art);
             if (id != null) out.add(id);
           }
         }
       }
-
       return Array.from(out);
     }
 
-    // 🟣 MODO SUBRUBRO (sr-first)
-    const firstBase = baseById ? baseById.get(baseIds[0]) : null;
-    const rubroNameNorm = norm(
-      firstBase?.categoria ||
-      firstBase?.raw?.categoria ||
-      ''
-    );
-
-    if (!rubroNameNorm || !Array.isArray(todosArticulos) || !todosArticulos.length) {
-      return baseIds;
-    }
-
-    for (const node of todosArticulos) {
-      for (const cat of node.categorias || []) {
-        const catNorm = norm(cat?.categoria);
-        if (catNorm !== rubroNameNorm) continue;
-
-        for (const art of cat.articulos || []) {
-          const id = safeId(art);
-          if (id != null) out.add(id);
-        }
-      }
-    }
-
-    return Array.from(out);
-  }, [articuloIds, subName, baseById, todosArticulos, treeMode]);
+    // sr-first: baseIds ya vienen del nodo filtrado por activeIds en el sidebar
+    // No expandir — devolver solo los artículos visibles de este subrubro
+    return baseIds;
+  }, [articuloIds, subName, todosArticulos, treeMode]);
 
   const openMover = useCallback(() => {
     handleClose();
@@ -243,6 +239,11 @@ function SubrubroAccionesMenu({
 
     setIsMoving(true);
     try {
+      // Si el origen es Discontinuados, usar discBizId; para el destino, agrupBizId
+      const fromIsDisc = fromId != null && fromId === discontinuadosId;
+      const fromMoverBizId = fromIsDisc ? discBizId : agrupBizId;
+      const toMoverBizId = agrupBizId;
+
       if (fromId) {
         onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById });
 
@@ -250,13 +251,13 @@ function SubrubroAccionesMenu({
           await httpBiz(
             `/agrupaciones/${fromId}/move-items`,
             { method: 'POST', body: { toId, ids } },
-            effectiveBusinessId
+            fromMoverBizId
           );
         } catch {
           await httpBiz(
             `/agrupaciones/${toId}/articulos`,
             { method: 'PUT', body: { ids } },
-            effectiveBusinessId
+            toMoverBizId
           );
 
           for (const id of ids) {
@@ -264,7 +265,7 @@ function SubrubroAccionesMenu({
               await httpBiz(
                 `/agrupaciones/${fromId}/articulos/${id}`,
                 { method: 'DELETE' },
-                effectiveBusinessId
+                fromMoverBizId
               );
             } catch { }
           }
@@ -273,7 +274,7 @@ function SubrubroAccionesMenu({
         await httpBiz(
           `/agrupaciones/${toId}/articulos`,
           { method: 'PUT', body: { ids } },
-          effectiveBusinessId
+          toMoverBizId
         );
 
         onMutateGroups?.({
@@ -350,7 +351,6 @@ function SubrubroAccionesMenu({
     }
 
     if (!currentGroupId) return;
-
     try {
       onMutateGroups?.({
         type: 'remove',
@@ -358,34 +358,28 @@ function SubrubroAccionesMenu({
         ids,
       });
 
-      for (const id of ids) {
-        try {
-          await httpBiz(
-            `/agrupaciones/${currentGroupId}/articulos/${id}`,
-            { method: 'DELETE' },
-            effectiveBusinessId
-          );
-        } catch { }
-      }
+      // Usar create-or-move para mover a Sin Agrupación globalmente
+      await httpBiz('/agrupaciones/create-or-move', {
+        method: 'POST',
+        body: { nombre: 'Sin Agrupación', ids },
+      }, agrupBizId);
 
       notify?.(
-        `Quitados ${ids.length} artículo(s) de ${agrupacionSeleccionada?.nombre}`,
+        `Quitados ${ids.length} artículo(s) de "${agrupacionSeleccionada?.nombre}" y enviados a Sin Agrupación`,
         'success'
       );
       try {
-        window.dispatchEvent(
-          new CustomEvent('ui:action', {
-            detail: {
-              kind: 'info',
-              scope: 'articulo',
-              businessId: effectiveBusinessId,
-              createdAt: new Date().toISOString(),
-              title: 'Artículos removidos',
-              message: `${ids.length} quitado(s) de "${agrupacionSeleccionada?.nombre}".`,
-              payload: { ids, fromGroupId: currentGroupId },
-            },
-          })
-        );
+        window.dispatchEvent(new CustomEvent('ui:action', {
+          detail: {
+            kind: 'info',
+            scope: 'articulo',
+            businessId: effectiveBusinessId,
+            createdAt: new Date().toISOString(),
+            title: 'Artículos removidos',
+            message: `${ids.length} quitado(s) de "${agrupacionSeleccionada?.nombre}".`,
+            payload: { ids, fromGroupId: currentGroupId },
+          },
+        }));
       } catch { }
       onAfterMutation?.(ids);
       onRefetch?.();
@@ -442,10 +436,12 @@ function SubrubroAccionesMenu({
           payload: {
             ids,
             discontinuadosGroupId: Number(discontinuadosId),
-            undo: { // ✅ Estructura correcta para undo
+            undo: {
               payload: {
                 prev: {
                   fromGroupId: currentGroupId ?? null,
+                  fromBizId: agrupBizId ?? null,
+                  fromGroupName: agrupacionSeleccionada?.nombre ?? null,
                   discontinuadosGroupId: Number(discontinuadosId),
                   wasInDiscontinuados: false,
                 },
@@ -458,47 +454,60 @@ function SubrubroAccionesMenu({
 
       } else {
         // ===========================
-        // ✅ REACTIVAR
+        // ✅ REACTIVAR → abrir diálogo de confirmación
         // ===========================
-        for (const id of ids) {
+        // Consultar al backend el origen real de TODOS los artículos del bloque
+        // Resultado: mapa groupId → { groupName, bizId, bizName, ids[] }
+        let origenesMap = {}; // { [groupId]: { groupName, bizId, bizName, ids } }
+        if (ids.length > 0) {
           try {
-            await httpBiz(
-              `/agrupaciones/${discontinuadosId}/articulos/${id}`,
-              { method: 'DELETE' },
-              discBizId  // Discontinuados vive en el principal
+            const res = await httpBiz(
+              `/agrupaciones/articulos/origenes`,
+              { method: 'POST', body: { ids } },
+              discBizId
             );
-          } catch { }
+            // origenes: { [articuloId]: { groupId, groupName, bizId, bizName } }
+            const origenes = res?.origenes ?? {};
+            for (const [artIdStr, origen] of Object.entries(origenes)) {
+              const artId = Number(artIdStr);
+              const key = origen.groupId;
+              if (!origenesMap[key]) {
+                origenesMap[key] = {
+                  groupId: origen.groupId,
+                  groupName: origen.groupName,
+                  bizId: origen.bizId,
+                  bizName: origen.bizName,
+                  ids: [],
+                };
+              }
+              origenesMap[key].ids.push(artId);
+            }
+          } catch (e) {
+            console.warn('[reactivar bloque] No se pudo obtener origenes:', e.message);
+          }
         }
 
-        onMutateGroups?.({
-          type: 'remove',
-          groupId: discontinuadosId,
+        // Resumen para mostrar en el diálogo
+        const grupos = Object.values(origenesMap);
+        const sinOrigen = ids.filter(id => !Object.values(origenesMap).some(g => g.ids.includes(id)));
+        const resumenTexto = grupos.length > 0
+          ? grupos.map(g => `${g.bizName} › ${g.groupName} (${g.ids.length})`).join(', ')
+          : null;
+
+        setOrigenReactivar({
           ids,
+          origenesMap,         // mapa completo groupId → datos
+          sinOrigen,           // ids sin grupo origen conocido
+          resumenTexto,        // para mostrar en el diálogo
+          labelCount,
+          // compatibilidad con diálogo (primer grupo como referencia)
+          fromGroupName: grupos[0]?.groupName ?? null,
+          fromBizName: grupos[0]?.bizName ?? null,
         });
 
-        // ❌ NO notify (evita duplicado)
-        // notify?.(`Subrubro reactivado (${labelCount})`, 'success');
-
-        // ✅ SOLO emitUiAction
-        emitUiAction({
-          businessId: effectiveBusinessId,
-          kind: 'info', // ← NO 'discontinue' porque es reactivación
-          scope: 'articulo',
-          title: `✅ ${subDisplayName} reactivado`,
-          message: `"${subDisplayName}": ${labelCount} disponible(s) nuevamente.`,
-          createdAt: new Date().toISOString(),
-          payload: {
-            ids,
-            discontinuadosGroupId: Number(discontinuadosId),
-            prev: {
-              fromGroupId: currentGroupId ?? null,
-              discontinuadosGroupId: Number(discontinuadosId),
-              wasInDiscontinuados: true,
-            },
-          },
-        });
-
-        onRefetch?.();
+        handleClose();
+        setTimeout(() => setDlgReactivarOpen(true), 0);
+        return;
       }
     } catch (e) {
       console.error('DISCONTINUAR_BLOQUE_ERROR', e);
@@ -508,10 +517,91 @@ function SubrubroAccionesMenu({
     }
   }
 
+  async function ejecutarReactivarBloque() {
+    const { ids, origenesMap = {}, sinOrigen = [], labelCount } = origenReactivar || {};
+    if (!ids?.length || !Number.isFinite(discontinuadosId)) return;
+
+    try {
+      // 1. Quitar TODOS de Discontinuados
+      for (const id of ids) {
+        try {
+          await httpBiz(
+            `/agrupaciones/${discontinuadosId}/articulos/${id}`,
+            { method: 'DELETE' },
+            discBizId
+          );
+        } catch { }
+      }
+
+      // 2. Restaurar cada artículo a su grupo origen (un PUT por grupo)
+      for (const grupo of Object.values(origenesMap)) {
+        if (!grupo.groupId || !grupo.bizId || !grupo.ids?.length) continue;
+        try {
+          await httpBiz(
+            `/agrupaciones/${grupo.groupId}/articulos`,
+            { method: 'PUT', body: { ids: grupo.ids } },
+            grupo.bizId
+          );
+        } catch (e2) {
+          console.warn(`[ejecutarReactivarBloque] No se pudo restaurar a ${grupo.groupName}:`, e2.message);
+        }
+      }
+      // sinOrigen: artículos sin grupo conocido → solo se sacan de Discontinuados (quedan en Sin Agrupación)
+
+      // 3. Mutación optimista
+      onMutateGroups?.({ type: 'remove', groupId: discontinuadosId, ids });
+      for (const grupo of Object.values(origenesMap)) {
+        onMutateGroups?.({
+          type: 'append',
+          groupId: grupo.groupId,
+          articulos: grupo.ids.map(id => ({ id })),
+          baseById,
+        });
+      }
+
+      const grupos = Object.values(origenesMap);
+      const resumen = grupos.length > 0
+        ? grupos.map(g => `"${g.groupName}"`).join(', ')
+        : null;
+
+      emitUiAction({
+        businessId: effectiveBusinessId,
+        kind: 'info',
+        scope: 'articulo',
+        title: `✅ ${subDisplayName} reactivado`,
+        message: resumen
+          ? `"${subDisplayName}": ${labelCount} restaurado(s) a ${resumen}.`
+          : `"${subDisplayName}": ${labelCount} disponible(s) nuevamente.`,
+        createdAt: new Date().toISOString(),
+        payload: {
+          ids,
+          discontinuadosGroupId: Number(discontinuadosId),
+          prev: {
+            origenesMap,
+            discontinuadosGroupId: Number(discontinuadosId),
+            wasInDiscontinuados: true,
+          },
+        },
+      });
+
+      onRefetch?.();
+    } catch (e) {
+      console.error('REACTIVAR_BLOQUE_ERROR', e);
+      notify?.('No se pudo reactivar el subrubro', 'error');
+    } finally {
+      setDlgReactivarOpen(false);
+    }
+  }
+
   const isArticuloBloqueadoCreate = useMemo(() => {
+    const esTodo = (g) => {
+      const n = norm(g?.nombre);
+      return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' ||
+        n === 'sin agrupar' || n === 'sin grupo';
+    };
     const assigned = new Set();
     (agrupaciones || [])
-      .filter((g) => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .filter((g) => !esTodo(g) && !isDiscontinuadosGroup(g))
       .forEach((g) =>
         (g.articulos || []).forEach((a) => {
           const n = Number(a?.id);
@@ -614,6 +704,30 @@ function SubrubroAccionesMenu({
           <ListItemText>{`Crear agrupación a partir de "${subDisplayName}"`}</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Diálogo de confirmación de reactivación en bloque */}
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)}>
+        <DialogTitle>Reactivar subrubro</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            ¿Reactivar <strong>{origenReactivar?.labelCount || ''}</strong> artículo(s) de <strong>{subDisplayName}</strong> en su negocio y agrupación de origen?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setDlgReactivarOpen(false);
+              setTimeout(() => setDlgMoverOpen(true), 0);
+            }}
+          >
+            No, mover a otro lugar…
+          </Button>
+          <Button variant="contained" onClick={ejecutarReactivarBloque}>
+            Sí, reactivar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {articuloIds.length} artículo(s) a…</DialogTitle>

@@ -1,3 +1,4 @@
+import { showAlert } from '../../servicios/appAlert';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminAPI } from '../../servicios/apiAdmin';
@@ -89,7 +90,7 @@ export default function AdminUsers() {
                 size="small"
                 onClick={async () => {
                   const r = await AdminAPI.resetPassword(u.id);
-                  alert(`Token temporal: ${r.token_preview}`);
+                  showAlert(`Token temporal: ${r.token_preview}`, 'info', { copyText: r.token_preview });
                 }}
               >
                 <RestartAltIcon fontSize="small" />

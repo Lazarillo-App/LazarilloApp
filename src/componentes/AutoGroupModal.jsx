@@ -1,4 +1,5 @@
 // src/componentes/AutoGroupModal.jsx
+import { showAlert } from '../servicios/appAlert';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
@@ -138,7 +139,7 @@ export default function AutoGroupModal({
     // 1. Crear nueva agrupación si hay artículos seleccionados para ella
     if (articlesForNewGroup.size > 0) {
       if (!newGroupName.trim()) {
-        alert('Por favor ingresa un nombre para la nueva agrupación');
+        showAlert('Por favor ingresá un nombre para la nueva agrupación.', 'warning');
         return;
       }
 

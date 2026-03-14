@@ -20,9 +20,6 @@ const VirtualList = forwardRef(function VirtualList(
     onVisibleItemsIds,
     renderRow,
     getRowId,
-
-    // ✅ NUEVO: cualquier “gatillo” externo para forzar refresh (ventas, filtros, etc.)
-    extraData = 0,
   },
   ref
 ) {
@@ -125,7 +122,7 @@ const VirtualList = forwardRef(function VirtualList(
 
             // ✅ CLAVE: incluir extraData para forzar que React reconstruya la fila
             // (ideal para cosas memoizadas/adentro como VentasCell)
-            const reactKey = `${baseKey}|v${extraData}`;
+            const reactKey = baseKey;
 
             return (
               <div

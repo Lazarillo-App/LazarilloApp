@@ -1,4 +1,5 @@
 /* eslint-disable no-empty */
+import { showAlert } from '../../servicios/appAlert';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AdminAPI } from '../../servicios/apiAdmin';
@@ -132,7 +133,7 @@ export default function AdminUserDetail() {
             setBusy(true);
             try {
               const r = await AdminAPI.resetPassword(user.id);
-              alert(`Token temporal: ${r.token_preview}`);
+              showAlert(`Token temporal: ${r.token_preview}`, 'info', { copyText: r.token_preview });
             } finally { setBusy(false); }
           }}
           title="Restablecer contraseña"

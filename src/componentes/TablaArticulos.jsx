@@ -141,6 +141,7 @@ export default function TablaArticulos({
   onCategoriasLoaded,
   onIdsVisibleChange,
   activeBizId,
+  rootBizId = null,
   reloadKey = 0,
   onTodoInfo,
   onTotalResolved,
@@ -154,6 +155,7 @@ export default function TablaArticulos({
   onDiscontinuadoChange,
   onDiscontinuarBloque,
   discIds: discIdsProp,
+  orgAssignedIds = null,   // IDs asignados en agrupaciones reales de TODA la org (global)
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -209,15 +211,17 @@ export default function TablaArticulos({
   const [sortBy, setSortBy] = useState("ventas");
   const [sortDir, setSortDir] = useState("desc");
 
+  const sortByRef = React.useRef(sortBy);
+  React.useEffect(() => { sortByRef.current = sortBy; }, [sortBy]);
+
   const toggleSort = useCallback((k) => {
-    setSortBy((prev) => {
-      if (prev === k) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir("asc");
-      return k;
-    });
+    const isSameColumn = sortByRef.current === k;
+    if (isSameColumn) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(k);
+      setSortDir('asc');
+    }
   }, []);
 
   // ========== Catálogo y base ==========
@@ -326,10 +330,13 @@ export default function TablaArticulos({
           openSnack("Catálogo cargado por fallback DB (error en tree)", "info");
         }
         try {
-          const todo = await ensureTodo();
+          // Usar rootBizId para que subnegocios from_group compartan
+          // el mismo Sin Agrupacion y Discontinuados del principal
+          const todoBizId = rootBizId ?? activeBizId;
+          const todo = await ensureTodo(todoBizId);
           if (todo?.id && !cancel && myId === loadReqId.current) {
             setTodoGroupId(todo.id);
-            const ex = await getExclusiones(todo.id);
+            const ex = await getExclusiones(todo.id, todoBizId);
             const ids = (ex || [])
               .filter((e) => e.scope === "articulo")
               .map((e) => Number(e.ref_id))
@@ -354,6 +361,7 @@ export default function TablaArticulos({
     };
   }, [
     activeBizId,
+    rootBizId,
     reloadKey,
     reloadTick,
     onCategoriasLoaded,
@@ -434,20 +442,28 @@ export default function TablaArticulos({
         (agrupacionesParaTodo || [])
           .filter((g) => g && !esTodoGroup(g))
           .flatMap((g) => (g.articulos || []).map(getId))
-          .filter((id) => Number.isFinite(id) && id > 0)   // ✅ importante
+          .filter((id) => Number.isFinite(id) && id > 0)
       ),
     [agrupacionesParaTodo]
   );
 
+  // IDs asignados en toda la org (incluye los de otros negocios de la org)
+  // Cuando orgAssignedIds llega del backend, lo usamos en lugar de idsEnOtras locales
+  const idsAsignadosGlobal = useMemo(() => {
+    if (Array.isArray(orgAssignedIds) && orgAssignedIds.length > 0) {
+      return new Set(orgAssignedIds.map(Number).filter(n => n > 0));
+    }
+    return idsEnOtras; // fallback: sin org, usar solo las agrupaciones locales
+  }, [orgAssignedIds, idsEnOtras]);
 
   const idsSinAgrup = useMemo(() => {
     const s = new Set();
     const discExclude = discIdsProp instanceof Set ? discIdsProp : new Set();
     for (const id of allArticulos.map(getId)) {
-      if (!idsEnOtras.has(id) && !excludedIds.has(id) && !discExclude.has(id)) s.add(id);
+      if (!idsAsignadosGlobal.has(id) && !excludedIds.has(id) && !discExclude.has(id)) s.add(id);
     }
     return s;
-  }, [allArticulos, idsEnOtras, excludedIds, discIdsProp]);
+  }, [allArticulos, idsAsignadosGlobal, excludedIds, discIdsProp]);
 
   const idsSinAgrupArray = useMemo(() => Array.from(idsSinAgrup), [idsSinAgrup]);
 
@@ -467,8 +483,14 @@ export default function TablaArticulos({
         case "ventas": {
           const idNum = Number(id);
           if (!Number.isFinite(idNum)) return 0;
-          // ✅ consistente con lo que se muestra en tabla (Ventas $)
-          return getVentasAmount(idNum);
+          return getVentasAmount(idNum); // ordena por importe $
+        }
+        case "ventasQty": {
+          const idNum = Number(id);
+          if (!Number.isFinite(idNum)) return 0;
+          const venta = getVentaForId(idNum);
+          const precio = toNum(baseById?.get?.(idNum)?.precio ?? 0);
+          return normalizeVenta(venta, precio).qty;
         }
 
         case "codigo":
@@ -498,7 +520,7 @@ export default function TablaArticulos({
           return null;
       }
     },
-    [sortBy, objetivos, manuales, getVentasAmount]
+    [sortBy, objetivos, manuales, getVentasAmount, getVentaForId, baseById]
   );
 
   const cmp = useCallback(
@@ -528,6 +550,7 @@ export default function TablaArticulos({
       const idsFiltro = esTodoGroup(agrupacionSeleccionada)
         ? idsSinAgrup
         : new Set((agrupacionSeleccionada.articulos || []).map(getId));
+      console.log('[TablaFiltro] catSel:', categoriaSeleccionada?.subrubro, '| catArts:', (categoriaSeleccionada.categorias||[]).flatMap(c=>c.articulos||[]).length, '| idsFiltro size:', idsFiltro.size, '| sample catId:', getId((categoriaSeleccionada.categorias||[])[0]?.articulos?.[0]), '| sample filtroId:', [...idsFiltro][0]);
 
       base = (categoriaSeleccionada.categorias || [])
         .flatMap((c) =>
@@ -912,17 +935,12 @@ export default function TablaArticulos({
       return (
         <div
           key={row.key}
+          className="table-section-row"
           style={{
             ...style,
             display: "grid",
-            gridTemplateColumns: gridTemplate,
             alignItems: "center",
-            background: "color-mix(in srgb, var(--color-primary) 40%, transparent)",
-            color: "var(--on-secondary)",
-            fontWeight: 500,
-            borderTop: "1px solid rgba(0,0,0,0.04)",
-            borderBottom: "1px solid rgba(0,0,0,0.04)",
-            padding: "4px 8px",
+            gridTemplateColumns: gridTemplate,
           }}
         >
           <div style={{ gridColumn: "1 / 3" }}>{label}</div>
@@ -955,6 +973,7 @@ export default function TablaArticulos({
             treeMode={tableHeaderMode}
             onDiscontinuarBloque={onDiscontinuarBloque}
             allowedIds={filterIds}
+            rootBizId={rootBizId}
           />
         </div>
       );
@@ -969,8 +988,8 @@ export default function TablaArticulos({
 
     const selectedStyle = isSelected
       ? {
-        background: "rgba(59,130,246,0.10)",
-        boxShadow: "inset 0 0 0 1px rgba(59,130,246,0.35)",
+        background: "color-mix(in srgb, var(--color-primary) 10%, transparent)",
+        boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)",
         position: "relative",
       }
       : null;
@@ -983,7 +1002,7 @@ export default function TablaArticulos({
           top: 0,
           bottom: 0,
           width: 4,
-          background: "rgba(59,130,246,0.95)",
+          background: "var(--color-primary)",
           borderRadius: 2,
         }}
       />
@@ -993,15 +1012,12 @@ export default function TablaArticulos({
       <div
         key={row.key}
         data-article-id={id}
-        className={isSelected ? "row-selected" : ""}
+        className={`table-item-row${isSelected ? " is-selected" : ""}`}
         style={{
           ...style,
           display: "grid",
-          gridTemplateColumns: gridTemplate,
           alignItems: "center",
-          borderTop: "1px dashed #f0f0f0",
-          padding: "4px 8px",
-          color: "#373737ff",
+          gridTemplateColumns: gridTemplate,
           fontWeight: 500,
           fontSize: "0.85rem",
           ...(selectedStyle || {}),
@@ -1080,6 +1096,7 @@ export default function TablaArticulos({
             treeMode={modalTreeMode}
             allowedIds={filterIds}
             businessId={activeBizId}
+            rootBizId={rootBizId}
           />
         </div>
       </div>
@@ -1093,83 +1110,51 @@ export default function TablaArticulos({
           open={!!recetaArticulo}
           onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo}
-          businessId={activeBizId}
+          businessId={rootBizId ?? activeBizId}
         />
       )}
       <div className="tabla-articulos-container">
         <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
-          <div
-            style={{
-              position: "sticky",
-              top: 0,
-              
-              background: "#fff",
-              borderBottom: "1px solid #eee",
-              padding: "8px 8px 6px",
-            }}
-          >
+      <div className="table-col-header">
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: gridTemplate,
-                gap: 0,
-                fontWeight: 700,
-                userSelect: "none",
-                alignItems: "center",
-                color: "black",
-                fontSize: "1rem",
-              }}
+              className="table-col-header-inner"
+              style={{ gridTemplateColumns: gridTemplate }}
             >
-              <div onClick={() => toggleSort("codigo")} style={{ cursor: "pointer" }}>
+              <div onClick={() => toggleSort("codigo")} className="col-sortable">
                 Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div onClick={() => toggleSort("nombre")} style={{ cursor: "pointer" }}>
+              <div onClick={() => toggleSort("nombre")} className="col-sortable">
                 Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div onClick={() => toggleSort("ventas")} style={{ cursor: "pointer" }}>
+              <div onClick={() => toggleSort("ventasQty")} className="col-sortable">
                 Ventas U {ventasLoading ? "…" : ""}{" "}
+                {sortBy === "ventasQty" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+              </div>
+
+              <div onClick={() => toggleSort("ventas")} className="col-sortable">
+                Ventas $ {ventasLoading ? "…" : ""}{" "}
                 {sortBy === "ventas" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
 
-              <div>Ventas $ {ventasLoading ? "…" : ""}</div>
-
-              <div
-                onClick={() => toggleSort("precio")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("precio")} className="col-sortable">
                 Precio {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div
-                onClick={() => toggleSort("costo")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("costo")} className="col-sortable">
                 Costo ($) {sortBy === "costo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div
-                onClick={() => toggleSort("costoPct")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("costoPct")} className="col-sortable">
                 Costo (%){" "}
                 {sortBy === "costoPct" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div
-                onClick={() => toggleSort("objetivo")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("objetivo")} className="col-sortable">
                 Objetivo (%){" "}
                 {sortBy === "objetivo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div
-                onClick={() => toggleSort("sugerido")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("sugerido")} className="col-sortable">
                 Sugerido ($){" "}
                 {sortBy === "sugerido" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div
-                onClick={() => toggleSort("manual")}
-                style={{ cursor: "pointer", textAlign: "center" }}
-              >
+              <div onClick={() => toggleSort("manual")} className="col-sortable">
                 Manual ($){" "}
                 {sortBy === "manual" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>

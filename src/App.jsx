@@ -13,6 +13,9 @@ import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
 
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
+import AppAlertModal from './componentes/AppAlertModal';
+import AppPromptModal from './componentes/AppPromptModal';
+import AppConfirmModal from './componentes/AppConfirmModal';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
 
 import { BusinessesAPI } from './servicios/apiBusinesses';
@@ -192,6 +195,9 @@ export default function App() {
 
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
+      <AppAlertModal />
+      <AppPromptModal />
+      <AppConfirmModal />
       {isLogged && <Navbar />}
 
       <Routes>

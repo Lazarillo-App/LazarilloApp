@@ -69,9 +69,56 @@ function ColorField({ id, label, value, onChange, disabled }) {
   );
 }
 
-/* ─────────────────────── Paso 1 — Datos ─────────────────────── */
-function StepDatos({ agrupacion, state, set, onNext, onClose, busy, err }) {
+/* ─────────────────────── Paso 0 — Organización (solo primera vez) ─────────────────────── */
+function StepOrg({ orgName, setOrgName, currentBizName, onNext, onClose, busy, err }) {
+  return (
+    <div className="sbc-step">
+      <div className="sbc-info-box" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+        <p className="sbc-info-title" style={{ color: '#92400e' }}>Primera división</p>
+        <ul style={{ color: '#92400e' }}>
+          <li>Estás por dividir tu negocio por primera vez</li>
+          <li>Se creará una <strong>Organización</strong> que engloba todos tus negocios</li>
+          <li>El negocio actual <strong>"{currentBizName}"</strong> pasa a ser uno más dentro de ella</li>
+        </ul>
+      </div>
+
+      <div className="sbc-section-title">Nombre de la Organización</div>
+
+      <div className="sbc-field">
+        <label className="sbc-label" htmlFor="sbc-org-name">Nombre *</label>
+        <input
+          id="sbc-org-name"
+          className="sbc-input"
+          placeholder={`Ej: ${currentBizName} Grupo, Mi Empresa…`}
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && orgName.trim() && onNext()}
+          autoFocus
+          disabled={busy}
+        />
+        <span className="sbc-muted" style={{ fontSize: '.78rem', marginTop: 2 }}>
+          Este nombre agrupa todos tus negocios. Podés cambiarlo después desde Perfil.
+        </span>
+      </div>
+
+      {err && <div className="sbc-error">{err}</div>}
+
+      <div className="sbc-footer">
+        <button className="sbc-btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="sbc-btn primary" onClick={onNext}
+          disabled={!orgName.trim() || busy}>Siguiente →</button>
+      </div>
+    </div>
+  );
+}
+function StepDatos({ agrupacion, state, set, onNext, onClose, busy, err, canGoBack = false }) {
   const count = artCount(agrupacion);
+  const inputRef = React.useRef(null);
+  React.useEffect(() => {
+    // Espera a que termine la animación del modal (.22s) antes de hacer focus
+    const t = setTimeout(() => { inputRef.current?.focus(); }, 260);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="sbc-step">
       <div className="sbc-origin-banner">
@@ -103,7 +150,7 @@ function StepDatos({ agrupacion, state, set, onNext, onClose, busy, err }) {
           value={state.name}
           onChange={(e) => set('name', e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && state.name.trim() && onNext()}
-          autoFocus
+          ref={inputRef}
           disabled={busy}
         />
       </div>
@@ -137,7 +184,9 @@ function StepDatos({ agrupacion, state, set, onNext, onClose, busy, err }) {
       {err && <div className="sbc-error">{err}</div>}
 
       <div className="sbc-footer">
-        <button className="sbc-btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="sbc-btn ghost" onClick={onClose} disabled={busy}>
+          {canGoBack ? '← Anterior' : 'Cancelar'}
+        </button>
         <button className="sbc-btn primary" onClick={onNext}
           disabled={!state.name.trim() || busy}>Siguiente →</button>
       </div>
@@ -385,18 +434,33 @@ function StepSuccess({ name, count, logoUrl, primary, onClose, newBizId }) {
 /* ═══════════════════════════════════════════════════════════
    Componente principal
 ═══════════════════════════════════════════════════════════ */
-export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCreated }) {
+const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open, onClose, agrupacion, onCreated, onNeedOrgName }) {
   const { organization, createSubBusiness, createOrg } = useOrganization() || {};
   const { active } = useBusiness() || {};
 
+  // Steps siempre fijos — el nombre de la org se pide en un modal separado
+  // DESPUÉS de crear el subnegocio exitosamente
   const STEPS = ['Datos', 'Estilos', 'Redes', 'Confirmar'];
-  const [step,    setStep]    = useState(0);   // 0-3 wizard, 4 = éxito
+  const STEP_SUCCESS = STEPS.length;
+  const STEP_DATOS   = 0;
+  const STEP_ESTILOS = 1;
+  const STEP_REDES   = 2;
+  const STEP_CONFIRM = 3;
+
+  const [step,    setStep]    = useState(0);
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState('');
   const [created, setCreated] = useState(null);
 
-  const initState = useCallback(() => ({
-    name:        agrupacion?.nombre || '',
+  // Modal de nombre de org — se muestra DESPUÉS del éxito si no hay org
+  const [showOrgModal, setShowOrgModal] = useState(false);
+  const [orgName,      setOrgName]      = useState('');
+  const [savingOrg,    setSavingOrg]    = useState(false);
+  const [orgErr,       setOrgErr]       = useState('');
+
+  // Estado del formulario del subnegocio
+  const [form, setFormRaw] = useState({
+    name:        '',
     phone:       '',
     city:        '',
     addrLine1:   '',
@@ -410,21 +474,49 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
     facebook:    '',
     tiktok:      '',
     website:     '',
-  }), [agrupacion?.nombre]);
-
-  const [form, setFormRaw] = useState(initState);
+  });
   const set = useCallback((k, v) => setFormRaw(prev => ({ ...prev, [k]: v })), []);
+
+  // Ref que captura el estado de la org al momento de ABRIR el modal
+  // (no al hacer submit, porque para entonces ya cambió)
+  const orgStateAtOpenRef = useRef(null);
 
   /* Reset al abrir */
   useEffect(() => {
     if (open) {
+      // Capturar estado de org en el momento exacto de apertura
+      orgStateAtOpenRef.current = {
+        hasOrg: !!organization,
+        bizCount: organization?.businesses?.length ?? 0,
+      };
       setStep(0);
       setErr('');
       setBusy(false);
       setCreated(null);
-      setFormRaw(initState());
+      setShowOrgModal(false);
+      setOrgName('');
+      setOrgErr('');
+      setFormRaw({
+        name:        agrupacion?.nombre || '',
+        phone:       '',
+        city:        '',
+        addrLine1:   '',
+        description: '',
+        primary:     '#38e07b',
+        secondary:   '#1f2923',
+        background:  '#f6f8f7',
+        logoUrl:     '',
+        logoFile:    null,
+        instagram:   '',
+        facebook:    '',
+        tiktok:      '',
+        website:     '',
+      });
     }
-  }, [open]); // eslint-disable-line
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, agrupacion?.nombre]);
+  // NOTA: solo [open, agrupacion?.nombre] — NO incluir active?.name ni organization
+  // porque si cambian mientras el modal está abierto re-ejecutan el reset y borran lo que el usuario escribió
 
   /* Esc */
   const handleClose = useCallback(() => { if (busy) return; onClose?.(); }, [busy, onClose]);
@@ -443,16 +535,21 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
     setBusy(true);
     setErr('');
     try {
-      if (!organization) {
-        await createOrg(active?.name || form.name.trim());
-      }
-
       const branding = {
         primary:    form.primary,
         secondary:  form.secondary,
         background: form.background,
         logo_url:   isHttpUrl(form.logoUrl) && !form.logoFile ? form.logoUrl : null,
       };
+
+      // Si no hay org todavía, crear una con nombre temporal antes de crear el subnegocio.
+      // createSubBusiness requiere organization.id — sin esto tira error.
+      // Después del éxito mostramos el modal para que el usuario le ponga el nombre real.
+      const isFirstSubBusiness = !organization;
+      if (isFirstSubBusiness) {
+        const placeholder = active?.name || form.name.trim() || 'Mi Organización';
+        await createOrg(placeholder);
+      }
 
       const newBiz = await createSubBusiness({
         sourceGroupId: agrupacion.id,
@@ -486,13 +583,21 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
           }
         } catch (eUp) {
           console.warn('[SubBusinessCreateModal] Error subiendo logo:', eUp);
-          // no bloquear: el negocio ya se creó
         }
       }
 
       setCreated(newBiz);
-      setStep(4);
+      setStep(STEPS.length); // paso "éxito" = después del último step
       onCreated?.(newBiz);
+
+      // Avisar al padre que debe mostrar el modal de nombre de org,
+      // si al abrir el modal era la primera vez (org nueva o solo 1 negocio).
+      // Lo hace el padre (ArticulosMain) para que no se pierda al cerrar este modal.
+      const { hasOrg, bizCount } = orgStateAtOpenRef.current || {};
+      const shouldAskOrgName = !hasOrg || bizCount <= 1;
+      if (shouldAskOrgName) {
+        onNeedOrgName?.();
+      }
     } catch (e) {
       setErr(e?.message || 'No se pudo crear el sub-negocio. Intentá de nuevo.');
     } finally {
@@ -505,24 +610,24 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
   const count = artCount(agrupacion);
 
   const content = (
-    <div className="sbc-overlay" onClick={step < 4 ? handleClose : undefined}>
+    <div className="sbc-overlay" onClick={step < STEP_SUCCESS ? handleClose : undefined}>
       <div className="sbc-modal" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div className="sbc-header">
           <span className="sbc-header-title">
-            {step === 4 ? '¡Listo!' : 'Nuevo sub-negocio'}
+            {step === STEP_SUCCESS ? '¡Listo!' : 'Nuevo sub-negocio'}
           </span>
-          {step < 4 && (
+          {step < STEP_SUCCESS && (
             <span className="sbc-header-step">Paso {step + 1} de {STEPS.length}</span>
           )}
-          {step < 4 && (
+          {step < STEP_SUCCESS && (
             <button className="sbc-x" onClick={handleClose} aria-label="Cerrar">✕</button>
           )}
         </div>
 
         {/* Stepper */}
-        {step < 4 && (
+        {step < STEP_SUCCESS && (
           <div className="sbc-stepper">
             {STEPS.map((label, i) => (
               <React.Fragment key={label}>
@@ -539,7 +644,7 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
         )}
 
         {/* Progress */}
-        {step < 4 && (
+        {step < STEP_SUCCESS && (
           <div className="sbc-progress">
             <div className="sbc-progress-fill"
               style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
@@ -548,23 +653,26 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
 
         {/* Body */}
         <div className="sbc-body">
-          {step === 0 && (
+          {step === STEP_DATOS && (
             <StepDatos agrupacion={agrupacion} state={form} set={set}
-              onNext={goNext} onClose={handleClose} busy={busy} err={err} />
+              onNext={() => { if (form.name.trim()) goNext(); else setErr('El nombre es requerido'); }}
+              onClose={handleClose}
+              canGoBack={false}
+              busy={busy} err={err} />
           )}
-          {step === 1 && (
+          {step === STEP_ESTILOS && (
             <StepEstilos state={form} set={set}
               onNext={goNext} onBack={goBack} busy={busy} err={err} />
           )}
-          {step === 2 && (
+          {step === STEP_REDES && (
             <StepRedes state={form} set={set}
               onNext={goNext} onBack={goBack} busy={busy} err={err} />
           )}
-          {step === 3 && (
+          {step === STEP_CONFIRM && (
             <StepConfirm agrupacion={agrupacion} state={form}
               onBack={goBack} onSubmit={handleSubmit} busy={busy} err={err} />
           )}
-          {step === 4 && (
+          {step === STEP_SUCCESS && (
             <StepSuccess
               name={created?.name || form.name}
               count={count}
@@ -799,5 +907,119 @@ export default function SubBusinessCreateModal({ open, onClose, agrupacion, onCr
     </div>
   );
 
-  return ReactDOM.createPortal(content, document.body);
-}
+  /* ── Handlers del modal de nombre de org ── */
+  const handleSaveOrg = async () => {
+    if (!orgName.trim()) {
+      setOrgErr('El nombre de la organización es requerido');
+      return;
+    }
+    setSavingOrg(true);
+    setOrgErr('');
+    try {
+      await createOrg(orgName.trim());
+      setShowOrgModal(false);
+    } catch (e) {
+      setOrgErr(e?.message || 'No se pudo crear la organización');
+    } finally {
+      setSavingOrg(false);
+    }
+  };
+
+  const handleSkipOrg = () => {
+    setShowOrgModal(false);
+  };
+
+  /* ── Modal de nombre de organización (se muestra sobre la pantalla de éxito) ── */
+  const orgModalContent = showOrgModal ? (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(10,12,16,.72)',
+      backdropFilter: 'blur(6px)',
+      display: 'grid', placeItems: 'center',
+      zIndex: 100000,
+      animation: 'sbc-fadein .18s ease',
+    }}>
+      <div style={{
+        width: 'min(460px, 94vw)',
+        background: '#fff',
+        borderRadius: 18,
+        padding: '32px 28px 24px',
+        boxShadow: '0 8px 40px rgba(0,0,0,.22)',
+        display: 'flex', flexDirection: 'column', gap: 16,
+        animation: 'sbc-slideup .22s cubic-bezier(.22,.68,0,1.15)',
+      }}>
+        {/* Ícono + título */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🏢</div>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#111' }}>
+            ¿Cómo se llama tu organización?
+          </h3>
+          <p style={{ margin: '8px 0 0', fontSize: '.88rem', color: '#666', lineHeight: 1.5 }}>
+            Se creó automáticamente una organización que agrupa a <strong>{active?.name}</strong> y
+            los sub-negocios que crees. Dale un nombre para identificarla fácilmente.
+          </p>
+        </div>
+
+        {/* Input */}
+        <div>
+          <input
+            type="text"
+            value={orgName}
+            onChange={e => { setOrgName(e.target.value); setOrgErr(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') handleSaveOrg(); }}
+            placeholder={`Ej: ${active?.name || 'Container Group'}`}
+            autoFocus
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '11px 14px',
+              fontSize: '.95rem', fontWeight: 600,
+              border: orgErr ? '2px solid #f44336' : '2px solid #e0e0e5',
+              borderRadius: 10, outline: 'none',
+              transition: 'border-color .15s',
+            }}
+            onFocus={e => { if (!orgErr) e.target.style.borderColor = 'var(--color-primary, #38e07b)'; }}
+            onBlur={e => { if (!orgErr) e.target.style.borderColor = '#e0e0e5'; }}
+          />
+          {orgErr && (
+            <p style={{ margin: '4px 0 0', fontSize: '.8rem', color: '#f44336' }}>{orgErr}</p>
+          )}
+        </div>
+
+        {/* Botones */}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={handleSkipOrg} disabled={savingOrg}
+            style={{ border: 'none', background: 'none', color: '#999',
+                      fontSize: '.85rem', cursor: 'pointer', padding: '8px 12px' }}>
+            Omitir por ahora
+          </button>
+          <button onClick={handleSaveOrg} disabled={savingOrg || !orgName.trim()}
+            style={{
+              border: 'none', borderRadius: 10, padding: '11px 24px',
+              fontSize: '.88rem', fontWeight: 800, cursor: 'pointer',
+              background: 'var(--color-primary, #1a1a2e)',
+              color: 'var(--on-primary, #fff)',
+              opacity: savingOrg || !orgName.trim() ? .5 : 1,
+              transition: 'all .15s',
+            }}>
+            {savingOrg
+              ? <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.3)',
+                                  borderTopColor: 'currentColor', borderRadius: '50%',
+                                  animation: 'sbc-spin .6s linear infinite', display: 'inline-block' }} />
+                  Guardando…
+                </span>
+              : 'Guardar nombre'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      {ReactDOM.createPortal(content, document.body)}
+      {showOrgModal && ReactDOM.createPortal(orgModalContent, document.body)}
+    </>
+  );
+});
+export default SubBusinessCreateModal;

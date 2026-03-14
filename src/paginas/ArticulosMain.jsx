@@ -1,7 +1,9 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
+import { showAlert } from '../servicios/appAlert';
+import { showPrompt } from '../servicios/appPrompt';
+import { showConfirm } from '../servicios/appConfirm';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import OrgDashboard from '../componentes/OrgDashboard';
 import { useOrganization } from '../context/OrganizationContext';
 import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
@@ -18,8 +20,11 @@ import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
 import VentasActionsMenu from '../componentes/VentasActionsMenu';
 import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
+import { useFirstDate } from '../hooks/useFirstDate';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import Buscador from '@/componentes/Buscador';
+import SubBusinessCreateModal from '../componentes/SubBusinessCreateModal';
+import ReactDOM from 'react-dom';
 import instructionImage1 from '../assets/brand/maxirest-menu.jpeg';
 import instructionImage2 from '../assets/brand/maxirest-config.jpeg';
 import {
@@ -84,6 +89,14 @@ const isRealTodoGroup = (g, todoId) => {
   return Number(g.id) === Number(todoId);
 };
 
+// Fallback por nombre para cuando todoGroupId aún no está seteado
+const esTodoGroupByName = (g) => {
+  if (!g) return false;
+  const n = String(g.nombre || g.name || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupar' || n === 'sin grupo';
+};
+
 export default function ArticulosMain(props) {
   const {
     syncVersion: syncVersionProp = 0,
@@ -101,7 +114,6 @@ export default function ArticulosMain(props) {
   const [categorias, setCategorias] = useState([]);
   const [agrupaciones, setAgrupaciones] = useState([]);
   const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
-  const [showDiscView, setShowDiscView] = useState(false); // fuerza salida del OrgDashboard a discontinuados
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [discoOrigenById, setDiscoOrigenById] = useState({});
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
@@ -109,12 +121,23 @@ export default function ArticulosMain(props) {
   const [reloadKey, setReloadKey] = useState(0);
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [subBizModalOpen, setSubBizModalOpen] = useState(false);
+  const [groupForSubBiz, setGroupForSubBiz] = useState(null);
+  const [orgNameModalOpen, setOrgNameModalOpen] = useState(false);
+  const [orgNameInput, setOrgNameInput] = useState('');
+  const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
 
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
-  const { rootBusiness, allBusinesses } = useOrganization();
+
+  // Limpiar overrides al cambiar de negocio para evitar que
+  // los valores del negocio anterior se sumen al nuevo
+  useEffect(() => {
+    setVentasOverrides(new Map());
+  }, [activeBizId]);
+  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
 
   usePersistUiActions(activeBizId);
 
@@ -132,6 +155,7 @@ export default function ArticulosMain(props) {
   }, [rango]);
 
   const periodoRef = useRef(periodo);
+  const sidebarScrollRef = useRef(null);   // para preservar scroll del sidebar
   useEffect(() => {
     periodoRef.current = periodo;
   }, [periodo]);
@@ -204,10 +228,22 @@ export default function ArticulosMain(props) {
 
   const getGroupItemsRaw = (g) => {
     if (!g) return [];
-    if (Array.isArray(g.articulos)) return g.articulos;
-    if (Array.isArray(g.items)) return g.items;
-    if (Array.isArray(g.data)) return g.data;
-    return [];
+    // Combinar articulos JSONB (objetos) + app_articles_ids (array de IDs numericos)
+    const fromJsonb = Array.isArray(g.articulos) ? g.articulos
+      : Array.isArray(g.items) ? g.items
+      : Array.isArray(g.data) ? g.data
+      : [];
+    const fromAppIds = Array.isArray(g.app_articles_ids)
+      ? g.app_articles_ids.map(id => ({ id: Number(id) })).filter(a => a.id > 0)
+      : [];
+    if (!fromAppIds.length) return fromJsonb;
+    // Combinar sin duplicar: app_articles_ids tiene precedencia (tiene IDs reales)
+    const seenIds = new Set(fromAppIds.map(a => a.id));
+    const extra = fromJsonb.filter(a => {
+      const id = Number(a?.id ?? a?.articulo_id);
+      return id > 0 && !seenIds.has(id);
+    });
+    return [...fromAppIds, ...extra];
   };
 
   const agIndex = useMemo(() => buildAgrupacionesIndex(agrupaciones || []), [agrupaciones]);
@@ -219,23 +255,50 @@ export default function ArticulosMain(props) {
   const lastManualPickRef = useRef(0);
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
 
+  const [orgAssignedIds, setOrgAssignedIds] = React.useState(null);
+
+  // Primera fecha histórica de ventas — específica por negocio
+  const { firstDate: firstDateVentas, loadingFirst: loadingFirstVentas } = useFirstDate(activeBizId, 'sales');
+
+  // Si el rango activo es "Histórico" y cambia el negocio/firstDate, actualizar el from automáticamente
+  useEffect(() => {
+    if (rango.mode === 'all' && firstDateVentas) {
+      setRango(prev => ({ ...prev, from: firstDateVentas }));
+    }
+  }, [firstDateVentas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refetchAgrupaciones = React.useCallback(async () => {
+    // Guardar scroll del sidebar antes del refetch y restaurarlo después
+    const scrollEl = sidebarScrollRef.current;
+    const savedScroll = scrollEl ? scrollEl.scrollTop : 0;
+
     if (!activeBizId) {
       setAgrupaciones([]);
+      setOrgAssignedIds(null);
       return [];
     }
 
     try {
-      const list = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
+      const { list, orgAssignedIds: assigned } = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
 
-      // ✅ FILTRAR agrupaciones que fueron movidas a otro negocio
+      // Filtrar agrupaciones movidas a otro negocio
       const filtered = (list || []).filter(ag => !ag.moved_to_business_id);
 
       if (Array.isArray(filtered)) setAgrupaciones(filtered);
+      setOrgAssignedIds(assigned);
+
+      // Restaurar scroll después de que React aplique los cambios al DOM
+      if (scrollEl && savedScroll > 0) {
+        requestAnimationFrame(() => {
+          if (sidebarScrollRef.current) sidebarScrollRef.current.scrollTop = savedScroll;
+        });
+      }
+
       return filtered || [];
     } catch (e) {
       console.error('[ArticulosMain] ❌ Error cargando agrupaciones:', e);
       setAgrupaciones([]);
+      setOrgAssignedIds(null);
       return [];
     }
   }, [activeBizId, activeDivisionId]);
@@ -244,8 +307,8 @@ export default function ArticulosMain(props) {
     setAgrupacionSeleccionada(null);
     setCategoriaSeleccionada(null);
     setFiltroBusqueda('');
-    setShowDiscView(false);
     setSearchText('');
+    setCategorias([]); // limpiar artículos del negocio anterior del buscador
   }, [activeBizId]);
 
   useEffect(() => {
@@ -398,7 +461,7 @@ export default function ArticulosMain(props) {
 
       if (!bid || !from || !to) {
         console.warn('[handleDownloadVentasCsv] faltan datos', { bid, from, to });
-        alert('Falta negocio activo o rango de fechas para descargar el CSV.');
+        showAlert('Falta negocio activo o rango de fechas para descargar el CSV.', 'warning');
         return;
       }
 
@@ -408,7 +471,7 @@ export default function ArticulosMain(props) {
       console.log('[handleDownloadVentasCsv] blob size', blob.size);
 
       if (!blob || blob.size === 0) {
-        alert('El CSV vino vacío.');
+        showAlert('El CSV vino vacío.', 'warning');
         return;
       }
 
@@ -424,7 +487,7 @@ export default function ArticulosMain(props) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error al descargar CSV de ventas', err);
-      alert(`Error al descargar CSV de ventas: ${err.message || err}`);
+      showAlert(`Error al descargar CSV de ventas: ${err.message || err}`, 'error');
     }
   };
 
@@ -461,10 +524,21 @@ export default function ArticulosMain(props) {
     }
   }, [agrupaciones]);
 
+  // Ref para saber el ID de la agrupación anterior y no resetear la categoría
+  // cuando el cambio es solo una actualización de datos (mismo ID)
+  const prevAgrupacionIdRef = useRef(null);
   useEffect(() => {
-    setFiltroBusqueda('');
-    setCategoriaSeleccionada(null);
-    setActiveIds(new Set());
+    const newId = agrupacionSeleccionada?.id ?? null;
+    const prevId = prevAgrupacionIdRef.current;
+    prevAgrupacionIdRef.current = newId;
+
+    // Solo resetear si cambió la agrupación seleccionada (no si es actualización del mismo objeto)
+    console.log('[reset?] newId:', newId, '| prevId:', prevId, '| reset:', newId !== prevId);
+    if (newId !== prevId) {
+      setFiltroBusqueda('');
+      setCategoriaSeleccionada(null);
+      setActiveIds(new Set());
+    }
   }, [agrupacionSeleccionada]);
 
   useEffect(() => {
@@ -547,23 +621,7 @@ export default function ArticulosMain(props) {
 
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
-  const isOrgView = useMemo(() => {
-    if (showDiscView) return false; // el usuario clickeó "ver discontinuados"
-    const principalId = rootBusiness?.id;
-    if (!principalId || String(principalId) !== activeBizId) return false;
 
-    const hasSubNegocios = (allBusinesses || []).some(
-      (b) => b.id !== principalId && b.created_from === 'from_group'
-    );
-    if (!hasSubNegocios) return false;
-
-    // El principal solo tiene agrupaciones especiales (Sin Agrupacion, Discontinuados)
-    const SPECIAL = new Set(['sin agrupacion', 'sin agrupación', 'discontinuados', 'todo']);
-    const realGroups = (agrupaciones || []).filter(
-      (ag) => !SPECIAL.has(String(ag.nombre || '').trim().toLowerCase())
-    );
-    return realGroups.length === 0;
-  }, [rootBusiness, activeBizId, allBusinesses, agrupaciones]);
 
   const articuloIds = useMemo(
     () =>
@@ -776,7 +834,12 @@ export default function ArticulosMain(props) {
 
     const todoId = todoInfo?.todoGroupId;
 
-    if (isRealTodoGroup(sel, todoId)) {
+    if (isRealTodoGroup(sel, todoId) || esTodoGroupByName(sel)) {
+      // Si el backend confirma que no hay artículos sin agrupar → retornar vacío
+      // sin pasar por todoIdsFromTree que puede estar desactualizado respecto a agrupaciones
+      const countFromBackend = todoInfo?.idsSinAgrupCount ?? -1;
+      if (countFromBackend === 0) return new Set();
+
       const base =
         (todoInfo?.todoIds && todoInfo.todoIds.size)
           ? todoInfo.todoIds
@@ -825,17 +888,30 @@ export default function ArticulosMain(props) {
         }
       }
 
+      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const esGlobalGroup = (gid) => {
+        const g = allGroups.find(x => Number(x.id) === Number(gid));
+        const n = normN(g?.nombre);
+        return n === 'sin agrupacion' || n === 'discontinuados' || n === 'descontinuados';
+      };
+
       if (!targetGroupId) {
-        if (alreadyVisible) {
-          targetGroupId = agrupacionSeleccionada?.id ?? null;
-        } else if (groupsSet.size > 0) {
+        if (groupsSet.size > 0) {
+          // Preferir un grupo real (no Sin Agrupacion ni Discontinuados)
           for (const gid of groupsSet) {
             const n = Number(gid);
-            if (Number.isFinite(n)) {
+            if (Number.isFinite(n) && !esGlobalGroup(n)) {
               targetGroupId = n;
               break;
             }
           }
+          // Si solo esta en grupos globales, usar el primero
+          if (!targetGroupId) {
+            const first = Number([...groupsSet][0]);
+            if (Number.isFinite(first)) targetGroupId = first;
+          }
+        } else if (alreadyVisible) {
+          targetGroupId = agrupacionSeleccionada?.id ?? null;
         } else if (Number.isFinite(Number(todoInfo?.todoGroupId))) {
           targetGroupId = Number(todoInfo.todoGroupId);
         }
@@ -998,7 +1074,9 @@ export default function ArticulosMain(props) {
           }
         }
 
-        await refetchAgrupaciones();
+        // ✅ Refetch diferido: dar tiempo a la escritura en backend antes de recargar
+        // El estado ya se actualizó optimistamente con mutateGroups arriba
+        setTimeout(() => { refetchAgrupaciones().catch(() => { }); }, 1200);
 
       } catch (error) {
         console.error('[UNDO discontinue] Error:', error);
@@ -1026,20 +1104,25 @@ export default function ArticulosMain(props) {
       if (!ids.length) return;
 
       if (!discGroup || !discGroup.id) {
-        window.alert('No existe la agrupación "Discontinuados". Creala primero.');
+        showAlert('No existe la agrupación "Discontinuados". Creala primero.', 'warning');
         return;
       }
 
-      const ok = window.confirm(
+      const ok = await showConfirm(
         `¿Marcar como DISCONTINUADOS ${ids.length} artículo(s) de este bloque?`
       );
       if (!ok) return;
 
       try {
+        // Si discGroup es global (vive en el principal), usar su businessId
+        const discBizId = discGroup.principal_business_id
+          ? Number(discGroup.principal_business_id)
+          : null;
+
         await httpBiz(`/agrupaciones/${discGroup.id}/articulos`, {
           method: 'PUT',
           body: { ids },
-        });
+        }, discBizId);
 
         mutateGroups({
           type: 'append',
@@ -1048,30 +1131,16 @@ export default function ArticulosMain(props) {
           baseById: metaById,
         });
 
-        try { markManualPick(); } catch { }
-        setAgrupacionSeleccionada(discGroup);
-        setCategoriaSeleccionada(null);
-        setFiltroBusqueda('');
-
-        if (ids.length > 0) {
-          focusArticle(ids[0], discGroup.id);
-        }
-
         showMiss(`Bloque discontinuado (${ids.length} artículo/s).`);
       } catch (e) {
         console.error('DISCONTINUAR_BLOQUE_ERROR', e);
-        window.alert('No se pudo discontinuar el bloque.');
+        showAlert('No se pudo discontinuar el bloque.', 'error');
       }
     },
     [
       discGroup,
       mutateGroups,
       metaById,
-      markManualPick,
-      focusArticle,
-      setAgrupacionSeleccionada,
-      setCategoriaSeleccionada,
-      setFiltroBusqueda,
       showMiss,
     ]
   );
@@ -1128,13 +1197,83 @@ export default function ArticulosMain(props) {
     }
   }, [todoGroupId, agrupacionSeleccionada, categorias]);
 
+  // IDs que pertenecen al negocio activo.
+  // orgAssignedIds = artículos asignados en agrupaciones de TODA la org (incluye otros subnegocios).
+  // idsEnAgrupacionesLocales = artículos en las agrupaciones del negocio activo.
+  // Un artículo pertenece a este negocio si:
+  //   - está en sus agrupaciones locales, O
+  //   - NO está asignado a ningún subnegocio (está en sin agrupar del principal)
+  const idsNegocioActivo = useMemo(() => {
+    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const esGlobal = (g) => {
+      const n = normNombre(g?.nombre);
+      return n === 'sin agrupacion' || n === 'discontinuados' || n === 'descontinuados';
+    };
+
+    const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
+    const isFromGroup = rootBizId && Number(activeBizId) !== rootBizId;
+
+    const s = new Set();
+
+    if (isFromGroup) {
+      // SUBNEGOCIO: solo articulos de sus agrupaciones propias (excluye globales inyectados)
+      // Lee tanto articulos JSONB como app_articles_ids
+      for (const g of agrupaciones || []) {
+        if (esGlobal(g)) continue;
+        for (const a of getGroupItemsRaw(g)) {
+          const id = getArtId(a);
+          if (id != null) s.add(id);
+        }
+        const appIds = Array.isArray(g.app_articles_ids) ? g.app_articles_ids : [];
+        for (const raw of appIds) { const n = Number(raw); if (n > 0) s.add(n); }
+      }
+      // Tambien incluir los de Sin Agrupacion y Discontinuados globales
+      for (const g of agrupaciones || []) {
+        if (!esGlobal(g)) continue;
+        for (const a of getGroupItemsRaw(g)) {
+          const id = getArtId(a);
+          if (id != null) s.add(id);
+        }
+        const appIds = Array.isArray(g.app_articles_ids) ? g.app_articles_ids : [];
+        for (const raw of appIds) { const n = Number(raw); if (n > 0) s.add(n); }
+      }
+      if (todoInfo?.todoIds?.size) {
+        for (const id of todoInfo.todoIds) { const n = Number(id); if (n > 0) s.add(n); }
+      }
+    } else {
+      // PRINCIPAL: todos los articulos del arbol (nameById)
+      // Filtrar los asignados a subnegocios si hay orgAssignedIds
+      if (Array.isArray(orgAssignedIds) && orgAssignedIds.length > 0) {
+        const asignadosSubnegocios = new Set(orgAssignedIds.map(Number).filter(n => n > 0));
+        for (const [id] of nameById.entries()) {
+          if (!asignadosSubnegocios.has(id)) s.add(id);
+        }
+      } else {
+        // Sin org o sin datos: todos los articulos
+        for (const [id] of nameById.entries()) s.add(id);
+      }
+    }
+
+    return s;
+  }, [agrupaciones, orgAssignedIds, todoInfo?.todoIds, nameById, activeBizId, rootBusiness]);
+
+  // Opciones del buscador: todos los articulos de todas las agrupaciones del negocio activo
   const opcionesBuscador = useMemo(() => {
-    return Array.from(nameById.entries()).map(([id, nombre]) => ({
-      id,
-      nombre,
-      _search: normalize(nombre),
-    }));
-  }, [nameById]);
+    const seen = new Set();
+    const result = [];
+    for (const g of agrupacionesRich || []) {
+      for (const a of (g.articulos || [])) {
+        const id = Number(a?.id);
+        if (!id || id <= 0 || seen.has(id)) continue;
+        seen.add(id);
+        const nombre = a?.nombre && !String(a.nombre).startsWith('#')
+          ? String(a.nombre)
+          : (metaById.get(id)?.nombre || nameById.get(id) || `#${id}`);
+        result.push({ id, nombre });
+      }
+    }
+    return result;
+  }, [agrupacionesRich, nameById, metaById]);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -1149,6 +1288,30 @@ export default function ArticulosMain(props) {
     );
     return m;
   }, [categorias]);
+
+  // Callbacks estables para SubBusinessCreateModal
+  // Definidos con useCallback para evitar re-renders del modal que bloqueen los inputs
+  const handleSubBizClose = useCallback(() => {
+    setSubBizModalOpen(false);
+    setGroupForSubBiz(null);
+  }, []);
+
+  const handleSubBizCreated = useCallback((newBiz) => {
+    showMiss(`Sub-negocio "${newBiz.name}" creado`);
+    setSubBizModalOpen(false);
+    setGroupForSubBiz(prev => {
+      if (prev?.id) {
+        mutateGroups({ type: 'remove_group', groupId: Number(prev.id) });
+      }
+      return null;
+    });
+    refetchAgrupaciones();
+  }, [showMiss, mutateGroups, refetchAgrupaciones]);
+
+  const handleNeedOrgName = useCallback(() => {
+    setOrgNameInput('');
+    setOrgNameModalOpen(true);
+  }, []);
 
   const handleGroupCreated = useCallback((nombre, id, articulos) => {
     mutateGroups({
@@ -1167,15 +1330,9 @@ export default function ArticulosMain(props) {
 
   // Selección inteligente: Sin Agrupación tiene prioridad, luego favorita al cargar negocio
   useEffect(() => {
-    // No interferir si el usuario clickeó "ver discontinuados"
-    if (showDiscView) return;
-
     const todoId = todoInfo?.todoGroupId;
     const todoCount = todoInfo?.idsSinAgrupCount || 0;
     const todoEmpty = todoCount === 0;
-
-    const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
-    if (recentlyPicked) return;
 
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
     const groupsReady = Array.isArray(agrupacionesRich) && agrupacionesRich.length > 0;
@@ -1183,14 +1340,17 @@ export default function ArticulosMain(props) {
 
     const currentSel = agrupSelRef.current;
 
-    // No sacar al usuario de Discontinuados
     if (currentSel && isDiscontinuadosGroup(currentSel)) return;
+    if (currentSel && todoId && Number(currentSel.id) === Number(todoId)) return;
 
-    // PRIORIDAD 1: Si hay artículos en Sin Agrupación → ir ahí siempre
+    // ── Sin Agrupación tiene artículos ──
     if (!todoEmpty && todoId) {
+      // Guard solo acá: no interferir con picks manuales recientes
+      const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
+      if (recentlyPicked) return;
+
       const isTodoSelected = currentSel && Number(currentSel.id) === Number(todoId);
       if (!isTodoSelected) {
-        console.log(`[ArticulosMain] 📌 Hay ${todoCount} en Sin Agrupación → seleccionando TODO`);
         setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
         setCategoriaSeleccionada(null);
         setFiltroBusqueda('');
@@ -1198,27 +1358,23 @@ export default function ArticulosMain(props) {
       return;
     }
 
-    // PRIORIDAD 2: TODO vacío → mostrar favorita SI el usuario no tiene una selección activa
-    // (solo al cargar/cambiar negocio, no durante la navegación del usuario)
+    // ── Sin Agrupación vacío → favorita o primera ──
+    // Sin guard de tiempo: el vaciado es un evento concreto, navegar inmediatamente
     if (todoEmpty && favoriteGroupId) {
       const fav = (agrupacionesRich || []).find(
         (g) => Number(g?.id) === Number(favoriteGroupId)
       );
 
       if (fav) {
-        // Solo navegar a favorita si no hay nada seleccionado actualmente
-        // o si la selección actual ya no existe en la lista (negocio cambió)
         const selExistsInList = currentSel &&
           (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
 
         if (!selExistsInList) {
-          console.log(`[ArticulosMain] ⭐ Seleccionando favorita: ${fav.nombre}`);
           setAgrupacionSeleccionada(fav);
           setCategoriaSeleccionada(null);
           setFiltroBusqueda('');
         }
       } else {
-        console.log('[ArticulosMain] ⚠️ Favorita no encontrada → limpiando');
         setFavoriteGroupId(null);
       }
     }
@@ -1233,7 +1389,7 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada,
     setFiltroBusqueda,
   ]);
-
+  
   const handleSetFavorite = useCallback((groupId) => {
     setFavoriteGroupId((prev) => {
       const prevNum = Number(prev);
@@ -1268,7 +1424,7 @@ export default function ArticulosMain(props) {
     ) {
       return;
     }
-    const ok = window.confirm(`Eliminar la agrupación "${group.nombre}"?`);
+    const ok = await showConfirm(`¿Eliminar la agrupación "${group.nombre}"? Esta acción no se puede deshacer.`, { danger: true });
     if (!ok) return;
 
     try {
@@ -1298,7 +1454,7 @@ export default function ArticulosMain(props) {
       ? 'Nombre para la nueva agrupación (los artículos de "Sin Agrupación" se moverán aquí):'
       : 'Nuevo nombre para la agrupación:';
 
-    const nuevo = window.prompt(promptMsg, isTodo ? '' : currentName);
+    const nuevo = await showPrompt(promptMsg, isTodo ? '' : currentName);
     if (nuevo == null) return null;
     const nombre = nuevo.trim();
     if (!nombre) return null;
@@ -1316,7 +1472,7 @@ export default function ArticulosMain(props) {
           .filter((n) => Number.isFinite(n) && n > 0);
 
         if (!ids.length) {
-          window.alert('No hay artículos en "Sin agrupación" para capturar.');
+          showAlert('No hay artículos en "Sin agrupación" para capturar.', 'warning');
           return null;
         }
 
@@ -1368,7 +1524,7 @@ export default function ArticulosMain(props) {
       }
     } catch (e) {
       console.error('RENAME_GROUP_ERROR', e);
-      window.alert('No se pudo renombrar la agrupación.');
+      showAlert('No se pudo renombrar la agrupación.', 'error');
       return null;
     }
   }, [
@@ -1420,26 +1576,12 @@ export default function ArticulosMain(props) {
     console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
 
-  // Vista de organización: early return cuando el principal está vacío y hay subnegocios
-  if (isOrgView) {
-    const effectiveDiscIds = discIds.size > 0 ? discIds : localDiscIds;
-    return (
-      <OrgDashboard
-        discGroup={discGroup}
-        discCount={effectiveDiscIds.size}
-        onSelectBusiness={async (biz) => {
-          try { await (selectBusiness ?? setActiveBusiness)?.(biz.id); } catch { }
-        }}
-        onSelectDiscontinuados={() => {
-          // Salir del OrgView y mostrar la tabla con discontinuados seleccionados
-          setShowDiscView(true);
-          markManualPick(); // bloquea el autoselect por 2500ms
-          if (discGroup) setAgrupacionSeleccionada(discGroup);
-        }}
-      />
-    );
-  }
+  useEffect(() => {
+    window.__CAT_SEL = categoriaSeleccionada;
+    console.log('[ArticulosMain] categoriaSeleccionada:', categoriaSeleccionada?.subrubro, '| cats:', categoriaSeleccionada?.categorias?.length);
+  }, [categoriaSeleccionada]);
 
+  // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
@@ -1455,6 +1597,8 @@ export default function ArticulosMain(props) {
           <SalesPickerIcon
             value={rango}
             onChange={setRango}
+            firstDate={firstDateVentas}
+            loadingFirst={loadingFirstVentas}
           />
           <VentasActionsMenu
             rango={rango}
@@ -1470,6 +1614,7 @@ export default function ArticulosMain(props) {
               onChange={(v) => setSearchText(v || '')}
               clearOnPick={false}
               autoFocusAfterPick
+              noResultsText="No se encontró ningún artículo"
               onPick={(opt) => {
                 const id = Number(opt?.id);
                 if (!Number.isFinite(id)) return;
@@ -1487,11 +1632,13 @@ export default function ArticulosMain(props) {
         borderRadius: 12, overflow: 'hidden', height: '75vh',
         boxShadow: '0 1px 4px rgba(0,0,0,.08)'
       }}>
-        <div style={{
-          borderRight: '1px solid #eee', background: '#fafafa',
-          position: 'sticky', top: 0, alignSelf: 'start',
-          height: 'calc(100vh - 0px)', overflowY: 'auto'
-        }}>
+        <div
+          ref={sidebarScrollRef}
+          style={{
+            borderRight: '1px solid #eee', background: '#fafafa',
+            position: 'sticky', top: 0, alignSelf: 'start',
+            height: 'calc(100vh - 0px)', overflowY: 'auto'
+          }}>
           <SidebarCategorias
             categorias={categorias}
             categoriaSeleccionada={categoriaSeleccionada}
@@ -1520,8 +1667,13 @@ export default function ArticulosMain(props) {
             onMutateGroups={mutateGroups}
             onRefetch={refetchAgrupaciones}
             notify={showMiss}
+            onCreateSubBusiness={(agrupacion) => {
+              setGroupForSubBiz(agrupacion);
+              setSubBizModalOpen(true);
+            }}
             activeDivisionId={activeDivisionId}
-            businessId={activeBizId}
+            firstDate={firstDateVentas}
+            loadingFirst={loadingFirstVentas}
             activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
@@ -1534,6 +1686,7 @@ export default function ArticulosMain(props) {
           <TablaArticulos
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
+            orgAssignedIds={orgAssignedIds}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             categoriaSeleccionada={categoriaSeleccionada}
@@ -1546,6 +1699,7 @@ export default function ArticulosMain(props) {
             onCategoriasLoaded={handleCategoriasLoaded}
             onIdsVisibleChange={setActiveIds}
             activeBizId={activeBizId}
+            rootBizId={rootBusiness?.id ? Number(rootBusiness.id) : null}
             reloadKey={reloadKey}
             syncVersion={syncVersion}
             onTodoInfo={handleTodoInfo}
@@ -1589,6 +1743,92 @@ export default function ArticulosMain(props) {
         instructionImage1={instructionImage1}
         instructionImage2={instructionImage2}
       />
+
+      {/* Modal de creación de sub-negocio — aquí para evitar re-renders de SidebarCategorias */}
+      <SubBusinessCreateModal
+        open={subBizModalOpen}
+        agrupacion={groupForSubBiz}
+        onClose={handleSubBizClose}
+        onCreated={handleSubBizCreated}
+        onNeedOrgName={handleNeedOrgName}
+      />
+
+      {/* Modal para nombrar la organización — portal para escapar cualquier overflow/stacking */}
+      {orgNameModalOpen && ReactDOM.createPortal(
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(10,12,16,.72)',
+          backdropFilter: 'blur(6px)',
+          display: 'grid', placeItems: 'center',
+          zIndex: 100001,
+        }}>
+          <div style={{
+            width: 'min(460px, 94vw)',
+            background: '#fff',
+            borderRadius: 18,
+            padding: '32px 28px 24px',
+            boxShadow: '0 8px 40px rgba(0,0,0,.22)',
+            display: 'flex', flexDirection: 'column', gap: 16,
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>🏢</div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>
+                ¿Cómo se llama tu organización?
+              </h3>
+              <p style={{ margin: '8px 0 0', fontSize: '.88rem', color: '#666', lineHeight: 1.5 }}>
+                Tu organización agrupa a todos tus negocios. Podés cambiar este nombre cuando quieras desde Perfil.
+              </p>
+            </div>
+            <input
+              type="text"
+              value={orgNameInput}
+              onChange={e => setOrgNameInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && orgNameInput.trim() && !orgNameSaving) {
+                  (async () => {
+                    setOrgNameSaving(true);
+                    try { await updateOrg(orgNameInput.trim()); } catch { }
+                    setOrgNameSaving(false);
+                    setOrgNameModalOpen(false);
+                  })();
+                }
+              }}
+              placeholder={`Ej: ${organization?.name || 'Mi Grupo'}`}
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '11px 14px', fontSize: '.95rem', fontWeight: 600,
+                border: '2px solid #e0e0e5', borderRadius: 10, outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button
+                onClick={() => setOrgNameModalOpen(false)}
+                disabled={orgNameSaving}
+                style={{ border: 'none', background: 'none', color: '#999', fontSize: '.85rem', cursor: 'pointer', padding: '8px 12px' }}>
+                Omitir por ahora
+              </button>
+              <button
+                disabled={orgNameSaving || !orgNameInput.trim()}
+                onClick={async () => {
+                  setOrgNameSaving(true);
+                  try { await updateOrg(orgNameInput.trim()); } catch { }
+                  setOrgNameSaving(false);
+                  setOrgNameModalOpen(false);
+                }}
+                style={{
+                  border: 'none', borderRadius: 10, padding: '11px 24px',
+                  fontSize: '.88rem', fontWeight: 800, cursor: 'pointer',
+                  background: '#1a1a2e', color: '#fff',
+                  opacity: (orgNameSaving || !orgNameInput.trim()) ? .5 : 1,
+                }}>
+                {orgNameSaving ? 'Guardando…' : 'Guardar nombre'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

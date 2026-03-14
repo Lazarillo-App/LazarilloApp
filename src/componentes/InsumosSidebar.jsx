@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable no-unused-vars */
-// src/componentes/InsumosSidebar.jsx - CON PERSISTENCIA DE VISTA + ASIGNACIÓN A DIVISIONES
+// src/componentes/InsumosSidebar.jsx
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
@@ -21,10 +21,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
 
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
-import { BusinessesAPI } from '@/servicios/apiBusinesses'; // ✅ IMPORTAR
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -87,7 +85,6 @@ const resolveInsumoMonto = (insumo, metaById) => {
       if (meta) {
         const metaMonto = Number(meta.total_gastos_periodo ?? meta.total_gastos ?? meta.importe_total ?? 0);
         if (Number.isFinite(metaMonto) && metaMonto !== 0) return metaMonto;
-
         const metaQty = Number(meta.unidades_compradas ?? meta.total_unidades ?? 0);
         const metaPrecio = Number(meta.precio ?? 0);
         if (Number.isFinite(metaQty) && Number.isFinite(metaPrecio)) return metaQty * metaPrecio;
@@ -104,8 +101,10 @@ function InsumosSidebar({
   setRubroSeleccionado,
 
   businessId,
+  originalBusinessId,
+  // vista viene de InsumosMain y refleja la preferencia guardada para la agrupación actual
   vista,
-  onVistaChange,
+  onVistaChange,  // = handleChangeListMode en InsumosMain (persiste + actualiza estado)
 
   groups = [],
   groupsLoading,
@@ -136,7 +135,6 @@ function InsumosSidebar({
   onManualPick,
   metaById,
 
-  // ✅ División-aware
   activeDivisionId,
   activeDivisionGroupIds = [],
   assignedGroupIds = [],
@@ -145,13 +143,8 @@ function InsumosSidebar({
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
   const loading = groupsLoading;
 
-  // ✅ Modal para asignar a división
   const [divisionModalOpen, setDivisionModalOpen] = useState(false);
   const [groupToMove, setGroupToMove] = useState(null);
-
-  // ✅ NUEVO: Estado local de vista mientras carga la preferencia
-  const [localVista, setLocalVista] = useState(vista);
-  const [loadingPrefs, setLoadingPrefs] = useState(false);
 
   const divisionNum =
     activeDivisionId === null || activeDivisionId === undefined || activeDivisionId === ''
@@ -161,7 +154,7 @@ function InsumosSidebar({
   const isMainDivision =
     divisionNum === null || !Number.isFinite(divisionNum) || divisionNum <= 0;
 
-  /* ===================== Select de grupos (FILTRADO POR DIVISIÓN) ===================== */
+  /* ── Select de grupos ── */
   const opcionesSelect = useMemo(() => {
     const arr = (Array.isArray(groups) ? groups : []).filter(Boolean);
     if (!arr.length) return [];
@@ -180,37 +173,34 @@ function InsumosSidebar({
       if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
       if (discIds.has(idNum)) return false;
-
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
     });
 
+    const todoCount = idsSinAgrupCount ?? 0;
+
     const ordered = [];
-    if (isMainDivision && todo) ordered.push(todo);
+    if (isMainDivision && todo && todoCount > 0) ordered.push(todo);   // primero si tiene insumos
     ordered.push(...middle);
+    if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision]);
+  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount]);
 
   const selectedGroupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
     const actualId = selectedGroupId ? Number(selectedGroupId) : null;
-
     if (actualId != null && idsOpciones.includes(actualId)) return actualId;
-
     const todoIdNum = Number(todoGroupId);
     if (Number.isFinite(todoIdNum) && idsOpciones.includes(todoIdNum)) return todoIdNum;
-
     return '';
   }, [opcionesSelect, selectedGroupId, todoGroupId]);
 
   useEffect(() => {
     const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
 
-    // 🔴 Si no hay opciones, limpiar selección
     if (!opts.length) {
       if (selectedGroupId) {
-        console.log('[InsumosSidebar] 🔄 Sin opciones, limpiando selección');
         onSelectGroupId?.(null);
         setRubroSeleccionado?.(null);
       }
@@ -219,71 +209,44 @@ function InsumosSidebar({
 
     const currentId = selectedGroupId != null ? Number(selectedGroupId) : null;
 
-    // ✅ Si NO hay grupo seleccionado, elegir default
     if (currentId === null) {
       const todoIdNum = Number(todoGroupId);
-      const todoOpt = Number.isFinite(todoIdNum)
-        ? opts.find(o => Number(o.id) === todoIdNum)
-        : null;
-
+      const todoOpt = Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
       const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
-
       if (next) {
-        console.log('[InsumosSidebar] 📌 Seleccionando default:', next.nombre);
         onSelectGroupId?.(Number(next.id));
         setRubroSeleccionado?.(null);
       }
       return;
     }
 
-    // ✅ Si el grupo actual EXISTE en las opciones, NO hacer nada
     const exists = opts.some(o => Number(o.id) === currentId);
-    if (exists) {
-      console.log('[InsumosSidebar] ✅ Grupo actual válido:', currentId);
-      return;
-    }
-
-    // 🔴 El grupo actual ya NO está en las opciones -> elegir alternativa
-    console.log('[InsumosSidebar] ⚠️ Grupo actual inválido, buscando alternativa:', currentId);
+    if (exists) return;
 
     const todoIdNum = Number(todoGroupId);
-    const todoOpt = Number.isFinite(todoIdNum)
-      ? opts.find(o => Number(o.id) === todoIdNum)
-      : null;
-
+    const todoOpt = Number.isFinite(todoIdNum) ? opts.find(o => Number(o.id) === todoIdNum) : null;
     const next = (isMainDivision && todoOpt) ? todoOpt : (opts[0] || null);
-
     if (next) {
-      console.log('[InsumosSidebar] 🔄 Cambiando a:', next.nombre);
       onSelectGroupId?.(Number(next.id));
       setRubroSeleccionado?.(null);
       onManualPick?.();
     }
-  }, [
-    opcionesSelect,
-    selectedGroupId,
-    onSelectGroupId,
-    setRubroSeleccionado,
-    onManualPick,
-    isMainDivision,
-    todoGroupId
-  ]);
-  console.log('[InsumosSidebar] 🔍 Debug:', {
-    opcionesSelectCount: opcionesSelect.length,
-    selectedGroupId,
-    exists: opcionesSelect.some(o => Number(o.id) === Number(selectedGroupId)),
-    opciones: opcionesSelect.map(o => ({ id: o.id, nombre: o.nombre })),
-  });
-  /* ===================== ActiveIds ===================== */
+  }, [opcionesSelect, selectedGroupId, onSelectGroupId, setRubroSeleccionado, onManualPick, isMainDivision, todoGroupId]);
+
+  /* ── ActiveIds ── */
   const activeIds = useMemo(() => {
+    const isTodoSelected = todoGroupId && Number(selectedGroupId) === Number(todoGroupId);
+
+    if (isTodoSelected) {
+      return visibleIds instanceof Set ? visibleIds : new Set();
+    }
+
     if (visibleIds && visibleIds.size) return visibleIds;
 
     if (!selectedGroupId) return null;
 
     const grupoSeleccionado = (groups || []).find((g) => Number(g.id) === Number(selectedGroupId));
     if (!grupoSeleccionado) return null;
-
-    if (esTodoGroup(grupoSeleccionado)) return null;
 
     const items = grupoSeleccionado?.items || grupoSeleccionado?.insumos || [];
     if (!items.length) return new Set();
@@ -293,94 +256,27 @@ function InsumosSidebar({
         .map((item) => Number(item.insumo_id ?? item.id))
         .filter((n) => Number.isFinite(n) && n > 0)
     );
-  }, [visibleIds, selectedGroupId, groups]);
+  }, [visibleIds, selectedGroupId, groups, todoGroupId]);
 
-  /* ===================== ✅ NUEVO: CARGAR PREFERENCIA DE VISTA AL CAMBIAR GRUPO ===================== */
-
-  useEffect(() => {
-    if (!businessId || !selectedGroupId) return;
-
-    const loadViewPref = async () => {
-      try {
-        setLoadingPrefs(true);
-
-        const result = await BusinessesAPI.getViewPrefs(businessId, {
-          divisionId: divisionNum,
-        });
-
-        const groupId = Number(selectedGroupId);
-        const savedVista = result?.byInsumoGroup?.[String(groupId)];
-
-        // ✅ Para insumos, la preferencia se guarda como 'elaborados' o 'no-elaborados'
-        if (savedVista === 'elaborados' || savedVista === 'no-elaborados') {
-          setLocalVista(savedVista);
-          onVistaChange?.(savedVista);
-        } else {
-          // Si no hay preferencia guardada, usar el valor por defecto
-          setLocalVista(vista);
-        }
-      } catch (error) {
-        console.error('[InsumosSidebar] Error cargando preferencia de vista:', error);
-        setLocalVista(vista);
-      } finally {
-        setLoadingPrefs(false);
-      }
-    };
-
-    loadViewPref();
-  }, [businessId, selectedGroupId, divisionNum]);
-
-  /* ===================== ✅ NUEVO: GUARDAR PREFERENCIA AL CAMBIAR TOGGLE ===================== */
-
-  const handleVistaChange = useCallback(
-    async (newVista) => {
-      if (!newVista || !businessId || !selectedGroupId) return;
-
-      // Actualizar inmediatamente la UI
-      setLocalVista(newVista);
-      onVistaChange?.(newVista);
-
-      // Guardar en backend
-      try {
-        await BusinessesAPI.saveViewPref(businessId, {
-          scope: 'insumo',
-          agrupacionId: Number(selectedGroupId),
-          viewMode: newVista,
-          divisionId: divisionNum,
-        });
-      } catch (error) {
-        console.error('[InsumosSidebar] Error guardando preferencia de vista:', error);
-        notify?.('Error al guardar preferencia de vista', 'error');
-      }
-    },
-    [businessId, selectedGroupId, divisionNum, onVistaChange, notify]
-  );
-
-  /* ===================== Catálogo rubros ===================== */
+  /* ── Catálogo rubros ── */
   const catalogRubros = useMemo(() => {
     if (!rubrosMap || typeof rubrosMap.get !== 'function') return [];
-
     const arr = [];
     for (const [codigo, info] of rubrosMap.entries()) {
       const codigoNum = Number(codigo);
       if (!Number.isFinite(codigoNum)) continue;
-
-      arr.push({
-        codigo: codigoNum,
-        nombre: info?.nombre || String(codigoNum),
-        insumos: [],
-      });
+      arr.push({ codigo: codigoNum, nombre: info?.nombre || String(codigoNum), insumos: [] });
     }
-
     arr.sort((a, b) =>
       String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base', numeric: true })
     );
-
     return arr;
   }, [rubrosMap]);
 
+  /* ── Tree por rubro — usa `vista` (prop de InsumosMain, ya filtrada) ── */
   const treeByRubro = useMemo(() => {
-    const keepEmpty = !activeIds;
+    const isTodoSelected = todoGroupId && Number(selectedGroupId) === Number(todoGroupId);
+    const keepEmpty = activeIds === null && !isTodoSelected;
 
     let baseRubros = keepEmpty ? catalogRubros : rubrosSafe;
 
@@ -399,32 +295,31 @@ function InsumosSidebar({
       }));
     }
 
+    // El filtro por elaborados/no-elaborados ya lo aplica InsumosMain en filteredBase
+    // que es lo que llega como `rubros` prop. Solo necesitamos filtrar el catálogo
+    // cuando keepEmpty=true (sin grupo seleccionado)
     let rubrosFiltrados = baseRubros;
-
-    // ✅ Usar localVista en lugar de vista
-    if (localVista === 'elaborados') {
-      rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
-        const codigo = String(rubro.codigo || '');
-        const info = rubrosMap?.get(codigo);
-        return info?.es_elaborador === true;
-      });
-    } else if (localVista === 'no-elaborados') {
-      rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
-        const codigo = String(rubro.codigo || '');
-        const info = rubrosMap?.get(codigo);
-        return info?.es_elaborador !== true;
-      });
+    if (keepEmpty && rubrosMap) {
+      if (vista === 'elaborados') {
+        rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
+          const info = rubrosMap?.get(String(rubro.codigo || ''));
+          return info?.es_elaborador === true;
+        });
+      } else if (vista === 'no-elaborados') {
+        rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
+          const info = rubrosMap?.get(String(rubro.codigo || ''));
+          return info?.es_elaborador !== true;
+        });
+      }
     }
 
     const pruned = rubrosFiltrados.map((rubro) => {
       const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
       if (!activeIds) return rubro;
-
       const filtered = insumos.filter((insumo) => {
         const id = safeId(insumo);
         return id != null && activeIds.has(id);
       });
-
       return { ...rubro, insumos: filtered };
     });
 
@@ -447,7 +342,7 @@ function InsumosSidebar({
     });
 
     return withMonto;
-  }, [catalogRubros, rubrosSafe, localVista, rubrosMap, activeIds, metaById]);
+  }, [catalogRubros, rubrosSafe, vista, rubrosMap, activeIds, metaById, todoGroupId, selectedGroupId]);
 
   const handleGroupChange = useCallback(
     (event) => {
@@ -473,7 +368,7 @@ function InsumosSidebar({
   const isTodoView =
     todoGroupId && selectedGroupId && Number(selectedGroupId) === Number(todoGroupId);
 
-  /* ===================== Modal asignación división ===================== */
+  /* ── Modal asignación división ── */
   const handleMoveGroupToDivision = useCallback((group) => {
     setGroupToMove(group);
     setDivisionModalOpen(true);
@@ -482,7 +377,6 @@ function InsumosSidebar({
   const handleDivisionAssign = useCallback(
     async (divisionId) => {
       if (!groupToMove) return;
-
       try {
         await assignInsumoGroupToDivisionAPI({
           businessId,
@@ -490,11 +384,7 @@ function InsumosSidebar({
           divisionId: divisionId === 'principal' ? null : Number(divisionId),
         });
 
-        const divisionName = divisionId === 'principal'
-          ? 'División Principal'
-          : `División ${divisionId}`;
-
-        // ✅ EMITIR usando helper
+        const divisionName = divisionId === 'principal' ? 'División Principal' : `División ${divisionId}`;
         notifyGroupMovedToDivision({
           businessId,
           groupId: Number(groupToMove.id),
@@ -505,10 +395,8 @@ function InsumosSidebar({
         });
 
         notify?.(`Agrupación "${groupToMove.nombre}" movida correctamente`, 'success');
-
         await refetchAssignedGroups?.();
         await onRefetch?.();
-
         setDivisionModalOpen(false);
         setGroupToMove(null);
       } catch (err) {
@@ -521,180 +409,154 @@ function InsumosSidebar({
 
   return (
     <div className="sidebar">
-      <FormControl size="small" fullWidth sx={{ mb: 2 }}>
-        <InputLabel>Agrupaciones</InputLabel>
-        <Select
-          label="Agrupaciones"
-          sx={{ fontWeight: '500' }}
-          value={selectedGroupValue}
-          onChange={handleGroupChange}
-          renderValue={(value) => {
-            const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
-            return g ? g.nombre : 'Sin agrupación';
-          }}
-        >
-          {opcionesSelect.map((g) => (
-            <MenuItem key={g.id} value={Number(g.id)}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
-                  {g.nombre}
-                  {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
-                    <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
-                  )}
-                </span>
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        background: '#fafafa',
+        paddingBottom: 4,
+        borderBottom: '1px solid #eee',
+        marginBottom: 4,
+      }}>
+        <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
+          <InputLabel>Agrupaciones</InputLabel>
+          <Select
+            label="Agrupaciones"
+            sx={{ fontWeight: '500' }}
+            value={selectedGroupValue}
+            onChange={handleGroupChange}
+            renderValue={(value) => {
+              const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
+              return g ? g.nombre : 'Sin agrupación';
+            }}
+          >
+            {opcionesSelect.map((g) => (
+              <MenuItem key={g.id} value={Number(g.id)}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
+                  <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
+                    {g.nombre}
+                    {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
+                      <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
+                    )}
+                  </span>
 
-                <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {(() => {
-                    const isTodo = esTodoGroup(g);
-                    const isDisc = esDiscontinuadosGroup(g);
+                  <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {(() => {
+                      const isTodo = esTodoGroup(g);
+                      const isDisc = esDiscontinuadosGroup(g);
 
-                    if (isDisc) return null;
+                      if (isDisc) return null;
 
-                    if (isTodo) {
+                      if (isTodo) {
+                        return (
+                          isMainDivision && onRenameGroup && (
+                            <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
+                                <EditIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )
+                        );
+                      }
+
                       return (
-                        isMainDivision &&
-                        onRenameGroup && (
-                          <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
-                              <EditIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )
-                      );
-                    }
+                        <>
+                          {onSetFavorite && (
+                            <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
+                                {Number(favoriteGroupId) === Number(g.id) ? (
+                                  <StarIcon fontSize="inherit" color="warning" />
+                                ) : (
+                                  <StarBorderIcon fontSize="inherit" />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          )}
 
-                    return (
-                      <>
-                        {onSetFavorite && (
-                          <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
-                              {Number(favoriteGroupId) === Number(g.id) ? (
-                                <StarIcon fontSize="inherit" color="warning" />
-                              ) : (
-                                <StarBorderIcon fontSize="inherit" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        )}
-
-                        {onEditGroup && (
-                          <Tooltip title="Renombrar agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                // ✅ Guardar nombre anterior
-                                const oldName = g.nombre;
-
-                                // ✅ Función wrapper para emitir después de renombrar
-                                const handleRename = async () => {
-                                  const result = await onEditGroup(g);
-
-                                  // Si onEditGroup devuelve el nuevo nombre, emitimos
-                                  if (result && result.newName && result.newName !== oldName) {
-                                    try {
-                                      window.dispatchEvent(
-                                        new CustomEvent('ui:action', {
+                          {onEditGroup && (
+                            <Tooltip title="Renombrar agrupación">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const oldName = g.nombre;
+                                  const handleRename = async () => {
+                                    const result = await onEditGroup(g);
+                                    if (result && result.newName && result.newName !== oldName) {
+                                      try {
+                                        window.dispatchEvent(new CustomEvent('ui:action', {
                                           detail: {
-                                            businessId,
-                                            kind: 'group_rename',
-                                            scope: 'insumo',
+                                            businessId, kind: 'group_rename', scope: 'insumo',
                                             title: 'Agrupación renombrada',
                                             message: `"${oldName}" → "${result.newName}"`,
                                             createdAt: new Date().toISOString(),
-                                            payload: {
-                                              groupId: Number(g.id),
-                                              oldName,
-                                              newName: result.newName,
-                                            },
+                                            payload: { groupId: Number(g.id), oldName, newName: result.newName },
                                           },
-                                        })
-                                      );
-                                    } catch (err) {
-                                      console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                        }));
+                                      } catch (err) {
+                                        console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                      }
                                     }
-                                  }
-                                };
+                                  };
+                                  handleRename();
+                                }}
+                              >
+                                <EditIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
 
-                                handleRename();
-                              }}
-                            >
-                              <EditIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-
-                        {onDeleteGroup && (
-                          <Tooltip title="Eliminar agrupación">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                // ✅ Emitir notificación ANTES de eliminar
-                                try {
-                                  window.dispatchEvent(
-                                    new CustomEvent('ui:action', {
+                          {onDeleteGroup && (
+                            <Tooltip title="Eliminar agrupación">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    window.dispatchEvent(new CustomEvent('ui:action', {
                                       detail: {
-                                        businessId,
-                                        kind: 'group_delete',
-                                        scope: 'insumo',
+                                        businessId, kind: 'group_delete', scope: 'insumo',
                                         title: 'Agrupación eliminada',
                                         message: `"${g.nombre}" fue eliminada.`,
                                         createdAt: new Date().toISOString(),
-                                        payload: {
-                                          groupId: Number(g.id),
-                                          groupName: g.nombre,
-                                        },
+                                        payload: { groupId: Number(g.id), groupName: g.nombre },
                                       },
-                                    })
-                                  );
-                                } catch (err) {
-                                  console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
-                                }
+                                    }));
+                                  } catch (err) {
+                                    console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                  }
+                                  onDeleteGroup(g);
+                                }}
+                              >
+                                <DeleteIcon fontSize="inherit" color="error" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </span>
+                </div>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
 
-                                onDeleteGroup(g);
-                              }}
-                            >
-                              <DeleteIcon fontSize="inherit" color="error" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-
-                        {/* ✅ asignar a división (solo en Principal y no para TODO/DISC) */}
-                        {isMainDivision && !isTodo && !isDisc && (
-                          <Tooltip title="Asignar a división">
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleMoveGroupToDivision(g); }}>
-                              <ViewModuleIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </>
-                    );
-                  })()}
-                </span>
-              </div>
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      {/* ✅ ACTUALIZADO: usar localVista y handleVistaChange con disabled */}
-      <div style={{ padding: '2px 0 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={localVista}
-          onChange={(_, val) => {
-            if (!val) return;
-            handleVistaChange(val);
-          }}
-          disabled={loadingPrefs}
-        >
-          <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
-          <ToggleButton value="elaborados">Elaborados</ToggleButton>
-        </ToggleButtonGroup>
+        {/* Toggle elaborados / no-elaborados */}
+        <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={vista}
+            onChange={(_, val) => {
+              if (!val) return;
+              onVistaChange?.(val);
+            }}
+          >
+            <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
+            <ToggleButton value="elaborados">Elaborados</ToggleButton>
+          </ToggleButtonGroup>
+        </div>
       </div>
 
       <ul className="sidebar-draggable-list">
@@ -704,7 +566,6 @@ function InsumosSidebar({
           treeByRubro.map((rubro) => {
             const keyStr = String(rubro?.codigo || rubro?.nombre || 'sin-codigo');
             const active = rubroSeleccionado?.codigo === rubro?.codigo;
-
             const count = countInsumosRubro(rubro);
             const monto = montoInsumosRubro(rubro);
 
@@ -739,6 +600,7 @@ function InsumosSidebar({
                     todoGroupId={todoGroupId}
                     isTodoView={isTodoView}
                     onReloadCatalogo={onReloadCatalogo}
+                    businessId={originalBusinessId || businessId}
                   />
                 </div>
               </li>
@@ -756,17 +618,13 @@ function InsumosSidebar({
         )}
       </ul>
 
-      {/* ✅ Modal de asignación a división */}
       {divisionModalOpen && (
         <AssignGroupToDivisionModal
           open={divisionModalOpen}
           group={groupToMove}
           businessId={businessId}
           currentDivisionId={activeDivisionId ?? null}
-          onClose={() => {
-            setDivisionModalOpen(false);
-            setGroupToMove(null);
-          }}
+          onClose={() => { setDivisionModalOpen(false); setGroupToMove(null); }}
           onAssign={handleDivisionAssign}
         />
       )}

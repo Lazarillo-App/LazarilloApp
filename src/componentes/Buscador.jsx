@@ -13,6 +13,7 @@ export default function Buscador({
   clearOnFocus = false,
   clearOnPick = true,
   autoFocusAfterPick = false,
+  noResultsText = null,  // ej: "No se encontraron artículos"
 }) {
   const [inputValue, setInputValue] = useState(value || '');
   const [open, setOpen] = useState(false);
@@ -195,9 +196,15 @@ export default function Buscador({
       return String(a.opt._label).localeCompare(String(b.opt._label), 'es', { sensitivity: 'base', numeric: true });
     });
 
-    // cap razonable (podés bajarlo a 80 si querés)
-    return scored.slice(0, 120).map((x) => x.opt);
-  }, [normalize, scoreOption]);
+    const results = scored.slice(0, 120).map((x) => x.opt);
+
+    // Si no hay resultados y hay texto, inyectar centinela para mostrar mensaje
+    if (results.length === 0 && qNorm && noResultsText) {
+      return [{ _isNoResults: true, _label: noResultsText, id: '__no_results__' }];
+    }
+
+    return results;
+  }, [normalize, scoreOption, noResultsText]);
 
   // ========= handlers =========
   const handleFocus = useCallback(() => {
@@ -219,6 +226,9 @@ export default function Buscador({
 
   const handleChange = useCallback((_, opt, reason) => {
     if (reason === 'selectOption' && opt) {
+      // bloquear el centinela "sin resultados"
+      if (opt?._isNoResults) return;
+
       onPick?.(opt);
 
       if (clearOnPick) {
@@ -259,9 +269,28 @@ export default function Buscador({
       onChange={handleChange}
       clearOnEscape
       forcePopupIcon={false}
+      noOptionsText={
+        noResultsText && inputValue.trim()
+          ? noResultsText
+          : 'Sin resultados'
+      }
       renderOption={(props, option) => {
         // React warning: no spread de key
         const { key, ...rest } = props;
+
+        // Centinela "sin resultados" — mostrar deshabilitado, no seleccionable
+        if (option?._isNoResults) {
+          return (
+            <li
+              key="__no_results__"
+              {...rest}
+              onClick={(e) => e.preventDefault()}
+              style={{ pointerEvents: 'none', color: 'var(--color-fg-muted, #9ca3af)', fontStyle: 'italic', fontSize: '0.875rem', padding: '8px 16px' }}
+            >
+              {option._label}
+            </li>
+          );
+        }
 
         const label = String(option?._label ?? option?.nombre ?? option?.label ?? option ?? '');
 

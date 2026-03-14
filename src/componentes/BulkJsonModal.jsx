@@ -1,5 +1,6 @@
 // src/componentes/BulkJsonModal.jsx
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button } from "@mui/material";
+import { showAlert } from '../servicios/appAlert';
 import React, { useState, useEffect } from "react";
 
 export default function BulkJsonModal({ open, onClose, onConfirm, example }) {
@@ -13,7 +14,7 @@ export default function BulkJsonModal({ open, onClose, onConfirm, example }) {
       if (!Array.isArray(arr)) throw new Error("El JSON debe ser un array de objetos");
       onConfirm(arr);
     } catch (e) {
-      alert(`JSON inválido: ${e.message}`);
+      showAlert(`JSON inválido: ${e.message}`, 'error');
     }
   };
 

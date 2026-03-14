@@ -1,8 +1,10 @@
+/* eslint-disable no-undef */
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
@@ -15,8 +17,6 @@ import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 import { useOrganization } from '../context/OrganizationContext';
-import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
-import BusinessIcon from '@mui/icons-material/Business';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -103,6 +103,7 @@ function ArticuloAccionesMenu({
   onDiscontinuadoChange,
   treeMode = 'cat-first',
   businessId,
+  rootBizId: rootBizIdProp = null,
   allowedIds,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -111,10 +112,13 @@ function ArticuloAccionesMenu({
   const [isMoving, setIsMoving] = useState(false);
   const [openCrearAgr, setOpenCrearAgr] = useState(false);
   const [preselect, setPreselect] = useState(null);
-  const [dlgSubNegocioOpen, setDlgSubNegocioOpen] = useState(false);
-  const [targetBizId, setTargetBizId] = useState('');
-  const [isAssigning, setIsAssigning] = useState(false);
-  const { allBusinesses, rootBusiness } = useOrganization();
+  const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
+  // Datos de origen capturados cuando se cierra el diálogo de reactivar
+  // fromGroupId/fromBizId/fromGroupName se buscan en las agrupaciones activas
+  // y en el prop agrupacionSeleccionada (contexto actual del artículo)
+  const [origenReactivar, setOrigenReactivar] = useState(null);
+
+  const { rootBusiness, allBusinesses } = useOrganization();
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
@@ -145,6 +149,14 @@ function ArticuloAccionesMenu({
     null;
 
   const effectiveBusinessId = toBizId(effectiveBusinessIdRaw);
+
+  // Para operaciones de agrupaciones, siempre usar el negocio activo REAL del localStorage
+  // (el prop `businessId` puede ser el ID de un negocio padre, no el activo actual)
+  const realActiveBizId = toBizId(
+    localStorage.getItem('activeBusinessId') ??
+    localStorage.getItem('effectiveBusinessId') ??
+    businessId
+  );
 
   const articuloDisplayName = useMemo(() => {
     if (!articulo) return `Artículo #${articuloIdNum || ''}`;
@@ -204,14 +216,24 @@ function ArticuloAccionesMenu({
         let resolvedDiscId = discontinuadosId;
 
         if (!resolvedDiscId) {
-          // Subnegocio sin Discontinuados propio → create-or-move redirige al principal
+          // Subnegocio sin Discontinuados propio → crear en el negocio raíz
           const res = await httpBiz('/agrupaciones/create-or-move', {
             method: 'POST',
             body: { nombre: 'Discontinuados', ids: [idNum] },
-          });
+          }, agrupBizId);
           resolvedDiscId = res?.id ? Number(res.id) : null;
         } else {
           // Discontinuados vive en el principal → usar discBizId
+          console.log('[DISCO DEBUG]', {
+            rootBizIdProp,
+            rootBizIdFromContext,
+            rootBizId,
+            agrupBizId,
+            discBizId,
+            effectiveBusinessId,
+            discontinuadosGroup,
+            resolvedDiscId,
+          });
           await httpBiz(`/agrupaciones/${resolvedDiscId}/articulos`, {
             method: 'PUT',
             body: { ids: [idNum] },
@@ -249,6 +271,8 @@ function ArticuloAccionesMenu({
               payload: {
                 prev: {
                   fromGroupId: currentGroupId ?? null,
+                  fromBizId: agrupBizId ?? null,
+                  fromGroupName: agrupacionSeleccionada?.nombre ?? null,
                   discontinuadosGroupId: Number(resolvedDiscId ?? discontinuadosId),
                   wasInDiscontinuados: false,
                 },
@@ -264,38 +288,32 @@ function ArticuloAccionesMenu({
 
       } else {
         // ===========================
-        // ✅ REACTIVAR
+        // ✅ REACTIVAR → abrir diálogo de confirmación
         // ===========================
-        // Discontinuados vive en el principal → usar discBizId
-        await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
-          method: 'DELETE',
-        }, discBizId);
+        // Consultar al backend cuál es el grupo de origen real del artículo
+        // (busca en toda la organización, excluyendo Discontinuados/Todo)
+        let origenData = null;
+        try {
+          const res = await httpBiz(
+            `/agrupaciones/articulo/${idNum}/origen`,
+            { method: 'GET' },
+            discBizId
+          );
+          origenData = res?.origen ?? null;
+        } catch (e) {
+          console.warn('[reactivar] No se pudo obtener origen:', e.message);
+        }
 
-        onMutateGroups?.({
-          type: 'remove',
-          groupId: discontinuadosId,
-          ids: [idNum],
+        setOrigenReactivar({
+          fromGroupId: origenData?.groupId ?? null,
+          fromGroupName: origenData?.groupName ?? null,
+          fromBizId: origenData?.bizId ?? null,
+          fromBizName: origenData?.bizName ?? null,
         });
 
-        // ✅ Emitir evento UI
-        pushUi({
-          kind: 'info',
-          scope: 'articulo',
-          title: `✅ ${articuloDisplayName} reactivado`,
-          message: `"${articuloDisplayName}" volvió a estar disponible.`,
-          payload: {
-            ids: [idNum],
-            discontinuadosGroupId: Number(discontinuadosId),
-            prev: {
-              fromGroupId: currentGroupId ?? null,
-              discontinuadosGroupId: Number(discontinuadosId),
-              wasInDiscontinuados: true,
-            },
-          },
-        });
-
-        // ✅ Llamar handler SIN navegar (stay: true)
-        onDiscontinuadoChange?.(idNum, false, { stay: true });
+        handleClose();
+        setTimeout(() => setDlgReactivarOpen(true), 0);
+        return; // la ejecución real la hace el diálogo
       }
 
       if (onRefetch) await onRefetch();
@@ -307,70 +325,109 @@ function ArticuloAccionesMenu({
     }
   }
 
-  // BusinessId del principal - para todas las ops de Discontinuados
-  const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
-  // En subnegocio, Discontinuados vive en el principal → usar rootBizId
-  const discBizId = rootBizId || effectiveBusinessId;
+  // BusinessId del principal - las agrupaciones son globales y viven en el negocio raíz.
+  // Prioridad: 1) prop rootBizId (pasada desde ArticulosMain, siempre disponible)
+  //            2) rootBusiness del OrganizationContext (puede tardar en cargar)
+  //            3) effectiveBusinessId (fallback: el negocio activo)
+  const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
+  const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
 
-  // Subnegocios disponibles (excluir el actual y el principal)
-  const subNegocios = useMemo(() => {
-    const principalId = rootBusiness?.id;
-    return (allBusinesses || [])
-      .filter((b) => b.id !== principalId && String(b.id) !== String(effectiveBusinessId))
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  }, [allBusinesses, rootBusiness, effectiveBusinessId]);
+  // Nombre del negocio activo para mostrar en confirmación de reactivación
+  const activeBusinessName = useMemo(() => {
+    const biz = (allBusinesses || []).find(b => Number(b.id) === Number(realActiveBizId || effectiveBusinessId));
+    return biz?.nombre || biz?.name || `Negocio #${realActiveBizId || effectiveBusinessId || '?'}`;
+  }, [allBusinesses, realActiveBizId, effectiveBusinessId]);
 
-  const hasSubNegocios = subNegocios.length > 0;
+  // Grupo de origen del artículo (el grupo real donde estaba antes de discontinuarse)
+  // Lo buscamos en todas las agrupaciones NO-Discontinuados que contienen el artículo
+  const grupoOrigenArticulo = useMemo(() => {
+    if (!Number.isFinite(articuloIdNum)) return null;
+    return (agrupaciones || []).find(g => {
+      if (isDiscontinuadosGroup(g)) return false;
+      const n = norm(g?.nombre);
+      if (n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' || n === 'sin agrupar' || n === 'sin grupo') return false;
+      return (g.articulos || []).some(a => Number(a?.id) === articuloIdNum);
+    }) || null;
+  }, [agrupaciones, articuloIdNum]);
 
-  async function asignarASubnegocio() {
+  // Resuelve el bizId correcto para operar sobre una agrupación dada
+  const getAgrupBizId = useCallback((_agrupacion) => {
+    // No usar agrupacion.business_id - puede ser incorrecto en contexto de subnegocio
+    // Siempre usar el negocio activo real
+    return realActiveBizId || rootBizId || effectiveBusinessId;
+  }, [realActiveBizId, rootBizId, effectiveBusinessId]);
+
+  const agrupBizId = realActiveBizId || rootBizId || effectiveBusinessId;
+  // Discontinuados es global y vive siempre en el negocio principal.
+  // Para cualquier operación sobre él (DELETE artículo, move-items desde él)
+  // hay que usar rootBizId, no el negocio activo (que puede ser un subnegocio).
+  const discBizId = rootBizId || agrupBizId;
+
+  async function ejecutarReactivar() {
     const idNum = articuloIdNum;
-    if (!idNum || !targetBizId) return;
-    setIsAssigning(true);
+    if (!Number.isFinite(idNum) || !Number.isFinite(discontinuadosId)) return;
+
+    const { fromGroupId, fromBizId } = origenReactivar || {};
+
     try {
-      // Obtener (o crear) el grupo Sin Agrupación del subnegocio destino
-      const todo = await ensureTodo(Number(targetBizId));
-      if (!todo?.id) throw new Error('No se pudo obtener el grupo TODO del subnegocio');
+      // 1. Quitar de Discontinuados (siempre en el negocio principal)
+      await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${idNum}`, {
+        method: 'DELETE',
+      }, discBizId);
 
-      // Agregar el artículo al grupo TODO del subnegocio destino
-      await httpBiz(`/agrupaciones/${todo.id}/articulos`, {
-        method: 'PUT',
-        body: { ids: [idNum] },
-      }, Number(targetBizId));
-
-      // Quitar del TODOS los grupos del negocio origen que contengan este artículo
-      // (puede estar en Sin Agrupación o en una agrupación específica)
-      const gruposConArticulo = (agrupaciones || []).filter(g =>
-        (g.articulos || []).some(a => Number(a?.id) === idNum)
-      );
-      for (const g of gruposConArticulo) {
+      // 2. Si tenemos grupo origen, agregar ahí también
+      if (fromGroupId && fromBizId) {
         try {
-          await httpBiz(`/agrupaciones/${g.id}/articulos/${idNum}`, {
-            method: 'DELETE',
-          }, effectiveBusinessId);
-          onMutateGroups?.({ type: 'remove', groupId: Number(g.id), ids: [idNum] });
-        } catch (e) {
-          console.warn(`No se pudo quitar del grupo ${g.id}:`, e);
+          await httpBiz(`/agrupaciones/${fromGroupId}/articulos`, {
+            method: 'PUT',
+            body: { ids: [idNum] },
+          }, fromBizId);
+        } catch (e2) {
+          console.warn('[ejecutarReactivar] No se pudo agregar al grupo origen:', e2.message);
         }
       }
-      // Si no estaba en ningún grupo (estaba en Sin Agrupación nativa)
-      // notificar afterMutation para que TablaArticulos lo excluya
-      onAfterMutation?.([idNum]);
 
-      const targetBiz = subNegocios.find(b => String(b.id) === String(targetBizId));
-      notify?.(`Artículo asignado a ${targetBiz?.name || 'subnegocio'}`, 'success');
+      // 3. Mutación optimista
+      onMutateGroups?.({
+        type: 'remove',
+        groupId: discontinuadosId,
+        ids: [idNum],
+      });
+      if (fromGroupId) {
+        onMutateGroups?.({
+          type: 'append',
+          groupId: fromGroupId,
+          articulos: [{ id: idNum }],
+          baseById,
+        });
+      }
+
       pushUi({
         kind: 'info',
         scope: 'articulo',
-        title: 'Artículo asignado',
-        message: `"${articuloDisplayName}" → ${targetBiz?.name || 'subnegocio'}.`,
-        payload: { ids: [idNum], targetBizId: Number(targetBizId) },
+        title: `✅ ${articuloDisplayName} reactivado`,
+        message: fromGroupId
+          ? `"${articuloDisplayName}" volvió a "${origenReactivar?.fromGroupName ?? 'su agrupación'}".`
+          : `"${articuloDisplayName}" volvió a estar disponible.`,
+        payload: {
+          ids: [idNum],
+          discontinuadosGroupId: Number(discontinuadosId),
+          prev: {
+            fromGroupId: fromGroupId ?? null,
+            fromBizId: fromBizId ?? null,
+            discontinuadosGroupId: Number(discontinuadosId),
+            wasInDiscontinuados: true,
+          },
+        },
       });
-      setDlgSubNegocioOpen(false);
+
+      onDiscontinuadoChange?.(idNum, false, { stay: true });
+      if (onRefetch) await onRefetch();
     } catch (e) {
-      console.error('ASIGNAR_SUBNEGOCIO_ERROR', e);
-      notify?.('No se pudo asignar al subnegocio', 'error');
+      console.error('REACTIVAR_ERROR', e);
+      notify?.('No se pudo reactivar el artículo', 'error');
     } finally {
-      setIsAssigning(false);
+      setDlgReactivarOpen(false);
     }
   }
 
@@ -389,21 +446,29 @@ function ArticuloAccionesMenu({
 
     setIsMoving(true);
     try {
+      const destGroup = (agrupaciones || []).find((g) => Number(g.id) === toId);
+      const fromGroup = (agrupaciones || []).find((g) => Number(g.id) === fromId);
+      // Si el origen es Discontinuados, usar discBizId (negocio principal).
+      // Para el destino, usar agrupBizId (negocio activo).
+      const fromIsDisc = fromId != null && fromId === discontinuadosId;
+      const fromBizId = fromIsDisc ? discBizId : getAgrupBizId(fromGroup);
+      const toBizId = getAgrupBizId(destGroup);
+
       if (fromId) {
         try {
           await httpBiz(`/agrupaciones/${fromId}/move-items`, {
             method: 'POST',
             body: { toId, ids: [idNum] },
-          });
+          }, fromBizId);
         } catch {
           await httpBiz(`/agrupaciones/${toId}/articulos`, {
             method: 'PUT',
             body: { ids: [idNum] },
-          });
+          }, toBizId);
           try {
             await httpBiz(`/agrupaciones/${fromId}/articulos/${idNum}`, {
               method: 'DELETE',
-            });
+            }, fromBizId);
           } catch { }
         }
 
@@ -418,7 +483,7 @@ function ArticuloAccionesMenu({
         await httpBiz(`/agrupaciones/${toId}/articulos`, {
           method: 'PUT',
           body: { ids: [idNum] },
-        });
+        }, agrupBizId);;
         onMutateGroups?.({
           type: 'append',
           groupId: toId,
@@ -426,8 +491,6 @@ function ArticuloAccionesMenu({
           baseById,
         });
       }
-
-      const destGroup = (agrupaciones || []).find((g) => Number(g.id) === toId);
 
       notify?.(`Artículo #${idNum} movido`, 'success');
 
@@ -481,11 +544,16 @@ function ArticuloAccionesMenu({
 
     if (!currentGroupId) return;
     try {
-      await httpBiz(`/agrupaciones/${currentGroupId}/articulos/${idNum}`, {
-        method: 'DELETE',
-      });
+      // Usar create-or-move para mover a Sin Agrupación globalmente
+      // Siempre usar rootBizId para que apunte al Sin Agrupación del principal
+      // (el subnegocio from_group comparte los grupos especiales del principal)
+      const sinAgrupBizId = rootBizId || agrupBizId;
+      await httpBiz('/agrupaciones/create-or-move', {
+        method: 'POST',
+        body: { nombre: 'Sin Agrupación', ids: [idNum] },
+      }, sinAgrupBizId);
 
-      notify?.(`Artículo #${idNum} quitado de ${agrupacionSeleccionada?.nombre}`, 'success');
+      notify?.(`Artículo quitado de "${agrupacionSeleccionada?.nombre}" y enviado a Sin Agrupación`, 'success');
 
       pushUi({
         kind: 'info',
@@ -512,9 +580,17 @@ function ArticuloAccionesMenu({
   }
 
   const isArticuloBloqueadoCreate = useMemo(() => {
+    // Solo bloquear artículos que están en agrupaciones REALES
+    // (no TODO/Sin Agrupación, no Discontinuados)
+    const esTodo = (g) => {
+      const n = norm(g?.nombre);
+      return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' ||
+        n === 'sin agrupar' || n === 'sin grupo';
+    };
+
     const assigned = new Set();
     (agrupaciones || [])
-      .filter((g) => (g?.nombre || '').toUpperCase() !== 'TODO')
+      .filter((g) => !esTodo(g) && !isDiscontinuadosGroup(g))
       .forEach((g) =>
         (g.articulos || []).forEach((a) => {
           const n = Number(a?.id);
@@ -581,16 +657,6 @@ function ArticuloAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 1b. Asignar a subnegocio (solo si hay subnegocios) */}
-        {hasSubNegocios && (
-          <MenuItem onClick={() => { handleClose(); setTimeout(() => setDlgSubNegocioOpen(true), 0); }}>
-            <ListItemIcon>
-              <BusinessIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Asignar a subnegocio…</ListItemText>
-          </MenuItem>
-        )}
-
         { /* 2. Quitar de esta agrupación */}
         <MenuItem onClick={quitarDeActual} disabled={isTodo}>
           <ListItemIcon>
@@ -631,36 +697,6 @@ function ArticuloAccionesMenu({
         </MenuItem>
       </Menu>
 
-      {/* Dialog: Asignar a subnegocio */}
-      <Dialog open={dlgSubNegocioOpen} onClose={() => setDlgSubNegocioOpen(false)}>
-        <DialogTitle>Asignar "{articuloDisplayName}" a subnegocio</DialogTitle>
-        <DialogContent>
-          <TextField
-            select
-            SelectProps={{ native: true }}
-            value={targetBizId}
-            onChange={(e) => setTargetBizId(e.target.value)}
-            fullWidth
-            sx={{ mt: 1 }}
-            label="Subnegocio destino"
-          >
-            <option value="" disabled></option>
-            {subNegocios.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </TextField>
-          <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
-            El artículo aparecerá en "Sin Agrupación" del subnegocio destino.
-          </p>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDlgSubNegocioOpen(false)} disabled={isAssigning}>Cancelar</Button>
-          <Button onClick={asignarASubnegocio} variant="contained" disabled={!targetBizId || isAssigning}>
-            {isAssigning ? 'Asignando…' : 'Asignar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover artículo #{articulo.id} a…</DialogTitle>
         <DialogContent>
@@ -692,6 +728,30 @@ function ArticuloAccionesMenu({
             disabled={!destId || isMoving}
           >
             {isMoving ? 'Moviendo…' : 'Mover'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo de confirmación de reactivación */}
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)}>
+        <DialogTitle>Reactivar artículo</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">
+            ¿Reactivar <strong>{articuloDisplayName}</strong> en su negocio y agrupación de origen?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setDlgReactivarOpen(false);
+              setTimeout(() => setDlgMoverOpen(true), 0);
+            }}
+          >
+            No, mover a otro lugar…
+          </Button>
+          <Button variant="contained" onClick={ejecutarReactivar}>
+            Sí, reactivar
           </Button>
         </DialogActions>
       </Dialog>

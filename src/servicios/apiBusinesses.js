@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import { BASE } from './apiBase';
 
@@ -79,10 +80,7 @@ export async function http(
     p.startsWith('/businesses') ||
     p.startsWith('/ventas');
 
-  // app_admin nunca debe pegar a rutas scopeadas a negocio
-  if (user?.role === 'app_admin' && isBusinessScoped) {
-    throw new Error('forbidden_for_app_admin(client)');
-  }
+  // app_admin puede operar en rutas /businesses/:id cuando gestiona negocios concretos
 
   const url = `${BASE}${p}`;
   // Solo estos son "públicos" (no llevan Authorization)
@@ -230,8 +228,7 @@ const removeActiveBusinessIdLS = () => {
  * (evita duplicidad y mantiene single source of truth en el :id de la URL)
  */
 export function httpBiz(path, options = {}, overrideBizId) {
-  const user = getUser();
-  if (user?.role === 'app_admin') throw new Error('forbidden_for_app_admin');
+  // app_admin puede operar con overrideBizId explícito (está gestionando un negocio concreto)
   const bizId = Number(overrideBizId ?? getActiveBusinessId());
   if (!Number.isFinite(bizId)) throw new Error('businessId activo no definido');
   const p = String(path || '').startsWith('/') ? path : `/${path}`;

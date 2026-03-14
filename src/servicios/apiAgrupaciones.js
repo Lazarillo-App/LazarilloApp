@@ -33,7 +33,12 @@ export async function obtenerAgrupaciones(businessId, divisionId = null) {
   if (divisionId != null) headers['X-Division-Id'] = String(divisionId);
 
   const resp = await httpBiz(`/agrupaciones`, { method: 'GET', headers }, businessId);
-  return unwrapList(resp);
+  // Devuelve { list: [...], orgAssignedIds: [...] | null }
+  // orgAssignedIds = IDs asignados en agrupaciones reales de toda la org
+  // (para calcular Sin Agrupación global correctamente)
+  const list = unwrapList(resp);
+  const orgAssignedIds = Array.isArray(resp?.orgAssignedIds) ? resp.orgAssignedIds : null;
+  return { list, orgAssignedIds };
 }
 
 // POST /api/businesses/:businessId/agrupaciones
