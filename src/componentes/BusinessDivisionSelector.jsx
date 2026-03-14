@@ -50,7 +50,9 @@ export default function BusinessDivisionSelector() {
   // Solo mostramos la org si ya tiene subnegocios (más de 1 negocio en la org)
   const { organization } = useOrganization() || {};
   const orgBizList = organization?.businesses || [];
-  const hasOrg = orgBizList.length > 1; // org visible solo con 2+ negocios
+  const hasOrg = orgBizList.length > 1; // estructura org visible con 2+ negocios
+  // Mostrar nombre de org en el trigger solo si el negocio activo pertenece a ella
+  const activeInOrg = orgBizList.some(b => String(b.id) === String(activeBusinessId));
 
   const [anchorEl,      setAnchorEl]     = useState(null);
   const [bizList,       setBizList]      = useState([]);
@@ -97,6 +99,7 @@ export default function BusinessDivisionSelector() {
 
   const handleSelectBiz = async (bizId) => {
     if (switching) return;
+    handleClose(); // cerrar menu inmediatamente
     setSwitching(true);
     try {
       if (String(bizId) === String(activeBusinessId)) {
@@ -212,7 +215,7 @@ export default function BusinessDivisionSelector() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}
             onClick={e => e.stopPropagation()}>
             <TextField value={editingName} onChange={e => setEditingName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') saveEdit(e, b.id); if (e.key === 'Escape') cancelEdit(e); }}
+              onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') saveEdit(e, b.id); if (e.key === 'Escape') cancelEdit(e); }}
               autoFocus size="small" variant="standard" sx={editFieldSx} />
             <IconButton size="small" onClick={e => saveEdit(e, b.id)} disabled={savingName} sx={{ color: 'inherit' }}>
               {savingName ? <CircularProgress size={14} sx={{ color: 'inherit' }} /> : <CheckCircleOutlineIcon fontSize="small" />}
@@ -305,8 +308,8 @@ export default function BusinessDivisionSelector() {
             </span>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.2 }}>
-            {/* Nombre de la org solo cuando ya hay subnegocios */}
-            {hasOrg && (
+            {/* Nombre de la org solo cuando el negocio activo pertenece a ella */}
+            {hasOrg && activeInOrg && (
               <span style={{ fontSize: '.68rem', opacity: .7, fontWeight: 500, lineHeight: 1.1 }}>
                 {organization.name}
               </span>
@@ -334,7 +337,17 @@ export default function BusinessDivisionSelector() {
             minWidth: 300, maxHeight: 500, overflowY: 'auto',
           },
         }}
-        MenuListProps={{ 'aria-label': 'Selección de negocio y división', dense: true }}
+        MenuListProps={{
+          'aria-label': 'Selección de negocio y división',
+          dense: true,
+          // Evitar que el Menu intercepte teclas cuando hay un input activo
+          onKeyDownCapture: (e) => {
+            if (document.activeElement?.tagName === 'INPUT' ||
+                document.activeElement?.tagName === 'TEXTAREA') {
+              e.stopPropagation();
+            }
+          },
+        }}
       >
         {/* Header genérico cuando no hay org */}
         {!loadingBiz && !hasOrg && (
@@ -366,7 +379,7 @@ export default function BusinessDivisionSelector() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}
                 onClick={e => e.stopPropagation()}>
                 <TextField value={editOrgName} onChange={e => setEditOrgName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveEditOrg(e); if (e.key === 'Escape') cancelEditOrg(e); }}
+                  onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') saveEditOrg(e); if (e.key === 'Escape') cancelEditOrg(e); }}
                   autoFocus size="small" variant="standard" placeholder="Nombre de la organización"
                   sx={{ ...editFieldSx, '& input': { ...editFieldSx['& input'], fontWeight: 700 } }} />
                 <IconButton size="small" onClick={saveEditOrg} disabled={savingOrg} sx={{ color: 'inherit' }}>

@@ -118,8 +118,16 @@ export default function InsumosMain() {
       setRangoCompras(prev => ({ ...prev, from: firstDateCompras }));
     }
   }, [firstDateCompras]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { rootBusiness } = useOrganization();
-  const resolvedBizId = rootBusiness?.id ? String(rootBusiness.id) : businessId;
+  const { rootBusiness, organization } = useOrganization();
+  // resolvedBizId: usar el principal de la org solo si el negocio activo pertenece a ella
+  // Si es un negocio independiente (fuera de la org), usar su propio ID
+  const activeInOrg = (organization?.businesses || []).some(
+    b => String(b.id) === String(businessId)
+  );
+  const resolvedBizId = (rootBusiness?.id && activeInOrg)
+    ? String(rootBusiness.id)
+    : businessId;
+  console.log('[InsumosMain] businessId:', businessId, '| activeInOrg:', activeInOrg, '| resolvedBizId:', resolvedBizId, '| orgBizIds:', (organization?.businesses||[]).map(b=>b.id));
 
   const {
     activeDivisionId,
