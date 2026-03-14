@@ -524,22 +524,18 @@ export default function ArticulosMain(props) {
     }
   }, [agrupaciones]);
 
-  // Ref para saber el ID de la agrupación anterior y no resetear la categoría
-  // cuando el cambio es solo una actualización de datos (mismo ID)
+  // Resetear categoriaSeleccionada SOLO cuando cambia el ID de la agrupacion
+  // Usar ref para evitar que el efecto se dispare por re-renders del mismo objeto
   const prevAgrupacionIdRef = useRef(null);
   useEffect(() => {
     const newId = agrupacionSeleccionada?.id ?? null;
-    const prevId = prevAgrupacionIdRef.current;
-    prevAgrupacionIdRef.current = newId;
-
-    // Solo resetear si cambió la agrupación seleccionada (no si es actualización del mismo objeto)
-    console.log('[reset?] newId:', newId, '| prevId:', prevId, '| reset:', newId !== prevId);
-    if (newId !== prevId) {
+    if (String(newId) !== String(prevAgrupacionIdRef.current)) {
+      prevAgrupacionIdRef.current = newId;
       setFiltroBusqueda('');
       setCategoriaSeleccionada(null);
       setActiveIds(new Set());
     }
-  }, [agrupacionSeleccionada]);
+  });
 
   useEffect(() => {
     const bid = activeBizId;
@@ -1541,8 +1537,10 @@ export default function ArticulosMain(props) {
 
   const effectiveViewMode = useMemo(() => {
     const g = agrupacionSeleccionada;
-    if (g?.id && viewModeByGroup && viewModeByGroup[g.id]) {
-      return viewModeByGroup[g.id];
+    if (g?.id && viewModeByGroup) {
+      // Buscar tanto por numero como por string por si las keys difieren
+      const saved = viewModeByGroup[Number(g.id)] || viewModeByGroup[String(g.id)];
+      if (saved === 'by-subrubro' || saved === 'by-categoria') return saved;
     }
     return viewModeGlobal;
   }, [agrupacionSeleccionada, viewModeByGroup, viewModeGlobal]);
@@ -1575,11 +1573,6 @@ export default function ArticulosMain(props) {
     console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
     console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
-
-  useEffect(() => {
-    window.__CAT_SEL = categoriaSeleccionada;
-    console.log('[ArticulosMain] categoriaSeleccionada:', categoriaSeleccionada?.subrubro, '| cats:', categoriaSeleccionada?.categorias?.length);
-  }, [categoriaSeleccionada]);
 
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (

@@ -547,11 +547,7 @@ export default function TablaArticulos({
     let base = [];
 
     if (categoriaSeleccionada && agrupacionSeleccionada) {
-      const idsFiltro = esTodoGroup(agrupacionSeleccionada)
-        ? idsSinAgrup
-        : new Set((agrupacionSeleccionada.articulos || []).map(getId));
-      console.log('[TablaFiltro] catSel:', categoriaSeleccionada?.subrubro, '| catArts:', (categoriaSeleccionada.categorias||[]).flatMap(c=>c.articulos||[]).length, '| idsFiltro size:', idsFiltro.size, '| sample catId:', getId((categoriaSeleccionada.categorias||[])[0]?.articulos?.[0]), '| sample filtroId:', [...idsFiltro][0]);
-
+      // Usar filterIds (visibleIds) para filtrar - tiene los IDs correctos del catalogo
       base = (categoriaSeleccionada.categorias || [])
         .flatMap((c) =>
           (c.articulos || []).map((a) => {
@@ -574,7 +570,7 @@ export default function TablaArticulos({
             };
           })
         )
-        .filter((a) => idsFiltro.has(getId(a)));
+        .filter((a) => !filterIds || filterIds.has(getId(a)));
     } else if (categoriaSeleccionada) {
       base = (categoriaSeleccionada.categorias || []).flatMap((c) =>
         (c.articulos || []).map((a) => {
