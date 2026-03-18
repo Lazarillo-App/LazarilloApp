@@ -119,6 +119,17 @@ export default function ArticulosMain(props) {
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [activeIds, setActiveIds] = useState(new Set());
   const [reloadKey, setReloadKey] = useState(0);
+  // Estado de sincronización — se activa con sync:start y se apaga con sync:completed
+  // Al montar, verificar si hay un sync en curso (puede haberse iniciado antes de navegar aquí)
+  const [isSyncing, setIsSyncing] = useState(() => {
+    try {
+      const bizId = localStorage.getItem('activeBusinessId');
+      return bizId ? sessionStorage.getItem(`lazarillo:syncing:${bizId}`) === '1' : false;
+    } catch { return false; }
+  });
+  const [syncMsg, setSyncMsg] = useState(() =>
+    (() => { try { const b = localStorage.getItem('activeBusinessId'); return b && sessionStorage.getItem(`lazarillo:syncing:${b}`) === '1' ? 'Sincronizando con MaxiRest…' : ''; } catch { return ''; } })()
+  );
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [subBizModalOpen, setSubBizModalOpen] = useState(false);
@@ -231,8 +242,8 @@ export default function ArticulosMain(props) {
     // Combinar articulos JSONB (objetos) + app_articles_ids (array de IDs numericos)
     const fromJsonb = Array.isArray(g.articulos) ? g.articulos
       : Array.isArray(g.items) ? g.items
-      : Array.isArray(g.data) ? g.data
-      : [];
+        : Array.isArray(g.data) ? g.data
+          : [];
     const fromAppIds = Array.isArray(g.app_articles_ids)
       ? g.app_articles_ids.map(id => ({ id: Number(id) })).filter(a => a.id > 0)
       : [];
@@ -308,7 +319,8 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada(null);
     setFiltroBusqueda('');
     setSearchText('');
-    setCategorias([]); // limpiar artículos del negocio anterior del buscador
+    setCategorias([]); 
+    clearVentasCache();
   }, [activeBizId]);
 
   useEffect(() => {
@@ -498,12 +510,48 @@ export default function ArticulosMain(props) {
       setSyncVersion((v) => v + 1);
     };
 
+    // Banner de sincronización en curso
+    const onSyncStart = (e) => {
+      setIsSyncing(true);
+      setSyncMsg('Sincronizando artículos con MaxiRest…');
+    };
+    const onSyncProgress = (e) => {
+      const msg = e?.detail?.msg || '';
+      if (msg) setSyncMsg(msg);
+    };
+    const onSyncCompleted = () => {
+      setIsSyncing(false);
+      setSyncMsg('');
+      // Refrescar agrupaciones y artículos al finalizar la sync
+      setReloadKey((k) => k + 1);
+    };
+
+    // Al montar: si el sync ya terminó mientras navegábamos, forzar reload
+    // (syncDone se escribe en syncservice al finalizar syncAll)
+    try {
+      const bizId = localStorage.getItem('activeBusinessId');
+      if (bizId) {
+        const doneTs = sessionStorage.getItem(`lazarillo:syncDone:${bizId}`);
+        if (doneTs) {
+          sessionStorage.removeItem(`lazarillo:syncDone:${bizId}`);
+          // Pequeño delay para que el componente termine de montar antes del reload
+          setTimeout(() => setReloadKey((k) => k + 1), 300);
+        }
+      }
+    } catch { }
+
     window.addEventListener('business:synced', onBizSynced);
     window.addEventListener('ventas:updated', onVentasUpdated);
+    window.addEventListener('sync:start', onSyncStart);
+    window.addEventListener('sync:progress', onSyncProgress);
+    window.addEventListener('sync:completed', onSyncCompleted);
 
     return () => {
       window.removeEventListener('business:synced', onBizSynced);
       window.removeEventListener('ventas:updated', onVentasUpdated);
+      window.removeEventListener('sync:start', onSyncStart);
+      window.removeEventListener('sync:progress', onSyncProgress);
+      window.removeEventListener('sync:completed', onSyncCompleted);
     };
   }, []);
 
@@ -955,11 +1003,8 @@ export default function ArticulosMain(props) {
       const id = Number(rawId);
       if (!Number.isFinite(id) || id <= 0) return;
 
-      try {
-        await refetchAgrupaciones();
-      } catch (e) {
-        console.error('Error refrescando agrupaciones:', e);
-      }
+      // ✅ NO refetchAgrupaciones() — la mutación optimista en ArticuloAccionesMenu
+      // ya actualizó el estado. Refetch aquí causa el salto de vista.
 
       if (isNowDiscontinuado) {
         showMiss(`Artículo discontinuado correctamente`);
@@ -967,7 +1012,7 @@ export default function ArticulosMain(props) {
         showMiss(`Artículo reactivado correctamente`);
       }
     },
-    [refetchAgrupaciones, showMiss]
+    [showMiss]
   );
 
   useEffect(() => {
@@ -1257,10 +1302,13 @@ export default function ArticulosMain(props) {
   const opcionesBuscador = useMemo(() => {
     const seen = new Set();
     const result = [];
+
+    // Artículos de agrupaciones normales
     for (const g of agrupacionesRich || []) {
       for (const a of (g.articulos || [])) {
         const id = Number(a?.id);
         if (!id || id <= 0 || seen.has(id)) continue;
+        if (!idsNegocioActivo.has(id)) continue; // ✅ solo los del negocio activo
         seen.add(id);
         const nombre = a?.nombre && !String(a.nombre).startsWith('#')
           ? String(a.nombre)
@@ -1268,8 +1316,20 @@ export default function ArticulosMain(props) {
         result.push({ id, nombre });
       }
     }
+
+    // Artículos de Sin Agrupación
+    const sinAgrupIds = todoInfo?.todoIds?.size ? todoInfo.todoIds : todoIdsFromTree;
+    for (const rawId of sinAgrupIds) {
+      const id = Number(rawId);
+      if (!id || id <= 0 || seen.has(id)) continue;
+      if (!idsNegocioActivo.has(id)) continue; // ✅ solo los del negocio activo
+      seen.add(id);
+      const nombre = metaById.get(id)?.nombre || nameById.get(id) || `#${id}`;
+      result.push({ id, nombre });
+    }
+
     return result;
-  }, [agrupacionesRich, nameById, metaById]);
+  }, [agrupacionesRich, nameById, metaById, todoInfo?.todoIds, todoIdsFromTree, idsNegocioActivo]);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -1341,10 +1401,15 @@ export default function ArticulosMain(props) {
 
     // ── Sin Agrupación tiene artículos ──
     if (!todoEmpty && todoId) {
-      // Guard solo acá: no interferir con picks manuales recientes
-      const recentlyPicked = Date.now() - lastManualPickRef.current < 2500;
-      if (recentlyPicked) return;
+      // ✅ FIX: Si ya hay una agrupación seleccionada que existe en la lista → NO mover
+      if (currentSel) {
+        const selExistsInList = (agrupacionesRich || []).some(
+          g => Number(g.id) === Number(currentSel.id)
+        );
+        if (selExistsInList) return; // ✅ el usuario está en una agrupación válida, no mover
+      }
 
+      // Solo mover a TODO si no hay nada seleccionado (carga inicial)
       const isTodoSelected = currentSel && Number(currentSel.id) === Number(todoId);
       if (!isTodoSelected) {
         setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
@@ -1355,7 +1420,6 @@ export default function ArticulosMain(props) {
     }
 
     // ── Sin Agrupación vacío → favorita o primera ──
-    // Sin guard de tiempo: el vaciado es un evento concreto, navegar inmediatamente
     if (todoEmpty && favoriteGroupId) {
       const fav = (agrupacionesRich || []).find(
         (g) => Number(g?.id) === Number(favoriteGroupId)
@@ -1385,7 +1449,7 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada,
     setFiltroBusqueda,
   ]);
-  
+
   const handleSetFavorite = useCallback((groupId) => {
     setFavoriteGroupId((prev) => {
       const prevNum = Number(prev);
@@ -1579,6 +1643,35 @@ export default function ArticulosMain(props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
         <h2 style={{ margin: 0 }}>Gestión de Artículos</h2>
+
+        {isSyncing && (
+          <Alert
+            severity="info"
+            icon={false}
+            sx={{
+              mb: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              background: 'var(--color-primary, #1976d2)15',
+              borderLeft: '3px solid var(--color-primary, #1976d2)',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Spinner simple sin importar CircularProgress extra */}
+              <span style={{
+                width: 14, height: 14, borderRadius: '50%',
+                border: '2px solid var(--color-primary, #1976d2)',
+                borderTopColor: 'transparent',
+                animation: 'spin 0.8s linear infinite',
+                display: 'inline-block',
+              }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              <strong>Sincronización en curso</strong>
+              {syncMsg && <span style={{ color: '#555', fontSize: '0.85em' }}>— {syncMsg}</span>}
+            </span>
+          </Alert>
+        )}
 
         {ventasError && (
           <Alert severity="warning" sx={{ mb: 2 }}>

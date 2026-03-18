@@ -546,12 +546,18 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
       // createSubBusiness requiere organization.id — sin esto tira error.
       // Después del éxito mostramos el modal para que el usuario le ponga el nombre real.
       const isFirstSubBusiness = !organization;
+      let newOrgId = null;
       if (isFirstSubBusiness) {
+        // Crear org con nombre placeholder — el usuario podrá renombrarla después.
+        // createOrg hace setOrganization(org) pero el closure de createSubBusiness
+        // aún apunta al valor anterior (null), así que pasamos el id directamente.
         const placeholder = active?.name || form.name.trim() || 'Mi Organización';
-        await createOrg(placeholder);
+        const createdOrg = await createOrg(placeholder);
+        newOrgId = createdOrg?.id ?? null;
       }
 
       const newBiz = await createSubBusiness({
+        ...(newOrgId ? { organizationId: newOrgId } : {}),
         sourceGroupId: agrupacion.id,
         name:          form.name.trim(),
         branding,

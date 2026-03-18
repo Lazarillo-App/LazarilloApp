@@ -246,23 +246,17 @@ export default function BlockActionsMenu({
 
       notify?.(`✅ Movidos ${ids.length} artículo(s)`, 'success');
       
-      // 🔄 Refetch FORZADO después de mover
-      console.log('🔄 Refrescando agrupaciones...');
-      if (onRefetch) {
-        await onRefetch();
-      }
-      
-      // ⏱️ Esperar un poco más y refrescar de nuevo (por si acaso)
-      setTimeout(async () => {
-        if (onRefetch) {
-          console.log('🔄 Segundo refresh (consolidación)...');
-          await onRefetch();
-        }
-      }, 500);
+      // ✅ La mutación optimista ya actualizó el estado local (onMutateGroups).
+      // NO llamar refetch aquí: causa condición de carrera donde el GET del servidor
+      // puede devolver datos viejos (antes de que el backend consolide el move)
+      // y sobreescribir la mutación, haciendo que los artículos aparezcan en el origen.
+      // Solo refrescar en caso de error.
       
     } catch (e) {
       console.error('❌ MOVE_BLOCK_ERROR', e);
       notify?.(`Error al mover: ${e.message || e}`, 'error');
+      // En error, refrescar para mostrar el estado real del servidor
+      if (onRefetch) await onRefetch();
     } finally {
       setIsMoving(false);
       closeDialog();

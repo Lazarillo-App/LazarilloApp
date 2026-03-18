@@ -4,7 +4,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography, Box
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
@@ -283,8 +283,11 @@ function ArticuloAccionesMenu({
 
         // ✅ Llamar handler SIN navegar (stay: true)
         onDiscontinuadoChange?.(idNum, true, { stay: true });
-        // ✅ Notificar afterMutation para excluir de Sin Agrupación inmediatamente
+        // ✅ Notificar afterMutation — la mutación optimista ya actualizó el estado
         onAfterMutation?.([idNum]);
+        // ✅ NO onRefetch — ni desde isTodo ni desde agrupación real.
+        // La mutación optimista (append + remove) es suficiente en ambos casos.
+        return;
 
       } else {
         // ===========================
@@ -316,10 +319,11 @@ function ArticuloAccionesMenu({
         return; // la ejecución real la hace el diálogo
       }
 
-      if (onRefetch) await onRefetch();
+      // onRefetch eliminado — la mutación optimista mantiene el estado
     } catch (e) {
       console.error('TOGGLE_DISCONTINUADO_ERROR', e);
       notify?.('No se pudo cambiar el estado de discontinuado', 'error');
+      onRefetch?.(); // solo en error para recuperar estado real
     } finally {
       handleClose();
     }
@@ -422,7 +426,7 @@ function ArticuloAccionesMenu({
       });
 
       onDiscontinuadoChange?.(idNum, false, { stay: true });
-      if (onRefetch) await onRefetch();
+      // ✅ NO onRefetch — la mutación optimista ya actualizó el estado
     } catch (e) {
       console.error('REACTIVAR_ERROR', e);
       notify?.('No se pudo reactivar el artículo', 'error');
@@ -504,10 +508,15 @@ function ArticuloAccionesMenu({
       });
 
       onAfterMutation?.([idNum]);
-      onRefetch?.();
+      // ✅ NO llamar onRefetch aquí — la mutación optimista ya actualizó el estado local.
+      // Llamar refetch después de la mutación optimista causa condición de carrera:
+      // el GET puede llegar con datos del servidor antes de que el backend consolide
+      // el move-items, sobreescribiendo el estado y haciendo aparecer el artículo en el origen.
     } catch (e) {
       console.error('MOVER_ERROR', e);
       notify?.('No se pudo mover el artículo', 'error');
+      // Solo en caso de error, refrescar para obtener el estado real del servidor
+      onRefetch?.();
     } finally {
       setIsMoving(false);
       closeMover();
@@ -532,10 +541,11 @@ function ArticuloAccionesMenu({
 
         onMutateGroups?.({ type: 'excludeFromTodo', ids: [idNum] });
         onAfterMutation?.([idNum]);
-        onRefetch?.();
+        // ✅ NO refetch — mutación optimista es suficiente
       } catch (e) {
         console.error('EXCLUIR_TODO_ERROR', e);
         notify?.('No se pudo quitar de TODO', 'error');
+        onRefetch?.(); // solo en error
       } finally {
         handleClose();
       }
@@ -570,10 +580,11 @@ function ArticuloAccionesMenu({
       });
 
       onAfterMutation?.([idNum]);
-      onRefetch?.();
+      // ✅ NO refetch — mutación optimista es suficiente
     } catch (e) {
       console.error(e);
       notify?.('No se pudo quitar el artículo', 'error');
+      onRefetch?.(); // solo en error
     } finally {
       handleClose();
     }
@@ -683,6 +694,8 @@ function ArticuloAccionesMenu({
             setPreselect({
               articleIds: [articuloIdNum],
               fromGroupId: !isTodo && currentGroupId ? Number(currentGroupId) : null,
+              // Pasar todoGroupId para que AgrupacionCreateModal pueda quitar de Sin Agrupación
+              todoGroupId: isTodo && todoGroupId ? Number(todoGroupId) : null,
               allowAssigned: true,
             });
             setOpenCrearAgr(true);
@@ -733,25 +746,81 @@ function ArticuloAccionesMenu({
       </Dialog>
 
       {/* Diálogo de confirmación de reactivación */}
-      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)}>
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Reactivar artículo</DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
-            ¿Reactivar <strong>{articuloDisplayName}</strong> en su negocio y agrupación de origen?
+          <Typography variant="body1" gutterBottom>
+            ¿Dónde querés reactivar <strong>{articuloDisplayName}</strong>?
           </Typography>
+
+          {origenReactivar?.fromGroupId ? (
+            <Box sx={{
+              mt: 1.5, p: 1.5, borderRadius: 1.5,
+              border: '1px solid', borderColor: 'divider',
+              bgcolor: 'action.hover',
+            }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>
+                📍 Origen detectado
+              </Typography>
+              <Typography variant="body2">
+                <strong>Negocio:</strong>{' '}
+                {origenReactivar.fromBizName || `#${origenReactivar.fromBizId}` || '—'}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Agrupación:</strong>{' '}
+                {origenReactivar.fromGroupName || `#${origenReactivar.fromGroupId}` || '—'}
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{
+              mt: 1.5, p: 1.5, borderRadius: 1.5,
+              border: '1px solid', borderColor: 'warning.light',
+              bgcolor: '#fffbeb',
+            }}>
+              <Typography variant="caption" color="warning.main" fontWeight={600} display="block" mb={0.5}>
+                ⚠️ Sin origen registrado
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                No se encontró la agrupación de origen. Al reactivar, el artículo
+                quedará en "Sin agrupación".
+              </Typography>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
+          {origenReactivar?.fromGroupId ? (
+            <Button
+              variant="contained"
+              onClick={ejecutarReactivar}
+              fullWidth
+              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
+            >
+              Reactivar en origen — {origenReactivar.fromBizName
+                ? `${origenReactivar.fromBizName} › ${origenReactivar.fromGroupName}`
+                : origenReactivar.fromGroupName}
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              onClick={ejecutarReactivar}
+              fullWidth
+              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
+            >
+              Reactivar (quedará en Sin agrupación)
+            </Button>
+          )}
           <Button
             variant="outlined"
+            fullWidth
             onClick={() => {
               setDlgReactivarOpen(false);
               setTimeout(() => setDlgMoverOpen(true), 0);
             }}
           >
-            No, mover a otro lugar…
+            Mover a otra agrupación…
           </Button>
-          <Button variant="contained" onClick={ejecutarReactivar}>
-            Sí, reactivar
+          <Button color="inherit" fullWidth onClick={() => setDlgReactivarOpen(false)}>
+            Cancelar
           </Button>
         </DialogActions>
       </Dialog>
@@ -783,7 +852,9 @@ function ArticuloAccionesMenu({
             articulos: Array.isArray(articulos) ? articulos : [],
           });
           onGroupCreated?.(nombreCreado, newId, articulos);
-          onRefetch?.();
+          // ✅ Solo refetch si NO estamos en Sin Agrupación
+          // En isTodo el refetch resetea el scroll y pierde el contexto de trabajo
+          if (!isTodo) onRefetch?.();
         }}
         existingNames={(agrupaciones || []).map((g) => String(g?.nombre || '')).filter(Boolean)}
         treeMode={treeMode}

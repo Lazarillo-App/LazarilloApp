@@ -223,10 +223,13 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
   /* ── abrir ── */
   const handleOpen = useCallback((e) => {
     setAnchorEl(e.currentTarget);
-    const base = from ? parseISO(from) : new Date();
+    // ✅ Sanitizar: solo usar from/to si son YYYY-MM-DD válidos
+    const safeFrom = from && /^\d{4}-\d{2}-\d{2}/.test(String(from)) ? from : '';
+    const safeTo   = to   && /^\d{4}-\d{2}-\d{2}/.test(String(to))   ? to   : '';
+    const base = safeFrom ? parseISO(safeFrom) : new Date();
     setViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
-    setCustomFrom(from || '');
-    setCustomTo(to || '');
+    setCustomFrom(safeFrom);
+    setCustomTo(safeTo);
     setSelectingFrom(true);
   }, [from, to]);
 
@@ -271,6 +274,10 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
   /* ── label botón ── */
   const rangeLabel = useMemo(() => {
     if (!from || !to) return 'Seleccionar período';
+    // ✅ Validar formato YYYY-MM-DD antes de parsear — evita crash con fechas malformadas
+    if (!/^\d{4}-\d{2}-\d{2}/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}/.test(String(to))) {
+      return 'Seleccionar período';
+    }
     const label = getRangeLabel(mode, from, to);
     if (label && label !== 'Período') return label;
     try {
@@ -278,8 +285,8 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
     } catch { return 'Período seleccionado'; }
   }, [from, to, mode]);
 
-  const fromLabel = customFrom ? format(parseISO(customFrom), 'dd/MM/yyyy') : '—';
-  const toLabel   = customTo   ? format(parseISO(customTo),   'dd/MM/yyyy') : '—';
+  const fromLabel = customFrom && /^\d{4}-\d{2}-\d{2}/.test(customFrom) ? format(parseISO(customFrom), 'dd/MM/yyyy') : '—';
+  const toLabel   = customTo   && /^\d{4}-\d{2}-\d{2}/.test(customTo)   ? format(parseISO(customTo),   'dd/MM/yyyy') : '—';
   const canApply  = customFrom && customTo && customFrom <= customTo;
 
   const presetSx = (pid) => ({

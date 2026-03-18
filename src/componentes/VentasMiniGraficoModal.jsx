@@ -26,7 +26,7 @@ export default function VentasMiniGraficoModal({
 
     const root = document.documentElement;
     const styles = getComputedStyle(root);
-    
+
     return {
       primary: styles.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
       secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
@@ -39,7 +39,7 @@ export default function VentasMiniGraficoModal({
   // helper robusto para qty (alineado con TablaArticulos)
   const getItemQty = (it) => {
     if (!it) return 0;
-    
+
     const v = Number(
       it.qty ??
       it.quantity ??
@@ -81,12 +81,12 @@ export default function VentasMiniGraficoModal({
       map.set(dayKey, (map.get(dayKey) || 0) + qty);
     }
 
-    const from = new Date(rango.from + 'T00:00:00Z');
-    const to = new Date(rango.to + 'T00:00:00Z');
+    const from = parseISO(rango.from); 
+    const to = parseISO(rango.to);
 
     const seq = [];
     for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
-      const dayKey = d.toISOString().slice(0, 10);
+      const dayKey = format(d, 'yyyy-MM-dd');
       seq.push({
         label: dayKey,
         qty: map.get(dayKey) || 0,
@@ -97,10 +97,10 @@ export default function VentasMiniGraficoModal({
     let acc = 0;
     return seq.map((d, i) => {
       acc += d.qty;
-      return { 
-        idx: i + 1, 
-        label: d.label, 
-        qty: d.qty, 
+      return {
+        idx: i + 1,
+        label: d.label,
+        qty: d.qty,
         acumulado: acc
       };
     });
@@ -125,10 +125,10 @@ export default function VentasMiniGraficoModal({
   // ✅ Estadísticas adicionales
   const stats = useMemo(() => {
     if (!chartData.length) return { promedio: 0, maximo: 0, diasConVentas: 0 };
-    
+
     const valores = chartData.map(d => d.qty);
     const conVentas = valores.filter(v => v > 0);
-    
+
     return {
       promedio: totalFooter / chartData.length,
       maximo: Math.max(...valores),
@@ -160,7 +160,7 @@ export default function VentasMiniGraficoModal({
     if (!active || !payload || !payload.length) return null;
 
     const data = payload[0].payload;
-    
+
     return (
       <div style={{
         background: 'white',
@@ -202,30 +202,30 @@ export default function VentasMiniGraficoModal({
               📅 Período: {format(new Date(rango.from), 'dd/MM/yyyy')} — {format(new Date(rango.to), 'dd/MM/yyyy')}
               {' '}({chartData.length} días)
             </Typography>
-            
+
             <Stack direction="row" spacing={1}>
-              <Chip 
-                size="small" 
+              <Chip
+                size="small"
                 label={`Promedio: ${stats.promedio.toFixed(1)}/día`}
-                sx={{ 
+                sx={{
                   bgcolor: `${themeColors.primary}20`,
                   color: themeColors.primary,
                   borderColor: themeColors.primary
                 }}
                 variant="outlined"
               />
-              <Chip 
-                size="small" 
+              <Chip
+                size="small"
                 label={`Pico: ${stats.maximo}`}
-                sx={{ 
+                sx={{
                   bgcolor: `${themeColors.secondary}20`,
                   color: themeColors.secondary,
                   borderColor: themeColors.secondary
                 }}
                 variant="outlined"
               />
-              <Chip 
-                size="small" 
+              <Chip
+                size="small"
                 label={`${stats.diasConVentas} días con ventas`}
                 variant="outlined"
               />
@@ -234,35 +234,35 @@ export default function VentasMiniGraficoModal({
 
           {/* Advertencia para rangos muy largos */}
           {chartData.length > 365 && (
-            <Stack 
-              direction="row" 
-              spacing={1} 
+            <Stack
+              direction="row"
+              spacing={1}
               alignItems="center"
-              sx={{ 
+              sx={{
                 bgcolor: `${themeColors.primary}10`,
-                p: 1.5, 
+                p: 1.5,
                 borderRadius: 1,
                 border: '1px solid',
                 borderColor: `${themeColors.primary}40`
               }}
             >
               <Typography variant="body2" sx={{ color: themeColors.primary }}>
-                ℹ️ <strong>Rango amplio:</strong> Mostrando {chartData.length} días de datos. 
+                ℹ️ <strong>Rango amplio:</strong> Mostrando {chartData.length} días de datos.
                 El gráfico se ha optimizado para esta cantidad de información.
               </Typography>
             </Stack>
           )}
 
           {/* Gráfico */}
-          <div style={{ 
-            width: '100%', 
+          <div style={{
+            width: '100%',
             height: chartData.length > 365 ? 400 : 340
           }}>
             <ResponsiveContainer>
               <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="label" 
+                <XAxis
+                  dataKey="label"
                   tickFormatter={formatXAxis}
                   tick={{ fontSize: 11 }}
                   interval={chartData.length > 180 ? 'preserveStartEnd' : 'preserveEnd'}
@@ -270,7 +270,7 @@ export default function VentasMiniGraficoModal({
                 />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend 
+                <Legend
                   wrapperStyle={{ paddingTop: 10 }}
                   formatter={(value) => {
                     if (value === 'qty') return '📊 Ventas diarias';
@@ -278,15 +278,15 @@ export default function VentasMiniGraficoModal({
                     return value;
                   }}
                 />
-                <Bar 
-                  dataKey="qty" 
+                <Bar
+                  dataKey="qty"
                   fill={themeColors.primary}
                   name="qty"
                   radius={[4, 4, 0, 0]}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="acumulado" 
+                <Line
+                  type="monotone"
+                  dataKey="acumulado"
                   stroke={themeColors.secondary}
                   strokeWidth={2.5}
                   name="acumulado"
@@ -313,9 +313,9 @@ export default function VentasMiniGraficoModal({
                 </TableHead>
                 <TableBody>
                   {chartData.map((d) => (
-                    <TableRow 
+                    <TableRow
                       key={d.label}
-                      sx={{ 
+                      sx={{
                         '&:hover': { bgcolor: 'action.hover' },
                         bgcolor: d.qty > 0 ? 'inherit' : 'action.disabledBackground'
                       }}
@@ -326,11 +326,11 @@ export default function VentasMiniGraficoModal({
                       <TableCell align="right" sx={{ fontWeight: d.qty > 0 ? 600 : 400 }}>
                         {d.qty}
                       </TableCell>
-                      <TableCell 
-                        align="right" 
-                        sx={{ 
-                          color: themeColors.secondary, 
-                          fontWeight: 500 
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color: themeColors.secondary,
+                          fontWeight: 500
                         }}
                       >
                         {d.acumulado}
@@ -356,9 +356,9 @@ export default function VentasMiniGraficoModal({
           <Typography variant="body1" sx={{ flex: 1, fontWeight: 600 }}>
             Total del período: <span style={{ color: themeColors.primary, fontSize: '1.1rem' }}>{totalFooter}</span> unidades
           </Typography>
-          <Button 
-            onClick={onClose} 
-            variant="contained" 
+          <Button
+            onClick={onClose}
+            variant="contained"
             size="large"
             sx={{
               bgcolor: themeColors.primary,

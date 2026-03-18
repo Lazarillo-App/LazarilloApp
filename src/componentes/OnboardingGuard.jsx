@@ -13,34 +13,40 @@ export default function OnboardingGuard() {
   const [hasBiz, setHasBiz] = useState(true);
   const loc = useLocation();
 
+  const checkBiz = React.useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) { setLoading(false); setHasBiz(true); return; }
+
+    const role = getRole();
+    if (role === 'app_admin') { setLoading(false); setHasBiz(true); return; }
+
+    try {
+      const list = await BusinessesAPI.listMine();
+      setHasBiz((list || []).length > 0);
+    } catch {
+      setHasBiz(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Verificar al montar
   useEffect(() => {
     let cancel = false;
-
-    (async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {                       // no logueado → no consultes nada
-        if (!cancel) { setLoading(false); setHasBiz(true); }
-        return;
-      }
-
-      const role = getRole();
-      if (role === 'app_admin') {         // admin de plataforma → no chequees locales
-        if (!cancel) { setLoading(false); setHasBiz(true); }
-        return;
-      }
-
-      try {
-        const list = await BusinessesAPI.listMine();
-        if (!cancel) setHasBiz((list || []).length > 0);
-      } catch {
-        if (!cancel) setHasBiz(false);
-      } finally {
-        if (!cancel) setLoading(false);
-      }
-    })();
-
+    checkBiz().then(() => { if (cancel) return; }).catch(() => {});
     return () => { cancel = true; };
-  }, []);
+  }, [checkBiz]);
+
+  // Re-verificar cuando se crea un negocio — el guard se ejecutó antes de que existiera
+  useEffect(() => {
+    const onBizCreated = () => checkBiz();
+    window.addEventListener('business:created', onBizCreated);
+    window.addEventListener('business:switched', onBizCreated);
+    return () => {
+      window.removeEventListener('business:created', onBizCreated);
+      window.removeEventListener('business:switched', onBizCreated);
+    };
+  }, [checkBiz]);
 
   if (loading) return <div className="page-wrap">Cargando…</div>;
   if (!hasBiz && loc.pathname !== '/perfil') return <Navigate to="/perfil" replace />;

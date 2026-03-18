@@ -6,6 +6,7 @@ import {
   Snackbar, Alert, LinearProgress
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+import SettingsIcon from '@mui/icons-material/Settings';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 
@@ -236,6 +237,12 @@ export default function Navbar() {
                     </MenuItem>
                   )}
 
+                  {!isAppAdmin && (
+                    <MenuItem component={NavLink} to="/configuracion" onClick={() => setNavEl(null)}>
+                      Configuración
+                    </MenuItem>
+                  )}
+
                   {isAppAdmin && (
                     <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
                       Admin
@@ -255,6 +262,20 @@ export default function Navbar() {
                 <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/insumos">
                   Insumos
                 </Button>
+              )}
+
+              {!isAppAdmin && (
+                <Tooltip title="Configuración">
+                  <IconButton
+                    color="inherit"
+                    sx={{ color: 'inherit' }}
+                    component={NavLink}
+                    to="/configuracion"
+                    aria-label="Configuración"
+                  >
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               )}
 
               {isAppAdmin && (

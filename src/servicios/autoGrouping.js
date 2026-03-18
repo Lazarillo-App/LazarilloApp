@@ -199,8 +199,19 @@ export async function checkNewArticlesAndSuggest(businessId) {
     }
 
     // 2️⃣ Cargar agrupaciones actuales
-    const agrupacionesRes = await httpBiz(`/articulos/agrupaciones`, {}, businessId);
-    const agrupaciones = agrupacionesRes?.agrupaciones || [];
+    // 404 = negocio nuevo sin agrupaciones todavía — es normal, no es un error
+    let agrupaciones = [];
+    try {
+      const agrupacionesRes = await httpBiz(`/agrupaciones`, {}, businessId);
+      agrupaciones = agrupacionesRes?.agrupaciones || [];
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (msg.includes('not_found') || msg.includes('404')) {
+        console.log('[autoGrouping] ℹ️ Negocio sin agrupaciones aún (normal en primer sync)');
+        return [];
+      }
+      throw e; // error inesperado — re-lanzar
+    }
 
     if (!agrupaciones.length) {
       console.log('[autoGrouping] ℹ️ No hay agrupaciones creadas');
@@ -319,7 +330,7 @@ export async function createNewAgrupacion(businessId, nombre, articulos = []) {
   console.log(`[autoGrouping] 📝 Creando nueva agrupación: "${nombre}"`);
 
   try {
-    const response = await httpBiz(`/articulos/agrupaciones`, {
+    const response = await httpBiz(`/agrupaciones`, {
       method: 'POST',
       body: {
         nombre: nombre.trim(),

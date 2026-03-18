@@ -2,6 +2,7 @@
 import { showAlert } from '../servicios/appAlert';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
+import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 
 import BusinessCard         from '../componentes/BusinessCard';
 import BusinessCreateModal  from '../componentes/BusinessCreateModal';
@@ -167,39 +168,62 @@ export default function Perfil() {
 
   const onCreateComplete = async (biz) => {
     setShowCreate(false);
-    await onSetActive(biz.id);
+
+    // Validar que el negocio recién creado tenga un id numérico válido
+    // Si biz.id no está disponible todavía, refetch primero para resolverlo
+    const bizId = Number(biz?.id);
+    if (!Number.isFinite(bizId) || bizId <= 0) {
+      console.warn('[onCreateComplete] biz.id inválido, haciendo refetch primero:', biz);
+      await refetchBusinesses?.();
+      try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz?.id } })); } catch { }
+      return;
+    }
+
+    // Primero refetch para que el nuevo negocio esté en la lista, luego activar
     await refetchBusinesses?.();
+    await onSetActive(bizId);
 
     const isSubBusiness = biz.created_from === 'from_group';
 
     if (!isSubBusiness) {
       try {
-        const maxiOk = await isMaxiConfigured(biz.id);
+        const maxiOk = await isMaxiConfigured(bizId);
         if (maxiOk) {
+          // Notificar a ArticulosMain que empiece a mostrar banner de sync
+          window.dispatchEvent(new CustomEvent('sync:start', { detail: { bizId } }));
           showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
-          const result = await syncAll(biz.id, {
-            onProgress: (msg, type, step) => console.log(`[AUTO-SYNC] [${step}] ${msg}`),
+          const result = await syncAll(bizId, {
+            onProgress: (msg, type, step) => {
+              console.log(`[AUTO-SYNC] [${step}] ${msg}`);
+              window.dispatchEvent(new CustomEvent('sync:progress', { detail: { msg, type, step } }));
+            },
           });
           if (result?.ok) {
             showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
-            window.dispatchEvent(new CustomEvent('sync:completed'));
+            // Crear/asegurar la agrupación Sin Agrupación para que el árbol no esté vacío
+            try { await ensureTodo(bizId); } catch (eTodo) {
+              console.warn('[onCreateComplete] ensureTodo falló (no crítico):', eTodo?.message);
+            }
           } else {
             const errors     = Array.isArray(result?.errors) ? result.errors : [];
             const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
             showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
           }
+          // sync:completed siempre al terminar (ok o con errores) para que ArticulosMain refresque
+          window.dispatchEvent(new CustomEvent('sync:completed', { detail: { bizId, ok: !!result?.ok } }));
         } else {
           showNotice('Negocio creado', 'Configurá las credenciales de Maxi para habilitar la sincronización automática');
         }
       } catch (e) {
         console.error('Auto-sync on create error:', e);
         showNotice('Error', 'No se pudo completar la sincronización automática');
+        window.dispatchEvent(new CustomEvent('sync:completed', { detail: { bizId, ok: false } }));
       }
     } else {
       showNotice('Sub-negocio creado', `"${biz.name}" fue creado correctamente y hereda las credenciales del principal.`);
     }
 
-    try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } })); } catch { }
+    try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch { }
   };
 
   const handleDeleteBusiness = async (biz) => {

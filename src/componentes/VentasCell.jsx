@@ -18,6 +18,7 @@ function VentasCell({
   defaultGroupBy = 'day',
   totalOverride,
   onTotalResolved,
+   businessId,
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [openModal, setOpenModal] = useState(false);
@@ -35,6 +36,7 @@ function VentasCell({
     to,
     groupBy,
     enabled: shouldFetchSeries,
+    businessId,
   });
 
   const seriesItems = useMemo(() => {

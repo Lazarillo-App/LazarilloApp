@@ -93,8 +93,8 @@ export async function obtenerVentas({
 
   const qs = new URLSearchParams();
   if (articuloId != null) qs.set('articuloId', String(articuloId));
-  if (codigo != null)     qs.set('codigo', String(codigo));
-  if (q != null)          qs.set('q', String(q));
+  if (codigo != null) qs.set('codigo', String(codigo));
+  if (q != null) qs.set('q', String(q));
   qs.set('from', from);
   qs.set('to', to);
   qs.set('groupBy', groupBy);
@@ -118,7 +118,9 @@ export async function obtenerVentas({
         : [];
 
       const res = { total, items };
-      cacheSet(key, res);
+      if (total > 0 || items.length > 0) {
+        cacheSet(key, res);
+      }
       return res;
     } catch (err) {
       if (handleAuthErrorLike(err)) break;
@@ -176,7 +178,7 @@ export async function obtenerPeek({
       count: Number((data && data.count) != null ? data.count : items.length),
       items, // [{ articuloId, qty }]
       from: data?.rango?.from ?? from,
-      to:   data?.rango?.to   ?? to,
+      to: data?.rango?.to ?? to,
     };
     cacheSet(key, res);
     return res;
@@ -401,7 +403,7 @@ export async function downloadVentasCSV(businessId, { from, to }) {
     let text = '';
     try {
       text = await resp.text();
-    } catch {}
+    } catch { }
     console.error('[downloadVentasCSV] status', resp.status, text);
     throw new Error(text || `Error al descargar CSV de ventas (${resp.status})`);
   }

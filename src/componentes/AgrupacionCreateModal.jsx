@@ -1,3 +1,5 @@
+/* eslint-disable no-unused-vars */
+/* eslint-disable no-empty */
 import React, {
   useMemo,
   useState,
@@ -449,13 +451,44 @@ export default function AgrupacionCreateModal({
 
         const ids = selectedAsArray;
 
+        const todoGroupId = Number(preselect?.todoGroupId);
+        const haveTodoGroup = Number.isFinite(todoGroupId) && todoGroupId > 0;
+
         if (haveFrom) {
+          // Origen es una agrupación real — move-items quita y agrega en un solo paso
           await httpBiz(
             `/agrupaciones/${fromId}/move-items`,
             { method: "POST", body: { toId: newGroupId, ids } },
             effectiveBusinessId
           );
+        } else if (haveTodoGroup) {
+          // Origen es Sin Agrupación — PUT al nuevo grupo + DELETE del todoGroup
+          await httpBiz(
+            `/agrupaciones/${newGroupId}/articulos`,
+            { method: "PUT", body: { ids } },
+            effectiveBusinessId
+          );
+          // Quitar de Sin Agrupación para que no quede como copia
+          try {
+            await httpBiz(
+              `/agrupaciones/${todoGroupId}/articulos`,
+              { method: "DELETE", body: { ids } },
+              effectiveBusinessId
+            );
+          } catch (eDel) {
+            // fallback: intentar uno por uno
+            for (const id of ids) {
+              try {
+                await httpBiz(
+                  `/agrupaciones/${todoGroupId}/articulos/${id}`,
+                  { method: "DELETE" },
+                  effectiveBusinessId
+                );
+              } catch { }
+            }
+          }
         } else {
+          // Sin origen conocido — solo agregar al nuevo grupo
           await httpBiz(
             `/agrupaciones/${newGroupId}/articulos`,
             { method: "PUT", body: { ids } },

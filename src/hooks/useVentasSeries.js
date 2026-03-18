@@ -4,15 +4,16 @@ import { obtenerVentasSeriesDB } from '../servicios/apiVentas';
 import { useActiveBusiness } from '../context/BusinessContext';
 
 export function useVentasSeries({
-  
+
   articuloId,
   from,
   to,
   groupBy = 'day',
   enabled = true,
+  businessId: bizIdProp,
 }) {
-  const { businessId } = useActiveBusiness();
-  const bizId = Number(businessId);
+  const { businessId: contextBizId } = useActiveBusiness();
+  const bizId = Number(bizIdProp ?? contextBizId);
 
   const canRun =
     enabled &&
@@ -32,6 +33,6 @@ export function useVentasSeries({
         groupBy,
         businessId: bizId,
       }),
-    staleTime: 5 * 60 * 1000, // 5 minutos
+    staleTime: 0,
   });
 }

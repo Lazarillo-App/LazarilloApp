@@ -135,6 +135,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   comprasMap = new Map(),
   comprasLoading = false,
   rangoCompras = null,
+  businesses = [],  // ✅ todos los negocios de la org (para selector en modal de compras)
 }, ref) {
   const isElaborados = vista === "elaborados";
   const listRef = useRef(null);
@@ -852,6 +853,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                     from={rangoCompras?.from}
                     to={rangoCompras?.to}
                     businessId={originalBusinessId || businessId}
+                    businesses={businesses}
                     loading={comprasLoading}
                   />
 

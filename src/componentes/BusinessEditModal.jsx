@@ -250,11 +250,15 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
       },
     };
 
-    // 4) update
-    await BusinessesAPI.update(bizId, payload);
+    // 4) update — la respuesta ya trae el negocio actualizado
+    const updateResp = await BusinessesAPI.update(bizId, payload);
+    // El backend devuelve { business: {...} } — extraer el objeto
+    const freshFromUpdate = updateResp?.business ?? updateResp;
 
-    // 5) traer negocio fresh (✅ evita “actualizo en navbar pero no en perfil”)
-    const fresh = await BusinessesAPI.get(bizId);
+    // 5) traer negocio fresh solo si el update no devolvió datos completos
+    const fresh = (freshFromUpdate?.id && freshFromUpdate?.props)
+      ? freshFromUpdate
+      : await BusinessesAPI.get(bizId);
 
     // 6) persistir tema para evitar flash
     try {

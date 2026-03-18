@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography, Box
 } from '@mui/material';
 
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -109,7 +109,6 @@ function SubrubroAccionesMenu({
     localStorage.getItem('effectiveBusinessId') ??
     null;
 
-  // Para operaciones de agrupaciones, siempre usar el negocio activo REAL del localStorage
   const realActiveBizId =
     localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ??
@@ -117,11 +116,9 @@ function SubrubroAccionesMenu({
     null;
 
   const { rootBusiness, allBusinesses } = useOrganization();
-  // Prioridad: 1) negocio activo real (localStorage), 2) prop rootBizId, 3) context, 4) fallback
   const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
   const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
   const agrupBizId = Number(realActiveBizId) || rootBizId || Number(effectiveBusinessId);
-  // Discontinuados vive siempre en el negocio principal
   const discBizId = rootBizId || agrupBizId;
 
   const activeBusinessName = React.useMemo(() => {
@@ -165,7 +162,6 @@ function SubrubroAccionesMenu({
     return 'este subrubro';
   }, [subrubro]);
 
-  // Discontinuados
   const discontinuadosGroup = useMemo(
     () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)) || null,
     [agrupaciones]
@@ -194,8 +190,6 @@ function SubrubroAccionesMenu({
     const out = new Set(baseIds);
 
     if (treeMode === "cat-first") {
-      // En modo cat-first, subName es el nombre de la CATEGORÍA
-      // Buscamos por categoría dentro de todosArticulos (ya filtrado al nodo específico)
       if (!subName || !Array.isArray(todosArticulos) || !todosArticulos.length) {
         return baseIds;
       }
@@ -212,8 +206,6 @@ function SubrubroAccionesMenu({
       return Array.from(out);
     }
 
-    // sr-first: baseIds ya vienen del nodo filtrado por activeIds en el sidebar
-    // No expandir — devolver solo los artículos visibles de este subrubro
     return baseIds;
   }, [articuloIds, subName, todosArticulos, treeMode]);
 
@@ -239,7 +231,6 @@ function SubrubroAccionesMenu({
 
     setIsMoving(true);
     try {
-      // Si el origen es Discontinuados, usar discBizId; para el destino, agrupBizId
       const fromIsDisc = fromId != null && fromId === discontinuadosId;
       const fromMoverBizId = fromIsDisc ? discBizId : agrupBizId;
       const toMoverBizId = agrupBizId;
@@ -302,11 +293,15 @@ function SubrubroAccionesMenu({
           })
         );
       } catch { }
+
       onAfterMutation?.(ids);
-      onRefetch?.();
+      // ✅ mover: la mutación optimista ya actualizó el estado — no hace refetch
+      // Solo refetch si NO venimos de Sin Agrupación
+      if (!isTodo) onRefetch?.();
     } catch (e) {
       console.error('MOVER_SUBRUBRO_ERROR', e);
       notify?.('No se pudo mover el subrubro', 'error');
+      onRefetch?.(); // en error siempre refrescar para mostrar estado real
     } finally {
       setIsMoving(false);
       closeMover();
@@ -340,10 +335,11 @@ function SubrubroAccionesMenu({
           );
         } catch { }
         onAfterMutation?.(ids);
-        onRefetch?.();
+        // ✅ desde Sin Agrupación: NO refetch — afterMutation con setExcludedIds es suficiente
       } catch (e) {
         console.error('EXCLUIR_SUBRUBRO_TODO_ERROR', e);
         notify?.('No se pudo quitar el subrubro de TODO', 'error');
+        onRefetch?.(); // solo en error
       } finally {
         handleClose();
       }
@@ -358,7 +354,6 @@ function SubrubroAccionesMenu({
         ids,
       });
 
-      // Usar create-or-move para mover a Sin Agrupación globalmente
       await httpBiz('/agrupaciones/create-or-move', {
         method: 'POST',
         body: { nombre: 'Sin Agrupación', ids },
@@ -382,16 +377,19 @@ function SubrubroAccionesMenu({
         }));
       } catch { }
       onAfterMutation?.(ids);
+      // ✅ agrupación normal: sí refetch (la mutación optimista ya quitó del grupo,
+      // pero el servidor puede tener cambios adicionales que necesitamos ver)
       onRefetch?.();
     } catch (e) {
       console.error(e);
       notify?.('No se pudo quitar el subrubro', 'error');
+      onRefetch?.();
     } finally {
       handleClose();
     }
   }
 
-  // ✅ DISCONTINUAR/REACTIVAR BLOQUE (sin cambiar vista)
+  // ✅ DISCONTINUAR/REACTIVAR BLOQUE
   async function toggleDiscontinuarBloque() {
     const ids = (articuloIds || []).map(getNum).filter(Boolean);
     if (!ids.length) return;
@@ -412,7 +410,7 @@ function SubrubroAccionesMenu({
         await httpBiz(
           `/agrupaciones/${discontinuadosId}/articulos`,
           { method: 'PUT', body: { ids } },
-          discBizId  // Discontinuados vive en el principal
+          discBizId
         );
 
         onMutateGroups?.({
@@ -422,10 +420,15 @@ function SubrubroAccionesMenu({
           baseById,
         });
 
-        // ❌ NO notify (evita duplicado)
-        // notify?.(`Subrubro discontinuado (${labelCount})`, 'success');
+        // ✅ Quitar del grupo actual para que desaparezca de la tabla inmediatamente
+        if (currentGroupId && currentGroupId !== discontinuadosId) {
+          onMutateGroups?.({
+            type: 'remove',
+            groupId: currentGroupId,
+            ids,
+          });
+        }
 
-        // ✅ SOLO emitUiAction con estructura correcta
         emitUiAction({
           businessId: effectiveBusinessId,
           kind: 'discontinue',
@@ -450,15 +453,15 @@ function SubrubroAccionesMenu({
           },
         });
 
-        onRefetch?.();
+        // ✅ Notificar afterMutation — la mutación optimista ya actualizó el estado
+        onAfterMutation?.(ids);
+        // ✅ NO onRefetch en ningún caso — mutación optimista es suficiente
 
       } else {
         // ===========================
         // ✅ REACTIVAR → abrir diálogo de confirmación
         // ===========================
-        // Consultar al backend el origen real de TODOS los artículos del bloque
-        // Resultado: mapa groupId → { groupName, bizId, bizName, ids[] }
-        let origenesMap = {}; // { [groupId]: { groupName, bizId, bizName, ids } }
+        let origenesMap = {};
         if (ids.length > 0) {
           try {
             const res = await httpBiz(
@@ -466,7 +469,6 @@ function SubrubroAccionesMenu({
               { method: 'POST', body: { ids } },
               discBizId
             );
-            // origenes: { [articuloId]: { groupId, groupName, bizId, bizName } }
             const origenes = res?.origenes ?? {};
             for (const [artIdStr, origen] of Object.entries(origenes)) {
               const artId = Number(artIdStr);
@@ -487,7 +489,6 @@ function SubrubroAccionesMenu({
           }
         }
 
-        // Resumen para mostrar en el diálogo
         const grupos = Object.values(origenesMap);
         const sinOrigen = ids.filter(id => !Object.values(origenesMap).some(g => g.ids.includes(id)));
         const resumenTexto = grupos.length > 0
@@ -496,11 +497,10 @@ function SubrubroAccionesMenu({
 
         setOrigenReactivar({
           ids,
-          origenesMap,         // mapa completo groupId → datos
-          sinOrigen,           // ids sin grupo origen conocido
-          resumenTexto,        // para mostrar en el diálogo
+          origenesMap,
+          sinOrigen,
+          resumenTexto,
           labelCount,
-          // compatibilidad con diálogo (primer grupo como referencia)
           fromGroupName: grupos[0]?.groupName ?? null,
           fromBizName: grupos[0]?.bizName ?? null,
         });
@@ -512,6 +512,7 @@ function SubrubroAccionesMenu({
     } catch (e) {
       console.error('DISCONTINUAR_BLOQUE_ERROR', e);
       notify?.('No se pudo cambiar el estado del subrubro', 'error');
+      onRefetch?.(); // en error siempre refrescar
     } finally {
       handleClose();
     }
@@ -533,7 +534,7 @@ function SubrubroAccionesMenu({
         } catch { }
       }
 
-      // 2. Restaurar cada artículo a su grupo origen (un PUT por grupo)
+      // 2. Restaurar cada artículo a su grupo origen
       for (const grupo of Object.values(origenesMap)) {
         if (!grupo.groupId || !grupo.bizId || !grupo.ids?.length) continue;
         try {
@@ -546,7 +547,6 @@ function SubrubroAccionesMenu({
           console.warn(`[ejecutarReactivarBloque] No se pudo restaurar a ${grupo.groupName}:`, e2.message);
         }
       }
-      // sinOrigen: artículos sin grupo conocido → solo se sacan de Discontinuados (quedan en Sin Agrupación)
 
       // 3. Mutación optimista
       onMutateGroups?.({ type: 'remove', groupId: discontinuadosId, ids });
@@ -584,10 +584,11 @@ function SubrubroAccionesMenu({
         },
       });
 
-      onRefetch?.();
+      // ✅ NO onRefetch — las mutaciones optimistas ya actualizaron el estado
     } catch (e) {
       console.error('REACTIVAR_BLOQUE_ERROR', e);
       notify?.('No se pudo reactivar el subrubro', 'error');
+      onRefetch?.(); // solo en error
     } finally {
       setDlgReactivarOpen(false);
     }
@@ -667,7 +668,7 @@ function SubrubroAccionesMenu({
         {/* 2. Quitar de esta agrupación */}
         <MenuItem
           onClick={quitarDeActual}
-          disabled={isTodo} // ✅ Deshabilitar si está en TODO
+          disabled={isTodo}
         >
           <ListItemIcon>
             <UndoIcon fontSize="small" />
@@ -693,6 +694,8 @@ function SubrubroAccionesMenu({
             setPreselect({
               articleIds: ids,
               fromGroupId: !isTodo && currentGroupId ? Number(currentGroupId) : null,
+              // Pasar todoGroupId para que AgrupacionCreateModal pueda quitar de Sin Agrupación
+              todoGroupId: isTodo && todoGroupId ? Number(todoGroupId) : null,
               allowAssigned: true,
             });
             setOpenCrearAgr(true);
@@ -706,25 +709,101 @@ function SubrubroAccionesMenu({
       </Menu>
 
       {/* Diálogo de confirmación de reactivación en bloque */}
-      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)}>
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Reactivar subrubro</DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
-            ¿Reactivar <strong>{origenReactivar?.labelCount || ''}</strong> artículo(s) de <strong>{subDisplayName}</strong> en su negocio y agrupación de origen?
+          <Typography variant="body1" gutterBottom>
+            ¿Dónde querés reactivar{' '}
+            <strong>{origenReactivar?.labelCount || ''} artículo(s)</strong> de{' '}
+            <strong>{subDisplayName}</strong>?
           </Typography>
+
+          {(() => {
+            const grupos = Object.values(origenReactivar?.origenesMap || {});
+            const sinOrigen = origenReactivar?.sinOrigen || [];
+
+            if (grupos.length === 0) {
+              return (
+                <Box sx={{
+                  mt: 1.5, p: 1.5, borderRadius: 1.5,
+                  border: '1px solid', borderColor: 'warning.light',
+                  bgcolor: '#fffbeb',
+                }}>
+                  <Typography variant="caption" color="warning.main" fontWeight={600} display="block" mb={0.5}>
+                    ⚠️ Sin origen registrado
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    No se encontró agrupación de origen. Los artículos quedarán en "Sin agrupación".
+                  </Typography>
+                </Box>
+              );
+            }
+
+            return (
+              <Box sx={{
+                mt: 1.5, p: 1.5, borderRadius: 1.5,
+                border: '1px solid', borderColor: 'divider',
+                bgcolor: 'action.hover',
+              }}>
+                <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={1}>
+                  📍 Orígenes detectados
+                </Typography>
+                {grupos.map((g, i) => (
+                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="body2">
+                      <strong>{g.bizName || `Negocio #${g.bizId}`}</strong> › {g.groupName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
+                      {g.ids?.length} art.
+                    </Typography>
+                  </Box>
+                ))}
+                {sinOrigen.length > 0 && (
+                  <Typography variant="caption" color="warning.main" display="block" mt={0.5}>
+                    ⚠️ {sinOrigen.length} artículo(s) sin origen → irán a "Sin agrupación"
+                  </Typography>
+                )}
+              </Box>
+            );
+          })()}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
+          {Object.values(origenReactivar?.origenesMap || {}).length > 0 ? (
+            <Button
+              variant="contained"
+              onClick={ejecutarReactivarBloque}
+              fullWidth
+              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
+            >
+              Reactivar en origen
+              {origenReactivar?.resumenTexto && (
+                <Typography component="span" variant="caption" sx={{ ml: 0.75, opacity: 0.8, fontWeight: 400 }}>
+                  ({origenReactivar.resumenTexto})
+                </Typography>
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              onClick={ejecutarReactivarBloque}
+              fullWidth
+              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
+            >
+              Reactivar (quedarán en Sin agrupación)
+            </Button>
+          )}
           <Button
             variant="outlined"
+            fullWidth
             onClick={() => {
               setDlgReactivarOpen(false);
               setTimeout(() => setDlgMoverOpen(true), 0);
             }}
           >
-            No, mover a otro lugar…
+            Mover a otra agrupación…
           </Button>
-          <Button variant="contained" onClick={ejecutarReactivarBloque}>
-            Sí, reactivar
+          <Button color="inherit" fullWidth onClick={() => setDlgReactivarOpen(false)}>
+            Cancelar
           </Button>
         </DialogActions>
       </Dialog>
@@ -764,7 +843,7 @@ function SubrubroAccionesMenu({
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
         onCreated={(nombreCreado, newId, articulos) => {
-          notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
+          notify?.(`Agrupación "${nombreCreado}" creada`, 'success');
           try {
             window.dispatchEvent(
               new CustomEvent('ui:action', {
@@ -787,7 +866,8 @@ function SubrubroAccionesMenu({
             nombre: nombreCreado,
             articulos: Array.isArray(articulos) ? articulos : [],
           });
-          onRefetch?.();
+          // ✅ Solo refetch si NO estamos en Sin Agrupación
+          if (!isTodo) onRefetch?.();
         }}
         existingNames={(agrupaciones || [])
           .map((g) => String(g?.nombre || ''))

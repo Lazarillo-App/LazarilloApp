@@ -850,7 +850,10 @@ export default function TablaArticulos({
       }
       const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
       if (isTodo) {
-        // Excluir localmente para que desaparezcan sin esperar refetch
+        // En Sin Agrupación: solo excluir localmente, SIN refetch
+        // El refetch resetea el scroll y pierde el contexto de trabajo.
+        // La mutación optimista con setExcludedIds es suficiente — el artículo
+        // desaparece de la vista inmediatamente sin necesidad de ir al servidor.
         if (ids.length) {
           setExcludedIds(prev => {
             const next = new Set(prev);
@@ -858,7 +861,7 @@ export default function TablaArticulos({
             return next;
           });
         }
-        refetchLocal();
+        // ✅ NO llamar refetchLocal() — mantiene scroll y vista intactos
         return;
       }
 
@@ -1042,6 +1045,7 @@ export default function TablaArticulos({
             defaultGroupBy="day"
             totalOverride={overrideQty}
             onTotalResolved={onTotalResolved}
+             businessId={activeBizId}
           />
         </div>
 

@@ -17,16 +17,19 @@ const fmtNum = (v, d = 2) => {
  * Props:
  *   insumoId      number  — id del insumo
  *   insumoNombre  string
- *   comprasEntry  object | undefined  — entrada del comprasMap: { cantidad, neto, iva, total, facturas }
+ *   comprasEntry  object | undefined  — { cantidad, neto, iva, total, facturas }
  *   from          string  YYYY-MM-DD
  *   to            string  YYYY-MM-DD
- *   businessId    number  — negocio activo (para la query de detalle)
+ *   businessId    number  — negocio activo
+ *   businesses    array   — todos los negocios de la org (para el selector en el modal)
  *   loading       bool    — comprasMap todavía cargando
- *
- * Usa las CSS variables --color-primary y --on-primary del ThemeProviderNegocio
- * para que la columna tome el color del negocio activo automáticamente.
  */
-function ComprasCell({ insumoId, insumoNombre, comprasEntry, from, to, businessId, loading = false }) {
+function ComprasCell({
+  insumoId, insumoNombre,
+  comprasEntry, from, to,
+  businessId, businesses = [],
+  loading = false,
+}) {
   const [open,          setOpen]          = useState(false);
   const [detailItems,   setDetailItems]   = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -45,8 +48,11 @@ function ComprasCell({ insumoId, insumoNombre, comprasEntry, from, to, businessI
     try {
       const token = localStorage.getItem('token');
       const bid   = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
-      const url   = `${BASE}/purchases?insumo_id=${insumoId}&from=${from}&to=${to}&limit=500`;
-      const res   = await fetch(url, {
+      // ✅ Sanitizar fechas por si acaso
+      const fromStr = String(from).slice(0, 10);
+      const toStr   = String(to).slice(0, 10);
+      const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${fromStr}&to=${toStr}&limit=500`;
+      const res = await fetch(url, {
         headers: {
           Authorization:   `Bearer ${token}`,
           'X-Business-Id': String(bid),
@@ -112,10 +118,13 @@ function ComprasCell({ insumoId, insumoNombre, comprasEntry, from, to, businessI
         <ComprasMiniDetalleModal
           open={open}
           onClose={handleClose}
+          insumoId={insumoId}
           insumoNombre={insumoNombre}
-          rango={{ from, to }}
+          rango={{ from: String(from).slice(0, 10), to: String(to).slice(0, 10) }}
           items={detailItems}
           loading={detailLoading}
+          businessId={businessId}
+          businesses={businesses}
         />
       )}
     </>

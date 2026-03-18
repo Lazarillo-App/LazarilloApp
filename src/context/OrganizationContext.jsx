@@ -150,12 +150,16 @@ export function OrganizationProvider({ children }) {
     description,
     address,
     social,
+    organizationId, // override para cuando se acaba de crear la org y el estado aún no se propagó
   }) => {
-    if (!organization?.id) throw new Error('No hay organización');
+    // organizationId puede pasarse directamente como override (cuando se acaba de crear
+    // la org y el estado de React aún no se actualizó en este closure)
+    const resolvedOrgId = organizationId || organization?.id;
+    if (!resolvedOrgId) throw new Error('No hay organización');
     if (!sourceGroupId) throw new Error('sourceGroupId es requerido');
     if (!name?.trim()) throw new Error('El nombre es requerido');
 
-    const newBiz = await createBusinessFromGroup(organization.id, {
+    const newBiz = await createBusinessFromGroup(resolvedOrgId, {
       sourceGroupId,
       name: name.trim(),
       colorHex: colorHex || branding?.primary || null,

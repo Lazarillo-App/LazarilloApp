@@ -183,12 +183,21 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     };
 
     const sig = JSON.stringify(cleaned);
-    if (lastAppliedRef.current === sig) return;
-    lastAppliedRef.current = sig;
+    const alreadyApplied = lastAppliedRef.current === sig;
 
-    setPalette(cleaned);
-    applyCssVars(cleaned);
+    // Si el CSS ya está aplicado Y no hay que persistir, no hacer nada
+    if (alreadyApplied && !persist) return;
+
+    // Si hay que persistir, siempre guardar en localStorage
+    // (el preview aplica con persist:false, luego el save final necesita persist:true)
     if (persist) persistPalette(cleaned, biz);
+
+    // Solo actualizar CSS variables si cambiaron
+    if (!alreadyApplied) {
+      lastAppliedRef.current = sig;
+      setPalette(cleaned);
+      applyCssVars(cleaned);
+    }
   };
 
   // ★ helper: refrescar desde backend y cachear

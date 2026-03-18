@@ -315,6 +315,8 @@ async function _syncAll(bizId, opts = {}) {
   }
 
   console.log(`[syncAll] 🚀 Iniciando sync completo (force=${force})...`);
+  // Marcar sync en curso en sessionStorage para que componentes que monten tarde lo lean
+  try { sessionStorage.setItem(`lazarillo:syncing:${id}`, '1'); } catch {}
   onProgress?.('Iniciando sincronización completa…', 'loading', 'init');
 
   const results = {
@@ -360,6 +362,11 @@ async function _syncAll(bizId, opts = {}) {
 
   const allOk = errors.length === 0;
   
+  // Limpiar flag de sync en curso
+  try { sessionStorage.removeItem(`lazarillo:syncing:${id}`); } catch {}
+  // Marcar que el sync terminó (para que ArticulosMain refresque al montar)
+  try { sessionStorage.setItem(`lazarillo:syncDone:${id}`, Date.now().toString()); } catch {}
+
   if (allOk) {
     console.log('[syncAll] ✅ Sincronización completa exitosa');
     onProgress?.('✅ Sincronización completa exitosa', 'success', 'done');

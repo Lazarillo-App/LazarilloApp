@@ -9,6 +9,7 @@ import Insumos from './paginas/InsumosMain';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
+import ConfiguracionMain from './paginas/ConfiguracionMain';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
 
@@ -245,6 +246,7 @@ export default function App() {
                 }
               />
               <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
+              <Route path="/configuracion" element={<ConfiguracionMain />} />
             </Route>
           ) : (
             <Route path="/" element={<AdminApp />} />

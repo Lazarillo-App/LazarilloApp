@@ -222,8 +222,19 @@ function SidebarCategorias({
   // elegir una válida y resetear filtros como si el usuario lo hubiera cambiado.
   useEffect(() => {
     const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
+
+    const currentId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
+
+    // ✅ GUARD: si la agrupación seleccionada existe en la lista RAW de agrupaciones,
+    // no cambiar la selección aunque opcionesSelect todavía no se haya actualizado.
+    // Esto evita que un refetch post-acción (mover, discontinuar, crear agrupación)
+    // mueva la vista a Sin Agrupación o a otra agrupación.
+    const existsInRaw = currentId != null &&
+      (agrupaciones || []).some(g => Number(g.id) === currentId);
+    if (existsInRaw) return;
+
     if (!opts.length) {
-      // si no hay opciones, limpiar selección para no quedar pegada a una vieja
+      // si no hay opciones (y la agrupación actual ya no existe), limpiar selección
       if (agrupacionSeleccionada) {
         setAgrupacionSeleccionada?.(null);
         setCategoriaSeleccionada?.(null);
@@ -234,7 +245,6 @@ function SidebarCategorias({
       return;
     }
 
-    const currentId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
     const exists = currentId != null && opts.some(o => Number(o.id) === currentId);
 
     if (exists) return;
@@ -266,6 +276,7 @@ function SidebarCategorias({
     onManualPick?.();
   }, [
     opcionesSelect,
+    agrupaciones, // ← necesario para el guard existsInRaw
     agrupacionSeleccionada,
     setAgrupacionSeleccionada,
     isMainDivision,
@@ -837,7 +848,13 @@ function SidebarCategorias({
 
             const subNormMenu = String(sub?.subrubro || '').trim().toLowerCase();
 
-            const todosArticulosParaMenu = localListMode === 'by-categoria'
+            // En Sin Agrupación: pasar TODOS los artículos disponibles para que el modal
+            // permita seleccionar cualquiera, no solo los del rubro/sub activo.
+            // En agrupaciones reales: filtrar por el rubro/sub específico.
+            const isTodoActual = esTodoGroup(agrupacionSeleccionada);
+            const todosArticulosParaMenu = isTodoActual
+              ? categoriasSafe
+              : localListMode === 'by-categoria'
               // Vista by-categoria: sub.subrubro es el nombre de la categoria/rubro
               // Filtramos en categoriasSafe solo esa categoria especifica
               ? categoriasSafe
@@ -892,7 +909,9 @@ function SidebarCategorias({
                     notify={notify}
                     baseById={metaById}
                     treeMode={localListMode === 'by-categoria' ? 'cat-first' : 'sr-first'}
-                    allowedIds={activeIds instanceof Set && activeIds.size > 0 ? activeIds : null}
+                    // En Sin Agrupación todos los artículos están libres:
+                    // no restringir por activeIds para que el modal muestre todo
+                    allowedIds={!esTodoGroup(agrupacionSeleccionada) && activeIds instanceof Set && activeIds.size > 0 ? activeIds : null}
                   />
                 </div>
               </li>
