@@ -9,7 +9,7 @@ import React, {
   useCallback,
   useDeferredValue,
 } from "react";
-import { Snackbar, Alert } from "@mui/material";
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography } from "@mui/material";
 
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
@@ -156,6 +156,11 @@ export default function TablaArticulos({
   onDiscontinuarBloque,
   discIds: discIdsProp,
   orgAssignedIds = null,   // IDs asignados en agrupaciones reales de TODA la org (global)
+  recetasCostos = {},      // { [articleId]: { costoTotal, porciones } }
+  priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
+  globalCostoIdeal = 30,   // % global desde /configuracion
+  onPriceConfigSave,       // fn({ scope, scopeId, objetivo?, precioManual?, articleIds? })
+  onBulkManualSave,        // fn([{artId, precioManual}]) — un solo getAll al final
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -166,6 +171,13 @@ export default function TablaArticulos({
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
   const [snack, setSnack] = useState({ open: false, msg: "", type: "success" });
+
+  // ── Estados controlados para los inputs de cabecera de bloque ──────────────
+  // Persisten en pantalla aunque el usuario haga blur/enter
+  const [blockObjetivos, setBlockObjetivos] = useState({});
+  const [blockManuales,  setBlockManuales]  = useState({});
+  // Diálogo de confirmación para bulk % (agrupación / rubro)
+  const [bulkPctDlg, setBulkPctDlg] = useState(null);
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
     []
@@ -397,6 +409,71 @@ export default function TablaArticulos({
     for (const a of allArticulos) m.set(Number(a.id), a);
     return m;
   }, [allArticulos]);
+
+  // ── Bulk % helpers (requieren baseById) ──────────────────────────────────
+
+  // Precio manual actual del artículo (local state > DB config > baseById)
+  const getCurrentManual = useCallback((artId) => {
+    const key = String(artId);
+    if (manuales[key] !== undefined && manuales[key] !== '') return num(manuales[key]);
+    const cfg = priceConfig.byArticle?.[key];
+    if (cfg?.precioManual != null) return num(cfg.precioManual);
+    // También considerar precioManual que viene directo en el artículo (baseById)
+    const base = baseById?.get?.(Number(artId));
+    if (base?.precioManual != null) return num(base.precioManual);
+    return null;
+  }, [manuales, priceConfig, baseById]);
+
+  // Aplica % bulk. mode: 'todos' | 'solo_sin_manual'
+  const executeBulkPct = useCallback((pct, idsAll, mode, idsConManualSnapshot) => {
+    if (!onBulkManualSave && !onPriceConfigSave) return;
+
+    const excluir = mode === 'solo_sin_manual'
+      ? new Set((idsConManualSnapshot || []).map(Number))
+      : new Set();
+
+    const updates = [];
+    idsAll.forEach(artId => {
+      if (excluir.has(Number(artId))) return;
+      const base = num(baseById.get(artId)?.precio ?? 0);
+      if (base > 0) {
+        updates.push({ artId, precioManual: Math.round(base * (1 + pct / 100)) });
+      }
+    });
+
+    if (!updates.length) return;
+
+    // Actualizar state local inmediatamente
+    setManuales(prev => {
+      const next = { ...prev };
+      updates.forEach(({ artId, precioManual }) => { next[String(artId)] = precioManual; });
+      return next;
+    });
+
+    if (onBulkManualSave) {
+      onBulkManualSave(updates);
+    } else {
+      updates.forEach(({ artId, precioManual }) => {
+        onPriceConfigSave({ scope: 'articulo', scopeId: String(artId), precioManual });
+      });
+    }
+  }, [onBulkManualSave, onPriceConfigSave, baseById, setManuales]);
+
+  // Lanzar bulk % con confirmación si hay manuales existentes
+  const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey) => {
+    if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
+    const pctNum = Number(pct);
+    const idsConManual = ids.filter(id => getCurrentManual(id) != null);
+    if (idsConManual.length > 0) {
+      // NO limpiar el input aquí — se limpia cuando el usuario confirma en el diálogo
+      setBulkPctDlg({ pct: pctNum, idsAll: ids, idsConManual, inputRef, blockKey });
+    } else {
+      executeBulkPct(pctNum, ids, 'todos', []);
+      // Limpiar via state React (confiable) y también el DOM como backup
+      if (blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
+      if (inputRef?.current) inputRef.current.value = '';
+    }
+  }, [getCurrentManual, executeBulkPct]);
 
   // -------- ventas helpers (DESPUÉS de baseById) --------
   const getVentaForId = useCallback(
@@ -707,6 +784,8 @@ export default function TablaArticulos({
     }));
   }, [articulosFiltrados, getVentasAmount]);
 
+  const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
+
   const flatRows = useMemo(() => {
     const sections = [];
 
@@ -744,6 +823,20 @@ export default function TablaArticulos({
     }
 
     const rows = [];
+
+    // Fila de totales de agrupación al tope — nombre + ventas totales + inputs objetivo/manual
+    if (esAgrupEspecifica && sections.length > 0) {
+      const todosIds = sections.flatMap(sec => (sec.arts || []).map(getId)).filter(Boolean);
+      const totalVentasAgrup = todosIds.reduce((acc, id) => acc + getVentasAmount(id), 0);
+      rows.push({
+        kind: "agrupacion-header",
+        key: "AGRUP-HEADER",
+        ids: todosIds,
+        totalVentas: totalVentasAgrup,
+        nombre: agrupacionSeleccionada?.nombre || '',
+      });
+    }
+
     for (const sec of sections) {
       const { categoria, subrubro, arts } = sec;
 
@@ -755,6 +848,8 @@ export default function TablaArticulos({
         ids: arts.map(getId),
         __ventasMonto: sec.__ventasMonto || 0,
       });
+
+      // Los inputs de objetivo/manual% están integrados en el header del rubro
 
       for (const a of arts) {
         const id = getId(a);
@@ -848,7 +943,6 @@ export default function TablaArticulos({
         refetchLocal();
         return;
       }
-      const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
       if (isTodo) {
         // En Sin Agrupación: solo excluir localmente, SIN refetch
         // El refetch resetea el scroll y pierde el contexto de trabajo.
@@ -890,20 +984,160 @@ export default function TablaArticulos({
 
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
 
-  const calcularCostoPct = (a) => {
-    const p = num(a.precio),
-      c = num(a.costo);
-    return p > 0 ? ((c / p) * 100).toFixed(2) : 0;
+  // ── Helpers de costo desde receta o fallback a costo de MaxiRest ──
+  const getCostoArticulo = useCallback((a) => {
+    const id = String(getId(a));
+    const receta = recetasCostos[id] || recetasCostos[Number(id)];
+    if (receta && receta.costoTotal > 0) {
+      return receta.porciones > 1
+        ? receta.costoTotal / receta.porciones
+        : receta.costoTotal;
+    }
+    return num(a.costo);
+  }, [recetasCostos]);
+
+  // Jerarquía: artículo > rubro > agrupación > global (objetivos state = override temporal)
+  const getObjetivoArticulo = useCallback((a, agrupacionId) => {
+    const id = String(getId(a));
+    // 1) override local (input del usuario aún no guardado)
+    if (objetivos[id] !== undefined && objetivos[id] !== '') return num(objetivos[id]);
+    // 2) config persistida por artículo
+    const cfgArt = priceConfig.byArticle?.[id];
+    if (cfgArt?.objetivo != null) return num(cfgArt.objetivo);
+    // 3) config por rubro (usa categoria/subrubro como key)
+    const rubroKey = String(a.categoria || a.rubro || '');
+    const cfgRubro = priceConfig.byRubro?.[rubroKey];
+    if (cfgRubro?.objetivo != null) return num(cfgRubro.objetivo);
+    // 4) config por agrupación
+    if (agrupacionId) {
+      const cfgAgrup = priceConfig.byAgrupacion?.[String(agrupacionId)];
+      if (cfgAgrup?.objetivo != null) return num(cfgAgrup.objetivo);
+    }
+    return globalCostoIdeal; // default desde /configuracion
+  }, [objetivos, priceConfig, globalCostoIdeal]);
+
+  const getPrecioManualArticulo = useCallback((a) => {
+    const id = String(getId(a));
+    if (manuales[id] !== undefined && manuales[id] !== '') return num(manuales[id]);
+    const cfgArt = priceConfig.byArticle?.[id];
+    if (cfgArt?.precioManual != null) return num(cfgArt.precioManual);
+    return null;
+  }, [manuales, priceConfig]);
+
+  const calcularCostoPct = (a, agrupacionId) => {
+    const precioRef = getPrecioManualArticulo(a) ?? num(a.precio);
+    const costo = getCostoArticulo(a);
+    return precioRef > 0 ? (costo / precioRef) * 100 : 0;
   };
 
-  const calcularSugerido = (a) => {
-    const o = num(objetivos[getId(a)]) || 0;
-    const c = num(a.costo);
-    const den = 100 - o;
-    return den > 0 ? c * (100 / den) : 0;
+  const calcularSugerido = (a, agrupacionId) => {
+    const obj = getObjetivoArticulo(a, agrupacionId);
+    const costo = getCostoArticulo(a);
+    return obj > 0 && obj < 100 ? costo / (obj / 100) : 0;
   };
+
+  const tieneReceta = useCallback((a) => {
+    const id = String(getId(a));
+    const r = recetasCostos[id] || recetasCostos[Number(id)];
+    return r && r.costoTotal > 0;
+  }, [recetasCostos]);
 
   const renderRow = ({ row, index, style }) => {
+
+    // ── Fila de totales de agrupación (tope de la tabla) ──
+    if (row.kind === "agrupacion-header") {
+      const agrupId = String(agrupacionSeleccionada?.id || '');
+      const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
+      // Valor guardado en DB; el input usa blockObjetivos para persistir en pantalla
+      const objValDb = cfgAgrup.objetivo != null ? String(cfgAgrup.objetivo) : '';
+      const bkObj    = `agrup-obj-${agrupId}`;
+      const bkManual = `agrup-man-${agrupId}`;
+      const ids = row.ids || [];
+
+      return (
+        <div
+          key={row.key}
+          style={{
+            ...style,
+            display: "grid",
+            alignItems: "center",
+            gridTemplateColumns: gridTemplate,
+            fontSize: "0.82rem",
+            fontWeight: 600,
+            background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
+            borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
+            padding: "0 4px",
+          }}
+        >
+          {/* col 1-2: nombre agrupación */}
+          <div style={{ gridColumn: "1 / 3", color: "var(--color-primary)", paddingLeft: 4,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {row.nombre}
+          </div>
+          {/* col 3: ventas U vacío */}
+          <div />
+          {/* col 4: total ventas $ */}
+          <div style={{ ...cellNum, color: "var(--color-primary)" }}>
+            {row.totalVentas > 0 ? fmtCurrency(row.totalVentas) : ''}
+          </div>
+          {/* col 5,6,7: precio, costo, costo% vacíos */}
+          <div /><div /><div />
+          {/* col 8: objetivo % agrupación — controlado, persiste en pantalla */}
+          <div style={cellNum}>
+            <div className="input-symbol-wrapper" data-symbol="%">
+              <input
+                type="number"
+                placeholder={String(globalCostoIdeal)}
+                value={blockObjetivos[bkObj] ?? objValDb}
+                onChange={(e) => setBlockObjetivos(prev => ({ ...prev, [bkObj]: e.target.value }))}
+                onBlur={(e) => {
+                  const val = e.target.value === '' ? null : Number(e.target.value);
+                  if (!onPriceConfigSave) return;
+                  // Propagar al state local para que los headers de rubro reflejen el cambio
+                  if (val != null) {
+                    setObjetivos(prev => {
+                      const next = { ...prev };
+                      ids.forEach(artId => { next[String(artId)] = val; });
+                      return next;
+                    });
+                  }
+                  onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids });
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                className="input-with-suffix input-group-level"
+                style={{ width: 52, fontSize: '0.78rem', textAlign: 'center', background: 'transparent', fontWeight: 600 }}
+              />
+            </div>
+          </div>
+          {/* col 9: sugerido vacío */}
+          <div />
+          {/* col 10: manual % agrupación — controlado, persiste en pantalla */}
+          <div style={cellNum}>
+            <div className="input-symbol-wrapper" data-symbol="%">
+              <input
+                type="number"
+                placeholder="+%"
+                value={blockManuales[bkManual] ?? ''}
+                onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkManual]: e.target.value }))}
+                onBlur={(e) => {
+                  const pct = e.target.value === '' ? null : Number(e.target.value);
+                  if (pct == null) return;
+                  // Pasar bkManual como blockKey para que el diálogo limpie via state React
+                  triggerBulkPct(pct, ids, { current: e.target }, bkManual);
+                  // NO limpiar aquí: si se abre diálogo el valor debe permanecer visible
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                className="input-with-suffix input-group-level"
+                style={{ width: 52, fontSize: '0.78rem', textAlign: 'center', background: 'transparent', fontWeight: 600 }}
+              />
+            </div>
+          </div>
+          {/* col 11: acciones vacío */}
+          <div />
+        </div>
+      );
+    }
+
     if (row.kind === "header") {
       let headerCat = row.categoria || "Sin categoría";
       let headerSr = row.subrubro || "Sin subrubro";
@@ -947,12 +1181,79 @@ export default function TablaArticulos({
           <div style={cellNum}>{fmt(totalQty, 0)}</div>
           <div style={cellNum}>{fmtCurrency(totalAmount)}</div>
 
+          {/* precio, costo, costo% vacíos */}
+          <div /><div /><div />
+
+          {/* Objetivo % del rubro — controlado, persiste en pantalla */}
+          {esAgrupEspecifica ? (() => {
+            const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+            const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
+            const objValDb = cfgRubro.objetivo != null ? String(cfgRubro.objetivo) : '';
+            // Si hay objetivo de agrupación propagado al primer artículo, mostrarlo como placeholder
+            const firstObjLocal = ids.length ? objetivos[String(ids[0])] : undefined;
+            const bkRubroObj = `rubro-obj-${rubroKey}`;
+            const bkRubroMan = `rubro-man-${rubroKey}`;
+            return (
+              <div style={cellNum}>
+                <div className="input-symbol-wrapper" data-symbol="%">
+                  <input
+                    type="number"
+                    placeholder={firstObjLocal != null ? String(firstObjLocal) : String(globalCostoIdeal)}
+                    value={blockObjetivos[bkRubroObj] ?? objValDb}
+                    onChange={(e) => setBlockObjetivos(prev => ({ ...prev, [bkRubroObj]: e.target.value }))}
+                    onBlur={(e) => {
+                      const val = e.target.value === '' ? null : Number(e.target.value);
+                      if (!onPriceConfigSave) return;
+                      // Propagar al state local
+                      if (val != null) {
+                        setObjetivos(prev => {
+                          const next = { ...prev };
+                          ids.forEach(artId => { next[String(artId)] = val; });
+                          return next;
+                        });
+                      }
+                      onPriceConfigSave({ scope: 'rubro', scopeId: rubroKey, objetivo: val, articleIds: ids });
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    className="input-with-suffix"
+                    style={{ width: 52, fontSize: '0.75rem', textAlign: 'center',
+                      border: '1px solid #cbd5e1', borderRadius: 4 }}
+                  />
+                </div>
+              </div>
+            );
+          })() : <div />}
+
+          {/* Sugerido vacío */}
           <div />
-          <div />
-          <div />
-          <div />
-          <div />
-          <div />
+
+          {/* Manual % del rubro — controlado con triggerBulkPct */}
+          {esAgrupEspecifica ? (() => {
+            const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+            const bkRubroMan = `rubro-man-${rubroKeyManual}`;
+            return (
+              <div style={cellNum}>
+                <div className="input-symbol-wrapper" data-symbol="%">
+                  <input
+                    type="number"
+                    placeholder="+%"
+                    value={blockManuales[bkRubroMan] ?? ''}
+                    onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkRubroMan]: e.target.value }))}
+                    onBlur={(e) => {
+                      const pct = e.target.value === '' ? null : Number(e.target.value);
+                      if (pct == null) return;
+                      triggerBulkPct(pct, ids, { current: e.target }, bkRubroMan);
+                      // NO limpiar aquí: si se abre diálogo el valor debe permanecer visible
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    className="input-with-suffix"
+                    style={{ width: 52, fontSize: '0.75rem', textAlign: 'center',
+                      border: '1px solid #cbd5e1', borderRadius: 4 }}
+                  />
+                </div>
+              </div>
+            );
+          })() : <div />}
 
           <SubrubroAccionesMenu
             subrubro={groupKeyName}
@@ -978,12 +1279,31 @@ export default function TablaArticulos({
       );
     }
 
-    const a = row.art;
-    const id = a.id;
+
+    const a = row.art;    const id = a.id;
+    const agrupId = String(agrupacionSeleccionada?.id || '');
     const isSelected = Number(id) === Number(selectedArticleId);
 
-    const overrideQty = getVentasQty(id);
+    const overrideQty    = getVentasQty(id);
     const overrideAmount = getVentasAmount(id);
+
+    const costoArticulo    = getCostoArticulo(a);
+    const hayReceta        = tieneReceta(a);
+    const recetaData       = recetasCostos[String(id)] || recetasCostos[Number(id)];
+    const hayAlertaInsumo  = hayReceta && recetaData?.tieneAlerta === true;
+    const objetivoArticulo = getObjetivoArticulo(a, agrupId);
+    const precioManual     = getPrecioManualArticulo(a);
+    const precioRef        = precioManual ?? num(a.precio);
+    const costoPct         = precioRef > 0 ? (costoArticulo / precioRef) * 100 : 0;
+    const sugerido         = objetivoArticulo > 0 && objetivoArticulo < 100
+      ? costoArticulo / (objetivoArticulo / 100) : 0;
+
+    const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    const rowBg = hayAlertaInsumo
+      ? "rgba(245,158,11,0.08)"
+      : superaObjetivo
+        ? "rgba(239,68,68,0.06)"
+        : undefined;
 
     const selectedStyle = isSelected
       ? {
@@ -994,17 +1314,8 @@ export default function TablaArticulos({
       : null;
 
     const leftBar = isSelected ? (
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 4,
-          background: "var(--color-primary)",
-          borderRadius: 2,
-        }}
-      />
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
+        background: "var(--color-primary)", borderRadius: 2 }} />
     ) : null;
 
     return (
@@ -1019,6 +1330,7 @@ export default function TablaArticulos({
           gridTemplateColumns: gridTemplate,
           fontWeight: 500,
           fontSize: "0.85rem",
+          background: rowBg,
           ...(selectedStyle || {}),
         }}
       >
@@ -1026,14 +1338,18 @@ export default function TablaArticulos({
         <div>{id}</div>
         <div
           onClick={() => setRecetaArticulo(a)}
-          style={{
-            cursor: 'pointer',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          title={`Ver receta de ${a.nombre}`}
+          style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}
         >
+          {hayAlertaInsumo && (
+            <span title="Algún insumo sin compra reciente" style={{ color: '#f59e0b', marginRight: 3, fontSize: '0.7rem' }}>⚠</span>
+          )}
+          {hayReceta && !hayAlertaInsumo && (
+            <span style={{ color: 'var(--color-primary)', marginRight: 4, fontSize: '0.7rem' }}>●</span>
+          )}
+          {hayReceta && hayAlertaInsumo && (
+            <span style={{ color: '#f59e0b', marginRight: 4, fontSize: '0.7rem' }}>●</span>
+          )}
           {a.nombre}
         </div>
         <div>
@@ -1045,40 +1361,47 @@ export default function TablaArticulos({
             defaultGroupBy="day"
             totalOverride={overrideQty}
             onTotalResolved={onTotalResolved}
-             businessId={activeBizId}
+            businessId={activeBizId}
           />
         </div>
-
         <div style={cellNum}>{fmtCurrency(overrideAmount)}</div>
-
-        <div style={cellNum}>{fmt(a.precio, 0)}</div>
-        <div style={cellNum}>{fmt(a.costo, 0)}</div>
-        <div style={cellNum}>{calcularCostoPct(a)}%</div>
-
+        <div style={{ ...cellNum, color: precioManual != null ? 'var(--color-primary)' : undefined }}>
+          {fmt(precioRef, 0)}
+        </div>
+        <div style={{ ...cellNum, color: hayReceta ? 'var(--color-primary)' : undefined }}>
+          {costoArticulo > 0 ? fmt(costoArticulo, 0) : '—'}
+        </div>
+        <div style={{ ...cellNum, color: superaObjetivo ? '#ef4444' : undefined, fontWeight: superaObjetivo ? 700 : 500 }}>
+          {costoPct > 0 ? `${fmt(costoPct, 1)}%` : '—'}
+        </div>
         <div style={cellNum}>
           <input
             type="number"
-            value={objetivos[id] || ""}
-            onChange={(e) =>
-              setObjetivos((s) => ({ ...s, [id]: e.target.value }))
-            }
-            style={{ width: 64 }}
+            value={objetivos[id] !== undefined ? objetivos[id] : (priceConfig.byArticle?.[String(id)]?.objetivo ?? '')}
+            onChange={(e) => setObjetivos((s) => ({ ...s, [id]: e.target.value }))}
+            onBlur={(e) => {
+              const val = e.target.value === '' ? null : Number(e.target.value);
+              onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), objetivo: val });
+            }}
+            placeholder={String(objetivoArticulo)}
+            style={{ width: 52, fontSize: '0.78rem', textAlign: 'center' }}
           />
         </div>
-
-        <div style={cellNum}>{fmt(calcularSugerido(a), 2)}</div>
-
+        <div style={{ ...cellNum, color: sugerido > 0 ? '#16a34a' : undefined }}>
+          {sugerido > 0 ? fmt(sugerido, 0) : '—'}
+        </div>
         <div style={cellNum}>
           <input
             type="number"
-            value={manuales[id] || ""}
-            onChange={(e) =>
-              setManuales((s) => ({ ...s, [id]: e.target.value }))
-            }
-            style={{ width: 84 }}
+            value={manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '')}
+            onChange={(e) => setManuales((s) => ({ ...s, [id]: e.target.value }))}
+            onBlur={(e) => {
+              const val = e.target.value === '' ? null : Number(e.target.value);
+              onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
+            }}
+            style={{ width: 72, fontSize: '0.78rem', textAlign: 'center' }}
           />
         </div>
-
         <div style={{ textAlign: "center" }}>
           <ArticuloAccionesMenu
             onMutateGroups={onMutateGroups}
@@ -1111,11 +1434,16 @@ export default function TablaArticulos({
           onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo}
           businessId={rootBizId ?? activeBizId}
+          onSaved={(savedReceta) => {
+            if (savedReceta?.article_id && savedReceta?.costo_total != null) {
+              // El padre refrescará recetasCostos en el próximo ciclo
+            }
+          }}
         />
       )}
       <div className="tabla-articulos-container">
         <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
-      <div className="table-col-header">
+          <div className="table-col-header">
             <div
               className="table-col-header-inner"
               style={{ gridTemplateColumns: gridTemplate }}
@@ -1130,12 +1458,10 @@ export default function TablaArticulos({
                 Ventas U {ventasLoading ? "…" : ""}{" "}
                 {sortBy === "ventasQty" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-
               <div onClick={() => toggleSort("ventas")} className="col-sortable">
                 Ventas $ {ventasLoading ? "…" : ""}{" "}
                 {sortBy === "ventas" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-
               <div onClick={() => toggleSort("precio")} className="col-sortable">
                 Precio {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
@@ -1163,14 +1489,7 @@ export default function TablaArticulos({
           </div>
 
           {flatRows.length === 0 ? (
-            <p
-              style={{
-                marginTop: "2rem",
-                fontSize: "1.2rem",
-                color: "#777",
-                padding: "0 8px",
-              }}
-            >
+            <p style={{ marginTop: "2rem", fontSize: "1.2rem", color: "#777", padding: "0 8px" }}>
               No hay artículos.
             </p>
           ) : (
@@ -1206,6 +1525,61 @@ export default function TablaArticulos({
             {snack.msg}
           </Alert>
         </Snackbar>
+
+        {/* ── Diálogo confirmación bulk % manual ───────────────────────── */}
+        {bulkPctDlg && (
+          <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
+              Aplicar +{bulkPctDlg.pct}% de precio
+            </DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {bulkPctDlg.idsConManual.length === bulkPctDlg.idsAll.length
+                  ? `Los ${bulkPctDlg.idsAll.length} artículos ya tienen precio manual.`
+                  : `${bulkPctDlg.idsConManual.length} de ${bulkPctDlg.idsAll.length} artículos ya tienen precio manual.`
+                }
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                El % se calcula desde el precio original de MaxiRest.
+              </Typography>
+            </DialogContent>
+            <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
+              <Button
+                variant="contained" size="small"
+                onClick={() => {
+                  executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'todos', []);
+                  // Limpiar via state React (confiable) + DOM como backup
+                  if (bulkPctDlg.blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                  if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
+                  setBulkPctDlg(null);
+                }}
+                sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+              >
+                A todos ({bulkPctDlg.idsAll.length} artículos)
+              </Button>
+              <Button
+                variant="outlined" size="small"
+                onClick={() => {
+                  executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'solo_sin_manual', bulkPctDlg.idsConManual);
+                  // Limpiar via state React (confiable) + DOM como backup
+                  if (bulkPctDlg.blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                  if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
+                  setBulkPctDlg(null);
+                }}
+                sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
+              >
+                Solo los que NO tienen manual ({bulkPctDlg.idsAll.length - bulkPctDlg.idsConManual.length} artículos)
+              </Button>
+              <Button
+                variant="text" size="small" color="inherit"
+                onClick={() => setBulkPctDlg(null)}
+                sx={{ textTransform: 'none' }}
+              >
+                Cancelar
+              </Button>
+            </DialogActions>
+          </Dialog>
+        )}
       </div>
     </>
   );

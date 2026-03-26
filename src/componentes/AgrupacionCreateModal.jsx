@@ -19,7 +19,14 @@ import {
   TextField,
   Snackbar,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
+  CircularProgress,
 } from "@mui/material";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { httpBiz } from "../servicios/apiBusinesses";
 import { emitGroupsChanged } from "@/utils/groupsBus";
@@ -151,6 +158,7 @@ export default function AgrupacionCreateModal({
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
   const [snackbarTipo, setSnackbarTipo] = useState("success");
   const [saving, setSaving] = useState(false);
+  const [successModal, setSuccessModal] = useState(null); // { nombre, count, groupId }
 
   const showSnack = useCallback((msg, type = "success") => {
     setSnackbarMensaje(msg);
@@ -462,31 +470,14 @@ export default function AgrupacionCreateModal({
             effectiveBusinessId
           );
         } else if (haveTodoGroup) {
-          // Origen es Sin Agrupación — PUT al nuevo grupo + DELETE del todoGroup
+          // Origen es Sin Agrupación — Sin Agrupación no almacena artículos en DB,
+          // son calculados. Solo hay que agregar al nuevo grupo.
+          // El frontend actualiza orgAssignedIds optimistamente para que desaparezcan de Sin Agrupación.
           await httpBiz(
             `/agrupaciones/${newGroupId}/articulos`,
             { method: "PUT", body: { ids } },
             effectiveBusinessId
           );
-          // Quitar de Sin Agrupación para que no quede como copia
-          try {
-            await httpBiz(
-              `/agrupaciones/${todoGroupId}/articulos`,
-              { method: "DELETE", body: { ids } },
-              effectiveBusinessId
-            );
-          } catch (eDel) {
-            // fallback: intentar uno por uno
-            for (const id of ids) {
-              try {
-                await httpBiz(
-                  `/agrupaciones/${todoGroupId}/articulos/${id}`,
-                  { method: "DELETE" },
-                  effectiveBusinessId
-                );
-              } catch { }
-            }
-          }
         } else {
           // Sin origen conocido — solo agregar al nuevo grupo
           await httpBiz(
@@ -528,14 +519,10 @@ export default function AgrupacionCreateModal({
         setNombreRubro("");
         setSelectedIds(new Set());
         onCreated?.(finalName, newGroupId, articulosDetallados);
-
-        showSnack(`Agrupación "${finalName}" creada correctamente`);
         emitGroupsChanged("create", { groupId: newGroupId, count: ids.length });
 
-        setTimeout(() => {
-          setSnackbarOpen(false);
-          onClose?.();
-        }, 600);
+        // ✅ Modal de éxito en lugar de snackbar
+        setSuccessModal({ nombre: finalName, count: ids.length, groupId: newGroupId });
         return;
       }
 
@@ -636,14 +623,6 @@ export default function AgrupacionCreateModal({
                 sx={{ mb: 2 }}
               />
             )}
-
-            <TextField
-              size="small"
-              placeholder="Buscar artículo o código…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              fullWidth
-            />
 
             <Typography variant="subtitle1" fontWeight="bold" sx={{ mt: 2 }}>
               Seleccioná Rubros / Subrubros / Artículos
@@ -831,6 +810,41 @@ export default function AgrupacionCreateModal({
           </Box>
         </Box>
       </Modal>
+
+      {/* ── Modal de éxito ── */}
+      <Dialog
+        open={!!successModal}
+        onClose={() => { setSuccessModal(null); onClose?.(); }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogContent sx={{ textAlign: 'center', pt: 4, pb: 2 }}>
+          <CheckCircleOutlineIcon sx={{ fontSize: 64, color: 'success.main', mb: 1.5 }} />
+          <Typography variant="h6" fontWeight={800} gutterBottom>
+            ¡Agrupación creada!
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            <strong>"{successModal?.nombre}"</strong> fue creada con{' '}
+            <strong>{successModal?.count} artículo{successModal?.count !== 1 ? 's' : ''}</strong>{' '}
+            correctamente.
+          </Typography>
+        </DialogContent>
+        <Divider />
+        <DialogActions sx={{ justifyContent: 'center', py: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => { setSuccessModal(null); onClose?.(); }}
+            sx={{
+              bgcolor: 'var(--color-primary)',
+              color: 'var(--on-primary)',
+              px: 4,
+              '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' },
+            }}
+          >
+            Listo
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

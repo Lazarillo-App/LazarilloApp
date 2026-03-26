@@ -709,101 +709,61 @@ function SubrubroAccionesMenu({
       </Menu>
 
       {/* Diálogo de confirmación de reactivación en bloque */}
-      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Reactivar subrubro</DialogTitle>
         <DialogContent>
           <Typography variant="body1" gutterBottom>
-            ¿Dónde querés reactivar{' '}
-            <strong>{origenReactivar?.labelCount || ''} artículo(s)</strong> de{' '}
-            <strong>{subDisplayName}</strong>?
+            ¿Reactivar <strong>{origenReactivar?.labelCount || ''}</strong> artículo(s) de <strong>{subDisplayName}</strong>?
           </Typography>
 
           {(() => {
             const grupos = Object.values(origenReactivar?.origenesMap || {});
             const sinOrigen = origenReactivar?.sinOrigen || [];
-
-            if (grupos.length === 0) {
-              return (
-                <Box sx={{
-                  mt: 1.5, p: 1.5, borderRadius: 1.5,
-                  border: '1px solid', borderColor: 'warning.light',
-                  bgcolor: '#fffbeb',
-                }}>
-                  <Typography variant="caption" color="warning.main" fontWeight={600} display="block" mb={0.5}>
-                    ⚠️ Sin origen registrado
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    No se encontró agrupación de origen. Los artículos quedarán en "Sin agrupación".
-                  </Typography>
-                </Box>
-              );
-            }
-
+            if (grupos.length === 0 && sinOrigen.length === 0) return null;
             return (
-              <Box sx={{
-                mt: 1.5, p: 1.5, borderRadius: 1.5,
-                border: '1px solid', borderColor: 'divider',
-                bgcolor: 'action.hover',
-              }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={1}>
-                  📍 Orígenes detectados
-                </Typography>
-                {grupos.map((g, i) => (
-                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="body2">
-                      <strong>{g.bizName || `Negocio #${g.bizId}`}</strong> › {g.groupName}
+              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {grupos.length > 0 && (
+                  <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                      Origen detectado — se reactivarán en:
                     </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
-                      {g.ids?.length} art.
+                    {grupos.map(g => (
+                      <Typography key={g.groupId} variant="body2">
+                        🏢 <strong>{g.bizName}</strong> › 📁 <strong>{g.groupName}</strong>
+                        <Typography component="span" variant="caption" color="text.secondary" ml={0.5}>
+                          ({g.ids.length} artículo{g.ids.length !== 1 ? 's' : ''})
+                        </Typography>
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
+                {sinOrigen.length > 0 && (
+                  <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: '#fffbeb', border: '1px solid #fbbf24' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      ⚠️ {sinOrigen.length} artículo{sinOrigen.length !== 1 ? 's' : ''} sin origen registrado — quedarán en Sin Agrupación.
                     </Typography>
                   </Box>
-                ))}
-                {sinOrigen.length > 0 && (
-                  <Typography variant="caption" color="warning.main" display="block" mt={0.5}>
-                    ⚠️ {sinOrigen.length} artículo(s) sin origen → irán a "Sin agrupación"
-                  </Typography>
                 )}
               </Box>
             );
           })()}
         </DialogContent>
-        <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
-          {Object.values(origenReactivar?.origenesMap || {}).length > 0 ? (
-            <Button
-              variant="contained"
-              onClick={ejecutarReactivarBloque}
-              fullWidth
-              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
-            >
-              Reactivar en origen
-              {origenReactivar?.resumenTexto && (
-                <Typography component="span" variant="caption" sx={{ ml: 0.75, opacity: 0.8, fontWeight: 400 }}>
-                  ({origenReactivar.resumenTexto})
-                </Typography>
-              )}
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={ejecutarReactivarBloque}
-              fullWidth
-              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
-            >
-              Reactivar (quedarán en Sin agrupación)
-            </Button>
-          )}
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
             variant="outlined"
-            fullWidth
+            size="small"
             onClick={() => {
               setDlgReactivarOpen(false);
               setTimeout(() => setDlgMoverOpen(true), 0);
             }}
           >
-            Mover a otra agrupación…
+            Mover a otro lugar…
           </Button>
-          <Button color="inherit" fullWidth onClick={() => setDlgReactivarOpen(false)}>
-            Cancelar
+          <Button variant="contained" size="small" onClick={ejecutarReactivarBloque}>
+            {origenReactivar?.resumenTexto
+              ? `Reactivar en origen`
+              : 'Reactivar (sin agrupación)'
+            }
           </Button>
         </DialogActions>
       </Dialog>
@@ -845,28 +805,39 @@ function SubrubroAccionesMenu({
         onCreated={(nombreCreado, newId, articulos) => {
           notify?.(`Agrupación "${nombreCreado}" creada`, 'success');
           try {
-            window.dispatchEvent(
-              new CustomEvent('ui:action', {
-                detail: {
-                  kind: 'group_create',
-                  scope: 'articulo',
-                  businessId: effectiveBusinessId,
-                  createdAt: new Date().toISOString(),
-                  title: 'Agrupación creada',
-                  message: `"${nombreCreado}" con ${(articulos || []).length} artículo(s).`,
-                  payload: { groupId: newId, groupName: nombreCreado },
-                },
-              })
-            );
+            window.dispatchEvent(new CustomEvent('ui:action', {
+              detail: {
+                kind: 'group_create', scope: 'articulo',
+                businessId: effectiveBusinessId,
+                createdAt: new Date().toISOString(),
+                title: 'Agrupación creada',
+                message: `"${nombreCreado}" con ${(articulos || []).length} artículo(s).`,
+                payload: { groupId: newId, groupName: nombreCreado },
+              },
+            }));
           } catch { }
-          onGroupCreated?.(nombreCreado, newId, articulos);
+
+          // 1. Agregar el nuevo grupo al estado optimista
           onMutateGroups?.({
             type: 'create',
             id: Number(newId),
             nombre: nombreCreado,
             articulos: Array.isArray(articulos) ? articulos : [],
           });
-          // ✅ Solo refetch si NO estamos en Sin Agrupación
+
+          // 2. ✅ Si veníamos de Sin Agrupación, quitar los artículos de ahí optimistamente
+          const movingIds = (Array.isArray(articulos) ? articulos : [])
+            .map(a => Number(a?.id)).filter(Number.isFinite);
+          const todoGrpId = preselect?.todoGroupId;
+          if (isTodo && todoGrpId && movingIds.length) {
+            onMutateGroups?.({
+              type: 'remove',
+              groupId: Number(todoGrpId),
+              ids: movingIds,
+            });
+          }
+
+          onGroupCreated?.(nombreCreado, newId, articulos);
           if (!isTodo) onRefetch?.();
         }}
         existingNames={(agrupaciones || [])

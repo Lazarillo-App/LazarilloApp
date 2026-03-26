@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
-  Snackbar, Alert, LinearProgress
+  Snackbar, Alert, LinearProgress, Badge
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -11,6 +11,7 @@ import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 
 import { useBusiness } from '@/context/BusinessContext';
+import { RecetasAPI } from '@/servicios/apiBusinesses';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 
@@ -62,6 +63,17 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   const { activeBusinessId } = useBusiness() || {};
+
+  // Badge de alertas en el ícono de configuración
+  const [alertasBadge, setAlertasBadge] = useState(0);
+  useEffect(() => {
+    if (!activeBusinessId) return;
+    let alive = true;
+    RecetasAPI.getAlertas(Number(activeBusinessId))
+      .then(res => { if (alive) setAlertasBadge(res?.total || 0); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [activeBusinessId]);
 
   const [colors, setColors] = React.useState(() => ({
     primary: '#111111',
@@ -273,7 +285,14 @@ export default function Navbar() {
                     to="/configuracion"
                     aria-label="Configuración"
                   >
-                    <SettingsIcon fontSize="small" />
+                    <Badge
+                      badgeContent={alertasBadge || null}
+                      color="warning"
+                      max={99}
+                      sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', minWidth: 16, height: 16 } }}
+                    >
+                      <SettingsIcon fontSize="small" />
+                    </Badge>
                   </IconButton>
                 </Tooltip>
               )}

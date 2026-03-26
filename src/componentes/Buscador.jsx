@@ -121,11 +121,15 @@ export default function Buscador({
       const norm = normalize(label);
       const words = norm ? norm.split(' ') : [];
 
+      const codigoRaw = o?.codigo ?? o?.codigo_maxi ?? '';
+      const codigoStr = String(codigoRaw).trim();
+
       out.push({
         ...((typeof o === 'object' && o) ? o : { value: o }),
         _label: label,
         _norm: norm,
         _words: words,
+        _codigo: codigoStr, // ✅ código para búsqueda y display
       });
     }
 
@@ -136,6 +140,14 @@ export default function Buscador({
   const scoreOption = useCallback((opt, qNorm, qTokens) => {
     const text = opt?._norm || '';
     if (!text) return -Infinity;
+
+    // ✅ Match directo por código — prioridad máxima
+    const codigoNorm = String(opt?._codigo ?? '').toLowerCase().trim();
+    if (codigoNorm && qNorm) {
+      if (codigoNorm === qNorm) return 1200;        // código exacto
+      if (codigoNorm.startsWith(qNorm)) return 950; // prefijo de código
+      if (codigoNorm.includes(qNorm)) return 700;   // código contiene query
+    }
 
     // match ALL tokens (pero con regla para tokens de 1 char)
     for (const t of qTokens) {
@@ -185,9 +197,16 @@ export default function Buscador({
     // score + sort
     const scored = [];
     for (const opt of options) {
+      // ✅ Si matchea por código, incluir aunque no pase el filtro de tokens
+      const codigoNorm = String(opt?._codigo ?? '').toLowerCase().trim();
+      const matchesCodigo = codigoNorm && (
+        codigoNorm === qNorm ||
+        codigoNorm.startsWith(qNorm) ||
+        codigoNorm.includes(qNorm)
+      );
       const s = scoreOption(opt, qNorm, qTokens);
-      if (s === -Infinity) continue;
-      scored.push({ opt, s });
+      if (s === -Infinity && !matchesCodigo) continue;
+      scored.push({ opt, s: s === -Infinity ? 100 : s }); // score mínimo si solo matchea código
     }
 
     scored.sort((a, b) => {
@@ -293,6 +312,7 @@ export default function Buscador({
         }
 
         const label = String(option?._label ?? option?.nombre ?? option?.label ?? option ?? '');
+        const codigo = String(option?._codigo ?? '');
 
         // ✅ key estable y única (prioriza id/value; si no, label + índice del option)
         const uniq =
@@ -302,8 +322,18 @@ export default function Buscador({
         const fallbackKey = `${option?._norm ?? label.toLowerCase()}::${rest['data-option-index'] ?? ''}`;
 
         return (
-          <li key={String(uniq ?? fallbackKey)} {...rest}>
-            {renderHighlighted(label, inputValue)}
+          <li key={String(uniq ?? fallbackKey)} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 6, ...rest.style }}>
+            {codigo && (
+              <span style={{
+                fontSize: '0.72rem', color: '#9ca3af', fontVariantNumeric: 'tabular-nums',
+                minWidth: 36, flexShrink: 0, textAlign: 'right',
+              }}>
+                {renderHighlighted(codigo, inputValue)}
+              </span>
+            )}
+            <span style={{ flex: 1 }}>
+              {renderHighlighted(label, inputValue)}
+            </span>
           </li>
         );
       }}

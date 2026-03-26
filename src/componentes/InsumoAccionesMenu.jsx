@@ -11,11 +11,14 @@ import UndoIcon from '@mui/icons-material/Undo';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import BuildCircleIcon from '@mui/icons-material/BuildCircle';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddItem,
   insumoGroupRemoveItem,
   insumoGroupReplaceItems,
+  insumosRubroUpdate,
 } from '../servicios/apiInsumos';
 
 const getNum = (v) => Number(v ?? 0);
@@ -39,6 +42,9 @@ function InsumoAccionesMenu({
   onAfterMutation,
   onCreateGroupFromInsumo,
   businessId,
+  rubroCodigo,
+  isElaborado = false,
+  onAfterRubroUpdate,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -305,6 +311,34 @@ function InsumoAccionesMenu({
     }
   }
 
+  /* ========== MARCAR COMO ELABORADO / NO ELABORADO ========== */
+  async function toggleElaborado() {
+    if (!rubroCodigo) {
+      notify?.('Este insumo no tiene rubro asignado', 'warning');
+      handleClose();
+      return;
+    }
+
+    const nuevoValor = !isElaborado;
+    try {
+      await insumosRubroUpdate(rubroCodigo, { es_elaborador: nuevoValor }, businessId);
+      notify?.(
+        nuevoValor
+          ? `Rubro marcado como elaborado`
+          : `Rubro marcado como no elaborado`,
+        'success'
+      );
+      await onAfterRubroUpdate?.();
+      await onReloadCatalogo?.();
+      await onRefetch?.();
+    } catch (e) {
+      console.error('TOGGLE_ELABORADO_ERROR', e);
+      notify?.('Error al cambiar tipo de rubro', 'error');
+    } finally {
+      handleClose();
+    }
+  }
+
   return (
     <>
       <IconButton size="small" onClick={handleOpen}>
@@ -312,6 +346,24 @@ function InsumoAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
+        {/* 0. Marcar como elaborado / no elaborado */}
+        {rubroCodigo && (
+          <MenuItem onClick={toggleElaborado}>
+            <ListItemIcon>
+              {isElaborado ? (
+                <RemoveCircleOutlineIcon fontSize="small" />
+              ) : (
+                <BuildCircleIcon fontSize="small" />
+              )}
+            </ListItemIcon>
+            <ListItemText>
+              {isElaborado
+                ? 'Marcar como: No elaborado'
+                : 'Marcar como: Elaborado'}
+            </ListItemText>
+          </MenuItem>
+        )}
+
         {/* 1. Discontinuar / Reactivar */}
         <MenuItem onClick={toggleDiscontinuar}>
           <ListItemIcon>

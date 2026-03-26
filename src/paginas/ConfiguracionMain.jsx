@@ -24,7 +24,7 @@ import { es } from 'date-fns/locale';
 
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
-import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
+import { httpBiz, BusinessesAPI, RecetasAPI } from '../servicios/apiBusinesses';
 import { BASE } from '../servicios/apiBase';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -125,6 +125,9 @@ export default function ConfiguracionMain() {
   const [selectedLote, setSelectedLote] = useState(null);
   const [moveTargetBiz, setMoveTargetBiz] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [alertasInsumos, setAlertasInsumos] = useState([]);
+  const [alertasLoading, setAlertasLoading] = useState(false);
+  const [alertasTotal, setAlertasTotal] = useState(0);
 
   const notify = useCallback((msg, sev = 'success') => {
     setSnack({ open: true, msg, sev });
@@ -190,6 +193,19 @@ export default function ConfiguracionMain() {
   useEffect(() => {
     if (tab === 2) loadLotes();
   }, [tab, loadLotes]);
+
+  // Cargar alertas de insumos al abrir tab Artículos
+  useEffect(() => {
+    if (tab !== 0 || !businessId) return;
+    setAlertasLoading(true);
+    RecetasAPI.getAlertas(Number(businessId))
+      .then(res => {
+        setAlertasInsumos(res?.insumos || []);
+        setAlertasTotal(res?.total || 0);
+      })
+      .catch(() => setAlertasInsumos([]))
+      .finally(() => setAlertasLoading(false));
+  }, [tab, businessId]);
 
   /* ── Eliminar lote ── */
   const handleDeleteLote = async () => {
@@ -285,13 +301,86 @@ export default function ConfiguracionMain() {
                 saving={!!saving.articulos_costo_ideal}
                 onSave={() => saveConfig('articulos_costo_ideal')}
               />
+              {/* Panel de alertas de insumos */}
               <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Próximamente
+                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <WarningAmberIcon sx={{ color: '#f59e0b' }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Insumos con compras vencidas en recetas
+                    </Typography>
+                    {alertasTotal > 0 && (
+                      <Chip
+                        label={alertasTotal}
+                        size="small"
+                        sx={{ bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700 }}
+                      />
+                    )}
+                  </Stack>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setAlertasLoading(true);
+                      RecetasAPI.getAlertas(Number(businessId))
+                        .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
+                        .catch(() => {})
+                        .finally(() => setAlertasLoading(false));
+                    }}
+                  >
+                    Actualizar
+                  </Button>
+                </Stack>
+
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  Estos insumos están siendo usados en recetas activas pero no tienen compras registradas
+                  en las últimas <strong>{config.compras_alerta_semanas || 4} semanas</strong>.
+                  El costo de las recetas puede estar desactualizado.
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Configuración de listas de precios, recargos por lista, redondeo automático de precios.
-                </Typography>
+
+                {alertasLoading ? (
+                  <Stack alignItems="center" py={2}>
+                    <CircularProgress size={24} />
+                  </Stack>
+                ) : alertasInsumos.length === 0 ? (
+                  <Alert severity="success" sx={{ py: 0.5 }}>
+                    Todos los insumos usados en recetas tienen compras recientes. ✓
+                  </Alert>
+                ) : (
+                  <Stack spacing={1}>
+                    {alertasInsumos.map(ins => (
+                      <Paper
+                        key={ins.insumoId}
+                        variant="outlined"
+                        sx={{
+                          p: 1.5, borderRadius: 1.5,
+                          borderColor: '#fbbf24',
+                          bgcolor: '#fffbeb',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}
+                      >
+                        <Stack>
+                          <Typography variant="body2" fontWeight={600}>
+                            {ins.nombre}
+                            {ins.unidadMed && (
+                              <Typography component="span" variant="caption" color="text.secondary" ml={0.5}>
+                                ({ins.unidadMed})
+                              </Typography>
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {ins.fechaUltimaCompra
+                              ? `Última compra: ${ins.fechaUltimaCompra}`
+                              : 'Sin compras registradas'
+                            }
+                            {' · '}{ins.enRecetas} receta{ins.enRecetas !== 1 ? 's' : ''}
+                          </Typography>
+                        </Stack>
+                        <WarningAmberIcon sx={{ color: '#f59e0b', fontSize: 20 }} />
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
               </Paper>
             </Stack>
           </TabPanel>

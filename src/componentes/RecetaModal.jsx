@@ -27,10 +27,10 @@ import { BASE } from '@/servicios/apiBase';
 /* ── constantes ── */
 const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda'];
 const TIPO_COSTO_OPTS = [
-  { value: 'total',     label: 'Total' },
-  { value: 'nulo',      label: 'Nulo' },
-  { value: 'al_costo',  label: 'Al costo' },
-  { value: 'sugerido',  label: 'Precio sugerido' },
+  { value: 'total', label: 'Total' },
+  { value: 'nulo', label: 'Nulo' },
+  { value: 'al_costo', label: 'Al costo' },
+  { value: 'sugerido', label: 'Precio sugerido' },
 ];
 
 const PRIMARY = 'var(--color-primary, #3b82f6)';
@@ -54,15 +54,24 @@ function normUnit(u) {
   return String(u || 'u').toLowerCase().trim();
 }
 
+// Normaliza abreviaciones de MaxiRest a la forma canónica usada en UNIDADES[]
+// K→kg, G→gr, L→lt, U→u, etc.
+const MAXI_UNIT_MAP = { k: 'kg', g: 'gr', l: 'lt', cc: 'ml' };
+function canonicalUnit(u) {
+  const n = normUnit(u);
+  return MAXI_UNIT_MAP[n] || n;
+}
+
 // Factores base en "unidad mínima" por tipo:
 //   Peso: gr=1, kg=1000, oz=28.35, lb=453.59
 //   Volumen: ml=1, cc=1, lt=1000, l=1000, oz_vol=29.57
 //   Unidad: u=1
 function getConversionFactor(from, to) {
   const n = normUnit;
-  const PESO   = { gr: 1, gramo: 1, gramos: 1, g: 1, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, oz: 28.35, onza: 28.35, lb: 453.59 };
-  const VOLUM  = { ml: 1, cc: 1, lt: 1000, l: 1000, litro: 1000, litros: 1000, 'oz fl': 29.57 };
-  const UNIDAD = { u: 1, un: 1, unidad: 1, unidades: 1, und: 1, doc: 12, docena: 12, kg: null }; // kg en UNIDAD es inválido
+  // Aliases de MaxiRest: K=kg, G=gr, L=litro
+  const PESO = { gr: 1, gramo: 1, gramos: 1, g: 1, k: 1000, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, oz: 28.35, onza: 28.35, lb: 453.59 };
+  const VOLUM = { ml: 1, cc: 1, lt: 1000, l: 1000, litro: 1000, litros: 1000, 'oz fl': 29.57 };
+  const UNIDAD = { u: 1, un: 1, unidad: 1, unidades: 1, und: 1, doc: 12, docena: 12, k: null, kg: null }; // k/kg en UNIDAD es inválido
 
   const f = n(from);
   const t = n(to);
@@ -82,6 +91,19 @@ function getConversionFactor(from, to) {
   return 1;
 }
 
+// Detecta si dos unidades son compatibles (misma dimensión: peso, volumen o unidad)
+function isCompatibleUnits(a, b) {
+  const PESO  = new Set(['gr','gramo','gramos','g','k','kg','kilo','kilos','kilogramo','oz','onza','lb']);
+  const VOLUM = new Set(['ml','cc','lt','l','litro','litros']);
+  const UNID  = new Set(['u','un','unidad','unidades','und','doc','docena']);
+  const na = normUnit(a), nb = normUnit(b);
+  if (na === nb) return true;
+  if (PESO.has(na)  && PESO.has(nb))  return true;
+  if (VOLUM.has(na) && VOLUM.has(nb)) return true;
+  if (UNID.has(na)  && UNID.has(nb))  return true;
+  return false;
+}
+
 // Calcula el precio por unidad de medida elegida a partir del precio_ref de la DB
 // precio_ref está expresado en la unidad base del insumo (unidad_med)
 function calcPrecioEnUnidad(precioRefDB, unidadDB, unidadElegida) {
@@ -95,9 +117,10 @@ function calcPrecioEnUnidad(precioRefDB, unidadDB, unidadElegida) {
 
 /* ── colores de alerta de última compra ── */
 function getAlertaColor(ultimaCompra, alertaSemanas) {
-  if (!ultimaCompra || !alertaSemanas) return null;
+  // Sin compras registradas → siempre alerta
+  if (!ultimaCompra) return alertaSemanas ? '#fef2f2' : null;
   const d = new Date(ultimaCompra);
-  if (isNaN(d)) return null;
+  if (isNaN(d)) return alertaSemanas ? '#fef2f2' : null;
   const semanas = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 7);
   return semanas > Number(alertaSemanas) ? '#fef2f2' : null;
 }
@@ -128,9 +151,19 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
 
   // Buscar el insumo en la lista para obtener precio y unidad actualizados
   const insumoData = insumos.find(i => String(i.id) === String(item?.supplyId));
-  const precioRef = Number(insumoData?.precio_ref || insumoData?.precio || item?.precioRefDB) || 0;
-  const unidadDB  = insumoData?.unidad_med || insumoData?.medida || item?.supplyMedida || 'u';
+  // Prioridad: precioRefDB del item (ya procesado al seleccionar) → precio_ref de DB → fallbacks
+  const precioRef = Number(item?.precioRefDB)
+    || Number(insumoData?.precio_ref)
+    || Number(insumoData?.precio_promedio_periodo)
+    || Number(insumoData?.precio_promedio)
+    || Number(insumoData?.precio_ultima_compra)
+    || Number(insumoData?.precio)
+    || 0;
+  // Normalizar la unidad de la DB (MaxiRest puede traer K, G, L, etc.)
+  const unidadDB = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || item?.supplyMedida || 'u');
   const precioUltCompra = Number(insumoData?.precio_ultima_compra) || 0;
+  // Unidad elegida en la receta, normalizada
+  const unidadReceta = canonicalUnit(item?.unidad || unidadDB);
 
   return (
     <Modal open onClose={onClose}>
@@ -142,8 +175,10 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
         outline: 'none', overflow: 'hidden',
       }}>
         {/* Header */}
-        <Box sx={{ px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{
+          px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <ReceiptLongIcon fontSize="small" />
             <Box>
@@ -157,9 +192,11 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
         </Box>
 
         {/* Info precio actual */}
-        <Box sx={{ px: 2.5, py: 1.25, bgcolor: `${PRIMARY}10`,
+        <Box sx={{
+          px: 2.5, py: 1.25, bgcolor: `${PRIMARY}10`,
           borderBottom: '1px solid', borderColor: 'divider',
-          display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+          display: 'flex', gap: 3, flexWrap: 'wrap'
+        }}>
           <Box>
             <Typography variant="caption" color="text.secondary">Precio en DB</Typography>
             <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY }}>
@@ -174,13 +211,13 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
               </Typography>
             </Box>
           )}
-          {item?.unidad && normUnit(item.unidad) !== normUnit(unidadDB) && (
+          {unidadReceta !== unidadDB && (
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Convertido a {item.unidad}
+                Convertido a {unidadReceta}
               </Typography>
               <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY }}>
-                ${fmt(calcPrecioEnUnidad(precioRef, unidadDB, item.unidad))} / {item.unidad}
+                ${fmt(calcPrecioEnUnidad(precioRef, unidadDB, unidadReceta))} / {unidadReceta}
               </Typography>
             </Box>
           )}
@@ -199,16 +236,21 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
           ) : (
             <Box>
               {/* Header tabla */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: '100px 1fr 80px 90px',
-                gap: 1, px: 1, mb: 0.5 }}>
+              <Box sx={{
+                display: 'grid', gridTemplateColumns: '90px 1fr 110px 90px',
+                gap: 1, px: 1, mb: 0.5
+              }}>
                 {['Fecha', 'Proveedor', 'Cantidad', 'Precio/u'].map(h => (
                   <Typography key={h} variant="caption" fontWeight={700}
-                    color="text.secondary" sx={{ fontSize: '0.68rem' }}>{h}</Typography>
+                    color="text.secondary" sx={{
+                      fontSize: '0.68rem',
+                      textAlign: h === 'Cantidad' || h === 'Precio/u' ? 'right' : 'left'
+                    }}>{h}</Typography>
                 ))}
               </Box>
               {compras.map((c, i) => (
                 <Box key={i} sx={{
-                  display: 'grid', gridTemplateColumns: '100px 1fr 80px 90px',
+                  display: 'grid', gridTemplateColumns: '90px 1fr 110px 90px',
                   gap: 1, px: 1, py: 0.75, borderRadius: 1,
                   bgcolor: i === 0 ? `${PRIMARY}08` : 'transparent',
                   border: i === 0 ? `1px solid ${PRIMARY}25` : '1px solid transparent',
@@ -220,9 +262,17 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
                   <Typography variant="caption" noWrap sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
                     {c.proveedor_nombre || '—'}
                   </Typography>
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem', textAlign: 'right' }}>
-                    {fmt(c.cantidad, 3)} {unidadDB}
-                  </Typography>
+                  {/* Cantidad + unidad juntas en la misma celda */}
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 0.5 }}>
+                    <Typography variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+                      {fmt(c.cantidad, 2)}
+                    </Typography>
+                    {unidadDB && (
+                      <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                        {unidadDB}
+                      </Typography>
+                    )}
+                  </Box>
                   <Typography variant="caption" fontWeight={700}
                     sx={{ fontSize: '0.75rem', textAlign: 'right', color: PRIMARY }}>
                     ${fmt(c.precio)}
@@ -233,8 +283,10 @@ function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
           )}
         </Box>
 
-        <Box sx={{ px: 2.5, py: 1.25, borderTop: '1px solid', borderColor: 'divider',
-          display: 'flex', justifyContent: 'flex-end' }}>
+        <Box sx={{
+          px: 2.5, py: 1.25, borderTop: '1px solid', borderColor: 'divider',
+          display: 'flex', justifyContent: 'flex-end'
+        }}>
           <Button size="small" onClick={onClose}
             sx={{ color: PRIMARY, borderColor: PRIMARY }} variant="outlined">
             Cerrar
@@ -279,25 +331,33 @@ function ItemRow({
     const q = search.trim().toLowerCase();
     const list = q
       ? insumos.filter(i =>
-          i.nombre?.toLowerCase().includes(q) ||
-          String(i.id).includes(q) ||
-          String(i.codigo_maxi || '').includes(q)
-        )
+        i.nombre?.toLowerCase().includes(q) ||
+        String(i.id).includes(q) ||
+        String(i.codigo_maxi || '').includes(q)
+      )
       : insumos;
     return list.slice(0, 20);
   }, [insumos, search]);
 
   const selectInsumo = useCallback((ins) => {
-    const unidadDB = ins.unidad_med || ins.medida || 'u';
+    const unidadDB = canonicalUnit(ins.unidad_med || ins.medida || 'u');
+    // Misma cadena de fallback que InsumosTable: precio_ref → precio_promedio → precio_ultima_compra → precio
+    const precioRef = Number(ins.precio_ref)
+      || Number(ins.precio_promedio_periodo)
+      || Number(ins.precio_promedio)
+      || Number(ins.precio_ultima_compra)
+      || Number(ins.precio_ultimo)
+      || Number(ins.precio)
+      || 0;
     onChange(index, {
       supplyId: ins.id,
       supplyNombre: ins.nombre,
-      supplyMedida: unidadDB,           // unidad base del insumo en la DB
-      precioRefDB: Number(ins.precio_ref || ins.precio || 0), // precio en la unidad de la DB
-      unidad: unidadDB,                  // inicialmente = unidad de la DB
-      // costoUnitario se recalcula automáticamente en el render, no se guarda acá
-      ultimaCompra: ins.ultima_compra || ins.precio_ultima_compra
-        ? { precio: ins.precio_ultima_compra, fecha: ins.updated_at }
+      supplyMedida: unidadDB,
+      precioRefDB: precioRef,
+      codigoMaxi: ins.codigo_maxi || ins.codigo_mostrar || '',
+      unidad: unidadDB,
+      ultimaCompra: ins.fecha_ultima_compra
+        ? { precio: ins.precio_ultima_compra, fecha: ins.fecha_ultima_compra }
         : null,
     });
     setSearchOpen(false);
@@ -308,24 +368,27 @@ function ItemRow({
   // $/u base = precio_ref de la DB convertido a la unidad elegida
   const costoEnUnidadElegida = useMemo(() => {
     const precioRef = Number(item.precioRefDB) || 0;
-    const unidadDB = item.supplyMedida || 'u';
-    const unidadElegida = item.unidad || unidadDB;
+    const unidadDB = canonicalUnit(item.supplyMedida || 'u');
+    const unidadElegida = canonicalUnit(item.unidad || unidadDB);
     return calcPrecioEnUnidad(precioRef, unidadDB, unidadElegida);
   }, [item.precioRefDB, item.supplyMedida, item.unidad]);
 
-  // Precio efectivo = precioManual si fue editado, sino el calculado desde DB
-  const precioEfectivo = item.precioManual !== undefined
-    ? Number(item.precioManual) || 0
-    : costoEnUnidadElegida;
-
-  // $ total = cantidad × precio efectivo
+  // $ total = cantidad × precio de DB convertido
   const costoLinea = useMemo(() => {
     const cant = Number(item.cantidad) || 0;
-    return cant * precioEfectivo;
-  }, [item.cantidad, precioEfectivo]);
+    return cant * costoEnUnidadElegida;
+  }, [item.cantidad, costoEnUnidadElegida]);
+
+  const precioEfectivo = costoEnUnidadElegida; // siempre el de DB
+
+  // Detectar si la unidad elegida es incompatible con la del insumo
+  const unidadIncompatible = useMemo(() => {
+    if (!item.supplyId || !item.supplyMedida || !item.unidad) return false;
+    return !isCompatibleUnits(item.supplyMedida, item.unidad);
+  }, [item.supplyId, item.supplyMedida, item.unidad]);
 
   const alertaBg = useMemo(
-    () => getAlertaColor(item.ultimaCompra, alertaSemanas),
+    () => getAlertaColor(item.ultimaCompra?.fecha || item.ultimaCompra, alertaSemanas),
     [item.ultimaCompra, alertaSemanas]
   );
 
@@ -335,8 +398,9 @@ function ItemRow({
   return (
     <Box
       sx={{
+        width: '90%',
         display: 'grid',
-        gridTemplateColumns: '20px 1.6fr 68px 66px 76px 76px 36px 36px 88px 1fr 70px 28px',
+        gridTemplateColumns: '20px 1.6fr 68px 66px 66px 76px 76px 36px 36px 88px 1fr 70px 28px',
         alignItems: 'center',
         gap: '4px',
         py: 0.5,
@@ -382,28 +446,47 @@ function ItemRow({
               >
                 {item.supplyNombre || `#${item.supplyId}`}
               </Typography>
+              {/* Código Maxirest del insumo */}
+              {item.codigoMaxi && (
+                <Typography variant="caption" sx={{
+                  fontSize: '0.65rem', color: 'text.disabled', flexShrink: 0,
+                }}>
+                  {item.codigoMaxi}
+                </Typography>
+              )}
               {/* Unidad predefinida del insumo */}
               {item.supplyMedida && (
                 <Chip
                   label={item.supplyMedida}
                   size="small"
-                  sx={{ height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
-                        bgcolor: `${PRIMARY}18`, color: PRIMARY, border: 'none' }}
+                  sx={{
+                    height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
+                    bgcolor: `${PRIMARY}18`, color: PRIMARY, border: 'none'
+                  }}
                 />
               )}
-              {/* Precio unitario — muestra el efectivo con indicador si fue editado */}
-              {(precioEfectivo > 0 || costoEnUnidadElegida > 0) && (
+              {/* Precio de DB convertido a la unidad elegida */}
+              {costoEnUnidadElegida > 0 && (
                 <Chip
-                  label={`$${fmt(precioEfectivo || costoEnUnidadElegida)}`}
+                  label={`$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'}`}
                   size="small"
                   sx={{
                     height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
-                    bgcolor: item.precioManual !== undefined ? '#fef3c7' : `${PRIMARY}18`,
-                    color: item.precioManual !== undefined ? '#92400e' : PRIMARY,
-                    border: 'none',
+                    bgcolor: unidadIncompatible ? '#fef3c720' : `${PRIMARY}18`,
+                    color:  unidadIncompatible ? '#d97706'   : PRIMARY,
+                    border: unidadIncompatible ? '1px solid #fbbf24' : 'none',
                   }}
-                  title={item.precioManual !== undefined ? 'Precio editado manualmente' : 'Precio de DB'}
+                  title={unidadIncompatible
+                    ? `⚠️ Unidad incompatible: el insumo está en "${item.supplyMedida}" y elegiste "${item.unidad}". El precio no se puede convertir automáticamente.`
+                    : `Precio de DB: $${fmt(item.precioRefDB || 0)}/${item.supplyMedida || 'u'}`
+                  }
                 />
+              )}
+              {/* Advertencia de incompatibilidad */}
+              {unidadIncompatible && (
+                <Tooltip title={`Unidad incompatible: el insumo está en "${item.supplyMedida}". Usá la misma dimensión (ej: si el insumo es por unidad, usá "u"; si es por litro, usá "ml" o "lt").`}>
+                  <WarningAmberIcon sx={{ fontSize: 13, color: '#d97706', flexShrink: 0 }} />
+                </Tooltip>
               )}
             </Box>
           ) : (
@@ -456,11 +539,22 @@ function ItemRow({
                         {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        Cód: {ins.id} · {ins.unidad_med || ins.medida || 'u'}
+                        {ins.codigo_maxi || ins.codigo_mostrar
+                          ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}`
+                          : ins.unidad_med || ins.medida || 'u'
+                        }
                       </Typography>
                     </Box>
                     <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY, fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
-                      ${fmt(ins.precio_ref || ins.precio)}
+                      {(() => {
+                        const p = Number(ins.precio_ref)
+                          || Number(ins.precio_promedio_periodo)
+                          || Number(ins.precio_promedio)
+                          || Number(ins.precio_ultima_compra)
+                          || Number(ins.precio)
+                          || 0;
+                        return p > 0 ? `$${fmt(p)}` : '';
+                      })()}
                     </Typography>
                   </Box>
                 );
@@ -504,30 +598,37 @@ function ItemRow({
         ))}
       </Select>
 
-      {/* ── $/u: editable, default = precio_ref convertido. Ícono abre últimas compras ── */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-        <TextField
-          size="small"
-          type="number"
-          value={item.precioManual !== undefined ? item.precioManual : (item.supplyId ? costoEnUnidadElegida : '')}
-          onChange={e => onChange(index, { precioManual: e.target.value === '' ? undefined : Number(e.target.value) })}
-          placeholder={item.supplyId ? fmt(costoEnUnidadElegida) : '0.00'}
-          inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right', fontSize: '0.75rem', padding: '4px 4px' } }}
-          sx={{ '& input': { fontWeight: 600 } }}
-        />
+      {/* ── $/u: precio de DB convertido — estático, click en ícono = ver compras ── */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px',
+        border: '1px solid', borderColor: 'divider', borderRadius: 1,
+        px: 0.75, minHeight: 30, bgcolor: '#f8fafc',
+      }}>
+        <Typography sx={{
+          fontSize: '0.75rem', fontWeight: 700,
+          color: costoEnUnidadElegida > 0 ? PRIMARY : 'text.disabled',
+          flex: 1, textAlign: 'right',
+        }}>
+          {item.supplyId
+            ? (costoEnUnidadElegida > 0 ? `$${fmt(costoEnUnidadElegida)}` : '—')
+            : '—'
+          }
+        </Typography>
+
+      </Box>
+      <Box>
         {item.supplyId && (
           <Tooltip title="Ver últimas compras">
             <IconButton
               size="small"
               onClick={() => onOpenCompras && onOpenCompras(item)}
-              sx={{ p: '2px', color: `${PRIMARY}90`, '&:hover': { color: PRIMARY } }}
+              sx={{ p: '2px', color: `${PRIMARY}70`, '&:hover': { color: PRIMARY }, flexShrink: 0 }}
             >
-              <ReceiptLongIcon sx={{ fontSize: 14 }} />
+              <ReceiptLongIcon sx={{ fontSize: 13 }} />
             </IconButton>
           </Tooltip>
         )}
       </Box>
-
       {/* ── $ por cantidad (costo línea) ── */}
       <Box sx={{ textAlign: 'right', px: 0.5 }}>
         <Typography variant="caption" sx={{
@@ -609,7 +710,7 @@ function ItemRow({
 /* ════════════════════════════════════════
    MODAL PRINCIPAL
 ════════════════════════════════════════ */
-export default function RecetaModal({ open, onClose, articulo, businessId }) {
+export default function RecetaModal({ open, onClose, articulo, businessId, onSaved }) {
   const [receta, setReceta] = useState(null);
   const [nombre, setNombre] = useState('');
   const [rendimiento, setRendimiento] = useState(1);
@@ -674,20 +775,30 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
           setNombre(rec.nombre || artNombre);
           setRendimiento(rec.porciones || rec.rendimiento || 1);
           setPctCostoIdeal(prev => rec.porcentaje_venta ?? prev);
-          setItems((rec.items || []).map(it => ({
-            supplyId: it.supply_id,
-            supplyNombre: it.supply_nombre,
-            supplyMedida: it.supply_medida || it.unidad || 'u',
-            precioRefDB: Number(it.precio_ref_db || it.costo_unitario || 0), // precio en unidad base de la DB
-            cantidad: Number(it.cantidad || 0),
-            unidad: it.unidad || it.supply_medida || 'u',
-            ultimaCompra: it.ultima_compra || null,
-            merma: it.merma !== false,
-            pedido: it.pedido !== false,
-            tipoCosto: it.tipo_costo || 'total',
-            observaciones: it.observaciones || '',
-            updatedAt: it.updated_at || it.updatedAt || null,
-          })));
+          setItems((rec.items || []).map(it => {
+            // supply_medida viene de la DB en la unidad nativa del insumo (ej: 'K')
+            // la normalizamos para que la conversión funcione correctamente
+            const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
+            const supplyMedida = canonicalUnit(supplyMedidaRaw);
+            const unidad       = canonicalUnit(it.unidad || supplyMedidaRaw);
+            return {
+              supplyId:      it.supply_id,
+              supplyNombre:  it.supply_nombre,
+              supplyMedida,
+              // precio_ref_db = precio del insumo en su unidad nativa (el backend ya lo renombró)
+              // costo_unitario es el precio ya convertido a la unidad del item (fallback)
+              precioRefDB: Number(it.precio_ref_db) || Number(it.supply_precio_base) || 0,
+              codigoMaxi:    it.codigo_maxi_insumo || it.codigo_maxi || '',
+              cantidad:      Number(it.cantidad || 0),
+              unidad,
+              ultimaCompra:  it.ultima_compra || null,  // se enrichece después con datos frescos de insumos
+              merma:         it.merma !== false,
+              pedido:        it.pedido !== false,
+              tipoCosto:     it.tipo_costo || 'total',
+              observaciones: it.observaciones || '',
+              updatedAt:     it.updated_at || it.updatedAt || null,
+            };
+          }));
         } else {
           setNombre(artNombre);
           setRendimiento(1);
@@ -697,6 +808,26 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
       .catch(() => setError('No se pudo cargar la receta'))
       .finally(() => setLoading(false));
   }, [open, businessId, articulo?.id]);
+
+  // ── Enriquecer items con fecha_ultima_compra desde el array insumos fresco ──
+  // Cuando se carga una receta existente, los items no traen la fecha de última compra.
+  // Una vez que insumos se carga, la inyectamos para que la alerta funcione.
+  useEffect(() => {
+    if (!insumos.length) return;
+    setItems(prev => prev.map(it => {
+      if (!it.supplyId) return it;
+      const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+      if (!ins) return it;
+      return {
+        ...it,
+        ultimaCompra: ins.fecha_ultima_compra
+          ? { precio: ins.precio_ultima_compra, fecha: ins.fecha_ultima_compra }
+          : it.ultimaCompra,
+        // También actualizar precioRefDB con el precio fresco
+        precioRefDB: Number(ins.precio_ref) || it.precioRefDB || 0,
+      };
+    }));
+  }, [insumos]);
 
   /* ── usedSupplyIds ── */
   const usedSupplyIds = useMemo(() =>
@@ -737,11 +868,12 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
     items.reduce((acc, it) => {
       if (it.tipoCosto === 'nulo') return acc;
       const cant = Number(it.cantidad) || 0;
-      // Usar precioManual si fue editado, sino calcular desde DB
-      const precioEfectivo = it.precioManual !== undefined
-        ? Number(it.precioManual) || 0
-        : calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u');
-      return acc + cant * precioEfectivo;
+      const precio = calcPrecioEnUnidad(
+        Number(it.precioRefDB) || 0,
+        it.supplyMedida || 'u',
+        it.unidad || it.supplyMedida || 'u'
+      );
+      return acc + cant * precio;
     }, 0),
     [items]
   );
@@ -778,10 +910,11 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
         cantidad: Number(it.cantidad) || 0,
         unidad: it.unidad || 'u',
         precioRefDb: Number(it.precioRefDB) || 0,
-        costoUnitario: it.precioManual !== undefined   // precio efectivo usado en la receta
-          ? Number(it.precioManual) || 0
-          : calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u'),
-        precioManual: it.precioManual !== undefined ? Number(it.precioManual) : null,
+        costoUnitario: calcPrecioEnUnidad(
+          Number(it.precioRefDB) || 0,
+          it.supplyMedida || 'u',
+          it.unidad || it.supplyMedida || 'u'
+        ),
         merma: it.merma !== false,
         pedido: it.pedido !== false,
         tipoCosto: it.tipoCosto || 'total',
@@ -795,6 +928,7 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
       const saved = await saveReceta(businessId, articulo.id, payload);
       setReceta(saved);
       setSuccess(true);
+      onSaved?.(saved);
       setTimeout(() => onClose(), 1200);
     } catch (err) {
       setError(err.message || 'Error al guardar la receta');
@@ -870,12 +1004,12 @@ export default function RecetaModal({ open, onClose, articulo, businessId }) {
                   helperText="porciones"
                 />
                 <TextField
-                  label="% Costo ideal"
+                  label="Costo Objetivo"
                   type="number"
                   value={pctCostoIdeal}
                   onChange={e => setPctCostoIdeal(Number(e.target.value) || 0)}
-                  size="small"
-                  inputProps={{ min: 0, max: 100 }}
+                  size="xsmall"
+                  inputProps={{ min: 0, max: 150 }}
                   InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
                 />
               </Box>

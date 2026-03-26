@@ -746,81 +746,57 @@ function ArticuloAccionesMenu({
       </Dialog>
 
       {/* Diálogo de confirmación de reactivación */}
-      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Reactivar artículo</DialogTitle>
         <DialogContent>
           <Typography variant="body1" gutterBottom>
-            ¿Dónde querés reactivar <strong>{articuloDisplayName}</strong>?
+            ¿Reactivar <strong>{articuloDisplayName}</strong>?
           </Typography>
 
-          {origenReactivar?.fromGroupId ? (
+          {origenReactivar?.fromBizName || origenReactivar?.fromGroupName ? (
             <Box sx={{
               mt: 1.5, p: 1.5, borderRadius: 1.5,
-              border: '1px solid', borderColor: 'divider',
               bgcolor: 'action.hover',
+              border: '1px solid', borderColor: 'divider',
             }}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>
-                📍 Origen detectado
+              <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                Origen detectado:
               </Typography>
-              <Typography variant="body2">
-                <strong>Negocio:</strong>{' '}
-                {origenReactivar.fromBizName || `#${origenReactivar.fromBizId}` || '—'}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Agrupación:</strong>{' '}
-                {origenReactivar.fromGroupName || `#${origenReactivar.fromGroupId}` || '—'}
-              </Typography>
+              {origenReactivar?.fromBizName && (
+                <Typography variant="body2">
+                  🏢 <strong>Negocio:</strong> {origenReactivar.fromBizName}
+                </Typography>
+              )}
+              {origenReactivar?.fromGroupName && (
+                <Typography variant="body2">
+                  📁 <strong>Agrupación:</strong> {origenReactivar.fromGroupName}
+                </Typography>
+              )}
             </Box>
           ) : (
-            <Box sx={{
-              mt: 1.5, p: 1.5, borderRadius: 1.5,
-              border: '1px solid', borderColor: 'warning.light',
-              bgcolor: '#fffbeb',
-            }}>
-              <Typography variant="caption" color="warning.main" fontWeight={600} display="block" mb={0.5}>
-                ⚠️ Sin origen registrado
-              </Typography>
+            <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1.5, bgcolor: '#fffbeb', border: '1px solid #fbbf24' }}>
               <Typography variant="body2" color="text.secondary">
-                No se encontró la agrupación de origen. Al reactivar, el artículo
-                quedará en "Sin agrupación".
+                ⚠️ No se encontró un origen registrado. El artículo quedará en Sin Agrupación.
               </Typography>
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
-          {origenReactivar?.fromGroupId ? (
-            <Button
-              variant="contained"
-              onClick={ejecutarReactivar}
-              fullWidth
-              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
-            >
-              Reactivar en origen — {origenReactivar.fromBizName
-                ? `${origenReactivar.fromBizName} › ${origenReactivar.fromGroupName}`
-                : origenReactivar.fromGroupName}
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={ejecutarReactivar}
-              fullWidth
-              sx={{ bgcolor: 'var(--color-primary)', color: 'var(--on-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}
-            >
-              Reactivar (quedará en Sin agrupación)
-            </Button>
-          )}
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
             variant="outlined"
-            fullWidth
+            size="small"
             onClick={() => {
               setDlgReactivarOpen(false);
               setTimeout(() => setDlgMoverOpen(true), 0);
             }}
           >
-            Mover a otra agrupación…
+            Mover a otro lugar…
           </Button>
-          <Button color="inherit" fullWidth onClick={() => setDlgReactivarOpen(false)}>
-            Cancelar
+          <Button variant="contained" size="small" onClick={ejecutarReactivar}>
+            {origenReactivar?.fromGroupName
+              ? `Reactivar en ${origenReactivar.fromBizName ? origenReactivar.fromBizName + ' › ' : ''}${origenReactivar.fromGroupName}`
+              : 'Reactivar (sin agrupación)'
+            }
           </Button>
         </DialogActions>
       </Dialog>
@@ -834,9 +810,8 @@ function ArticuloAccionesMenu({
         loading={effectiveLoading}
         isArticuloBloqueado={isArticuloBloqueadoCreate}
         onCreated={(nombreCreado, newId, articulos) => {
-          notify?.(`Agrupación “${nombreCreado}” creada`, 'success');
+          notify?.(`Agrupación "${nombreCreado}" creada`, 'success');
 
-          // ✅ SOLO emitUiAction (sin dispatch manual)
           pushUi({
             kind: 'group_create',
             scope: 'articulo',
@@ -845,15 +820,27 @@ function ArticuloAccionesMenu({
             payload: { groupId: Number(newId), groupName: nombreCreado },
           });
 
+          // 1. Agregar el nuevo grupo al estado optimista
           onMutateGroups?.({
             type: 'create',
             id: Number(newId),
             nombre: nombreCreado,
             articulos: Array.isArray(articulos) ? articulos : [],
           });
+
+          // 2. ✅ Si veníamos de Sin Agrupación, quitar los artículos de ahí optimistamente
+          const movingIds = (Array.isArray(articulos) ? articulos : [])
+            .map(a => Number(a?.id)).filter(Number.isFinite);
+          const todoGrpId = preselect?.todoGroupId;
+          if (isTodo && todoGrpId && movingIds.length) {
+            onMutateGroups?.({
+              type: 'remove',
+              groupId: Number(todoGrpId),
+              ids: movingIds,
+            });
+          }
+
           onGroupCreated?.(nombreCreado, newId, articulos);
-          // ✅ Solo refetch si NO estamos en Sin Agrupación
-          // En isTodo el refetch resetea el scroll y pierde el contexto de trabajo
           if (!isTodo) onRefetch?.();
         }}
         existingNames={(agrupaciones || []).map((g) => String(g?.nombre || '')).filter(Boolean)}

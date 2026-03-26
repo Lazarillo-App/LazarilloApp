@@ -121,6 +121,10 @@ function SidebarCategorias({
 
   listMode = 'by-subrubro',
   onChangeListMode,
+  priceConfig = { byAgrupacion: {} },
+  globalCostoIdeal = 30,
+  onPriceConfigSave,
+  agrupacionArticuloIds = [],
 
   favoriteGroupId,
   onSetFavorite,
@@ -807,7 +811,7 @@ function SidebarCategorias({
           </Select>
         </FormControl>
 
-        <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -820,6 +824,7 @@ function SidebarCategorias({
             <ToggleButton value="by-subrubro">Rubro</ToggleButton>
             <ToggleButton value="by-categoria">SubRubro</ToggleButton>
           </ToggleButtonGroup>
+          
         </div>
       </div>{/* fin sticky */}
 

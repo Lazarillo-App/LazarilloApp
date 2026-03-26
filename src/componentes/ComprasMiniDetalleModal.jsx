@@ -56,7 +56,7 @@ const FALLBACK_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
  */
 export default function ComprasMiniDetalleModal({
   open, onClose,
-  insumoId, insumoNombre,
+  insumoId, insumoNombre, insumoUnidad = '',
   rango, items = [], loading = false,
   businessId,
   businesses = [],
@@ -254,7 +254,8 @@ export default function ComprasMiniDetalleModal({
             <Stack direction="row" spacing={1} flexWrap="wrap">
               <Chip size="small" label={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`}
                 variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
-              <Chip size="small" label={`${fmtNum(totales.cantidad)} unidades`}
+              <Chip size="small"
+                label={`${fmtNum(totales.cantidad)} ${insumoUnidad || 'unidades'}`}
                 variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
               <Chip size="small" label={`Total: ${fmtMoney(totales.importe)}`}
                 sx={{ bgcolor: `${themeColors.primary}15`, color: themeColors.primary, fontWeight: 700 }} />
@@ -345,7 +346,15 @@ export default function ComprasMiniDetalleModal({
                             </Stack>
                           </TableCell>
                         )}
-                        <TableCell align="right">{fmtNum(it.cantidad)}</TableCell>
+                        <TableCell align="right">
+                          {fmtNum(it.cantidad)}
+                          {insumoUnidad && (
+                            <Typography component="span"
+                              sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}>
+                              {insumoUnidad}
+                            </Typography>
+                          )}
+                        </TableCell>
                         <TableCell align="right" sx={{ color: 'text.secondary' }}>
                           {it.precio ? fmtMoney(it.precio) : '-'}
                         </TableCell>
@@ -377,7 +386,7 @@ export default function ComprasMiniDetalleModal({
               {fmtMoney(totales.importe)}
             </span>
             <span style={{ color: '#94a3b8', fontSize: '0.85rem', marginLeft: 8 }}>
-              · {fmtNum(totales.cantidad)} unidades
+              · {fmtNum(totales.cantidad)} {insumoUnidad || 'unidades'}
             </span>
           </Typography>
           <Button onClick={onClose} variant="contained"

@@ -23,10 +23,12 @@ import UndoIcon from "@mui/icons-material/Undo";
 import BlockIcon from "@mui/icons-material/Block";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
+import BuildCircleIcon from "@mui/icons-material/BuildCircle";
 import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddMultipleItems,
   insumoGroupRemoveItem,
+  insumosRubroUpdate,
 } from "../servicios/apiInsumos";
 
 import { addExclusionesInsumos } from "../servicios/apiInsumosTodo";
@@ -40,6 +42,7 @@ const isDiscontinuadosGroup = (g) => {
 
 export default function InsumoRubroAccionesMenu({
   rubroLabel,
+  rubroCodigo,
   insumoIds = [],
   groups = [],
   selectedGroupId = null,
@@ -53,6 +56,8 @@ export default function InsumoRubroAccionesMenu({
   onReloadCatalogo,
   fromSidebar = false,
   businessId,
+  isElaborado = false,
+  onAfterRubroUpdate,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -285,6 +290,33 @@ export default function InsumoRubroAccionesMenu({
     handleMenuClose();
     if (!onCreateGroupFromRubro) return;
     onCreateGroupFromRubro(rubroLabel || "Sin rubro");
+  };
+
+  /* ========== MARCAR COMO ELABORADO / NO ELABORADO ========== */
+  const handleToggleElaborado = async () => {
+    handleMenuClose();
+
+    if (!rubroCodigo) {
+      notify?.('Este rubro no tiene código asignado', 'warning');
+      return;
+    }
+
+    const nuevoValor = !isElaborado;
+    try {
+      await insumosRubroUpdate(rubroCodigo, { es_elaborador: nuevoValor }, businessId);
+      notify?.(
+        nuevoValor
+          ? `"${rubroLabel || 'Rubro'}" marcado como elaborado`
+          : `"${rubroLabel || 'Rubro'}" marcado como no elaborado`,
+        'success'
+      );
+      await onAfterRubroUpdate?.();
+      await onReloadCatalogo?.();
+      await onRefetch?.();
+    } catch (e) {
+      console.error('TOGGLE_ELABORADO_RUBRO_ERROR', e);
+      notify?.('Error al cambiar tipo de rubro', 'error');
+    }
   };
 
   /* ========== RENDER ========== */

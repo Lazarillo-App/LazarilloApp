@@ -53,28 +53,6 @@ const getFavKey = (bizId) => `favInsumoGroupId_${bizId || 'default'}`;
 const VIEW_KEY = 'lazarillo:insumosViewMode';
 const DEFAULT_VISTA = 'no-elaborados';
 
-// ✅ Garantiza que from/to sean siempre YYYY-MM-DD
-// Convierte objetos Date o strings malformados al formato correcto
-function sanitizeRango(rango) {
-  if (!rango) return rango;
-  const toYMD = (v) => {
-    if (!v) return v;
-    const s = String(v);
-    // Ya es YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    // Es un objeto Date o string de Date — intentar parsear
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    }
-    return v; // devolver tal cual si no se puede parsear
-  };
-  return { ...rango, from: toYMD(rango.from), to: toYMD(rango.to) };
-}
-
 const norm = (s) => String(s || '').trim().toLowerCase();
 
 const normalize = (s) =>
@@ -137,20 +115,10 @@ export default function InsumosMain() {
   // Si el rango activo es "Histórico" y cambia el negocio/firstDate, actualizar el from automáticamente
   useEffect(() => {
     if (rangoCompras?.mode === 'all' && firstDateCompras) {
-      // ✅ Garantizar formato YYYY-MM-DD — previene crash si firstDateCompras llega como Date
-      const fromStr = String(firstDateCompras).slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(fromStr)) {
-        setRangoCompras(prev => ({ ...prev, from: fromStr }));
-      }
+      setRangoCompras(prev => ({ ...prev, from: firstDateCompras }));
     }
-  }, [firstDateCompras, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Resetear rango al cambiar de negocio
-  useEffect(() => {
-    const def = lastNDaysUntilYesterday(daysByMode('30'));
-    setRangoCompras({ mode: '30', from: def.from, to: def.to });
-  }, [businessId]);
-  const { rootBusiness, organization, allBusinesses } = useOrganization();
+  }, [firstDateCompras]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { rootBusiness, organization } = useOrganization();
   // resolvedBizId: usar el principal de la org solo si el negocio activo pertenece a ella
   // Si es un negocio independiente (fuera de la org), usar su propio ID
   const activeInOrg = (organization?.businesses || []).some(
@@ -216,13 +184,15 @@ export default function InsumosMain() {
   // viewModeByGroup: { [insumoGroupId]: 'elaborados' | 'no-elaborados' }
   const [viewModeByGroup, setViewModeByGroup] = useState({});
 
-  // Cargar preferencias al montar o cambiar negocio
+  // Cargar preferencias al montar o cambiar negocio — limpiar antes para no mostrar prefs viejas
   useEffect(() => {
+    setViewModeByGroup({}); // limpiar inmediatamente al cambiar negocio
     if (!resolvedBizId) return;
     (async () => {
       try {
-        const resp = await BusinessesAPI.getViewPrefs(resolvedBizId);
-        setViewModeByGroup(resp?.byInsumoGroup || {});
+        // ✅ scope:'insumo' para no mezclar con prefs de artículos
+        const resp = await BusinessesAPI.getViewPrefs(resolvedBizId, { scope: 'insumo' });
+        setViewModeByGroup(resp?.byInsumoGroup || resp?.byGroup || {});
       } catch { setViewModeByGroup({}); }
     })();
   }, [resolvedBizId]);
@@ -258,17 +228,10 @@ export default function InsumosMain() {
   );
 
   /* ── Compras ── */
-  const [rangoCompras, setRangoComprasRaw] = useState(() => {
+  const [rangoCompras, setRangoCompras] = useState(() => {
     const def = lastNDaysUntilYesterday(daysByMode('30'));
     return { mode: '30', from: def.from, to: def.to };
   });
-  // ✅ Wrapper que siempre sanitiza antes de setear
-  const setRangoCompras = useCallback((v) => {
-    setRangoComprasRaw(prev => {
-      const next = typeof v === 'function' ? v(prev) : v;
-      return sanitizeRango(next);
-    });
-  }, []);
   const [comprasMap, setComprasMap] = useState(new Map());
   const [comprasLoading, setComprasLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -276,16 +239,9 @@ export default function InsumosMain() {
 
   useEffect(() => {
     if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
-    // ✅ Garantizar formato YYYY-MM-DD antes de enviar al backend
-    const fromStr = String(rangoCompras.from).slice(0, 10);
-    const toStr = String(rangoCompras.to).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromStr) || !/^\d{4}-\d{2}-\d{2}$/.test(toStr)) {
-      console.warn('[InsumosMain] rango inválido, ignorando:', fromStr, toStr);
-      return;
-    }
     let cancelled = false;
     setComprasLoading(true);
-    purchasesList(businessId, { from: fromStr, to: toStr, limit: 10000 })
+    purchasesList(businessId, { from: rangoCompras.from, to: rangoCompras.to, limit: 10000 })
       .then((res) => {
         if (cancelled) return;
         setComprasMap(buildComprasMap(res?.data ?? []));
@@ -665,9 +621,12 @@ export default function InsumosMain() {
       const id = Number(ins.id);
       if (!Number.isFinite(id)) return null;
       const nombre = (ins.nombre || '').trim() || `INS-${id}`;
+      // ✅ Incluir código Maxirest para búsqueda por código
+      const codigoMaxi = ins.codigo_maxi || ins.codigo_mostrar || ins.codigo || '';
       return {
         id,
         nombre,
+        codigo: String(codigoMaxi).trim(), // campo que Buscador.jsx indexa como _codigo
         _search: normalize(nombre),
         rubro_codigo: ins.rubro_codigo || ins.rubro || '',
       };
@@ -993,7 +952,7 @@ export default function InsumosMain() {
             comprasMap={comprasMap}
             comprasLoading={comprasLoading}
             rangoCompras={rangoCompras}
-            businesses={allBusinesses || []}
+            businesses={organization?.businesses || []}
           />
         </div>
       </div>

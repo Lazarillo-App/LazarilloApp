@@ -441,7 +441,7 @@ uploadLogo: async (id, file) => {
       withBusinessId: false,
     }),
 
-  async getViewPrefs(businessId, { divisionId = null } = {}) {
+  async getViewPrefs(businessId, { divisionId = null, scope = null } = {}) {
     if (!businessId) return { ok: true, byGroup: {} };
 
     try {
@@ -449,6 +449,7 @@ uploadLogo: async (id, file) => {
 
       const qs = new URLSearchParams();
       if (div != null) qs.set('divisionId', String(div));
+      if (scope) qs.set('scope', String(scope)); // ✅ 'articulo' | 'insumo'
 
       const resp = await http(
         `/businesses/${businessId}/view-prefs${qs.toString() ? `?${qs}` : ''}`,
@@ -462,7 +463,7 @@ uploadLogo: async (id, file) => {
     }
   },
 
-  async saveViewPref(businessId, { agrupacionId, viewMode, divisionId = null }) {
+  async saveViewPref(businessId, { agrupacionId, viewMode, divisionId = null, scope = null }) {
     if (!businessId || !agrupacionId || !viewMode) return;
 
     try {
@@ -470,7 +471,12 @@ uploadLogo: async (id, file) => {
 
       await http(`/businesses/${businessId}/view-prefs`, {
         method: 'POST',
-        body: { agrupacionId, viewMode, divisionId: div },
+        body: {
+          agrupacionId,
+          viewMode,
+          divisionId: div,
+          scope: scope || null, // ✅ 'articulo' | 'insumo' | null
+        },
         withBusinessId: false,
       });
     } catch (e) {
@@ -526,6 +532,45 @@ uploadLogo: async (id, file) => {
       throw e;
     }
   },
+};
+
+
+/* ======================= Recetas Costos ======================= */
+export const RecetasAPI = {
+  // GET /businesses/:id/recetas-costos
+  // Devuelve { [articleId]: { costoTotal, porciones, tieneAlerta, insumosAlerta } }
+  getCostos: (businessId) =>
+    http(`/businesses/${businessId}/recetas-costos`, { withBusinessId: false }),
+
+  // GET /businesses/:id/recetas-alertas
+  // Devuelve lista de insumos con compras vencidas usados en recetas
+  getAlertas: (businessId) =>
+    http(`/businesses/${businessId}/recetas-alertas`, { withBusinessId: false }),
+};
+
+/* ======================= Article Price Config ======================= */
+export const PriceConfigAPI = {
+  // GET /businesses/:id/article-price-config
+  getAll: (businessId) =>
+    http(`/businesses/${businessId}/article-price-config`, { withBusinessId: false }),
+
+  // POST /businesses/:id/article-price-config
+  // { scope, scopeId, objetivo?, precioManual?, articleIds? }
+  save: (businessId, body) =>
+    http(`/businesses/${businessId}/article-price-config`, {
+      method: 'POST',
+      body,
+      withBusinessId: false,
+    }),
+
+  // DELETE /businesses/:id/article-price-config
+  // { scope, scopeId }
+  remove: (businessId, body) =>
+    http(`/businesses/${businessId}/article-price-config`, {
+      method: 'DELETE',
+      body,
+      withBusinessId: false,
+    }),
 };
 
 /* ======================= API Admin (sin X-Business-Id) ======================= */

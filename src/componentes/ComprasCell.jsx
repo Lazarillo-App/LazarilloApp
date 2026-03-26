@@ -25,7 +25,7 @@ const fmtNum = (v, d = 2) => {
  *   loading       bool    — comprasMap todavía cargando
  */
 function ComprasCell({
-  insumoId, insumoNombre,
+  insumoId, insumoNombre, insumoUnidad = '',
   comprasEntry, from, to,
   businessId, businesses = [],
   loading = false,
@@ -89,7 +89,7 @@ function ComprasCell({
               fontWeight: hasData ? 700 : 400,
             }}
           >
-            {hasData ? fmtNum(comprasEntry.total, 0) : '-'}
+            {hasData ? `$\u00a0${fmtNum(comprasEntry.total, 0)}` : '-'}
           </Typography>
         )}
 
@@ -120,6 +120,7 @@ function ComprasCell({
           onClose={handleClose}
           insumoId={insumoId}
           insumoNombre={insumoNombre}
+          insumoUnidad={insumoUnidad}
           rango={{ from: String(from).slice(0, 10), to: String(to).slice(0, 10) }}
           items={detailItems}
           loading={detailLoading}

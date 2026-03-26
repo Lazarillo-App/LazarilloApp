@@ -5,3 +5,82 @@
 .tabla-articulos-container table td[align="right"] { text-align: right; }
 .acciones-cell { text-align: center; width: 64px; }
 .rubro-row td { letter-spacing: .2px; }
+
+/* ── Inputs con símbolo interno ($  %) ────────────────────────────────────── */
+
+/* Wrapper: convierte el div en un contexto de posición para el ::after */
+.input-symbol-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* El símbolo viene del data-symbol="%" o data-symbol="$" */
+.input-symbol-wrapper::after {
+  content: attr(data-symbol);
+  position: absolute;
+  right: 6px;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  pointer-events: none;
+  line-height: 1;
+  font-weight: 500;
+}
+
+/* Variante símbolo a la izquierda ($) */
+.input-symbol-wrapper.symbol-left::after {
+  right: auto;
+  left: 6px;
+}
+
+/* El input en sí */
+.input-with-suffix {
+  appearance: none;
+  -moz-appearance: textfield;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 18px 2px 4px;   /* espacio derecho para el símbolo */
+  background: transparent;
+  color: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-with-prefix {
+  appearance: none;
+  -moz-appearance: textfield;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 4px 2px 16px;   /* espacio izquierdo para el símbolo */
+  background: transparent;
+  color: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input-with-suffix:focus,
+.input-with-prefix:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+/* Quitar flechas de tipo number */
+.input-with-suffix::-webkit-inner-spin-button,
+.input-with-suffix::-webkit-outer-spin-button,
+.input-with-prefix::-webkit-inner-spin-button,
+.input-with-prefix::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Nivel agrupación / header — borde más marcado */
+.input-group-level {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent) !important;
+  font-weight: 600 !important;
+}
+.input-group-level:focus {
+  border-color: var(--color-primary) !important;
+}

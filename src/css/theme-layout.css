@@ -705,13 +705,18 @@ input[type="number"]:focus {
    =========================== */
 
 /* Header de columnas (fila de títulos clickeables) */
-.table-col-header {
+.table-col-header{
   position: sticky;
   top: 0;
   z-index: 3;
   background: var(--table-section-bg, #f1f5f9);
   border-bottom: 2px solid var(--table-section-border, var(--color-border));
   padding: 8px 8px 6px;
+}
+
+.header-agrupacion{
+    position: sticky !important;
+  top: 0;
 }
 
 .table-col-header-inner {

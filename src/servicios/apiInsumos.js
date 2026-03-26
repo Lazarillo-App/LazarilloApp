@@ -311,6 +311,28 @@ export const insumosRubrosSync = async (bizId) => {
   return data;
 };
 
+/**
+ * PATCH /api/insumos/maxi/rubros/:codigo
+ * Actualiza campos de un rubro (ej: es_elaborador)
+ */
+export const insumosRubroUpdate = async (codigo, payload, bizId) => {
+  const url = `${BASE}/insumos/maxi/rubros/${encodeURIComponent(codigo)}`;
+
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: authHeaders(bizId),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al actualizar rubro');
+  }
+
+  return data;
+};
+
 // ==================== AGRUPACIONES (GROUPS) ====================
 
 /**
@@ -670,6 +692,7 @@ export default {
   insumosSyncMaxi,
   insumosListMaxi,
   insumosRubrosList,
+  insumosRubroUpdate,
   insumosRubrosSync,
   
   // Agrupaciones
@@ -693,3 +716,4 @@ export default {
   // Create or Move
   insumoGroupCreateOrMove,
 };
+

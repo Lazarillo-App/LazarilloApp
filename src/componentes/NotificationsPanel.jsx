@@ -18,6 +18,7 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  LinearProgress,
 } from '@mui/material';
 
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -135,6 +136,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     const scopeLabel = scope === 'insumo' ? 'Insumo' : 'Artículo';
     const kind = notif?.kind;
 
+    if (kind === 'objetivo_update') return `🎯 Objetivo % actualizado`;
     if (kind === 'group_favorite_set') return `⭐ Marcada como favorita`;
     if (kind === 'group_favorite_unset') return `☆ Desmarcada como favorita`;
     if (kind === 'group_create') return `🆕 Nueva agrupación`;
@@ -240,6 +242,10 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         }
 
         console.log('✅ [NotificationsPanel] Notificación añadida:', item.title);
+        // Si es objetivo_update, iniciar countdown de 2 minutos
+        if (item.kind === 'objetivo_update') {
+          setCountdowns(prev => ({ ...prev, [item.id]: 120 }));
+        }
         return [item, ...arr].slice(0, 200);
       });
     };
@@ -390,6 +396,28 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     setUiNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  // Countdown para notificaciones de objetivo_update (2 minutos)
+  const [countdowns, setCountdowns] = React.useState({});
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdowns(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, val] of Object.entries(next)) {
+          if (val > 0) { next[id] = val - 1; changed = true; }
+          else {
+            // Expiró — marcar como resuelta
+            setUiNotifs(p => p.map(n => n.id === id ? { ...n, resolved: true, read: true } : n));
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const undoUiNotif = async (uiNotif) => {
     emitUiUndo({
       kind: uiNotif.kind,
@@ -466,7 +494,16 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   if (!notif) return false;
                   const kind = notif.kind;
                   const scope = notif.scope || notif.payload?.scope || 'articulo';
+                  if (kind === 'objetivo_update') return countdowns[notif.id] > 0;
                   return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
+                };
+
+                const getCountdownLabel = (notif) => {
+                  const secs = countdowns[notif.id];
+                  if (!secs) return null;
+                  const m = Math.floor(secs / 60);
+                  const s = String(secs % 60).padStart(2, '0');
+                  return `${m}:${s}`;
                 };
 
                 return (
@@ -554,7 +591,20 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                               </Typography>
 
                               {canUndo(notif) && (
-                                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                                  {notif.kind === 'objetivo_update' && getCountdownLabel(notif) && (
+                                    <Box>
+                                      <LinearProgress
+                                        variant="determinate"
+                                        value={(countdowns[notif.id] / 120) * 100}
+                                        color="warning"
+                                        sx={{ height: 3, borderRadius: 2, mb: 0.5 }}
+                                      />
+                                      <Typography variant="caption" color="text.secondary">
+                                        Podés deshacer en {getCountdownLabel(notif)}
+                                      </Typography>
+                                    </Box>
+                                  )}
                                   <Button
                                     size="small"
                                     variant="outlined"

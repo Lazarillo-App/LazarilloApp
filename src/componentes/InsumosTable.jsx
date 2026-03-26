@@ -226,16 +226,16 @@ const InsumosTable = forwardRef(function InsumosTable({
 
   const precioHeaderLabel =
     precioMode === "promedio"
-      ? "Precio promedio"
+      ? "Precio promedio ($)"
       : precioMode === "ultima"
-        ? "Última compra"
-        : "Precio";
+        ? "Última compra ($)"
+        : "Precio ($)";
 
   const totalHeaderLabel =
     totalMode === "unidades"
-      ? "Total unidades"
+      ? "Total unidades (u.)"
       : totalMode === "gastos"
-        ? "Total gastado"
+        ? "Total gastado ($)"
         : totalMode === "ratio"
           ? "Ratio ventas"
           : "Total";
@@ -683,7 +683,7 @@ const InsumosTable = forwardRef(function InsumosTable({
 
             {isElaborados ? (
               <>
-                <div>Precio final desp.</div>
+                <div>Precio final desp. ($)</div>
                 <div onClick={() => toggleSort("total")} className="col-sortable">
                   {totalHeaderLabel} {sortIcon("total")}
                 </div>
@@ -708,7 +708,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
                   title="Total compras del período (clic para ver detalle)"
                 >
-                  Compras{comprasLoading ? ' ⟳' : ''} {sortIcon("total_compras")}
+                  Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
                 </div>
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
@@ -849,6 +849,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   <ComprasCell
                     insumoId={r.id}
                     insumoNombre={r.nombre}
+                    insumoUnidad={r.unidad_med || ''}
                     comprasEntry={comprasMap.get(Number(r.id))}
                     from={rangoCompras?.from}
                     to={rangoCompras?.to}
