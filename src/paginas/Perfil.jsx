@@ -4,56 +4,57 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 
-import BusinessCard         from '../componentes/BusinessCard';
-import BusinessCreateModal  from '../componentes/BusinessCreateModal';
-import BusinessEditModal    from '../componentes/BusinessEditModal';
-import SyncDialog           from '../componentes/SyncDialog';
-import OrgDashboard         from '../componentes/OrgDashboard';
-import UploadInsumosModal   from '../componentes/UploadInsumosModal';
+import BusinessCard from '../componentes/BusinessCard';
+import BusinessCreateModal from '../componentes/BusinessCreateModal';
+import BusinessEditModal from '../componentes/BusinessEditModal';
+import SyncDialog from '../componentes/SyncDialog';
+import OrgDashboard from '../componentes/OrgDashboard';
+import UploadInsumosModal from '../componentes/UploadInsumosModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
-import RecetasImportModal   from '../componentes/RecetasImportModal';
+import RecetasImportModal from '../componentes/RecetasImportModal';
+import SucursalesSection from '../componentes/SucursalesSection';
 
-import { BusinessesAPI }   from "@/servicios/apiBusinesses";
-import { useBusiness }     from '@/context/BusinessContext';
+import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { useBusiness } from '@/context/BusinessContext';
 import { useOrganization } from '@/context/OrganizationContext';
 
-import Inventory2Icon   from '@mui/icons-material/Inventory2';
-import PointOfSaleIcon  from '@mui/icons-material/PointOfSale';
-import MenuBookIcon     from '@mui/icons-material/MenuBook';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 // ─── Panel de importación de datos ───────────────────────────────────────────
 function ImportDataPanel({ businessId, onSuccess }) {
-  const [uploadInsumosOpen,   setUploadInsumosOpen]   = useState(false);
+  const [uploadInsumosOpen, setUploadInsumosOpen] = useState(false);
   const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
-  const [recetasImportOpen,   setRecetasImportOpen]   = useState(false);
+  const [recetasImportOpen, setRecetasImportOpen] = useState(false);
 
   if (!businessId) return null;
 
   const cards = [
     {
-      icon:        <PointOfSaleIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo:      'Importar Artículos',
+      icon: <PointOfSaleIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
+      titulo: 'Importar Artículos',
       descripcion: 'Completar el catálogo de artículos cuando MaxiRest no devuelve todos los datos.',
-      detalle:     'Exportá el listado de artículos desde MaxiRest → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
-      accion:      'Subir archivo de artículos',
-      onClick:     () => setUploadArticulosOpen(true),
+      detalle: 'Exportá el listado de artículos desde MaxiRest → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
+      accion: 'Subir archivo de artículos',
+      onClick: () => setUploadArticulosOpen(true),
     },
     {
-      icon:        <Inventory2Icon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo:      'Importar Insumos',
+      icon: <Inventory2Icon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
+      titulo: 'Importar Insumos',
       descripcion: 'Completar el catálogo de insumos cuando MaxiRest no devuelve todos los datos.',
-      detalle:     'Exportá el catálogo de insumos desde MaxiRest → Stock → Insumos → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
-      accion:      'Subir archivo de insumos',
-      onClick:     () => setUploadInsumosOpen(true),
+      detalle: 'Exportá el catálogo de insumos desde MaxiRest → Stock → Insumos → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
+      accion: 'Subir archivo de insumos',
+      onClick: () => setUploadInsumosOpen(true),
     },
     {
-      icon:        <MenuBookIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo:      'Importar Recetas',
+      icon: <MenuBookIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
+      titulo: 'Importar Recetas',
       descripcion: 'Sincronizar recetas desde MaxiRest o cargarlas manualmente desde un archivo.',
-      detalle:     'Podés hacer sync automático desde MaxiRest o subir un archivo con ingredientes por artículo. Las recetas editadas manualmente no se pisan en syncs posteriores.',
-      accion:      'Gestionar recetas',
-      onClick:     () => setRecetasImportOpen(true),
+      detalle: 'Podés hacer sync automático desde MaxiRest o subir un archivo con ingredientes por artículo. Las recetas editadas manualmente no se pisan en syncs posteriores.',
+      accion: 'Gestionar recetas',
+      onClick: () => setRecetasImportOpen(true),
     },
   ];
 
@@ -135,10 +136,10 @@ export default function Perfil() {
   const { organization, allBusinesses } = useOrganization() || {};
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editing,    setEditing]    = useState(null);
-  const [notice,     setNotice]     = useState({ open: false, title: '', message: '' });
+  const [editing, setEditing] = useState(null);
+  const [notice, setNotice] = useState({ open: false, title: '', message: '' });
 
-  const showNotice  = (title, message) => setNotice({ open: true, title, message });
+  const showNotice = (title, message) => setNotice({ open: true, title, message });
   const closeNotice = () => setNotice(s => ({ ...s, open: false }));
 
   const me = useMemo(() => {
@@ -205,7 +206,7 @@ export default function Perfil() {
               console.warn('[onCreateComplete] ensureTodo falló (no crítico):', eTodo?.message);
             }
           } else {
-            const errors     = Array.isArray(result?.errors) ? result.errors : [];
+            const errors = Array.isArray(result?.errors) ? result.errors : [];
             const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
             showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
           }
@@ -231,7 +232,7 @@ export default function Perfil() {
     if (!id) return;
 
     const name = biz?.name || biz?.nombre || `#${id}`;
-    const ok   = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
+    const ok = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
     if (!ok) return;
 
     try { newLocalBtnRef.current?.focus?.(); }
@@ -239,8 +240,8 @@ export default function Perfil() {
 
     try {
       const currentActiveId = Number(activeId);
-      const deletedId       = Number(id);
-      const isActive        = currentActiveId === deletedId;
+      const deletedId = Number(id);
+      const isActive = currentActiveId === deletedId;
 
       await BusinessesAPI.remove(id);
       removeBusinessFromState?.(id);
@@ -290,17 +291,17 @@ export default function Perfil() {
   const activeBranding = useMemo(() => {
     const br = activeBiz?.props?.branding || activeBiz?.branding || {};
     return {
-      primary:   /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(br.primary   || '') ? br.primary   : '#111111',
+      primary: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(br.primary || '') ? br.primary : '#111111',
       secondary: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(br.secondary || '') ? br.secondary : '#e5e7eb',
-      name:      activeBiz?.name || activeBiz?.nombre || '',
+      name: activeBiz?.name || activeBiz?.nombre || '',
     };
   }, [activeBiz]);
 
-  const user        = me || {};
+  const user = me || {};
   const userInitial = (user?.firstName || user?.name || 'U')[0]?.toUpperCase?.() || 'U';
-  const bizInitial  = (activeBiz ? (activeBranding.name || 'N') : userInitial)[0]?.toUpperCase?.() || 'N';
-  const meName      = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Usuario';
-  const list        = Array.isArray(items) ? items : [];
+  const bizInitial = (activeBiz ? (activeBranding.name || 'N') : userInitial)[0]?.toUpperCase?.() || 'N';
+  const meName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Usuario';
+  const list = Array.isArray(items) ? items : [];
 
   return (
     <div className="profile-wrap">
@@ -312,7 +313,7 @@ export default function Perfil() {
             title={activeBiz?.name || 'Sin local activo'}
             style={{
               backgroundColor: activeBranding?.secondary || '#e5e7eb',
-              color:           activeBranding?.primary   || '#111',
+              color: activeBranding?.primary || '#111',
             }}
           >
             <span className="biz-avatar-initial">{bizInitial}</span>
@@ -344,7 +345,7 @@ export default function Perfil() {
 
       {/* ── Mis locales ── */}
       {(() => {
-        const orgBizIds  = new Set((allBusinesses || []).map(b => String(b.id)));
+        const orgBizIds = new Set((allBusinesses || []).map(b => String(b.id)));
         const outsideOrg = organization && orgBizIds.size > 1
           ? list.filter(b => !orgBizIds.has(String(b.id)))
           : list;
@@ -376,6 +377,33 @@ export default function Perfil() {
           </section>
         );
       })()}
+
+      {/* ── Sucursales del negocio activo ── */}
+      {activeId && (
+        <section className="section">
+          <div style={{
+            display: 'flex', alignItems: 'flex-start',
+            justifyContent: 'space-between', marginBottom: 10,
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#1f2937' }}>
+                Sucursales
+                {activeBiz?.name && (
+                  <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
+                    de {activeBiz.name}
+                  </span>
+                )}
+              </h3>
+              {/* <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af', lineHeight: 1.4 }}>
+                Locales físicos del mismo negocio. Comparten artículos e insumos,
+                pero tienen ventas y compras independientes.
+              </p> */}
+            </div>
+          </div>
+          {/* SucursalesSection usa BranchContext internamente */}
+          <SucursalesSection />
+        </section>
+      )}
 
       {/* ── Importación de datos ── */}
       <ImportDataPanel businessId={rootBizId} onSuccess={handleImportSuccess} />

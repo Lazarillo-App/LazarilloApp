@@ -24,20 +24,34 @@ function qs(params = {}) {
 }
 
 // POST /api/purchases/sync  { from, to }
-export async function purchasesSync(bizId, { from, to, provdr = '', num = '' } = {}) {
-  const res = await fetch(`${BASE}/purchases/sync`, {
+export async function purchasesSync(bizId, {
+  from, to, provdr, num,
+  branch_id,   // id de sucursal o null
+} = {}) {
+  return {BASE}(`/purchases/sync`, {
     method: 'POST',
-    headers: authHeaders(bizId),
-    body: JSON.stringify({ from, to, provdr, num }),
+    body: JSON.stringify({ from, to, provdr, num, branch_id: branch_id ?? null }),
+    bizId,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
-  return data;
 }
 
 // GET /api/purchases?from=&to=&limit=
-export async function purchasesList(bizId, params = {}) {
-  const res = await fetch(`${BASE}/purchases${qs(params)}`, {
+export async function purchasesList(bizId, {
+  from, to, proveedor_id, insumo_id, page, limit,
+  branch_id,   // null | 'all' | 'none' | number
+} = {}) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (proveedor_id) params.set('proveedor_id', proveedor_id);
+  if (insumo_id) params.set('insumo_id', insumo_id);
+  if (page) params.set('page', page);
+  if (limit) params.set('limit', limit);
+  // branch_id: solo enviar si viene explícito (null = todas = omitir)
+  if (branch_id !== null && branch_id !== undefined) {
+    params.set('branch_id', String(branch_id));
+  }
+  const res = await fetch(`${BASE}/purchases${qs(Object.fromEntries(params))}`, {
     headers: authHeaders(bizId),
   });
   const data = await res.json().catch(() => ({}));
@@ -53,10 +67,10 @@ export async function purchasesDownloadCsv(bizId, params = {}) {
   if (!res.ok) throw new Error(`Error ${res.status} al descargar CSV`);
   const blob = await res.blob();
   const from = params.from ?? 'all';
-  const to   = params.to   ?? 'all';
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const to = params.to ?? 'all';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = `compras_${from}_${to}.csv`;
   document.body.appendChild(a);
   a.click();
@@ -75,10 +89,10 @@ export function buildComprasMap(rows) {
       map.set(id, { cantidad: 0, neto: 0, iva: 0, total: 0, facturas: new Set() });
     }
     const acc = map.get(id);
-    acc.cantidad += Number(r.cantidad     ?? 0);
-    acc.neto     += Number(r.precio_total ?? 0);
-    acc.iva      += Number(r.iva_total    ?? 0);
-    acc.total    += Number(r.precio_total ?? 0) + Number(r.iva_total ?? 0);
+    acc.cantidad += Number(r.cantidad ?? 0);
+    acc.neto += Number(r.precio_total ?? 0);
+    acc.iva += Number(r.iva_total ?? 0);
+    acc.total += Number(r.precio_total ?? 0) + Number(r.iva_total ?? 0);
     if (r.factura) acc.facturas.add(r.factura);
   }
   for (const [, v] of map) {

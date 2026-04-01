@@ -18,7 +18,7 @@ import {
   insumoGroupAddItem,
   insumoGroupRemoveItem,
   insumoGroupReplaceItems,
-  insumosRubroUpdate,
+  toggleInsumoElaborado,
 } from '../servicios/apiInsumos';
 
 const getNum = (v) => Number(v ?? 0);
@@ -40,11 +40,9 @@ function InsumoAccionesMenu({
   notify,
   onMutateGroups,
   onAfterMutation,
+  onAfterToggleElaborado,
   onCreateGroupFromInsumo,
   businessId,
-  rubroCodigo,
-  isElaborado = false,
-  onAfterRubroUpdate,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -59,6 +57,9 @@ function InsumoAccionesMenu({
   const currentGroupId = selectedGroupId ? Number(selectedGroupId) : null;
   const isTodoView = todoGroupId && currentGroupId === todoGroupId;
   const insumoNombre = String(insumo?.nombre || '').trim() || `INS-${insumoId}`;
+
+  // Derivado del objeto insumo — única fuente de verdad
+  const isElaborado = Boolean(insumo?.es_elaborado);
 
   // ✅ Verificar si está en Discontinuados
   const isInDiscontinuados = useMemo(() => {
@@ -81,6 +82,27 @@ function InsumoAccionesMenu({
 
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
+  /* ========== MARCAR / DESMARCAR COMO ELABORADO ========== */
+  async function handleToggleElaborado() {
+    handleClose();
+    try {
+      await toggleInsumoElaborado(insumoId, !isElaborado, businessId);
+      notify?.(
+        isElaborado
+          ? `"${insumoNombre}" desmarcado como elaborado`
+          : `"${insumoNombre}" marcado como elaborado`,
+        'success'
+      );
+      // Notificar al padre para que quite el insumo de la vista actual de forma optimista
+      // y luego recargar catálogo completo (rubros + insumos)
+      onAfterToggleElaborado?.(insumoId, !isElaborado);
+      await onReloadCatalogo?.();
+    } catch (e) {
+      console.error('TOGGLE_ELABORADO_ERROR', e);
+      notify?.('Error al cambiar estado elaborado', 'error');
+    }
+  }
+
   /* ========== DISCONTINUAR / REACTIVAR ========== */
   async function toggleDiscontinuar() {
     if (!discontinuadosGroupId) {
@@ -94,13 +116,12 @@ function InsumoAccionesMenu({
         // ✅ DISCONTINUAR
         await insumoGroupAddItem(discontinuadosGroupId, insumoId, businessId);
 
-        // ✅ Emitir evento con estructura correcta
         emitUiAction({
           businessId,
           kind: 'discontinue',
           scope: 'insumo',
           title: `⛔ ${insumoNombre} discontinuado`,
-          message: `“${insumoNombre}” se movió a Discontinuados.`,
+          message: `"${insumoNombre}" se movió a Discontinuados.`,
           createdAt: new Date().toISOString(),
           payload: {
             ids: [insumoId],
@@ -115,8 +136,6 @@ function InsumoAccionesMenu({
             },
           },
         });
-
-        console.log('✅ Insumo discontinuado');
       } else {
         // ✅ REACTIVAR
         await insumoGroupRemoveItem(discontinuadosGroupId, insumoId, businessId);
@@ -126,7 +145,7 @@ function InsumoAccionesMenu({
           kind: 'discontinue',
           scope: 'insumo',
           title: `✅ ${insumoNombre} reactivado`,
-          message: `“${insumoNombre}” volvió a estar disponible.`,
+          message: `"${insumoNombre}" volvió a estar disponible.`,
           createdAt: new Date().toISOString(),
           payload: {
             ids: [insumoId],
@@ -141,14 +160,10 @@ function InsumoAccionesMenu({
             },
           },
         });
-
-        console.log('✅ Insumo reactivado');
       }
 
-      // ✅ Refrescar SIN cambiar vista
       await onReloadCatalogo?.();
       await onRefetch?.();
-
     } catch (e) {
       console.error('TOGGLE_DISCONTINUAR_ERROR', e);
       notify?.('Error al cambiar estado', 'error');
@@ -160,7 +175,7 @@ function InsumoAccionesMenu({
   /* ========== QUITAR DE AGRUPACIÓN ========== */
   async function quitarDeActual() {
     if (isTodoView) {
-      notify?.('El insumo ya está en "Sin agrupación"', 'info');
+      notify?.(`El insumo ya está en "Sin agrupación"`, 'info');
       handleClose();
       return;
     }
@@ -171,21 +186,11 @@ function InsumoAccionesMenu({
     }
 
     try {
-      console.log(`🗑️ [Quitar] Insumo ${insumoId} del grupo ${currentGroupId}`);
-
       await insumoGroupRemoveItem(currentGroupId, insumoId, businessId);
-
       const groupName = groups.find(g => Number(g.id) === currentGroupId)?.nombre || 'agrupación';
       notify?.(`Insumo quitado de ${groupName}`, 'success');
-
-      // ✅ SECUENCIA CORRECTA
-      console.log('🔄 [1/2] Recargando catálogo...');
       await onReloadCatalogo?.();
-
-      console.log('🔄 [2/2] Forzando refresh...');
       await onRefetch?.();
-
-      console.log('✅ Refresh completado');
     } catch (e) {
       console.error('QUITAR_INSUMO_ERROR', e);
       notify?.('Error al quitar insumo', 'error');
@@ -194,6 +199,7 @@ function InsumoAccionesMenu({
       handleClose();
     }
   }
+
   /* ========== MOVER A OTRA AGRUPACIÓN ========== */
   async function mover() {
     if (!destId) return;
@@ -207,7 +213,6 @@ function InsumoAccionesMenu({
       return closeMover();
     }
 
-    // ✅ Nombres de agrupaciones
     const fromGroupName = fromId
       ? groups.find(g => Number(g.id) === fromId)?.nombre || `Agrupación ${fromId}`
       : 'Sin agrupación';
@@ -216,9 +221,6 @@ function InsumoAccionesMenu({
     setIsMoving(true);
     try {
       if (fromId) {
-        // Mover desde grupo actual
-        console.log(`🔄 [Mover] Insumo ${insumoId} de ${fromId} a ${toId}`);
-
         await insumoGroupAddItem(toId, insumoId, businessId);
         await insumoGroupRemoveItem(fromId, insumoId, businessId);
 
@@ -229,41 +231,27 @@ function InsumoAccionesMenu({
           ids: [insumoId],
         });
 
-        // ✅ Emitir notificación CON UNDO
         try {
-          window.dispatchEvent(
-            new CustomEvent('ui:action', {
-              detail: {
-                businessId,
-                kind: 'move',
-                scope: 'insumo',
-                title: `📦 ${insumoNombre} movido`,
-                message: `"${fromGroupName}" → "${toGroupName}"`,
-                createdAt: new Date().toISOString(),
-                payload: {
-                  ids: [insumoId],
-                  originGroupId: fromId,
-                  toGroupId: toId,
-                  // ✅ Payload para UNDO
-                  undo: {
-                    payload: {
-                      prev: {
-                        fromGroupId: fromId,
-                        toGroupId: toId,
-                      },
-                    },
-                  },
-                },
+          window.dispatchEvent(new CustomEvent('ui:action', {
+            detail: {
+              businessId,
+              kind: 'move',
+              scope: 'insumo',
+              title: `📦 ${insumoNombre} movido`,
+              message: `"${fromGroupName}" → "${toGroupName}"`,
+              createdAt: new Date().toISOString(),
+              payload: {
+                ids: [insumoId],
+                originGroupId: fromId,
+                toGroupId: toId,
+                undo: { payload: { prev: { fromGroupId: fromId, toGroupId: toId } } },
               },
-            })
-          );
+            },
+          }));
         } catch (err) {
           console.warn('[InsumoAccionesMenu] Error emitiendo notificación:', err);
         }
       } else {
-        // Agregar desde TODO
-        console.log(`➕ [Agregar] Insumo ${insumoId} a ${toId}`);
-
         await insumoGroupAddItem(toId, insumoId, businessId);
 
         onMutateGroups?.({
@@ -272,32 +260,24 @@ function InsumoAccionesMenu({
           insumos: [{ id: insumoId }],
         });
 
-        // ✅ Notificación simple (sin undo porque viene de TODO)
         try {
-          window.dispatchEvent(
-            new CustomEvent('ui:action', {
-              detail: {
-                businessId,
-                kind: 'move',
-                scope: 'insumo',
-                title: `📦 ${insumoNombre} agregado`,
-                message: `Agregado a "${toGroupName}"`,
-                createdAt: new Date().toISOString(),
-                payload: {
-                  ids: [insumoId],
-                  toGroupId: toId,
-                },
-              },
-            })
-          );
+          window.dispatchEvent(new CustomEvent('ui:action', {
+            detail: {
+              businessId,
+              kind: 'move',
+              scope: 'insumo',
+              title: `📦 ${insumoNombre} agregado`,
+              message: `Agregado a "${toGroupName}"`,
+              createdAt: new Date().toISOString(),
+              payload: { ids: [insumoId], toGroupId: toId },
+            },
+          }));
         } catch (err) {
           console.warn('[InsumoAccionesMenu] Error emitiendo notificación:', err);
         }
       }
 
       notify?.(`Insumo #${insumoId} movido`, 'success');
-
-      // ✅ FORZAR REFRESH
       onAfterMutation?.([insumoId]);
       await onReloadCatalogo?.();
       await onRefetch?.();
@@ -311,34 +291,6 @@ function InsumoAccionesMenu({
     }
   }
 
-  /* ========== MARCAR COMO ELABORADO / NO ELABORADO ========== */
-  async function toggleElaborado() {
-    if (!rubroCodigo) {
-      notify?.('Este insumo no tiene rubro asignado', 'warning');
-      handleClose();
-      return;
-    }
-
-    const nuevoValor = !isElaborado;
-    try {
-      await insumosRubroUpdate(rubroCodigo, { es_elaborador: nuevoValor }, businessId);
-      notify?.(
-        nuevoValor
-          ? `Rubro marcado como elaborado`
-          : `Rubro marcado como no elaborado`,
-        'success'
-      );
-      await onAfterRubroUpdate?.();
-      await onReloadCatalogo?.();
-      await onRefetch?.();
-    } catch (e) {
-      console.error('TOGGLE_ELABORADO_ERROR', e);
-      notify?.('Error al cambiar tipo de rubro', 'error');
-    } finally {
-      handleClose();
-    }
-  }
-
   return (
     <>
       <IconButton size="small" onClick={handleOpen}>
@@ -346,24 +298,6 @@ function InsumoAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        {/* 0. Marcar como elaborado / no elaborado */}
-        {rubroCodigo && (
-          <MenuItem onClick={toggleElaborado}>
-            <ListItemIcon>
-              {isElaborado ? (
-                <RemoveCircleOutlineIcon fontSize="small" />
-              ) : (
-                <BuildCircleIcon fontSize="small" />
-              )}
-            </ListItemIcon>
-            <ListItemText>
-              {isElaborado
-                ? 'Marcar como: No elaborado'
-                : 'Marcar como: Elaborado'}
-            </ListItemText>
-          </MenuItem>
-        )}
-
         {/* 1. Discontinuar / Reactivar */}
         <MenuItem onClick={toggleDiscontinuar}>
           <ListItemIcon>
@@ -390,6 +324,20 @@ function InsumoAccionesMenu({
           </ListItemText>
         </MenuItem>
 
+        {/* 0. Marcar / desmarcar como elaborado */}
+        <MenuItem onClick={handleToggleElaborado}>
+          <ListItemIcon>
+            {isElaborado ? (
+              <RemoveCircleOutlineIcon fontSize="small" />
+            ) : (
+              <BuildCircleIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+          <ListItemText>
+            {isElaborado ? 'Desmarcar como elaborado' : 'Marcar como elaborado'}
+          </ListItemText>
+        </MenuItem>
+
         {/* 3. Mover a… */}
         <MenuItem onClick={openMover}>
           <ListItemIcon>
@@ -397,6 +345,8 @@ function InsumoAccionesMenu({
           </ListItemIcon>
           <ListItemText>Mover a…</ListItemText>
         </MenuItem>
+
+        {/* 4. Crear agrupación */}
         <MenuItem onClick={() => {
           handleClose();
           onCreateGroupFromInsumo?.(insumo);
@@ -408,10 +358,10 @@ function InsumoAccionesMenu({
             Crear agrupación desde este insumo
           </ListItemText>
         </MenuItem>
-      </Menu >
+      </Menu>
 
       {/* Dialog Mover */}
-      < Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted >
+      <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover insumo #{insumo?.id} a…</DialogTitle>
         <DialogContent>
           <TextField
@@ -444,7 +394,7 @@ function InsumoAccionesMenu({
             {isMoving ? 'Moviendo…' : 'Mover'}
           </Button>
         </DialogActions>
-      </Dialog >
+      </Dialog>
     </>
   );
 }

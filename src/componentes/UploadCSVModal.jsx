@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBranch } from '@/hooks/useBranch';
 import {
   Dialog,
   DialogTitle,
@@ -15,7 +16,13 @@ import {
   StepLabel,
   StepContent,
   Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
 } from '@mui/material';
+import StoreIcon from '@mui/icons-material/Store';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -153,6 +160,14 @@ export default function UploadCSVModal({
   instructionImage1,
   instructionImage2,
 }) {
+  const { branches, activeBranchId } = useBranch() || {};
+  const [branchId, setBranchId] = useState(null);
+
+  // Inicializar con la sucursal activa cuando se abre
+  React.useEffect(() => {
+    if (open) setBranchId(null); // siempre empieza sin sucursal — el usuario elige
+  }, [open, activeBranchId]);
+
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -198,6 +213,7 @@ export default function UploadCSVModal({
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (branchId) formData.append('branch_id', String(branchId));
 
       const token = localStorage.getItem('token');
       const response = await fetch(
@@ -329,6 +345,45 @@ export default function UploadCSVModal({
 
         <DialogContent>
           <Box sx={{ py: 2 }}>
+            {/* Selector de sucursal — solo cuando hay sucursales */}
+            {branches && branches.length > 0 && !success && (
+              <Box sx={{ mb: 2 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
+                    </Box>
+                  </InputLabel>
+                  <Select
+                    value={branchId === null || branchId === undefined ? '' : String(branchId)}
+                    label="Sucursal"
+                    onChange={e => { const v = e.target.value; setBranchId(v === '' ? null : (Number(v) || v)); }}
+                  >
+                    <MenuItem value="">
+                      <em>Negocio completo (sin sucursal)</em>
+                    </MenuItem>
+                    {(branches || []).map(b => (
+                      <MenuItem key={b.id} value={b.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
+                          {b.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {branchId && (
+                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Chip
+                      size="small"
+                      label={`Datos para: ${branches.find(b => b.id === branchId)?.name || branchId}`}
+                      sx={{ bgcolor: `${branches.find(b => b.id === branchId)?.color || 'var(--color-primary)'}20`, fontSize: '0.72rem' }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
+
             {/* Mensaje informativo inicial */}
             {!file && !success && (
               <Alert 

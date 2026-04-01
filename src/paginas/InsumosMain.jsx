@@ -45,6 +45,8 @@ import { useFirstDate } from '../hooks/useFirstDate';
 import { purchasesSync, purchasesList, purchasesDownloadCsv, buildComprasMap } from '../servicios/apiPurchases';
 import ComprasActionsMenu from '../componentes/ComprasActionsMenu.jsx';
 import UploadComprasModal from '../componentes/UploadComprasModal.jsx';
+import SucursalSelector from '@/componentes/SucursalSelector';
+import { useBranch } from '@/hooks/useBranch';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -99,15 +101,33 @@ const esDiscontinuadosGroup = (g) => {
   return n === 'discontinuados' || n === 'descontinuados';
 };
 
-const vistaForInsumo = (insumo, rubrosMap) => {
-  const rubroCodigo = String(insumo?.rubro_codigo || insumo?.rubro || '');
-  const info = rubrosMap?.get(rubroCodigo);
-  return info?.es_elaborador === true ? 'elaborados' : 'no-elaborados';
+const vistaForInsumo = (insumo, rubrosMap, rubroNombreToInfo, rubrosIdMap) => {
+  // Prioridad 1: campo propio del insumo
+  if (insumo?.es_elaborado === true) return 'elaborados';
+  if (insumo?.es_elaborado === false) return 'no-elaborados';
+  // Prioridad 2: buscar info del rubro por código Maxi
+  const codigoCrudo = String(insumo?.rubro_codigo || insumo?.rubro || '');
+  if (codigoCrudo) {
+    const porCodigo = rubrosMap?.get(codigoCrudo);
+    if (porCodigo) return porCodigo.es_elaborador === true ? 'elaborados' : 'no-elaborados';
+    // Prioridad 3: puede ser un ID interno
+    const porId = rubrosIdMap?.get(codigoCrudo);
+    if (porId) return porId.es_elaborador === true ? 'elaborados' : 'no-elaborados';
+  }
+  // Prioridad 4: buscar por nombre
+  const nombreCrudo = String(insumo?.rubro_nombre || insumo?.rubroNombre || '');
+  if (nombreCrudo && rubroNombreToInfo) {
+    const porNombre = rubroNombreToInfo.get(nombreCrudo);
+    if (porNombre) return porNombre.es_elaborador === true ? 'elaborados' : 'no-elaborados';
+  }
+  return 'no-elaborados';
 };
 
 export default function InsumosMain() {
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
+
+  const { activeBranchId, activeBranch, branches: allBranches } = useBranch() || {};
 
   // Primera fecha histórica de compras — específica por negocio
   const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } = useFirstDate(businessId, 'purchases');
@@ -127,7 +147,7 @@ export default function InsumosMain() {
   const resolvedBizId = (rootBusiness?.id && activeInOrg)
     ? String(rootBusiness.id)
     : businessId;
-  console.log('[InsumosMain] businessId:', businessId, '| activeInOrg:', activeInOrg, '| resolvedBizId:', resolvedBizId, '| orgBizIds:', (organization?.businesses||[]).map(b=>b.id));
+  console.log('[InsumosMain] businessId:', businessId, '| activeInOrg:', activeInOrg, '| resolvedBizId:', resolvedBizId, '| orgBizIds:', (organization?.businesses || []).map(b => b.id));
 
   const {
     activeDivisionId,
@@ -157,6 +177,18 @@ export default function InsumosMain() {
   const [reloadKey, setReloadKey] = useState(0);
   const [allInsumos, setAllInsumos] = useState([]);
   const [rubrosMap, setRubrosMap] = useState(new Map());
+  const [rubrosIdMap, setRubrosIdMap] = useState(new Map()); // id interno → rubroInfo
+
+  // Mapa inverso: nombre del rubro → info { codigo, nombre, es_elaborador }
+  // Necesario porque los insumos pueden traer rubro_codigo con el ID interno de la BD
+  // en vez del código Maxi. Con este mapa se resuelve el código real desde el nombre.
+  const rubroNombreToInfo = useMemo(() => {
+    const m = new Map();
+    rubrosMap.forEach((info) => {
+      if (info?.nombre) m.set(String(info.nombre), info);
+    });
+    return m;
+  }, [rubrosMap]);
 
   /* ── Agrupaciones ── */
   const [groups, setGroups] = useState([]);
@@ -227,6 +259,17 @@ export default function InsumosMain() {
     [selectedGroupId, resolvedBizId]
   );
 
+  const handleAfterToggleElaboradoBulk = useCallback((ids, nuevoValor) => {
+    const idSet = new Set(ids.map(Number));
+    setAllInsumos((prev) =>
+      prev.map((ins) =>
+        idSet.has(Number(ins.id))
+          ? { ...ins, es_elaborado: nuevoValor }
+          : ins
+      )
+    );
+  }, []);
+
   /* ── Compras ── */
   const [rangoCompras, setRangoCompras] = useState(() => {
     const def = lastNDaysUntilYesterday(daysByMode('30'));
@@ -234,6 +277,7 @@ export default function InsumosMain() {
   });
   const [comprasMap, setComprasMap] = useState(new Map());
   const [comprasLoading, setComprasLoading] = useState(false);
+  const [comprasMapByBranch, setComprasMapByBranch] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -241,7 +285,12 @@ export default function InsumosMain() {
     if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
     let cancelled = false;
     setComprasLoading(true);
-    purchasesList(businessId, { from: rangoCompras.from, to: rangoCompras.to, limit: 10000 })
+    purchasesList(businessId, {
+      from: rangoCompras.from,
+      to: rangoCompras.to,
+      limit: 10000,
+      branch_id: activeBranchId ?? null,
+    })
       .then((res) => {
         if (cancelled) return;
         setComprasMap(buildComprasMap(res?.data ?? []));
@@ -253,7 +302,36 @@ export default function InsumosMain() {
       })
       .finally(() => { if (!cancelled) setComprasLoading(false); });
     return () => { cancelled = true; };
-  }, [businessId, rangoCompras]);
+  }, [businessId, rangoCompras, activeBranchId]);
+
+  // Compras por sucursal — solo cuando hay 2+ sucursales
+  useEffect(() => {
+    const branches = allBranches || [];
+    if (branches.length < 2 || !businessId || !rangoCompras?.from || !rangoCompras?.to) {
+      setComprasMapByBranch({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      branches.map(async (branch) => {
+        try {
+          const res = await purchasesList(businessId, {
+            from: rangoCompras.from,
+            to: rangoCompras.to,
+            limit: 10000,
+            branch_id: branch.id,
+          });
+          return { branchId: branch.id, map: buildComprasMap(res?.data ?? []) };
+        } catch { return { branchId: branch.id, map: new Map() }; }
+      })
+    ).then(results => {
+      if (cancelled) return;
+      const byBranch = {};
+      results.forEach(({ branchId, map }) => { byBranch[branchId] = map; });
+      setComprasMapByBranch(byBranch);
+    });
+    return () => { cancelled = true; };
+  }, [allBranches, businessId, rangoCompras]);
 
   /* ── Callbacks ── */
   const notify = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
@@ -261,6 +339,16 @@ export default function InsumosMain() {
   const onMutateGroups = useCallback((action) => setGroups((prev) => applyMutation(prev, action)), []);
   const lastManualPickRef = useRef(0);
   const markManualPick = () => { lastManualPickRef.current = Date.now(); };
+
+  /**
+   * Optimistic removal: saca el insumo de allInsumos al instante para que
+   * desaparezca de la vista actual (no-elaborados ↔ elaborados) sin esperar
+   * el reload completo del catálogo. El setReloadKey() subsiguiente (que viene
+   * de onReloadCatalogo en InsumoAccionesMenu) reconcilia el estado con el servidor.
+   */
+  const handleAfterToggleElaborado = useCallback((insumoId) => {
+    setAllInsumos((prev) => prev.filter((ins) => Number(ins.id) !== Number(insumoId)));
+  }, []);
 
   const handleSyncCompras = useCallback(async () => {
     if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
@@ -376,7 +464,7 @@ export default function InsumosMain() {
     const recargarTodo = async () => {
       if (hardReset) {
         safe(() => {
-          setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map());
+          setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map()); setRubrosIdMap(new Map());
           setSelectedGroupId(null); setRubroSeleccionado(null); setTodoGroupId(null); setExcludedIds(new Set());
         });
         await new Promise((r) => setTimeout(r, 50));
@@ -400,12 +488,17 @@ export default function InsumosMain() {
 
         const items = resRubros?.items || resRubros?.data || [];
         const map = new Map();
+        const idMap = new Map(); // id → info (por si insumos usan ID interno)
         items.forEach((rubro) => {
           const codigo = String(rubro.codigo);
-          map.set(codigo, { codigo: rubro.codigo, nombre: rubro.nombre || `Rubro ${codigo}`, es_elaborador: rubro.es_elaborador === true });
+          const info = { codigo: rubro.codigo, nombre: rubro.nombre || `Rubro ${codigo}`, es_elaborador: rubro.es_elaborador === true };
+          map.set(codigo, info);
+          if (rubro.id != null) idMap.set(String(rubro.id), info);
         });
         safe(() => setRubrosMap(map));
-
+        safe(() => setRubrosIdMap(idMap));
+        console.log('[DEBUG rubrosIdMap] entries:', Array.from(idMap.entries()).slice(0, 20));
+        console.log('[DEBUG rubrosMap] entries:', Array.from(map.entries()).slice(0, 20));
         const list = Array.isArray(resGroups?.data) ? resGroups.data : Array.isArray(resGroups) ? resGroups : [];
         safe(() => setGroups(list));
 
@@ -490,6 +583,28 @@ export default function InsumosMain() {
     return s;
   }, [selectedGroupId, groupsScoped, todoGroupId, isDiscView, activeIdSet, inactiveIdSet, idsSinAgrupActivos, idsSinAgrupInactivos, discontinuadosIds]);
 
+  // Helper: resuelve el rubroInfo correcto dado un insumo.
+  // Nivel 1: busca por código Maxi en rubrosMap.
+  // Nivel 2: busca por ID interno en rubrosIdMap (cuando rubro_codigo es un ID de BD).
+  // Nivel 3: busca por nombre del rubro si el insumo lo trae.
+  const resolveRubroInfo = useCallback((ins) => {
+    const codigoCrudo = String(ins?.rubro_codigo || ins?.rubro || '');
+    if (codigoCrudo) {
+      const porCodigo = rubrosMap.get(codigoCrudo);
+      if (porCodigo) return porCodigo;
+      // Puede ser un ID interno
+      const porId = rubrosIdMap.get(codigoCrudo);
+      if (porId) return porId;
+    }
+    // Fallback: buscar por nombre si el insumo lo trae
+    const nombreCrudo = String(ins?.rubro_nombre || ins?.rubroNombre || '');
+    if (nombreCrudo) {
+      const porNombre = rubroNombreToInfo.get(nombreCrudo);
+      if (porNombre) return porNombre;
+    }
+    return null;
+  }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
+
   const filteredBase = useMemo(() => {
     let base = !visibleIds ? sidebarBase : (sidebarBase || []).filter((ins) => {
       const id = Number(ins?.id);
@@ -497,40 +612,78 @@ export default function InsumosMain() {
       if (!isDiscView && discontinuadosIds.has(id)) return false;
       return true;
     });
+    if (base.length > 0) {
+      const sample2 = base.find(i => String(i.rubro_nombre || '').toLowerCase().includes('elaborado'));
+      if (sample2) {
+        const info = resolveRubroInfo(sample2);
+        console.log('[DEBUG rubro elaborado]', {
+          id: sample2.id,
+          rubro_nombre: sample2.rubro_nombre,
+          rubro: sample2.rubro,
+          rubro_codigo: sample2.rubro_codigo,
+          resolvedInfo: info,
+          rubrosIdMapSize: rubrosIdMap.size,
+          rubrosMapSize: rubrosMap.size,
+          idMapHas731: rubrosIdMap.get('731'),
+        });
+      }
+    }
 
     // Filtrar por vista (elaborados / no-elaborados)
-    if (!isDiscView && rubrosMap.size > 0) {
+    // Prioridad: es_elaborado del insumo (campo individual).
+    // Fallback: es_elaborador del rubro (cuando el insumo no tiene el campo propio).
+    if (!isDiscView) {
       base = base.filter((ins) => {
-        const rubroCodigo = String(ins?.rubro_codigo || ins?.rubro || '');
-        const info = rubrosMap.get(rubroCodigo);
-        if (vista === 'elaborados') return info?.es_elaborador === true;
-        if (vista === 'no-elaborados') return info?.es_elaborador !== true;
-        return true;
+        if (ins?.es_elaborado === true) return vista === 'elaborados';
+        if (ins?.es_elaborado === false) return vista === 'no-elaborados';
+        const info = resolveRubroInfo(ins);
+        console.log('[DEBUG filteredBase]', {
+          id: ins.id,
+          nombre: ins.nombre,
+          rubro: ins.rubro,
+          rubro_codigo: ins.rubro_codigo,
+          rubro_nombre: ins.rubro_nombre,
+          es_elaborado: ins.es_elaborado,
+          resolvedInfo: info,
+        });
+        const esElaboradorPorFlag = info?.es_elaborador === true;
+        // Fallback por nombre del rubro si no tiene flag
+        const nombreRubro = info?.nombre || String(ins?.rubro_nombre || ins?.rubroNombre || '');
+        const esElaboradorPorNombre = norm(nombreRubro).includes('elaborado');
+        const esElaborador = esElaboradorPorFlag || esElaboradorPorNombre;
+        if (vista === 'elaborados') return esElaborador;
+        return !esElaborador;
       });
     }
 
     return base;
-  }, [sidebarBase, visibleIds, isDiscView, discontinuadosIds, vista, rubrosMap]);
+  }, [sidebarBase, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo]);
 
   const rubrosTree = useMemo(() => {
     if (!filteredBase.length || rubrosMap.size === 0) return [];
     const map = new Map();
     filteredBase.forEach((insumo) => {
-      const rubroCodigo = String(insumo.rubro_codigo || insumo.rubro || '');
-      const rubroInfo = rubrosMap.get(rubroCodigo) || { codigo: rubroCodigo, nombre: rubroCodigo || 'Sin rubro', es_elaborador: false };
-      const rubroNombre = rubroInfo.nombre;
-      if (!map.has(rubroNombre)) map.set(rubroNombre, { nombre: rubroNombre, codigo: rubroInfo.codigo, es_elaborador: rubroInfo.es_elaborador, insumos: [] });
+      // Resolver el rubroInfo usando ambos mapas para obtener el código Maxi real
+      const info = resolveRubroInfo(insumo);
+      const rubroNombre = info?.nombre || String(insumo.rubro_codigo || insumo.rubro || '') || 'Sin rubro';
+      const rubroCodigo = info?.codigo ?? String(insumo.rubro_codigo || insumo.rubro || '');
+      const esElaborador = info?.es_elaborador === true;
+      if (!map.has(rubroNombre)) map.set(rubroNombre, { nombre: rubroNombre, codigo: rubroCodigo, es_elaborador: esElaborador, insumos: [] });
       map.get(rubroNombre).insumos.push(insumo);
     });
     return Array.from(map.values());
-  }, [filteredBase, rubrosMap]);
+  }, [filteredBase, rubrosMap, resolveRubroInfo]);
 
   const tableRows = useMemo(() => {
     const base = filteredBase || [];
     const codigoSel = rubroSeleccionado?.codigo;
     if (codigoSel == null) return base;
-    return base.filter((i) => String(i?.rubro_codigo || i?.rubro || '') === String(codigoSel));
-  }, [filteredBase, rubroSeleccionado]);
+    return base.filter((i) => {
+      const info = resolveRubroInfo(i);
+      const codigoReal = info?.codigo ?? String(i?.rubro_codigo || i?.rubro || '');
+      return String(codigoReal) === String(codigoSel);
+    });
+  }, [filteredBase, rubroSeleccionado, resolveRubroInfo]);
 
   useEffect(() => {
     if (!rubroSeleccionado) return;
@@ -653,7 +806,7 @@ export default function InsumosMain() {
     if (!targetGroupId && groupsSet.size > 0) { for (const gid of groupsSet) { const n = Number(gid); if (Number.isFinite(n) && n > 0) { targetGroupId = n; break; } } }
     if (!targetGroupId && Number.isFinite(Number(todoGroupId)) && Number(todoGroupId) > 0) targetGroupId = Number(todoGroupId);
     if (insumo && rubrosMap?.size) {
-      const nextVista = vistaForInsumo(insumo, rubrosMap);
+      const nextVista = vistaForInsumo(insumo, rubrosMap, rubroNombreToInfo, rubrosIdMap);
       if (nextVista && nextVista !== vista) {
         setVista(nextVista);
         // Actualizar viewModeByGroup para que el useEffect de selectedGroupId no lo pise
@@ -666,7 +819,7 @@ export default function InsumosMain() {
     if (shouldChangeGroup) { markManualPick(); setSelectedGroupId(targetGroupId); setRubroSeleccionado(null); } else { setRubroSeleccionado(null); }
     setSelectedInsumoId(id); setJumpToInsumoId(id);
     setTimeout(() => setJumpToInsumoId(null), 1400);
-  }, [baseAll, groupsScoped, insumosGroupIndex, todoGroupId, selectedGroupId, rubrosMap, vista]);
+  }, [baseAll, groupsScoped, insumosGroupIndex, todoGroupId, selectedGroupId, rubrosMap, rubrosIdMap, rubroNombreToInfo, vista]);
 
   const handleSelectGroupId = useCallback((rawId) => {
     const n = Number(rawId);
@@ -845,7 +998,18 @@ export default function InsumosMain() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
-        <h2 style={{ margin: 0 }}>{titulo}</h2>
+        <h2 style={{ margin: 0 }}>
+        {titulo}
+        {activeBranch && (
+          <span style={{
+            marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
+            color: activeBranch.color || 'var(--color-primary)',
+            verticalAlign: 'middle',
+          }}>
+            — {activeBranch.name}
+          </span>
+        )}
+      </h2>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
@@ -863,8 +1027,9 @@ export default function InsumosMain() {
             onExport={handleDownloadCompras}
             disabled={!businessId || comprasLoading}
           />
-
+          <SucursalSelector variant="inline" />
           <div style={{ minWidth: 260, maxWidth: 260 }}>
+
             <Buscador
               placeholder="Buscar insumo…"
               opciones={insumosSearchOptions}
@@ -924,6 +1089,8 @@ export default function InsumosMain() {
 
         <div id="insumos-scroll" style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
           <InsumosTable
+            branches={(allBranches || []).length > 1 ? allBranches : []}
+            comprasMapByBranch={comprasMapByBranch}
             rows={tableRows}
             loading={false}
             onEdit={() => { }}
@@ -953,6 +1120,8 @@ export default function InsumosMain() {
             comprasLoading={comprasLoading}
             rangoCompras={rangoCompras}
             businesses={organization?.businesses || []}
+            onAfterToggleElaborado={handleAfterToggleElaborado}
+            onAfterToggleElaboradoBulk={handleAfterToggleElaboradoBulk}
           />
         </div>
       </div>
@@ -977,7 +1146,12 @@ export default function InsumosMain() {
           setUploadComprasOpen(false);
           if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
           setComprasLoading(true);
-          purchasesList(businessId, { from: rangoCompras.from, to: rangoCompras.to, limit: 10000 })
+          purchasesList(businessId, {
+            from: rangoCompras.from,
+            to: rangoCompras.to,
+            limit: 10000,
+            branch_id: activeBranchId ?? null,
+          })
             .then((res) => setComprasMap(buildComprasMap(res?.data ?? [])))
             .catch(() => setComprasMap(new Map()))
             .finally(() => setComprasLoading(false));

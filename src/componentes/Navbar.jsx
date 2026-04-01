@@ -9,7 +9,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
-
+import SucursalSelector from './SucursalSelector';
 import { useBusiness } from '@/context/BusinessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
@@ -71,7 +71,7 @@ export default function Navbar() {
     let alive = true;
     RecetasAPI.getAlertas(Number(activeBusinessId))
       .then(res => { if (alive) setAlertasBadge(res?.total || 0); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { alive = false; };
   }, [activeBusinessId]);
 
@@ -305,6 +305,7 @@ export default function Navbar() {
             </Box>
 
             {/* Selector negocio/división */}
+
             {!isAppAdmin && logged && (
               <Box sx={{ ml: 1, flexShrink: 0 }}>
                 <BusinessDivisionSelector />

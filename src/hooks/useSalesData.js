@@ -20,6 +20,7 @@ export function useSalesData({
   to,
   enabled = true,
   syncVersion = 0,
+  branchId = null,       // number = sucursal real, null = todas, 'main' = principal sin branch
 }) {
   const [ventasMap, setVentasMap] = useState(() => new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -41,7 +42,7 @@ export function useSalesData({
     }
 
     // La cacheKey incluye syncVersion del ref → invalida cache en cada sync
-    const cacheKey = `${businessId}|${from}|${to}|${syncVersionRef.current}`;
+    const cacheKey = `${businessId}|${from}|${to}|${syncVersionRef.current}|${branchId === "main" ? "main" : (branchId ?? "all")}`;
 
     if (cacheRef.current.has(cacheKey)) {
       console.log("🔄 [useSalesData] Usando CACHE");
@@ -60,9 +61,13 @@ export function useSalesData({
       const token = localStorage.getItem("token");
       const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === "true";
 
+      // 'main' = datos sin branch_id (principal), null = todos, number = sucursal específica
+      const branchParam = branchId && branchId !== 'main' ? `&branch_id=${branchId}`
+                        : branchId === 'main'             ? `&branch_id=main`
+                        : '';
       const url = MAXI_ENABLED
-        ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/items?from=${from}&to=${to}`
-        : `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv`;
+        ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/items?from=${from}&to=${to}${branchParam}`
+        : `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv${branchParam}`;
 
       const response = await fetch(url, {
         headers: {
@@ -129,7 +134,7 @@ export function useSalesData({
     } finally {
       if (myId === reqIdRef.current) setIsLoading(false);
     }
-  }, [businessId, from, to]);
+  }, [businessId, from, to, branchId]);
   // ✅ syncVersion NO está en las deps — se lee del ref adentro
 
   useEffect(() => {

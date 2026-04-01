@@ -62,6 +62,11 @@ const fmtCurrency = (v) => {
   }
 };
 
+const nombreSugieraElaborado = (nombre) => {
+  const n = norm(nombre || '');
+  return n.includes('elaborado') || n.includes('elaborados');
+};
+
 const resolveInsumoMonto = (insumo, metaById) => {
   if (!insumo) return 0;
 
@@ -299,16 +304,38 @@ function InsumosSidebar({
     // que es lo que llega como `rubros` prop. Solo necesitamos filtrar el catálogo
     // cuando keepEmpty=true (sin grupo seleccionado)
     let rubrosFiltrados = baseRubros;
-    if (keepEmpty && rubrosMap) {
+    if (keepEmpty) {
       if (vista === 'elaborados') {
-        rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
+        rubrosFiltrados = rubrosFiltrados.map((rubro) => {
+          // Filtrar insumos por es_elaborado primero, luego por es_elaborador del rubro
+          const insumosElaborados = (rubro.insumos || []).filter((ins) => {
+            if (ins?.es_elaborado === true) return true;
+            if (ins?.es_elaborado === false) return false;
+            const info = rubrosMap?.get(String(rubro.codigo || ''));
+            return info?.es_elaborador === true || nombreSugieraElaborado(rubro.nombre);
+          });
+          return { ...rubro, insumos: insumosElaborados };
+        }).filter((rubro) => {
+          const insumosFiltrados = rubro.insumos || [];
           const info = rubrosMap?.get(String(rubro.codigo || ''));
-          return info?.es_elaborador === true;
+          // Mantener el rubro si tiene insumos elaborados O si el rubro entero es elaborador
+          return insumosFiltrados.length > 0 || info?.es_elaborador === true || nombreSugieraElaborado(rubro.nombre);
         });
       } else if (vista === 'no-elaborados') {
-        rubrosFiltrados = rubrosFiltrados.filter((rubro) => {
+        rubrosFiltrados = rubrosFiltrados.map((rubro) => {
+          // Filtrar insumos no elaborados
+          const insumosNoElab = (rubro.insumos || []).filter((ins) => {
+            if (ins?.es_elaborado === true) return false;
+            if (ins?.es_elaborado === false) return true;
+            const info = rubrosMap?.get(String(rubro.codigo || ''));
+            return info?.es_elaborador !== true && !nombreSugieraElaborado(rubro.nombre);
+          });
+          return { ...rubro, insumos: insumosNoElab };
+        }).filter((rubro) => {
+          const insumosFiltrados = rubro.insumos || [];
           const info = rubrosMap?.get(String(rubro.codigo || ''));
-          return info?.es_elaborador !== true;
+          // Mantener el rubro si tiene insumos no elaborados O si el rubro no es elaborador
+          return insumosFiltrados.length > 0 || (info?.es_elaborador !== true && !nombreSugieraElaborado(rubro.nombre));
         });
       }
     }
@@ -406,6 +433,16 @@ function InsumosSidebar({
     },
     [groupToMove, businessId, notify, refetchAssignedGroups, onRefetch]
   );
+
+  const rubroNombreToCodigoMaxi = useMemo(() => {
+    const m = new Map();
+    if (rubrosMap && typeof rubrosMap.get === 'function') {
+      for (const [codigo, info] of rubrosMap.entries()) {
+        if (info?.nombre) m.set(String(info.nombre), String(codigo));
+      }
+    }
+    return m;
+  }, [rubrosMap]);
 
   return (
     <div className="sidebar">
@@ -589,6 +626,17 @@ function InsumosSidebar({
 
                   <InsumoRubroAccionesMenu
                     rubroLabel={rubro.nombre}
+                    rubroCodigo={(() => {
+                      // Intentar resolver el código Maxi desde rubrosMap usando el nombre
+                      if (rubrosMap && typeof rubrosMap.get === 'function') {
+                        // rubrosMap tiene codigo → info, necesitamos buscar por nombre
+                        for (const [codigo, info] of rubrosMap.entries()) {
+                          if (info?.nombre === rubro.nombre) return String(codigo);
+                        }
+                      }
+                      return String(rubro.codigo || '');
+                    })()}
+                    isElaborado={rubro.es_elaborador === true}
                     insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
                     groups={groups}
                     selectedGroupId={selectedGroupId}
@@ -600,6 +648,8 @@ function InsumosSidebar({
                     todoGroupId={todoGroupId}
                     isTodoView={isTodoView}
                     onReloadCatalogo={onReloadCatalogo}
+                    onAfterRubroUpdate={onRefetch}
+                    fromSidebar
                     businessId={originalBusinessId || businessId}
                   />
                 </div>

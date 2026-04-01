@@ -28,6 +28,7 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddMultipleItems,
   insumoGroupRemoveItem,
+  toggleInsumosElaboradosBulk,
   insumosRubroUpdate,
 } from "../servicios/apiInsumos";
 
@@ -56,8 +57,12 @@ export default function InsumoRubroAccionesMenu({
   onReloadCatalogo,
   fromSidebar = false,
   businessId,
-  isElaborado = false,
+  // ✅ Ahora recibe el estado real calculado desde los insumos del grupo
+  isElaborado = false,       // true si al menos un insumo del rubro es elaborado
+  isMixto = false,           // true si hay mezcla (algunos sí, algunos no)
+  elaboradoState = 'none',   // 'all' | 'some' | 'none'
   onAfterRubroUpdate,
+  onAfterToggleElaboradoBulk,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -100,8 +105,7 @@ export default function InsumoRubroAccionesMenu({
       ? "1 insumo"
       : `${normalizedIds.length} insumos`;
 
-  /* ========== 🆕 DISCONTINUAR (CON BULK) ========== */
-
+  /* ========== DISCONTINUAR (CON BULK) ========== */
   const handleToggleDiscontinuar = async () => {
     handleMenuClose();
 
@@ -117,7 +121,6 @@ export default function InsumoRubroAccionesMenu({
       const wasInDiscontinuados = !!isInDiscontinuadosView;
 
       if (!wasInDiscontinuados) {
-        // ✅ DISCONTINUAR: agregar a Discontinuados
         await insumoGroupAddMultipleItems(discId, normalizedIds, businessId);
 
         emitUiAction({
@@ -140,14 +143,10 @@ export default function InsumoRubroAccionesMenu({
             },
           },
         });
-
-        console.log(`✅ Rubro discontinuado (${labelCount})`);
       } else {
-        // ✅ REACTIVAR: quitar de Discontinuados
         const results = await Promise.allSettled(
           normalizedIds.map((id) => insumoGroupRemoveItem(discId, id, businessId))
         );
-
         const exitosos = results.filter((r) => r.status === "fulfilled").length;
 
         emitUiAction({
@@ -170,11 +169,8 @@ export default function InsumoRubroAccionesMenu({
             },
           },
         });
-
-        console.log(`✅ Rubro reactivado (${labelCount})`);
       }
 
-      // ✅ Refrescar SIN cambiar vista
       await onReloadCatalogo?.();
       await onRefetch?.();
     } catch (e) {
@@ -183,7 +179,7 @@ export default function InsumoRubroAccionesMenu({
     }
   };
 
-  /* ========== 🆕 MOVER (CON BULK) ========== */
+  /* ========== MOVER (CON BULK) ========== */
   const openMover = useCallback(() => {
     handleMenuClose();
     setTimeout(() => setDlgMoverOpen(true), 0);
@@ -207,12 +203,8 @@ export default function InsumoRubroAccionesMenu({
 
     setIsMoving(true);
     try {
-      console.log(`🔄 [Mover] ${normalizedIds.length} insumos → grupo ${toId}`);
-
-      // 1️⃣ Agregar a nuevo grupo en BULK
       await insumoGroupAddMultipleItems(toId, normalizedIds, businessId);
 
-      // 2️⃣ Quitar de grupo actual (si no es TODO)
       if (currentGroupId && currentGroupId !== todoGroupId) {
         for (const id of normalizedIds) {
           try {
@@ -238,7 +230,6 @@ export default function InsumoRubroAccionesMenu({
   /* ========== QUITAR DE AGRUPACIÓN ACTUAL ========== */
   const handleQuitarDeActual = async () => {
     handleMenuClose();
-
     if (!currentGroupId || !normalizedIds.length) return;
 
     try {
@@ -259,23 +250,17 @@ export default function InsumoRubroAccionesMenu({
     }
   };
 
-  /* ========== 🆕 QUITAR DEL TODO ========== */
+  /* ========== QUITAR DEL TODO ========== */
   const handleQuitarDelTodo = async () => {
     handleMenuClose();
-
     if (!todoGroupId || !normalizedIds.length) {
       notify?.("No se puede quitar del TODO", "error");
       return;
     }
 
     try {
-      const exclusions = normalizedIds.map((id) => ({
-        scope: "insumo",
-        ref_id: id,
-      }));
-
+      const exclusions = normalizedIds.map((id) => ({ scope: "insumo", ref_id: id }));
       await addExclusionesInsumos(todoGroupId, exclusions);
-
       notify?.(`Rubro quitado de Sin agrupación (${labelCount})`, "success");
       await onReloadCatalogo?.();
       await onRefetch?.();
@@ -292,24 +277,43 @@ export default function InsumoRubroAccionesMenu({
     onCreateGroupFromRubro(rubroLabel || "Sin rubro");
   };
 
-  /* ========== MARCAR COMO ELABORADO / NO ELABORADO ========== */
+  /* ========== MARCAR / DESMARCAR RUBRO COMO ELABORADO ========== */
   const handleToggleElaborado = async () => {
     handleMenuClose();
 
-    if (!rubroCodigo) {
-      notify?.('Este rubro no tiene código asignado', 'warning');
+    if (!normalizedIds.length) {
+      notify?.('No hay insumos en este rubro', 'warning');
       return;
     }
 
-    const nuevoValor = !isElaborado;
+    // ✅ Lógica del toggle según el estado real:
+    //    - 'none'  → marcar todos como elaborados
+    //    - 'all'   → desmarcar todos
+    //    - 'some'  → desmarcar todos (normalizar: si hay mezcla, limpiar)
+    const nuevoValor = elaboradoState === 'none'; // true solo si ninguno era elaborado
+
+    const accionLabel = nuevoValor
+      ? `"${rubroLabel || 'Rubro'}" marcado como elaborado`
+      : isMixto
+        ? `"${rubroLabel || 'Rubro'}" normalizado (todos desmarcados)`
+        : `"${rubroLabel || 'Rubro'}" desmarcado como elaborado`;
+
     try {
-      await insumosRubroUpdate(rubroCodigo, { es_elaborador: nuevoValor }, businessId);
-      notify?.(
-        nuevoValor
-          ? `"${rubroLabel || 'Rubro'}" marcado como elaborado`
-          : `"${rubroLabel || 'Rubro'}" marcado como no elaborado`,
-        'success'
-      );
+      // 1. Actualizar es_elaborado en todos los insumos del rubro
+      await toggleInsumosElaboradosBulk(normalizedIds, nuevoValor, businessId);
+
+      // 2. Intentar actualizar es_elaborador en la tabla de rubros (no bloqueante)
+      try {
+        const codigoLimpio = String(rubroCodigo || '').trim();
+        if (codigoLimpio && codigoLimpio !== '0') {
+          await insumosRubroUpdate(codigoLimpio, { es_elaborador: nuevoValor }, businessId);
+        }
+      } catch (e2) {
+        console.warn('[handleToggleElaborado] Flag de rubro no actualizado:', e2.message);
+      }
+
+      notify?.(accionLabel, 'success');
+      onAfterToggleElaboradoBulk?.(normalizedIds, nuevoValor);
       await onAfterRubroUpdate?.();
       await onReloadCatalogo?.();
       await onRefetch?.();
@@ -317,6 +321,19 @@ export default function InsumoRubroAccionesMenu({
       console.error('TOGGLE_ELABORADO_RUBRO_ERROR', e);
       notify?.('Error al cambiar tipo de rubro', 'error');
     }
+  };
+
+  // ✅ Label e ícono del menú según el estado real
+  const elaboradoMenuLabel = () => {
+    if (elaboradoState === 'none')  return 'Marcar rubro como elaborado';
+    if (elaboradoState === 'all')   return 'Desmarcar rubro como elaborado';
+    // 'some' → mixto
+    return 'Desmarcar todos como elaborado (mixto)';
+  };
+
+  const ElaboradoIcon = () => {
+    if (elaboradoState === 'none') return <BuildCircleIcon fontSize="small" />;
+    return <RemoveCircleOutlineIcon fontSize="small" />;
   };
 
   /* ========== RENDER ========== */
@@ -337,78 +354,72 @@ export default function InsumoRubroAccionesMenu({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        {fromSidebar ? (
-          // ✅ SIDEBAR: Solo "Mover a..."
-          <MenuItem onClick={openMover}>
+        {[
+          // 1️⃣ Discontinuar / Reactivar
+          <MenuItem key="discontinuar" onClick={handleToggleDiscontinuar}>
+            <ListItemIcon>
+              {isInDiscontinuadosView ? (
+                <VisibilityIcon fontSize="small" />
+              ) : (
+                <BlockIcon fontSize="small" />
+              )}
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                isInDiscontinuadosView
+                  ? "Reactivar (quitar de Discontinuados)"
+                  : "Discontinuar"
+              }
+            />
+          </MenuItem>,
+
+          // 2️⃣ Quitar de esta agrupación
+          <MenuItem key="quitar" onClick={handleQuitarDeActual} disabled={isTodoView}>
+            <ListItemIcon>
+              <UndoIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary={isTodoView ? "Ya está en Sin agrupación" : "Quitar de esta agrupación"}
+            />
+          </MenuItem>,
+
+          // 3️⃣ Marcar / desmarcar rubro como elaborado
+          // ✅ Siempre visible — el label cambia según elaboradoState
+          <MenuItem key="elaborado" onClick={handleToggleElaborado}>
+            <ListItemIcon>
+              <ElaboradoIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary={elaboradoMenuLabel()}
+              // ✅ Hint extra cuando hay mezcla
+              secondary={isMixto ? `${elaboradoState === 'some' ? 'Hay insumos mezclados en este rubro' : ''}` : undefined}
+            />
+          </MenuItem>,
+
+          <Divider key="divider" />,
+
+          // 4️⃣ Mover a…
+          <MenuItem key="mover" onClick={openMover}>
             <ListItemIcon>
               <DriveFileMoveIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText primary="Mover a…" />
-          </MenuItem>
-        ) : (
-          // ✅ TABLE: Menú completo como ARRAY con keys
-          [
-            // 1️⃣ Discontinuar / Reactivar
-            <MenuItem key="discontinuar" onClick={handleToggleDiscontinuar}>
-              <ListItemIcon>
-                {isInDiscontinuadosView ? (
-                  <VisibilityIcon fontSize="small" />
-                ) : (
-                  <BlockIcon fontSize="small" />
-                )}
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  isInDiscontinuadosView
-                    ? "Reactivar (quitar de Discontinuados)"
-                    : "Discontinuar"
-                }
-              />
-            </MenuItem>,
+          </MenuItem>,
 
-            // 2️⃣ Quitar de esta agrupación
-            <MenuItem
-              key="quitar"
-              onClick={handleQuitarDeActual}
-              disabled={isTodoView} // ✅ Deshabilitar si está en TODO
-            >
-              <ListItemIcon>
-                <UndoIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  isTodoView
-                    ? "Ya está en Sin agrupación"
-                    : "Quitar de esta agrupación"
-                }
-              />
-            </MenuItem>,
-
-            // Divider
-            <Divider key="divider" />,
-
-            // 3️⃣ Mover a…
-            <MenuItem key="mover" onClick={openMover}>
-              <ListItemIcon>
-                <DriveFileMoveIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary="Mover a…" />
-            </MenuItem>,
-
-            // 4️⃣ Crear agrupación
-            <MenuItem key="crear" onClick={handleCreateGroupFromRubro}>
-              <ListItemIcon>
-                <GroupAddIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText
-                primary="Crear agrupación con este rubro…"
-                secondary={rubroLabel || "Sin rubro"}
-              />
-            </MenuItem>,
-          ].filter(Boolean)
-        )}
+          // 5️⃣ Crear agrupación
+          <MenuItem key="crear" onClick={handleCreateGroupFromRubro}>
+            <ListItemIcon>
+              <GroupAddIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary="Crear agrupación con este rubro…"
+              secondary={rubroLabel || "Sin rubro"}
+            />
+          </MenuItem>,
+        ].filter(Boolean)}
       </Menu>
-      {/* ========== Dialog: Mover a… ========== */}
+
+      {/* Dialog: Mover a… */}
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover {labelCount} a…</DialogTitle>
         <DialogContent>
@@ -434,11 +445,7 @@ export default function InsumoRubroAccionesMenu({
           <Button onClick={closeMover} disabled={isMoving}>
             Cancelar
           </Button>
-          <Button
-            onClick={handleMover}
-            variant="contained"
-            disabled={!destId || isMoving}
-          >
+          <Button onClick={handleMover} variant="contained" disabled={!destId || isMoving}>
             {isMoving ? "Moviendo…" : "Mover"}
           </Button>
         </DialogActions>

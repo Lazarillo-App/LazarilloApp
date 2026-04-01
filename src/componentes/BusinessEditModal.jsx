@@ -35,9 +35,11 @@ const ColorField = ({ id, label, value, onChange }) => (
 
 export default function BusinessEditModal({ open, business, onClose, onSaved }) {
   /* ───────────────── Wizard ───────────────── */
-  const [step, setStep] = useState(1); // 1 Datos, 2 Estilos, 3 Info, 4 Redes, 5 Maxi
-  const next = () => setStep((s) => Math.min(5, s + 1));
-  const prev = () => setStep((s) => Math.max(1, s - 1));
+  // steps: 0=Datos, 1=Estilos, 2=Info, 3=Maxi (sin Redes)
+  const STEPS = ["Datos", "Estilos", "Info", "Maxi"];
+  const [step, setStep] = useState(0);
+  const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  const prev = () => setStep((s) => Math.max(0, s - 1));
 
   /* ───────────────── Estado ───────────────── */
   const [busy, setBusy] = useState(false);
@@ -126,7 +128,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     const social = business?.props?.social || {};
     const maxi = business?.props?.maxi || {};
 
-    setStep(1);
+    setStep(0);
     setBusy(false); setErr(""); setNotice("");
 
     setName(business?.name || "");
@@ -408,30 +410,23 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
   return (
     <div className="gx-overlay" onClick={handleClose}>
       <div className="gx-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="gx-header">
-          <h3>Editar local — {["Datos", "Estilos", "Información", "Redes", "Maxi"][step - 1]}</h3>
+        <div className="gc-header" style={{ height: 52 }}>
+          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+            {business?.name || "Editar local"}
+          </h3>
+        </div>
 
-          <div className="gx-header-right">
-            <div className="gx-steps">
-              {[1, 2, 3, 4, 5].map(n => (
-                <span key={n} className={n === step ? "on" : (n < step ? "done" : "")}>{n}</span>
-              ))}
+        {/* Stepper — igual que BusinessCreateModal */}
+        <div className="gc-steps">
+          {STEPS.map((label, i) => (
+            <div key={label} className={`gc-step ${i === step ? "active" : i < step ? "done" : ""}`}>
+              <span className="gc-step-index">{i + 1}</span>
+              <span className="gc-step-label">{label}</span>
             </div>
-
-            <button
-              type="button"
-              className="gx-x"
-              onClick={handleClose}
-              disabled={busy}
-              aria-label="Cerrar"
-              title="Cerrar"
-            >
-              ✕
-            </button>
-          </div>
+          ))}
         </div>
         {/* STEP 1: Datos */}
-        {step === 1 && (
+        {step === 0 && (
           <form onSubmit={(e) => { e.preventDefault(); if (canNextDatos) next(); }} className="gx-body">
             <section>
               <h4 className="gx-section-title">Detalles del local</h4>
@@ -453,7 +448,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         )}
 
         {/* STEP 2: Estilos */}
-        {step === 2 && (
+        {step === 1 && (
           <form onSubmit={(e) => { e.preventDefault(); next(); }} className="gx-body">
             <section>
               <h4 className="gx-section-title">Estilos</h4>
@@ -520,7 +515,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         )}
 
         {/* STEP 3: Información */}
-        {step === 3 && (
+        {step === 2 && (
           <form onSubmit={(e) => { e.preventDefault(); next(); }} className="gx-body">
             <section>
               <h4 className="gx-section-title">Información del local</h4>
@@ -559,37 +554,10 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
           </form>
         )}
 
-        {/* STEP 4: Redes */}
-        {step === 4 && (
-          <form onSubmit={(e) => { e.preventDefault(); next(); }} className="gx-body">
-            <section>
-              <h4 className="gx-section-title">Redes y web</h4>
-              <div className="gx-grid-3">
-                <input className="gx-input" placeholder="Instagram (https://...)"
-                  value={instagram} onChange={e => setInstagram(e.target.value)} />
-                <input className="gx-input" placeholder="Facebook (https://...)"
-                  value={facebook} onChange={e => setFacebook(e.target.value)} />
-                <input className="gx-input" placeholder="TikTok (https://...)"
-                  value={tiktok} onChange={e => setTiktok(e.target.value)} />
-              </div>
-              <div className="gx-field" style={{ padding: 0, marginTop: 8 }}>
-                <input className="gx-input" placeholder="Sitio web (https://...)"
-                  value={website} onChange={e => setWebsite(e.target.value)} />
-              </div>
-            </section>
 
-            <div className="gx-footer">
-              <button type="button" className="gx-btn outline" onClick={prev} disabled={busy}>Atrás</button>
-              <button type="button" className="gx-btn primary" onClick={handleSaveNow} disabled={!isDirty || busy}>
-                {busy ? "Guardando…" : "Guardar cambios"}
-              </button>
-              <button type="submit" className="gx-btn outline" disabled={busy}>Siguiente</button>
-            </div>
-          </form>
-        )}
 
-        {/* STEP 5: Maxi (sin sincronización) */}
-        {step === 5 && (
+        {/* STEP 3: Maxi */}
+        {step === 3 && (
           <form onSubmit={handleSaveNow} className="gx-body">
             <section>
               <h4 className="gx-section-title">Credenciales de MaxiRest</h4>
@@ -681,6 +649,16 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
           .gx-badge{margin-left:8px;padding:4px 8px;border-radius:999px;border:1px solid #d1d5db;font-size:.8rem}
           .gx-badge[data-ok="1"]{background:#e8f9f0;border-color:#c2f0da}
           .gx-badge[data-ok="0"]{background:#ffebe9;border-color:#ffc9c6}
+
+          /* Stepper — copiado de BusinessCreateModal */
+          .gc-header{height:52px;display:grid;place-items:center;border-bottom:1px solid #e5e7eb}
+          .gc-steps{display:flex;gap:8px;align-items:center;justify-content:center;padding:10px 12px;border-bottom:1px solid #eef2f7;background:#fafafa}
+          .gc-step{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;font-weight:700;font-size:.85rem;color:#475569}
+          .gc-step .gc-step-index{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;background:#e5e7eb;font-size:.8rem}
+          .gc-step.active{border-color:#34d399;color:#065f46}
+          .gc-step.active .gc-step-index{background:#34d399;color:#0b0f0c}
+          .gc-step.done{border-color:#a7f3d0;color:#065f46;opacity:.9}
+          .gc-step.done .gc-step-index{background:#a7f3d0;color:#0b0f0c}
           @media (max-width:640px){
             .gx-header{height:50px}
             .gx-section-title{margin:14px 16px 6px}

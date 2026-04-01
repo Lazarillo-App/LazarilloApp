@@ -1,7 +1,10 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/BusinessCard.jsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import AddIcon from "@mui/icons-material/Add";
+import StoreIcon from "@mui/icons-material/Store";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
 import * as apiDivisions from "@/servicios/apiDivisions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -12,6 +15,8 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import AutoGroupModal from "./AutoGroupModal";
 import { useBusiness } from "@/context/BusinessContext";
+import { useBranch } from "@/hooks/useBranch";
+import { BranchesAPI } from "@/servicios/apiBranches";
 import { syncArticulos, syncInsumos, isMaxiConfigured } from "@/servicios/syncService";
 import { useOrganization } from "@/context/OrganizationContext";
 import {
@@ -58,6 +63,38 @@ export default function BusinessCard({
   const [editDivisionId, setEditDivisionId] = useState(null);
   const [editDivisionName, setEditDivisionName] = useState("");
   const [divisionBusyId, setDivisionBusyId] = useState(null); // para bloquear UI mientras guarda/borra
+
+  // Sucursales
+  const { branches, loadBranches } = useBranch() || {};
+  const bizBranches = useMemo(
+    () => (branches || []).filter(b => String(b.business_id) === String(viewBiz?.id)),
+    [branches, viewBiz?.id]
+  );
+  const [branchFormOpen, setBranchFormOpen] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchColor, setNewBranchColor] = useState('#1976d2');
+  const [savingBranch, setSavingBranch] = useState(false);
+
+  const handleCreateBranch = useCallback(async () => {
+    if (!newBranchName.trim() || !viewBiz?.id) return;
+    setSavingBranch(true);
+    try {
+      await BranchesAPI.create(viewBiz.id, {
+        name: newBranchName.trim(),
+        color: newBranchColor,
+      });
+      window.dispatchEvent(new CustomEvent('branch:created'));
+      await loadBranches?.(viewBiz.id);
+      setBranchFormOpen(false);
+      setNewBranchName('');
+      setNewBranchColor('#1976d2');
+      showNotice?.('✅ Sucursal creada correctamente');
+    } catch (e) {
+      showNotice?.(`❌ Error al crear sucursal: ${e.message}`);
+    } finally {
+      setSavingBranch(false);
+    }
+  }, [newBranchName, newBranchColor, viewBiz?.id, loadBranches, showNotice]);
 
   // Modal de auto-agrupación
   const [autoGroupModal, setAutoGroupModal] = useState({
@@ -528,6 +565,80 @@ export default function BusinessCard({
           </div>
         </div>
 
+        {/* ── Sucursales badges ── */}
+        {isActive && (
+          <div className="bc-branches">
+            <div className="bc-branches-header">
+              <span className="bc-branches-label">Sucursales</span>
+              {!branchFormOpen && (
+                <button
+                  className="bc-btn-add-branch"
+                  onClick={() => { setBranchFormOpen(true); setNewBranchName(''); setNewBranchColor('#1976d2'); }}
+                  title="Agregar sucursal"
+                >
+                  <AddIcon sx={{ fontSize: 13 }} /> Nueva sucursal
+                </button>
+              )}
+            </div>
+
+            {/* Form inline de nueva sucursal */}
+            {branchFormOpen && (
+              <div className="bc-branch-form">
+                <input
+                  autoFocus
+                  type="text"
+                  value={newBranchName}
+                  onChange={e => setNewBranchName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreateBranch(); if (e.key === 'Escape') setBranchFormOpen(false); }}
+                  placeholder="Nombre de la sucursal"
+                  className="bc-branch-input"
+                />
+                <input
+                  type="color"
+                  value={newBranchColor}
+                  onChange={e => setNewBranchColor(e.target.value)}
+                  className="bc-branch-color"
+                  title="Color de la sucursal"
+                />
+                <button
+                  className="bc-btn-outline"
+                  onClick={handleCreateBranch}
+                  disabled={savingBranch || !newBranchName.trim()}
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                >
+                  {savingBranch ? '…' : 'Guardar'}
+                </button>
+                <button
+                  className="bc-btn-outline"
+                  onClick={() => setBranchFormOpen(false)}
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            {/* Badges de sucursales existentes */}
+            {bizBranches.length === 0 && !branchFormOpen && (
+              <span className="bc-branches-empty">Sin sucursales</span>
+            )}
+            <div className="bc-branch-list">
+              {bizBranches.map(b => (
+                <span key={b.id} className="bc-branch-badge" style={{ borderLeftColor: b.color || '#1976d2' }}>
+                  <StoreIcon sx={{ fontSize: 11, color: b.color || '#1976d2', flexShrink: 0 }} />
+                  <span className="bc-branch-name">{b.name}</span>
+                  {b.address?.line1 && (
+                    <span className="bc-branch-addr">
+                      <LocationOnIcon sx={{ fontSize: 10, opacity: 0.5 }} />
+                      {b.address.line1}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <style>{`
           .bc-card{background:var(--color-surface,#fff);border:1px solid var(--color-border,#e5e7eb);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}
           .bc-top{display:flex;gap:16px;}
@@ -561,6 +672,21 @@ export default function BusinessCard({
           .bc-div-list{display:flex;flex-direction:column;gap:6px;}
 
           @media (max-width:720px){ .bc-thumb-wrap{ width:140px; } }
+
+          .bc-branches{border-top:1px solid var(--color-border,#e5e7eb);padding-top:10px;display:flex;flex-direction:column;gap:6px;}
+          .bc-branches-header{display:flex;align-items:center;justify-content:space-between;}
+          .bc-branches-label{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;}
+          .bc-branches-empty{font-size:12px;color:#9ca3af;font-style:italic;}
+          .bc-btn-add-branch{display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--color-border,#e5e7eb);background:transparent;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;color:#6b7280;cursor:pointer;transition:all .15s;}
+          .bc-btn-add-branch:hover{border-color:var(--color-primary,#0ea5e9);color:var(--color-primary,#0ea5e9);}
+          .bc-branch-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+          .bc-branch-input{flex:1;min-width:140px;border:1px solid var(--color-border,#e5e7eb);border-radius:8px;padding:5px 8px;font-size:12px;outline:none;}
+          .bc-branch-input:focus{border-color:var(--color-primary,#0ea5e9);}
+          .bc-branch-color{width:28px;height:28px;border:1px solid var(--color-border,#e5e7eb);border-radius:6px;padding:1px;cursor:pointer;}
+          .bc-branch-list{display:flex;flex-wrap:wrap;gap:6px;}
+          .bc-branch-badge{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--color-border,#e5e7eb);border-left-width:3px;border-radius:6px;padding:3px 8px;background:#fafafa;font-size:11px;}
+          .bc-branch-name{font-weight:600;color:#374151;}
+          .bc-branch-addr{color:#9ca3af;display:flex;align-items:center;gap:1px;}
         `}</style>
       </div>
     </>

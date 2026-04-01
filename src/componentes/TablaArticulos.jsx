@@ -161,6 +161,10 @@ export default function TablaArticulos({
   globalCostoIdeal = 30,   // % global desde /configuracion
   onPriceConfigSave,       // fn({ scope, scopeId, objetivo?, precioManual?, articleIds? })
   onBulkManualSave,        // fn([{artId, precioManual}]) — un solo getAll al final
+  onSaved,
+  // Sucursales: para columnas paralelas
+  branches = [],           // app_branches del negocio activo
+  ventasMapByBranch = {},  // { [branchId]: Map<articleId, {qty,amount}> }
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -175,7 +179,7 @@ export default function TablaArticulos({
   // ── Estados controlados para los inputs de cabecera de bloque ──────────────
   // Persisten en pantalla aunque el usuario haga blur/enter
   const [blockObjetivos, setBlockObjetivos] = useState({});
-  const [blockManuales,  setBlockManuales]  = useState({});
+  const [blockManuales, setBlockManuales] = useState({});
   // Diálogo de confirmación para bulk % (agrupación / rubro)
   const [bulkPctDlg, setBulkPctDlg] = useState(null);
   const openSnack = useCallback(
@@ -977,8 +981,13 @@ export default function TablaArticulos({
     [onIdsVisibleChange]
   );
 
-  const gridTemplate =
-    ".3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .2fr";
+  // Columnas paralelas por sucursal: solo Ventas $ (1 col por sucursal)
+  const branchCols = branches && branches.length > 0
+    ? branches.map(() => '.28fr').join(' ')
+    : '';
+  const gridTemplate = branches && branches.length > 0
+    ? `.3fr .8fr .3fr .3fr ${branchCols} .3fr .3fr .3fr .3fr .3fr .2fr`
+    : ".3fr .8fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .3fr .2fr";
   const cellNum = { textAlign: "center", fontVariantNumeric: "tabular-nums" };
   const ITEM_H = 44;
 
@@ -1050,7 +1059,7 @@ export default function TablaArticulos({
       const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
       // Valor guardado en DB; el input usa blockObjetivos para persistir en pantalla
       const objValDb = cfgAgrup.objetivo != null ? String(cfgAgrup.objetivo) : '';
-      const bkObj    = `agrup-obj-${agrupId}`;
+      const bkObj = `agrup-obj-${agrupId}`;
       const bkManual = `agrup-man-${agrupId}`;
       const ids = row.ids || [];
 
@@ -1070,8 +1079,10 @@ export default function TablaArticulos({
           }}
         >
           {/* col 1-2: nombre agrupación */}
-          <div style={{ gridColumn: "1 / 3", color: "var(--color-primary)", paddingLeft: 4,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{
+            gridColumn: "1 / 3", color: "var(--color-primary)", paddingLeft: 4,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+          }}>
             {row.nombre}
           </div>
           {/* col 3: ventas U vacío */}
@@ -1216,8 +1227,10 @@ export default function TablaArticulos({
                     }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                     className="input-with-suffix"
-                    style={{ width: 52, fontSize: '0.75rem', textAlign: 'center',
-                      border: '1px solid #cbd5e1', borderRadius: 4 }}
+                    style={{
+                      width: 52, fontSize: '0.75rem', textAlign: 'center',
+                      border: '1px solid #cbd5e1', borderRadius: 4
+                    }}
                   />
                 </div>
               </div>
@@ -1247,8 +1260,10 @@ export default function TablaArticulos({
                     }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                     className="input-with-suffix"
-                    style={{ width: 52, fontSize: '0.75rem', textAlign: 'center',
-                      border: '1px solid #cbd5e1', borderRadius: 4 }}
+                    style={{
+                      width: 52, fontSize: '0.75rem', textAlign: 'center',
+                      border: '1px solid #cbd5e1', borderRadius: 4
+                    }}
                   />
                 </div>
               </div>
@@ -1280,22 +1295,22 @@ export default function TablaArticulos({
     }
 
 
-    const a = row.art;    const id = a.id;
+    const a = row.art; const id = a.id;
     const agrupId = String(agrupacionSeleccionada?.id || '');
     const isSelected = Number(id) === Number(selectedArticleId);
 
-    const overrideQty    = getVentasQty(id);
+    const overrideQty = getVentasQty(id);
     const overrideAmount = getVentasAmount(id);
 
-    const costoArticulo    = getCostoArticulo(a);
-    const hayReceta        = tieneReceta(a);
-    const recetaData       = recetasCostos[String(id)] || recetasCostos[Number(id)];
-    const hayAlertaInsumo  = hayReceta && recetaData?.tieneAlerta === true;
+    const costoArticulo = getCostoArticulo(a);
+    const hayReceta = tieneReceta(a);
+    const recetaData = recetasCostos[String(id)] || recetasCostos[Number(id)];
+    const hayAlertaInsumo = hayReceta && recetaData?.tieneAlerta === true;
     const objetivoArticulo = getObjetivoArticulo(a, agrupId);
-    const precioManual     = getPrecioManualArticulo(a);
-    const precioRef        = precioManual ?? num(a.precio);
-    const costoPct         = precioRef > 0 ? (costoArticulo / precioRef) * 100 : 0;
-    const sugerido         = objetivoArticulo > 0 && objetivoArticulo < 100
+    const precioManual = getPrecioManualArticulo(a);
+    const precioRef = precioManual ?? num(a.precio);
+    const costoPct = precioRef > 0 ? (costoArticulo / precioRef) * 100 : 0;
+    const sugerido = objetivoArticulo > 0 && objetivoArticulo < 100
       ? costoArticulo / (objetivoArticulo / 100) : 0;
 
     const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
@@ -1314,8 +1329,10 @@ export default function TablaArticulos({
       : null;
 
     const leftBar = isSelected ? (
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
-        background: "var(--color-primary)", borderRadius: 2 }} />
+      <div style={{
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
+        background: "var(--color-primary)", borderRadius: 2
+      }} />
     ) : null;
 
     return (
@@ -1337,7 +1354,22 @@ export default function TablaArticulos({
         {leftBar}
         <div>{id}</div>
         <div
-          onClick={() => setRecetaArticulo(a)}
+          onClick={() => {
+            const agrupId = String(agrupacionSeleccionada?.id || '');
+            const idStr = String(getId(a));
+
+            // Lee: state local (bulk recién aplicado) → DB byArticle → nada
+            // NO usamos getObjetivoArticulo completo porque pediste solo el del artículo
+            // pero SÍ necesitamos el state local para capturar cambios recientes
+            const objetivoLocal = objetivos[idStr] !== undefined && objetivos[idStr] !== ''
+              ? Number(objetivos[idStr])
+              : null;
+            const cfgArt = priceConfig.byArticle?.[idStr];
+            const objetivoDb = cfgArt?.objetivo != null ? Number(cfgArt.objetivo) : null;
+            const objetivoResuelto = objetivoLocal ?? objetivoDb ?? null;
+
+            setRecetaArticulo({ ...a, objetivoResuelto });
+          }}
           style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}
         >
@@ -1365,6 +1397,20 @@ export default function TablaArticulos({
           />
         </div>
         <div style={cellNum}>{fmtCurrency(overrideAmount)}</div>
+        {branches && branches.length > 0 && branches.map(branch => {
+          const bKey = branch.isMain ? 'main' : branch.id;
+          const bMap = ventasMapByBranch[bKey] || ventasMapByBranch[String(bKey)];
+          const bData = bMap ? (bMap.get(id) || bMap.get(String(id)) || { qty: 0, amount: 0 }) : { qty: 0, amount: 0 };
+          const branchColor = branch.color || 'var(--color-primary)';
+          return (
+            <div key={branch.id} style={{ ...cellNum, fontSize: '0.78rem',
+              color: bData.amount ? branchColor : '#94a3b8',
+              borderLeft: `2px solid ${branchColor}20`,
+            }}>
+              {bData.amount > 0 ? fmtCurrency(bData.amount) : '—'}
+            </div>
+          );
+        })}
         <div style={{ ...cellNum, color: precioManual != null ? 'var(--color-primary)' : undefined }}>
           {fmt(precioRef, 0)}
         </div>
@@ -1434,10 +1480,14 @@ export default function TablaArticulos({
           onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo}
           businessId={rootBizId ?? activeBizId}
+          costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           onSaved={(savedReceta) => {
+            // ── FIX REFRESCO: actualizar recetasCostos localmente sin recargar la página ──
             if (savedReceta?.article_id && savedReceta?.costo_total != null) {
-              // El padre refrescará recetasCostos en el próximo ciclo
+              // Notificar al padre para que refresque recetasCostos
+              onSaved?.(savedReceta);
             }
+            setRecetaArticulo(null);
           }}
         />
       )}
@@ -1462,6 +1512,13 @@ export default function TablaArticulos({
                 Ventas $ {ventasLoading ? "…" : ""}{" "}
                 {sortBy === "ventas" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
+              {branches && branches.length > 0 && branches.map(branch => (
+                <div key={branch.id}
+                  style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderLeft: `2px solid ${branch.color || 'var(--color-primary)'}30`, paddingLeft: 4 }}
+                  title={`Ventas $ — ${branch.name}`}>
+                  {branch.isMain ? `${branch.name} $` : `${branch.name} $`}
+                </div>
+              ))}
               <div onClick={() => toggleSort("precio")} className="col-sortable">
                 Precio {sortBy === "precio" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>

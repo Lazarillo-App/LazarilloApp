@@ -11,8 +11,9 @@ import App from './App.jsx';
 import './index.css';
 
 // Contextos
-import { AuthProvider } from './context/AuthContext.jsx';
-import { BusinessProvider } from './context/BusinessContext.jsx';
+import { AuthProvider }         from './context/AuthContext.jsx';
+import { BusinessProvider }     from './context/BusinessContext.jsx';
+import { BranchProvider }       from './context/BranchContext.jsx';   // ← NUEVO
 import { OrganizationProvider } from './context/OrganizationContext.jsx';
 
 bootApplySavedPalette();
@@ -22,15 +23,15 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BusinessProvider>
-          {/* OrganizationProvider va DENTRO de BusinessProvider
-              porque necesita activeId del BusinessContext */}
-          <OrganizationProvider>
-            <BrowserRouter basename={APP_BASENAME}>
-              <SearchProvider>
-                <App />
-              </SearchProvider>
-            </BrowserRouter>
-          </OrganizationProvider>
+          <BranchProvider>
+            <OrganizationProvider>
+              <BrowserRouter basename={APP_BASENAME}>
+                <SearchProvider>
+                  <App />
+                </SearchProvider>
+              </BrowserRouter>
+            </OrganizationProvider>
+          </BranchProvider>
         </BusinessProvider>
       </AuthProvider>
     </QueryClientProvider>

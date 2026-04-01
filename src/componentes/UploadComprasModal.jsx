@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBranch } from '@/hooks/useBranch';
 import {
   Dialog,
   DialogTitle,
@@ -15,7 +16,13 @@ import {
   StepLabel,
   StepContent,
   Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
 } from '@mui/material';
+import StoreIcon from '@mui/icons-material/Store';
 import CloudUploadIcon  from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
 import ErrorIcon        from '@mui/icons-material/Error';
@@ -146,6 +153,10 @@ function InstructionsModal({ open, onClose, themeColors }) {
 
 // ─── Componente principal ───
 export default function UploadComprasModal({ open, onClose, businessId, onSuccess }) {
+  const { branches, activeBranchId } = useBranch() || {};
+  const [branchId, setBranchId] = useState(null);
+  React.useEffect(() => { if (open) setBranchId(activeBranchId ?? null); }, [open, activeBranchId]);
+
   const [file,             setFile]             = useState(null);
   const [uploading,        setUploading]        = useState(false);
   const [progress,         setProgress]         = useState(null);
@@ -177,6 +188,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (branchId) formData.append('branch_id', String(branchId));
 
       const token    = localStorage.getItem('token');
       const response = await fetch(
@@ -267,7 +279,39 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                   <Typography variant="body2" gutterBottom>
                     <strong>📋 ¿Primera vez importando compras?</strong>
                   </Typography>
-                  <Typography variant="caption" display="block" sx={{ mb: 1 }}>
+                  {/* Selector de sucursal */}
+                {branches && branches.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
+                        </Box>
+                      </InputLabel>
+                      <Select
+                        value={branchId === null || branchId === undefined ? '' : String(branchId)}
+                        label="Sucursal"
+                        onChange={e => { const v = e.target.value; setBranchId(v === '' ? null : (Number(v) || v)); }}
+                      >
+                        <MenuItem value=""><em>Negocio completo (sin sucursal)</em></MenuItem>
+                        {(branches || []).map(b => (
+                          <MenuItem key={b.id} value={b.id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
+                              {b.name}
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    {branchId && (
+                      <Chip size="small" sx={{ mt: 0.5, fontSize: '0.72rem' }}
+                        label={`Compras para: ${branches.find(b => b.id === branchId)?.name || branchId}`} />
+                    )}
+                  </Box>
+                )}
+
+                <Typography variant="caption" display="block" sx={{ mb: 1 }}>
                     Hacé clic en el ícono de ayuda{' '}
                     <HelpOutlineIcon sx={{ fontSize: 16, verticalAlign: 'middle', color: themeColors.primary }} />{' '}
                     arriba para ver las instrucciones detalladas paso a paso sobre cómo exportar el archivo desde MaxiRest.

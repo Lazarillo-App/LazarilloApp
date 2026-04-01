@@ -37,6 +37,8 @@ import {
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
+import SucursalSelector from '@/componentes/SucursalSelector';
+import { useBranch } from '@/hooks/useBranch';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -121,11 +123,14 @@ export default function ArticulosMain(props) {
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [activeIds, setActiveIds] = useState(new Set());
   const [reloadKey, setReloadKey] = useState(0);
-  const [recetasCostos, setRecetasCostos]   = useState({});
+  const [recetasCostos, setRecetasCostos] = useState({});
   // ── Price config save con confirmación y deshacer ──
-  const [dlgConfirm, setDlgConfirm]         = useState(null);
-  const prevConfigRef                       = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
-  const [priceConfig,   setPriceConfig]     = useState({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
+  const [dlgConfirm, setDlgConfirm] = useState(null);
+  const prevConfigRef = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
+  const [priceConfig, setPriceConfig] = useState({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
+  // Bump counter: cuando sube, TablaArticulos limpia sus overrides temporales (objetivos locales)
+  // y re-lee todo desde priceConfig. Se incrementa tras cada guardado de agrupación/rubro/global.
+  const [priceConfigKey, setPriceConfigKey] = useState(0);
   const [globalCostoIdeal, setGlobalCostoIdeal] = useState(30); // default 30%, se pisa con el de /config
   // Estado de sincronización — se activa con sync:start y se apaga con sync:completed
   // Al montar, verificar si hay un sync en curso (puede haberse iniciado antes de navegar aquí)
@@ -136,7 +141,7 @@ export default function ArticulosMain(props) {
     } catch { return false; }
   });
   const [syncMsg, setSyncMsg] = useState(() =>
-    (() => { try { const b=localStorage.getItem('activeBusinessId'); return b && sessionStorage.getItem(`lazarillo:syncing:${b}`) === '1' ? 'Sincronizando con MaxiRest…' : ''; } catch { return ''; } })()
+    (() => { try { const b = localStorage.getItem('activeBusinessId'); return b && sessionStorage.getItem(`lazarillo:syncing:${b}`) === '1' ? 'Sincronizando con MaxiRest…' : ''; } catch { return ''; } })()
   );
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -151,14 +156,13 @@ export default function ArticulosMain(props) {
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
 
+  const { activeBranchId, activeBranch, branches: allBranches } = useBranch() || {};
+
   // Limpiar overrides al cambiar de negocio para evitar que
   // los valores del negocio anterior se sumen al nuevo
   useEffect(() => {
     setVentasOverrides(new Map());
   }, [activeBizId]);
-  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
-
-  usePersistUiActions(activeBizId);
 
   // Inicializar rango con valores reales desde el inicio
   const [rango, setRango] = useState(() => {
@@ -172,6 +176,49 @@ export default function ArticulosMain(props) {
     }
     return lastNDaysUntilYesterday(daysByMode(rango.mode || '7'));
   }, [rango]);
+
+  // Ventas por sucursal — solo cuando hay 2+ sucursales
+  const [ventasMapByBranch, setVentasMapByBranch] = React.useState({});
+  useEffect(() => {
+    const branches = allBranches || [];
+    if (branches.length < 2 || !activeBizId || !periodo.from || !periodo.to) {
+      setVentasMapByBranch({});
+      return;
+    }
+    let cancelled = false;
+    const token = localStorage.getItem('token') || '';
+    const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+    Promise.all(
+      branches.map(async (branch) => {
+        const branchParam = `&branch_id=${branch.id}`;
+        const url = MAXI_ENABLED
+          ? `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/items?from=${periodo.from}&to=${periodo.to}${branchParam}`
+          : `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/summary?from=${periodo.from}&to=${periodo.to}&source=csv${branchParam}`;
+        try {
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) } });
+          const data = await res.json();
+          const rows = Array.isArray(data) ? data : (data?.items || []);
+          const map = new Map();
+          for (const r of rows) {
+            const id = Number(r.article_id ?? r.articuloId ?? r.id);
+            if (!Number.isFinite(id) || id <= 0) continue;
+            map.set(id, { qty: Number(r.total_qty ?? r.qty ?? 0), amount: Number(r.total_amount ?? r.amount ?? 0) });
+            map.set(String(id), { qty: Number(r.total_qty ?? r.qty ?? 0), amount: Number(r.total_amount ?? r.amount ?? 0) });
+          }
+          return { branchId: branch.id, map };
+        } catch { return { branchId: branch.id, map: new Map() }; }
+      })
+    ).then(results => {
+      if (cancelled) return;
+      const byBranch = {};
+      results.forEach(({ branchId, map }) => { byBranch[branchId] = map; });
+      setVentasMapByBranch(byBranch);
+    });
+    return () => { cancelled = true; };
+  }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
+  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
+
+  usePersistUiActions(activeBizId);
 
   const periodoRef = useRef(periodo);
   const sidebarScrollRef = useRef(null);   // para preservar scroll del sidebar
@@ -191,6 +238,7 @@ export default function ArticulosMain(props) {
     to: periodo.to,
     enabled: !!activeBizId && !!periodo.from && !!periodo.to,
     syncVersion,
+    branchId: activeBranchId ?? null,
   });
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
@@ -263,8 +311,8 @@ export default function ArticulosMain(props) {
     // Combinar articulos JSONB (objetos) + app_articles_ids (array de IDs numericos)
     const fromJsonb = Array.isArray(g.articulos) ? g.articulos
       : Array.isArray(g.items) ? g.items
-      : Array.isArray(g.data) ? g.data
-      : [];
+        : Array.isArray(g.data) ? g.data
+          : [];
     const fromAppIds = Array.isArray(g.app_articles_ids)
       ? g.app_articles_ids.map(id => ({ id: Number(id) })).filter(a => a.id > 0)
       : [];
@@ -361,7 +409,7 @@ export default function ArticulosMain(props) {
     let alive = true;
     // Recetas viven en el principal; price config en el negocio activo
     const recetasBizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
-    const configBizId  = Number(activeBizId);
+    const configBizId = Number(activeBizId);
 
     Promise.all([
       RecetasAPI.getCostos(recetasBizId).catch(() => ({ costos: {} })),
@@ -376,8 +424,8 @@ export default function ArticulosMain(props) {
       if (!alive) return;
       setRecetasCostos(costosRes?.costos || {});
       setPriceConfig({
-        byArticle:    configRes?.byArticle    || {},
-        byRubro:      configRes?.byRubro      || {},
+        byArticle: configRes?.byArticle || {},
+        byRubro: configRes?.byRubro || {},
         byAgrupacion: configRes?.byAgrupacion || {},
       });
       if (configNegocio?.config?.articulos_costo_ideal) {
@@ -388,35 +436,59 @@ export default function ArticulosMain(props) {
     return () => { alive = false; };
   }, [activeBizId]);
 
+  const handleRecetaSaved = useCallback((savedReceta) => {
+    if (!savedReceta?.article_id) return;
+    // Actualizar recetasCostos localmente sin refetch completo
+    setRecetasCostos(prev => ({
+      ...prev,
+      [String(savedReceta.article_id)]: {
+        costoTotal: savedReceta.costo_total,
+        porciones: savedReceta.porciones || 1,
+        tieneAlerta: savedReceta.tiene_alerta || false,
+      },
+    }));
+  }, []);
+
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
     const bizId = Number(activeBizId);
 
-    // Si es un cambio de artículo individual → guardar directo, sin preguntar
+    // Cambio de artículo individual → guardar directo, sin preguntar
     const isIndividual = body.scope === 'articulo' && !body.articleIds?.length;
 
-    const doSave = async (pisarTodo) => {
+    const doSave = async (pisarTodo, idsAExcluir = []) => {
       const prevConfig = JSON.parse(JSON.stringify(priceConfig));
       prevConfigRef.current = prevConfig;
-      const bodyFinal = pisarTodo ? { ...body, pisarTodo: true } : body;
+
+      // Si pisarTodo=false enviamos la lista de IDs a excluir para que el
+      // backend no toque sus registros individuales en DB
+      const bodyFinal = pisarTodo
+        ? { ...body, pisarTodo: true }
+        : { ...body, excluirIds: idsAExcluir.map(String) };
 
       try {
         await PriceConfigAPI.save(bizId, bodyFinal);
         const r = await PriceConfigAPI.getAll(bizId);
         const newConfig = {
-          byArticle:    r?.byArticle    || {},
-          byRubro:      r?.byRubro      || {},
+          byArticle: r?.byArticle || {},
+          byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         };
         setPriceConfig(newConfig);
+
+        // Cuando NO se pisa todo, el estado local de objetivos en TablaArticulos puede
+        // tener valores temporales para artículos que se decidió NO tocar.
+        // Forzamos que TablaArticulos re-lea desde priceConfig limpiando objetivosExternos.
+        // Lo hacemos via un pequeño bump del reloadKey de price config (no recarga artículos).
+        setPriceConfigKey(k => k + 1);
 
         emitUiAction({
           kind: 'objetivo_update',
           businessId: bizId,
           title: '🎯 Objetivo % actualizado',
           message: body.scope === 'agrupacion' ? 'Agrupación completa actualizada'
-                 : body.scope === 'rubro'      ? 'Rubro/subrubro actualizado'
-                 : 'Artículo actualizado',
+            : body.scope === 'rubro' ? 'Rubro/subrubro actualizado'
+              : 'Artículo actualizado',
           payload: { prevConfig, scope: body.scope, scopeId: body.scopeId },
         });
       } catch (e) {
@@ -425,25 +497,29 @@ export default function ArticulosMain(props) {
     };
 
     if (!isIndividual && body.objetivo != null) {
-      // Solo preguntar si alguno de los artículos afectados ya tiene objetivo individual
       const articleIds = body.articleIds || [];
       const byArticle = priceConfig.byArticle || {};
-      const conObjetivoIndividual = articleIds.filter(id => {
+
+      // Detectar artículos con CUALQUIER override individual: objetivo % O precio manual $
+      // Ambos son configuraciones manuales que el usuario eligió explícitamente
+      const conOverrideIndividual = articleIds.filter(id => {
         const cfg = byArticle[String(id)];
-        return cfg?.objetivo != null;
+        return cfg?.objetivo != null || cfg?.precioManual != null;
       });
 
-      if (conObjetivoIndividual.length > 0) {
+      if (conOverrideIndividual.length > 0) {
         setDlgConfirm({
-          body, doSave,
+          body,
+          doSave,
           total: articleIds.length,
-          conOverride: conObjetivoIndividual.length,
+          conOverride: conOverrideIndividual.length,
+          idsConOverride: conOverrideIndividual,
         });
         return;
       }
     }
 
-    doSave(false);
+    doSave(false, []);
   }, [activeBizId, priceConfig, setPriceConfig]);
 
   // ── Bulk precioManual: un save por artículo + un solo getAll al final ──
@@ -459,8 +535,8 @@ export default function ArticulosMain(props) {
       );
       const r = await PriceConfigAPI.getAll(bizId);
       setPriceConfig({
-        byArticle:    r?.byArticle    || {},
-        byRubro:      r?.byRubro      || {},
+        byArticle: r?.byArticle || {},
+        byRubro: r?.byRubro || {},
         byAgrupacion: r?.byAgrupacion || {},
       });
     } catch (e) {
@@ -487,11 +563,11 @@ export default function ArticulosMain(props) {
           ...Object.entries(prevConfig.byAgrupacion || {}).map(([id, v]) =>
             ({ scope: 'agrupacion', scopeId: id, objetivo: v.objetivo })),
         ];
-        await Promise.all(entries.map(e => PriceConfigAPI.save(bizId, e).catch(() => {})));
+        await Promise.all(entries.map(e => PriceConfigAPI.save(bizId, e).catch(() => { })));
         const r = await PriceConfigAPI.getAll(bizId);
         setPriceConfig({
-          byArticle:    r?.byArticle    || {},
-          byRubro:      r?.byRubro      || {},
+          byArticle: r?.byArticle || {},
+          byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         });
       } catch (err) {
@@ -724,7 +800,7 @@ export default function ArticulosMain(props) {
           setTimeout(() => setReloadKey((k) => k + 1), 300);
         }
       }
-    } catch {}
+    } catch { }
 
     window.addEventListener('business:synced', onBizSynced);
     window.addEventListener('ventas:updated', onVentasUpdated);
@@ -1677,7 +1753,7 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada,
     setFiltroBusqueda,
   ]);
-  
+
   const handleSetFavorite = useCallback((groupId) => {
     setFavoriteGroupId((prev) => {
       const prevNum = Number(prev);
@@ -1870,7 +1946,18 @@ export default function ArticulosMain(props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
-        <h2 style={{ margin: 0 }}>Gestión de Artículos</h2>
+        <h2 style={{ margin: 0 }}>
+          Gestión de Artículos
+          {activeBranch && (
+            <span style={{
+              marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
+              color: activeBranch.color || 'var(--color-primary)',
+              verticalAlign: 'middle',
+            }}>
+              — {activeBranch.name}
+            </span>
+          )}
+        </h2>
 
         {isSyncing && (
           <Alert
@@ -1920,6 +2007,7 @@ export default function ArticulosMain(props) {
             onExport={handleDownloadVentasCsv}
             disabled={!activeBizId || ventasLoading}
           />
+          <SucursalSelector variant="inline" />
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
               placeholder="Buscar artículos..."
@@ -1971,6 +2059,7 @@ export default function ArticulosMain(props) {
             onManualPick={markManualPick}
             onChangeListMode={handleChangeListMode}
             priceConfig={priceConfig}
+            priceConfigKey={priceConfigKey}
             globalCostoIdeal={globalCostoIdeal}
             onPriceConfigSave={handlePriceConfigSave}
             agrupacionArticuloIds={agrupacionArticuloIds}
@@ -2002,6 +2091,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
+            branches={(allBranches || []).length > 1 ? allBranches : []}
+            ventasMapByBranch={ventasMapByBranch}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             orgAssignedIds={orgAssignedIds}
@@ -2038,9 +2129,11 @@ export default function ArticulosMain(props) {
             discIds={effectiveDiscIds}
             recetasCostos={recetasCostos}
             priceConfig={priceConfig}
+            priceConfigKey={priceConfigKey}
             globalCostoIdeal={globalCostoIdeal}
             onPriceConfigSave={handlePriceConfigSave}
             onBulkManualSave={handleBulkManualSave}
+            onSaved={handleRecetaSaved}
           />
         </div>
       </div>
@@ -2055,7 +2148,7 @@ export default function ArticulosMain(props) {
         </Alert>
       </Snackbar>
 
-      {/* ── Diálogo de confirmación — ¿pisar overrides manuales? ── */}
+      {/* ── Diálogo de confirmación — ¿pisar overrides individuales? ── */}
       <Dialog open={!!dlgConfirm} onClose={() => setDlgConfirm(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
           Cambio de objetivo %
@@ -2063,8 +2156,8 @@ export default function ArticulosMain(props) {
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 1 }}>
             {dlgConfirm?.conOverride === dlgConfirm?.total
-              ? `Los ${dlgConfirm?.total} artículos ya tienen objetivo % individual.`
-              : `${dlgConfirm?.conOverride} de ${dlgConfirm?.total} artículos ya tienen objetivo % individual.`
+              ? `Los ${dlgConfirm?.total} artículos ya tienen configuración individual (objetivo % o precio manual).`
+              : `${dlgConfirm?.conOverride} de ${dlgConfirm?.total} artículos tienen configuración individual (objetivo % o precio manual).`
             }
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -2073,27 +2166,31 @@ export default function ArticulosMain(props) {
         </DialogContent>
         <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
           <Button
-            onClick={() => { dlgConfirm?.doSave(false); setDlgConfirm(null); }}
+            onClick={() => {
+              // Pasar los IDs con override para que el backend los excluya
+              dlgConfirm?.doSave(false, dlgConfirm?.idsConOverride || []);
+              setDlgConfirm(null);
+            }}
             variant="contained"
             size="small"
             sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
           >
-            Solo los que NO tienen objetivo individual ({(dlgConfirm?.total ?? 0) - (dlgConfirm?.conOverride ?? 0)} artículos)
+            Solo los que NO tienen configuración individual ({(dlgConfirm?.total ?? 0) - (dlgConfirm?.conOverride ?? 0)} artículos)
           </Button>
           <Button
-            onClick={() => { dlgConfirm?.doSave(true); setDlgConfirm(null); }}
+            onClick={() => { dlgConfirm?.doSave(true, []); setDlgConfirm(null); }}
             variant="outlined"
             size="small"
             sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
           >
-            Aplicar a todos (incluye los {dlgConfirm?.conOverride} con objetivo individual)
+            Aplicar a todos (incluye los {dlgConfirm?.conOverride} con configuración individual)
           </Button>
           <Button
             onClick={() => setDlgConfirm(null)}
             variant="text" size="small" color="inherit"
             sx={{ textTransform: 'none' }}
           >
-            Cancelar
+            Cancelar — no cambiar nada
           </Button>
         </DialogActions>
       </Dialog>

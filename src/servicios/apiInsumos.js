@@ -670,6 +670,42 @@ export const insumoGroupCreateOrMove = async (nombre, ids, bizId) => {
   return data;
 };
 
+/**
+ * PATCH /api/insumos/:id/elaborado
+ * Marca o desmarca un insumo como elaborado
+ */
+export const toggleInsumoElaborado = async (insumoId, esElaborado, bizId) => {
+  const url = `${BASE}/insumos/${insumoId}/elaborado`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: authHeaders(bizId),
+    body: JSON.stringify({ es_elaborado: esElaborado }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.error || 'Error al actualizar insumo');
+  }
+  return data;
+};
+
+/**
+ * POST /api/insumos/elaborado/bulk
+ * Marca o desmarca múltiples insumos como elaborados
+ */
+export const toggleInsumosElaboradosBulk = async (insumoIds, esElaborado, bizId) => {
+  const url = `${BASE}/insumos/elaborado/bulk`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify({ insumo_ids: insumoIds, es_elaborado: esElaborado }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.error || 'Error al actualizar insumos en bulk');
+  }
+  return data;
+};
+
 // ==================== EXPORTS ====================
 
 export default {
@@ -715,5 +751,9 @@ export default {
   
   // Create or Move
   insumoGroupCreateOrMove,
+
+  // Elaborados
+  toggleInsumoElaborado,
+  toggleInsumosElaboradosBulk,
 };
 

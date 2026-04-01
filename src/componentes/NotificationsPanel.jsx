@@ -18,7 +18,6 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  LinearProgress,
 } from '@mui/material';
 
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -244,7 +243,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         console.log('✅ [NotificationsPanel] Notificación añadida:', item.title);
         // Si es objetivo_update, iniciar countdown de 2 minutos
         if (item.kind === 'objetivo_update') {
-          setCountdowns(prev => ({ ...prev, [item.id]: 120 }));
+          setCountdowns(prev => ({ ...prev, [item.id]: 86400 }));
         }
         return [item, ...arr].slice(0, 200);
       });
@@ -592,19 +591,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
                               {canUndo(notif) && (
                                 <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                                  {notif.kind === 'objetivo_update' && getCountdownLabel(notif) && (
-                                    <Box>
-                                      <LinearProgress
-                                        variant="determinate"
-                                        value={(countdowns[notif.id] / 120) * 100}
-                                        color="warning"
-                                        sx={{ height: 3, borderRadius: 2, mb: 0.5 }}
-                                      />
-                                      <Typography variant="caption" color="text.secondary">
-                                        Podés deshacer en {getCountdownLabel(notif)}
-                                      </Typography>
-                                    </Box>
-                                  )}
+
                                   <Button
                                     size="small"
                                     variant="outlined"

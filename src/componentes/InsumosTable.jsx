@@ -51,15 +51,9 @@ const esDiscontinuadosGroup = (g) => {
   return n === 'discontinuados' || n === 'descontinuados';
 };
 
-/* ================== ✅ NUEVO: resolveInsumoMonto ================== */
-/**
- * Devuelve el monto total gastado de un insumo
- * Prioridad: total_gastos_periodo > total_gastos > importe_total > fallback qty*precio
- */
 const resolveInsumoMonto = (insumo, metaById) => {
   if (!insumo) return 0;
 
-  // Usar campos directos del insumo
   const monto = Number(
     insumo.total_gastos_periodo ??
     insumo.total_gastos ??
@@ -70,7 +64,6 @@ const resolveInsumoMonto = (insumo, metaById) => {
 
   if (Number.isFinite(monto) && monto !== 0) return monto;
 
-  // Fallback: qty * precio
   const qty = Number(insumo.unidades_compradas ?? insumo.total_unidades ?? 0);
   const precio = Number(insumo.precio_ref ?? insumo.precio ?? 0);
 
@@ -78,7 +71,6 @@ const resolveInsumoMonto = (insumo, metaById) => {
     return qty * precio;
   }
 
-  // Si metaById está disponible, intentar desde ahí
   if (metaById && typeof metaById.get === 'function') {
     const id = Number(insumo.id);
     if (Number.isFinite(id)) {
@@ -101,6 +93,30 @@ const resolveInsumoMonto = (insumo, metaById) => {
   return 0;
 };
 
+// Calcula el estado elaborado real de un grupo de insumos
+// Retorna: 'all' | 'some' | 'none'
+function calcElaboradoState(rows = []) {
+  if (!rows.length) return 'none';
+  const count = rows.filter(r => r.es_elaborado === true).length;
+  if (count === 0) return 'none';
+  if (count === rows.length) return 'all';
+  return 'some'; // mixto
+}
+
+// ── Ícono de receta (libro pequeño SVG inline) ─────────────────────────────
+function RecetaIcon({ filled = false, size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={filled ? 'var(--color-primary, #3b82f6)' : 'currentColor'}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      {filled && <path d="M9 7h6M9 11h6M9 15h4" stroke="var(--color-primary, #3b82f6)" />}
+    </svg>
+  );
+}
+
 const InsumosTable = forwardRef(function InsumosTable({
   rows = [],
   loading = false,
@@ -108,8 +124,8 @@ const InsumosTable = forwardRef(function InsumosTable({
   onDelete,
   noBusiness = false,
   vista = "no-elaborados",
-  businessId,          // siempre el principal (para CRUD de grupos)
-  originalBusinessId,  // el subnegocio si aplica (para Discontinuados y items)
+  businessId,
+  originalBusinessId,
   groups = [],
   selectedGroupId = null,
   discontinuadosGroupId = null,
@@ -130,12 +146,21 @@ const InsumosTable = forwardRef(function InsumosTable({
   jumpToInsumoId = null,
   selectedInsumoId = null,
   onIdToIndexChange,
-  metaById, 
-  getAmountForId, 
+  metaById,
+  getAmountForId,
   comprasMap = new Map(),
   comprasLoading = false,
   rangoCompras = null,
-  businesses = [],  // ✅ todos los negocios de la org (para selector en modal de compras)
+  businesses = [],
+  branches = [],
+  comprasMapByBranch = {},
+  onAfterToggleElaborado,
+  onAfterToggleElaboradoBulk,
+  // ── Nuevas props para recetas de elaborados ──────────────────────────────
+  // Callback: (insumo) => void — abre RecetaModal para ese insumo elaborado
+  onOpenRecetaElaborado,
+  // Mapa de recetas ya cargadas: { [supplyId]: { costoTotal, porciones, precioSugerido } }
+  recetasElaborados = {},
 }, ref) {
   const isElaborados = vista === "elaborados";
   const listRef = useRef(null);
@@ -163,9 +188,7 @@ const InsumosTable = forwardRef(function InsumosTable({
       }
     })();
 
-    return () => {
-      canceled = true;
-    };
+    return () => { canceled = true; };
   }, [businessId]);
 
   const handleAfterAction = useCallback(async () => {
@@ -199,6 +222,14 @@ const InsumosTable = forwardRef(function InsumosTable({
     return m;
   }, [rubros]);
 
+  const rubroNombreToInfo = useMemo(() => {
+    const m = new Map();
+    rubrosMap.forEach((info) => {
+      if (info?.nombre) m.set(info.nombre, info);
+    });
+    return m;
+  }, [rubrosMap]);
+
   const getRubroLabel = useCallback(
     (row) => {
       const code =
@@ -214,9 +245,16 @@ const InsumosTable = forwardRef(function InsumosTable({
     [rubrosMap]
   );
 
-  // Código | Nombre | U.med | Precio | %Desp | Total | Cant.comprada | Neto | IVA | Total compras | Acciones
-  const GRID_NO_ELAB = ".4fr 2fr .45fr .7fr .5fr .65fr 1fr .4fr"
-  const GRID_ELAB = ".4fr 2fr .45fr .7fr .6fr .7fr  .6fr .6fr .55fr .65fr .4fr";
+  const branchExtraCols = branches && branches.length > 1
+    ? branches.map(() => '.55fr').join(' ')
+    : '';
+  const GRID_NO_ELAB = branches && branches.length > 1
+    ? `.4fr 2fr .45fr .7fr .5fr .65fr ${branchExtraCols} 1fr .4fr`
+    : ".4fr 2fr .45fr .7fr .5fr .65fr 1fr .4fr";
+  // En la vista elaborados agregamos columna "Receta" antes de acciones
+  const GRID_ELAB = branches && branches.length > 1
+    ? `.4fr 2fr .45fr .7fr 1fr .6fr .6fr ${branchExtraCols} 1fr .65fr .55fr .4fr`
+    : ".4fr 2fr .45fr .7fr 1fr .6fr .6fr 1fr .65fr .55fr .4fr";
 
   const displayCode = (r) =>
     r.codigo_mostrar ||
@@ -244,13 +282,11 @@ const InsumosTable = forwardRef(function InsumosTable({
     const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
 
     if (precioMode === "promedio") {
-      const v = r.precio_promedio_periodo ?? r.precio_promedio ?? base;
-      return v;
+      return r.precio_promedio_periodo ?? r.precio_promedio ?? base;
     }
 
     if (precioMode === "ultima") {
-      const v = r.precio_ultima_compra ?? r.precio_ultimo ?? base;
-      return v;
+      return r.precio_ultima_compra ?? r.precio_ultimo ?? base;
     }
 
     return base;
@@ -259,19 +295,9 @@ const InsumosTable = forwardRef(function InsumosTable({
   const getTotalRaw = (r) => {
     switch (totalMode) {
       case "unidades":
-        return (
-          r.total_unidades_periodo ??
-          r.unidades_compradas ??
-          r.total_unidades ??
-          null
-        );
+        return r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? null;
       case "gastos":
-        return (
-          r.total_gastos_periodo ??
-          r.total_gastos ??
-          r.importe_total ??
-          null
-        );
+        return r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? null;
       case "ratio":
         return r.ratio_ventas ?? r.ratio ?? r.relacion_ventas ?? null;
       default:
@@ -283,15 +309,9 @@ const InsumosTable = forwardRef(function InsumosTable({
     const raw = getTotalRaw(r);
     if (raw == null) return "-";
 
-    if (totalMode === "unidades") {
-      return formatNumber(raw, 0);
-    }
-    if (totalMode === "gastos") {
-      return formatMoney(raw, 2);
-    }
-    if (totalMode === "ratio") {
-      return formatNumber(raw, 2);
-    }
+    if (totalMode === "unidades") return formatNumber(raw, 0);
+    if (totalMode === "gastos")   return formatMoney(raw, 2);
+    if (totalMode === "ratio")    return formatNumber(raw, 2);
     return "-";
   };
 
@@ -317,76 +337,29 @@ const InsumosTable = forwardRef(function InsumosTable({
     return <span style={{ fontSize: '0.85rem' }}>{sortDir === "asc" ? "▲" : "▼"}</span>;
   };
 
-  const colStyle = (key) => ({
-    cursor: "pointer",
-    userSelect: "none",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    whiteSpace: "nowrap",
-  });
-
-  const getSortValue = (r) => {
-    switch (sortBy) {
-      case "codigo":
-        return Number(r.codigo_maxi ?? r.id ?? 0);
-      case "nombre":
-        return String(r.nombre || "").toLowerCase();
-      case "precio":
-        return num(getDisplayedPrice(r));
-      case "fecha":
-        return new Date(r.updated_at || r.created_at || 0).getTime();
-      default:
-        return 0;
-    }
-  };
-
   const sortedRows = useMemo(() => {
     const getSortValueLocal = (r) => {
       switch (sortBy) {
-        case "codigo":
-          return Number(r.codigo_maxi ?? r.id ?? 0);
-        case "nombre":
-          return String(r.nombre || "").toLowerCase();
-        case "unidad":
-          return String(r.unidad_med || "").toLowerCase();
+        case "codigo":   return Number(r.codigo_maxi ?? r.id ?? 0);
+        case "nombre":   return String(r.nombre || "").toLowerCase();
+        case "unidad":   return String(r.unidad_med || "").toLowerCase();
         case "precio": {
           const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
-          const v =
-            precioMode === "promedio"
-              ? (r.precio_promedio_periodo ?? r.precio_promedio ?? base)
-              : precioMode === "ultima"
-                ? (r.precio_ultima_compra ?? r.precio_ultimo ?? base)
-                : base;
+          const v = precioMode === "promedio"
+            ? (r.precio_promedio_periodo ?? r.precio_promedio ?? base)
+            : precioMode === "ultima"
+              ? (r.precio_ultima_compra ?? r.precio_ultimo ?? base)
+              : base;
           return num(v) ?? 0;
         }
-        case "desperdicio":
-          return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
-        case "total":
-          return num(
-            r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ??
-            r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0
-          ) ?? 0;
-        case "cant_comprada": {
-          const c = comprasMap.get(Number(r.id));
-          return num(c?.cantidad ?? 0) ?? 0;
-        }
-        case "neto_compras": {
-          const c = comprasMap.get(Number(r.id));
-          return num(c?.neto ?? 0) ?? 0;
-        }
-        case "iva_compras": {
-          const c = comprasMap.get(Number(r.id));
-          return num(c?.iva ?? 0) ?? 0;
-        }
-        case "total_compras": {
-          const c = comprasMap.get(Number(r.id));
-          return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0;
-        }
-        case "fecha":
-          return new Date(r.updated_at || r.created_at || 0).getTime();
-        default:
-          return 0;
+        case "desperdicio":    return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+        case "total":          return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0) ?? 0;
+        case "cant_comprada":  { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
+        case "neto_compras":   { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
+        case "iva_compras":    { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
+        case "total_compras":  { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
+        case "fecha":          return new Date(r.updated_at || r.created_at || 0).getTime();
+        default:               return 0;
       }
     };
 
@@ -396,10 +369,7 @@ const InsumosTable = forwardRef(function InsumosTable({
       const vb = getSortValueLocal(b);
 
       if (typeof va === "string" || typeof vb === "string") {
-        const r = String(va).localeCompare(String(vb), "es", {
-          sensitivity: "base",
-          numeric: true,
-        });
+        const r = String(va).localeCompare(String(vb), "es", { sensitivity: "base", numeric: true });
         return sortDir === "asc" ? r : -r;
       }
 
@@ -411,38 +381,39 @@ const InsumosTable = forwardRef(function InsumosTable({
     return arr;
   }, [rows, sortBy, sortDir, precioMode, comprasMap]);
 
-  /* ================== ✅ NUEVO: groupedRows con __ventasMonto ================== */
   const groupedRows = useMemo(() => {
     const map = new Map();
 
     for (const r of sortedRows) {
       const rubroLabel = getRubroLabel(r);
       if (!map.has(rubroLabel)) {
-        map.set(rubroLabel, []);
+        const infoByNombre = rubroNombreToInfo.get(rubroLabel);
+        if (infoByNombre) {
+          map.set(rubroLabel, { rows: [], codigo: String(infoByNombre.codigo), es_elaborador: infoByNombre.es_elaborador === true });
+        } else {
+          const rubroCodigo = String(r?.rubro_codigo ?? r?.rubro ?? '');
+          const rubroInfo = rubroCodigo ? rubrosMap.get(rubroCodigo) : null;
+          map.set(rubroLabel, { rows: [], codigo: rubroCodigo, es_elaborador: rubroInfo?.es_elaborador === true });
+        }
       }
-      map.get(rubroLabel).push(r);
+      map.get(rubroLabel).rows.push(r);
     }
 
-    // Convertir a array y calcular monto por rubro
-    const groups = Array.from(map.entries()).map(([label, groupRows]) => {
+    const groups = Array.from(map.entries()).map(([label, groupData]) => {
+      const groupRows = groupData.rows;
       let ventasMonto = 0;
-
-      groupRows.forEach((r) => {
-        ventasMonto += resolveInsumoMonto(r, metaById);
-      });
+      groupRows.forEach((r) => { ventasMonto += resolveInsumoMonto(r, metaById); });
 
       return {
         label,
+        codigo: groupData.codigo,
+        es_elaborador: groupData.es_elaborador,
         rows: groupRows,
         __ventasMonto: ventasMonto,
       };
     });
 
-    // ✅ Ordenar grupos según el criterio del usuario
-    // Por defecto (sin sort activo o monto) → por __ventasMonto desc
-    // Con sort activo → por el valor del primer insumo del grupo en esa columna
     groups.sort((a, b) => {
-      // Si el sort es por monto o no hay criterio, usar monto descendente
       if (!sortBy || sortBy === 'monto') {
         if ((b.__ventasMonto || 0) !== (a.__ventasMonto || 0)) {
           return (b.__ventasMonto || 0) - (a.__ventasMonto || 0);
@@ -450,17 +421,15 @@ const InsumosTable = forwardRef(function InsumosTable({
         return String(a.label).localeCompare(String(b.label), "es", { sensitivity: "base", numeric: true });
       }
 
-      // Con sort activo: tomar el valor representativo del grupo
-      // (primer insumo ya ordenado dentro del grupo)
       const repA = a.rows[0];
       const repB = b.rows[0];
       if (!repA || !repB) return 0;
 
       const getSortValueGroup = (r) => {
         switch (sortBy) {
-          case "codigo": return Number(r.codigo_maxi ?? r.id ?? 0);
-          case "nombre": return String(r.nombre || "").toLowerCase();
-          case "unidad": return String(r.unidad_med || "").toLowerCase();
+          case "codigo":   return Number(r.codigo_maxi ?? r.id ?? 0);
+          case "nombre":   return String(r.nombre || "").toLowerCase();
+          case "unidad":   return String(r.unidad_med || "").toLowerCase();
           case "precio": {
             const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
             const v = precioMode === "promedio"
@@ -470,14 +439,14 @@ const InsumosTable = forwardRef(function InsumosTable({
                 : base;
             return num(v) ?? 0;
           }
-          case "desperdicio": return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
-          case "total": return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? 0) ?? 0;
-          case "cant_comprada": { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
-          case "neto_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
-          case "iva_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
-          case "total_compras": { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
-          case "fecha": return new Date(r.updated_at || r.created_at || 0).getTime();
-          default: return 0;
+          case "desperdicio":    return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+          case "total":          return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? 0) ?? 0;
+          case "cant_comprada":  { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
+          case "neto_compras":   { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
+          case "iva_compras":    { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
+          case "total_compras":  { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
+          case "fecha":          return new Date(r.updated_at || r.created_at || 0).getTime();
+          default:               return 0;
         }
       };
 
@@ -495,19 +464,25 @@ const InsumosTable = forwardRef(function InsumosTable({
     });
 
     return groups;
-  }, [sortedRows, getRubroLabel, metaById, sortBy, sortDir, precioMode, comprasMap]);
+  }, [sortedRows, getRubroLabel, metaById, sortBy, sortDir, precioMode, comprasMap, rubrosMap, rubroNombreToInfo]);
 
-  /* ================== ✅ flatRows con __ventasMonto ================== */
   const flatRows = useMemo(() => {
     const out = [];
 
     groupedRows.forEach((group) => {
+      const elaboradoState = calcElaboradoState(group.rows);
+
       out.push({
         type: "rubro",
         label: group.label,
+        codigo: group.codigo,
+        es_elaborador: group.es_elaborador,
+        elaboradoState,
+        isElaborado: elaboradoState !== 'none',
+        isMixto: elaboradoState === 'some',
         rows: group.rows,
         key: `rubro-${group.label || "sin-rubro"}`,
-        __ventasMonto: group.__ventasMonto || 0, // ✅ propagamos el monto
+        __ventasMonto: group.__ventasMonto || 0,
       });
 
       group.rows.forEach((r) => {
@@ -522,7 +497,6 @@ const InsumosTable = forwardRef(function InsumosTable({
     return out;
   }, [groupedRows]);
 
-  /* ================== ✅ idToIndex ================== */
   const idToIndex = useMemo(() => {
     const m = new Map();
     flatRows.forEach((row, i) => {
@@ -549,22 +523,14 @@ const InsumosTable = forwardRef(function InsumosTable({
 
       const index = idToIndex.get(id);
 
-      // todavía no existe el índice (render no terminó / cambió grupo)
       if (index == null) {
         jumpTriesRef.current += 1;
-        if (jumpTriesRef.current > 25) {
-          pendingJumpRef.current = null;
-          return;
-        }
+        if (jumpTriesRef.current > 25) { pendingJumpRef.current = null; return; }
         setTimeout(tick, 80);
         return;
       }
 
-      // ✅ scroll real: VirtualList
-      if (listRef.current?.scrollToIndex) {
-        listRef.current.scrollToIndex(index);
-      }
-
+      if (listRef.current?.scrollToIndex) listRef.current.scrollToIndex(index);
       pendingJumpRef.current = null;
     };
 
@@ -578,24 +544,14 @@ const InsumosTable = forwardRef(function InsumosTable({
 
     const tick = () => {
       const idx = idToIndex.get(id);
-
-      // todavía no existe en la lista actual (cambio de grupo / refresh)
       if (idx == null) {
         jumpTriesRef.current += 1;
-        if (jumpTriesRef.current > 25) {
-          pendingJumpRef.current = null;
-          return;
-        }
+        if (jumpTriesRef.current > 25) { pendingJumpRef.current = null; return; }
         setTimeout(tick, 80);
         return;
       }
-
-      // ✅ ahora sí: scrollear
       listRef.current?.scrollToIndex?.(idx);
-
-      // opcional: volver a intentar 1 vez más por si VirtualList necesita un frame
       setTimeout(() => listRef.current?.scrollToIndex?.(idx), 60);
-
       pendingJumpRef.current = null;
     };
 
@@ -607,14 +563,10 @@ const InsumosTable = forwardRef(function InsumosTable({
 
   useEffect(() => {
     if (!onIdToIndexChange) return;
-
-    // firma barata: size + primer id + último id
     const keys = Array.from(idToIndex.keys());
     const sig = `${idToIndex.size}|${keys[0] ?? ""}|${keys[keys.length - 1] ?? ""}`;
-
     if (sig === lastIndexSigRef.current) return;
     lastIndexSigRef.current = sig;
-
     onIdToIndexChange(idToIndex);
   }, [idToIndex, onIdToIndexChange]);
 
@@ -622,10 +574,8 @@ const InsumosTable = forwardRef(function InsumosTable({
     if (jumpToInsumoId) {
       const idx = idToIndex.get(Number(jumpToInsumoId));
       console.log('📊 [InsumosTable] idToIndex lookup:', {
-        jumpToInsumoId,
-        foundIndex: idx,
-        flatRowsLength: flatRows.length,
-        mapSize: idToIndex.size
+        jumpToInsumoId, foundIndex: idx,
+        flatRowsLength: flatRows.length, mapSize: idToIndex.size
       });
     }
   }, [jumpToInsumoId, idToIndex, flatRows.length]);
@@ -636,8 +586,6 @@ const InsumosTable = forwardRef(function InsumosTable({
     if (!Number.isFinite(n)) return null;
     return (groups || []).find((g) => Number(g.id) === n) || null;
   }, [groups, selectedGroupId]);
-
-  const nombreGrupoSeleccionado = grupoSeleccionado?.nombre || "";
 
   const isGrupoDiscontinuados = !!grupoSeleccionado && esDiscontinuadosGroup(grupoSeleccionado);
 
@@ -652,13 +600,7 @@ const InsumosTable = forwardRef(function InsumosTable({
 
   return (
     <div className="tabla-articulos-inner" style={{ height: '100%' }}>
-      <div
-        style={{
-          height: '100%',
-          width: "100%",
-          position: "relative",
-        }}
-      >
+      <div style={{ height: '100%', width: "100%", position: "relative" }}>
         {/* HEADER sticky */}
         <div className="table-col-header">
           <div
@@ -668,22 +610,19 @@ const InsumosTable = forwardRef(function InsumosTable({
             <div onClick={() => toggleSort("codigo")} className="col-sortable">
               Código {sortIcon("codigo")}
             </div>
-
             <div onClick={() => toggleSort("nombre")} className="col-sortable">
               Nombre {sortIcon("nombre")}
             </div>
-
             <div onClick={() => toggleSort("unidad")} className="col-sortable">
               U. medida {sortIcon("unidad")}
             </div>
-
             <div onClick={() => toggleSort("precio")} className="col-sortable">
               {precioHeaderLabel} {sortIcon("precio")}
             </div>
 
             {isElaborados ? (
               <>
-                <div>Precio final desp. ($)</div>
+                <div>Precio final</div>
                 <div onClick={() => toggleSort("total")} className="col-sortable">
                   {totalHeaderLabel} {sortIcon("total")}
                 </div>
@@ -691,6 +630,10 @@ const InsumosTable = forwardRef(function InsumosTable({
                 <div>¿En recetas?</div>
                 <div onClick={() => toggleSort("fecha")} className="col-sortable">
                   Fecha {sortIcon("fecha")}
+                </div>
+                {/* ── Nueva columna: Receta del elaborado ── */}
+                <div style={{ textAlign: "center" }} title="Receta de producción del elaborado">
+                  Receta
                 </div>
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
@@ -710,6 +653,15 @@ const InsumosTable = forwardRef(function InsumosTable({
                 >
                   Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
                 </div>
+                {branches && branches.length > 1 && branches.map(branch => (
+                  <div
+                    key={branch.id}
+                    style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                    title={`Compras — ${branch.name}`}
+                  >
+                    {branch.name}
+                  </div>
+                ))}
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
             )}
@@ -742,20 +694,8 @@ const InsumosTable = forwardRef(function InsumosTable({
               return null;
             }}
             renderRow={({ row, style }) => {
-              // ✅ HEADER DE RUBRO con totales
+              // ── HEADER DE RUBRO ──
               if (row.type === "rubro") {
-                const totalQty = row.rows.reduce((acc, r) => {
-                  const qty = Number(
-                    r.total_unidades_periodo ??
-                    r.unidades_compradas ??
-                    r.total_unidades ??
-                    0
-                  );
-                  return acc + qty;
-                }, 0);
-
-                const totalAmount = row.__ventasMonto || 0;
-
                 return (
                   <div
                     className="table-section-row"
@@ -775,14 +715,25 @@ const InsumosTable = forwardRef(function InsumosTable({
                         justifyContent: "space-between",
                       }}
                     >
-                      <span>{row.label || "Sin rubro"}</span>
+                      <span>
+                        {row.label || "Sin rubro"}
+                        {row.isMixto && (
+                          <span
+                            title="Este rubro tiene insumos elaborados y no elaborados mezclados"
+                            style={{ marginLeft: 6, fontSize: '0.7rem', color: 'var(--color-warning, #f59e0b)', opacity: 0.8 }}
+                          >
+                            ⚡ mixto
+                          </span>
+                        )}
+                      </span>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <small style={{ opacity: 0.7 }}>
-                          {formatNumber(totalQty, 0)} u. · {formatMoney(totalAmount, 0)}
-                        </small>
                         <InsumoRubroAccionesMenu
                           rubroLabel={row.label || "Sin rubro"}
+                          rubroCodigo={row.codigo || null}
+                          isElaborado={row.isElaborado}
+                          isMixto={row.isMixto}
+                          elaboradoState={row.elaboradoState}
                           insumoIds={row.rows.map((r) => r.id)}
                           groups={groups}
                           selectedGroupId={selectedGroupId}
@@ -795,7 +746,9 @@ const InsumosTable = forwardRef(function InsumosTable({
                           isTodoView={isTodoView}
                           onReloadCatalogo={onReloadCatalogo}
                           onAfterAction={handleAfterAction}
+                          onAfterRubroUpdate={handleAfterAction}
                           businessId={originalBusinessId || businessId}
+                          onAfterToggleElaboradoBulk={onAfterToggleElaboradoBulk}
                         />
                       </div>
                     </div>
@@ -803,12 +756,15 @@ const InsumosTable = forwardRef(function InsumosTable({
                 );
               }
 
-              // FILA DE INSUMO
+              // ── FILA DE INSUMO ──
               const r = row.data;
 
-              const isJumping = jumpToInsumoId != null && Number(r.id) === Number(jumpToInsumoId);
               const isSelected = Number(r.id) === Number(selectedInsumoId);
               const shouldHighlight = jumpToInsumoId && Number(r.id) === Number(jumpToInsumoId);
+
+              // Datos de receta del elaborado (si existe)
+              const recetaData = r.es_elaborado ? (recetasElaborados[String(r.id)] || recetasElaborados[Number(r.id)]) : null;
+              const tieneReceta = !!recetaData && recetaData.costoTotal > 0;
 
               return (
                 <div
@@ -824,11 +780,30 @@ const InsumosTable = forwardRef(function InsumosTable({
                     ...(isSelected ? { position: "relative" } : {}),
                   }}
                 >
-                  {isSelected && (
-                    <div className="row-left-bar" />
-                  )}
+                  {isSelected && <div className="row-left-bar" />}
                   <div>{displayCode(r)}</div>
-                  <div title={r.nombre}>{r.nombre}</div>
+
+                  {/* Nombre: con indicador si tiene receta cargada */}
+                  <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                    {r.es_elaborado && (
+                      <span
+                        title={tieneReceta ? `Elaborado — costo $${recetaData.costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : 'Elaborado sin receta'}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                          fontSize: '0.65rem', fontWeight: 700,
+                          background: tieneReceta ? 'var(--color-primary, #3b82f6)' : '#e2e8f0',
+                          color: tieneReceta ? '#fff' : '#94a3b8',
+                        }}
+                      >
+                        {tieneReceta ? '●' : '○'}
+                      </span>
+                    )}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.nombre}
+                    </span>
+                  </div>
+
                   <div>{r.unidad_med || "-"}</div>
                   <div
                     title={
@@ -843,37 +818,120 @@ const InsumosTable = forwardRef(function InsumosTable({
                       <span title="Diferencia >5% entre precio ref y promedio de compras" style={{ color: '#f59e0b', marginLeft: 3, fontSize: '0.75rem' }}>⚠</span>
                     )}
                   </div>
-                  <div>-</div>
-                  <div>{renderTotalValue(r)}</div>
-                  {/* ── Columna de compras ── */}
-                  <ComprasCell
-                    insumoId={r.id}
-                    insumoNombre={r.nombre}
-                    insumoUnidad={r.unidad_med || ''}
-                    comprasEntry={comprasMap.get(Number(r.id))}
-                    from={rangoCompras?.from}
-                    to={rangoCompras?.to}
-                    businessId={originalBusinessId || businessId}
-                    businesses={businesses}
-                    loading={comprasLoading}
-                  />
 
-                  <div style={{ textAlign: "center" }}>
-                    <InsumoAccionesMenu
-                      insumo={r}
-                      groups={groups}
-                      selectedGroupId={selectedGroupId}
-                      discontinuadosGroupId={discontinuadosGroupId}
-                      todoGroupId={todoGroupId}
-                      onRefetch={handleAfterAction}
-                      onReloadCatalogo={onReloadCatalogo}
-                      notify={notify}
-                      onMutateGroups={onMutateGroups}
-                      onAfterMutation={handleAfterAction}
-                      onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
-                      businessId={originalBusinessId || businessId}
-                    />
-                  </div>
+                  {isElaborados ? (
+                    <>
+                      {/* Precio final (de receta si existe, o precio_ref) */}
+                      <div style={{ fontWeight: tieneReceta ? 700 : 400, color: tieneReceta ? 'var(--color-primary, #3b82f6)' : 'inherit' }}>
+                        {tieneReceta
+                          ? formatMoney(recetaData.costoTotal / (recetaData.porciones || 1), 2)
+                          : formatMoney(getDisplayedPrice(r), 2)
+                        }
+                      </div>
+                      <div>{renderTotalValue(r)}</div>
+                      <div>{r.vencimiento ? formatDate(r.vencimiento) : "-"}</div>
+                      <div>{r.en_recetas != null ? (r.en_recetas > 0 ? `${r.en_recetas} recetas` : "-") : "-"}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        {formatDate(r.updated_at || r.created_at)}
+                      </div>
+
+                      {/* ── Columna Receta: botón para abrir RecetaModal del elaborado ── */}
+                      <div style={{ textAlign: "center" }}>
+                        {onOpenRecetaElaborado ? (
+                          <button
+                            onClick={() => onOpenRecetaElaborado(r)}
+                            title={tieneReceta ? `Ver/editar receta — costo $${(recetaData.costoTotal / (recetaData.porciones || 1)).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/u` : 'Cargar receta de producción'}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              gap: 4,
+                              border: 'none', borderRadius: 6,
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                              fontSize: '0.72rem', fontWeight: 600,
+                              background: tieneReceta
+                                ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)'
+                                : '#f1f5f9',
+                              color: tieneReceta
+                                ? 'var(--color-primary, #3b82f6)'
+                                : '#64748b',
+                              transition: 'background 0.15s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = tieneReceta ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent)' : '#e2e8f0'}
+                            onMouseLeave={e => e.currentTarget.style.background = tieneReceta ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)' : '#f1f5f9'}
+                          >
+                            <RecetaIcon filled={tieneReceta} size={12} />
+                            {tieneReceta ? 'Ver receta' : 'Cargar'}
+                          </button>
+                        ) : (
+                          <span style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>—</span>
+                        )}
+                      </div>
+
+                      <div style={{ textAlign: "center" }}>
+                        <InsumoAccionesMenu
+                          insumo={r}
+                          groups={groups}
+                          selectedGroupId={selectedGroupId}
+                          discontinuadosGroupId={discontinuadosGroupId}
+                          todoGroupId={todoGroupId}
+                          onRefetch={handleAfterAction}
+                          onReloadCatalogo={onReloadCatalogo}
+                          notify={notify}
+                          onMutateGroups={onMutateGroups}
+                          onAfterMutation={handleAfterAction}
+                          onAfterToggleElaborado={onAfterToggleElaborado}
+                          onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                          businessId={originalBusinessId || businessId}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>-</div>
+                      <div>{renderTotalValue(r)}</div>
+                      <ComprasCell
+                        insumoId={r.id}
+                        insumoNombre={r.nombre}
+                        insumoUnidad={r.unidad_med || ''}
+                        comprasEntry={comprasMap.get(Number(r.id))}
+                        from={rangoCompras?.from}
+                        to={rangoCompras?.to}
+                        businessId={originalBusinessId || businessId}
+                        businesses={businesses}
+                        loading={comprasLoading}
+                      />
+                      {branches && branches.length > 1 && branches.map(branch => {
+                        const bMap = comprasMapByBranch[branch.id] || comprasMapByBranch[String(branch.id)];
+                        const bEntry = bMap ? bMap.get(Number(r.id)) : null;
+                        const bTotal = bEntry ? (Number(bEntry.neto ?? 0) + Number(bEntry.iva ?? 0)) : 0;
+                        return (
+                          <div
+                            key={branch.id}
+                            style={{ fontSize: '0.78rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: bTotal > 0 ? (branch.color || 'var(--color-primary)') : '#94a3b8', paddingRight: 4 }}
+                          >
+                            {bTotal > 0 ? `$${bTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'}
+                          </div>
+                        );
+                      })}
+                      <div style={{ textAlign: "center" }}>
+                        <InsumoAccionesMenu
+                          insumo={r}
+                          groups={groups}
+                          selectedGroupId={selectedGroupId}
+                          discontinuadosGroupId={discontinuadosGroupId}
+                          todoGroupId={todoGroupId}
+                          onRefetch={handleAfterAction}
+                          onReloadCatalogo={onReloadCatalogo}
+                          notify={notify}
+                          onMutateGroups={onMutateGroups}
+                          onAfterMutation={handleAfterAction}
+                          onAfterToggleElaborado={onAfterToggleElaborado}
+                          onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                          businessId={originalBusinessId || businessId}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             }}
