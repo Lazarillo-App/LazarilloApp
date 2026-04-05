@@ -29,7 +29,12 @@ export function useFirstDate(businessId, type = 'sales', branchId = null) {
 
     let url;
     if (type === 'purchases') {
-      url = `${BASE}/purchases/first-date`;
+      const branchParam = branchId && branchId !== 'main'
+        ? `?branch_id=${branchId}`
+        : branchId === 'main'
+          ? `?branch_id=main`
+          : '';
+      url = `${BASE}/purchases/first-date${branchParam}`;
     } else {
       // Agregar branch_id al query si es sucursal real
       const branchParam = branchId && branchId !== 'main'
@@ -50,7 +55,7 @@ export function useFirstDate(businessId, type = 'sales', branchId = null) {
         const date = d?.first_date ?? d?.firstDate ?? null;
         if (date) setFirstDate(date);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => { if (!cancelled) setLoadingFirst(false); });
 
     return () => { cancelled = true; };

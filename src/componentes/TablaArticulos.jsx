@@ -325,6 +325,13 @@ export default function TablaArticulos({
     return null;
   }, [manuales, priceConfig, baseById]);
 
+  const tieneObjetivoIndividual = useCallback((artId) => {
+    const key = String(artId);
+    const localObj = objetivos[key];
+    if (localObj !== undefined && localObj !== '') return true;
+    return priceConfig.byArticle?.[key]?.objetivo != null;
+  }, [objetivos, priceConfig]);
+
   const executeBulkPct = useCallback((pct, idsAll, mode, _idsConManualSnapshot) => {
     if (!onBulkManualSave && !onPriceConfigSave) return;
 
@@ -348,6 +355,7 @@ export default function TablaArticulos({
     });
     console.log('[bulk] updates:', updates);
     if (!updates.length) return;
+    updates.forEach(({ artId }) => bulkSetIdsRef.current.add(Number(artId)));
     setManuales(prev => {
       const next = { ...prev };
       updates.forEach(({ artId, precioManual }) => { next[String(artId)] = precioManual; });
@@ -811,13 +819,21 @@ export default function TablaArticulos({
                   e.target.blur();
                   const val = e.target.value === '' ? null : Number(e.target.value);
                   if (!onPriceConfigSave || val == null) return;
-                  // Actualizar objetivos locales para que los headers reflejen el cambio
-                  setObjetivos(prev => {
-                    const next = { ...prev };
-                    ids.forEach(artId => { next[String(artId)] = val; });
-                    return next;
-                  });
-                  onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids });
+                  const conOverride = ids.filter(artId => tieneObjetivoIndividual(artId));
+                  const doSave = (idsToApply) => {
+                    setObjetivos(prev => { const next = { ...prev }; idsToApply.forEach(artId => { next[String(artId)] = val; }); return next; });
+                    if (idsToApply.length === ids.length) {
+                      onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids });
+                    } else {
+                      idsToApply.forEach(artId => { onPriceConfigSave({ scope: 'articulo', scopeId: String(artId), objetivo: val }); });
+                    }
+                    setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
+                  };
+                  if (conOverride.length > 0) {
+                    setBulkObjetivoDlg({ val, ids, conOverride: conOverride.length, scopeId: agrupId, bkKey: bkObj, doSave });
+                  } else {
+                    doSave(ids);
+                  }
                 }}
                 // Sin onBlur — evita disparar al abrir diálogo de confirmación
                 className="input-with-suffix input-group-level"
@@ -1215,51 +1231,31 @@ export default function TablaArticulos({
 
         {bulkObjetivoDlg && (
           <Dialog open onClose={() => setBulkObjetivoDlg(null)} maxWidth="xs" fullWidth>
-            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
-              Cambiar objetivo %
-            </DialogTitle>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Cambiar objetivo %</DialogTitle>
             <DialogContent>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 {`${bulkObjetivoDlg.conOverride} de ${bulkObjetivoDlg.ids.length} artículos ya tienen objetivo % individual.`}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ¿A cuáles aplicar el nuevo objetivo?
-              </Typography>
+              <Typography variant="body2" color="text.secondary">¿A cuáles aplicar el nuevo objetivo?</Typography>
             </DialogContent>
             <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
               <Button variant="contained" size="small"
-                onClick={() => { bulkObjetivoDlg.doSave(); setBulkObjetivoDlg(null); }}
+                onClick={() => { bulkObjetivoDlg.doSave(bulkObjetivoDlg.ids); setBulkObjetivoDlg(null); }}
                 sx={{ textTransform: 'none', justifyContent: 'flex-start' }}>
                 A todos ({bulkObjetivoDlg.ids.length} artículos)
               </Button>
               <Button variant="outlined" size="small"
                 onClick={() => {
-                  // Solo los que NO tienen objetivo individual
-                  const sinOverride = bulkObjetivoDlg.ids.filter(artId => {
-                    const cfg = priceConfig.byArticle?.[String(artId)];
-                    return cfg?.objetivo == null;
-                  });
-                  setObjetivos(prev => {
-                    const next = { ...prev };
-                    sinOverride.forEach(artId => { next[String(artId)] = bulkObjetivoDlg.val; });
-                    return next;
-                  });
-                  onPriceConfigSave?.({
-                    scope: 'rubro',
-                    scopeId: bulkObjetivoDlg.scopeId,
-                    objetivo: bulkObjetivoDlg.val,
-                    articleIds: sinOverride,
-                  });
+                  const sinOverride = bulkObjetivoDlg.ids.filter(artId => !tieneObjetivoIndividual(artId));
+                  setObjetivos(prev => { const next = { ...prev }; sinOverride.forEach(artId => { next[String(artId)] = bulkObjetivoDlg.val; }); return next; });
+                  sinOverride.forEach(artId => { onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), objetivo: bulkObjetivoDlg.val }); });
+                  if (bulkObjetivoDlg.bkKey) setBlockObjetivos(prev => { const n = { ...prev }; delete n[bulkObjetivoDlg.bkKey]; return n; });
                   setBulkObjetivoDlg(null);
                 }}
                 sx={{ textTransform: 'none', justifyContent: 'flex-start' }}>
                 Solo los que NO tienen objetivo individual ({bulkObjetivoDlg.ids.length - bulkObjetivoDlg.conOverride} artículos)
               </Button>
-              <Button variant="text" size="small" color="inherit"
-                onClick={() => setBulkObjetivoDlg(null)}
-                sx={{ textTransform: 'none' }}>
-                Cancelar
-              </Button>
+              <Button variant="text" size="small" color="inherit" onClick={() => setBulkObjetivoDlg(null)} sx={{ textTransform: 'none' }}>Cancelar</Button>
             </DialogActions>
           </Dialog>
         )}

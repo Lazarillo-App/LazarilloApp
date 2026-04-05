@@ -542,7 +542,7 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
     setTokenLoading(true);
     try {
       const jwt = localStorage.getItem('token') || '';
-      const res = await fetch(`/api/recetas/${articuloId}/upload-token`, {
+      const res = await fetch(`${BASE}/recetas/${articuloId}/upload-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -566,14 +566,14 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
       setTokenLoading(false);
     }
   };
-console.log('QR uploadToken:', uploadToken);
+  console.log('QR uploadToken:', uploadToken);
   const iniciarPolling = (tok) => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
         const jwt = localStorage.getItem('token') || '';
         const res = await fetch(
-          `/api/recetas/${articuloId}/fotos-pendientes?token=${tok}&supplyId=${articuloId}`,
+          `${BASE}/recetas/${articuloId}/fotos-pendientes?token=${tok}&supplyId=${articuloId}`,
           { headers: { Authorization: `Bearer ${jwt}`, 'X-Business-Id': String(businessId) } }
         );
         const data = await res.json();
@@ -605,7 +605,7 @@ console.log('QR uploadToken:', uploadToken);
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch(`/api/recetas/${articuloId || 'general'}/fotos`, {
+      const res = await fetch(`${BASE}/recetas/${articuloId || 'general'}/fotos`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId || '') },
         body: formData,

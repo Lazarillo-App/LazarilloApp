@@ -130,7 +130,11 @@ export default function InsumosMain() {
   const { activeBranchId, activeBranch, branches: allBranches } = useBranch() || {};
 
   // Primera fecha histórica de compras — específica por negocio
-  const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } = useFirstDate(businessId, 'purchases');
+  const { activeBranchFilter } = useBranch() || {};
+  const effectiveBranchIdForFirst = activeBranchFilter?.mode === 'branch'
+    ? activeBranchFilter.branchId
+    : activeBranchFilter?.mode === 'main' ? 'main' : null;
+  const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } = useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst);
 
   // Si el rango activo es "Histórico" y cambia el negocio/firstDate, actualizar el from automáticamente
   useEffect(() => {
@@ -289,7 +293,7 @@ export default function InsumosMain() {
       from: rangoCompras.from,
       to: rangoCompras.to,
       limit: 10000,
-      branch_id: activeBranchId ?? null,
+      branch_id: activeBranchFilter?.mode === 'all' ? 'main' : (activeBranchId ?? null),
     })
       .then((res) => {
         if (cancelled) return;
@@ -307,7 +311,7 @@ export default function InsumosMain() {
   // Compras por sucursal — solo cuando hay 2+ sucursales
   useEffect(() => {
     const branches = allBranches || [];
-    if (branches.length < 2 || !businessId || !rangoCompras?.from || !rangoCompras?.to) {
+    if (branches.length === 0 || !businessId || !rangoCompras?.from || !rangoCompras?.to) {
       setComprasMapByBranch({});
       return;
     }
@@ -999,17 +1003,17 @@ export default function InsumosMain() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
         <h2 style={{ margin: 0 }}>
-        {titulo}
-        {activeBranch && (
-          <span style={{
-            marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
-            color: activeBranch.color || 'var(--color-primary)',
-            verticalAlign: 'middle',
-          }}>
-            — {activeBranch.name}
-          </span>
-        )}
-      </h2>
+          {titulo}
+          {activeBranch && (
+            <span style={{
+              marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
+              color: activeBranch.color || 'var(--color-primary)',
+              verticalAlign: 'middle',
+            }}>
+              — {activeBranch.name}
+            </span>
+          )}
+        </h2>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
