@@ -101,7 +101,7 @@ export default function SucursalSelector({ variant = 'navbar' }) {
 
         {/* Sucursales: principal primero, luego las reales */}
         {(branches || []).map((branch) => {
-          const isActive = activeBranchId === branch.id;
+         const isActive = String(activeBranchId) === String(branch.id);
           const dotColor = branch.color || (branch.isMain ? "var(--color-primary)" : "#1976d2");
           return (
             <MenuItem

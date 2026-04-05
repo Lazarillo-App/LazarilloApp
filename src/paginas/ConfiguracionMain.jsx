@@ -681,16 +681,29 @@ function LotesPanel({ businessId, lotesTipo = 'compras', allBusinesses }) {
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: `${themeColor}18` }}>
-                    <TableCell sx={{ fontWeight: 700 }}>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>
                       {lotesTipo === 'ventas' ? 'Archivo' : 'ID de lote'}
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Fecha importación</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 140, whiteSpace: 'nowrap' }}>
+                      Fecha importación
+                    </TableCell>
                     {lotesTipo === 'ventas' && (
-                      <TableCell sx={{ fontWeight: 700 }}>Período</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 180, whiteSpace: 'nowrap' }}>
+                        Período
+                      </TableCell>
                     )}
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Registros</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Negocio</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700 }}>Acciones</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, minWidth: 80, whiteSpace: 'nowrap' }}>
+                      Registros
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, minWidth: 120, whiteSpace: 'nowrap' }}>
+                      Negocio
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 120, whiteSpace: 'nowrap' }}>
+                      Sucursal
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700, minWidth: 100, whiteSpace: 'nowrap' }}>
+                      Acciones
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -710,7 +723,9 @@ function LotesPanel({ businessId, lotesTipo = 'compras', allBusinesses }) {
                           <span style={{ fontFamily: 'monospace' }}>{lote.batch_id}</span>
                         )}
                       </TableCell>
-                      <TableCell>{fmtDate(lote.created_at || lote.fecha)}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {fmtDate(lote.created_at || lote.fecha)}
+                      </TableCell>
                       {lotesTipo === 'ventas' && (
                         <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                           {lote.date_from && lote.date_to
@@ -729,6 +744,16 @@ function LotesPanel({ businessId, lotesTipo = 'compras', allBusinesses }) {
                       <TableCell align="right" sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>
                         {lote.business_name || `#${lote.business_id}`}
                       </TableCell>
+
+                      {/* ← CELDA NUEVA: Sucursal */}
+                      <TableCell sx={{ fontSize: '0.85rem' }}>
+                        {lote.branch_name
+                          ? <Chip size="small" label={lote.branch_name}
+                            sx={{ fontSize: '0.75rem', bgcolor: `${themeColor}15`, color: themeColor }} />
+                          : <Typography variant="caption" color="text.disabled">Principal</Typography>
+                        }
+                      </TableCell>
+
                       <TableCell align="center">
                         <Stack direction="row" spacing={0.5} justifyContent="center">
                           {/* Vista previa */}
@@ -914,8 +939,8 @@ export default function ConfiguracionMain() {
         let totalOverrides = 0;
         try {
           const pcData = await PriceConfigAPI.getAll(Number(businessId));
-          const byArticle   = pcData?.byArticle   || {};
-          const byRubro     = pcData?.byRubro     || {};
+          const byArticle = pcData?.byArticle || {};
+          const byRubro = pcData?.byRubro || {};
           const byAgrupacion = pcData?.byAgrupacion || {};
 
           // Contar cualquier configuración individual activa
@@ -1430,7 +1455,8 @@ export default function ConfiguracionMain() {
             onClick={() => executeGlobalSave(false)}
             variant="contained"
             size="small"
-            sx={{ textTransform: 'none', justifyContent: 'flex-start',
+            sx={{
+              textTransform: 'none', justifyContent: 'flex-start',
               bgcolor: 'var(--color-primary)',
               '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' }
             }}

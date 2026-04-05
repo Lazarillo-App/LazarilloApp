@@ -110,7 +110,7 @@ export function BranchProvider({ children }) {
   const activeBranch = useMemo(() => {
     if (activeBranchId === null) return null;
     if (activeBranchId === MAIN_BRANCH_ID) return mainBranch;
-    return rawBranches.find(b => b.id === activeBranchId) || null;
+    return rawBranches.find(b => Number(b.id) === Number(activeBranchId)) || null;
   }, [activeBranchId, rawBranches, mainBranch]);
 
   // branch_id para usar en queries: null = todas, undefined = sin filtro (principal = sin branch_id)

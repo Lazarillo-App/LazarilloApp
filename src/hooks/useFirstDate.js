@@ -11,31 +11,33 @@ import { BASE } from '../servicios/apiBase';
  * @param {'sales'|'purchases'}  type      - qué tipo de primera fecha buscar
  * @returns {{ firstDate: string|null, loadingFirst: boolean }}
  */
-export function useFirstDate(businessId, type = 'sales') {
-  const [firstDate,    setFirstDate]    = useState(null);
+export function useFirstDate(businessId, type = 'sales', branchId = null) {
+  const [firstDate, setFirstDate] = useState(null);
   const [loadingFirst, setLoadingFirst] = useState(false);
 
   useEffect(() => {
-    setFirstDate(null);       // limpiar al cambiar negocio o tipo
+    setFirstDate(null);
     if (!businessId) return;
 
     const token = localStorage.getItem('token') || '';
-    const bid   = String(businessId);
-
-    // Ambos endpoints necesitan el mismo header de autenticación
+    const bid = String(businessId);
     const headers = {
-      'Content-Type':  'application/json',
+      'Content-Type': 'application/json',
       'X-Business-Id': bid,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
     let url;
     if (type === 'purchases') {
-      // GET /api/purchases/first-date  →  { ok: true, firstDate: "yyyy-MM-dd" | null }
       url = `${BASE}/purchases/first-date`;
     } else {
-      // GET /api/businesses/:id/sales/first-date  →  { first_date: "yyyy-MM-dd" | null }
-      url = `${BASE}/businesses/${bid}/sales/first-date`;
+      // Agregar branch_id al query si es sucursal real
+      const branchParam = branchId && branchId !== 'main'
+        ? `?branch_id=${branchId}`
+        : branchId === 'main'
+          ? `?branch_id=main`
+          : '';
+      url = `${BASE}/businesses/${bid}/sales/first-date${branchParam}`;
     }
 
     let cancelled = false;
@@ -45,7 +47,6 @@ export function useFirstDate(businessId, type = 'sales') {
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => {
         if (cancelled) return;
-        // ventas devuelve { first_date }, compras devuelve { firstDate }
         const date = d?.first_date ?? d?.firstDate ?? null;
         if (date) setFirstDate(date);
       })
@@ -53,7 +54,7 @@ export function useFirstDate(businessId, type = 'sales') {
       .finally(() => { if (!cancelled) setLoadingFirst(false); });
 
     return () => { cancelled = true; };
-  }, [businessId, type]);
+  }, [businessId, type, branchId]);
 
   return { firstDate, loadingFirst };
 }

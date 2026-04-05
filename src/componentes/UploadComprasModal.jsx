@@ -152,8 +152,8 @@ function InstructionsModal({ open, onClose, themeColors }) {
 }
 
 // ─── Componente principal ───
-export default function UploadComprasModal({ open, onClose, businessId, onSuccess }) {
-  const { branches, activeBranchId } = useBranch() || {};
+export default function UploadComprasModal({ open, onClose, businessId, onSuccess, activeBranchId }) {
+  const { branches, hasBranches } = useBranch() || {};
   const [branchId, setBranchId] = useState(null);
   React.useEffect(() => { if (open) setBranchId(activeBranchId ?? null); }, [open, activeBranchId]);
 
@@ -188,7 +188,9 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
     try {
       const formData = new FormData();
       formData.append('file', file);
-      if (branchId) formData.append('branch_id', String(branchId));
+      if (branchId !== null && branchId !== undefined && branchId !== '') {
+        formData.append('branch_id', String(branchId));
+      }
 
       const token    = localStorage.getItem('token');
       const response = await fetch(
@@ -309,6 +311,12 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                         label={`Compras para: ${branches.find(b => b.id === branchId)?.name || branchId}`} />
                     )}
                   </Box>
+                )}
+
+                {hasBranches && !branchId && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <strong>Seleccioná una sucursal</strong> antes de importar las compras.
+                  </Alert>
                 )}
 
                 <Typography variant="caption" display="block" sx={{ mb: 1 }}>
@@ -497,7 +505,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
               </Button>
               <Button
                 onClick={handleUpload}
-                disabled={!file || uploading}
+                disabled={!file || uploading || (hasBranches && !branchId)}
                 variant="contained"
                 startIcon={uploading ? null : <CloudUploadIcon />}
                 size="large"

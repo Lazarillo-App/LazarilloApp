@@ -128,9 +128,6 @@ export default function ArticulosMain(props) {
   const [dlgConfirm, setDlgConfirm] = useState(null);
   const prevConfigRef = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
   const [priceConfig, setPriceConfig] = useState({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
-  // Bump counter: cuando sube, TablaArticulos limpia sus overrides temporales (objetivos locales)
-  // y re-lee todo desde priceConfig. Se incrementa tras cada guardado de agrupación/rubro/global.
-  const [priceConfigKey, setPriceConfigKey] = useState(0);
   const [globalCostoIdeal, setGlobalCostoIdeal] = useState(30); // default 30%, se pisa con el de /config
   // Estado de sincronización — se activa con sync:start y se apaga con sync:completed
   // Al montar, verificar si hay un sync en curso (puede haberse iniciado antes de navegar aquí)
@@ -156,13 +153,7 @@ export default function ArticulosMain(props) {
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
 
-  const { activeBranchId, activeBranch, branches: allBranches } = useBranch() || {};
-
-  // Limpiar overrides al cambiar de negocio para evitar que
-  // los valores del negocio anterior se sumen al nuevo
-  useEffect(() => {
-    setVentasOverrides(new Map());
-  }, [activeBizId]);
+  const { activeBranchId, activeBranch, activeBranchFilter, branches: allBranches, rawBranches } = useBranch() || {};
 
   // Inicializar rango con valores reales desde el inicio
   const [rango, setRango] = useState(() => {
@@ -177,20 +168,47 @@ export default function ArticulosMain(props) {
     return lastNDaysUntilYesterday(daysByMode(rango.mode || '7'));
   }, [rango]);
 
+  useEffect(() => {
+  console.log('[DEBUG] activeBranchFilter:', activeBranchFilter);
+  console.log('[DEBUG] branchId a useSalesData:', 
+    activeBranchFilter?.mode === 'main' ? 'main'
+    : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
+    : 'main'
+  );
+}, [activeBranchFilter]);
+
+  const periodoRef = useRef(periodo);
+  const sidebarScrollRef = useRef(null);   // para preservar scroll del sidebar
+  useEffect(() => {
+    periodoRef.current = periodo;
+  }, [periodo]);
+
+  // Limpiar overrides al cambiar de negocio para evitar que
+  // los valores del negocio anterior se sumen al nuevo
+  useEffect(() => {
+    setVentasOverrides(new Map());
+  }, [activeBizId]);
+
   // Ventas por sucursal — solo cuando hay 2+ sucursales
   const [ventasMapByBranch, setVentasMapByBranch] = React.useState({});
   useEffect(() => {
-    const branches = allBranches || [];
-    if (branches.length < 2 || !activeBizId || !periodo.from || !periodo.to) {
+    
+    // Solo calcular cuando está en modo "Todas" — rawBranches son las sucursales reales
+    const branches = rawBranches || [];
+    if (branches.length === 0 || !activeBizId || !periodo.from || !periodo.to) {
       setVentasMapByBranch({});
       return;
     }
+    console.log('[DEBUG] ventasMapByBranch fetch - branches:', branches.map(b => b.id));
     let cancelled = false;
     const token = localStorage.getItem('token') || '';
     const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
+    // Solo fetchear sucursales reales para columnas paralelas
+    // La columna "Ventas $" ya muestra el total de todas
+    const allToFetch = [...branches];
     Promise.all(
-      branches.map(async (branch) => {
-        const branchParam = `&branch_id=${branch.id}`;
+      allToFetch.map(async (branch) => {
+        const branchParam = branch.isMain ? '' : `&branch_id=${branch.id}`;
         const url = MAXI_ENABLED
           ? `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/items?from=${periodo.from}&to=${periodo.to}${branchParam}`
           : `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/summary?from=${periodo.from}&to=${periodo.to}&source=csv${branchParam}`;
@@ -220,12 +238,6 @@ export default function ArticulosMain(props) {
 
   usePersistUiActions(activeBizId);
 
-  const periodoRef = useRef(periodo);
-  const sidebarScrollRef = useRef(null);   // para preservar scroll del sidebar
-  useEffect(() => {
-    periodoRef.current = periodo;
-  }, [periodo]);
-
   const {
     ventasMap,
     ventasPorArticulo,
@@ -238,7 +250,10 @@ export default function ArticulosMain(props) {
     to: periodo.to,
     enabled: !!activeBizId && !!periodo.from && !!periodo.to,
     syncVersion,
-    branchId: activeBranchId ?? null,
+    // 'main' = sin branch_id, null = todas, number = sucursal específica
+    branchId: activeBranchFilter?.mode === 'main' ? 'main'
+      : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
+        : 'main',   // modo 'all' → columna base = solo principal
   });
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
@@ -337,8 +352,17 @@ export default function ArticulosMain(props) {
 
   const [orgAssignedIds, setOrgAssignedIds] = React.useState(null);
 
+
+  // branchId efectivo para firstDate
+  const effectiveBranchIdForFirst = activeBranchFilter?.mode === 'branch'
+    ? activeBranchFilter.branchId
+    : activeBranchFilter?.mode === 'main'
+      ? 'main'
+      : null; // 'all' → primera fecha global
+
   // Primera fecha histórica de ventas — específica por negocio
-  const { firstDate: firstDateVentas, loadingFirst: loadingFirstVentas } = useFirstDate(activeBizId, 'sales');
+  const { firstDate: firstDateVentas, loadingFirst: loadingFirstVentas } =
+    useFirstDate(activeBizId, 'sales', effectiveBranchIdForFirst);
 
   // Si el rango activo es "Histórico" y cambia el negocio/firstDate, actualizar el from automáticamente
   useEffect(() => {
@@ -453,18 +477,13 @@ export default function ArticulosMain(props) {
   const handlePriceConfigSave = React.useCallback((body) => {
     const bizId = Number(activeBizId);
 
-    // Cambio de artículo individual → guardar directo, sin preguntar
+    // Si es un cambio de artículo individual → guardar directo, sin preguntar
     const isIndividual = body.scope === 'articulo' && !body.articleIds?.length;
 
-    const doSave = async (pisarTodo, idsAExcluir = []) => {
+    const doSave = async (pisarTodo) => {
       const prevConfig = JSON.parse(JSON.stringify(priceConfig));
       prevConfigRef.current = prevConfig;
-
-      // Si pisarTodo=false enviamos la lista de IDs a excluir para que el
-      // backend no toque sus registros individuales en DB
-      const bodyFinal = pisarTodo
-        ? { ...body, pisarTodo: true }
-        : { ...body, excluirIds: idsAExcluir.map(String) };
+      const bodyFinal = pisarTodo ? { ...body, pisarTodo: true } : body;
 
       try {
         await PriceConfigAPI.save(bizId, bodyFinal);
@@ -475,12 +494,6 @@ export default function ArticulosMain(props) {
           byAgrupacion: r?.byAgrupacion || {},
         };
         setPriceConfig(newConfig);
-
-        // Cuando NO se pisa todo, el estado local de objetivos en TablaArticulos puede
-        // tener valores temporales para artículos que se decidió NO tocar.
-        // Forzamos que TablaArticulos re-lea desde priceConfig limpiando objetivosExternos.
-        // Lo hacemos via un pequeño bump del reloadKey de price config (no recarga artículos).
-        setPriceConfigKey(k => k + 1);
 
         emitUiAction({
           kind: 'objetivo_update',
@@ -497,29 +510,25 @@ export default function ArticulosMain(props) {
     };
 
     if (!isIndividual && body.objetivo != null) {
+      // Solo preguntar si alguno de los artículos afectados ya tiene objetivo individual
       const articleIds = body.articleIds || [];
       const byArticle = priceConfig.byArticle || {};
-
-      // Detectar artículos con CUALQUIER override individual: objetivo % O precio manual $
-      // Ambos son configuraciones manuales que el usuario eligió explícitamente
-      const conOverrideIndividual = articleIds.filter(id => {
+      const conObjetivoIndividual = articleIds.filter(id => {
         const cfg = byArticle[String(id)];
-        return cfg?.objetivo != null || cfg?.precioManual != null;
+        return cfg?.objetivo != null;
       });
 
-      if (conOverrideIndividual.length > 0) {
+      if (conObjetivoIndividual.length > 0) {
         setDlgConfirm({
-          body,
-          doSave,
+          body, doSave,
           total: articleIds.length,
-          conOverride: conOverrideIndividual.length,
-          idsConOverride: conOverrideIndividual,
+          conOverride: conObjetivoIndividual.length,
         });
         return;
       }
     }
 
-    doSave(false, []);
+    doSave(false);
   }, [activeBizId, priceConfig, setPriceConfig]);
 
   // ── Bulk precioManual: un save por artículo + un solo getAll al final ──
@@ -848,10 +857,10 @@ export default function ArticulosMain(props) {
   });
 
   useEffect(() => {
-    const bid = activeBizId;
-    if (!bid) return;
-    setSyncVersion(v => v + 1);
-  }, [periodo.from, periodo.to, activeBizId]);
+  if (!activeBizId) return;
+  clearVentasCache();
+  setSyncVersion(v => v + 1);
+}, [periodo.from, periodo.to, activeBizId, activeBranchFilter?.mode, activeBranchFilter?.branchId]);
 
   const handleCategoriasLoaded = useCallback((catsRaw) => {
     const normalizadas = (catsRaw || []).map((sub) => ({
@@ -1038,7 +1047,6 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     if (!periodo?.from || !periodo?.to) return;
-    clearVentasCache();
     setSyncVersion((v) => v + 1);
   }, [periodo?.from, periodo?.to]);
 
@@ -2000,6 +2008,7 @@ export default function ArticulosMain(props) {
             onChange={setRango}
             firstDate={firstDateVentas}
             loadingFirst={loadingFirstVentas}
+            labelOverride={activeBranchFilter?.mode === 'all' ? 'Histórico' : null}
           />
           <VentasActionsMenu
             rango={rango}
@@ -2059,7 +2068,6 @@ export default function ArticulosMain(props) {
             onManualPick={markManualPick}
             onChangeListMode={handleChangeListMode}
             priceConfig={priceConfig}
-            priceConfigKey={priceConfigKey}
             globalCostoIdeal={globalCostoIdeal}
             onPriceConfigSave={handlePriceConfigSave}
             agrupacionArticuloIds={agrupacionArticuloIds}
@@ -2091,8 +2099,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
-            branches={(allBranches || []).length > 1 ? allBranches : []}
-            ventasMapByBranch={ventasMapByBranch}
+            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
+            ventasMapByBranch={activeBranchFilter?.mode === 'all' ? ventasMapByBranch : {}}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             orgAssignedIds={orgAssignedIds}
@@ -2129,7 +2137,6 @@ export default function ArticulosMain(props) {
             discIds={effectiveDiscIds}
             recetasCostos={recetasCostos}
             priceConfig={priceConfig}
-            priceConfigKey={priceConfigKey}
             globalCostoIdeal={globalCostoIdeal}
             onPriceConfigSave={handlePriceConfigSave}
             onBulkManualSave={handleBulkManualSave}
@@ -2148,7 +2155,7 @@ export default function ArticulosMain(props) {
         </Alert>
       </Snackbar>
 
-      {/* ── Diálogo de confirmación — ¿pisar overrides individuales? ── */}
+      {/* ── Diálogo de confirmación — ¿pisar overrides manuales? ── */}
       <Dialog open={!!dlgConfirm} onClose={() => setDlgConfirm(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
           Cambio de objetivo %
@@ -2156,8 +2163,8 @@ export default function ArticulosMain(props) {
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 1 }}>
             {dlgConfirm?.conOverride === dlgConfirm?.total
-              ? `Los ${dlgConfirm?.total} artículos ya tienen configuración individual (objetivo % o precio manual).`
-              : `${dlgConfirm?.conOverride} de ${dlgConfirm?.total} artículos tienen configuración individual (objetivo % o precio manual).`
+              ? `Los ${dlgConfirm?.total} artículos ya tienen objetivo % individual.`
+              : `${dlgConfirm?.conOverride} de ${dlgConfirm?.total} artículos ya tienen objetivo % individual.`
             }
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -2166,31 +2173,27 @@ export default function ArticulosMain(props) {
         </DialogContent>
         <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
           <Button
-            onClick={() => {
-              // Pasar los IDs con override para que el backend los excluya
-              dlgConfirm?.doSave(false, dlgConfirm?.idsConOverride || []);
-              setDlgConfirm(null);
-            }}
+            onClick={() => { dlgConfirm?.doSave(false); setDlgConfirm(null); }}
             variant="contained"
             size="small"
             sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
           >
-            Solo los que NO tienen configuración individual ({(dlgConfirm?.total ?? 0) - (dlgConfirm?.conOverride ?? 0)} artículos)
+            Solo los que NO tienen objetivo individual ({(dlgConfirm?.total ?? 0) - (dlgConfirm?.conOverride ?? 0)} artículos)
           </Button>
           <Button
-            onClick={() => { dlgConfirm?.doSave(true, []); setDlgConfirm(null); }}
+            onClick={() => { dlgConfirm?.doSave(true); setDlgConfirm(null); }}
             variant="outlined"
             size="small"
             sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
           >
-            Aplicar a todos (incluye los {dlgConfirm?.conOverride} con configuración individual)
+            Aplicar a todos (incluye los {dlgConfirm?.conOverride} con objetivo individual)
           </Button>
           <Button
             onClick={() => setDlgConfirm(null)}
             variant="text" size="small" color="inherit"
             sx={{ textTransform: 'none' }}
           >
-            Cancelar — no cambiar nada
+            Cancelar
           </Button>
         </DialogActions>
       </Dialog>
@@ -2207,6 +2210,7 @@ export default function ArticulosMain(props) {
         }}
         instructionImage1={instructionImage1}
         instructionImage2={instructionImage2}
+        activeBranchId={activeBranch?.id}
       />
 
       {/* Modal de creación de sub-negocio — aquí para evitar re-renders de SidebarCategorias */}

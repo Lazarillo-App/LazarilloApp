@@ -159,8 +159,9 @@ export default function UploadCSVModal({
   onSuccess,
   instructionImage1,
   instructionImage2,
+  activeBranchId,
 }) {
-  const { branches, activeBranchId } = useBranch() || {};
+  const { branches, hasBranches } = useBranch() || {};
   const [branchId, setBranchId] = useState(null);
 
   // Inicializar con la sucursal activa cuando se abre
@@ -213,7 +214,10 @@ export default function UploadCSVModal({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      if (branchId) formData.append('branch_id', String(branchId));
+      // branchId is always a real branch ID (number) since null is blocked
+      if (branchId !== null && branchId !== undefined && branchId !== '') {
+        formData.append('branch_id', String(branchId));
+      }
 
       const token = localStorage.getItem('token');
       const response = await fetch(
@@ -382,6 +386,14 @@ export default function UploadCSVModal({
                   </Box>
                 )}
               </Box>
+            )}
+
+            {/* Advertencia: sucursal requerida */}
+            {hasBranches && !branchId && file && !success && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <strong>Seleccioná una sucursal</strong> antes de importar.
+                Todos los datos deben asignarse a una sucursal específica.
+              </Alert>
             )}
 
             {/* Mensaje informativo inicial */}
@@ -605,7 +617,7 @@ export default function UploadCSVModal({
               </Button>
               <Button
                 onClick={handleUpload}
-                disabled={!file || uploading}
+                disabled={!file || uploading || (hasBranches && !branchId)}
                 variant="contained"
                 startIcon={uploading ? null : <CloudUploadIcon />}
                 size="large"

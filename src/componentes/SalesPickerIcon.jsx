@@ -20,8 +20,8 @@ import {
 import { es } from 'date-fns/locale';
 
 /* ─── helpers ─── */
-const ayer      = () => subDays(new Date(), 1);
-const ymd       = (d) => format(d, 'yyyy-MM-dd');
+const ayer = () => subDays(new Date(), 1);
+const ymd = (d) => format(d, 'yyyy-MM-dd');
 const parseDate = (s) => s ? parseISO(s) : null;
 
 function buildPresets(firstDate) {
@@ -30,17 +30,17 @@ function buildPresets(firstDate) {
   const prevY = today.getFullYear() - 1;
 
   return [
-    { id: '7',         label: '7 días',     calc: () => lastNDaysUntilYesterday(7) },
-    { id: '30',        label: '30 días',    calc: () => lastNDaysUntilYesterday(30) },
-    { id: '90',        label: '90 días',    calc: () => lastNDaysUntilYesterday(90) },
-    { id: 'mtd',       label: 'Mes actual', calc: () => monthToDateUntilYesterday() },
-    { id: 'ytd',       label: 'Año actual', calc: () => yearToDateUntilYesterday() },
+    { id: '7', label: '7 días', calc: () => lastNDaysUntilYesterday(7) },
+    { id: '30', label: '30 días', calc: () => lastNDaysUntilYesterday(30) },
+    { id: '90', label: '90 días', calc: () => lastNDaysUntilYesterday(90) },
+    { id: 'mtd', label: 'Mes actual', calc: () => monthToDateUntilYesterday() },
+    { id: 'ytd', label: 'Año actual', calc: () => yearToDateUntilYesterday() },
     {
       id: 'prev_month',
       label: format(prevM, 'MMMM yyyy', { locale: es }).replace(/^\w/, c => c.toUpperCase()),
       calc: () => ({
         from: ymd(new Date(prevM.getFullYear(), prevM.getMonth(), 1)),
-        to:   ymd(new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0)),
+        to: ymd(new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0)),
       }),
     },
     {
@@ -61,13 +61,13 @@ function buildPresets(firstDate) {
 function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc }) {
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(viewDate), { weekStartsOn: 0 });
-    const end   = endOfWeek(endOfMonth(viewDate),     { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(viewDate), { weekStartsOn: 0 });
     return eachDayOfInterval({ start, end });
   }, [viewDate]);
 
   const maxDate = ayer();
-  const fromD   = parseDate(fromDate);
-  const toD     = parseDate(toDate);
+  const fromD = parseDate(fromDate);
+  const toD = parseDate(toDate);
 
   const isInRange = (day) => {
     if (!fromD || !toD) return false;
@@ -139,11 +139,11 @@ function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc
         {days.map((day, i) => {
           const outOfMonth = !isSameMonth(day, viewDate);
           const isDisabled = isAfter(day, maxDate);
-          const isFrom     = fromD && isSameDay(day, fromD);
-          const isTo_      = toD   && isSameDay(day, toD);
-          const inRange    = isInRange(day);
-          const isEnd      = isFrom || isTo_;
-          const todayDay   = isToday(day);
+          const isFrom = fromD && isSameDay(day, fromD);
+          const isTo_ = toD && isSameDay(day, toD);
+          const inRange = isInRange(day);
+          const isEnd = isFrom || isTo_;
+          const todayDay = isToday(day);
 
           return (
             <Box
@@ -191,13 +191,13 @@ function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc
 
 /* ─── Componente principal ─── */
 // firstDate y loadingFirst vienen del padre — cada contexto (ventas/compras) fetchea el suyo
-export default function SalesPickerIcon({ value, onChange, firstDate = null, loadingFirst = false }) {
+export default function SalesPickerIcon({ value, onChange, firstDate = null, loadingFirst = false, labelOverride = null }) {
   const { mode, from, to } = value;
 
-  const [anchorEl,      setAnchorEl]      = useState(null);
-  const [customFrom,    setCustomFrom]    = useState('');
-  const [customTo,      setCustomTo]      = useState('');
-  const [viewDate,      setViewDate]      = useState(new Date());
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [viewDate, setViewDate] = useState(new Date());
   const [selectingFrom, setSelectingFrom] = useState(true);
 
   const open = Boolean(anchorEl);
@@ -207,8 +207,8 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
     if (typeof window === 'undefined') return { primary: '#3b82f6', onPrimary: '#ffffff' };
     const s = getComputedStyle(document.documentElement);
     return {
-      primary:   s.getPropertyValue('--color-primary')?.trim()  || '#3b82f6',
-      onPrimary: s.getPropertyValue('--on-primary')?.trim()     || '#ffffff',
+      primary: s.getPropertyValue('--color-primary')?.trim() || '#3b82f6',
+      onPrimary: s.getPropertyValue('--on-primary')?.trim() || '#ffffff',
     };
   };
   const [tc, setTc] = useState(readColors);
@@ -225,7 +225,7 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
     setAnchorEl(e.currentTarget);
     // ✅ Sanitizar: solo usar from/to si son YYYY-MM-DD válidos
     const safeFrom = from && /^\d{4}-\d{2}-\d{2}/.test(String(from)) ? from : '';
-    const safeTo   = to   && /^\d{4}-\d{2}-\d{2}/.test(String(to))   ? to   : '';
+    const safeTo = to && /^\d{4}-\d{2}-\d{2}/.test(String(to)) ? to : '';
     const base = safeFrom ? parseISO(safeFrom) : new Date();
     setViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
     setCustomFrom(safeFrom);
@@ -273,8 +273,8 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
 
   /* ── label botón ── */
   const rangeLabel = useMemo(() => {
+    if (labelOverride) return labelOverride;   // ← nueva línea
     if (!from || !to) return 'Seleccionar período';
-    // ✅ Validar formato YYYY-MM-DD antes de parsear — evita crash con fechas malformadas
     if (!/^\d{4}-\d{2}-\d{2}/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}/.test(String(to))) {
       return 'Seleccionar período';
     }
@@ -283,11 +283,11 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
     try {
       return `${format(parseISO(from), 'dd/MM/yy', { locale: es })} — ${format(parseISO(to), 'dd/MM/yy', { locale: es })}`;
     } catch { return 'Período seleccionado'; }
-  }, [from, to, mode]);
+  }, [labelOverride, from, to, mode]);
 
   const fromLabel = customFrom && /^\d{4}-\d{2}-\d{2}/.test(customFrom) ? format(parseISO(customFrom), 'dd/MM/yyyy') : '—';
-  const toLabel   = customTo   && /^\d{4}-\d{2}-\d{2}/.test(customTo)   ? format(parseISO(customTo),   'dd/MM/yyyy') : '—';
-  const canApply  = customFrom && customTo && customFrom <= customTo;
+  const toLabel = customTo && /^\d{4}-\d{2}-\d{2}/.test(customTo) ? format(parseISO(customTo), 'dd/MM/yyyy') : '—';
+  const canApply = customFrom && customTo && customFrom <= customTo;
 
   const presetSx = (pid) => ({
     textTransform: 'none', fontSize: 13, flex: '1 1 auto',

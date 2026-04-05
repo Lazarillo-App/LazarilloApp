@@ -12,7 +12,7 @@ import ArticulosMain from './paginas/ArticulosMain';
 import ConfiguracionMain from './paginas/ConfiguracionMain';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
-
+import UploadFoto from './paginas/UploadFoto';
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import AppAlertModal from './componentes/AppAlertModal';
 import AppPromptModal from './componentes/AppPromptModal';
@@ -206,6 +206,7 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/upload-foto" element={<UploadFoto />} />
 
         <Route element={<ProtectedRoute />}>
           {/* ADMIN independiente del negocio */}
@@ -242,7 +243,7 @@ export default function App() {
               <Route
                 path="/insumos"
                 element={
-                  <Insumos/>
+                  <Insumos />
                 }
               />
               <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
