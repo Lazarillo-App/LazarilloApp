@@ -36,7 +36,7 @@ const ColorField = ({ id, label, value, onChange }) => (
 export default function BusinessEditModal({ open, business, onClose, onSaved }) {
   /* ───────────────── Wizard ───────────────── */
   // steps: 0=Datos, 1=Estilos, 2=Info, 3=Maxi (sin Redes)
-  const STEPS = ["Datos", "Estilos", "Info", "Maxi"];
+  const STEPS = ["Datos Principales", "Estilos", "Información", "Conexión a MaxiRest"];
   const [step, setStep] = useState(0);
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const prev = () => setStep((s) => Math.max(0, s - 1));

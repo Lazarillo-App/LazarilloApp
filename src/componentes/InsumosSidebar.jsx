@@ -4,23 +4,20 @@
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  ToggleButtonGroup,
-  ToggleButton,
-  IconButton,
-  Tooltip,
+  FormControl, InputLabel, Select, MenuItem,
+  ToggleButtonGroup, ToggleButton,
+  IconButton, Tooltip, Box, Typography,
 } from '@mui/material';
+import AddIcon        from '@mui/icons-material/Add';
+import DownloadIcon   from '@mui/icons-material/Download';
+import DeleteIcon     from '@mui/icons-material/Delete';
+import EditIcon       from '@mui/icons-material/Edit';
+import StarIcon       from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 
 import InsumoRubroAccionesMenu from './InsumoRubroAccionesMenu';
 import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
 import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
 
@@ -107,9 +104,8 @@ function InsumosSidebar({
 
   businessId,
   originalBusinessId,
-  // vista viene de InsumosMain y refleja la preferencia guardada para la agrupación actual
   vista,
-  onVistaChange,  // = handleChangeListMode en InsumosMain (persiste + actualiza estado)
+  onVistaChange,
 
   groups = [],
   groupsLoading,
@@ -138,6 +134,13 @@ function InsumosSidebar({
   discontinuadosGroupId = null,
 
   onManualPick,
+
+  // Nuevo: descarga y eliminación de listas
+  onDownloadList,
+  onDeleteList,
+  insumoLists = [],
+  activeInsumoListId = null,
+  onSelectInsumoList,
   metaById,
 
   activeDivisionId,
@@ -444,20 +447,98 @@ function InsumosSidebar({
     return m;
   }, [rubrosMap]);
 
+  const [activeTab, setActiveTab] = useState('agrupaciones');
+
   return (
     <div className="sidebar">
       <div style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        background: '#fafafa',
-        paddingBottom: 4,
-        borderBottom: '1px solid #eee',
-        marginBottom: 4,
+        position: 'sticky', top: 0, zIndex: 10,
+        background: '#fafafa', paddingBottom: 4,
+        borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
+        {/* Toggle Agrupaciones / Listas */}
+        <Box sx={{ display: 'flex', mb: 1, mt: 1, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
+          {['agrupaciones', 'listas'].map(tab => (
+            <Box
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              sx={{
+                flex: 1, textAlign: 'center', py: 0.75, cursor: 'pointer', fontSize: '0.8rem',
+                fontWeight: activeTab === tab ? 700 : 400,
+                background: activeTab === tab ? 'var(--color-primary, #1976d2)' : 'transparent',
+                color: activeTab === tab ? '#fff' : 'text.secondary',
+                textTransform: 'capitalize', transition: 'all .15s',
+                userSelect: 'none',
+              }}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Box>
+          ))}
+        </Box>
+
+        {/* ── Panel Listas ─────────────────────────────────────── */}
+        {activeTab === 'listas' && (
+          <Box sx={{ px: 1, pb: 1 }}>
+            {(!insumoLists || insumoLists.length === 0) ? (
+              <Typography variant="caption" color="text.secondary" sx={{ px: 0.5, display: 'block', fontStyle: 'italic' }}>
+                No hay listas. Usá "Seleccionar" arriba para crear una.
+              </Typography>
+            ) : (
+              insumoLists.map(list => {
+                const isActive = activeInsumoListId === list.id;
+                return (
+                  <Box
+                    key={list.id}
+                    onClick={() => onSelectInsumoList?.(list.id)}
+                    sx={{
+                      display: 'flex', alignItems: 'center',
+                      px: 1, py: 0.6, borderRadius: 1, cursor: 'pointer',
+                      background: isActive ? 'var(--color-primary, #1976d2)' : 'transparent',
+                      color: isActive ? '#fff' : 'inherit',
+                      '&:hover': { background: isActive ? 'var(--color-primary, #1976d2)' : '#f0f0f0' },
+                      '&:hover .la': { opacity: 1 },
+                      '& .la': { opacity: 0, transition: 'opacity .15s' },
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ flex: 1, fontSize: '0.82rem', fontWeight: isActive ? 700 : 500, color: 'inherit' }}>
+                      {list.name}
+                      <span style={{ fontSize: '0.72rem', opacity: 0.6, marginLeft: 4 }}>
+                        ({list.item_count || 0})
+                      </span>
+                    </Typography>
+                    <Box className="la" sx={{ display: 'flex' }} onClick={e => e.stopPropagation()}>
+                      {onDownloadList && (
+                        <Tooltip title="Descargar compras">
+                          <IconButton size="small" onClick={() => onDownloadList(list.id, list.name)}
+                            sx={{ color: isActive ? '#fff' : 'inherit' }}>
+                            <DownloadIcon sx={{ fontSize: 15 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {onDeleteList && (
+                        <Tooltip title="Eliminar lista">
+                          <IconButton size="small" onClick={() => {
+                            if (window.confirm(`¿Eliminar "${list.name}"?`)) onDeleteList(list.id);
+                          }} sx={{ color: isActive ? '#ffaaaa' : 'error.main' }}>
+                            <DeleteIcon sx={{ fontSize: 15 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </Box>
+                );
+              })
+            )}
+          </Box>
+        )}
+      </div>
+
+      {/* ── Panel Agrupaciones ────────────────────────────────── */}
+      {activeTab === 'agrupaciones' && (
+        <>
         <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
-          <InputLabel>Agrupaciones</InputLabel>
-          <Select
+            <InputLabel>Agrupaciones</InputLabel>
+            <Select
             label="Agrupaciones"
             sx={{ fontWeight: '500' }}
             value={selectedGroupValue}
@@ -594,7 +675,6 @@ function InsumosSidebar({
             <ToggleButton value="elaborados">Elaborados</ToggleButton>
           </ToggleButtonGroup>
         </div>
-      </div>
 
       <ul className="sidebar-draggable-list">
         {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}
@@ -678,6 +758,7 @@ function InsumosSidebar({
           onAssign={handleDivisionAssign}
         />
       )}
+      </>)}
     </div>
   );
 }

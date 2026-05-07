@@ -37,7 +37,7 @@ const ColorField = ({ id, label, value, onChange }) => (
 export default function BusinessCreateModal({ open, onClose, onCreateComplete }) {
   // pasos: 0=Datos, 1=Estilos, 2=Redes, 3=Maxi
   const [step, setStep] = useState(0);
-  const steps = ["Datos", "Estilos", "Redes", "Maxi"];
+  const steps = ["Datos Principales", "Estilos", "Redes Sociales", "Conexión a MaxiRest"];
 
   const [bizCreated, setBizCreated] = useState(null);
   const [busy, setBusy] = useState(false);

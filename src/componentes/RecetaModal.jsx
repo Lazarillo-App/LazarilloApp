@@ -36,7 +36,8 @@ import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ImageIcon from '@mui/icons-material/Image';
-
+import TuneIcon from '@mui/icons-material/Tune';
+import SortIcon from '@mui/icons-material/Sort';
 import { getReceta, saveReceta } from '@/servicios/apiOrganizations';
 import { insumosList } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
@@ -516,26 +517,34 @@ function VistaCocinaModal({ nombre, rendimiento, items, notas, foto, onClose }) 
  * - Fallback a base64 local si el endpoint no responde
  * - QR para subir desde celular
  */
-function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales, updatedAt, onSave, onClose, articuloId, businessId }) {
+
+function NotasItemModal({
+  supplyNombre, observaciones, fotosUrls: fotosIniciales,
+  updatedAt, onSave, onClose, articuloId, businessId,
+}) {
   const [texto, setTexto] = useState(observaciones || '');
-  // Array de URLs de fotos (múltiples permitidas)
   const [fotos, setFotos] = useState(() => {
     if (!fotosIniciales) return [];
     if (Array.isArray(fotosIniciales)) return fotosIniciales.filter(Boolean);
-    // compatibilidad: si llegó como string (versión anterior)
     if (typeof fotosIniciales === 'string' && fotosIniciales) return [fotosIniciales];
     return [];
   });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [showQR, setShowQR] = useState(false);
+  const [hayFotosQR, setHayFotosQR] = useState(false); // fotos nuevas recibidas del celular
+
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const pollingRef = useRef(null);
+  const textoRef = useRef(texto);
 
-  // QR URL apunta a una página de upload móvil
+  // Mantener textoRef actualizado para usarlo dentro del interval
+  useEffect(() => { textoRef.current = texto; }, [texto]);
+
+  // ── Token QR ──
   const [uploadToken, setUploadToken] = useState(null);
   const [tokenLoading, setTokenLoading] = useState(false);
-  const pollingRef = useRef(null);
 
   const generarToken = async () => {
     if (!articuloId || !businessId) return;
@@ -553,20 +562,20 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
       });
       const data = await res.json();
       if (data.token) {
-        setUploadToken({
-          ...data,
-          uploadUrl: `${window.location.origin}/upload-foto?token=${data.token}`,
-        });
+        const uploadUrl = data.uploadUrl
+          || `${window.location.origin}/upload-foto?token=${data.token}`;
+        setUploadToken({ ...data, uploadUrl });
         setShowQR(true);
         iniciarPolling(data.token);
       }
     } catch (err) {
       console.warn('No se pudo generar token QR:', err);
+      setUploadError('No se pudo generar el QR. Intentá de nuevo.');
     } finally {
       setTokenLoading(false);
     }
   };
-  console.log('QR uploadToken:', uploadToken);
+
   const iniciarPolling = (tok) => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
@@ -580,7 +589,12 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
         if (data.fotos?.length > 0) {
           setFotos(prev => {
             const nuevas = data.fotos.filter(u => !prev.includes(u));
-            return nuevas.length > 0 ? [...prev, ...nuevas] : prev;
+            if (nuevas.length > 0) {
+              setHayFotosQR(true);
+              setUploadError(`📱 ${nuevas.length} foto(s) nueva(s) del celular — guardá para confirmar`);
+              return [...prev, ...nuevas];
+            }
+            return prev;
           });
         }
       } catch { /* ignorar errores de red en polling */ }
@@ -592,11 +606,7 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
 
-  /**
-   * Upload autenticado via backend (server-side Cloudinary, igual que logos).
-   * Endpoint: POST /api/recetas/:articuloId/fotos
-   * Beneficios: usa las credenciales API_KEY/API_SECRET del servidor, nunca expuestas al front.
-   */
+  // ── Upload desde la computadora via backend → Cloudinary ──
   const uploadViaBackend = async (file) => {
     setUploading(true);
     setUploadError('');
@@ -607,7 +617,10 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
 
       const res = await fetch(`${BASE}/recetas/${articuloId || 'general'}/fotos`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId || '') },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Business-Id': String(businessId || ''),
+        },
         body: formData,
       });
 
@@ -620,12 +633,12 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
         throw new Error('Sin URL en respuesta');
       }
     } catch (err) {
-      // Fallback: base64 local si el backend falla
+      // Fallback base64 local si el backend falla
       console.warn('[NotasItemModal] Backend upload falló, usando base64 local:', err.message);
       const reader = new FileReader();
       reader.onload = (ev) => setFotos(prev => [...prev, ev.target.result]);
       reader.readAsDataURL(file);
-      setUploadError('Sin conexión al servidor — foto guardada localmente');
+      setUploadError('Sin conexión al servidor — foto guardada localmente (no persistirá)');
     } finally {
       setUploading(false);
     }
@@ -638,6 +651,11 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
   };
 
   const removePhoto = (idx) => setFotos(prev => prev.filter((_, i) => i !== idx));
+
+  const handleGuardar = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    onSave(texto, fotos);
+  };
 
   return (
     <Box sx={{
@@ -653,6 +671,7 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
         overflowY: 'auto', p: 2.5,
         display: 'flex', flexDirection: 'column', gap: 1.5,
       }}>
+
         {/* ── Header ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Stack direction="row" alignItems="center" spacing={1}>
@@ -678,7 +697,7 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
           inputProps={{ style: { fontSize: '0.88rem', lineHeight: 1.6 } }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') onClose();
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onSave(texto, fotos);
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGuardar();
           }}
         />
 
@@ -691,11 +710,19 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
                 borderRadius: 1.5, overflow: 'hidden',
                 border: '1px solid', borderColor: 'divider', flexShrink: 0,
               }}>
-                <img src={url} alt={`Foto ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                <img
+                  src={url}
+                  alt={`Foto ${idx + 1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
                 <IconButton
                   size="small"
                   onClick={() => removePhoto(idx)}
-                  sx={{ position: 'absolute', top: 2, right: 2, p: '2px', bgcolor: 'rgba(0,0,0,0.55)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' } }}
+                  sx={{
+                    position: 'absolute', top: 2, right: 2, p: '2px',
+                    bgcolor: 'rgba(0,0,0,0.55)', color: '#fff',
+                    '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' },
+                  }}
                 >
                   <CloseIcon sx={{ fontSize: 12 }} />
                 </IconButton>
@@ -704,11 +731,13 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
           </Box>
         )}
 
-        {/* ── Zona de carga de nueva foto ── */}
+        {/* ── Zona de carga ── */}
         <Box sx={{
-          border: '1px dashed', borderColor: 'divider', borderRadius: 1.5,
-          py: 1.5, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75,
-          bgcolor: 'action.hover',
+          border: '1px dashed', borderColor: hayFotosQR ? '#16a34a' : 'divider',
+          borderRadius: 1.5, py: 1.5,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75,
+          bgcolor: hayFotosQR ? '#f0fdf4' : 'action.hover',
+          transition: 'all 0.3s',
         }}>
           {uploading ? (
             <Stack direction="row" alignItems="center" spacing={1} py={0.5}>
@@ -717,38 +746,63 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
             </Stack>
           ) : (
             <>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
-                {fotos.length > 0 ? 'Agregar más fotos' : 'Foto del ingrediente o preparación'}
+              <Typography variant="caption" sx={{ fontSize: '0.72rem', color: hayFotosQR ? '#16a34a' : 'text.secondary' }}>
+                {hayFotosQR
+                  ? '📱 Fotos recibidas del celular'
+                  : fotos.length > 0 ? 'Agregar más fotos' : 'Foto del ingrediente o preparación'
+                }
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
-                <Button size="small" variant="outlined" startIcon={<ImageIcon />}
+                <Button
+                  size="small" variant="outlined"
+                  startIcon={<ImageIcon />}
                   onClick={() => fileInputRef.current?.click()}
-                  sx={{ borderColor: PRIMARY, color: PRIMARY, fontSize: '0.72rem' }}>
+                  sx={{ borderColor: PRIMARY, color: PRIMARY, fontSize: '0.72rem' }}
+                >
                   Archivo
                 </Button>
-                <Button size="small" variant="outlined" startIcon={<PhotoCameraIcon />}
+                <Button
+                  size="small" variant="outlined"
+                  startIcon={<PhotoCameraIcon />}
                   onClick={() => cameraInputRef.current?.click()}
-                  sx={{ borderColor: PRIMARY, color: PRIMARY, fontSize: '0.72rem' }}>
+                  sx={{ borderColor: PRIMARY, color: PRIMARY, fontSize: '0.72rem' }}
+                >
                   Cámara
                 </Button>
-                <Button size="small" variant="outlined"
-                  onClick={() => { if (!uploadToken) { generarToken(); } else { setShowQR(v => !v); } }}
+                <Button
+                  size="small" variant="outlined"
+                  onClick={() => {
+                    if (!uploadToken) { generarToken(); }
+                    else { setShowQR(v => !v); }
+                  }}
                   disabled={tokenLoading}
-                  sx={{ borderColor: '#78350f', color: '#78350f', fontSize: '0.72rem' }}>
+                  sx={{ borderColor: '#78350f', color: '#78350f', fontSize: '0.72rem' }}
+                >
                   {tokenLoading ? '…' : showQR ? 'Ocultar QR' : '📱 QR'}
                 </Button>
               </Stack>
             </>
           )}
 
+          {/* Mensaje de estado / fotos QR recibidas */}
           {uploadError && (
-            <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.7rem', textAlign: 'center', px: 1 }}>
+            <Typography variant="caption"
+              sx={{
+                fontSize: '0.7rem', textAlign: 'center', px: 1,
+                color: hayFotosQR ? '#16a34a' : 'warning.main',
+                fontWeight: hayFotosQR ? 600 : 400,
+              }}
+            >
               {uploadError}
             </Typography>
           )}
 
+          {/* QR */}
           {showQR && uploadToken && (
-            <Box sx={{ mt: 0.5, p: 1.5, bgcolor: '#fff', borderRadius: 1.5, border: '1px solid #e7e5e4', textAlign: 'center' }}>
+            <Box sx={{
+              mt: 0.5, p: 1.5, bgcolor: '#fff',
+              borderRadius: 1.5, border: '1px solid #e7e5e4', textAlign: 'center',
+            }}>
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(uploadToken.uploadUrl)}`}
                 alt="QR para subir foto"
@@ -762,10 +816,9 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
               </Typography>
             </Box>
           )}
-
         </Box>
 
-        {/* inputs ocultos — multiple permite seleccionar varias a la vez */}
+        {/* inputs ocultos */}
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFile} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
 
@@ -776,20 +829,40 @@ function NotasItemModal({ supplyNombre, observaciones, fotosUrls: fotosIniciales
           </Typography>
         )}
 
-        {/* Acciones */}
+        {/* ── Acciones ── */}
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
           <Button
             size="small"
             variant="contained"
-            onClick={() => onSave(texto, fotos)}
+            onClick={handleGuardar}
             disabled={uploading}
-            sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}
+            sx={{
+              bgcolor: hayFotosQR ? '#16a34a' : PRIMARY,
+              color: ON_PRIMARY,
+              fontWeight: 700,
+              '&:hover': {
+                filter: 'brightness(0.9)',
+                bgcolor: hayFotosQR ? '#16a34a' : PRIMARY,
+              },
+              // Pulso suave cuando hay fotos QR esperando
+              ...(hayFotosQR && {
+                animation: 'qr-pulse 1.5s ease-in-out infinite',
+              }),
+            }}
           >
-            Guardar nota
+            {hayFotosQR ? '💾 Guardar fotos del celular' : 'Guardar nota'}
           </Button>
         </Box>
       </Box>
+
+      {/* Animación pulso para el botón cuando hay fotos QR */}
+      <style>{`
+        @keyframes qr-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
+          50%       { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+        }
+      `}</style>
     </Box>
   );
 }
@@ -807,24 +880,30 @@ function ItemRow({
   autoOpenSearch, recetasElaborados = {},
   articuloId,
   businessId,
+  onOpenRecetaElaborado,
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [notasOpen, setNotasOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const searchInputRef = useRef(null);
   const cantidadRef = useRef(null);
+  const listRef = useRef(null);
 
   useEffect(() => {
     if (autoOpenSearch) {
       setSearchOpen(true);
       setTimeout(() => searchInputRef.current?.focus(), 60);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  const insumoSel = useMemo(
-    () => insumos.find(i => String(i.id) === String(item.supplyId)),
-    [insumos, item.supplyId]
-  );
+  useEffect(() => {
+    if (focusedIndex < 0 || !listRef.current) return;
+    const els = listRef.current.querySelectorAll('[data-option-index]');
+    const el = els[focusedIndex];
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex]);
 
   const isDuplicate = item.supplyId &&
     usedSupplyIds.has(String(item.supplyId)) &&
@@ -838,8 +917,26 @@ function ItemRow({
         String(i.id).includes(q) ||
         String(i.codigo_maxi || '').includes(q)
       )
-      : insumos;
-    return list.slice(0, 20);
+      : [...insumos];
+
+    list.sort((a, b) => {
+      // 1. Más usados primero (tienen precio_promedio_periodo o total_unidades > 0)
+      const aUsado = Number(a.total_unidades_periodo ?? a.unidades_compradas ?? 0) > 0;
+      const bUsado = Number(b.total_unidades_periodo ?? b.unidades_compradas ?? 0) > 0;
+      if (aUsado !== bUsado) return aUsado ? -1 : 1;
+
+      // 2. Precio ascendente, excluyendo cero
+      const aP = Number(a.precio_ref ?? a.precio_promedio ?? a.precio ?? 0);
+      const bP = Number(b.precio_ref ?? b.precio_promedio ?? b.precio ?? 0);
+      if (aP > 0 && bP > 0) return aP - bP;
+      if (aP > 0) return -1;
+      if (bP > 0) return 1;
+
+      // 3. Alfabético como desempate
+      return (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' });
+    });
+
+    return list.slice(0, 30); // un poco más de margen
   }, [insumos, search]);
 
   const selectInsumo = useCallback((ins) => {
@@ -868,7 +965,12 @@ function ItemRow({
   }, [index, onChange]);
 
   // ── Detectar si es insumo elaborado (tiene receta propia) ──
-  const elaborado = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
+  const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
+  const insumoData = item.supplyId
+    ? insumos.find(i => String(i.id) === String(item.supplyId))
+    : null;
+  const esElaborado = !!elaboradoData || insumoData?.es_elaborado === true || insumoData?.tiene_receta === true;
+  const elaborado = elaboradoData;
   const tipoCosto = item.tipoCosto || 'total';
 
   /**
@@ -905,7 +1007,7 @@ function ItemRow({
     return cant * costoEnUnidadElegida;
   }, [item.cantidad, costoEnUnidadElegida]);
 
-  const costoEfectivoLinea = tipoCosto === 'nulo' ? 0 : costoLinea;
+  const costoEfectivoLinea = (tipoCosto === 'nulo' || Number(item.cantidad) < 0) ? 0 : costoLinea;
 
   // Incompatibilidad de unidades (solo para no-elaborados)
   const unidadIncompatible = useMemo(() => {
@@ -924,7 +1026,7 @@ function ItemRow({
         width: '100%',
         display: 'grid',
         // Columnas: drag | insumo | cantidad | unidad | $/u | merma | pedido | tipo_costo | obs | fecha | del
-        gridTemplateColumns: '20px 1.8fr 68px 66px 80px 36px 36px 88px 1fr 56px 28px',
+        gridTemplateColumns: '20px 1.8fr 68px 66px 80px 24px 1fr 56px 28px',
         alignItems: 'center',
         gap: '4px',
         py: 0.5, px: 0.5,
@@ -941,7 +1043,7 @@ function ItemRow({
       <DragIndicatorIcon sx={{ color: 'text.disabled', fontSize: 16, cursor: 'grab' }} />
 
       {/* ── Selector insumo ── */}
-      <Box sx={{ position: 'relative' }}>
+      <Box sx={{ position: 'relative', minWidth: 0 }}>
         <Box
           onClick={() => setSearchOpen(v => !v)}
           sx={{
@@ -964,7 +1066,15 @@ function ItemRow({
                 variant="caption"
                 noWrap
                 sx={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-                onClick={(e) => { e.stopPropagation(); if (onOpenCompras && item.supplyId) onOpenCompras(item); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!item.supplyId) return;
+                  if (esElaborado && onOpenRecetaElaborado) {
+                    onOpenRecetaElaborado(item);
+                  } else {
+                    onOpenCompras?.(item);
+                  }
+                }}
                 title="Click para ver compras"
               >
                 {item.supplyNombre || `#${item.supplyId}`}
@@ -1029,39 +1139,40 @@ function ItemRow({
 
         {/* Dropdown búsqueda */}
         {searchOpen && (
-          <Box sx={{
-            position: 'absolute', top: '100%', left: 0, zIndex: 20,
-            bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
-            borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5,
-          }}>
+          <Box sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <TextField
-                autoFocus inputRef={searchInputRef}
-                size="small" fullWidth
-                placeholder="Código o nombre…"
+              <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  setFocusedIndex(-1);
+                  setFocusedIndex(0);
+                }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
                 onKeyDown={e => {
-                  if (e.key === 'Escape') setSearchOpen(false);
-                  if (e.key === 'Enter' && filtrados.length === 1) selectInsumo(filtrados[0]);
+                  if (e.key === 'Escape') { setSearchOpen(false); }
+                  if (e.key === 'ArrowDown') { e.preventDefault(); setFocusedIndex(i => Math.min(i + 1, filtrados.length - 1)); }
+                  if (e.key === 'ArrowUp') { e.preventDefault(); setFocusedIndex(i => Math.max(i - 1, 0)); }
+                  if (e.key === 'Enter') {
+                    if (focusedIndex >= 0 && filtrados[focusedIndex]) selectInsumo(filtrados[focusedIndex]);
+                    else if (filtrados.length === 1) selectInsumo(filtrados[0]);
+                  }
                 }}
               />
             </Box>
-            <Box sx={{ maxHeight: 280, overflowY: 'auto' }}>
+            <Box ref={listRef} sx={{ maxHeight: 280, overflowY: 'auto' }}>
               {filtrados.length === 0 ? (
-                <Box sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">Sin resultados</Typography>
-                </Box>
-              ) : filtrados.map(ins => {
+                <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
+              ) : filtrados.map((ins, idx) => {
                 const yaUsado = usedSupplyIds.has(String(ins.id));
                 const esElab = !!recetasElaborados[String(ins.id)];
                 return (
-                  <Box key={ins.id} onClick={() => selectInsumo(ins)} sx={{
+                  <Box key={ins.id} data-option-index={idx} onClick={() => selectInsumo(ins)} sx={{
                     px: 1.5, py: 0.75, cursor: 'pointer',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     borderBottom: '1px solid', borderColor: 'divider',
-                    '&:hover': { bgcolor: 'action.selected' },
+                    bgcolor: focusedIndex === idx ? `${PRIMARY}15` : 'transparent',
+                    '&:hover': { bgcolor: `${PRIMARY}10` },
                     ...(yaUsado && { opacity: 0.6 }),
                   }}>
                     <Box>
@@ -1071,9 +1182,7 @@ function ItemRow({
                         {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {ins.codigo_maxi || ins.codigo_mostrar
-                          ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}`
-                          : ins.unidad_med || ins.medida || 'u'}
+                        {ins.codigo_maxi || ins.codigo_mostrar ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}` : ins.unidad_med || ins.medida || 'u'}
                       </Typography>
                     </Box>
                     <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY, fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
@@ -1083,12 +1192,7 @@ function ItemRow({
                           const p = Number(eData.porciones) || 1;
                           return eData.costoTotal > 0 ? `$${fmt(eData.costoTotal / p)}/u` : '';
                         }
-                        const p = Number(ins.precio_ref)
-                          || Number(ins.precio_promedio_periodo)
-                          || Number(ins.precio_promedio)
-                          || Number(ins.precio_ultima_compra)
-                          || Number(ins.precio)
-                          || 0;
+                        const p = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
                         return p > 0 ? `$${fmt(p)}` : '';
                       })()}
                     </Typography>
@@ -1100,12 +1204,13 @@ function ItemRow({
         )}
       </Box>
 
-      {/* ── Cantidad ── */}
-      <TextField
-        inputRef={cantidadRef}
-        size="small" type="number"
-        value={item.cantidad || ''}
-        onChange={e => onChange(index, { cantidad: e.target.value === '' ? '' : Number(e.target.value) })}
+      {/* ── Cantidad — mínimo 0 ── */}
+      <TextField inputRef={cantidadRef} size="small" type="number"
+        value={item.cantidad === '' ? '' : item.cantidad}
+        onChange={e => {
+          const val = e.target.value === '' ? '' : Number(e.target.value);
+          onChange(index, { cantidad: val });
+        }}
         placeholder="0"
         inputProps={{ min: 0, step: 0.001, style: { textAlign: 'right', fontSize: '0.78rem', padding: '4px 6px' } }}
       />
@@ -1127,94 +1232,55 @@ function ItemRow({
         ))}
       </Select>
 
-      {/* ── $/u reactivo: precio de DB convertido a la unidad elegida ── */}
-      <Box sx={{
-        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-        border: '1px solid', borderColor: 'divider', borderRadius: 1,
-        px: 0.75, minHeight: 30,
-        bgcolor: elaborado ? '#f0fdf4' : '#f8fafc',
-        overflow: 'hidden',
-      }}>
-        <Typography sx={{
-          fontSize: '0.72rem', fontWeight: 700,
-          color: costoEnUnidadElegida > 0
-            ? (elaborado ? '#16a34a' : PRIMARY)
-            : 'text.disabled',
-          whiteSpace: 'nowrap',
-        }}
-          title={
-            elaborado
-              ? `De receta elaborada (${tipoCosto === 'sugerido' ? 'precio sugerido' : 'costo'})`
-              : `$${fmt(item.precioRefDB || 0)}/${item.supplyMedida || 'u'} → convertido a ${item.unidad || item.supplyMedida || 'u'}`
-          }
-        >
-          {item.supplyId
-            ? (costoEnUnidadElegida > 0 ? `$${fmt(costoEnUnidadElegida)}` : '—')
-            : '—'
-          }
-        </Typography>
+      {/* ── $ total (unitario × cantidad) ── */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: elaborado ? '#f0fdf4' : '#f8fafc', overflow: 'hidden' }}>
+        <Tooltip title={elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`}>
+          <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled', whiteSpace: 'nowrap' }}>
+            {item.supplyId ? (costoEfectivoLinea > 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
+          </Typography>
+        </Tooltip>
       </Box>
 
-      {/* ── Merma ── */}
-      <Tooltip title="Aplicar merma">
-        <Checkbox
-          size="small"
-          checked={item.merma !== false}
-          onChange={e => onChange(index, { merma: e.target.checked })}
-          sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
-        />
-      </Tooltip>
+      {/* ── Avanzadas: colapsadas o expandidas ── */}
+      {!showAdvanced ? (
+        <Tooltip title="Mostrar opciones avanzadas (merma, pedido, tipo costo)">
+          <IconButton size="small" onClick={() => setShowAdvanced(true)}
+            sx={{ p: '3px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
+            <TuneIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <>
+          <Tooltip title="Aplicar merma">
+            <Checkbox size="small" checked={item.merma !== false} onChange={e => onChange(index, { merma: e.target.checked })} sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }} />
+          </Tooltip>
+          <Tooltip title="Incluir en pedido">
+            <Checkbox size="small" checked={item.pedido !== false} onChange={e => onChange(index, { pedido: e.target.checked })} sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }} />
+          </Tooltip>
+          <Select size="small" value={tipoCosto} onChange={e => onChange(index, { tipoCosto: e.target.value })}
+            sx={{ fontSize: '0.7rem', '& .MuiSelect-select': { py: '3px', fontSize: '0.7rem' } }}>
+            {TIPO_COSTO_OPTS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: '0.78rem' }}>{o.label}</MenuItem>)}
+          </Select>
+          <Tooltip title="Ocultar avanzadas">
+            <IconButton size="small" onClick={() => setShowAdvanced(false)} sx={{ p: '3px', color: PRIMARY }}>
+              <TuneIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        </>
+      )}
 
-      {/* ── Pedido ── */}
-      <Tooltip title="Incluir en pedido">
-        <Checkbox
-          size="small"
-          checked={item.pedido !== false}
-          onChange={e => onChange(index, { pedido: e.target.checked })}
-          sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
-        />
-      </Tooltip>
-
-      {/* ── Tipo de costo ── */}
-      <Select
-        size="small"
-        value={tipoCosto}
-        onChange={e => onChange(index, { tipoCosto: e.target.value })}
-        sx={{ fontSize: '0.7rem', '& .MuiSelect-select': { py: '3px', fontSize: '0.7rem' } }}
-      >
-        {TIPO_COSTO_OPTS.map(o => (
-          <MenuItem key={o.value} value={o.value} sx={{ fontSize: '0.78rem' }}>{o.label}</MenuItem>
-        ))}
-      </Select>
-
-      {/* ── Observaciones del ingrediente: input inline + modal expandido ── */}
-      <Box sx={{ position: 'relative' }}>
-        <Tooltip
-          title={
-            item.observaciones
-              ? (item.updatedAt ? `Editado: ${fmtDate(item.updatedAt)}` : item.observaciones)
-              : 'Agregar nota para este ingrediente'
-          }
-          placement="top"
-        >
-          <Box
-            onClick={() => setNotasOpen(true)}
-            sx={{
-              border: '1px solid',
-              borderColor: item.observaciones ? `${PRIMARY}60` : 'divider',
-              borderRadius: 1, px: 0.75, minHeight: 30,
-              display: 'flex', alignItems: 'center',
-              cursor: 'pointer', bgcolor: 'background.paper',
-              '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },
-              overflow: 'hidden', maxWidth: '100%', minWidth: 0,
-            }}
-          >
-            <Typography noWrap sx={{
-              fontSize: '0.72rem',
-              color: item.observaciones ? 'text.primary' : 'text.disabled',
-              fontStyle: item.observaciones ? 'normal' : 'italic',
-              flex: 1, minWidth: 0,
-            }}>
+      {/* ── Observaciones ── */}
+      <Box sx={{ position: 'relative', overflow: 'hidden', minWidth: 0 }}>
+        <Tooltip title={item.observaciones ? (item.updatedAt ? `Editado: ${fmtDate(item.updatedAt)} — ${item.observaciones}` : item.observaciones) : 'Agregar nota para este ingrediente'} placement="top">
+          <Box onClick={() => setNotasOpen(true)} sx={{
+            border: '1px solid', borderColor: item.observaciones ? `${PRIMARY}60` : 'divider',
+            borderRadius: 1, px: 0.75, minHeight: 30,
+            display: 'flex', alignItems: 'center',
+            cursor: 'pointer', bgcolor: 'background.paper',
+            '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },
+            overflow: 'hidden',
+          }}>
+            <Typography noWrap sx={{ fontSize: '0.72rem', color: item.observaciones ? 'text.primary' : 'text.disabled', fontStyle: item.observaciones ? 'normal' : 'italic', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {item.observaciones || 'Notas…'}
             </Typography>
             {(item.observaciones || item.fotosUrls?.length > 0) && (
@@ -1226,7 +1292,6 @@ function ItemRow({
           </Box>
         </Tooltip>
 
-        {/* Mini-modal de notas del ingrediente */}
         {notasOpen && (
           <NotasItemModal
             supplyNombre={item.supplyNombre}
@@ -1274,9 +1339,11 @@ function ItemRow({
 ════════════════════════════════════════ */
 export default function RecetaModal({
   open, onClose, articulo, businessId, onSaved, costoObjetivoExterno,
-  // recetasElaborados: mapa de insumos que son elaborados con sus costos de receta
-  // { [supplyId]: { costoTotal, porciones, precioSugerido } }
   recetasElaborados = {},
+  esElaborado = false,
+  getRecetaUrl = null,
+  saveRecetaUrl = null,
+  onPriceConfigSave = null,
 }) {
   const [receta, setReceta] = useState(null);
   const [nombre, setNombre] = useState('');
@@ -1288,6 +1355,7 @@ export default function RecetaModal({
   const [newItemIndex, setNewItemIndex] = useState(null);
   const [insumos, setInsumos] = useState([]);
   const [alertaSemanas, setAlertaSemanas] = useState(null);
+  const [sortByCosto, setSortByCosto] = useState(false);
 
   // Notas y foto de la receta
   const [notas, setNotas] = useState('');
@@ -1309,6 +1377,7 @@ export default function RecetaModal({
 
   const artNombre = articulo?.nombre || '';
   const precioActual = Number(articulo?.precio || 0);
+  const [recetaElaboradoModal, setRecetaElaboradoModal] = useState(null);
 
   /**
    * Jerarquía de costo objetivo (de mayor a menor prioridad):
@@ -1382,7 +1451,22 @@ export default function RecetaModal({
     setError('');
     setSuccess(false);
 
-    getReceta(businessId, articulo.id)
+    const fetchUrl = getRecetaUrl || `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
+    const token = localStorage.getItem('token') || '';
+    fetch(fetchUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Business-Id': String(businessId),
+        'Content-Type': 'application/json',
+      },
+    })
+      .then(r => r.json())
+      .then(json => {
+        // El endpoint de elaborados devuelve { ok, receta }
+        // El de artículos devuelve { ok, receta } via getReceta
+        const rec = json?.receta ?? json ?? null;
+        return rec;
+      })
       .then(rec => {
         setReceta(rec);
         if (rec) {
@@ -1463,6 +1547,20 @@ export default function RecetaModal({
     [items]
   );
 
+  // Items ordenados por costo descendente (opcional)
+  const itemsOrdenados = useMemo(() => {
+    if (!sortByCosto) return items;
+    return [...items].sort((a, b) => {
+      const getCosto = (it) => {
+        const elaborado = it.supplyId ? recetasElaborados[String(it.supplyId)] : null;
+        const cant = Number(it.cantidad) || 0;
+        if (elaborado) return ((elaborado.costoTotal || 0) / (Number(elaborado.porciones) || 1)) * cant;
+        return calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u') * cant;
+      };
+      return getCosto(b) - getCosto(a);
+    });
+  }, [items, sortByCosto, recetasElaborados]);
+
   const changeItem = useCallback((idx, partial) => {
     setItems(prev => {
       const arr = [...prev];
@@ -1477,7 +1575,8 @@ export default function RecetaModal({
     setItems(prev => {
       const next = [...prev, {
         supplyId: null, supplyNombre: '', supplyMedida: 'u',
-        cantidad: '', unidad: 'u', costoUnitario: '',
+        cantidad: 1, // ← era ''
+        unidad: 'u', costoUnitario: '',
         merma: true, pedido: true, tipoCosto: 'total',
         ultimaCompra: null, observaciones: '', updatedAt: null,
       }];
@@ -1490,6 +1589,7 @@ export default function RecetaModal({
   const costoTotal = useMemo(() =>
     items.reduce((acc, it) => {
       if (it.tipoCosto === 'nulo') return acc;
+      if (Number(it.cantidad) < 0) return acc;
       const cant = Number(it.cantidad) || 0;
       // Usar la misma lógica que ItemRow para consistencia
       const elaborado = it.supplyId ? recetasElaborados[String(it.supplyId)] : null;
@@ -1566,7 +1666,23 @@ export default function RecetaModal({
 
     setSaving(true);
     try {
-      const saved = await saveReceta(businessId, articulo.id, payload);
+      const postUrl = saveRecetaUrl || `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(postUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Business-Id': String(businessId),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.message || d?.error || `Error ${res.status}`);
+      }
+      const json = await res.json();
+      const saved = json?.receta ?? json;
       setReceta(saved);
       setSuccess(true);
       // Notificar al padre con datos completos para refresh inmediato
@@ -1575,7 +1691,7 @@ export default function RecetaModal({
         article_id: articulo.id,
         costo_total: costoTotal,
         costo_por_porcion: costoXRendimiento,
-        precio_sugerido: precioSugerido,
+        precio_sugerido: json?.precio_sugerido ?? precioSugerido,
         porciones: Math.max(1, Number(rendimiento) || 1),
       });
       setTimeout(() => onClose(), 1200);
@@ -1593,7 +1709,8 @@ export default function RecetaModal({
     setError('');
     try {
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${BASE}/organizations/${businessId}/articulos/${articulo.id}/receta`, {
+      const deleteUrl = `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
+      const res = await fetch(deleteUrl, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1604,6 +1721,14 @@ export default function RecetaModal({
         const d = await res.json().catch(() => ({}));
         throw new Error(d?.message || `Error ${res.status}`);
       }
+      // Después de confirmar que el DELETE fue exitoso, propagar a vinculados:
+      try {
+        const token2 = localStorage.getItem('token') || '';
+        await fetch(
+          `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta/propagate-delete`,
+          { method: 'POST', headers: { Authorization: `Bearer ${token2}`, 'X-Business-Id': String(businessId) } }
+        );
+      } catch { /* no crítico */ }
       // Notificar al padre que la receta fue borrada (costoTotal=0)
       onSaved?.({
         article_id: articulo.id,
@@ -1705,6 +1830,15 @@ export default function RecetaModal({
                     type="number"
                     value={pctCostoIdeal}
                     onChange={e => setPctCostoIdeal(Number(e.target.value) || 0)}
+                    onBlur={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      if (!val || !articulo?.id) return;
+                      onPriceConfigSave?.({
+                        scope: 'articulo',
+                        scopeId: String(articulo.id),
+                        objetivo: val,
+                      });
+                    }}
                     size="small"
                     inputProps={{ min: 0, max: 150 }}
                     InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
@@ -1712,32 +1846,28 @@ export default function RecetaModal({
                 </Box>
 
                 <Divider sx={{ mb: 1.5 }}>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                    Ingredientes ({items.length})
-                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      Ingredientes ({items.length})
+                    </Typography>
+                    <Tooltip title={sortByCosto ? 'Orden manual' : 'Ordenar por costo'}>
+                      <IconButton size="small" onClick={() => setSortByCosto(v => !v)}
+                        sx={{ p: '2px', color: sortByCosto ? PRIMARY : 'text.disabled' }}>
+                        <SortIcon sx={{ fontSize: 14 }} /> {/* importar SortIcon */}
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
                 </Divider>
 
                 {/* ── Header columnas ── */}
                 <Box sx={{
                   display: 'grid',
-                  gridTemplateColumns: '20px 1.8fr 68px 66px 80px 36px 36px 88px 1fr 56px 28px',
+                  gridTemplateColumns: '20px 1.8fr 68px 66px 80px 24px 1fr 56px 28px',
                   gap: '4px', px: 0.5, mb: 0.5,
                 }}>
-                  {[
-                    '',
-                    'Insumo',
-                    'Cantidad',
-                    'Unidad',
-                    '$/u',
-                    <Tooltip key="m" title="Merma"><span>Merma</span></Tooltip>,
-                    <Tooltip key="p" title="Pedido"><span>Pedido</span></Tooltip>,
-                    'Tipo costo',
-                    'Observaciones',
-                    'Modif.',
-                    '',
-                  ].map((col, i) => (
+                  {['', 'Insumo', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', 'Modif.', ''].map((col, i) => (
                     <Typography key={i} variant="caption" color="text.secondary"
-                      fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: i >= 4 && i <= 8 ? 'center' : 'left' }}>
+                      fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: i >= 4 && i <= 6 ? 'center' : 'left' }}>
                       {col}
                     </Typography>
                   ))}
@@ -1758,26 +1888,37 @@ export default function RecetaModal({
                   </Box>
                 ) : (
                   <Box sx={{ mb: 1.5 }}>
-                    {items.map((item, i) => (
-                      <ItemRow
-                        key={i}
-                        item={item}
-                        index={i}
-                        onChange={(idx, partial) => {
-                          changeItem(idx, partial);
-                          if (newItemIndex === idx) setNewItemIndex(null);
-                        }}
-                        onRemove={removeItem}
-                        onOpenCompras={(it) => setComprasInsumo(it)}
-                        insumos={insumos}
-                        usedSupplyIds={usedSupplyIds}
-                        alertaSemanas={alertaSemanas}
-                        autoOpenSearch={newItemIndex === i}
-                        recetasElaborados={recetasElaborados}
-                        articuloId={articulo?.id}
-                        businessId={businessId}
-                      />
-                    ))}
+                    {itemsOrdenados.map((item, i) => {
+                      const realIndex = items.indexOf(item); // índice real en el array original
+                      return (
+                        <ItemRow
+                          key={realIndex}
+                          item={item}
+                          index={realIndex} // ← índice real, no i
+                          onChange={(idx, partial) => {
+                            changeItem(idx, partial);
+                            if (newItemIndex === idx) setNewItemIndex(null);
+                          }}
+                          onRemove={removeItem}
+                          onOpenCompras={(it) => setComprasInsumo(it)}
+                          onOpenRecetaElaborado={(it) => {
+                            const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+                            setRecetaElaboradoModal({
+                              id: it.supplyId,
+                              nombre: it.supplyNombre,
+                              precio: ins?.precio_ref || ins?.precio || 0,
+                            });
+                          }}
+                          insumos={insumos}
+                          usedSupplyIds={usedSupplyIds}
+                          alertaSemanas={alertaSemanas}
+                          autoOpenSearch={newItemIndex === realIndex}
+                          recetasElaborados={recetasElaborados}
+                          articuloId={articulo?.id}
+                          businessId={businessId}
+                        />
+                      );
+                    })}
                   </Box>
                 )}
 
@@ -1794,39 +1935,33 @@ export default function RecetaModal({
 
                 <Divider sx={{ mb: 2 }} />
 
-                {/* ── Panel de costos ── */}
                 <Box sx={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gridTemplateColumns: Number(rendimiento) > 1 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
                   gap: 1.5,
                   bgcolor: 'action.hover',
-                  borderRadius: 1.5, p: 2, mb: 2,
+                  borderRadius: 1.5, p: 2,
+                  mb: 2
                 }}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                    <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
-                  </Box>
+                  {Number(rendimiento) > 1 && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
+                      <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
+                    </Box>
+                  )}
+
                   <Box>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      Costo x porción{rendimiento > 1 ? ` (÷${rendimiento})` : ''}
+                      {Number(rendimiento) > 1 ? `Costo x porción (÷${Number(rendimiento)})` : 'Costo total'}
                     </Typography>
                     <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      Precio sugerido ({pctCostoIdeal}% costo)
-                    </Typography>
-                    <Typography variant="h6" fontWeight={800} color="success.main">
-                      {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Precio sugerido ({pctCostoIdeal}% costo)</Typography>
+                    <Typography variant="h6" fontWeight={800} color="success.main">{precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}</Typography>
                     {precioActual > 0 && (
                       <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
-                        <Typography variant="caption" sx={{
-                          fontSize: '0.75rem', fontWeight: 600,
-                          color: estaPorDebajo ? '#ef4444' : 'text.secondary',
-                        }}>
-                          Actual: ${fmt(precioActual)}
-                        </Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
                         {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
                       </Stack>
                     )}
@@ -1835,13 +1970,8 @@ export default function RecetaModal({
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
                     {pctCostoActual !== null ? (
                       <>
-                        <Typography variant="h6" fontWeight={800}
-                          color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>
-                          {fmt(pctCostoActual, 1)}%
-                        </Typography>
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>
-                          Ideal: {pctCostoIdeal}%
-                        </Typography>
+                        <Typography variant="h6" fontWeight={800} color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>{fmt(pctCostoActual, 1)}%</Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>Ideal: {pctCostoIdeal}%</Typography>
                       </>
                     ) : (
                       <Typography variant="h6" color="text.disabled">—</Typography>
@@ -1865,7 +1995,7 @@ export default function RecetaModal({
               {receta ? `Última modificación: ${fmtDate(receta.updated_at) || '—'}` : 'Receta nueva'}
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              {/* Borrar receta — solo si ya existe, en el footer */}
+              {/* Borrar receta — solo si ya existe, en el footer*/}
               {receta && (
                 <Button
                   size="small"
@@ -1876,6 +2006,7 @@ export default function RecetaModal({
                   onClick={() => setConfirmDelete(true)}
                   sx={{ mr: 1 }}
                 >
+
                   Borrar receta
                 </Button>
               )}
@@ -1951,6 +2082,20 @@ export default function RecetaModal({
           </Button>
         </DialogActions>
       </Dialog>
+      {recetaElaboradoModal && (
+        <RecetaModal
+          open={!!recetaElaboradoModal}
+          onClose={() => setRecetaElaboradoModal(null)}
+          articulo={recetaElaboradoModal}
+          businessId={businessId}
+          getRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${recetaElaboradoModal.id}/receta`}
+          saveRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${recetaElaboradoModal.id}/receta`}
+          recetasElaborados={recetasElaborados}
+          onSaved={(saved) => {
+            setRecetaElaboradoModal(null);
+          }}
+        />
+      )}
     </>
   );
 }

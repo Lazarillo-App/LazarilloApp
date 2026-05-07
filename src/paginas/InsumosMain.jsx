@@ -42,11 +42,15 @@ import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import { useFirstDate } from '../hooks/useFirstDate';
-import { purchasesSync, purchasesList, purchasesDownloadCsv, buildComprasMap } from '../servicios/apiPurchases';
+import { purchasesSync, purchasesList, purchasesDownloadCsv, purchasesDownloadCsvByIds, buildComprasMap } from '../servicios/apiPurchases';
 import ComprasActionsMenu from '../componentes/ComprasActionsMenu.jsx';
 import UploadComprasModal from '../componentes/UploadComprasModal.jsx';
 import SucursalSelector from '@/componentes/SucursalSelector';
+import InsumoListToolbar from '@/componentes/InsumoListToolbar';
+import { useInsumoLists } from '@/hooks/useInsumoLists';
 import { useBranch } from '@/hooks/useBranch';
+import { BASE } from '@/servicios/apiBase';
+import RecetaModal from '../componentes/RecetaModal';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -127,16 +131,54 @@ export default function InsumosMain() {
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
 
-  const { activeBranchId, activeBranch, branches: allBranches } = useBranch() || {};
+  // ── Listas de insumos + modo selección ────────────────────────────────────
+  // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
+  const [insumoSelectionMode,  setInsumoSelectionMode]  = useState(null);
+  const [selectedInsumoIds,    setSelectedInsumoIds]    = useState(new Set());
+  const [insumoListSaving,     setInsumoListSaving]     = useState(false);
 
-  // Primera fecha histórica de compras — específica por negocio
+  const toggleInsumoMode = (mode) => {
+    setInsumoSelectionMode(mode);
+    if (!mode) setSelectedInsumoIds(new Set());
+  };
+
+  const toggleInsumoSelected = (id) => {
+    setSelectedInsumoIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearInsumoSelection = () => setSelectedInsumoIds(new Set());
+
+  const { activeBranchId, activeBranch, branches: allBranches, rawBranches } = useBranch() || {};
+  const [firstDateKey, setFirstDateKey] = useState(0);
   const { activeBranchFilter } = useBranch() || {};
   const effectiveBranchIdForFirst = activeBranchFilter?.mode === 'branch'
     ? activeBranchFilter.branchId
     : activeBranchFilter?.mode === 'main' ? 'main' : null;
-  const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } = useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst);
+  const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } =
+    useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
+  const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
 
-  // Si el rango activo es "Histórico" y cambia el negocio/firstDate, actualizar el from automáticamente
+  const [soloConCompras, setSoloConCompras] = useState(() => {
+    try { return localStorage.getItem('insumosFiltroCon Compras') === 'true'; }
+    catch { return false; }
+  });
+
+  const toggleSoloConCompras = useCallback(() => {
+    setSoloConCompras(prev => {
+      const next = !prev;
+      try { localStorage.setItem('insumosFiltroConCompras', String(next)); } catch { }
+      return next;
+    });
+  }, []);
+
+  const handleOpenRecetaElaborado = useCallback((insumo) => {
+    setRecetaInsumoModal(insumo);
+  }, []);
+
   useEffect(() => {
     if (rangoCompras?.mode === 'all' && firstDateCompras) {
       setRangoCompras(prev => ({ ...prev, from: firstDateCompras }));
@@ -173,6 +215,39 @@ export default function InsumosMain() {
     if (!businessId) return;
     try { localStorage.setItem('activeBusinessId', String(businessId)); } catch { }
   }, [businessId]);
+
+  // ── Listas de insumos — usar businessId del negocio activo ──────────────
+  const activeBizIdNum = Number(businessId);
+  const validBizId = Number.isFinite(activeBizIdNum) && activeBizIdNum > 0 ? activeBizIdNum : null;
+
+  const {
+    lists: insumoLists,
+    createList: _createInsumoList,
+    deleteList: deleteInsumoList,
+    addItems:   addInsumoListItems,
+    activeListId:    activeInsumoListId,
+    activeListItems: activeInsumoListItems,
+    selectList:      selectInsumoList,
+  } = useInsumoLists(validBizId);
+
+  const handleCreateInsumoList = async (name, ids) => {
+    setInsumoListSaving(true);
+    try {
+      const list = await _createInsumoList(name);
+      if (list && ids?.length) await addInsumoListItems(list.id, ids);
+      notify?.(`✅ Lista "${name}" creada con ${ids?.length || 0} insumo${ids?.length !== 1 ? 's' : ''}`);
+    } catch (e) {
+      console.error('[handleCreateInsumoList]', e);
+      notify?.(`Error al crear lista: ${e.message}`, 'error');
+    } finally { setInsumoListSaving(false); }
+  };
+
+  const handleAddToInsumoList = async (listId, ids) => {
+    if (!ids?.length) return;
+    setInsumoListSaving(true);
+    try { await addInsumoListItems(listId, ids); }
+    finally { setInsumoListSaving(false); }
+  };
 
   /* ── Estado básico ── */
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
@@ -213,6 +288,7 @@ export default function InsumosMain() {
   const [searchText, setSearchText] = useState('');
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const [uploadComprasOpen, setUploadComprasOpen] = useState(false);
+  const [recetasElaborados, setRecetasElaborados] = useState({});
 
   usePersistUiActions(businessId);
 
@@ -275,25 +351,69 @@ export default function InsumosMain() {
   }, []);
 
   /* ── Compras ── */
+  const RANGO_COMPRAS_KEY = 'lazarillo:rangoCompras';
+
   const [rangoCompras, setRangoCompras] = useState(() => {
+    try {
+      const saved = localStorage.getItem(RANGO_COMPRAS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.from && parsed?.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from)) {
+          return parsed;
+        }
+      }
+    } catch { }
     const def = lastNDaysUntilYesterday(daysByMode('30'));
     return { mode: '30', from: def.from, to: def.to };
   });
+
+  const handleRangoComprasChange = useCallback((nuevoRango) => {
+    setRangoCompras(nuevoRango);
+    try { localStorage.setItem(RANGO_COMPRAS_KEY, JSON.stringify(nuevoRango)); } catch { }
+  }, []);
+
   const [comprasMap, setComprasMap] = useState(new Map());
   const [comprasLoading, setComprasLoading] = useState(false);
   const [comprasMapByBranch, setComprasMapByBranch] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  const rangoComprasRef = useRef(rangoCompras);
+  useEffect(() => { rangoComprasRef.current = rangoCompras; }, [rangoCompras]);
+
+  useEffect(() => {
+    if (!firstDateCompras) return;
+    // Solo actualizar el from si el modo activo ES histórico
+    if (rangoComprasRef.current?.mode === 'all') {
+      setRangoCompras(prev => {
+        const next = { ...prev, from: firstDateCompras };
+        try { localStorage.setItem(RANGO_COMPRAS_KEY, JSON.stringify(next)); } catch { }
+        return next;
+      });
+    }
+  }, [firstDateCompras]);
+
+  // ── Compras principales (columna "Compras ($)") ──
   useEffect(() => {
     if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
     let cancelled = false;
     setComprasLoading(true);
+
+    const filter = activeBranchFilter;
+    let branch_id = null;
+
+    if (filter?.mode === 'main') {
+      branch_id = 'none'; // solo registros sin branch_id
+    } else if (filter?.mode === 'branch') {
+      branch_id = filter.branchId; // solo esa sucursal
+    }
+    // mode === 'all' → branch_id = null → trae todo sumado
+
     purchasesList(businessId, {
       from: rangoCompras.from,
       to: rangoCompras.to,
       limit: 10000,
-      branch_id: activeBranchFilter?.mode === 'all' ? 'main' : (activeBranchId ?? null),
+      branch_id,
     })
       .then((res) => {
         if (cancelled) return;
@@ -305,12 +425,18 @@ export default function InsumosMain() {
         setComprasMap(new Map());
       })
       .finally(() => { if (!cancelled) setComprasLoading(false); });
-    return () => { cancelled = true; };
-  }, [businessId, rangoCompras, activeBranchId]);
 
-  // Compras por sucursal — solo cuando hay 2+ sucursales
+    return () => { cancelled = true; };
+  }, [businessId, rangoCompras, activeBranchFilter]);
+
+  // ── Compras por sucursal (columnas extra) — solo en modo "Todas" ──
   useEffect(() => {
-    const branches = allBranches || [];
+    // Solo mostrar columnas extra cuando está en modo "Todas"
+    if (activeBranchFilter?.mode !== 'all') {
+      setComprasMapByBranch({});
+      return;
+    }
+    const branches = rawBranches || []; // solo sucursales reales, sin principal
     if (branches.length === 0 || !businessId || !rangoCompras?.from || !rangoCompras?.to) {
       setComprasMapByBranch({});
       return;
@@ -326,7 +452,9 @@ export default function InsumosMain() {
             branch_id: branch.id,
           });
           return { branchId: branch.id, map: buildComprasMap(res?.data ?? []) };
-        } catch { return { branchId: branch.id, map: new Map() }; }
+        } catch {
+          return { branchId: branch.id, map: new Map() };
+        }
       })
     ).then(results => {
       if (cancelled) return;
@@ -335,7 +463,21 @@ export default function InsumosMain() {
       setComprasMapByBranch(byBranch);
     });
     return () => { cancelled = true; };
-  }, [allBranches, businessId, rangoCompras]);
+  }, [rawBranches, businessId, rangoCompras, activeBranchFilter]);
+
+  useEffect(() => {
+    if (!resolvedBizId) return;
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/businesses/${resolvedBizId}/recetas-elaborados`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Business-Id': String(resolvedBizId),
+      },
+    })
+      .then(r => r.json())
+      .then(d => { if (d?.ok && d?.data) setRecetasElaborados(d.data); })
+      .catch(() => { });
+  }, [resolvedBizId, reloadKey]);
 
   /* ── Callbacks ── */
   const notify = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
@@ -376,6 +518,55 @@ export default function InsumosMain() {
       notify('Error al descargar: ' + e.message, 'error');
     } finally { setDownloading(false); }
   }, [businessId, rangoCompras, notify]);
+
+  // ── Descarga de compras por lista de insumos ──────────────────────────────
+  const handleDownloadList = useCallback(async (listId, listName) => {
+    if (!businessId || !rangoCompras?.from || !rangoCompras?.to) {
+      showAlert('No hay periodo activo para descargar.', 'warning');
+      return;
+    }
+    try {
+      // Obtener los insumo_ids de la lista
+      const { httpBiz } = await import('@/servicios/apiBusinesses');
+      const res = await httpBiz(`/insumo-lists/${listId}/items`, {}, businessId);
+      const ids = (res?.items || []).map(i => Number(i.insumo_id)).filter(n => n > 0);
+
+      if (ids.length === 0) {
+        showAlert(`La lista "${listName}" no tiene insumos.`, 'warning');
+        return;
+      }
+
+      const branchId = activeBranchFilter?.mode === 'branch'
+        ? activeBranchFilter.branchId
+        : activeBranchFilter?.mode === 'main' ? 'none' : null;
+
+      const blob = await purchasesDownloadCsvByIds(businessId, {
+        from: rangoCompras.from,
+        to: rangoCompras.to,
+        insumoIds: ids,
+        branchId,
+      });
+
+      if (!blob || blob.size === 0) {
+        showAlert('No hay compras en el periodo seleccionado para esta lista.', 'info');
+        return;
+      }
+
+      const safeName = (listName || 'lista').replace(/[^a-zA-Z0-9_\-áéíóúüñÁÉÍÓÚÜÑ ]/g, '').trim();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `compras_${safeName}_${rangoCompras.from}_a_${rangoCompras.to}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showAlert(`✓ Compras de "${listName}" descargadas`, 'success');
+    } catch (err) {
+      console.error('handleDownloadList insumos error:', err);
+      showAlert(`Error al descargar: ${err.message || err}`, 'error');
+    }
+  }, [businessId, rangoCompras, activeBranchFilter]);
 
   /* ── Favorita ── */
   useEffect(() => {
@@ -610,9 +801,15 @@ export default function InsumosMain() {
   }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
 
   const filteredBase = useMemo(() => {
-    let base = !visibleIds ? sidebarBase : (sidebarBase || []).filter((ins) => {
+    // Si hay lista activa de insumos → mostrar todos los insumos de la lista
+    // ignorando el filtro de agrupación/visibleIds
+    const effectiveIds = (activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0)
+      ? activeInsumoListItems
+      : visibleIds;
+
+    let base = !effectiveIds ? sidebarBase : (sidebarBase || []).filter((ins) => {
       const id = Number(ins?.id);
-      if (!Number.isFinite(id) || !visibleIds.has(id)) return false;
+      if (!Number.isFinite(id) || !effectiveIds.has(id)) return false;
       if (!isDiscView && discontinuadosIds.has(id)) return false;
       return true;
     });
@@ -661,7 +858,7 @@ export default function InsumosMain() {
     }
 
     return base;
-  }, [sidebarBase, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo]);
+  }, [sidebarBase, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
 
   const rubrosTree = useMemo(() => {
     if (!filteredBase.length || rubrosMap.size === 0) return [];
@@ -688,6 +885,14 @@ export default function InsumosMain() {
       return String(codigoReal) === String(codigoSel);
     });
   }, [filteredBase, rubroSeleccionado, resolveRubroInfo]);
+
+  const tableRowsFiltrados = useMemo(() => {
+    if (!soloConCompras) return tableRows;
+    return tableRows.filter(r => {
+      const c = comprasMap.get(Number(r.id));
+      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
+    });
+  }, [tableRows, soloConCompras, comprasMap]);
 
   useEffect(() => {
     if (!rubroSeleccionado) return;
@@ -1018,7 +1223,7 @@ export default function InsumosMain() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
             value={rangoCompras}
-            onChange={setRangoCompras}
+            onChange={handleRangoComprasChange}
             firstDate={firstDateCompras}
             loadingFirst={loadingFirstCompras}
             disableFuture
@@ -1032,6 +1237,21 @@ export default function InsumosMain() {
             disabled={!businessId || comprasLoading}
           />
           <SucursalSelector variant="inline" />
+          <InsumoListToolbar
+            selectionMode={insumoSelectionMode}
+            selectedIds={selectedInsumoIds}
+            onToggleMode={toggleInsumoMode}
+            onClearSelection={clearInsumoSelection}
+            saving={insumoListSaving}
+            existingLists={insumoLists}
+            onCreateList={handleCreateInsumoList}
+            onAddToList={handleAddToInsumoList}
+            onDeleteList={deleteInsumoList}
+            onDownloadList={handleDownloadList}
+            insumoLists={insumoLists}
+            activeInsumoListId={activeInsumoListId}
+            onSelectInsumoList={selectInsumoList}
+          />
           <div style={{ minWidth: 260, maxWidth: 260 }}>
 
             <Buscador
@@ -1088,14 +1308,17 @@ export default function InsumosMain() {
             activeDivisionGroupIds={activeDivisionInsumoGroupIds}
             assignedGroupIds={assignedInsumoGroupIds}
             refetchAssignedGroups={refetchAssignedInsumoGroups}
+            onDownloadList={handleDownloadList}
+            onDeleteList={deleteInsumoList}
+            insumoLists={insumoLists}
           />
         </div>
 
         <div id="insumos-scroll" style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
           <InsumosTable
-            branches={(allBranches || []).length > 1 ? allBranches : []}
+            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}
-            rows={tableRows}
+            rows={tableRowsFiltrados}
             loading={false}
             onEdit={() => { }}
             onDelete={() => { }}
@@ -1126,6 +1349,13 @@ export default function InsumosMain() {
             businesses={organization?.businesses || []}
             onAfterToggleElaborado={handleAfterToggleElaborado}
             onAfterToggleElaboradoBulk={handleAfterToggleElaboradoBulk}
+            onOpenRecetaElaborado={handleOpenRecetaElaborado}
+            recetasElaborados={recetasElaborados}
+            soloConCompras={soloConCompras}
+            onToggleSoloConCompras={toggleSoloConCompras}
+            selectionMode={insumoSelectionMode}
+            selectedInsumoIds={selectedInsumoIds}
+            onToggleInsumo={toggleInsumoSelected}
           />
         </div>
       </div>
@@ -1148,6 +1378,7 @@ export default function InsumosMain() {
         businessId={businessId}
         onSuccess={() => {
           setUploadComprasOpen(false);
+          setFirstDateKey(k => k + 1); // ← fuerza refetch de firstDate
           if (!businessId || !rangoCompras?.from || !rangoCompras?.to) return;
           setComprasLoading(true);
           purchasesList(businessId, {
@@ -1161,6 +1392,61 @@ export default function InsumosMain() {
             .finally(() => setComprasLoading(false));
         }}
       />
+
+      {recetaInsumoModal && (
+        <RecetaModal
+          open={!!recetaInsumoModal}
+          onClose={() => setRecetaInsumoModal(null)}
+          articulo={{
+            id: recetaInsumoModal.id,
+            nombre: recetaInsumoModal.nombre,
+            precio: recetaInsumoModal.precio_ref || recetaInsumoModal.precio || 0,
+          }}
+          businessId={resolvedBizId}
+          getRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
+          saveRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
+          // ✅ Reemplazar el onSaved del RecetaModal en InsumosMain:
+          onSaved={(saved) => {
+            if (!saved.deleted) {
+              // Actualizar el insumo en la lista local
+              setAllInsumos(prev => prev.map(ins =>
+                Number(ins.id) === Number(recetaInsumoModal.id)
+                  ? {
+                    ...ins,
+                    es_elaborado: true,
+                    tiene_receta: true,
+                    costo_receta: saved.costo_por_porcion,
+                    precio_ref: saved.costo_por_porcion,
+                  }
+                  : ins
+              ));
+              // Actualizar el mapa de recetas elaborados inmediatamente
+              setRecetasElaborados(prev => ({
+                ...prev,
+                [String(recetaInsumoModal.id)]: {
+                  costoTotal: saved.costo_total ?? (saved.costo_por_porcion * (saved.porciones || 1)),
+                  porciones: saved.porciones || 1,
+                  precioSugerido: saved.precio_sugerido ?? 0,
+                },
+              }));
+            }
+            if (saved.deleted) {
+              setAllInsumos(prev => prev.map(ins =>
+                Number(ins.id) === Number(recetaInsumoModal.id)
+                  ? { ...ins, tiene_receta: false, costo_receta: 0 }
+                  : ins
+              ));
+              // Sacar del mapa
+              setRecetasElaborados(prev => {
+                const next = { ...prev };
+                delete next[String(recetaInsumoModal.id)];
+                return next;
+              });
+            }
+            setRecetaInsumoModal(null);
+          }}
+        />
+      )}
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
         <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: '100%' }}>

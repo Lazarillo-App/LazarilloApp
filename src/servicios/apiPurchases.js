@@ -78,6 +78,24 @@ export async function purchasesDownloadCsv(bizId, params = {}) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Descarga compras filtradas por un array de insumo IDs (para listas).
+ * Retorna el Blob sin disparar la descarga — el caller controla el filename.
+ */
+export async function purchasesDownloadCsvByIds(bizId, { from, to, insumoIds = [], branchId } = {}) {
+  const params = {};
+  if (from) params.from = from;
+  if (to)   params.to   = to;
+  if (insumoIds.length > 0) params.insumo_ids = insumoIds.join(',');
+  if (branchId && branchId !== 'all') params.branch_id = branchId;
+
+  const res = await fetch(`${BASE}/purchases/export/csv${qs(params)}`, {
+    headers: authHeaders(bizId),
+  });
+  if (!res.ok) throw new Error(`Error ${res.status} al descargar compras`);
+  return res.blob();
+}
+
 // Construye Map<insumoId:number, { cantidad, neto, iva, total, facturas }>
 // para pasarle a InsumosTable como comprasMap
 export function buildComprasMap(rows) {

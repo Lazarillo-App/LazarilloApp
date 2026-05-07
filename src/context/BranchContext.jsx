@@ -17,7 +17,7 @@ export function BranchProvider({ children }) {
   const { activeBusinessId, active: activeBiz } = useBusiness() || {};
 
   const [rawBranches, setRawBranches] = useState([]); // sucursales reales de DB
-  const [activeBranchId, setActiveBranchId] = useState(MAIN_BRANCH_ID);
+  const [activeBranchId, setActiveBranchId] = useState(null); // null = Todas
   const [loading, setLoading] = useState(false);
 
   // Rama virtual del negocio principal (sin branch_id en DB)
@@ -28,16 +28,17 @@ export function BranchProvider({ children }) {
     color: activeBiz?.props?.branding?.primary || 'var(--color-primary)',
     address: activeBiz?.props?.address || {},
     contacts: activeBiz?.props?.contact || {},
-    isMain: true,   // flag para distinguirla
+    isMain: true,
   }), [activeBusinessId, activeBiz]);
 
-  // Lista completa: principal siempre primero, luego las sucursales reales
+  // Lista completa: principal siempre primero, luego las sucursales reales.
+  // ✅ CAMBIO: branches SIEMPRE incluye al menos el principal (no depende de rawBranches.length).
   const branches = useMemo(() => {
-    if (rawBranches.length === 0) return [];          // sin sucursales reales → no mostrar selector
     return [mainBranch, ...rawBranches];
   }, [mainBranch, rawBranches]);
 
-  const hasBranches = rawBranches.length > 0;         // solo true cuando hay sucursales reales
+  // ✅ CAMBIO: hasBranches siempre true para que el selector aparezca siempre.
+  const hasBranches = true;
 
   const loadBranches = useCallback(async (bizId) => {
     const id = bizId || activeBusinessId;
@@ -52,20 +53,21 @@ export function BranchProvider({ children }) {
       const list = res?.branches || [];
       setRawBranches(list);
 
-      // Restaurar selección guardada — si no hay, usar principal
-      const stored    = localStorage.getItem(branchKey(id));
-      if (stored === MAIN_BRANCH_ID) {
+      // Restaurar selección guardada — si no hay, usar Todas (null)
+      const stored = localStorage.getItem(branchKey(id));
+      if (!stored || stored === 'null') {
+        setActiveBranchId(null); // Todas
+      } else if (stored === MAIN_BRANCH_ID) {
         setActiveBranchId(MAIN_BRANCH_ID);
       } else {
-        const storedNum = stored ? Number(stored) : null;
+        const storedNum = Number(stored);
         const exists    = storedNum && list.some(b => b.id === storedNum);
-        // Default: principal (no "Todas") — esto soluciona el bug de la imagen
-        setActiveBranchId(exists ? storedNum : MAIN_BRANCH_ID);
+        setActiveBranchId(exists ? storedNum : null); // fallback → Todas
       }
     } catch (e) {
       console.error('[BranchContext] loadBranches:', e);
       setRawBranches([]);
-      setActiveBranchId(MAIN_BRANCH_ID);
+      setActiveBranchId(null); // fallback → Todas
     } finally {
       setLoading(false);
     }
@@ -95,7 +97,6 @@ export function BranchProvider({ children }) {
   }, [loadBranches]);
 
   const setActiveBranch = useCallback((id) => {
-    // id puede ser MAIN_BRANCH_ID ('main'), null (todas), o un number (sucursal real)
     const newId = (id === null || id === undefined) ? null
                 : id === MAIN_BRANCH_ID ? MAIN_BRANCH_ID
                 : Number(id);
@@ -106,15 +107,12 @@ export function BranchProvider({ children }) {
     }
   }, [activeBusinessId]);
 
-  // activeBranch: null = todas, mainBranch = principal, branch = sucursal real
   const activeBranch = useMemo(() => {
     if (activeBranchId === null) return null;
     if (activeBranchId === MAIN_BRANCH_ID) return mainBranch;
     return rawBranches.find(b => Number(b.id) === Number(activeBranchId)) || null;
   }, [activeBranchId, rawBranches, mainBranch]);
 
-  // branch_id para usar en queries: null = todas, undefined = sin filtro (principal = sin branch_id)
-  // Para filtrar el principal: no enviar branch_id (datos sin sucursal asignada)
   const activeBranchFilter = useMemo(() => {
     if (activeBranchId === null) return { mode: 'all', branchId: null };
     if (activeBranchId === MAIN_BRANCH_ID) return { mode: 'main', branchId: null };
@@ -122,8 +120,8 @@ export function BranchProvider({ children }) {
   }, [activeBranchId]);
 
   const value = useMemo(() => ({
-    branches,          // [mainBranch, ...realBranches] — solo cuando hay sucursales reales
-    rawBranches,       // solo las sucursales reales (sin main virtual)
+    branches,
+    rawBranches,
     activeBranchId,
     activeBranch,
     activeBranchFilter,

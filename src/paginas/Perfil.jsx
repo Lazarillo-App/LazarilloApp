@@ -1,6 +1,6 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
-import { showAlert } from '../servicios/appAlert';
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 
@@ -9,118 +9,114 @@ import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import BusinessEditModal from '../componentes/BusinessEditModal';
 import SyncDialog from '../componentes/SyncDialog';
 import OrgDashboard from '../componentes/OrgDashboard';
-import UploadInsumosModal from '../componentes/UploadInsumosModal';
-import UploadArticulosModal from '../componentes/UploadArticulosModal';
-import RecetasImportModal from '../componentes/RecetasImportModal';
 import SucursalesSection from '../componentes/SucursalesSection';
 
-import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { useBusiness } from '@/context/BusinessContext';
 import { useOrganization } from '@/context/OrganizationContext';
 
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import {
+  Box, Stack, Typography, Avatar, Chip, Button,
+  Paper, Skeleton, IconButton, Tooltip,
+  Table, TableHead, TableRow, TableCell, TableBody,
+} from '@mui/material';
+import PersonIcon from '@mui/icons-material/Person';
+import EmailIcon from '@mui/icons-material/Email';
+import GroupsIcon from '@mui/icons-material/Groups';
+import AddIcon from '@mui/icons-material/Add';
+import BusinessIcon from '@mui/icons-material/Business';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 
-// ─── Panel de importación de datos ───────────────────────────────────────────
-function ImportDataPanel({ businessId, onSuccess }) {
-  const [uploadInsumosOpen, setUploadInsumosOpen] = useState(false);
-  const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
-  const [recetasImportOpen, setRecetasImportOpen] = useState(false);
-
-  if (!businessId) return null;
-
-  const cards = [
-    {
-      icon: <PointOfSaleIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo: 'Importar Artículos',
-      descripcion: 'Completar el catálogo de artículos cuando MaxiRest no devuelve todos los datos.',
-      detalle: 'Exportá el listado de artículos desde MaxiRest → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
-      accion: 'Subir archivo de artículos',
-      onClick: () => setUploadArticulosOpen(true),
-    },
-    {
-      icon: <Inventory2Icon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo: 'Importar Insumos',
-      descripcion: 'Completar el catálogo de insumos cuando MaxiRest no devuelve todos los datos.',
-      detalle: 'Exportá el catálogo de insumos desde MaxiRest → Stock → Insumos → Excel y subilo acá. Solo agrega y actualiza — nunca borra.',
-      accion: 'Subir archivo de insumos',
-      onClick: () => setUploadInsumosOpen(true),
-    },
-    {
-      icon: <MenuBookIcon sx={{ fontSize: 36, color: 'var(--color-primary, #1976d2)' }} />,
-      titulo: 'Importar Recetas',
-      descripcion: 'Sincronizar recetas desde MaxiRest o cargarlas manualmente desde un archivo.',
-      detalle: 'Podés hacer sync automático desde MaxiRest o subir un archivo con ingredientes por artículo. Las recetas editadas manualmente no se pisan en syncs posteriores.',
-      accion: 'Gestionar recetas',
-      onClick: () => setRecetasImportOpen(true),
-    },
-  ];
+/* ── Placeholder equipo — se completará cuando exista el endpoint ── */
+function TeamSection() {
+  // TODO: fetch `/api/org/members` cuando esté disponible
+  const members = []; // vacío por ahora → muestra estado vacío
 
   return (
-    <section className="section">
-      <h3>Importación de datos</h3>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+      <Stack
+        direction="row" alignItems="center" justifyContent="space-between"
+        sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <GroupsIcon sx={{ color: 'var(--color-primary)', fontSize: 20 }} />
+          <Typography variant="subtitle2" fontWeight={700}>
+            Equipo
+          </Typography>
+          <Chip
+            label="Próximamente"
+            size="small"
+            sx={{ fontSize: '0.65rem', height: 18, bgcolor: '#f1f5f9', color: '#64748b' }}
+          />
+        </Stack>
+        <Tooltip title="Invitar miembro (próximamente)">
+          <span>
+            <IconButton size="small" disabled>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
 
-      <div className="import-notice">
-        <InfoOutlinedIcon sx={{ fontSize: 16, flexShrink: 0, marginTop: '1px', color: '#6b7280' }} />
-        <span>
-          Usá estas opciones para completar el catálogo cuando la sincronización con MaxiRest
-          no trae todos los datos. Después de importar, podés correr la sincronización normal
-          para que complete los datos faltantes sin generar duplicados.
-        </span>
-      </div>
-
-      <div className="import-grid">
-        {cards.map((card) => (
-          <div key={card.titulo} className="import-card">
-            <div className="import-card-icon">{card.icon}</div>
-            <div className="import-card-body">
-              <div className="import-card-title">{card.titulo}</div>
-              <div className="import-card-desc">{card.descripcion}</div>
-              <div className="import-card-detail">{card.detalle}</div>
-            </div>
-            <button className="import-card-btn" onClick={card.onClick}>
-              {card.accion}
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <UploadArticulosModal
-        open={uploadArticulosOpen}
-        onClose={() => setUploadArticulosOpen(false)}
-        businessId={businessId}
-        onSuccess={() => {
-          setUploadArticulosOpen(false);
-          onSuccess?.('articulos');
-        }}
-      />
-
-      <UploadInsumosModal
-        open={uploadInsumosOpen}
-        onClose={() => setUploadInsumosOpen(false)}
-        businessId={businessId}
-        onSuccess={() => {
-          setUploadInsumosOpen(false);
-          onSuccess?.('insumos');
-        }}
-      />
-
-      <RecetasImportModal
-        open={recetasImportOpen}
-        onClose={() => setRecetasImportOpen(false)}
-        businessId={businessId}
-        onSuccess={() => {
-          setRecetasImportOpen(false);
-          onSuccess?.('recetas');
-        }}
-      />
-    </section>
+      <Box sx={{ px: 2.5, py: 3 }}>
+        {members.length === 0 ? (
+          <Stack alignItems="center" spacing={1} py={2}>
+            <GroupsIcon sx={{ fontSize: 40, color: '#e2e8f0' }} />
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Aquí vas a ver los miembros de tu equipo que tienen acceso a este negocio.
+              <br />
+              Próximamente podés invitar colaboradores con distintos roles.
+            </Typography>
+          </Stack>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Usuario</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Rol</TableCell>
+                <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem' }}>Estado</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {members.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'var(--color-primary)' }}>
+                        {(m.name || 'U')[0].toUpperCase()}
+                      </Avatar>
+                      <Typography variant="body2" fontWeight={600}>{m.name}</Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{m.email}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={m.role}
+                      size="small"
+                      icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
+                      sx={{ fontSize: '0.7rem' }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={m.active ? 'Activo' : 'Invitado'}
+                      size="small"
+                      color={m.active ? 'success' : 'default'}
+                      sx={{ fontSize: '0.7rem' }}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Box>
+    </Paper>
   );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+/* ── Página principal ── */
 export default function Perfil() {
   const {
     items,
@@ -140,7 +136,7 @@ export default function Perfil() {
   const [notice, setNotice] = useState({ open: false, title: '', message: '' });
 
   const showNotice = (title, message) => setNotice({ open: true, title, message });
-  const closeNotice = () => setNotice(s => ({ ...s, open: false }));
+  const closeNotice = () => setNotice((s) => ({ ...s, open: false }));
 
   const me = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; }
@@ -149,103 +145,64 @@ export default function Perfil() {
 
   const newLocalBtnRef = useRef(null);
 
-  useEffect(() => {
-    refetchBusinesses?.();
-  }, [refetchBusinesses]);
-
-  // Resolver el rootBizId para las importaciones (siempre el principal)
-  const rootBizId = useMemo(() => {
-    if (!allBusinesses?.length) return activeId;
-    const root = allBusinesses.find(
-      b => !b.created_from || b.created_from === 'manual' || b.created_from === 'onboarding'
-    );
-    return root?.id ?? activeId;
-  }, [allBusinesses, activeId]);
-
-  const onSetActive = async (id) => {
-    try { await selectBusiness?.(id); }
-    catch (e) { console.error(e); showAlert('No se pudo activar.', 'error'); }
-  };
+  useEffect(() => { refetchBusinesses?.(); }, [refetchBusinesses]);
 
   const onCreateComplete = async (biz) => {
     setShowCreate(false);
-
-    // Validar que el negocio recién creado tenga un id numérico válido
-    // Si biz.id no está disponible todavía, refetch primero para resolverlo
     const bizId = Number(biz?.id);
     if (!Number.isFinite(bizId) || bizId <= 0) {
-      console.warn('[onCreateComplete] biz.id inválido, haciendo refetch primero:', biz);
       await refetchBusinesses?.();
       try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz?.id } })); } catch { }
       return;
     }
-
-    // Primero refetch para que el nuevo negocio esté en la lista, luego activar
     await refetchBusinesses?.();
-    await onSetActive(bizId);
-
     const isSubBusiness = biz.created_from === 'from_group';
-
     if (!isSubBusiness) {
       try {
         const maxiOk = await isMaxiConfigured(bizId);
         if (maxiOk) {
-          // Notificar a ArticulosMain que empiece a mostrar banner de sync
           window.dispatchEvent(new CustomEvent('sync:start', { detail: { bizId } }));
           showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
           const result = await syncAll(bizId, {
             onProgress: (msg, type, step) => {
-              console.log(`[AUTO-SYNC] [${step}] ${msg}`);
               window.dispatchEvent(new CustomEvent('sync:progress', { detail: { msg, type, step } }));
             },
           });
           if (result?.ok) {
             showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
-            // Crear/asegurar la agrupación Sin Agrupación para que el árbol no esté vacío
-            try { await ensureTodo(bizId); } catch (eTodo) {
-              console.warn('[onCreateComplete] ensureTodo falló (no crítico):', eTodo?.message);
-            }
+            try { await ensureTodo(bizId); } catch { }
           } else {
             const errors = Array.isArray(result?.errors) ? result.errors : [];
-            const errorSteps = errors.map(e => e.step).filter(Boolean).join(', ') || 'desconocido';
+            const errorSteps = errors.map((e) => e.step).filter(Boolean).join(', ') || 'desconocido';
             showNotice('Sincronización parcial', `Completado con errores en: ${errorSteps}`);
           }
-          // sync:completed siempre al terminar (ok o con errores) para que ArticulosMain refresque
           window.dispatchEvent(new CustomEvent('sync:completed', { detail: { bizId, ok: !!result?.ok } }));
         } else {
           showNotice('Negocio creado', 'Configurá las credenciales de Maxi para habilitar la sincronización automática');
         }
       } catch (e) {
-        console.error('Auto-sync on create error:', e);
         showNotice('Error', 'No se pudo completar la sincronización automática');
         window.dispatchEvent(new CustomEvent('sync:completed', { detail: { bizId, ok: false } }));
       }
     } else {
       showNotice('Sub-negocio creado', `"${biz.name}" fue creado correctamente y hereda las credenciales del principal.`);
     }
-
     try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch { }
   };
 
   const handleDeleteBusiness = async (biz) => {
     const id = biz?.id;
     if (!id) return;
-
     const name = biz?.name || biz?.nombre || `#${id}`;
     const ok = window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`);
     if (!ok) return;
-
-    try { newLocalBtnRef.current?.focus?.(); }
-    catch { try { document.activeElement?.blur?.(); } catch { } }
-
+    try { newLocalBtnRef.current?.focus?.(); } catch { try { document.activeElement?.blur?.(); } catch { } }
     try {
       const currentActiveId = Number(activeId);
       const deletedId = Number(id);
       const isActive = currentActiveId === deletedId;
-
       await BusinessesAPI.remove(id);
       removeBusinessFromState?.(id);
-
       if (isActive) {
         const businesses = await BusinessesAPI.listMine();
         if (businesses && businesses.length > 0) {
@@ -263,152 +220,211 @@ export default function Perfil() {
       } else {
         showNotice('Listo', `🗑️ Local "${name}" eliminado`);
       }
-
       await refetchBusinesses?.();
       window.dispatchEvent(new CustomEvent('business:deleted', { detail: { id } }));
     } catch (e) {
-      console.error('[Delete] Error:', e);
       showNotice('Error', e?.message || 'No se pudo eliminar el local');
     }
   };
 
-  const handleImportSuccess = (tipo) => {
-    if (tipo === 'articulos') {
-      window.dispatchEvent(new CustomEvent('articulos:imported'));
-    } else if (tipo === 'insumos') {
-      window.dispatchEvent(new CustomEvent('insumos:imported'));
-    } else if (tipo === 'recetas') {
-      window.dispatchEvent(new CustomEvent('recetas:imported'));
-    }
-    showNotice(
-      'Importación completada',
-      `Los datos de ${tipo} fueron importados correctamente. Si tenés la pantalla abierta, recargá para ver los cambios.`
-    );
-  };
-
   const activeBiz = active || null;
-
-  const activeBranding = useMemo(() => {
-    const br = activeBiz?.props?.branding || activeBiz?.branding || {};
-    return {
-      primary: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(br.primary || '') ? br.primary : '#111111',
-      secondary: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(br.secondary || '') ? br.secondary : '#e5e7eb',
-      name: activeBiz?.name || activeBiz?.nombre || '',
-    };
-  }, [activeBiz]);
-
-  const user = me || {};
-  const userInitial = (user?.firstName || user?.name || 'U')[0]?.toUpperCase?.() || 'U';
-  const bizInitial = (activeBiz ? (activeBranding.name || 'N') : userInitial)[0]?.toUpperCase?.() || 'N';
-  const meName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Usuario';
   const list = Array.isArray(items) ? items : [];
+  const meName = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
+  const userInitials = meName.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+
+  const orgBizIds = new Set((allBusinesses || []).map((b) => String(b.id)));
+  const outsideOrg = organization && orgBizIds.size > 1
+    ? list.filter((b) => !orgBizIds.has(String(b.id)))
+    : list;
+
+  const themeColor = 'var(--color-primary, #3b82f6)';
 
   return (
-    <div className="profile-wrap">
-      {/* ── Header ── */}
-      <header className="profile-header">
-        <div className="avatar-wrap">
-          <div
-            className="avatar biz-avatar"
-            title={activeBiz?.name || 'Sin local activo'}
-            style={{
-              backgroundColor: activeBranding?.secondary || '#e5e7eb',
-              color: activeBranding?.primary || '#111',
-            }}
-          >
-            <span className="biz-avatar-initial">{bizInitial}</span>
-          </div>
-        </div>
+    <Box sx={{ maxWidth: 860, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
-        <div className="who">
-          <h1>Mi Perfil</h1>
-          <h2>{meName}</h2>
-          <div className="mail">{me?.email || ''}</div>
-          <button className="cta-wide" ref={newLocalBtnRef} onClick={() => setShowCreate(true)}>
-            Nuevo Local
-          </button>
-        </div>
-      </header>
+      {/* ── Header: datos del usuario ── */}
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          overflow: 'hidden',
+          mb: 3,
+        }}
+      >
+        {/* Banda de color superior */}
+        <Box sx={{ height: 6, bgcolor: themeColor }} />
 
-      {/* ── Organización ── */}
+        <Box sx={{ p: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} alignItems={{ sm: 'center' }}>
+            {/* Avatar */}
+            <Avatar
+              sx={{
+                width: 72,
+                height: 72,
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                bgcolor: themeColor,
+                flexShrink: 0,
+              }}
+            >
+              {userInitials || <PersonIcon />}
+            </Avatar>
+
+            {/* Info */}
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" fontWeight={800} lineHeight={1.2} mb={0.5}>
+                {meName}
+              </Typography>
+              <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" gap={0.5}>
+                {me?.email && (
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {me.email}
+                    </Typography>
+                  </Stack>
+                )}
+                {organization?.name && (
+                  <>
+                    <Typography variant="caption" color="text.disabled">·</Typography>
+                    <Chip
+                      size="small"
+                      label={organization.name}
+                      icon={<BusinessIcon sx={{ fontSize: '0.75rem !important' }} />}
+                      sx={{ fontSize: '0.7rem', height: 20 }}
+                    />
+                  </>
+                )}
+              </Stack>
+            </Box>
+
+            {/* CTA */}
+            <Button
+              ref={newLocalBtnRef}
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setShowCreate(true)}
+              sx={{
+                bgcolor: themeColor,
+                flexShrink: 0,
+                '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor },
+              }}
+            >
+              Nuevo local
+            </Button>
+          </Stack>
+        </Box>
+      </Paper>
+
+      {/* ── Organización (si aplica) ── */}
       {organization && (allBusinesses || []).length > 1 && (
-        <section className="section">
-          <h3>Mi Organización — {organization.name || 'Sin nombre'}</h3>
-          <OrgDashboard
-            compact
-            onSelectBusiness={async (biz) => {
-              try { await selectBusiness?.(biz.id); } catch { }
-            }}
-          />
-        </section>
+        <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
+          <Stack
+            direction="row" alignItems="center" spacing={1}
+            sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}
+          >
+            <BusinessIcon sx={{ color: themeColor, fontSize: 18 }} />
+            <Typography variant="subtitle2" fontWeight={700}>
+              Mi organización — {organization.name || 'Sin nombre'}
+            </Typography>
+          </Stack>
+          <Box sx={{ p: 2 }}>
+            <OrgDashboard
+              compact
+              onSelectBusiness={async (biz) => {
+                try { await selectBusiness?.(biz.id); } catch { }
+              }}
+            />
+          </Box>
+        </Paper>
       )}
 
       {/* ── Mis locales ── */}
-      {(() => {
-        const orgBizIds = new Set((allBusinesses || []).map(b => String(b.id)));
-        const outsideOrg = organization && orgBizIds.size > 1
-          ? list.filter(b => !orgBizIds.has(String(b.id)))
-          : list;
-
-        if (outsideOrg.length === 0 && organization && orgBizIds.size > 1) return null;
-
-        return (
-          <section className="section">
-            <h3>Mis locales</h3>
-            {businessesLoading && (
-              <div style={{ opacity: 0.7, fontSize: 13, padding: '6px 0' }}>Cargando locales…</div>
-            )}
-            <div className="grid">
-              {outsideOrg.map(biz => (
-                <BusinessCard
-                  key={biz.id}
-                  biz={biz}
-                  activeId={activeId}
-                  onSetActive={onSetActive}
-                  onEdit={setEditing}
-                  onDelete={handleDeleteBusiness}
-                  showNotice={(msg) => showNotice('Aviso', msg)}
+      {!(outsideOrg.length === 0 && organization && orgBizIds.size > 1) && (
+        <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
+          <Stack
+            direction="row" alignItems="center" justifyContent="space-between"
+            sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <BusinessIcon sx={{ color: themeColor, fontSize: 18 }} />
+              <Typography variant="subtitle2" fontWeight={700}>Mis locales</Typography>
+              {list.length > 0 && (
+                <Chip
+                  size="small"
+                  label={outsideOrg.length}
+                  sx={{ fontSize: '0.65rem', height: 18, bgcolor: `${themeColor}18`, color: themeColor, fontWeight: 700 }}
                 />
-              ))}
-              {outsideOrg.length === 0 && !businessesLoading && (
-                <div className="empty">Aún no tenés locales. Creá el primero.</div>
               )}
-            </div>
-          </section>
-        );
-      })()}
+            </Stack>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => setShowCreate(true)}
+              sx={{ borderColor: themeColor, color: themeColor, fontSize: '0.75rem' }}
+            >
+              Nuevo
+            </Button>
+          </Stack>
 
-      {/* ── Sucursales del negocio activo ── */}
-      {activeId && (
-        <section className="section">
-          <div style={{
-            display: 'flex', alignItems: 'flex-start',
-            justifyContent: 'space-between', marginBottom: 10,
-          }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#1f2937' }}>
-                Sucursales
-                {activeBiz?.name && (
-                  <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
-                    de {activeBiz.name}
-                  </span>
-                )}
-              </h3>
-              {/* <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af', lineHeight: 1.4 }}>
-                Locales físicos del mismo negocio. Comparten artículos e insumos,
-                pero tienen ventas y compras independientes.
-              </p> */}
-            </div>
-          </div>
-          {/* SucursalesSection usa BranchContext internamente */}
-          <SucursalesSection />
-        </section>
+          <Box sx={{ p: 2 }}>
+            {businessesLoading ? (
+              <Stack spacing={1.5}>
+                {[1, 2].map((n) => <Skeleton key={n} variant="rounded" height={80} />)}
+              </Stack>
+            ) : outsideOrg.length === 0 ? (
+              <Box sx={{ border: '1px dashed #e5e7eb', borderRadius: 2, p: 3, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Aún no tenés locales. Creá el primero.
+                </Typography>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                {outsideOrg.map((biz) => (
+                  <BusinessCard
+                    key={biz.id}
+                    biz={biz}
+                    activeId={activeId}
+                    onEdit={setEditing}
+                    onDelete={handleDeleteBusiness}
+                    showNotice={(msg) => showNotice('Aviso', msg)}
+                  />
+                ))}
+              </Box>
+            )}
+          </Box>
+        </Paper>
       )}
 
-      {/* ── Importación de datos ── */}
-      <ImportDataPanel businessId={rootBizId} onSuccess={handleImportSuccess} />
+      {/* ── Sucursales ── */}
+      {activeId && (
+        <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
+          <Stack
+            direction="row" alignItems="center" spacing={1}
+            sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}
+          >
+            <BusinessIcon sx={{ color: themeColor, fontSize: 18 }} />
+            <Typography variant="subtitle2" fontWeight={700}>
+              Sucursales
+              {activeBiz?.name && (
+                <Typography component="span" variant="caption" color="text.secondary" ml={0.75}>
+                  de {activeBiz.name}
+                </Typography>
+              )}
+            </Typography>
+          </Stack>
+          <Box sx={{ p: 2 }}>
+            <SucursalesSection />
+          </Box>
+        </Paper>
+      )}
 
-      {/* ── Modals globales ── */}
+      {/* ── Equipo (adelantado) ── */}
+      <TeamSection />
+
+      {/* ── Modals ── */}
       <BusinessCreateModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
@@ -430,74 +446,6 @@ export default function Perfil() {
         message={notice.message}
         onClose={closeNotice}
       />
-
-      <style>{`
-        .profile-wrap{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:18px}
-        .profile-header{
-          display:grid;
-          grid-template-columns:auto 1fr auto;
-          gap:12px;
-          align-items:center;
-          background:var(--color-surface,#fff);
-          border:1px solid var(--color-border,#e5e7eb);
-          border-radius:14px;
-          padding:12px 14px;
-        }
-        .avatar{width:56px;height:56px;border-radius:999px;background:#e5e7eb;display:grid;place-items:center}
-        .who h1{margin:0 0 4px 0;font-size:14px;color:#64748b;font-weight:800}
-        .who h2{margin:0;font-size:18px;font-weight:800}
-        .who .mail{font-size:12px;color:#6b7280}
-
-        .section h3{margin:6px 0 10px;font-size:14px;font-weight:800;color:#1f2937}
-        .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
-        .empty{border:1px dashed #e5e7eb;border-radius:12px;padding:16px;color:#6b7280}
-
-        .cta-wide{
-          width:15%;height:40px;border-radius:12px;
-          background:var(--color-primary,#0ea5e9);
-          color:var(--on-primary,#ffffff);
-          box-shadow:0 1px 0 rgba(0,0,0,.06) inset;
-          font-weight:400;cursor:pointer;margin:10px;border:none;
-        }
-        .cta-wide:hover{filter:brightness(.96)}
-
-        .biz-avatar{border:1px solid var(--color-border,#e5e7eb);box-shadow:0 1px 0 rgba(0,0,0,.03) inset}
-        .biz-avatar-initial{font-weight:900;font-size:20px;line-height:1;letter-spacing:.5px;text-transform:uppercase}
-
-        /* ── Panel de importación ── */
-        .import-notice{
-          display:flex;gap:8px;align-items:flex-start;
-          background:#f8fafc;border:1px solid #e2e8f0;
-          border-radius:10px;padding:10px 14px;
-          font-size:12px;color:#6b7280;line-height:1.5;
-          margin-bottom:14px;
-        }
-        .import-grid{
-          display:grid;gap:12px;
-          grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-        }
-        .import-card{
-          display:grid;
-          grid-template-rows:auto 1fr auto;
-          gap:10px;
-          background:var(--color-surface,#fff);
-          border:1px solid var(--color-border,#e5e7eb);
-          border-radius:14px;
-          padding:18px;
-        }
-        .import-card-icon{display:flex;align-items:center}
-        .import-card-title{font-size:14px;font-weight:800;color:#1f2937;margin-bottom:4px}
-        .import-card-desc{font-size:13px;color:#374151;margin-bottom:4px}
-        .import-card-detail{font-size:11px;color:#9ca3af;line-height:1.4}
-        .import-card-btn{
-          width:100%;padding:10px;border-radius:10px;border:none;cursor:pointer;
-          background:var(--color-primary,#1976d2);
-          color:var(--on-primary,#fff);
-          font-size:13px;font-weight:700;
-          transition:filter .15s;
-        }
-        .import-card-btn:hover{filter:brightness(.92)}
-      `}</style>
-    </div>
+    </Box>
   );
 }

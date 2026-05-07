@@ -23,11 +23,11 @@ import {
   Chip,
 } from '@mui/material';
 import StoreIcon from '@mui/icons-material/Store';
-import CloudUploadIcon  from '@mui/icons-material/CloudUpload';
-import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
-import ErrorIcon        from '@mui/icons-material/Error';
-import HelpOutlineIcon  from '@mui/icons-material/HelpOutline';
-import CloseIcon        from '@mui/icons-material/Close';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import CloseIcon from '@mui/icons-material/Close';
 import { BASE } from '../servicios/apiBase';
 
 // ─── Imágenes de instrucciones ───
@@ -157,20 +157,21 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
   const [branchId, setBranchId] = useState(null);
   React.useEffect(() => { if (open) setBranchId(activeBranchId ?? null); }, [open, activeBranchId]);
 
-  const [file,             setFile]             = useState(null);
-  const [uploading,        setUploading]        = useState(false);
-  const [progress,         setProgress]         = useState(null);
-  const [error,            setError]            = useState(null);
-  const [success,          setSuccess]          = useState(false);
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [branchError, setBranchError] = useState(false);
 
   const themeColors = React.useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#1976d2', secondary: '#10b981', onPrimary: '#ffffff' };
     const styles = getComputedStyle(document.documentElement);
     return {
-      primary:   styles.getPropertyValue('--color-primary')?.trim()   || '#1976d2',
+      primary: styles.getPropertyValue('--color-primary')?.trim() || '#1976d2',
       secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-      onPrimary: styles.getPropertyValue('--on-primary')?.trim()      || '#ffffff',
+      onPrimary: styles.getPropertyValue('--on-primary')?.trim() || '#ffffff',
     };
   }, []);
 
@@ -192,7 +193,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
         formData.append('branch_id', String(branchId));
       }
 
-      const token    = localStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const response = await fetch(
         `${BASE}/businesses/${businessId}/purchases/import-csv`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
@@ -202,15 +203,18 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
       console.log('[UploadComprasModal] Respuesta del servidor:', result);
 
       if (result.ok || response.ok) {
-        const summary  = result.summary || result.data?.summary || result;
+        const summary = result.summary || result.data?.summary || result;
         const inserted = Number(summary.inserted || summary.rows_inserted || summary.count || 0);
-        const total    = Number(summary.total_rows || summary.total || inserted);
-        const failed   = Number(summary.failed || 0);
+        const total = Number(summary.total_rows || summary.total || inserted);
+        const failed = Number(summary.failed || 0);
 
         console.log('[UploadComprasModal] Datos procesados:', { inserted, total, failed });
 
         setProgress({ inserted, total: total || inserted, failed });
         setSuccess(true);
+        window.dispatchEvent(new CustomEvent('purchases:batch:changed', {
+          detail: { businessId, action: 'uploaded' }
+        }));
       } else {
         throw new Error(result.message || result.error || 'Error al importar compras');
       }
@@ -225,9 +229,19 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
   const handleClose = () => {
     if (!uploading) {
       if (success && onSuccess) onSuccess();
-      setFile(null); setProgress(null); setError(null); setSuccess(false);
+      setFile(null); setProgress(null); setError(null);
+      setSuccess(false); setBranchError(false);
       onClose();
     }
+  };
+
+  // ─── Validación: ¿se puede abrir el selector de archivo? ───
+  const handleOpenFilePicker = () => {
+    if (hasBranches && !branchId) {
+      setBranchError(true);
+      return;
+    }
+    document.getElementById('compras-file-input').click();
   };
 
   const progressPercent = progress?.total > 0
@@ -274,52 +288,56 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
 
         <DialogContent>
           <Box sx={{ py: 2 }}>
-            {/* Sin archivo */}
+
+            {/* ── Selector de sucursal — SIEMPRE visible mientras no hay éxito ── */}
+            {!success && branches && branches.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
+                    </Box>
+                  </InputLabel>
+                  <Select
+                    value={branchId === null || branchId === undefined ? '' : String(branchId)}
+                    label="Sucursal"
+                    onChange={e => {
+                      const v = e.target.value;
+                      setBranchId(v === '' ? null : (Number(v) || v));
+                      setBranchError(false);
+                    }}
+                  >
+                    <MenuItem value=""><em>Negocio completo (sin sucursal)</em></MenuItem>
+                    {(branches || []).map(b => (
+                      <MenuItem key={b.id} value={String(b.id)}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
+                          {b.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {branchId && (
+                  <Chip size="small" sx={{ mt: 0.5, fontSize: '0.72rem' }}
+                    label={`Compras para: ${branches.find(b => String(b.id) === String(branchId))?.name || branchId}`} />
+                )}
+                {/* Mensaje de error cuando intentan subir sin sucursal */}
+                {branchError && (
+                  <Alert severity="warning" sx={{ mt: 1 }} onClose={() => setBranchError(false)}>
+                    Seleccioná una sucursal antes de seleccionar el archivo.
+                  </Alert>
+                )}
+              </Box>
+            )}
+
             {!file && !success && (
               <>
                 <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
                   <Typography variant="body2" gutterBottom>
                     <strong>📋 ¿Primera vez importando compras?</strong>
                   </Typography>
-                  {/* Selector de sucursal */}
-                {branches && branches.length > 0 && (
-                  <Box sx={{ mb: 2 }}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
-                        </Box>
-                      </InputLabel>
-                      <Select
-                        value={branchId === null || branchId === undefined ? '' : String(branchId)}
-                        label="Sucursal"
-                        onChange={e => { const v = e.target.value; setBranchId(v === '' ? null : (Number(v) || v)); }}
-                      >
-                        <MenuItem value=""><em>Negocio completo (sin sucursal)</em></MenuItem>
-                        {(branches || []).map(b => (
-                          <MenuItem key={b.id} value={b.id}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
-                              {b.name}
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    {branchId && (
-                      <Chip size="small" sx={{ mt: 0.5, fontSize: '0.72rem' }}
-                        label={`Compras para: ${branches.find(b => b.id === branchId)?.name || branchId}`} />
-                    )}
-                  </Box>
-                )}
-
-                {hasBranches && !branchId && (
-                  <Alert severity="warning" sx={{ mb: 2 }}>
-                    <strong>Seleccioná una sucursal</strong> antes de importar las compras.
-                  </Alert>
-                )}
-
-                <Typography variant="caption" display="block" sx={{ mb: 1 }}>
+                  <Typography variant="caption" display="block" sx={{ mb: 1 }}>
                     Hacé clic en el ícono de ayuda{' '}
                     <HelpOutlineIcon sx={{ fontSize: 16, verticalAlign: 'middle', color: themeColors.primary }} />{' '}
                     arriba para ver las instrucciones detalladas paso a paso sobre cómo exportar el archivo desde MaxiRest.
@@ -328,40 +346,64 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
 
                 <Box
                   sx={{
-                    border: `2px dashed ${themeColors.primary}`,
+                    border: `2px dashed ${hasBranches && !branchId ? '#bdbdbd' : themeColors.primary}`,
                     borderRadius: 2,
                     p: 5,
                     textAlign: 'center',
-                    cursor: 'pointer',
-                    backgroundColor: `${themeColors.primary}08`,
+                    cursor: hasBranches && !branchId ? 'not-allowed' : 'pointer',
+                    backgroundColor: hasBranches && !branchId ? '#f5f5f5' : `${themeColors.primary}08`,
                     transition: 'all 0.3s',
-                    '&:hover': {
+                    opacity: hasBranches && !branchId ? 0.6 : 1,
+                    '&:hover': hasBranches && !branchId ? {} : {
                       borderColor: themeColors.primary,
                       backgroundColor: `${themeColors.primary}15`,
                       transform: 'scale(1.01)',
                     },
                   }}
-                  onClick={() => document.getElementById('compras-file-input').click()}
+                  onClick={handleOpenFilePicker}
                 >
-                  <CloudUploadIcon sx={{ fontSize: 64, color: themeColors.primary, mb: 2 }} />
-                  <Typography variant="h6" sx={{ color: themeColors.primary }} gutterBottom fontWeight="medium">
-                    Seleccioná tu archivo
+                  <CloudUploadIcon
+                    sx={{
+                      fontSize: 64,
+                      color: hasBranches && !branchId ? '#bdbdbd' : themeColors.primary,
+                      mb: 2,
+                    }}
+                  />
+                  <Typography
+                    variant="h6"
+                    sx={{ color: hasBranches && !branchId ? 'text.disabled' : themeColors.primary }}
+                    gutterBottom
+                    fontWeight="medium"
+                  >
+                    {hasBranches && !branchId ? 'Primero seleccioná una sucursal' : 'Seleccioná tu archivo'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Arrastrá y soltá o hacé clic para seleccionar
+                    {hasBranches && !branchId
+                      ? 'Es necesario indicar la sucursal antes de subir el archivo'
+                      : 'Arrastrá y soltá o hacé clic para seleccionar'}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    Formatos: CSV, XLS, XLSX
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                    (Exportado desde MaxiRest)
-                  </Typography>
+                  {(!hasBranches || branchId) && (
+                    <>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Formatos: CSV, XLS, XLSX
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                        (Exportado desde MaxiRest)
+                      </Typography>
+                    </>
+                  )}
                   <input
                     id="compras-file-input"
                     type="file"
                     accept=".csv,.xls,.xlsx"
                     style={{ display: 'none' }}
-                    onChange={handleFileChange}
+                    onChange={(e) => {
+                      if (hasBranches && !branchId) {
+                        setBranchError(true);
+                        return;
+                      }
+                      handleFileChange(e);
+                    }}
                   />
                 </Box>
               </>
@@ -504,8 +546,14 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                 Cancelar
               </Button>
               <Button
-                onClick={handleUpload}
-                disabled={!file || uploading || (hasBranches && !branchId)}
+                onClick={() => {
+                  if (hasBranches && !branchId) {
+                    setBranchError(true);
+                    return;
+                  }
+                  handleUpload();
+                }}
+                disabled={!file || uploading}
                 variant="contained"
                 startIcon={uploading ? null : <CloudUploadIcon />}
                 size="large"

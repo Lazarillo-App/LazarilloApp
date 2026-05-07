@@ -117,23 +117,18 @@ export default function AgrupacionCreateModal({
   todosArticulos = [],
   loading = false,
   isArticuloBloqueado = () => false,
-
-  // create | append
   mode = "create",
   groupId,
   groupName,
-
   onCreated,
   onAppended,
   saveButtonLabel,
-
   preselect = null,
   existingNames = [],
   treeMode = "cat-first", // "cat-first" | "sr-first"
-
-  // ✅ NUEVO: para no depender de localStorage
   businessId: businessIdProp,
   allowedIds = null, // Set<number> | null
+  rootBizId: rootBizIdProp = null,
 }) {
   /* ---------- businessId efectivo ---------- */
   const effectiveBusinessId = useMemo(() => {
@@ -158,7 +153,7 @@ export default function AgrupacionCreateModal({
   const [snackbarMensaje, setSnackbarMensaje] = useState("");
   const [snackbarTipo, setSnackbarTipo] = useState("success");
   const [saving, setSaving] = useState(false);
-  const [successModal, setSuccessModal] = useState(null); // { nombre, count, groupId }
+  const [successModal, setSuccessModal] = useState(null); // { nombre, count, groupId, onConfirm }
 
   const showSnack = useCallback((msg, type = "success") => {
     setSnackbarMensaje(msg);
@@ -445,6 +440,9 @@ export default function AgrupacionCreateModal({
 
         const fromId = Number(preselect?.fromGroupId);
         const haveFrom = Number.isFinite(fromId) && fromId > 0;
+        const fromBizId = Number(preselect?.fromGroupBizId)
+          || rootBizIdProp
+          || effectiveBusinessId;
 
         const nuevo = await httpBiz(
           `/agrupaciones`,
@@ -464,11 +462,13 @@ export default function AgrupacionCreateModal({
 
         if (haveFrom) {
           // Origen es una agrupación real — move-items quita y agrega en un solo paso
-          await httpBiz(
-            `/agrupaciones/${fromId}/move-items`,
-            { method: "POST", body: { toId: newGroupId, ids } },
-            effectiveBusinessId
-          );
+          if (haveFrom) {
+            await httpBiz(
+              `/agrupaciones/${fromId}/move-items`,
+              { method: "POST", body: { toId: newGroupId, ids } },
+              fromBizId   // ← usa el bizId real de la agrupación origen
+            );
+          }
         } else if (haveTodoGroup) {
           // Origen es Sin Agrupación — Sin Agrupación no almacena artículos en DB,
           // son calculados. Solo hay que agregar al nuevo grupo.
@@ -518,11 +518,18 @@ export default function AgrupacionCreateModal({
 
         setNombreRubro("");
         setSelectedIds(new Set());
-        onCreated?.(finalName, newGroupId, articulosDetallados);
         emitGroupsChanged("create", { groupId: newGroupId, count: ids.length });
 
-        // ✅ Modal de éxito en lugar de snackbar
-        setSuccessModal({ nombre: finalName, count: ids.length, groupId: newGroupId });
+        // ✅ Mostrar modal de éxito — onCreated se dispara al hacer click en "Listo"
+        // para que las mutaciones optimistas (remove+create) ocurran DESPUÉS del render del modal
+        setSuccessModal({
+          nombre: finalName,
+          count: ids.length,
+          groupId: newGroupId,
+          onConfirm: () => {
+            onCreated?.(finalName, newGroupId, articulosDetallados);
+          },
+        });
         return;
       }
 
@@ -814,7 +821,7 @@ export default function AgrupacionCreateModal({
       {/* ── Modal de éxito ── */}
       <Dialog
         open={!!successModal}
-        onClose={() => { setSuccessModal(null); onClose?.(); }}
+        onClose={() => { successModal?.onConfirm?.(); setSuccessModal(null); onClose?.(); }}
         maxWidth="xs"
         fullWidth
       >
@@ -833,7 +840,7 @@ export default function AgrupacionCreateModal({
         <DialogActions sx={{ justifyContent: 'center', py: 2 }}>
           <Button
             variant="contained"
-            onClick={() => { setSuccessModal(null); onClose?.(); }}
+            onClick={() => { successModal?.onConfirm?.(); setSuccessModal(null); onClose?.(); }}
             sx={{
               bgcolor: 'var(--color-primary)',
               color: 'var(--on-primary)',

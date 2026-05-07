@@ -312,14 +312,14 @@ const AgrupacionesList = ({
     });
   };
 
-  const removeOne = async (groupId, articuloId, isTodo) => {
+  const removeOne = async (groupId, articuloId, isTodo, groupBizId) => {
     if (isTodo) return;
 
     onMutateGroups?.({ type: 'remove', groupId, ids: [articuloId] });
 
     try {
-      // ✅ antes funcionaba así: quitarArticulo(groupId, articuloId)
-      await quitarArticulo(groupId, articuloId);
+      // Pasar el business_id real del grupo (puede ser el del negocio principal)
+      await quitarArticulo(groupBizId || null, groupId, articuloId);
       emitGroupsChanged("remove", { groupId, ids: [articuloId] });
     } catch (e) {
       console.error('REMOVE_ONE_FAIL', e);
@@ -333,7 +333,7 @@ const AgrupacionesList = ({
     });
   };
 
-  const moveSelected = async (fromId, isTodo) => {
+  const moveSelected = async (fromId, isTodo, fromBizId) => {
     if (isTodo) return;
 
     const ids = Array.from(selectedByGroup[fromId] || []);
@@ -343,10 +343,11 @@ const AgrupacionesList = ({
     onMutateGroups?.({ type: 'move', fromId, toId, ids, baseById: null });
 
     try {
+      // Usar el business_id real del grupo origen (puede ser el del negocio principal)
       await httpBiz(`/agrupaciones/${fromId}/move-items`, {
         method: 'POST',
         body: { toId, ids }
-      });
+      }, fromBizId || undefined);
       emitGroupsChanged("move", { fromId, toId, ids });
       showMsg(`Movidos ${ids.length} artículo(s).`, 'success');
     } catch (e) {
@@ -602,7 +603,7 @@ const AgrupacionesList = ({
                                               size="small"
                                               color="error"
                                               variant="text"
-                                              onClick={() => removeOne(g.id, Number(a.id), isTodo)}
+                                              onClick={() => removeOne(g.id, Number(a.id), isTodo, g.business_id)}
                                               disabled={isTodo}
                                             >
                                               Quitar
@@ -643,7 +644,7 @@ const AgrupacionesList = ({
                       size="small"
                       variant="contained"
                       endIcon={<ArrowForwardIcon />}
-                      onClick={() => moveSelected(g.id, isTodo)}
+                      onClick={() => moveSelected(g.id, isTodo, g.business_id)}
                       disabled={
                         isTodo ||
                         !(selectedByGroup[g.id]?.size) ||

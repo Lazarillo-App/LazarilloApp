@@ -61,7 +61,7 @@ export default function AuthDiagram({ className = "", logoSrc = logoDark }) {
         maxWidth: 560,
         minHeight: 180,
         display: "grid",
-        placeItems: "center",       // 👈 centrado perfecto
+        placeItems: "center",       
         marginInline: "auto",
       }}
     >
@@ -105,7 +105,7 @@ export default function AuthDiagram({ className = "", logoSrc = logoDark }) {
                 width: "min(240px, 60%)",
                 height: "auto",
                 display: "block",
-                margin: "0 auto",                    // 👈 centradísimo
+                margin: "0 auto",                   
                 filter:
                   "drop-shadow(0 1px 0 rgba(0,0,0,.06)) drop-shadow(0 4px 16px rgba(0,0,0,.06))",
               }}

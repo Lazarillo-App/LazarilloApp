@@ -581,10 +581,10 @@ tbody tr:hover {
 
 input[type="number"] {
   padding: 4px 6px;
-  width: 70px;
+  width: 150px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  text-align: right;
+  text-align: center;
   background: var(--color-bg);
   color: var(--color-fg);
 }
@@ -785,4 +785,59 @@ input[type="number"]:focus {
   width: 4px;
   background: var(--color-primary);
   border-radius: 2px;
+}
+
+.tabla-articulos-container {
+  color: #111827 !important;
+}
+ 
+/* Header de columnas — fondo y texto neutros */
+.table-col-header {
+  background: #f1f5f9 !important;
+  color: #1e293b !important;
+}
+.table-col-header-inner,
+.table-col-header-inner > div,
+.col-sortable {
+  color: #1e293b !important;
+}
+.col-sortable:hover {
+  background: rgba(0,0,0,0.05) !important;
+  color: #0f172a !important;
+}
+ 
+/* Filas de sección */
+.table-section-row {
+  background: #f4f6f8 !important;
+  color: #374151 !important;
+}
+ 
+/* Filas de item */
+.table-item-row {
+  color: #111827 !important;
+}
+.table-item-row:hover {
+  background: #f9fafb !important;
+}
+.table-item-row.is-selected {
+  color: #111827 !important;
+}
+ 
+/* Inputs dentro de la tabla */
+.tabla-articulos-container input[type="number"] {
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.tabla-articulos-container input[type="number"]:focus {
+  border-color: #9ca3af !important;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.08) !important;
+  outline: none !important;
+}
+ 
+/* ── Checkbox de selección ──────────────────────────────────────────── */
+.tabla-articulos-container input[type="checkbox"] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }

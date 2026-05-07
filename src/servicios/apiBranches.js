@@ -43,6 +43,39 @@ export const BranchesAPI = {
   update: (bizId, branchId, payload) =>
     http(bizId, `/${branchId}`, { method: 'PATCH', body: payload }),
 
+  /**
+   * Editar la sucursal PRINCIPAL (el negocio mismo).
+   * Hace PATCH a /businesses/:bizId con los campos de sucursal
+   * mapeados a los campos del negocio (name, props.address, props.contact, etc.)
+   */
+  updateMain: (bizId, payload) => {
+    const bizPayload = {
+      name: payload.name,
+      logo_url: payload.logo_url,
+      props: {
+        branding: payload.color ? { primary: payload.color } : undefined,
+        address:  payload.address,
+        contact:  payload.contacts,
+        social:   payload.props?.social,
+      },
+    };
+    const token = localStorage.getItem('token') || '';
+    const url   = `${BASE}/businesses/${bizId}`;
+    return fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'X-Business-Id': String(bizId),
+      },
+      body: JSON.stringify(bizPayload),
+    }).then(async (res) => {
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      return data;
+    });
+  },
+
   /** Eliminar sucursal */
   delete: (bizId, branchId) =>
     http(bizId, `/${branchId}`, { method: 'DELETE' }),

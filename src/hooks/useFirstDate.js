@@ -11,9 +11,21 @@ import { BASE } from '../servicios/apiBase';
  * @param {'sales'|'purchases'}  type      - qué tipo de primera fecha buscar
  * @returns {{ firstDate: string|null, loadingFirst: boolean }}
  */
-export function useFirstDate(businessId, type = 'sales', branchId = null) {
+export function useFirstDate(businessId, type = 'sales', branchId = null, refreshKey = 0) {
   const [firstDate, setFirstDate] = useState(null);
   const [loadingFirst, setLoadingFirst] = useState(false);
+  const [internalKey, setInternalKey] = useState(0);
+
+  useEffect(() => {
+    const eventName = type === 'purchases' ? 'purchases:batch:changed' : 'sales:batch:changed';
+    const handler = (e) => {
+      if (!e.detail?.businessId || String(e.detail.businessId) === String(businessId)) {
+        setInternalKey(k => k + 1);
+      }
+    };
+    window.addEventListener(eventName, handler);
+    return () => window.removeEventListener(eventName, handler);
+  }, [businessId, type]);
 
   useEffect(() => {
     setFirstDate(null);
@@ -52,14 +64,18 @@ export function useFirstDate(businessId, type = 'sales', branchId = null) {
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => {
         if (cancelled) return;
-        const date = d?.first_date ?? d?.firstDate ?? null;
-        if (date) setFirstDate(date);
+        const raw = d?.first_date ?? d?.firstDate ?? null;
+        if (raw) {
+          // Garantizar formato YYYY-MM-DD siempre
+          const clean = String(raw).slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) setFirstDate(clean);
+        }
       })
       .catch(() => { })
       .finally(() => { if (!cancelled) setLoadingFirst(false); });
 
     return () => { cancelled = true; };
-  }, [businessId, type, branchId]);
+  }, [businessId, type, branchId, refreshKey, internalKey]);
 
   return { firstDate, loadingFirst };
 }

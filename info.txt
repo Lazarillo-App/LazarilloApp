@@ -14,3 +14,45 @@ $env:PGPASSWORD = "qGczYQmqjPFCztWkwCyXAGDAy0EYGiAc"
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h dpg-d2d45qumcj7s73a700i0-a.oregon-postgres.render.com -p 5432 -U lazarillo_app_user -d lazarillo_app -v sslmode=require
 
 tree /F /a
+
+SELECT g.id, g.business_id, g.nombre, b.name AS biz_name
+FROM agrupaciones g
+JOIN app_businesses b ON b.id = g.business_id
+WHERE g.business_id IN (
+  SELECT id FROM app_businesses
+  WHERE organization_id = (
+    SELECT organization_id FROM app_businesses WHERE id = 175
+  )
+)
+ORDER BY g.business_id, g.id;
+
+
+
+SELECT 
+  g.id,
+  g.nombre,
+  g.business_id,
+  jsonb_array_length(COALESCE(g.articulos, '[]'::jsonb)) AS cant_articulos,
+  (
+    SELECT jsonb_agg(DISTINCT art->>'subrubro')
+    FROM jsonb_array_elements(COALESCE(g.articulos, '[]'::jsonb)) AS art
+    WHERE art->>'subrubro' IS NOT NULL
+  ) AS subrubros_distintos
+FROM agrupaciones g
+WHERE g.business_id = 175
+ORDER BY g.id;
+
+-- Limpia app_articles_ids de Cafeteria (891) quitando los que ya están en CAFETERIA HOT (894)
+UPDATE agrupaciones
+SET app_articles_ids = (
+  SELECT jsonb_agg(elem)
+  FROM jsonb_array_elements(COALESCE(app_articles_ids, '[]'::jsonb)) AS elem
+  WHERE elem::int NOT IN (
+    SELECT (art->>'id')::int
+    FROM jsonb_array_elements(
+      (SELECT COALESCE(articulos, '[]'::jsonb) FROM agrupaciones WHERE id = 894)
+    ) AS art
+  )
+)
+WHERE id = 891
+  AND app_articles_ids IS NOT NULL;

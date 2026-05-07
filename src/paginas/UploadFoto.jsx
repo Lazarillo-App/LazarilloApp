@@ -10,23 +10,37 @@ const PRIMARY = '#3b82f6';
 
 export default function UploadFoto() {
   const [searchParams] = useSearchParams();
-  const token     = searchParams.get('token');
-  const insumo    = searchParams.get('insumo') || 'ingrediente';
+  const token  = searchParams.get('token');
+  const insumo = searchParams.get('insumo') || '';
 
-  const [estado, setEstado]       = useState('idle'); // idle | uploading | ok | error | expired
-  const [mensaje, setMensaje]     = useState('');
-  const [preview, setPreview]     = useState(null);
+  const [estado, setEstado]             = useState('validando'); // validando | idle | uploading | ok | error | expired
+  const [supplyNombre, setSupplyNombre] = useState(insumo);
+  const [mensaje, setMensaje]           = useState('');
+  const [preview, setPreview]           = useState(null);
   const [fotosSubidas, setFotosSubidas] = useState(0);
-  const fileInputRef = useRef(null);
+  const fileInputRef  = useRef(null);
+  const cameraInputRef = useRef(null);
 
-  // Validar token al montar
+  // ── Validar token al montar usando el endpoint público ──
   useEffect(() => {
     if (!token) { setEstado('expired'); return; }
-    // Hacemos un GET al endpoint de polling solo para verificar que el token existe
-    fetch(`${BASE}/recetas/0/fotos-pendientes?token=${token}&supplyId=0`)
-      .then(r => { if (r.status === 400 || r.status === 401) setEstado('expired'); })
-      .catch(() => { /* red — dejamos que intenten subir igual */ });
-  }, [token]);
+
+    fetch(`${BASE}/recetas/upload-publico/validar?token=${token}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) {
+          setEstado('expired');
+        } else {
+          // Usar el nombre del insumo que devuelve el backend si no vino por query
+          if (data.supplyNombre && !insumo) setSupplyNombre(data.supplyNombre);
+          setEstado('idle');
+        }
+      })
+      .catch(() => {
+        // Si hay error de red, dejamos intentar igual
+        setEstado('idle');
+      });
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFile = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -40,6 +54,11 @@ export default function UploadFoto() {
     let errores = 0;
 
     for (const file of files) {
+      // Preview de la última foto seleccionada
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreview(ev.target.result);
+      reader.readAsDataURL(file);
+
       try {
         const fd = new FormData();
         fd.append('file', file);
@@ -53,15 +72,8 @@ export default function UploadFoto() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
-        if (data.ok) {
-          subidas++;
-          // Mostrar preview de la última foto subida
-          const reader = new FileReader();
-          reader.onload = (ev) => setPreview(ev.target.result);
-          reader.readAsDataURL(file);
-        } else {
-          errores++;
-        }
+        if (data.ok) subidas++;
+        else errores++;
       } catch {
         errores++;
       }
@@ -72,21 +84,32 @@ export default function UploadFoto() {
     if (subidas > 0 && errores === 0) {
       setEstado('ok');
       setMensaje(subidas === 1 ? '¡Foto enviada!' : `¡${subidas} fotos enviadas!`);
-    } else if (subidas > 0 && errores > 0) {
+    } else if (subidas > 0) {
       setEstado('ok');
-      setMensaje(`${subidas} foto(s) enviada(s), ${errores} fallaron.`);
+      setMensaje(`${subidas} enviada(s), ${errores} fallaron.`);
     } else {
       setEstado('error');
       setMensaje('No se pudo enviar la foto. Intentá de nuevo.');
     }
   };
 
-  // ── Layouts por estado ──
+  // ── Pantalla: validando ──
+  if (estado === 'validando') {
+    return (
+      <Pantalla>
+        <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 60 }}>
+          <Spinner />
+          <p style={{ marginTop: 16, fontSize: '0.95rem' }}>Verificando QR…</p>
+        </div>
+      </Pantalla>
+    );
+  }
 
+  // ── Pantalla: expirado ──
   if (estado === 'expired') {
     return (
       <Pantalla>
-        <Icono>⏱️</Icono>
+        <div style={{ fontSize: 56, textAlign: 'center', marginBottom: 12 }}>⏱️</div>
         <h2 style={styles.titulo}>Link vencido</h2>
         <p style={styles.subtitulo}>
           Este QR ya no es válido. Generá uno nuevo desde la receta.
@@ -95,6 +118,7 @@ export default function UploadFoto() {
     );
   }
 
+  // ── Pantalla principal ──
   return (
     <Pantalla>
       {/* Header */}
@@ -104,8 +128,12 @@ export default function UploadFoto() {
       </div>
 
       <div style={styles.card}>
-        <p style={styles.insumoLabel}>Ingrediente</p>
-        <h2 style={styles.insumoNombre}>{decodeURIComponent(insumo)}</h2>
+        {supplyNombre && (
+          <>
+            <p style={styles.insumoLabel}>Ingrediente</p>
+            <h2 style={styles.insumoNombre}>{decodeURIComponent(supplyNombre)}</h2>
+          </>
+        )}
 
         {/* Preview */}
         {preview && (
@@ -126,8 +154,8 @@ export default function UploadFoto() {
           <div style={{
             ...styles.mensajeBox,
             background: estado === 'error' ? '#fef2f2' : '#f0fdf4',
-            color: estado === 'error' ? '#dc2626' : '#16a34a',
-            border: `1px solid ${estado === 'error' ? '#fecaca' : '#bbf7d0'}`,
+            color:      estado === 'error' ? '#dc2626' : '#16a34a',
+            border:     `1px solid ${estado === 'error' ? '#fecaca' : '#bbf7d0'}`,
           }}>
             {mensaje}
           </div>
@@ -142,15 +170,12 @@ export default function UploadFoto() {
             </div>
           ) : (
             <>
-              {/* Cámara — abre directo la cámara en mobile */}
               <button
                 style={{ ...styles.btn, background: PRIMARY }}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => cameraInputRef.current?.click()}
               >
                 📷 {fotosSubidas > 0 ? 'Sacar otra foto' : 'Sacar foto'}
               </button>
-
-              {/* Galería */}
               <button
                 style={{ ...styles.btn, background: '#64748b' }}
                 onClick={() => fileInputRef.current?.click()}
@@ -166,13 +191,20 @@ export default function UploadFoto() {
         </p>
       </div>
 
-      {/* Input oculto — capture="environment" abre cámara trasera en mobile */}
+      {/* Cámara — capture="environment" abre cámara trasera */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handleFile}
+      />
+      {/* Galería — sin capture, sin multiple para simplificar UX mobile */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
-        multiple
         style={{ display: 'none' }}
         onChange={handleFile}
       />
@@ -180,24 +212,14 @@ export default function UploadFoto() {
   );
 }
 
-/* ── Sub-componentes simples ── */
-
 function Pantalla({ children }) {
-  return (
-    <div style={styles.pantalla}>
-      {children}
-    </div>
-  );
-}
-
-function Icono({ children }) {
-  return <div style={{ fontSize: 56, textAlign: 'center', marginBottom: 12 }}>{children}</div>;
+  return <div style={styles.pantalla}>{children}</div>;
 }
 
 function Spinner() {
   return (
     <div style={{
-      width: 20, height: 20, borderRadius: '50%',
+      width: 22, height: 22, borderRadius: '50%',
       border: '3px solid #e2e8f0',
       borderTopColor: PRIMARY,
       animation: 'spin 0.7s linear infinite',
@@ -206,7 +228,6 @@ function Spinner() {
   );
 }
 
-/* ── Estilos inline (sin dependencias de MUI — la página tiene que funcionar sin tema) ── */
 const styles = {
   pantalla: {
     minHeight: '100dvh',
@@ -214,129 +235,54 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '24px 16px 40px',
+    padding: '24px 16px 48px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   header: {
-    width: '100%',
-    maxWidth: 420,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    width: '100%', maxWidth: 420,
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 24,
   },
-  logo: {
-    fontWeight: 800,
-    fontSize: '1.1rem',
-    color: '#1e293b',
-  },
+  logo:  { fontWeight: 800, fontSize: '1.1rem', color: '#1e293b' },
   badge: {
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    background: `${PRIMARY}18`,
-    color: PRIMARY,
-    borderRadius: 20,
-    padding: '3px 10px',
+    fontSize: '0.72rem', fontWeight: 600,
+    background: `${PRIMARY}18`, color: PRIMARY,
+    borderRadius: 20, padding: '3px 10px',
   },
   card: {
-    width: '100%',
-    maxWidth: 420,
-    background: '#fff',
-    borderRadius: 16,
+    width: '100%', maxWidth: 420,
+    background: '#fff', borderRadius: 16,
     boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
     padding: '28px 24px 24px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
+    display: 'flex', flexDirection: 'column', gap: 16,
   },
   insumoLabel: {
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    margin: 0,
+    fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8',
+    textTransform: 'uppercase', letterSpacing: 1, margin: 0,
   },
   insumoNombre: {
-    fontSize: '1.4rem',
-    fontWeight: 800,
-    color: '#1e293b',
-    margin: 0,
-    lineHeight: 1.2,
+    fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1.2,
   },
-  previewBox: {
-    borderRadius: 10,
-    overflow: 'hidden',
-    border: '1px solid #e2e8f0',
-  },
-  previewImg: {
-    width: '100%',
-    maxHeight: 260,
-    objectFit: 'cover',
-    display: 'block',
-  },
-  contador: {
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: '#16a34a',
-    textAlign: 'center',
-  },
-  mensajeBox: {
-    borderRadius: 8,
-    padding: '10px 14px',
-    fontSize: '0.88rem',
-    fontWeight: 500,
-    textAlign: 'center',
-  },
-  botonesBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
+  previewBox:  { borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0' },
+  previewImg:  { width: '100%', maxHeight: 260, objectFit: 'cover', display: 'block' },
+  contador:    { fontSize: '0.85rem', fontWeight: 600, color: '#16a34a', textAlign: 'center' },
+  mensajeBox:  { borderRadius: 8, padding: '10px 14px', fontSize: '0.88rem', fontWeight: 500, textAlign: 'center' },
+  botonesBox:  { display: 'flex', flexDirection: 'column', gap: 10 },
   btn: {
-    border: 'none',
-    borderRadius: 10,
-    color: '#fff',
-    fontWeight: 700,
-    fontSize: '1rem',
-    padding: '14px 20px',
-    cursor: 'pointer',
-    width: '100%',
-    letterSpacing: 0.3,
+    border: 'none', borderRadius: 10, color: '#fff',
+    fontWeight: 700, fontSize: '1rem',
+    padding: '14px 20px', cursor: 'pointer', width: '100%',
   },
   uploading: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: '14px 0',
-    color: '#64748b',
-    fontSize: '0.95rem',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 10, padding: '14px 0', color: '#64748b', fontSize: '0.95rem',
   },
-  hint: {
-    fontSize: '0.75rem',
-    color: '#94a3b8',
-    textAlign: 'center',
-    margin: 0,
-    lineHeight: 1.5,
-  },
-  titulo: {
-    fontSize: '1.3rem',
-    fontWeight: 800,
-    color: '#1e293b',
-    textAlign: 'center',
-    margin: '0 0 8px',
-  },
-  subtitulo: {
-    fontSize: '0.9rem',
-    color: '#64748b',
-    textAlign: 'center',
-    maxWidth: 300,
-    lineHeight: 1.5,
-  },
+  hint:      { fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', margin: 0, lineHeight: 1.5 },
+  titulo:    { fontSize: '1.3rem', fontWeight: 800, color: '#1e293b', textAlign: 'center', margin: '0 0 8px' },
+  subtitulo: { fontSize: '0.9rem', color: '#64748b', textAlign: 'center', maxWidth: 300, lineHeight: 1.5 },
 };
 
-// CSS para la animación del spinner (se inyecta una vez)
+// Animación del spinner
 if (typeof document !== 'undefined' && !document.getElementById('upload-foto-spin')) {
   const style = document.createElement('style');
   style.id = 'upload-foto-spin';

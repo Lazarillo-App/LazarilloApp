@@ -370,27 +370,62 @@ export async function obtenerVentasSeriesDB({
  */
 // al final de src/servicios/apiVentas.js
 
-export async function downloadVentasCSV(businessId, { from, to }) {
+/**
+ * Descarga CSV de ventas con filtros opcionales:
+ *   GET /api/businesses/:id/sales/export
+ *     ?from=YYYY-MM-DD
+ *     &to=YYYY-MM-DD
+ *     &branch_id=main|<número>   (opcional)
+ *     &article_ids=1,2,3         (opcional - para filtrar por lista)
+ *     &business_id_override=<n>  (opcional - para exportar otro negocio de la org)
+ */
+export async function downloadVentasCSV(businessId, {
+  from,
+  to,
+  branchId = null,       // 'main' | número | null (todas)
+  articleIds = null,     // Set | Array | null
+  businessIdOverride = null,  // para exportar un sub-negocio distinto al activo
+}) {
   const role = readRole();
-  const bid = String(businessId ?? getActiveBizId());
+  // Usar override si se pasa (exportar otro negocio), sino el activo
+  const bid = String(businessIdOverride ?? businessId ?? getActiveBizId());
+  const safeFrom = String(from).slice(0, 10);
+  const safeTo = String(to).slice(0, 10);
+  const qs = new URLSearchParams({ from: safeFrom, to: safeTo });
 
   if (!bid || !from || !to) {
     throw new Error('Faltan parámetros para descargar CSV (businessId, from, to)');
   }
-
   if (role === 'app_admin') {
     throw new Error('El rol app_admin no puede descargar ventas de un negocio concreto.');
   }
 
   const token = localStorage.getItem('token') || '';
-  const qs = new URLSearchParams({ from, to }).toString();
 
-  // Usamos el mismo BASE que todo el resto del front
-  // BASE ya incluye el /api si lo pusiste en VITE_BACKEND_URL
-  const url = `${BASE}/businesses/${encodeURIComponent(bid)}/sales/export?${qs}`;
+  // branch_id: 'main' | número
+  if (branchId !== null && branchId !== undefined && branchId !== '') {
+    qs.set('branch_id', String(branchId));
+  }
 
+  // article_ids: Set, Array o string separado por comas
+  if (articleIds) {
+    let ids = [];
+    if (articleIds instanceof Set) {
+      ids = Array.from(articleIds).map(Number).filter(n => Number.isFinite(n) && n > 0);
+    } else if (Array.isArray(articleIds)) {
+      ids = articleIds.map(Number).filter(n => Number.isFinite(n) && n > 0);
+    }
+    if (ids.length > 0) {
+      qs.set('article_ids', ids.join(','));
+    }
+  }
+
+  console.log('[downloadVentasCSV] qs completo:', qs.toString());
+  console.log('[downloadVentasCSV] articleIds recibidos:', articleIds);
+  console.log('[downloadVentasCSV] tipo:', articleIds?.constructor?.name);
+
+  const url = `${BASE}/businesses/${encodeURIComponent(bid)}/sales/export?${qs.toString()}`;
   console.log('[downloadVentasCSV] url', url);
-
 
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -401,13 +436,10 @@ export async function downloadVentasCSV(businessId, { from, to }) {
 
   if (!resp.ok) {
     let text = '';
-    try {
-      text = await resp.text();
-    } catch { }
+    try { text = await resp.text(); } catch { }
     console.error('[downloadVentasCSV] status', resp.status, text);
     throw new Error(text || `Error al descargar CSV de ventas (${resp.status})`);
   }
 
-  const blob = await resp.blob();
-  return blob;
+  return resp.blob();
 }

@@ -6,6 +6,9 @@ import InsumoRubroAccionesMenu from "./InsumoRubroAccionesMenu";
 import { insumosRubrosList } from "../servicios/apiInsumos";
 import VirtualList from "./shared/VirtualList";
 import ComprasCell from './ComprasCell';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import RecetaModal from "./RecetaModal";
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -156,11 +159,14 @@ const InsumosTable = forwardRef(function InsumosTable({
   comprasMapByBranch = {},
   onAfterToggleElaborado,
   onAfterToggleElaboradoBulk,
-  // ── Nuevas props para recetas de elaborados ──────────────────────────────
-  // Callback: (insumo) => void — abre RecetaModal para ese insumo elaborado
   onOpenRecetaElaborado,
-  // Mapa de recetas ya cargadas: { [supplyId]: { costoTotal, porciones, precioSugerido } }
   recetasElaborados = {},
+  soloConCompras = false,
+  onToggleSoloConCompras,
+  // Selección para listas
+  selectionMode = null,
+  selectedInsumoIds = new Set(),
+  onToggleInsumo,
 }, ref) {
   const isElaborados = vista === "elaborados";
   const listRef = useRef(null);
@@ -248,13 +254,13 @@ const InsumosTable = forwardRef(function InsumosTable({
   const branchExtraCols = branches && branches.length > 1
     ? branches.map(() => '.55fr').join(' ')
     : '';
+  const checkCol = selectionMode ? '28px ' : '';
   const GRID_NO_ELAB = branches && branches.length > 1
-    ? `.4fr 2fr .45fr .7fr .5fr .65fr ${branchExtraCols} 1fr .4fr`
-    : ".4fr 2fr .45fr .7fr .5fr .65fr 1fr .4fr";
-  // En la vista elaborados agregamos columna "Receta" antes de acciones
+    ? `${checkCol}.4fr 2fr .35fr .7fr .7fr .65fr ${branchExtraCols} 1fr .4fr`
+    : `${checkCol}.4fr 2fr .35fr .7fr .7fr .65fr 1fr .4fr`;
   const GRID_ELAB = branches && branches.length > 1
-    ? `.4fr 2fr .45fr .7fr 1fr .6fr .6fr ${branchExtraCols} 1fr .65fr .55fr .4fr`
-    : ".4fr 2fr .45fr .7fr 1fr .6fr .6fr 1fr .65fr .55fr .4fr";
+    ? `${checkCol}.4fr 2fr .45fr .7fr 1fr .6fr .6fr ${branchExtraCols} .65fr .4fr`
+    : `${checkCol}.4fr 2fr .45fr .7fr 1fr .6fr .6fr .65fr .65fr .4fr`;
 
   const displayCode = (r) =>
     r.codigo_mostrar ||
@@ -310,8 +316,8 @@ const InsumosTable = forwardRef(function InsumosTable({
     if (raw == null) return "-";
 
     if (totalMode === "unidades") return formatNumber(raw, 0);
-    if (totalMode === "gastos")   return formatMoney(raw, 2);
-    if (totalMode === "ratio")    return formatNumber(raw, 2);
+    if (totalMode === "gastos") return formatMoney(raw, 2);
+    if (totalMode === "ratio") return formatNumber(raw, 2);
     return "-";
   };
 
@@ -340,9 +346,9 @@ const InsumosTable = forwardRef(function InsumosTable({
   const sortedRows = useMemo(() => {
     const getSortValueLocal = (r) => {
       switch (sortBy) {
-        case "codigo":   return Number(r.codigo_maxi ?? r.id ?? 0);
-        case "nombre":   return String(r.nombre || "").toLowerCase();
-        case "unidad":   return String(r.unidad_med || "").toLowerCase();
+        case "codigo": return Number(r.codigo_maxi ?? r.id ?? 0);
+        case "nombre": return String(r.nombre || "").toLowerCase();
+        case "unidad": return String(r.unidad_med || "").toLowerCase();
         case "precio": {
           const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
           const v = precioMode === "promedio"
@@ -352,14 +358,14 @@ const InsumosTable = forwardRef(function InsumosTable({
               : base;
           return num(v) ?? 0;
         }
-        case "desperdicio":    return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
-        case "total":          return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0) ?? 0;
-        case "cant_comprada":  { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
-        case "neto_compras":   { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
-        case "iva_compras":    { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
-        case "total_compras":  { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
-        case "fecha":          return new Date(r.updated_at || r.created_at || 0).getTime();
-        default:               return 0;
+        case "desperdicio": return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+        case "total": return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0) ?? 0;
+        case "cant_comprada": { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
+        case "neto_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
+        case "iva_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
+        case "total_compras": { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
+        case "fecha": return new Date(r.updated_at || r.created_at || 0).getTime();
+        default: return 0;
       }
     };
 
@@ -401,15 +407,18 @@ const InsumosTable = forwardRef(function InsumosTable({
 
     const groups = Array.from(map.entries()).map(([label, groupData]) => {
       const groupRows = groupData.rows;
-      let ventasMonto = 0;
-      groupRows.forEach((r) => { ventasMonto += resolveInsumoMonto(r, metaById); });
+      let comprasMonto = 0;
+      groupRows.forEach((r) => {
+        const c = comprasMap.get(Number(r.id));
+        if (c) comprasMonto += (Number(c.neto ?? 0) + Number(c.iva ?? 0));
+      });
 
       return {
         label,
         codigo: groupData.codigo,
         es_elaborador: groupData.es_elaborador,
         rows: groupRows,
-        __ventasMonto: ventasMonto,
+        __ventasMonto: comprasMonto,
       };
     });
 
@@ -427,9 +436,9 @@ const InsumosTable = forwardRef(function InsumosTable({
 
       const getSortValueGroup = (r) => {
         switch (sortBy) {
-          case "codigo":   return Number(r.codigo_maxi ?? r.id ?? 0);
-          case "nombre":   return String(r.nombre || "").toLowerCase();
-          case "unidad":   return String(r.unidad_med || "").toLowerCase();
+          case "codigo": return Number(r.codigo_maxi ?? r.id ?? 0);
+          case "nombre": return String(r.nombre || "").toLowerCase();
+          case "unidad": return String(r.unidad_med || "").toLowerCase();
           case "precio": {
             const base = num(r.precio_ref ?? r.precio ?? r.precio_unitario);
             const v = precioMode === "promedio"
@@ -439,14 +448,14 @@ const InsumosTable = forwardRef(function InsumosTable({
                 : base;
             return num(v) ?? 0;
           }
-          case "desperdicio":    return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
-          case "total":          return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? 0) ?? 0;
-          case "cant_comprada":  { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
-          case "neto_compras":   { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
-          case "iva_compras":    { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
-          case "total_compras":  { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
-          case "fecha":          return new Date(r.updated_at || r.created_at || 0).getTime();
-          default:               return 0;
+          case "desperdicio": return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+          case "total": return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? 0) ?? 0;
+          case "cant_comprada": { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
+          case "neto_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
+          case "iva_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.iva ?? 0) ?? 0; }
+          case "total_compras": { const c = comprasMap.get(Number(r.id)); return c ? (num(c.neto ?? 0) ?? 0) + (num(c.iva ?? 0) ?? 0) : 0; }
+          case "fecha": return new Date(r.updated_at || r.created_at || 0).getTime();
+          default: return 0;
         }
       };
 
@@ -627,13 +636,8 @@ const InsumosTable = forwardRef(function InsumosTable({
                   {totalHeaderLabel} {sortIcon("total")}
                 </div>
                 <div>Vencimiento</div>
-                <div>¿En recetas?</div>
                 <div onClick={() => toggleSort("fecha")} className="col-sortable">
                   Fecha {sortIcon("fecha")}
-                </div>
-                {/* ── Nueva columna: Receta del elaborado ── */}
-                <div style={{ textAlign: "center" }} title="Receta de producción del elaborado">
-                  Receta
                 </div>
                 <div style={{ textAlign: "center" }}>Acciones</div>
               </>
@@ -645,13 +649,29 @@ const InsumosTable = forwardRef(function InsumosTable({
                 <div onClick={() => toggleSort("total")} className="col-sortable">
                   {totalHeaderLabel} {sortIcon("total")}
                 </div>
-                <div
-                  onClick={() => toggleSort("total_compras")}
-                  className="col-sortable"
-                  style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
-                  title="Total compras del período (clic para ver detalle)"
-                >
-                  Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div
+                    onClick={() => toggleSort("total_compras")}
+                    className="col-sortable"
+                    style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
+                    title="Total compras del período (clic para ver detalle)"
+                  >
+                    Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
+                  </div>
+                  <span
+                    onClick={() => onToggleSoloConCompras?.()}
+                    title={soloConCompras ? 'Mostrando solo con compras — click para ver todos' : 'Filtrar: solo insumos con compras'}
+                    style={{
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      opacity: soloConCompras ? 1 : 0.35,
+                      color: soloConCompras ? 'var(--color-primary)' : 'inherit',
+                      lineHeight: 1,
+                      userSelect: 'none',
+                    }}
+                  >
+                    👁
+                  </span>
                 </div>
                 {branches && branches.length > 1 && branches.map(branch => (
                   <div
@@ -781,25 +801,44 @@ const InsumosTable = forwardRef(function InsumosTable({
                   }}
                 >
                   {isSelected && <div className="row-left-bar" />}
+                  {selectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedInsumoIds.has(Number(r.id))}
+                      onChange={() => onToggleInsumo?.(Number(r.id))}
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--color-primary, #1976d2)' }}
+                    />
+                  )}
                   <div>{displayCode(r)}</div>
 
                   {/* Nombre: con indicador si tiene receta cargada */}
                   <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-                    {r.es_elaborado && (
+                    {(r.es_elaborado || r.tiene_receta) && (
                       <span
-                        title={tieneReceta ? `Elaborado — costo $${recetaData.costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : 'Elaborado sin receta'}
+                        title={tieneReceta
+                          ? `Tiene receta — costo $${recetaData.costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+                          : 'Sin receta cargada'}
                         style={{
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
                           fontSize: '0.65rem', fontWeight: 700,
                           background: tieneReceta ? 'var(--color-primary, #3b82f6)' : '#e2e8f0',
                           color: tieneReceta ? '#fff' : '#94a3b8',
+                          cursor: 'pointer',
                         }}
+                        onClick={() => onOpenRecetaElaborado?.(r)}
                       >
                         {tieneReceta ? '●' : '○'}
                       </span>
                     )}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span
+                      onClick={() => onOpenRecetaElaborado?.(r)}
+                      style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                      }}
+                    >
                       {r.nombre}
                     </span>
                   </div>
@@ -822,49 +861,16 @@ const InsumosTable = forwardRef(function InsumosTable({
                   {isElaborados ? (
                     <>
                       {/* Precio final (de receta si existe, o precio_ref) */}
-                      <div style={{ fontWeight: tieneReceta ? 700 : 400, color: tieneReceta ? 'var(--color-primary, #3b82f6)' : 'inherit' }}>
+                      <div style={{ fontWeight: tieneReceta ? 700 : 400, color: tieneReceta ? 'color: black' : 'color: black' }}>
                         {tieneReceta
-                          ? formatMoney(recetaData.costoTotal / (recetaData.porciones || 1), 2)
+                          ? formatMoney(recetaData.costoTotal / (recetaData.porciones || 1), 1)
                           : formatMoney(getDisplayedPrice(r), 2)
                         }
                       </div>
                       <div>{renderTotalValue(r)}</div>
                       <div>{r.vencimiento ? formatDate(r.vencimiento) : "-"}</div>
-                      <div>{r.en_recetas != null ? (r.en_recetas > 0 ? `${r.en_recetas} recetas` : "-") : "-"}</div>
                       <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
                         {formatDate(r.updated_at || r.created_at)}
-                      </div>
-
-                      {/* ── Columna Receta: botón para abrir RecetaModal del elaborado ── */}
-                      <div style={{ textAlign: "center" }}>
-                        {onOpenRecetaElaborado ? (
-                          <button
-                            onClick={() => onOpenRecetaElaborado(r)}
-                            title={tieneReceta ? `Ver/editar receta — costo $${(recetaData.costoTotal / (recetaData.porciones || 1)).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/u` : 'Cargar receta de producción'}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              gap: 4,
-                              border: 'none', borderRadius: 6,
-                              padding: '3px 8px',
-                              cursor: 'pointer',
-                              fontSize: '0.72rem', fontWeight: 600,
-                              background: tieneReceta
-                                ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)'
-                                : '#f1f5f9',
-                              color: tieneReceta
-                                ? 'var(--color-primary, #3b82f6)'
-                                : '#64748b',
-                              transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = tieneReceta ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent)' : '#e2e8f0'}
-                            onMouseLeave={e => e.currentTarget.style.background = tieneReceta ? 'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)' : '#f1f5f9'}
-                          >
-                            <RecetaIcon filled={tieneReceta} size={12} />
-                            {tieneReceta ? 'Ver receta' : 'Cargar'}
-                          </button>
-                        ) : (
-                          <span style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>—</span>
-                        )}
                       </div>
 
                       <div style={{ textAlign: "center" }}>
