@@ -13,8 +13,9 @@ import './index.css';
 // Contextos
 import { AuthProvider }         from './context/AuthContext.jsx';
 import { BusinessProvider }     from './context/BusinessContext.jsx';
-import { BranchProvider }       from './context/BranchContext.jsx';   // ← NUEVO
+import { BranchProvider }       from './context/BranchContext.jsx';
 import { OrganizationProvider } from './context/OrganizationContext.jsx';
+import { ConfigProvider }       from './context/ConfigContext.jsx';
 
 bootApplySavedPalette();
 
@@ -25,11 +26,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <BusinessProvider>
           <BranchProvider>
             <OrganizationProvider>
-              <BrowserRouter basename={APP_BASENAME}>
-                <SearchProvider>
-                  <App />
-                </SearchProvider>
-              </BrowserRouter>
+              <ConfigProvider>
+                <BrowserRouter basename={APP_BASENAME}>
+                  <SearchProvider>
+                    <App />
+                  </SearchProvider>
+                </BrowserRouter>
+              </ConfigProvider>
             </OrganizationProvider>
           </BranchProvider>
         </BusinessProvider>

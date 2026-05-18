@@ -20,6 +20,9 @@ import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import LinkChainIcon from "./LinkChainIcon";
 import SettingsIcon from '@mui/icons-material/Settings';
+import { useBusinessPrices } from '@/hooks/useBusinessPrices';
+import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
+import { setBusinessPriceList, getBusinessPriceList } from '@/servicios/apiPriceLists';
 import "../css/TablaArticulos.css";
 
 /* ---------------- utils ---------------- */
@@ -236,6 +239,8 @@ export default function TablaArticulos({
   nameById = new Map(),
   onRemoveMemberFromLink,
   onDeleteLink,
+  totalBizAmount = 0,
+  onRedondeoChange,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -248,10 +253,18 @@ export default function TablaArticulos({
   const [manualesIndividuales, setManualesIndividuales] = useState(new Set());
   const [snack, setSnack] = useState({ open: false, msg: "", type: "success" });
   const [blockObjetivos, setBlockObjetivos] = useState({});
+  const [pendingObjConfirm, setPendingObjConfirm] = useState(null);
   const [blockManuales, setBlockManuales] = useState({});
   const [bulkPctDlg, setBulkPctDlg] = useState(null);
   const [clearDlg, setClearDlg] = useState(null);
-  const [ventasVista, setVentasVista] = useState('$'); // '$' | 'U'
+  const [ventasVista, setVentasVista] = useState('$');
+  const [lastAppliedPct, setLastAppliedPct] = useState({});
+  const [activePriceList, setActivePriceList] = useState(1);
+  const [priceListLoading, setPriceListLoading] = useState(false);
+  const [priceListOpen, setPriceListOpen] = useState(false);
+  const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
+  const [redondeoModalPendiente, setRedondeoModalPendiente] = useState(null);
+
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
     { id: 'precio', label: 'Precio', width: '.3fr' },
@@ -313,6 +326,14 @@ export default function TablaArticulos({
     try { await refetchAgrupaciones?.(); } catch { }
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
+
+  // Refetch cuando se crea un artículo manual desde Configuración
+  useEffect(() => {
+    const handler = () => refetchLocal();
+    window.addEventListener('articulos:updated', handler);
+    return () => window.removeEventListener('articulos:updated', handler);
+  }, [refetchLocal]);
+
   const [bulkObjetivoDlg, setBulkObjetivoDlg] = useState(null);
 
   const [recetaArticulo, setRecetaArticulo] = useState(null);
@@ -374,6 +395,44 @@ export default function TablaArticulos({
       categorias: Array.from(byCat, ([categoria, articulos]) => ({ categoria, articulos })),
     }));
   }, []);
+
+  // ── Cargar redondeo config ──
+  useEffect(() => {
+    if (!activeBizId) return;
+    setRedondeoConfig(getRedondeoConfig(activeBizId));
+    const onChanged = (e) => {
+      if (String(e.detail?.bizId) === String(activeBizId)) {
+        setRedondeoConfig({ valor: e.detail.valor ?? null, mostrarModal: !!e.detail.mostrarModal });
+      }
+    };
+    window.addEventListener('redondeo:changed', onChanged);
+    return () => window.removeEventListener('redondeo:changed', onChanged);
+  }, [activeBizId]);
+
+  // ── Cargar lista de precios activa ──
+  useEffect(() => {
+    if (!activeBizId) return;
+    getBusinessPriceList(activeBizId)
+      .then(n => setActivePriceList(n || 1))
+      .catch(() => setActivePriceList(1));
+  }, [activeBizId]);
+
+  // ── Cambiar lista de precios ──
+  const handleChangePriceList = async (listNum) => {
+    if (listNum === activePriceList) { setPriceListOpen(false); return; }
+    setPriceListLoading(true);
+    setPriceListOpen(false);
+    try {
+      await setBusinessPriceList(activeBizId, listNum);
+      setActivePriceList(listNum);
+      // Disparar evento para que ArticulosMain recargue precios
+      window.dispatchEvent(new CustomEvent('pricelist:changed', { detail: { listNum, bizId: activeBizId } }));
+    } catch (e) {
+      console.warn('[handleChangePriceList]', e.message);
+    } finally {
+      setPriceListLoading(false);
+    }
+  };
 
   useEffect(() => {
     setCategorias([]);
@@ -455,10 +514,7 @@ export default function TablaArticulos({
   const getCurrentManual = useCallback((artId) => {
     const key = String(artId);
     const idNum = Number(artId);
-
-    // Si fue seteado por bulk → no considerarlo manual individual
     if (bulkSetIdsRef.current.has(idNum)) return null;
-
     if (manuales[key] !== undefined && manuales[key] !== '') return num(manuales[key]);
     const cfg = priceConfig.byArticle?.[key];
     if (cfg?.precioManual != null) return num(cfg.precioManual);
@@ -486,9 +542,21 @@ export default function TablaArticulos({
           priceConfig.byArticle?.[key]?.precioManual != null;
         if (tieneManual) return;
       }
-      const base = num(baseById.get(artId)?.precio ?? 0);
+
+      const art = baseById.get(artId);
+      // Usar el precio de la lista activa si está disponible, sino el precio base
+      const precioLista = activePriceList > 1
+        ? (num(art?.[`precio${activePriceList}`]) || num(art?.precio ?? 0))
+        : num(art?.precio ?? 0);
+      const base = precioLista;
+
       if (base > 0) {
-        updates.push({ artId, precioManual: Math.round(base * (1 + pct / 100)) });
+        const precioCalculado = base * (1 + pct / 100);
+        const redondeo = redondeoConfig?.valor;
+        const precioFinal = redondeo > 0
+          ? Math.round(precioCalculado / redondeo) * redondeo
+          : Math.round(precioCalculado);
+        updates.push({ artId, precioManual: precioFinal });
       }
     });
 
@@ -507,11 +575,17 @@ export default function TablaArticulos({
         onPriceConfigSave({ scope: 'articulo', scopeId: String(artId), precioManual });
       });
     }
-  }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig]);
+  }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig, redondeoConfig, activePriceList]);
 
   const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey) => {
     if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
     const pctNum = Number(pct);
+
+    // Si no hay redondeo configurado Y mostrarModal=true → interceptar
+    if (!redondeoConfig?.valor && redondeoConfig?.mostrarModal) {
+      setRedondeoModalPendiente({ pct: pctNum, ids, inputRef, blockKey });
+      return;
+    }
 
     const idsConNuevoPrecio = ids.filter(id => {
       const key = String(id);
@@ -519,11 +593,33 @@ export default function TablaArticulos({
         priceConfig.byArticle?.[key]?.precioManual != null;
     });
 
-    if (idsConNuevoPrecio.length > 0) {
+    if (idsConNuevoPrecio.length > 0 && redondeoConfig?.mostrarModal) {
       setBulkPctDlg({ pct: pctNum, idsAll: ids, idsConNuevoPrecio, inputRef, blockKey });
     } else {
       executeBulkPct(pctNum, ids, 'todos');
-      if (blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
+      if (blockKey) {
+        setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
+        setLastAppliedPct(prev => ({ ...prev, [blockKey]: pctNum }));
+      }
+      if (inputRef?.current) inputRef.current.value = '';
+    }
+  }, [manuales, priceConfig, executeBulkPct, redondeoConfig]);
+
+  // Helper para continuar después del modal de redondeo
+  const continuarDespuesDeRedondeo = useCallback((pct, ids, inputRef, blockKey) => {
+    const idsConNuevoPrecio = ids.filter(id => {
+      const key = String(id);
+      return (manuales[key] !== undefined && manuales[key] !== '') ||
+        priceConfig.byArticle?.[key]?.precioManual != null;
+    });
+    if (idsConNuevoPrecio.length > 0) {
+      setBulkPctDlg({ pct, idsAll: ids, idsConNuevoPrecio, inputRef, blockKey });
+    } else {
+      executeBulkPct(pct, ids, 'todos');
+      if (blockKey) {
+        setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
+        setLastAppliedPct(prev => ({ ...prev, [blockKey]: pct }));
+      }
       if (inputRef?.current) inputRef.current.value = '';
     }
   }, [manuales, priceConfig, executeBulkPct]);
@@ -643,8 +739,6 @@ export default function TablaArticulos({
     } else {
       base = allArticulos;
     }
-    // filterIds === null → sin filtro (mostrar todo)
-    // filterIds instanceof Set → filtrar siempre, incluso si está vacío (agrupación sin artículos = mostrar nada)
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
     return base;
   }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds]);
@@ -658,7 +752,6 @@ export default function TablaArticulos({
 
   const isRubroView = tableHeaderMode === "cat-first";
 
-  // ── BLOQUES con totales por sucursal ──
   const bloques = useMemo(() => {
     const items = articulosFiltrados || [];
     const localeOpts = { sensitivity: "base", numeric: true };
@@ -675,7 +768,6 @@ export default function TablaArticulos({
       node.arts.push(a);
       node.ventasMonto += getVentasAmount(artId);
 
-      // Sumar por sucursal
       (branches || []).forEach(branch => {
         const bKey = branch.id;
         const bMap = ventasMapByBranch[bKey] || ventasMapByBranch[String(bKey)];
@@ -722,7 +814,24 @@ export default function TablaArticulos({
 
   const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
 
-  // ── FLAT ROWS con totales por sucursal propagados ──
+  // Total de ventas de todas las agrupaciones reales (excluye Sin Agrupación y Discontinuados)
+  // Es el denominador correcto para el % del header de agrupación
+  const totalTodasAgrupaciones = useMemo(() => {
+    const isDisc = (g) => {
+      const n = String(g?.nombre || '').trim().toLowerCase();
+      return n === 'discontinuados' || n === 'descontinuados';
+    };
+    let total = 0;
+    for (const g of agrupaciones || []) {
+      if (esTodoGroup(g) || isDisc(g)) continue;
+      for (const a of (g.articulos || [])) {
+        const id = getId(a);
+        if (id) total += getVentasAmount(id);
+      }
+    }
+    return total;
+  }, [agrupaciones, getVentasAmount]);
+
   const flatRows = useMemo(() => {
     const sections = [];
 
@@ -751,17 +860,16 @@ export default function TablaArticulos({
     }
 
     const rows = [];
+    let totalVentasAgrup = 0;
 
     if (esAgrupEspecifica && sections.length > 0) {
-      // Todos los IDs de la agrupación (sin filtrar por rubro)
       const todosIdsAgrup = (agrupacionSeleccionada?.articulos || [])
         .map(getId)
         .filter(Boolean);
 
-      const totalVentasAgrup = todosIdsAgrup.reduce((acc, id) => acc + getVentasAmount(id), 0);
+      totalVentasAgrup = todosIdsAgrup.reduce((acc, id) => acc + getVentasAmount(id), 0);
 
       const agrupByBranch = {};
-      // Sumar por sucursal también sobre todos los IDs de la agrupación
       todosIdsAgrup.forEach(id => {
         (branches || []).forEach(branch => {
           const bKey = branch.id;
@@ -775,7 +883,7 @@ export default function TablaArticulos({
       rows.push({
         kind: "agrupacion-header",
         key: "AGRUP-HEADER",
-        ids: todosIdsAgrup,  // ← todos los IDs para las acciones bulk
+        ids: todosIdsAgrup,
         totalVentas: totalVentasAgrup,
         ventasByBranch: agrupByBranch,
         nombre: agrupacionSeleccionada?.nombre || '',
@@ -791,6 +899,7 @@ export default function TablaArticulos({
         ids: arts.map(getId),
         __ventasMonto: sec.__ventasMonto || 0,
         __ventasByBranch: sec.__ventasByBranch || {},
+        agrupTotalVentas: totalVentasAgrup,
       });
       for (const a of arts) {
         const id = getId(a);
@@ -866,11 +975,9 @@ export default function TablaArticulos({
 
   const handleVisibleIds = useCallback((ids) => { onIdsVisibleChange?.(new Set(ids)); }, [onIdsVisibleChange]);
 
-  // ── Grid: sin Ventas U cuando hay branches ──
   const hasBranches = branches && branches.length > 0;
   const checkCol = selectionMode ? "28px " : "";
   const branchCols = hasBranches ? branches.map(() => ".28fr").join(" ") : "";
-  // ── Grid dinámico según columnas visibles ──
   const gridTemplate = useMemo(() => {
     const check = selectionMode ? '28px ' : '';
     const branchCols = hasBranches ? branches.map(() => '.28fr').join(' ') + ' ' : '';
@@ -925,6 +1032,21 @@ export default function TablaArticulos({
     return r && r.costoTotal > 0;
   }, [recetasCostos]);
 
+  const dragColIdx = useRef(null);
+
+  const handleColDragStart = useCallback((i) => {
+    dragColIdx.current = i;
+  }, []);
+
+  const handleColDrop = useCallback((i) => {
+    if (dragColIdx.current === null || dragColIdx.current === i) return;
+    const next = [...colConfig];
+    const [moved] = next.splice(dragColIdx.current, 1);
+    next.splice(i, 0, moved);
+    dragColIdx.current = null;
+    saveColConfig(next);
+  }, [colConfig, saveColConfig]);
+
   const ClearBtn = ({ onClick, visible = true }) => {
     if (!visible) return null;
     return (
@@ -941,7 +1063,6 @@ export default function TablaArticulos({
 
   const renderRow = ({ row, index, style }) => {
 
-    // ── Header de agrupación ──
     if (row.kind === "agrupacion-header") {
       const agrupId = String(agrupacionSeleccionada?.id || '');
       const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
@@ -951,7 +1072,6 @@ export default function TablaArticulos({
       const ids = row.ids || [];
 
       return (
-
         <div key={row.key} style={{
           ...style, display: "grid", alignItems: "center",
           gridTemplateColumns: gridTemplate,
@@ -976,22 +1096,26 @@ export default function TablaArticulos({
               />
             </div>
           )}
-          {/* Código + Nombre juntos */}
           <div style={{ gridColumn: selectionMode ? "2 / 4" : "1 / 3", color: "#1e1e2e", paddingLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {row.nombre}
           </div>
 
-          {/* Ventas $ principal (solo sin branches) o total general */}
           <div style={{ ...cellNum, color: TABLE_TEXT, fontWeight: 700 }}>
-            {row.totalVentas > 0
-              ? ventasVista === '$'
-                ? fmtCurrency(row.totalVentas)
-                : fmt(row.ids.reduce((acc, id) => acc + getVentasQty(id), 0), 0)
-              : ''}
+            {row.totalVentas > 0 && ventasVista === '$' && (
+              <>
+                {fmtCurrency(row.totalVentas)}
+                {totalTodasAgrupaciones > 0 && (
+                  <span style={{ color: 'var(--color-primary)', fontSize: '0.72rem', fontWeight: 600, marginLeft: 5, opacity: 0.9 }}>
+                    {`(${(row.totalVentas / totalTodasAgrupaciones * 100).toFixed(1).replace('.', ',')}%)`}
+                  </span>
+                )}
+              </>
+            )}
+            {row.totalVentas > 0 && ventasVista === 'U' && (
+              fmt(row.ids.reduce((acc, id) => acc + getVentasQty(id), 0), 0)
+            )}
           </div>
 
-          {/* Columnas por sucursal */}
-          {/* Columnas por sucursal */}
           {(branches || []).map(branch => {
             const bKey = branch.id;
             const amt = row.ventasByBranch?.[bKey] || row.ventasByBranch?.[String(bKey)] || 0;
@@ -1012,6 +1136,55 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
+            if (col.id === 'precio') {
+              return (
+                <div key="precio" style={{ ...cellNum, position: 'relative' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPriceListOpen(o => !o); }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      padding: '2px 7px', borderRadius: 5, cursor: 'pointer',
+                      border: '1px solid var(--color-primary, #3b82f6)',
+                      background: priceListOpen ? 'var(--color-primary, #3b82f6)' : 'transparent',
+                      color: priceListOpen ? '#fff' : 'var(--color-primary, #3b82f6)',
+                      fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.5,
+                    }}
+                    title="Cambiar lista de precios"
+                  >
+                    {priceListLoading ? '…' : `Lista ${activePriceList}`}
+                    <span style={{ fontSize: '0.58rem' }}>{priceListOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {priceListOpen && (
+                    <div
+                      style={{
+                        position: 'absolute', top: '110%', right: 0, zIndex: 999,
+                        background: '#fff', border: '1px solid #e2e8f0',
+                        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+                        minWidth: 110, padding: '4px 0',
+                      }}
+                      onMouseLeave={() => setPriceListOpen(false)}
+                    >
+                      {[1, 2, 3, 4].map(n => (
+                        <div
+                          key={n}
+                          onClick={(e) => { e.stopPropagation(); handleChangePriceList(n); }}
+                          style={{
+                            padding: '5px 12px', cursor: 'pointer',
+                            fontSize: '0.78rem', fontWeight: activePriceList === n ? 700 : 400,
+                            background: activePriceList === n ? 'var(--color-primary, #3b82f6)12' : 'transparent',
+                            color: activePriceList === n ? 'var(--color-primary, #3b82f6)' : '#374151',
+                            display: 'flex', alignItems: 'center', gap: 6,
+                          }}
+                        >
+                          {activePriceList === n && <span>✓</span>}
+                          Lista {n}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (col.id === 'objetivo') {
               return (
                 <div key="objetivo" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1027,9 +1200,16 @@ export default function TablaArticulos({
                         const val = e.target.value === '' ? null : Number(e.target.value);
                         if (!onPriceConfigSave || val == null) return;
                         const idsAplicar = ids.filter(artId => !tieneObjetivoIndividual(artId));
-                        setObjetivos(prev => { const next = { ...prev }; idsAplicar.forEach(artId => { next[String(artId)] = val; }); return next; });
-                        onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: idsAplicar });
+                        const valAnterior = cfgAgrup.objetivo != null ? Number(cfgAgrup.objetivo) : null;
+                        const label = agrupacionSeleccionada?.nombre || 'esta agrupación';
+                        // Aplicar inmediatamente
+                        setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { next[String(artId)] = val; }); return next; });
+                        onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids, pisarTodo: true });
                         setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
+                        // Emitir para notificaciones
+                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'agrupacion', scopeId: agrupId, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch {}
+                        // Toast con Deshacer
+                        setPendingObjConfirm({ scope: 'agrupacion', scopeId: agrupId, val, ids, valAnterior, label, bkKey: bkObj });
                       }}
                       className="input-with-suffix input-group-level"
                       style={{ width: 52, fontSize: '0.78rem', textAlign: 'center', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
@@ -1040,11 +1220,7 @@ export default function TablaArticulos({
                     onClick={() => {
                       setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
                       onPriceConfigSave?.({ scope: 'agrupacion', scopeId: agrupId, objetivo: null, articleIds: ids });
-                      setObjetivos(prev => {
-                        const next = { ...prev };
-                        ids.forEach(artId => { delete next[String(artId)]; });
-                        return next;
-                      });
+                      setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { delete next[String(artId)]; }); return next; });
                     }}
                   />
                 </div>
@@ -1056,8 +1232,8 @@ export default function TablaArticulos({
                   <div className="input-symbol-wrapper" data-symbol="%">
                     <input
                       type="number"
-                      placeholder=""
                       value={blockManuales[bkManual] ?? ''}
+                      placeholder={lastAppliedPct[bkManual] != null ? String(lastAppliedPct[bkManual]) : ''}
                       onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkManual]: e.target.value }))}
                       onBlur={(e) => {
                         const pct = e.target.value === '' ? null : Number(e.target.value);
@@ -1080,7 +1256,6 @@ export default function TablaArticulos({
       );
     }
 
-    // ── Header de subrubro ──
     if (row.kind === "header") {
       let headerCat = row.categoria || "Sin categoría";
       let headerSr = row.subrubro || "Sin subrubro";
@@ -1122,15 +1297,22 @@ export default function TablaArticulos({
           <div style={{ gridColumn: selectionMode ? "2 / 4" : "1 / 3" }}>{label}</div>
 
           <div style={cellNum}>
-            {ventasVista === '$' ? fmtCurrency(totalAmount) : fmt(totalQty, 0)}
+            {ventasVista === '$' ? (
+              <>
+                {fmtCurrency(totalAmount)}
+                {row.agrupTotalVentas > 0 && totalAmount > 0 && (
+                  <span style={{ color: 'var(--color-primary)', fontSize: '0.7rem', fontWeight: 600, marginLeft: 4, opacity: 0.85 }}>
+                    {`(${(totalAmount / row.agrupTotalVentas * 100).toFixed(1).replace('.', ',')}%)`}
+                  </span>
+                )}
+              </>
+            ) : fmt(totalQty, 0)}
           </div>
 
-          {/* Subtotales por sucursal */}
           {(branches || []).map(branch => {
             const bKey = branch.id;
             const amt = row.__ventasByBranch?.[bKey] || row.__ventasByBranch?.[String(bKey)] || 0;
             const branchColor = branch.color || 'var(--color-primary)';
-            // Para qty por sucursal en sección, sumar los artículos del bloque
             const qty = ventasVista === 'U'
               ? (row.ids || []).reduce((acc, artId) => {
                 const bMap = ventasMapByBranch[bKey] || ventasMapByBranch[String(bKey)];
@@ -1145,6 +1327,7 @@ export default function TablaArticulos({
               </div>
             );
           })}
+
           {visibleCols.map(col => {
             if (col.id === 'objetivo' && esAgrupEspecifica) {
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
@@ -1157,17 +1340,23 @@ export default function TablaArticulos({
                   <div className="input-symbol-wrapper" data-symbol="%">
                     <input type="number"
                       placeholder={firstObjLocal != null ? String(firstObjLocal) : String(globalCostoIdeal)}
-                      value={blockObjetivos[bkRubroObj] ?? (ids.length && objetivos[String(ids[0])] != null ? String(objetivos[String(ids[0])]) : objValDb)}
+                      value={blockObjetivos[bkRubroObj] ?? (ids.length && objetivos[String(ids[0])] != null ? String(objetivos[String(ids[0])]) : (priceConfig.byRubro?.[rubroKey]?.objetivo != null ? String(priceConfig.byRubro[rubroKey].objetivo) : objValDb))}
                       onChange={(e) => setBlockObjetivos(prev => ({ ...prev, [bkRubroObj]: e.target.value }))}
                       onKeyDown={(e) => {
                         if (e.key !== 'Enter') return;
                         e.target.blur();
                         const val = e.target.value === '' ? null : Number(e.target.value);
                         if (!onPriceConfigSave || val == null) return;
-                        const idsAplicar = ids.filter(artId => !tieneObjetivoIndividual(artId));
-                        setObjetivos(prev => { const next = { ...prev }; idsAplicar.forEach(artId => { next[String(artId)] = val; }); return next; });
-                        onPriceConfigSave({ scope: 'rubro', scopeId: rubroKey, objetivo: val, articleIds: idsAplicar });
+                        const valAnterior = cfgRubro.objetivo != null ? Number(cfgRubro.objetivo) : null;
+                        const label = rubroKey || 'este rubro';
+                        // Aplicar inmediatamente
+                        setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { next[String(artId)] = val; }); return next; });
+                        onPriceConfigSave({ scope: 'rubro', scopeId: rubroKey, objetivo: val, articleIds: ids, pisarTodo: true });
                         setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkRubroObj]; return n; });
+                        // Emitir para notificaciones
+                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'rubro', scopeId: rubroKey, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch {}
+                        // Toast con Deshacer
+                        setPendingObjConfirm({ scope: 'rubro', scopeId: rubroKey, val, ids, valAnterior, label, bkKey: bkRubroObj });
                       }}
                       className="input-with-suffix"
                       style={{ width: 52, fontSize: '0.75rem', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4, color: TABLE_TEXT }}
@@ -1178,11 +1367,7 @@ export default function TablaArticulos({
                     onClick={() => {
                       setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkRubroObj]; return n; });
                       onPriceConfigSave?.({ scope: 'rubro', scopeId: rubroKey, objetivo: null, articleIds: ids });
-                      setObjetivos(prev => {
-                        const next = { ...prev };
-                        ids.forEach(artId => { delete next[String(artId)]; });
-                        return next;
-                      });
+                      setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { delete next[String(artId)]; }); return next; });
                     }}
                   />
                 </div>
@@ -1194,8 +1379,9 @@ export default function TablaArticulos({
               return (
                 <div key="manual" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div className="input-symbol-wrapper" data-symbol="%">
-                    <input type="number" placeholder=""
+                    <input type="number"
                       value={blockManuales[bkRubroMan] ?? ''}
+                      placeholder={lastAppliedPct[bkRubroMan] != null ? String(lastAppliedPct[bkRubroMan]) : ''}
                       onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkRubroMan]: e.target.value }))}
                       onBlur={(e) => {
                         const pct = e.target.value === '' ? null : Number(e.target.value);
@@ -1207,7 +1393,15 @@ export default function TablaArticulos({
                       style={{ width: 52, fontSize: '0.75rem', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4, color: TABLE_TEXT }}
                     />
                   </div>
-                  <ClearBtn onClick={() => setClearDlg({ type: 'manual', ids, scopeType: 'rubro', scopeId: rubroKeyManual, bkBlock: bkRubroMan, setBlock: setBlockManuales })} />
+                  <ClearBtn onClick={() => {
+                    setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
+                    setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
+                    if (onBulkManualSave) {
+                      onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
+                    } else {
+                      ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
+                    }
+                  }} />
                 </div>
               );
             }
@@ -1242,7 +1436,6 @@ export default function TablaArticulos({
       );
     }
 
-    // ── Fila de artículo ──
     const a = row.art;
     const id = a.id;
     const agrupId = String(agrupacionSeleccionada?.id || '');
@@ -1256,9 +1449,10 @@ export default function TablaArticulos({
     const hayAlertaInsumo = hayReceta && recetaData?.tieneAlerta === true;
     const objetivoArticulo = getObjetivoArticulo(a, agrupId);
     const precioManual = getPrecioManualArticulo(a);
-    const precioBase = num(a.precio); // precio Maxi, siempre fijo
+    const precioBase = num(a.precio);
     const precioRef = precioManual ?? precioBase;
-    const costoPct = precioBase > 0 ? (costoArticulo / precioBase) * 100 : 0;
+    const precioParaCosto = precioManual != null && precioManual > 0 ? precioManual : precioBase;
+    const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
     const sugerido = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
     const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
@@ -1276,35 +1470,21 @@ export default function TablaArticulos({
         {selectionMode && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             {isLinked ? (
-              <LinkChainIcon
-                articleId={id} groupInfo={linkInfo} nameById={nameById}
-                onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink}
-              />
+              <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
             ) : (
-              <input
-                type="checkbox" checked={isChecked}
-                onChange={() => onToggleSelected?.(Number(id))}
-                style={{
-                  width: 14, height: 14, cursor: "pointer",
-                  accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1"
-                }}
-              />
+              <input type="checkbox" checked={isChecked} onChange={() => onToggleSelected?.(Number(id))}
+                style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }} />
             )}
           </div>
         )}
 
-        {/* Código */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           {!selectionMode && isLinked && (
-            <LinkChainIcon
-              articleId={id} groupInfo={linkInfo} nameById={nameById}
-              onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink}
-            />
+            <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
           )}
           <span>{id}</span>
         </div>
 
-        {/* Nombre */}
         <div onClick={() => { const objetivoResuelto = getObjetivoArticulo(a, agrupId); setRecetaArticulo({ ...a, objetivoResuelto }); }}
           style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
@@ -1314,22 +1494,14 @@ export default function TablaArticulos({
           {a.nombre}
         </div>
 
-        {/* Ventas — una sola columna */}
         <div style={cellNum}>
           {ventasVista === '$'
             ? fmtCurrency(overrideAmount)
-            : <VentasCell
-              articuloId={id} articuloNombre={a.nombre}
-              from={fechaDesde} to={fechaHasta}
-              defaultGroupBy="day" totalOverride={overrideQty}
-              onTotalResolved={onTotalResolved} businessId={activeBizId}
-            />
+            : <VentasCell articuloId={id} articuloNombre={a.nombre} from={fechaDesde} to={fechaHasta}
+              defaultGroupBy="day" totalOverride={overrideQty} onTotalResolved={onTotalResolved} businessId={activeBizId} />
           }
         </div>
 
-
-
-        {/* Columnas por sucursal */}
         {hasBranches && branches.map(branch => {
           const bKey = branch.id;
           const bMap = ventasMapByBranch[bKey] || ventasMapByBranch[String(bKey)];
@@ -1346,13 +1518,21 @@ export default function TablaArticulos({
 
         {visibleCols.map(col => {
           switch (col.id) {
-
-            case 'precio':
+            case 'precio': {
+              const precioLista = activePriceList > 1
+                ? (num(a[`precio${activePriceList}`]) || num(a.precio))
+                : num(a.precio);
               return (
                 <div key="precio" style={cellNum}>
-                  {fmtCurrency(num(a.precio))}
+                  {fmtCurrency(precioLista)}
+                  {activePriceList > 1 && num(a.precio1 || a.precio) !== precioLista && (
+                    <span style={{ fontSize: '0.62rem', color: '#94a3b8', marginLeft: 2 }}>
+                      L{activePriceList}
+                    </span>
+                  )}
                 </div>
               );
+            }
 
             case 'costo':
               return (
@@ -1371,8 +1551,7 @@ export default function TablaArticulos({
             case 'objetivo':
               return (
                 <div key="objetivo" style={cellNum}>
-                  <span
-                    style={{ fontSize: '0.78rem', color: tieneObjetivoIndividual(id) ? '#6366f1' : TABLE_TEXT }}
+                  <span style={{ fontSize: '0.78rem', color: tieneObjetivoIndividual(id) ? '#6366f1' : TABLE_TEXT }}
                     title={tieneObjetivoIndividual(id) ? 'Objetivo definido individualmente' : ''}>
                     {objetivoArticulo > 0 ? `${fmt(objetivoArticulo, 0)}%` : <span style={{ color: TABLE_MUTED }}>—</span>}
                   </span>
@@ -1389,29 +1568,32 @@ export default function TablaArticulos({
             case 'manual':
               return (
                 <div key="manual" style={{ ...cellNum, position: 'relative' }}>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    border: '1px solid #d1d5db', borderRadius: 6,
-                    overflow: 'hidden', background: '#fff',
-                  }}>
-                    <span style={{
-                      padding: '0 5px', fontSize: '0.72rem', color: TABLE_MUTED,
-                      background: '#f9fafb', borderRight: '1px solid #e5e7eb',
-                      lineHeight: '28px', userSelect: 'none',
-                    }}>$</span>
-                    <input type="number"
-                      value={manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '')}
-                      onChange={(e) => setManuales(s => ({ ...s, [id]: e.target.value }))}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 85 }}>
+                    <span style={{ padding: '0 5px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderRight: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>$</span>
+                    <input
+                      type="text"
+                      value={(() => {
+                        const raw = manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '');
+                        if (raw === '' || raw == null) return '';
+                        const n = Number(String(raw).replace(/\./g, ''));
+                        return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(raw);
+                      })()}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                        setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
+                      }}
                       onBlur={(e) => {
-                        const val = e.target.value === '' ? null : Number(e.target.value);
+                        const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                        const val = raw === '' ? null : Number(raw);
                         bulkSetIdsRef.current.delete(Number(id));
-                        onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
+                        if (val === null) {
+                          // Campo borrado — DELETE explícito
+                          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), _deleteManual: true });
+                        } else {
+                          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
+                        }
                       }}
-                      style={{
-                        width: 68, fontSize: '0.78rem', textAlign: 'right',
-                        border: 'none', outline: 'none', padding: '0 6px',
-                        color: TABLE_TEXT, background: 'transparent',
-                      }}
+                      style={{ width: 58, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 6px', color: TABLE_TEXT, background: 'transparent' }}
                     />
                   </div>
                 </div>
@@ -1445,9 +1627,11 @@ export default function TablaArticulos({
         <RecetaModal
           open={!!recetaArticulo} onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo} businessId={rootBizId ?? activeBizId}
+          esElaborado={false}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           recetasElaborados={recetasElaborados}
           onPriceConfigSave={onPriceConfigSave}
+          allArticulos={allArticulos}
           onSaved={(savedReceta) => {
             if (savedReceta?.article_id && savedReceta?.costo_total != null) onSaved?.(savedReceta);
           }}
@@ -1460,9 +1644,7 @@ export default function TablaArticulos({
             <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate }}>
               {selectionMode && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={isAllSelected}
+                  <input type="checkbox" checked={isAllSelected}
                     onChange={() => {
                       if (isAllSelected) currentVisibleArticleIds.forEach(id => selectedIds.has(id) && onToggleSelected?.(id));
                       else onSelectAll?.(currentVisibleArticleIds);
@@ -1472,6 +1654,7 @@ export default function TablaArticulos({
                   />
                 </div>
               )}
+
               <div onClick={() => toggleSort("codigo")} className="col-sortable">
                 Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
@@ -1479,93 +1662,51 @@ export default function TablaArticulos({
                 Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span
-                  onClick={() => toggleSort("ventas")}
-                  className="col-sortable"
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
+                <span onClick={() => toggleSort("ventas")} className="col-sortable" style={{ cursor: 'pointer', userSelect: 'none' }}>
                   Ventas {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                 </span>
-                {/* Switch $ | U */}
-                <div style={{
-                  display: 'inline-flex', borderRadius: 4, overflow: 'hidden',
-                  border: '1px solid #cbd5e1', fontSize: '0.68rem', flexShrink: 0,
-                }}>
-                  {['$', 'U'].map(v => (
-                    <button key={v} onClick={() => setVentasVista(v)}
-                      style={{
-                        padding: '1px 6px', border: 'none', cursor: 'pointer',
-                        fontWeight: 700, lineHeight: 1.4,
-                        background: ventasVista === v ? HEADER_TEXT : 'transparent',
-                        color: ventasVista === v ? '#fff' : HEADER_TEXT,
-                        transition: 'background 0.15s',
-                      }}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  onClick={() => setVentasVista(v => v === '$' ? 'U' : '$')}
+                  title={ventasVista === '$' ? 'Cambiar a unidades' : 'Cambiar a pesos'}
+                  style={{ padding: '1px 7px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.4, fontSize: '0.68rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
+                  {ventasVista}
+                </button>
               </div>
+
               {hasBranches && branches.map(branch => (
-                <div key={branch.id} style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderLeft: `2px solid ${branch.color || 'var(--color-primary)'}30`, paddingLeft: 4 }}
+                <div key={branch.id}
+                  style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderLeft: `2px solid ${branch.color || 'var(--color-primary)'}30`, paddingLeft: 4 }}
                   title={`Ventas ${ventasVista} — ${branch.name}`}>
                   {branch.name} {ventasVista}
                 </div>
               ))}
-              {visibleCols.map(col => {
+
+              {visibleCols.map((col, colIdx) => {
+                const dragProps = {
+                  draggable: true,
+                  onDragStart: (e) => { e.stopPropagation(); handleColDragStart(colIdx); },
+                  onDragOver: (e) => e.preventDefault(),
+                  onDrop: (e) => { e.stopPropagation(); handleColDrop(colIdx); },
+                };
                 switch (col.id) {
-                  case 'precio':
-                    return (
-                      <div key="precio" onClick={() => toggleSort('precio')} className="col-sortable">
-                        Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'costo':
-                    return (
-                      <div key="costo" onClick={() => toggleSort('costo')} className="col-sortable">
-                        Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'costoPct':
-                    return (
-                      <div key="costoPct" onClick={() => toggleSort('costoPct')} className="col-sortable">
-                        Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'objetivo':
-                    return (
-                      <div key="objetivo" onClick={() => toggleSort('objetivo')} className="col-sortable">
-                        Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'sugerido':
-                    return (
-                      <div key="sugerido" onClick={() => toggleSort('sugerido')} className="col-sortable">
-                        Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'manual':
-                    return (
-                      <div key="manual" onClick={() => toggleSort('manual')} className="col-sortable">
-                        Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                      </div>
-                    );
-                  case 'acciones':
-                    return (
-                      <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <span style={{ fontSize: '0.75rem' }}>Acciones</span>
-                        <button
-                          onClick={e => { e.stopPropagation(); setColDlgOpen(true); }}
-                          title="Configurar columnas"
-                          style={{
-                            padding: '2px 6px', fontSize: '0.65rem',
-                            border: '1px solid #e5e7eb', borderRadius: 4,
-                            background: '#fff', cursor: 'pointer', lineHeight: 1.4,
-                          }}>
-                         <SettingsIcon />
-                        </button>
-                      </div>
-                    );
+                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ cursor: 'grab' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ cursor: 'grab' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={{ cursor: 'grab' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={{ cursor: 'grab' }}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={{ cursor: 'grab' }}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'manual': return <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable" style={{ cursor: 'grab' }}>Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'acciones': return (
+                    <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <span style={{ fontSize: '0.75rem' }}>Acciones</span>
+                      {/* Botón configurar columnas — descomentar para activar
+                      <button onClick={e => { e.stopPropagation(); setColDlgOpen(true); }} title="Configurar columnas"
+                        style={{ padding: '2px 6px', fontSize: '0.65rem', border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', cursor: 'pointer', lineHeight: 1.4 }}>
+                        <SettingsIcon />
+                      </button>
+                      */}
+                    </div>
+                  );
                   default: return null;
                 }
               })}
@@ -1588,47 +1729,161 @@ export default function TablaArticulos({
         <Snackbar open={snack.open} autoHideDuration={2600} onClose={() => setSnack((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: "top", horizontal: "center" }}>
           <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: "100%" }}>{snack.msg}</Alert>
         </Snackbar>
-
-
       </div>
+
+      {/* ── Modal de redondeo de precios ── */}
+      {redondeoModalPendiente && (
+        <Dialog open onClose={() => {
+          const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
+          setRedondeoModalPendiente(null);
+          continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
+        }} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+            Configurar redondeo de precios
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" gutterBottom>
+              ¿A qué múltiplo querés redondear los nuevos precios?
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+              {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
+                <Chip
+                  key={op}
+                  label={`$${op}`}
+                  onClick={() => {
+                    const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
+                    saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
+                    setRedondeoConfig(prev => ({ ...prev, valor: op }));
+                    setRedondeoModalPendiente(null);
+                    continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
+                  }}
+                  variant="outlined"
+                  size="small"
+                  sx={{ cursor: 'pointer', fontWeight: 500 }}
+                />
+              ))}
+            </Box>
+            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <input
+                type="checkbox"
+                id="redondeo-no-mostrar"
+                checked={!(redondeoConfig?.mostrarModal ?? true)}
+                onChange={(e) => {
+                  const noMostrar = e.target.checked;
+                  saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
+                  setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                }}
+                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+              />
+              <label htmlFor="redondeo-no-mostrar" style={{ fontSize: '0.8rem', cursor: 'pointer', color: '#555' }}>
+                No volver a mostrar (configurar desde Ajustes → Artículos)
+              </label>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2 }}>
+            <Button size="small" variant="text" color="inherit"
+              onClick={() => {
+                const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
+                setRedondeoModalPendiente(null);
+                continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
+              }}>
+              Sin redondeo
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
       {bulkPctDlg && (
         <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
             Aplicar aumento de precio
           </DialogTitle>
           <DialogContent>
-            <Typography variant="body2" sx={{ mb: 1 }}>
-              {`${bulkPctDlg.idsConNuevoPrecio.length} de ${bulkPctDlg.idsAll.length} artículos ya tienen nuevo precio individual.`}
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Se aplicará el aumento a <strong>{bulkPctDlg.idsAll.length}</strong> artículos.
+              {redondeoConfig?.valor
+                ? ` Los precios se redondearán al múltiplo de $${redondeoConfig.valor} más cercano.`
+                : ' Sin redondeo configurado.'}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              ¿A cuáles aplicar el aumento?
-            </Typography>
+
+            {/* Sección de redondeo */}
+            <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Redondeo de precios
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+                {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
+                  <Chip
+                    key={op}
+                    label={`$${op}`}
+                    size="small"
+                    variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
+                    onClick={() => {
+                      saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
+                      setRedondeoConfig(prev => ({ ...prev, valor: op }));
+                      onRedondeoChange?.(op);
+                    }}
+                    sx={{
+                      cursor: 'pointer',
+                      fontWeight: redondeoConfig?.valor === op ? 700 : 400,
+                      ...(redondeoConfig?.valor === op && {
+                        bgcolor: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)',
+                      }),
+                    }}
+                  />
+                ))}
+                <Chip
+                  key="none"
+                  label="Sin redondeo"
+                  size="small"
+                  variant={!redondeoConfig?.valor ? 'filled' : 'outlined'}
+                  onClick={() => {
+                    saveRedondeoConfig(activeBizId, null, redondeoConfig?.mostrarModal ?? true);
+                    setRedondeoConfig(prev => ({ ...prev, valor: null }));
+                    onRedondeoChange?.(null);
+                  }}
+                  sx={{
+                    cursor: 'pointer',
+                    ...(!redondeoConfig?.valor && { bgcolor: '#64748b', color: '#fff', borderColor: '#64748b' }),
+                  }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <input
+                  type="checkbox"
+                  id="bulk-redondeo-no-mostrar"
+                  checked={!(redondeoConfig?.mostrarModal ?? true)}
+                  onChange={(e) => {
+                    const noMostrar = e.target.checked;
+                    saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
+                    setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                  }}
+                  style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+                />
+                <label htmlFor="bulk-redondeo-no-mostrar" style={{ fontSize: '0.78rem', cursor: 'pointer', color: '#555' }}>
+                  No volver a mostrar este aviso
+                </label>
+              </Box>
+            </Box>
           </DialogContent>
-          <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
-            <Button variant="contained" size="small"
+          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+            <Button size="small" variant="text" color="inherit" onClick={() => setBulkPctDlg(null)}>
+              Cancelar
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
               onClick={() => {
                 executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'todos');
-                if (bulkPctDlg.blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                if (bulkPctDlg.blockKey) {
+                  setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                  setLastAppliedPct(prev => ({ ...prev, [bulkPctDlg.blockKey]: bulkPctDlg.pct }));
+                }
                 if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
                 setBulkPctDlg(null);
               }}
-              sx={{ textTransform: 'none', justifyContent: 'flex-start', bgcolor: 'var(--color-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}>
-              A todos ({bulkPctDlg.idsAll.length} artículos)
-            </Button>
-            <Button variant="outlined" size="small"
-              onClick={() => {
-                executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'solo_sin_manual');
-                if (bulkPctDlg.blockKey) setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
-                if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
-                setBulkPctDlg(null);
-              }}
-              sx={{ textTransform: 'none', justifyContent: 'flex-start' }}>
-              Solo los que NO tienen nuevo precio ({bulkPctDlg.idsAll.length - bulkPctDlg.idsConNuevoPrecio.length} artículos)
-            </Button>
-            <Button variant="text" size="small" color="inherit"
-              onClick={() => setBulkPctDlg(null)}
-              sx={{ textTransform: 'none' }}>
-              Cancelar
+              sx={{ bgcolor: 'var(--color-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}>
+              Aplicar a todos
             </Button>
           </DialogActions>
         </Dialog>
@@ -1636,71 +1891,37 @@ export default function TablaArticulos({
       {clearDlg && (
         <Dialog open onClose={() => setClearDlg(null)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
-            Borrar nuevo precio $
+            ¿Borrar nuevo precio de {clearDlg.scopeType === 'agrupacion' ? 'la agrupación' : 'este rubro'}?
           </DialogTitle>
           <DialogContent>
-            <Typography variant="body2" sx={{ mb: 1 }}>
-              {`¿A cuáles artículos de este ${clearDlg.scopeType === 'agrupacion' ? 'grupo' : 'bloque'} borrar el nuevo precio?`}
-            </Typography>
             <Typography variant="body2" color="text.secondary">
-              {`${clearDlg.ids.length} artículos en total.`}
+              Se borrará el nuevo precio de <strong>{clearDlg.ids.length}</strong> artículo{clearDlg.ids.length !== 1 ? 's' : ''}.
             </Typography>
           </DialogContent>
-          <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', gap: 1, px: 2, pb: 2 }}>
-            <Button variant="contained" size="small"
-              // En el clearDlg, opción "Borrar a todos":
+          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+            <Button size="small" variant="text" color="inherit" onClick={() => setClearDlg(null)}>Cancelar</Button>
+            <Button size="small" variant="contained" color="error"
               onClick={() => {
                 const { ids, bkBlock, setBlock } = clearDlg;
                 setBlock(prev => { const n = { ...prev }; delete n[bkBlock]; return n; });
-
-                // ✅ Un solo bulk en vez de N llamadas individuales
-                const updates = ids.map(artId => ({ artId, precioManual: null }));
+                setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
                 if (onBulkManualSave) {
-                  onBulkManualSave(updates);
+                  onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
                 } else {
                   ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
                 }
-
-                setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
                 setClearDlg(null);
-              }}
-              sx={{ textTransform: 'none', justifyContent: 'flex-start' }}>
-              Borrar a todos ({clearDlg.ids.length} artículos)
-            </Button>
-            <Button variant="outlined" size="small"
-              onClick={() => {
-                const { ids, bkBlock, setBlock } = clearDlg;
-                const sinIndividual = ids.filter(artId => {
-                  const key = String(artId);
-                  return !((manuales[key] !== undefined && manuales[key] !== '') || priceConfig.byArticle?.[key]?.precioManual != null);
-                });
-                setBlock(prev => { const n = { ...prev }; delete n[bkBlock]; return n; });
-                sinIndividual.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
-                setManuales(prev => { const next = { ...prev }; sinIndividual.forEach(id => { delete next[String(id)]; }); return next; });
-                setClearDlg(null);
-              }}
-              sx={{ textTransform: 'none', justifyContent: 'flex-start' }}>
-              Solo los sin precio individual ({
-                clearDlg.ids.filter(artId => {
-                  const key = String(artId);
-                  return !((manuales[key] !== undefined && manuales[key] !== '') || priceConfig.byArticle?.[key]?.precioManual != null);
-                }).length
-              } artículos)
-            </Button>
-            <Button variant="text" size="small" color="inherit"
-              onClick={() => setClearDlg(null)}
-              sx={{ textTransform: 'none' }}>
-              Cancelar
+              }}>
+              Borrar
             </Button>
           </DialogActions>
         </Dialog>
       )}
-      <ColOrderModal
-        open={colDlgOpen}
-        cols={colConfig}
-        onSave={saveColConfig}
-        onClose={() => setColDlgOpen(false)}
-      />
+
+      <ColOrderModal open={colDlgOpen} cols={colConfig} onSave={saveColConfig} onClose={() => setColDlgOpen(false)} />
+
+      {/* Toast de acción objetivo con Deshacer */}
+      {/* El objetivo se notifica solo via el panel de notificaciones */}
     </>
   );
 }

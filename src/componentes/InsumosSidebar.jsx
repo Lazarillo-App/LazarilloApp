@@ -8,11 +8,11 @@ import {
   ToggleButtonGroup, ToggleButton,
   IconButton, Tooltip, Box, Typography,
 } from '@mui/material';
-import AddIcon        from '@mui/icons-material/Add';
-import DownloadIcon   from '@mui/icons-material/Download';
-import DeleteIcon     from '@mui/icons-material/Delete';
-import EditIcon       from '@mui/icons-material/Edit';
-import StarIcon       from '@mui/icons-material/Star';
+import AddIcon from '@mui/icons-material/Add';
+import DownloadIcon from '@mui/icons-material/Download';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 
 import InsumoRubroAccionesMenu from './InsumoRubroAccionesMenu';
@@ -147,6 +147,7 @@ function InsumosSidebar({
   activeDivisionGroupIds = [],
   assignedGroupIds = [],
   refetchAssignedGroups,
+  onClearInsumoList,
 }) {
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
   const loading = groupsLoading;
@@ -461,7 +462,10 @@ function InsumosSidebar({
           {['agrupaciones', 'listas'].map(tab => (
             <Box
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                setActiveTab(tab);
+                if (tab === 'agrupaciones') onClearInsumoList?.();
+              }}
               sx={{
                 flex: 1, textAlign: 'center', py: 0.75, cursor: 'pointer', fontSize: '0.8rem',
                 fontWeight: activeTab === tab ? 700 : 400,
@@ -536,229 +540,229 @@ function InsumosSidebar({
       {/* ── Panel Agrupaciones ────────────────────────────────── */}
       {activeTab === 'agrupaciones' && (
         <>
-        <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
+          <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
             <Select
-            label="Agrupaciones"
-            sx={{ fontWeight: '500' }}
-            value={selectedGroupValue}
-            onChange={handleGroupChange}
-            renderValue={(value) => {
-              const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
-              return g ? g.nombre : 'Sin agrupación';
-            }}
-          >
-            {opcionesSelect.map((g) => (
-              <MenuItem key={g.id} value={Number(g.id)}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                  <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
-                    {g.nombre}
-                    {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
-                      <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
-                    )}
-                  </span>
+              label="Agrupaciones"
+              sx={{ fontWeight: '500' }}
+              value={selectedGroupValue}
+              onChange={handleGroupChange}
+              renderValue={(value) => {
+                const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
+                return g ? g.nombre : 'Sin agrupación';
+              }}
+            >
+              {opcionesSelect.map((g) => (
+                <MenuItem key={g.id} value={Number(g.id)}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
+                    <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
+                      {g.nombre}
+                      {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
+                        <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
+                      )}
+                    </span>
 
-                  <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {(() => {
-                      const isTodo = esTodoGroup(g);
-                      const isDisc = esDiscontinuadosGroup(g);
+                    <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {(() => {
+                        const isTodo = esTodoGroup(g);
+                        const isDisc = esDiscontinuadosGroup(g);
 
-                      if (isDisc) return null;
+                        if (isDisc) return null;
 
-                      if (isTodo) {
-                        return (
-                          isMainDivision && onRenameGroup && (
-                            <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
-                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
-                                <EditIcon fontSize="inherit" />
-                              </IconButton>
-                            </Tooltip>
-                          )
-                        );
-                      }
-
-                      return (
-                        <>
-                          {onSetFavorite && (
-                            <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
-                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
-                                {Number(favoriteGroupId) === Number(g.id) ? (
-                                  <StarIcon fontSize="inherit" color="warning" />
-                                ) : (
-                                  <StarBorderIcon fontSize="inherit" />
-                                )}
-                              </IconButton>
-                            </Tooltip>
-                          )}
-
-                          {onEditGroup && (
-                            <Tooltip title="Renombrar agrupación">
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const oldName = g.nombre;
-                                  const handleRename = async () => {
-                                    const result = await onEditGroup(g);
-                                    if (result && result.newName && result.newName !== oldName) {
-                                      try {
-                                        window.dispatchEvent(new CustomEvent('ui:action', {
-                                          detail: {
-                                            businessId, kind: 'group_rename', scope: 'insumo',
-                                            title: 'Agrupación renombrada',
-                                            message: `"${oldName}" → "${result.newName}"`,
-                                            createdAt: new Date().toISOString(),
-                                            payload: { groupId: Number(g.id), oldName, newName: result.newName },
-                                          },
-                                        }));
-                                      } catch (err) {
-                                        console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
-                                      }
-                                    }
-                                  };
-                                  handleRename();
-                                }}
-                              >
-                                <EditIcon fontSize="inherit" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-
-                          {onDeleteGroup && (
-                            <Tooltip title="Eliminar agrupación">
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  try {
-                                    window.dispatchEvent(new CustomEvent('ui:action', {
-                                      detail: {
-                                        businessId, kind: 'group_delete', scope: 'insumo',
-                                        title: 'Agrupación eliminada',
-                                        message: `"${g.nombre}" fue eliminada.`,
-                                        createdAt: new Date().toISOString(),
-                                        payload: { groupId: Number(g.id), groupName: g.nombre },
-                                      },
-                                    }));
-                                  } catch (err) {
-                                    console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
-                                  }
-                                  onDeleteGroup(g);
-                                }}
-                              >
-                                <DeleteIcon fontSize="inherit" color="error" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </span>
-                </div>
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        {/* Toggle elaborados / no-elaborados */}
-        <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={vista}
-            onChange={(_, val) => {
-              if (!val) return;
-              onVistaChange?.(val);
-            }}
-          >
-            <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
-            <ToggleButton value="elaborados">Elaborados</ToggleButton>
-          </ToggleButtonGroup>
-        </div>
-
-      <ul className="sidebar-draggable-list">
-        {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}
-
-        {!loading &&
-          treeByRubro.map((rubro) => {
-            const keyStr = String(rubro?.codigo || rubro?.nombre || 'sin-codigo');
-            const active = rubroSeleccionado?.codigo === rubro?.codigo;
-            const count = countInsumosRubro(rubro);
-            const monto = montoInsumosRubro(rubro);
-
-            return (
-              <li
-                key={keyStr}
-                className={active ? 'categoria-activa' : ''}
-                title={rubro.nombre}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-              >
-                <span onClick={() => handleRubroClick(rubro)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <span className="icono" />
-                  {rubro.nombre}
-                </span>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <small style={{ opacity: 0.65 }}>
-                    {count}
-                    {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
-                  </small>
-
-                  <InsumoRubroAccionesMenu
-                    rubroLabel={rubro.nombre}
-                    rubroCodigo={(() => {
-                      // Intentar resolver el código Maxi desde rubrosMap usando el nombre
-                      if (rubrosMap && typeof rubrosMap.get === 'function') {
-                        // rubrosMap tiene codigo → info, necesitamos buscar por nombre
-                        for (const [codigo, info] of rubrosMap.entries()) {
-                          if (info?.nombre === rubro.nombre) return String(codigo);
+                        if (isTodo) {
+                          return (
+                            isMainDivision && onRenameGroup && (
+                              <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
+                                  <EditIcon fontSize="inherit" />
+                                </IconButton>
+                              </Tooltip>
+                            )
+                          );
                         }
-                      }
-                      return String(rubro.codigo || '');
-                    })()}
-                    isElaborado={rubro.es_elaborador === true}
-                    insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
-                    groups={groups}
-                    selectedGroupId={selectedGroupId}
-                    discontinuadosGroupId={discontinuadosGroupId}
-                    onRefetch={onRefetch}
-                    notify={notify}
-                    onMutateGroups={onMutateGroups}
-                    onCreateGroupFromRubro={onCreateGroupFromRubro}
-                    todoGroupId={todoGroupId}
-                    isTodoView={isTodoView}
-                    onReloadCatalogo={onReloadCatalogo}
-                    onAfterRubroUpdate={onRefetch}
-                    fromSidebar
-                    businessId={originalBusinessId || businessId}
-                  />
-                </div>
+
+                        return (
+                          <>
+                            {onSetFavorite && (
+                              <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
+                                  {Number(favoriteGroupId) === Number(g.id) ? (
+                                    <StarIcon fontSize="inherit" color="warning" />
+                                  ) : (
+                                    <StarBorderIcon fontSize="inherit" />
+                                  )}
+                                </IconButton>
+                              </Tooltip>
+                            )}
+
+                            {onEditGroup && (
+                              <Tooltip title="Renombrar agrupación">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const oldName = g.nombre;
+                                    const handleRename = async () => {
+                                      const result = await onEditGroup(g);
+                                      if (result && result.newName && result.newName !== oldName) {
+                                        try {
+                                          window.dispatchEvent(new CustomEvent('ui:action', {
+                                            detail: {
+                                              businessId, kind: 'group_rename', scope: 'insumo',
+                                              title: 'Agrupación renombrada',
+                                              message: `"${oldName}" → "${result.newName}"`,
+                                              createdAt: new Date().toISOString(),
+                                              payload: { groupId: Number(g.id), oldName, newName: result.newName },
+                                            },
+                                          }));
+                                        } catch (err) {
+                                          console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                        }
+                                      }
+                                    };
+                                    handleRename();
+                                  }}
+                                >
+                                  <EditIcon fontSize="inherit" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+
+                            {onDeleteGroup && (
+                              <Tooltip title="Eliminar agrupación">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      window.dispatchEvent(new CustomEvent('ui:action', {
+                                        detail: {
+                                          businessId, kind: 'group_delete', scope: 'insumo',
+                                          title: 'Agrupación eliminada',
+                                          message: `"${g.nombre}" fue eliminada.`,
+                                          createdAt: new Date().toISOString(),
+                                          payload: { groupId: Number(g.id), groupName: g.nombre },
+                                        },
+                                      }));
+                                    } catch (err) {
+                                      console.warn('[InsumosSidebar] Error emitiendo notificación:', err);
+                                    }
+                                    onDeleteGroup(g);
+                                  }}
+                                >
+                                  <DeleteIcon fontSize="inherit" color="error" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </span>
+                  </div>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Toggle elaborados / no-elaborados */}
+          <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={vista}
+              onChange={(_, val) => {
+                if (!val) return;
+                onVistaChange?.(val);
+              }}
+            >
+              <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
+              <ToggleButton value="elaborados">Elaborados</ToggleButton>
+            </ToggleButtonGroup>
+          </div>
+
+          <ul className="sidebar-draggable-list">
+            {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}
+
+            {!loading &&
+              treeByRubro.map((rubro) => {
+                const keyStr = String(rubro?.codigo || rubro?.nombre || 'sin-codigo');
+                const active = rubroSeleccionado?.codigo === rubro?.codigo;
+                const count = countInsumosRubro(rubro);
+                const monto = montoInsumosRubro(rubro);
+
+                return (
+                  <li
+                    key={keyStr}
+                    className={active ? 'categoria-activa' : ''}
+                    title={rubro.nombre}
+                    style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                  >
+                    <span onClick={() => handleRubroClick(rubro)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <span className="icono" />
+                      {rubro.nombre}
+                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <small style={{ opacity: 0.65 }}>
+                        {count}
+                        {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
+                      </small>
+
+                      <InsumoRubroAccionesMenu
+                        rubroLabel={rubro.nombre}
+                        rubroCodigo={(() => {
+                          // Intentar resolver el código Maxi desde rubrosMap usando el nombre
+                          if (rubrosMap && typeof rubrosMap.get === 'function') {
+                            // rubrosMap tiene codigo → info, necesitamos buscar por nombre
+                            for (const [codigo, info] of rubrosMap.entries()) {
+                              if (info?.nombre === rubro.nombre) return String(codigo);
+                            }
+                          }
+                          return String(rubro.codigo || '');
+                        })()}
+                        isElaborado={rubro.es_elaborador === true}
+                        insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
+                        groups={groups}
+                        selectedGroupId={selectedGroupId}
+                        discontinuadosGroupId={discontinuadosGroupId}
+                        onRefetch={onRefetch}
+                        notify={notify}
+                        onMutateGroups={onMutateGroups}
+                        onCreateGroupFromRubro={onCreateGroupFromRubro}
+                        todoGroupId={todoGroupId}
+                        isTodoView={isTodoView}
+                        onReloadCatalogo={onReloadCatalogo}
+                        onAfterRubroUpdate={onRefetch}
+                        fromSidebar
+                        businessId={originalBusinessId || businessId}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+
+            {!loading && treeByRubro.length === 0 && (
+              <li style={{ opacity: 0.7 }}>
+                {selectedGroupId &&
+                  (groups || []).find((g) => Number(g.id) === Number(selectedGroupId)) &&
+                  esDiscontinuadosGroup((groups || []).find((g) => Number(g.id) === Number(selectedGroupId)))
+                  ? 'No hay rubros discontinuados.'
+                  : 'No hay rubros en esta agrupación.'}
               </li>
-            );
-          })}
+            )}
+          </ul>
 
-        {!loading && treeByRubro.length === 0 && (
-          <li style={{ opacity: 0.7 }}>
-            {selectedGroupId &&
-              (groups || []).find((g) => Number(g.id) === Number(selectedGroupId)) &&
-              esDiscontinuadosGroup((groups || []).find((g) => Number(g.id) === Number(selectedGroupId)))
-              ? 'No hay rubros discontinuados.'
-              : 'No hay rubros en esta agrupación.'}
-          </li>
-        )}
-      </ul>
-
-      {divisionModalOpen && (
-        <AssignGroupToDivisionModal
-          open={divisionModalOpen}
-          group={groupToMove}
-          businessId={businessId}
-          currentDivisionId={activeDivisionId ?? null}
-          onClose={() => { setDivisionModalOpen(false); setGroupToMove(null); }}
-          onAssign={handleDivisionAssign}
-        />
-      )}
-      </>)}
+          {divisionModalOpen && (
+            <AssignGroupToDivisionModal
+              open={divisionModalOpen}
+              group={groupToMove}
+              businessId={businessId}
+              currentDivisionId={activeDivisionId ?? null}
+              onClose={() => { setDivisionModalOpen(false); setGroupToMove(null); }}
+              onAssign={handleDivisionAssign}
+            />
+          )}
+        </>)}
     </div>
   );
 }

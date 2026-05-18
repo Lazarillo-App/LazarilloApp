@@ -410,7 +410,16 @@ export function BusinessProvider({ children }) {
     if (!isLogged) return;
 
     const onCreated = () => refetchBusinesses();
-    const onUpdated = () => refetchBusinesses();
+    const onUpdated = (ev) => {
+      // Si el evento trae el objeto actualizado, aplicarlo directamente al state
+      // sin esperar el refetch (que tiene cache de 60s en el back)
+      const updated = ev?.detail?.business;
+      if (updated?.id) {
+        setItems(prev => prev.map(b => String(b.id) === String(updated.id) ? { ...b, ...updated } : b));
+      } else {
+        refetchBusinesses();
+      }
+    };
     const onDeleted = async (ev) => {
   const id = ev?.detail?.id;
   if (!id) return;

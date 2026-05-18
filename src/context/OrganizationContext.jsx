@@ -26,7 +26,7 @@ export const useOrganization = () => useContext(OrgCtx);
 
 export function OrganizationProvider({ children }) {
   const { isLogged, booting } = useAuth();
-  const { activeId, activeBusinessId, refetchBusinesses } = useBusiness() || {};
+  const { activeId, activeBusinessId, refetchBusinesses, items: bizItems } = useBusiness() || {};
 
   const [organization, setOrganization]   = useState(null);
   const [orgLoading, setOrgLoading]       = useState(false);
@@ -190,21 +190,20 @@ export function OrganizationProvider({ children }) {
   
   // TODOS los businesses son hermanos, no hay parent_id
   const allBusinesses = useMemo(() => {
-    if (!organization?.businesses) return [];
-    return organization.businesses;
-  }, [organization]);
+    // Con org: usar los negocios de la org
+    if (organization?.businesses?.length > 0) return organization.businesses;
+    // Sin org (negocio independiente): usar los negocios del BusinessContext
+    return Array.isArray(bizItems) ? bizItems : [];
+  }, [organization, bizItems]);
 
-  // Para compatibilidad, exponemos "subBusinesses" pero realmente son todos
   const subBusinesses = allBusinesses;
 
-  // El "root" es el primero que se usó, pero todos son iguales
   const rootBusiness = useMemo(() => {
-    if (!organization?.businesses || organization.businesses.length === 0) return null;
-    // El primero creado (más antiguo) se considera "root" pero es solo convención
-    return organization.businesses.sort((a, b) =>
+    if (allBusinesses.length === 0) return null;
+    return allBusinesses.slice().sort((a, b) =>
       new Date(a.created_at) - new Date(b.created_at)
     )[0] || null;
-  }, [organization]);
+  }, [allBusinesses]);
 
   const hasSubBusinesses = allBusinesses.length > 1;
 

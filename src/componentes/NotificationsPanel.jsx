@@ -75,6 +75,32 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   const [open, setOpen] = useState(false);
 
+  // Abrir el panel cuando se recibe una nueva acción importante
+  useEffect(() => {
+    const onAction = (e) => {
+      const d = e?.detail;
+      if (!d?.kind) return;
+      // Kinds que abren el panel automáticamente
+      const autoOpenKinds = new Set([
+        'objetivo_change', 'objetivo_update',
+        'group_create', 'group_rename', 'group_delete', 'group_move_division',
+        'discontinue',
+        'articulo_create', 'articulo_delete', 'articulo_move',
+        'insumo_create', 'insumo_delete', 'insumo_move',
+        'insumo_group_create', 'insumo_group_rename', 'insumo_group_delete',
+        'move', 'info',
+      ]);
+      if (autoOpenKinds.has(d.kind)) setOpen(true);
+    };
+    const onOpen = () => setOpen(true);
+    window.addEventListener('ui:action', onAction);
+    window.addEventListener('notifications:open', onOpen);
+    return () => {
+      window.removeEventListener('ui:action', onAction);
+      window.removeEventListener('notifications:open', onOpen);
+    };
+  }, []);
+
   const {
     notifications,
     unreadCount,
@@ -362,26 +388,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   // ✅ 4) SOLO UI notifs con scope válido
   const merged = useMemo(() => {
-    const ui = (uiNotifs || []).filter((n) => !n.resolved);
-    
-    // ✅ Filtrar: solo mostrar notifs con scope válido
-    const filtered = ui.filter(n => {
-      const scope = n.scope || n.payload?.scope;
-      return scope === 'insumo' || scope === 'articulo';
-    });
-    
-    // ✅ Log para debugging
-    console.log('📊 [NotificationsPanel] Mostrando:', 
-      filtered.map(n => ({
-        kind: n.kind,
-        scope: n.scope,
-        title: formatTitle(n),
-        read: n.read,
-      }))
-    );
-    
-    return filtered;
-  }, [uiNotifs, formatTitle]);
+    // Mostrar todas las notificaciones UI no resueltas, sin filtrar por scope
+    return (uiNotifs || []).filter((n) => !n.resolved);
+  }, [uiNotifs]);
 
   const unreadUiCount = useMemo(
     () => (uiNotifs || []).filter((n) => !n.read && !n.resolved).length,
@@ -493,7 +502,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   if (!notif) return false;
                   const kind = notif.kind;
                   const scope = notif.scope || notif.payload?.scope || 'articulo';
-                  if (kind === 'objetivo_update') return countdowns[notif.id] > 0;
+                  if (kind === 'objetivo_update' || kind === 'objetivo_change') return true;
                   return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
                 };
 

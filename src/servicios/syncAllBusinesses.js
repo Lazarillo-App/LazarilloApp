@@ -14,6 +14,10 @@ export async function syncAllBusinesses({
   alsoSalesDays = 0,
   concurrency = 2
 } = {}) {
+  // No sincronizar si no hay token — evita 401 que borran la sesión durante el boot
+  const token = localStorage.getItem("token");
+  if (!token) return;
+
   const userStr = localStorage.getItem("user");
   const user = userStr ? JSON.parse(userStr) : null;
   if (user?.role === "app_admin") return; // nada que sincronizar en admin

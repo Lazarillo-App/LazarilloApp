@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
@@ -12,8 +12,10 @@ import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
 import { useBusiness } from '@/context/BusinessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
+import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
+import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -58,20 +60,43 @@ export default function Navbar() {
   const [userEl, setUserEl] = React.useState(null);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Detectar en qué sector estamos para navegar directo al tab correcto
+  const getConfigTab = () => {
+    const path = location.pathname;
+    if (path.includes('/insumos')) return '1';   // tab Insumos
+    if (path.includes('/articulos') || path === '/') return '0'; // tab Artículos
+    return null; // sin preferencia
+  };
   const logged = !!localStorage.getItem('token');
   const role = getUserRole();
   const isAppAdmin = role === 'app_admin';
 
   const { activeBusinessId } = useBusiness() || {};
+  // Persistir acciones globalmente — Navbar siempre está montado en todas las páginas
+  usePersistUiActions(activeBusinessId);
 
   // Badge de alertas en el ícono de configuración
   const [alertasBadge, setAlertasBadge] = useState(0);
   useEffect(() => {
     if (!activeBusinessId) return;
     let alive = true;
-    RecetasAPI.getAlertas(Number(activeBusinessId))
-      .then(res => { if (alive) setAlertasBadge(res?.total || 0); })
-      .catch(() => { });
+    const token = localStorage.getItem('token') || '';
+    const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBusinessId) };
+
+    Promise.all([
+      // Alertas de insumos con compras vencidas
+      RecetasAPI.getAlertas(Number(activeBusinessId)).catch(() => ({ total: 0 })),
+      // Alertas de ventas sin datos recientes
+      fetch(`${BASE}/businesses/${activeBusinessId}/articles-alertas-ventas`, { headers })
+        .then(r => r.json()).catch(() => ({ hayAlerta: false })),
+    ]).then(([insumosRes, ventasRes]) => {
+      if (!alive) return;
+      const totalInsumos = insumosRes?.total || 0;
+      const alertaVentas = ventasRes?.hayAlerta ? 1 : 0;
+      setAlertasBadge(totalInsumos + alertaVentas);
+    });
     return () => { alive = false; };
   }, [activeBusinessId]);
 
@@ -250,7 +275,11 @@ export default function Navbar() {
                   )}
 
                   {!isAppAdmin && (
-                    <MenuItem component={NavLink} to="/configuracion" onClick={() => setNavEl(null)}>
+                    <MenuItem onClick={() => {
+                      setNavEl(null);
+                      const t = getConfigTab();
+                      navigate(t ? `/configuracion?tab=${t}` : '/configuracion');
+                    }}>
                       Configuración
                     </MenuItem>
                   )}
@@ -281,9 +310,11 @@ export default function Navbar() {
                   <IconButton
                     color="inherit"
                     sx={{ color: 'inherit' }}
-                    component={NavLink}
-                    to="/configuracion"
                     aria-label="Configuración"
+                    onClick={() => {
+                      const tab = getConfigTab();
+                      navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
+                    }}
                   >
                     <Badge
                       badgeContent={alertasBadge || null}

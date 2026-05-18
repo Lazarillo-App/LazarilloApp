@@ -339,7 +339,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
 
   async function handleSaveNow(e) {
     e?.preventDefault?.();
-    if (!business?.id || busy || !isDirty) return;
+    if (!business?.id || busy) return;
 
     setBusy(true);
     setErr("");
@@ -381,7 +381,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         } catch { }
       }
 
-      // 4️⃣ Eventos
+      // 4️⃣ Eventos — pasar el objeto fresh para que BusinessContext actualice sin refetch
       window.dispatchEvent(new CustomEvent("business:branding-updated", {
         detail: { id: business.id, branding }
       }));

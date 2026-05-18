@@ -20,21 +20,37 @@ export function BranchProvider({ children }) {
   const [activeBranchId, setActiveBranchId] = useState(null); // null = Todas
   const [loading, setLoading] = useState(false);
 
-  // Rama virtual del negocio principal (sin branch_id en DB)
-  const mainBranch = useMemo(() => ({
-    id: MAIN_BRANCH_ID,
-    business_id: activeBusinessId,
-    name: activeBiz?.name || 'Principal',
-    color: activeBiz?.props?.branding?.primary || 'var(--color-primary)',
-    address: activeBiz?.props?.address || {},
-    contacts: activeBiz?.props?.contact || {},
-    isMain: true,
-  }), [activeBusinessId, activeBiz]);
+  // Rama virtual del negocio principal.
+  // Usa los datos de la branch is_main si existe.
+  // Si no existe aún, muestra datos mínimos SIN leer del negocio
+  // para que editar el negocio no impacte en la card de la sucursal.
+  const mainBranch = useMemo(() => {
+    const stored = rawBranches.find(b => b.props?.is_main === true);
+    if (stored) {
+      return {
+        ...stored,
+        id: MAIN_BRANCH_ID,
+        isMain: true,
+      };
+    }
+    // Sin branch is_main aún — datos mínimos, sin leer del negocio
+    return {
+      id: MAIN_BRANCH_ID,
+      business_id: activeBusinessId,
+      name: activeBiz?.name || 'Principal',
+      color: activeBiz?.props?.branding?.primary || 'var(--color-primary)',
+      address: {},
+      contacts: {},
+      isMain: true,
+      _sinDatosGuardados: true, // flag para que la card muestre "sin datos"
+    };
+  }, [activeBusinessId, activeBiz?.name, activeBiz?.props?.branding?.primary, rawBranches]);
 
   // Lista completa: principal siempre primero, luego las sucursales reales.
-  // ✅ CAMBIO: branches SIEMPRE incluye al menos el principal (no depende de rawBranches.length).
+  // Excluir la branch is_main de rawBranches ya que la mostramos como mainBranch.
   const branches = useMemo(() => {
-    return [mainBranch, ...rawBranches];
+    const sinMain = rawBranches.filter(b => !b.props?.is_main);
+    return [mainBranch, ...sinMain];
   }, [mainBranch, rawBranches]);
 
   // ✅ CAMBIO: hasBranches siempre true para que el selector aparezca siempre.

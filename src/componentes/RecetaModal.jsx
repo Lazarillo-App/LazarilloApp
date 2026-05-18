@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/RecetaModal.jsx
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import { getReceta, saveReceta } from '@/servicios/apiOrganizations';
 import { insumosList } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
+import { useConfig } from '@/context/ConfigContext';
 
 /* ── constantes ── */
 const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda'];
@@ -890,6 +892,18 @@ function ItemRow({
   const searchInputRef = useRef(null);
   const cantidadRef = useRef(null);
   const listRef = useRef(null);
+  const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
+  const recetasElaboradosRef = useRef(recetasElaborados);
+
+  // Sincronizar solo cuando el contenido cambia realmente (evita loop por objeto nuevo)
+  useEffect(() => {
+    const prev = JSON.stringify(recetasElaboradosRef.current);
+    const next = JSON.stringify(recetasElaborados);
+    if (prev !== next) {
+      recetasElaboradosRef.current = recetasElaborados;
+      setLocalRecetasElaborados(recetasElaborados);
+    }
+  }, [recetasElaborados]);
 
   useEffect(() => {
     if (autoOpenSearch) {
@@ -1021,315 +1035,369 @@ function ItemRow({
   );
 
   return (
-    <Box
-      sx={{
-        width: '100%',
+    <Box sx={{
+      width: '100%',
+      borderRadius: 1,
+      bgcolor: alertaBg || 'transparent',
+      border: alertaBg ? '1px solid #fecaca' : '1px solid transparent',
+      ...(isDuplicate && { bgcolor: '#fef2f2', border: '1px solid #fecaca' }),
+      transition: 'background 0.2s',
+      '&:hover': { bgcolor: alertaBg || (showAdvanced ? 'transparent' : 'action.hover') },
+      position: 'relative',
+    }}>
+      {/* ── Fila principal ── */}
+      <Box sx={{
         display: 'grid',
-        // Columnas: drag | insumo | cantidad | unidad | $/u | merma | pedido | tipo_costo | obs | fecha | del
-        gridTemplateColumns: '20px 1.8fr 68px 66px 80px 24px 1fr 56px 28px',
+        gridTemplateColumns: '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
         alignItems: 'center',
         gap: '4px',
         py: 0.5, px: 0.5,
-        borderRadius: 1,
-        bgcolor: alertaBg || 'transparent',
-        border: alertaBg ? '1px solid #fecaca' : '1px solid transparent',
-        transition: 'background 0.2s',
-        '&:hover': { bgcolor: alertaBg || 'action.hover' },
-        position: 'relative',
-        ...(isDuplicate && { bgcolor: '#fef2f2', border: '1px solid #fecaca' }),
-      }}
-    >
-      {/* drag */}
-      <DragIndicatorIcon sx={{ color: 'text.disabled', fontSize: 16, cursor: 'grab' }} />
+      }}>
+        {/* drag */}
+        <DragIndicatorIcon sx={{ color: 'text.disabled', fontSize: 16, cursor: 'grab' }} />
 
-      {/* ── Selector insumo ── */}
-      <Box sx={{ position: 'relative', minWidth: 0 }}>
-        <Box
-          onClick={() => setSearchOpen(v => !v)}
-          sx={{
-            border: '1px solid',
-            borderColor: isDuplicate ? 'error.main' : item.supplyId ? 'success.light' : 'warning.main',
-            borderRadius: 1, px: 0.75, py: 0.4, cursor: 'pointer',
-            minHeight: 30, display: 'flex', alignItems: 'center',
-            bgcolor: 'background.paper',
-            '&:hover': { borderColor: PRIMARY },
-          }}
-        >
-          {item.supplyId ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%', overflow: 'hidden' }}>
-              {alertaBg
-                ? <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444', flexShrink: 0 }} />
-                : <CheckCircleIcon sx={{ fontSize: 13, color: 'success.main', flexShrink: 0 }} />
-              }
-              {/* Nombre clickeable → ver compras */}
-              <Typography
-                variant="caption"
-                noWrap
-                sx={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!item.supplyId) return;
-                  if (esElaborado && onOpenRecetaElaborado) {
-                    onOpenRecetaElaborado(item);
-                  } else {
-                    onOpenCompras?.(item);
-                  }
-                }}
-                title="Click para ver compras"
-              >
-                {item.supplyNombre || `#${item.supplyId}`}
-              </Typography>
-
-              {/* Precio FIJO de DB en la unidad base — no cambia al elegir otra unidad */}
-              {item.precioRefDB > 0 && (
-                <Chip
-                  label={
-                    elaborado
-                      ? (tipoCosto === 'sugerido' ? 'vta·rec' : 'rec')
-                      : `$${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'}`
-                  }
-                  size="small"
-                  sx={{
-                    height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
-                    bgcolor: elaborado ? '#f0fdf4' : `${PRIMARY}18`,
-                    color: elaborado ? '#16a34a' : PRIMARY,
-                    border: 'none',
+        {/* ── Selector insumo ── */}
+        <Box sx={{ position: 'relative', minWidth: 0 }}>
+          <Box
+            onClick={() => setSearchOpen(v => !v)}
+            sx={{
+              border: '1px solid',
+              borderColor: isDuplicate ? 'error.main' : item.supplyId ? 'success.light' : 'warning.main',
+              borderRadius: 1, px: 0.75, py: 0.4, cursor: 'pointer',
+              minHeight: 30, display: 'flex', alignItems: 'center',
+              bgcolor: 'background.paper',
+              '&:hover': { borderColor: PRIMARY },
+            }}
+          >
+            {item.supplyId ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%', overflow: 'hidden' }}>
+                {alertaBg
+                  ? <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444', flexShrink: 0 }} />
+                  : <CheckCircleIcon sx={{ fontSize: 13, color: 'success.main', flexShrink: 0 }} />
+                }
+                {/* Nombre clickeable → ver compras */}
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!item.supplyId) return;
+                    if (esElaborado && onOpenRecetaElaborado) {
+                      onOpenRecetaElaborado(item);
+                    } else {
+                      onOpenCompras?.(item);
+                    }
                   }}
-                  title={
-                    elaborado
-                      ? `Insumo elaborado — costo de receta`
-                      : `Precio de DB: $${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'} (fijo)`
-                  }
-                />
-              )}
+                  title="Click para ver compras"
+                >
+                  {item.supplyNombre || `#${item.supplyId}`}
+                </Typography>
 
-              {/* Botón ver compras (solo insumos no elaborados) */}
-              {!elaborado && (
-                <Tooltip title="Ver últimas compras">
-                  <IconButton
+                {/* Precio FIJO de DB en la unidad base — no cambia al elegir otra unidad */}
+                {item.precioRefDB > 0 && (
+                  <Chip
+                    label={
+                      elaborado
+                        ? (tipoCosto === 'sugerido' ? 'vta·rec' : 'rec')
+                        : `$${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'}`
+                    }
                     size="small"
-                    onClick={(e) => { e.stopPropagation(); onOpenCompras && onOpenCompras(item); }}
-                    sx={{ p: '1px', color: `${PRIMARY}70`, '&:hover': { color: PRIMARY }, flexShrink: 0 }}
-                  >
-                    <ReceiptLongIcon sx={{ fontSize: 11 }} />
-                  </IconButton>
-                </Tooltip>
-              )}
+                    sx={{
+                      height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
+                      bgcolor: elaborado ? '#f0fdf4' : `${PRIMARY}18`,
+                      color: elaborado ? '#16a34a' : PRIMARY,
+                      border: 'none',
+                    }}
+                    title={
+                      elaborado
+                        ? `Insumo elaborado — costo de receta`
+                        : `Precio de DB: $${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'} (fijo)`
+                    }
+                  />
+                )}
 
-              {/* Chip elaborado */}
-              {elaborado && (
-                <Chip label="Elab." size="small" sx={{
-                  height: 16, fontSize: '0.62rem', fontWeight: 700, flexShrink: 0,
-                  bgcolor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
-                }} />
-              )}
-              {/* Incompatibilidad */}
-              {unidadIncompatible && (
-                <Tooltip title={`Unidad incompatible: el insumo está en "${item.supplyMedida}".`}>
-                  <WarningAmberIcon sx={{ fontSize: 13, color: '#d97706', flexShrink: 0 }} />
-                </Tooltip>
-              )}
+                {/* Botón ver compras (solo insumos no elaborados) */}
+                {!elaborado && (
+                  <Tooltip title="Ver últimas compras">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => { e.stopPropagation(); onOpenCompras && onOpenCompras(item); }}
+                      sx={{ p: '1px', color: `${PRIMARY}70`, '&:hover': { color: PRIMARY }, flexShrink: 0 }}
+                    >
+                      <ReceiptLongIcon sx={{ fontSize: 11 }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Chip elaborado */}
+                {elaborado && (
+                  <Chip label="Elab." size="small" sx={{
+                    height: 16, fontSize: '0.62rem', fontWeight: 700, flexShrink: 0,
+                    bgcolor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
+                  }} />
+                )}
+                {/* Incompatibilidad */}
+                {unidadIncompatible && (
+                  <Tooltip title={`Unidad incompatible: el insumo está en "${item.supplyMedida}".`}>
+                    <WarningAmberIcon sx={{ fontSize: 13, color: '#d97706', flexShrink: 0 }} />
+                  </Tooltip>
+                )}
+              </Box>
+            ) : (
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.73rem' }}>
+                Seleccioná insumo…
+              </Typography>
+            )}
+          </Box>
+
+          {/* Dropdown búsqueda */}
+          {searchOpen && (
+            <Box sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
+              <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
+                  value={search}
+                  onChange={e => {
+                    setSearch(e.target.value);
+                    setFocusedIndex(-1);
+                    setFocusedIndex(0);
+                  }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') { setSearchOpen(false); }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setFocusedIndex(i => Math.min(i + 1, filtrados.length - 1)); }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setFocusedIndex(i => Math.max(i - 1, 0)); }
+                    if (e.key === 'Enter') {
+                      if (focusedIndex >= 0 && filtrados[focusedIndex]) selectInsumo(filtrados[focusedIndex]);
+                      else if (filtrados.length === 1) selectInsumo(filtrados[0]);
+                    }
+                  }}
+                />
+              </Box>
+              <Box ref={listRef} sx={{ maxHeight: 280, overflowY: 'auto' }}>
+                {filtrados.length === 0 ? (
+                  <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
+                ) : filtrados.map((ins, idx) => {
+                  const yaUsado = usedSupplyIds.has(String(ins.id));
+                  const esElab = !!localRecetasElaborados[String(ins.id)];
+                  return (
+                    <Box key={ins.id} data-option-index={idx} onClick={() => selectInsumo(ins)} sx={{
+                      px: 1.5, py: 0.75, cursor: 'pointer',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      borderBottom: '1px solid', borderColor: 'divider',
+                      bgcolor: focusedIndex === idx ? `${PRIMARY}15` : 'transparent',
+                      '&:hover': { bgcolor: `${PRIMARY}10` },
+                      ...(yaUsado && { opacity: 0.6 }),
+                    }}>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem' }}>
+                          {ins.nombre}
+                          {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
+                          {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {ins.codigo_maxi || ins.codigo_mostrar ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}` : ins.unidad_med || ins.medida || 'u'}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY, fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
+                        {(() => {
+                          if (esElab) {
+                            const eData = localRecetasElaborados[String(ins.id)];
+                            const p = Number(eData.porciones) || 1;
+                            return eData.costoTotal > 0 ? `$${fmt(eData.costoTotal / p)}/u` : '';
+                          }
+                          const p = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
+                          return p > 0 ? `$${fmt(p)}` : '';
+                        })()}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
-          ) : (
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.73rem' }}>
-              Seleccioná insumo…
-            </Typography>
           )}
         </Box>
 
-        {/* Dropdown búsqueda */}
-        {searchOpen && (
-          <Box sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
-            <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
-                value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  setFocusedIndex(-1);
-                  setFocusedIndex(0);
-                }}
-                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') { setSearchOpen(false); }
-                  if (e.key === 'ArrowDown') { e.preventDefault(); setFocusedIndex(i => Math.min(i + 1, filtrados.length - 1)); }
-                  if (e.key === 'ArrowUp') { e.preventDefault(); setFocusedIndex(i => Math.max(i - 1, 0)); }
-                  if (e.key === 'Enter') {
-                    if (focusedIndex >= 0 && filtrados[focusedIndex]) selectInsumo(filtrados[focusedIndex]);
-                    else if (filtrados.length === 1) selectInsumo(filtrados[0]);
-                  }
-                }}
-              />
-            </Box>
-            <Box ref={listRef} sx={{ maxHeight: 280, overflowY: 'auto' }}>
-              {filtrados.length === 0 ? (
-                <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
-              ) : filtrados.map((ins, idx) => {
-                const yaUsado = usedSupplyIds.has(String(ins.id));
-                const esElab = !!recetasElaborados[String(ins.id)];
-                return (
-                  <Box key={ins.id} data-option-index={idx} onClick={() => selectInsumo(ins)} sx={{
-                    px: 1.5, py: 0.75, cursor: 'pointer',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    borderBottom: '1px solid', borderColor: 'divider',
-                    bgcolor: focusedIndex === idx ? `${PRIMARY}15` : 'transparent',
-                    '&:hover': { bgcolor: `${PRIMARY}10` },
-                    ...(yaUsado && { opacity: 0.6 }),
-                  }}>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem' }}>
-                        {ins.nombre}
-                        {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
-                        {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {ins.codigo_maxi || ins.codigo_mostrar ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}` : ins.unidad_med || ins.medida || 'u'}
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY, fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
-                      {(() => {
-                        if (esElab) {
-                          const eData = recetasElaborados[String(ins.id)];
-                          const p = Number(eData.porciones) || 1;
-                          return eData.costoTotal > 0 ? `$${fmt(eData.costoTotal / p)}/u` : '';
-                        }
-                        const p = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
-                        return p > 0 ? `$${fmt(p)}` : '';
-                      })()}
-                    </Typography>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
-        )}
-      </Box>
+        {/* ── Cantidad — mínimo 0 ── */}
+        <TextField inputRef={cantidadRef} size="small" type="number"
+          value={item.cantidad === '' ? '' : item.cantidad}
+          onChange={e => {
+            const val = e.target.value === '' ? '' : Number(e.target.value);
+            onChange(index, { cantidad: val });
+          }}
+          placeholder="0"
+          inputProps={{ min: 0, step: 0.001, style: { textAlign: 'right', fontSize: '0.78rem', padding: '4px 6px' } }}
+        />
 
-      {/* ── Cantidad — mínimo 0 ── */}
-      <TextField inputRef={cantidadRef} size="small" type="number"
-        value={item.cantidad === '' ? '' : item.cantidad}
-        onChange={e => {
-          const val = e.target.value === '' ? '' : Number(e.target.value);
-          onChange(index, { cantidad: val });
-        }}
-        placeholder="0"
-        inputProps={{ min: 0, step: 0.001, style: { textAlign: 'right', fontSize: '0.78rem', padding: '4px 6px' } }}
-      />
+        {/* ── Unidad ── */}
+        <Select
+          size="small"
+          value={item.unidad || item.supplyMedida || 'u'}
+          onChange={e => onChange(index, { unidad: e.target.value })}
+          sx={{ fontSize: '0.75rem', '& .MuiSelect-select': { py: '4px', fontSize: '0.75rem' } }}
+        >
+          {[
+            ...UNIDADES,
+            ...(item.supplyMedida && !UNIDADES.includes(item.supplyMedida) ? [item.supplyMedida] : []),
+          ].map(u => (
+            <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem', fontWeight: u === item.supplyMedida ? 700 : 400 }}>
+              {u === item.supplyMedida ? `${u} ✓` : u}
+            </MenuItem>
+          ))}
+        </Select>
 
-      {/* ── Unidad ── */}
-      <Select
-        size="small"
-        value={item.unidad || item.supplyMedida || 'u'}
-        onChange={e => onChange(index, { unidad: e.target.value })}
-        sx={{ fontSize: '0.75rem', '& .MuiSelect-select': { py: '4px', fontSize: '0.75rem' } }}
-      >
-        {[
-          ...UNIDADES,
-          ...(item.supplyMedida && !UNIDADES.includes(item.supplyMedida) ? [item.supplyMedida] : []),
-        ].map(u => (
-          <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem', fontWeight: u === item.supplyMedida ? 700 : 400 }}>
-            {u === item.supplyMedida ? `${u} ✓` : u}
-          </MenuItem>
-        ))}
-      </Select>
+        {/* ── $ total (unitario × cantidad) ── */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: elaborado ? '#f0fdf4' : '#f8fafc', overflow: 'hidden' }}>
+          <Tooltip title={elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`}>
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled', whiteSpace: 'nowrap' }}>
+              {item.supplyId ? (costoEfectivoLinea > 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
+            </Typography>
+          </Tooltip>
+        </Box>
 
-      {/* ── $ total (unitario × cantidad) ── */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: elaborado ? '#f0fdf4' : '#f8fafc', overflow: 'hidden' }}>
-        <Tooltip title={elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`}>
-          <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled', whiteSpace: 'nowrap' }}>
-            {item.supplyId ? (costoEfectivoLinea > 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
-          </Typography>
-        </Tooltip>
-      </Box>
-
-      {/* ── Avanzadas: colapsadas o expandidas ── */}
-      {!showAdvanced ? (
-        <Tooltip title="Mostrar opciones avanzadas (merma, pedido, tipo costo)">
-          <IconButton size="small" onClick={() => setShowAdvanced(true)}
-            sx={{ p: '3px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
+        {/* ── Botón avanzadas + fecha + eliminar ── */}
+        <Tooltip title={showAdvanced ? 'Ocultar avanzadas' : 'Merma · Pedido · Tipo costo'}>
+          <IconButton size="small" onClick={() => setShowAdvanced(v => !v)}
+            sx={{
+              p: '3px',
+              color: showAdvanced ? PRIMARY : (item.merma === false || item.pedido === false || tipoCosto !== 'total') ? '#f59e0b' : 'text.disabled',
+              '&:hover': { color: PRIMARY },
+            }}>
             <TuneIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Tooltip>
-      ) : (
-        <>
-          <Tooltip title="Aplicar merma">
-            <Checkbox size="small" checked={item.merma !== false} onChange={e => onChange(index, { merma: e.target.checked })} sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }} />
-          </Tooltip>
-          <Tooltip title="Incluir en pedido">
-            <Checkbox size="small" checked={item.pedido !== false} onChange={e => onChange(index, { pedido: e.target.checked })} sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }} />
-          </Tooltip>
-          <Select size="small" value={tipoCosto} onChange={e => onChange(index, { tipoCosto: e.target.value })}
-            sx={{ fontSize: '0.7rem', '& .MuiSelect-select': { py: '3px', fontSize: '0.7rem' } }}>
-            {TIPO_COSTO_OPTS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: '0.78rem' }}>{o.label}</MenuItem>)}
-          </Select>
-          <Tooltip title="Ocultar avanzadas">
-            <IconButton size="small" onClick={() => setShowAdvanced(false)} sx={{ p: '3px', color: PRIMARY }}>
-              <TuneIcon sx={{ fontSize: 14 }} />
-            </IconButton>
-          </Tooltip>
-        </>
-      )}
 
-      {/* ── Observaciones ── */}
-      <Box sx={{ position: 'relative', overflow: 'hidden', minWidth: 0 }}>
-        <Tooltip title={item.observaciones ? (item.updatedAt ? `Editado: ${fmtDate(item.updatedAt)} — ${item.observaciones}` : item.observaciones) : 'Agregar nota para este ingrediente'} placement="top">
-          <Box onClick={() => setNotasOpen(true)} sx={{
-            border: '1px solid', borderColor: item.observaciones ? `${PRIMARY}60` : 'divider',
-            borderRadius: 1, px: 0.75, minHeight: 30,
-            display: 'flex', alignItems: 'center',
-            cursor: 'pointer', bgcolor: 'background.paper',
-            '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },
-            overflow: 'hidden',
-          }}>
-            <Typography noWrap sx={{ fontSize: '0.72rem', color: item.observaciones ? 'text.primary' : 'text.disabled', fontStyle: item.observaciones ? 'normal' : 'italic', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {item.observaciones || 'Notas…'}
-            </Typography>
-            {(item.observaciones || item.fotosUrls?.length > 0) && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0, ml: 0.25 }}>
-                {item.observaciones && <NotesIcon sx={{ fontSize: 11, color: PRIMARY }} />}
-                {item.fotosUrls?.length > 0 && <PhotoCameraIcon sx={{ fontSize: 11, color: PRIMARY }} />}
-              </Box>
-            )}
+        {/* ── Observaciones ── */}
+        <Box sx={{ position: 'relative', overflow: 'hidden', minWidth: 0 }}>
+          <Tooltip title={item.observaciones ? (item.updatedAt ? `Editado: ${fmtDate(item.updatedAt)} — ${item.observaciones}` : item.observaciones) : 'Agregar nota para este ingrediente'} placement="top">
+            <Box onClick={() => setNotasOpen(true)} sx={{
+              border: '1px solid', borderColor: item.observaciones ? `${PRIMARY}60` : 'divider',
+              borderRadius: 1, px: 0.75, minHeight: 30,
+              display: 'flex', alignItems: 'center',
+              cursor: 'pointer', bgcolor: 'background.paper',
+              '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },
+              overflow: 'hidden',
+            }}>
+              <Typography noWrap sx={{ fontSize: '0.72rem', color: item.observaciones ? 'text.primary' : 'text.disabled', fontStyle: item.observaciones ? 'normal' : 'italic', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {item.observaciones || 'Notas…'}
+              </Typography>
+              {(item.observaciones || item.fotosUrls?.length > 0) && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0, ml: 0.25 }}>
+                  {item.observaciones && <NotesIcon sx={{ fontSize: 11, color: PRIMARY }} />}
+                  {item.fotosUrls?.length > 0 && <PhotoCameraIcon sx={{ fontSize: 11, color: PRIMARY }} />}
+                </Box>
+              )}
+            </Box>
+          </Tooltip>
+
+          {notasOpen && (
+            <NotasItemModal
+              supplyNombre={item.supplyNombre}
+              observaciones={item.observaciones || ''}
+              fotosUrls={item.fotosUrls || []}
+              updatedAt={item.updatedAt}
+              articuloId={articuloId}
+              businessId={businessId}
+              onSave={(val, fotos) => {
+                onChange(index, {
+                  observaciones: val,
+                  fotosUrls: Array.isArray(fotos) ? fotos : (fotos ? [fotos] : []),
+                  updatedAt: new Date().toISOString(),
+                });
+                setNotasOpen(false);
+              }}
+              onClose={() => setNotasOpen(false)}
+            />
+          )}
+        </Box>
+
+        {/* ── Fecha última modificación ── */}
+        <Tooltip title={item.updatedAt ? `Modificado: ${fmtDate(item.updatedAt)}` : 'Sin modificaciones'}>
+          <Box sx={{ textAlign: 'center', cursor: 'default', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <HistoryIcon sx={{ fontSize: 13, color: item.updatedAt ? PRIMARY : 'text.disabled' }} />
           </Box>
         </Tooltip>
 
-        {notasOpen && (
-          <NotasItemModal
-            supplyNombre={item.supplyNombre}
-            observaciones={item.observaciones || ''}
-            fotosUrls={item.fotosUrls || []}
-            updatedAt={item.updatedAt}
-            articuloId={articuloId}
-            businessId={businessId}
-            onSave={(val, fotos) => {
-              onChange(index, {
-                observaciones: val,
-                fotosUrls: Array.isArray(fotos) ? fotos : (fotos ? [fotos] : []),
-                updatedAt: new Date().toISOString(),
-              });
-              setNotasOpen(false);
-            }}
-            onClose={() => setNotasOpen(false)}
-          />
-        )}
-      </Box>
+        {/* ── Eliminar ── */}
+        <Tooltip title="Eliminar">
+          <IconButton size="small" onClick={() => onRemove(index)}
+            sx={{ color: 'error.main', opacity: 0.5, p: 0.25, '&:hover': { opacity: 1 } }}>
+            <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>{/* fin fila principal */}
 
-      {/* ── Fecha última modificación ── */}
-      <Tooltip title={item.updatedAt ? `Modificado: ${fmtDate(item.updatedAt)}` : 'Sin modificaciones'}>
-        <Box sx={{ textAlign: 'center', cursor: 'default', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <HistoryIcon sx={{ fontSize: 13, color: item.updatedAt ? PRIMARY : 'text.disabled' }} />
-          {item.updatedAt && (
-            <Typography sx={{ fontSize: '0.6rem', color: 'text.disabled', lineHeight: 1.1 }}>{fmtDate(item.updatedAt)}</Typography>
-          )}
+      {/* ── Panel avanzadas ── */}
+      {showAdvanced && (
+        <Box sx={{
+          mx: 0.5, mb: 0.5, px: 1.5, py: 1,
+          bgcolor: `${PRIMARY}08`,
+          borderRadius: 1,
+          border: `1px solid ${PRIMARY}20`,
+          display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
+        }}>
+          {/* Merma */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Checkbox
+              size="small"
+              checked={item.merma !== false}
+              onChange={e => onChange(index, { merma: e.target.checked })}
+              sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
+            />
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
+              onClick={() => onChange(index, { merma: item.merma === false })}>
+              Merma
+            </Typography>
+          </Box>
+
+          {/* Pedido */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Checkbox
+              size="small"
+              checked={item.pedido !== false}
+              onChange={e => onChange(index, { pedido: e.target.checked })}
+              sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
+            />
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
+              onClick={() => onChange(index, { pedido: item.pedido === false })}>
+              Pedido
+            </Typography>
+          </Box>
+
+          {/* Tipo costo */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>Tipo:</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {TIPO_COSTO_OPTS.map(o => (
+                <Chip
+                  key={o.value}
+                  label={o.label}
+                  size="small"
+                  onClick={() => onChange(index, { tipoCosto: o.value })}
+                  sx={{
+                    height: 22, fontSize: '0.7rem', cursor: 'pointer',
+                    bgcolor: tipoCosto === o.value ? PRIMARY : 'transparent',
+                    color: tipoCosto === o.value ? '#fff' : 'text.secondary',
+                    border: `1px solid ${tipoCosto === o.value ? PRIMARY : '#e2e8f0'}`,
+                    '&:hover': { bgcolor: tipoCosto === o.value ? PRIMARY : `${PRIMARY}15` },
+                  }}
+                />
+              ))}
+            </Box>
+          </Box>
+
+          {/* Cerrar */}
+          <Box sx={{ ml: 'auto' }}>
+            <Typography
+              variant="caption"
+              onClick={() => setShowAdvanced(false)}
+              sx={{ fontSize: '0.7rem', color: 'text.disabled', cursor: 'pointer', '&:hover': { color: PRIMARY } }}
+            >
+              cerrar ✕
+            </Typography>
+          </Box>
         </Box>
-      </Tooltip>
-
-      {/* ── Eliminar ── */}
-      <Tooltip title="Eliminar">
-        <IconButton size="small" onClick={() => onRemove(index)}
-          sx={{ color: 'error.main', opacity: 0.5, p: 0.25, '&:hover': { opacity: 1 } }}>
-          <DeleteOutlineIcon sx={{ fontSize: 16 }} />
-        </IconButton>
-      </Tooltip>
+      )}
     </Box>
   );
 }
@@ -1344,17 +1412,23 @@ export default function RecetaModal({
   getRecetaUrl = null,
   saveRecetaUrl = null,
   onPriceConfigSave = null,
+  allArticulos = [],
 }) {
   const [receta, setReceta] = useState(null);
   const [nombre, setNombre] = useState('');
   const [rendimiento, setRendimiento] = useState(1);
+  // Leer config global del contexto — se actualiza automáticamente sin fetch propio
+  const appConfig = useConfig();
+
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
-  // Guardamos el global de config para usarlo como último fallback
-  const [globalConfigObjetivo, setGlobalConfigObjetivo] = useState(null);
+  // globalConfigObjetivo viene del contexto global, no de un fetch local
+  const globalConfigObjetivo = esElaborado
+    ? (appConfig.insumosCostoIdeal ?? 30)
+    : (appConfig.articulosCostoIdeal ?? 30);
   const [items, setItems] = useState([]);
   const [newItemIndex, setNewItemIndex] = useState(null);
   const [insumos, setInsumos] = useState([]);
-  const [alertaSemanas, setAlertaSemanas] = useState(null);
+  const alertaSemanas = appConfig.comprasAlertaSemanas ?? 4;
   const [sortByCosto, setSortByCosto] = useState(false);
 
   // Notas y foto de la receta
@@ -1377,17 +1451,45 @@ export default function RecetaModal({
 
   const artNombre = articulo?.nombre || '';
   const precioActual = Number(articulo?.precio || 0);
-  const [recetaElaboradoModal, setRecetaElaboradoModal] = useState(null);
+
+  const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
+  const recetasElabRef = useRef(recetasElaborados);
+
+  useEffect(() => {
+    const prev = JSON.stringify(recetasElabRef.current);
+    const next = JSON.stringify(recetasElaborados);
+    if (prev !== next) {
+      recetasElabRef.current = recetasElaborados;
+      setLocalRecetasElaborados(recetasElaborados);
+    }
+  }, [recetasElaborados]);
+
+  // ── Estados para panel de gemelos (artículos que comparten esta receta) ──
+  const [gemelосGroup, setGemelosGroup] = useState(null);
+  const [gemelосLoading, setGemelosLoading] = useState(false);
+  const [gemelосOpen, setGemelosOpen] = useState(false);
+  const [gemelосSearch, setGemelosSearch] = useState('');
+  const [gemelосResults, setGemelosResults] = useState([]);
+  const [gemelосSearching, setGemelosSearching] = useState(false);
+  const [elaboradosStack, setElaboradosStack] = useState([]);
+
+  const pushElaborado = useCallback((item) => {
+    setElaboradosStack(prev => [...prev, item]);
+  }, []);
+
+  const popElaborado = useCallback(() => {
+    setElaboradosStack(prev => prev.slice(0, -1));
+  }, []);
 
   /**
    * Jerarquía de costo objetivo (de mayor a menor prioridad):
-   *  1. costoObjetivoExterno  — viene de la tabla (artículo > rubro > agrupación) — SIEMPRE gana
-   *  2. rec.porcentaje_venta  — guardado en la receta (solo cuando NO hay externo)
-   *  3. globalConfigObjetivo  — config global del negocio
-   *  4. 30                    — hardcoded final fallback
+   *  1. costoObjetivoExterno  — viene de la tabla (artículo > rubro > agrupación)
+   *  2. globalConfigObjetivo  — definido en Configuración — pisa el guardado en receta
+   *  3. rec.porcentaje_venta  — guardado individualmente en la receta
+   *  4. 30                    — fallback final
    *
-   * Usamos un ref para que resolveObjetivo siempre lea el valor más fresco de
-   * costoObjetivoExterno aunque el efecto de carga de receta no lo tenga en sus deps.
+   * El global de Config tiene prioridad sobre el guardado en receta porque cuando
+   * el usuario cambia el global quiere que aplique a TODAS las recetas.
    */
   const costoObjetivoExternoRef = useRef(costoObjetivoExterno);
   useEffect(() => { costoObjetivoExternoRef.current = costoObjetivoExterno; }, [costoObjetivoExterno]);
@@ -1395,8 +1497,9 @@ export default function RecetaModal({
   const resolveObjetivo = useCallback((recPct) => {
     const externo = costoObjetivoExternoRef.current;
     if (externo != null) return Number(externo);
-    if (recPct != null) return Number(recPct);
+    // Global de Config siempre va antes que el guardado en receta
     if (globalConfigObjetivo != null) return Number(globalConfigObjetivo);
+    if (recPct != null) return Number(recPct);
     return 30;
   }, [globalConfigObjetivo]);
 
@@ -1408,28 +1511,153 @@ export default function RecetaModal({
     }
   }, [costoObjetivoExterno, open]);
 
-  /* ── Config negocio ── */
+  // Aplicar globalConfigObjetivo del contexto cuando abre el modal
   useEffect(() => {
-    if (!open || !businessId) return;
-    (async () => {
-      try {
+    if (!open) return;
+    if (costoObjetivoExterno == null && globalConfigObjetivo > 0) {
+      setPctCostoIdeal(globalConfigObjetivo);
+    }
+  }, [open, globalConfigObjetivo, costoObjetivoExterno]);
+
+  /* ── Cargar gemelos al abrir ── */
+  useEffect(() => {
+    if (!open || !businessId || !articulo?.id || esElaborado) return;
+    setGemelosLoading(true);
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+    })
+      .then(r => r.json())
+      .then(d => setGemelosGroup(d?.group || null))
+      .catch(() => setGemelosGroup(null))
+      .finally(() => setGemelosLoading(false));
+  }, [open, businessId, articulo?.id, esElaborado]);
+
+  const [todosArticulos, setTodosArticulos] = useState([]);
+
+  const buscarGemelos = useCallback(async (q) => {
+    if (!q || !q.trim()) { setGemelosResults([]); return; }
+    const ql = q.trim().toLowerCase();
+    setGemelosSearching(true);
+    try {
+      // 1. Preferir allArticulos del padre (ya cargados sin fetch extra)
+      let lista = Array.isArray(allArticulos) && allArticulos.length > 0
+        ? allArticulos
+        : todosArticulos;
+
+      // 2. Si no hay nada, hacer fetch
+      if (!lista.length) {
         const token = localStorage.getItem('token') || '';
-        const res = await fetch(`${BASE}/businesses/${businessId}/config`, {
+        const r = await fetch(`${BASE}/businesses/${businessId}/articles`, {
           headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
         });
-        const d = await res.json().catch(() => ({}));
-        if (d?.config?.compras_alerta_semanas) setAlertaSemanas(Number(d.config.compras_alerta_semanas));
-        if (d?.config?.articulos_costo_ideal) {
-          const globalVal = Number(d.config.articulos_costo_ideal);
-          setGlobalConfigObjetivo(globalVal);
-          // Solo aplicar el global si no hay externo ni receta ya cargada con su propio %
-          if (costoObjetivoExterno == null) {
-            setPctCostoIdeal(prev => prev === 30 ? globalVal : prev);
+        const d = await r.json();
+        lista = Array.isArray(d) ? d
+          : Array.isArray(d?.items) ? d.items
+          : Array.isArray(d?.data) ? d.data
+          : [];
+        setTodosArticulos(lista);
+      }
+
+      const results = lista
+        .filter(a => {
+          const nombre = String(a.nombre || a.name || '').toLowerCase();
+          const id = String(a.id || a.articulo_id || '');
+          return nombre.includes(ql) || id.startsWith(ql);
+        })
+        .filter(a => Number(a.id || a.articulo_id) !== Number(articulo?.id))
+        .slice(0, 15);
+      setGemelosResults(results);
+    } catch (e) {
+      console.error('[buscarGemelos]', e.message);
+      setGemelosResults([]);
+    } finally {
+      setGemelosSearching(false);
+    }
+  }, [businessId, allArticulos, todosArticulos, articulo?.id]);
+
+  const agregarGemelo = useCallback(async (targetArticleId) => {
+    if (!businessId || !articulo?.id) return;
+    const token = localStorage.getItem('token') || '';
+    const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' };
+    try {
+      if (gemelосGroup?.groupId) {
+        // Ya hay grupo conocido → agregar miembro
+        await fetch(`${BASE}/businesses/${businessId}/article-links/${gemelосGroup.groupId}/members`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ articleId: targetArticleId }),
+        });
+      } else {
+        // Crear nuevo grupo con ambos
+        const r = await fetch(`${BASE}/businesses/${businessId}/article-links`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ articleIds: [articulo.id, targetArticleId] }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          // 409: ya existe un grupo — usar el existingGroup que devuelve el back
+          if (r.status === 409 && d?.existingGroup?.groupId) {
+            // Agregar el target al grupo existente
+            await fetch(`${BASE}/businesses/${businessId}/article-links/${d.existingGroup.groupId}/members`, {
+              method: 'POST', headers,
+              body: JSON.stringify({ articleId: targetArticleId }),
+            });
+          } else {
+            console.error('[agregarGemelo] error:', d?.error);
           }
         }
-      } catch { /* ignorar */ }
-    })();
-  }, [open, businessId]);
+      }
+    } catch (e) { console.error('[agregarGemelo]', e.message); }
+
+    // Recargar siempre el estado del grupo desde el back
+    try {
+      const r2 = await fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+      });
+      const d2 = await r2.json();
+      if (d2?.group) setGemelosGroup(d2.group);
+    } catch { }
+    setGemelosSearch(''); setGemelosResults([]);
+  }, [businessId, articulo?.id, gemelосGroup]);
+
+  const quitarGemelo = useCallback(async (targetArticleId) => {
+    if (!businessId || !gemelосGroup) return;
+    const token = localStorage.getItem('token') || '';
+    try {
+      await fetch(`${BASE}/businesses/${businessId}/article-links/${gemelосGroup.groupId}/members/${targetArticleId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+      });
+      setGemelosGroup(prev => prev ? {
+        ...prev,
+        members: prev.members.filter(m => Number(m.article_id) !== Number(targetArticleId)),
+      } : null);
+    } catch (e) { console.error('[quitarGemelo]', e.message); }
+  }, [businessId, gemelосGroup]);
+
+  const actualizarObjetivoGemelo = useCallback(async (targetArticleId, pctObjetivo) => {
+    if (!businessId || !gemelосGroup) return;
+    const token = localStorage.getItem('token') || '';
+    try {
+      await fetch(
+        `${BASE}/businesses/${businessId}/article-links/${gemelосGroup.groupId}/members/${targetArticleId}`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pct_objetivo: pctObjetivo != null ? Number(pctObjetivo) : null }),
+        }
+      );
+      // Actualizar estado local optimistamente
+      setGemelosGroup(prev => prev ? {
+        ...prev,
+        members: prev.members.map(m =>
+          Number(m.article_id) === Number(targetArticleId)
+            ? { ...m, pct_objetivo: pctObjetivo != null ? Number(pctObjetivo) : null }
+            : m
+        ),
+      } : null);
+    } catch (e) { console.error('[actualizarObjetivoGemelo]', e.message); }
+  }, [businessId, gemelосGroup]);
 
   /* ── Cargar insumos ── */
   useEffect(() => {
@@ -1462,8 +1690,12 @@ export default function RecetaModal({
     })
       .then(r => r.json())
       .then(json => {
-        // El endpoint de elaborados devuelve { ok, receta }
-        // El de artículos devuelve { ok, receta } via getReceta
+        // El endpoint de elaborados devuelve { ok, receta, insumos_costo_ideal }
+        // globalConfigObjetivo ya viene del ConfigContext — no necesitamos sobreescribir
+        if (json?.insumos_costo_ideal && esElaborado && costoObjetivoExterno == null) {
+          const pct = Number(json.insumos_costo_ideal);
+          setPctCostoIdeal(prev => prev === 30 ? pct : prev);
+        }
         const rec = json?.receta ?? json ?? null;
         return rec;
       })
@@ -1552,14 +1784,14 @@ export default function RecetaModal({
     if (!sortByCosto) return items;
     return [...items].sort((a, b) => {
       const getCosto = (it) => {
-        const elaborado = it.supplyId ? recetasElaborados[String(it.supplyId)] : null;
+        const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
         const cant = Number(it.cantidad) || 0;
         if (elaborado) return ((elaborado.costoTotal || 0) / (Number(elaborado.porciones) || 1)) * cant;
         return calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u') * cant;
       };
       return getCosto(b) - getCosto(a);
     });
-  }, [items, sortByCosto, recetasElaborados]);
+  }, [items, sortByCosto, localRecetasElaborados]);
 
   const changeItem = useCallback((idx, partial) => {
     setItems(prev => {
@@ -1592,7 +1824,7 @@ export default function RecetaModal({
       if (Number(it.cantidad) < 0) return acc;
       const cant = Number(it.cantidad) || 0;
       // Usar la misma lógica que ItemRow para consistencia
-      const elaborado = it.supplyId ? recetasElaborados[String(it.supplyId)] : null;
+      const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
       let precioU;
       if (elaborado) {
         const porciones = Number(elaborado.porciones) || 1;
@@ -1610,7 +1842,7 @@ export default function RecetaModal({
       }
       return acc + cant * precioU;
     }, 0),
-    [items, recetasElaborados]
+    [items, localRecetasElaborados]
   );
 
   const costoXRendimiento = rendimiento > 0 ? costoTotal / rendimiento : 0;
@@ -1621,7 +1853,9 @@ export default function RecetaModal({
   /* ── Guardar ── */
   const handleSave = async () => {
     setError('');
-    if (items.length === 0) { setError('Agregá al menos un ingrediente'); return; }
+    // Si no hay ingredientes solo permitir guardar si hay algo que persistir (objetivo, notas)
+    const tieneContenido = items.length > 0 || notas || foto || pctCostoIdeal !== 30;
+    if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
     const sinSupply = items.filter(it => !it.supplyId);
     if (sinSupply.length) { setError(`${sinSupply.length} ingrediente(s) sin insumo asignado`); return; }
@@ -1634,7 +1868,7 @@ export default function RecetaModal({
       notasUpdatedAt: notasUpdatedAt || null,
       foto, // base64 — el backend debe manejarlo (guardarlo en S3/local y devolver URL)
       items: items.map(it => {
-        const elaborado = it.supplyId ? recetasElaborados[String(it.supplyId)] : null;
+        const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
         const porciones = Number(elaborado?.porciones) || 1;
         let costoUnitario;
         if (elaborado) {
@@ -1845,12 +2079,205 @@ export default function RecetaModal({
                   />
                 </Box>
 
+                {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
+                {!esElaborado && (
+                  <Box sx={{ mb: 1.5 }}>
+                    {/* Header colapsable */}
+                    <Box onClick={() => setGemelosOpen(v => !v)} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      cursor: 'pointer', py: 0.6, px: 1, borderRadius: 1,
+                      bgcolor: gemelосGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
+                      border: '1px solid', borderColor: gemelосGroup ? 'rgba(124,58,237,0.2)' : 'divider',
+                      '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
+                    }}>
+                      <Box sx={{ fontSize: 13, color: '#7c3aed' }}>🔗</Box>
+                      <Typography variant="caption" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.75rem', flex: 1 }}>
+                        {gemelосGroup
+                          ? `Gemelos (${gemelосGroup.members?.length || 0} artículos comparten esta receta)`
+                          : 'Gemelos — vincular con otro artículo'}
+                      </Typography>
+                      {gemelосLoading && <CircularProgress size={11} />}
+                      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{gemelосOpen ? '▲' : '▼'}</Typography>
+                    </Box>
+
+                    {gemelосOpen && (
+                      <Box sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
+
+                        {/* Header columnas */}
+                        <Box sx={{
+                          display: 'grid', gridTemplateColumns: '1fr 90px 28px',
+                          gap: 1, px: 1.25, pt: 0.75, pb: 0.25,
+                          borderBottom: '1px solid rgba(124,58,237,0.08)',
+                        }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Artículo
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
+                            Objetivo %
+                          </Typography>
+                          <Box />
+                        </Box>
+
+                        {/* Gemelos actuales */}
+                        <Box sx={{ px: 0.75, pt: 0.5, pb: 0.25 }}>
+                          {gemelосGroup?.members?.map(m => {
+                            const isMe = Number(m.article_id) === Number(articulo?.id);
+                            const objVal = isMe ? pctCostoIdeal : (m.pct_objetivo ?? '');
+                            return (
+                              <Box key={m.article_id} sx={{
+                                display: 'grid', gridTemplateColumns: '1fr 90px 28px',
+                                alignItems: 'center', gap: 1,
+                                py: 0.5, px: 0.5, borderRadius: 1, mb: 0.35,
+                                bgcolor: isMe ? 'rgba(124,58,237,0.07)' : '#fff',
+                                border: '1px solid', borderColor: isMe ? 'rgba(124,58,237,0.2)' : '#eaecf0',
+                              }}>
+                                {/* Nombre + código */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
+                                  {isMe && (
+                                    <Typography component="span" sx={{
+                                      fontSize: '0.57rem', fontWeight: 800, color: '#7c3aed',
+                                      bgcolor: 'rgba(124,58,237,0.1)', px: 0.5, py: '1px',
+                                      borderRadius: 0.5, flexShrink: 0,
+                                    }}>ESTE</Typography>
+                                  )}
+                                  <Typography variant="caption" noWrap sx={{
+                                    fontSize: '0.78rem', fontWeight: isMe ? 700 : 500,
+                                    color: isMe ? '#7c3aed' : 'text.primary', flex: 1, minWidth: 0,
+                                  }}>
+                                    {m.nombre || `Artículo #${m.article_id}`}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{
+                                    fontSize: '0.63rem', color: 'text.disabled', flexShrink: 0,
+                                    bgcolor: '#f1f5f9', px: 0.5, py: '1px', borderRadius: 0.5,
+                                  }}>#{m.article_id}</Typography>
+                                </Box>
+
+                                {/* Objetivo % inline */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                  <TextField
+                                    size="small"
+                                    type="number"
+                                    placeholder={String(pctCostoIdeal)}
+                                    value={objVal}
+                                    disabled={isMe}
+                                    onChange={e => {
+                                      if (isMe) return;
+                                      const v = e.target.value;
+                                      setGemelosGroup(prev => prev ? {
+                                        ...prev,
+                                        members: prev.members.map(mm =>
+                                          Number(mm.article_id) === Number(m.article_id)
+                                            ? { ...mm, pct_objetivo: v === '' ? null : Number(v) }
+                                            : mm
+                                        ),
+                                      } : null);
+                                    }}
+                                    onBlur={e => {
+                                      if (isMe) return;
+                                      const v = e.target.value;
+                                      actualizarObjetivoGemelo(m.article_id, v === '' ? null : Number(v));
+                                    }}
+                                    inputProps={{ min: 0, max: 100, step: 1, style: { textAlign: 'center', fontSize: '0.75rem', padding: '3px 2px' } }}
+                                    sx={{
+                                      flex: 1,
+                                      '& .MuiOutlinedInput-root': {
+                                        borderRadius: 1,
+                                        bgcolor: isMe ? 'rgba(124,58,237,0.04)' : '#fff',
+                                        '& fieldset': { borderColor: isMe ? 'rgba(124,58,237,0.25)' : '#d1d5db' },
+                                      },
+                                    }}
+                                  />
+                                  <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary', flexShrink: 0 }}>%</Typography>
+                                </Box>
+
+                                {/* Quitar */}
+                                {!isMe ? (
+                                  <Tooltip title="Desvincular">
+                                    <IconButton size="small" onClick={() => quitarGemelo(m.article_id)}
+                                      sx={{ p: '2px', color: 'error.main', opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                      <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                ) : <Box />}
+                              </Box>
+                            );
+                          })}
+                        </Box>
+
+                        {/* Buscador compacto */}
+                        <Box sx={{ px: 1, pb: 1, pt: 0.25 }}>
+                          <Box sx={{ position: 'relative' }}>
+                            <TextField size="small"
+                              placeholder="Buscar artículo para vincular…"
+                              value={gemelосSearch}
+                              onChange={e => {
+                                setGemelosSearch(e.target.value);
+                                if (e.target.value.length >= 1) buscarGemelos(e.target.value);
+                                else setGemelosResults([]);
+                              }}
+                              InputProps={{
+                                startAdornment: <InputAdornment position="start">
+                                  {gemelосSearching ? <CircularProgress size={12} /> : <SearchIcon sx={{ fontSize: 14, color: '#7c3aed' }} />}
+                                </InputAdornment>,
+                              }}
+                              sx={{
+                                width: '55%',
+                                '& .MuiOutlinedInput-root': { borderRadius: 1.5, fontSize: '0.78rem', bgcolor: '#fff' },
+                              }}
+                            />
+                            {gemelосResults.length > 0 && (
+                              <Box sx={{
+                                position: 'absolute', top: '100%', left: 0, zIndex: 30,
+                                bgcolor: 'background.paper', border: '1px solid', borderColor: 'rgba(124,58,237,0.2)',
+                                borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 200, overflowY: 'auto',
+                                minWidth: 280,
+                              }}>
+                                {gemelосResults.map(art => {
+                                  const yaGemelo = gemelосGroup?.members?.some(m => Number(m.article_id) === Number(art.id));
+                                  if (Number(art.id) === Number(articulo?.id)) return null;
+                                  return (
+                                    <Box key={art.id}
+                                      onClick={() => { if (!yaGemelo) { agregarGemelo(art.id); setGemelosResults([]); setGemelosSearch(''); } }}
+                                      sx={{
+                                        px: 1.5, py: 0.6, cursor: yaGemelo ? 'default' : 'pointer',
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        borderBottom: '1px solid', borderColor: 'divider', opacity: yaGemelo ? 0.5 : 1,
+                                        '&:hover': { bgcolor: yaGemelo ? 'transparent' : 'rgba(124,58,237,0.06)' },
+                                      }}>
+                                      <Box sx={{ overflow: 'hidden' }}>
+                                        <Typography variant="body2" noWrap fontWeight={600} sx={{ fontSize: '0.78rem' }}>
+                                          {art.nombre || art.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                          #{art.id}
+                                        </Typography>
+                                      </Box>
+                                      <Chip
+                                        label={yaGemelo ? '✓' : '+ Vincular'}
+                                        size="small"
+                                        sx={{
+                                          height: 18, fontSize: '0.62rem', ml: 1, flexShrink: 0,
+                                          bgcolor: yaGemelo ? 'transparent' : 'rgba(124,58,237,0.1)',
+                                          color: '#7c3aed', border: '1px solid rgba(124,58,237,0.2)',
+                                        }}
+                                      />
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+
                 <Divider sx={{ mb: 1.5 }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
                       Ingredientes ({items.length})
-                    </Typography>
-                    <Tooltip title={sortByCosto ? 'Orden manual' : 'Ordenar por costo'}>
+                    </Typography>                    <Tooltip title={sortByCosto ? 'Orden manual' : 'Ordenar por costo'}>
                       <IconButton size="small" onClick={() => setSortByCosto(v => !v)}
                         sx={{ p: '2px', color: sortByCosto ? PRIMARY : 'text.disabled' }}>
                         <SortIcon sx={{ fontSize: 14 }} /> {/* importar SortIcon */}
@@ -1862,10 +2289,10 @@ export default function RecetaModal({
                 {/* ── Header columnas ── */}
                 <Box sx={{
                   display: 'grid',
-                  gridTemplateColumns: '20px 1.8fr 68px 66px 80px 24px 1fr 56px 28px',
+                  gridTemplateColumns: '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
                   gap: '4px', px: 0.5, mb: 0.5,
                 }}>
-                  {['', 'Insumo', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', 'Modif.', ''].map((col, i) => (
+                  {['', 'Insumo', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', '', ''].map((col, i) => (
                     <Typography key={i} variant="caption" color="text.secondary"
                       fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: i >= 4 && i <= 6 ? 'center' : 'left' }}>
                       {col}
@@ -1903,7 +2330,7 @@ export default function RecetaModal({
                           onOpenCompras={(it) => setComprasInsumo(it)}
                           onOpenRecetaElaborado={(it) => {
                             const ins = insumos.find(i => String(i.id) === String(it.supplyId));
-                            setRecetaElaboradoModal({
+                            pushElaborado({
                               id: it.supplyId,
                               nombre: it.supplyNombre,
                               precio: ins?.precio_ref || ins?.precio || 0,
@@ -1913,7 +2340,7 @@ export default function RecetaModal({
                           usedSupplyIds={usedSupplyIds}
                           alertaSemanas={alertaSemanas}
                           autoOpenSearch={newItemIndex === realIndex}
-                          recetasElaborados={recetasElaborados}
+                          recetasElaborados={localRecetasElaborados}
                           articuloId={articulo?.id}
                           businessId={businessId}
                         />
@@ -1991,11 +2418,29 @@ export default function RecetaModal({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexShrink: 0, bgcolor: 'background.paper',
           }}>
-            <Typography variant="caption" color="text.secondary">
-              {receta ? `Última modificación: ${fmtDate(receta.updated_at) || '—'}` : 'Receta nueva'}
-            </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              {/* Borrar receta — solo si ya existe, en el footer*/}
+              <Typography variant="caption" color="text.secondary">
+                {receta ? `Última modificación: ${fmtDate(receta.updated_at) || '—'}` : 'Receta nueva'}
+              </Typography>
+              {/* Botón notas + foto de la receta */}
+              <Tooltip title={notas ? 'Ver/editar notas e imagen' : 'Agregar notas e imagen'}>
+                <Button
+                  size="small"
+                  variant={notas || foto ? 'outlined' : 'text'}
+                  startIcon={<NotesIcon />}
+                  onClick={() => setNotasModalOpen(true)}
+                  sx={{
+                    color: notas || foto ? PRIMARY : 'text.secondary',
+                    borderColor: notas || foto ? PRIMARY : 'transparent',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  {notas || foto ? 'Notas y foto' : 'Agregar notas'}
+                </Button>
+              </Tooltip>
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {/* Borrar receta — solo si ya existe */}
               {receta && (
                 <Button
                   size="small"
@@ -2004,9 +2449,7 @@ export default function RecetaModal({
                   disabled={saving || deleting}
                   startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
                   onClick={() => setConfirmDelete(true)}
-                  sx={{ mr: 1 }}
                 >
-
                   Borrar receta
                 </Button>
               )}
@@ -2082,20 +2525,35 @@ export default function RecetaModal({
           </Button>
         </DialogActions>
       </Dialog>
-      {recetaElaboradoModal && (
+      {elaboradosStack.map((elaborado, stackIdx) => (
         <RecetaModal
-          open={!!recetaElaboradoModal}
-          onClose={() => setRecetaElaboradoModal(null)}
-          articulo={recetaElaboradoModal}
+          key={`elaborado-${elaborado.id}-${stackIdx}`}
+          open={true}
+          onClose={() => {
+            if (stackIdx === elaboradosStack.length - 1) {
+              popElaborado();
+            }
+          }}
+          articulo={elaborado}
           businessId={businessId}
-          getRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${recetaElaboradoModal.id}/receta`}
-          saveRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${recetaElaboradoModal.id}/receta`}
-          recetasElaborados={recetasElaborados}
+          getRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${elaborado.id}/receta`}
+          saveRecetaUrl={`${BASE}/businesses/${businessId}/insumos/${elaborado.id}/receta`}
+          recetasElaborados={localRecetasElaborados}
           onSaved={(saved) => {
-            setRecetaElaboradoModal(null);
+            popElaborado();
+            if (saved?.costo_total != null || saved?.costo_por_porcion != null) {
+              setLocalRecetasElaborados(prev => ({
+                ...prev,
+                [String(elaborado.id)]: {
+                  costoTotal: saved.costo_total ?? (saved.costo_por_porcion * (saved.porciones || 1)),
+                  porciones: saved.porciones || 1,
+                  precioSugerido: saved.precio_sugerido || 0,
+                },
+              }));
+            }
           }}
         />
-      )}
+      ))}
     </>
   );
 }

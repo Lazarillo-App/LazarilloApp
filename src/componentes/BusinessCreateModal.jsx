@@ -37,7 +37,7 @@ const ColorField = ({ id, label, value, onChange }) => (
 export default function BusinessCreateModal({ open, onClose, onCreateComplete }) {
   // pasos: 0=Datos, 1=Estilos, 2=Redes, 3=Maxi
   const [step, setStep] = useState(0);
-  const steps = ["Datos Principales", "Estilos", "Redes Sociales", "Conexión a MaxiRest"];
+  const steps = ["Datos Principales", "Estilos", "Redes Sociales", "MaxiRest (opcional)"];
 
   const [bizCreated, setBizCreated] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -176,7 +176,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (step === 0) return name.trim().length > 0; // Datos
     if (step === 1) return true; // Estilos
     if (step === 2) return true; // Redes
-    if (step === 3) return !!mxEmail && !!mxPass && !!mxCod; // Maxi
+    if (step === 3) return true; // Maxi es opcional
     return false;
   }, [step, name, mxEmail, mxPass, mxCod]);
 
@@ -332,57 +332,60 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
       // 1️⃣ Crear negocio si aún no existe
       const biz = await ensureBusinessCreated();
 
-      // 2️⃣ Guardar credenciales de Maxi
-      await BusinessesAPI.maxiSave(biz.id, {
-        email: mxEmail,
-        password: mxPass,
-        codcli: mxCod,
-      });
+      // 2️⃣ Guardar credenciales de Maxi y sincronizar (solo si se completaron los 3 campos)
+      if (mxEmail && mxPass && mxCod) {
+        try {
+          await BusinessesAPI.maxiSave(biz.id, {
+            email: mxEmail,
+            password: mxPass,
+            codcli: mxCod,
+          });
+          setNotice("Sincronizando artículos con MaxiRest…");
+        } catch (maxiErr) {
+          // Credenciales guardadas aunque fallen — el negocio ya existe
+          // No bloqueamos la creación por esto
+          const msg = String(maxiErr?.message || "");
+          if (msg.includes("401") || msg.includes("UNAUTHORIZED")) {
+            setErr("Credenciales de Maxi incorrectas. El negocio fue creado igual — podés configurar Maxi más tarde desde Configuración → Organización.");
+          } else {
+            setErr("No se pudo conectar con Maxi. El negocio fue creado — podés intentarlo más tarde.");
+          }
+        }
+      } else {
+        setNotice("Negocio creado. Podés cargar artículos, insumos, compras y ventas manualmente.");
+      }
 
-      // 3️⃣ Sincronizar catálogo (artículos + mapeos)
-      setNotice("Sincronizando artículos…");
-
-      // 4️⃣ AHORA sí: marcar negocio como activo y persistir tema
+      // 3️⃣ Marcar negocio como activo y persistir tema
       const branding =
         biz?.props?.branding || biz?.branding || {
-          primary,
-          secondary,
-          background,
-          font,
-          logo_url:
-            biz?.props?.branding?.logo_url ||
-            biz?.branding?.logo_url ||
-            null,
+          primary, secondary, background, font,
+          logo_url: biz?.props?.branding?.logo_url || biz?.branding?.logo_url || null,
         };
 
       const palette = brandingToPalette(branding);
-
-      // marcar activo
       localStorage.setItem("activeBusinessId", String(biz.id));
 
       try {
-        // guardar tema por negocio
         setPaletteForBiz(palette, { persist: true, biz: biz.id });
-        // espejo del tema actual para evitar flash en recarga
         localStorage.setItem("bizTheme:current", JSON.stringify(palette));
       } catch { }
 
-      // notificar cambio de negocio activo
-      window.dispatchEvent(
-        new CustomEvent("business:switched", { detail: { id: biz.id } })
-      );
+      window.dispatchEvent(new CustomEvent("business:switched", { detail: { id: biz.id, bizId: biz.id, biz } }));
 
-      onClose?.();
-    } catch (e2) {
-      console.error(e2);
-      const msg = String(e2?.message || "");
-      if (msg.includes("UNAUTHORIZED_ACCESS") || msg.includes("401")) {
-        setErr(
-          "Maxi devolvió 401: credenciales inválidas o token caído. Revisá email/clave/codcli."
-        );
+      // Disparar también business:created para que BusinessContext haga refetch
+      window.dispatchEvent(new CustomEvent("business:created", { detail: { id: biz.id } }));
+
+      // Si no hubo error de Maxi, cerrar inmediatamente
+      // Si hubo error de Maxi, dejar el modal abierto 2s para que lo lea y luego cerrar
+      if (!err) {
+        onClose?.();
       } else {
-        setErr(msg || "No se pudo completar la creación/sincronización.");
+        setTimeout(() => onClose?.(), 3000);
       }
+    } catch (e2) {
+      // Solo errores de creación del negocio llegan acá
+      const msg = String(e2?.message || "");
+      setErr(msg || "No se pudo crear el negocio. Intentá de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -697,6 +700,10 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
             <form onSubmit={onFinish}>
               <section>
                 <h4 className="gc-section-title">Credenciales de MaxiRest</h4>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 16px', lineHeight: 1.5 }}>
+                  Opcional — podés completarlo ahora o más tarde desde Configuración.<br />
+                  Sin credenciales podés cargar artículos, insumos, compras y ventas manualmente.
+                </p>
                 <div className="gc-field">
                   <label htmlFor="gc-mx-email" className="gc-label">
                     Email
@@ -708,7 +715,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                     placeholder="email@example.com"
                     value={mxEmail}
                     onChange={(e) => setMxEmail(e.target.value)}
-                    required
                   />
                 </div>
 
@@ -724,7 +730,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       placeholder="••••••••"
                       value={mxPass}
                       onChange={(e) => setMxPass(e.target.value)}
-                      required
                     />
                     <button
                       type="button"
@@ -746,7 +751,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                     placeholder="Ej: 12345"
                     value={mxCod}
                     onChange={(e) => setMxCod(e.target.value)}
-                    required
                   />
                 </div>
               </section>
@@ -768,7 +772,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                   className="gc-btn primary"
                   disabled={!canNext || busy}
                 >
-                  {busy ? "Creando" : "Crear"}
+                  {busy ? "Creando…" : (mxEmail && mxPass && mxCod) ? "Crear y conectar Maxi" : "Crear sin Maxi"}
                 </button>
               </div>
             </form>

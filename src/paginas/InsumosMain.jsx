@@ -133,9 +133,9 @@ export default function InsumosMain() {
 
   // ── Listas de insumos + modo selección ────────────────────────────────────
   // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
-  const [insumoSelectionMode,  setInsumoSelectionMode]  = useState(null);
-  const [selectedInsumoIds,    setSelectedInsumoIds]    = useState(new Set());
-  const [insumoListSaving,     setInsumoListSaving]     = useState(false);
+  const [insumoSelectionMode, setInsumoSelectionMode] = useState(null);
+  const [selectedInsumoIds, setSelectedInsumoIds] = useState(new Set());
+  const [insumoListSaving, setInsumoListSaving] = useState(false);
 
   const toggleInsumoMode = (mode) => {
     setInsumoSelectionMode(mode);
@@ -161,6 +161,7 @@ export default function InsumosMain() {
   const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } =
     useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
   const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
+  const [insumosConfigKey, setInsumosConfigKey] = useState(0); // fuerza re-fetch del config al abrir modal
 
   const [soloConCompras, setSoloConCompras] = useState(() => {
     try { return localStorage.getItem('insumosFiltroCon Compras') === 'true'; }
@@ -177,6 +178,22 @@ export default function InsumosMain() {
 
   const handleOpenRecetaElaborado = useCallback((insumo) => {
     setRecetaInsumoModal(insumo);
+  }, []);
+
+  // Escuchar cambios de config para invalidar el modal si está abierto
+  React.useEffect(() => {
+    const onCfg = (e) => {
+      if (e?.detail?.key === 'insumos_costo_ideal') setInsumosConfigKey(k => k + 1);
+    };
+    window.addEventListener('config:updated', onCfg);
+    return () => window.removeEventListener('config:updated', onCfg);
+  }, []);
+
+  // Escuchar creación manual de insumos (desde ConfiguracionMain u otros) → recargar catálogo
+  useEffect(() => {
+    const onInsumoCreado = () => setReloadKey(k => k + 1);
+    window.addEventListener('insumos:updated', onInsumoCreado);
+    return () => window.removeEventListener('insumos:updated', onInsumoCreado);
   }, []);
 
   useEffect(() => {
@@ -224,10 +241,11 @@ export default function InsumosMain() {
     lists: insumoLists,
     createList: _createInsumoList,
     deleteList: deleteInsumoList,
-    addItems:   addInsumoListItems,
-    activeListId:    activeInsumoListId,
+    addItems: addInsumoListItems,
+    activeListId: activeInsumoListId,
     activeListItems: activeInsumoListItems,
-    selectList:      selectInsumoList,
+    selectList: selectInsumoList,
+    clearList: clearInsumoList,
   } = useInsumoLists(validBizId);
 
   const handleCreateInsumoList = async (name, ids) => {
@@ -791,23 +809,28 @@ export default function InsumosMain() {
       const porId = rubrosIdMap.get(codigoCrudo);
       if (porId) return porId;
     }
-    // Fallback: buscar por nombre si el insumo lo trae
-    const nombreCrudo = String(ins?.rubro_nombre || ins?.rubroNombre || '');
-    if (nombreCrudo) {
+    // Fallback nivel 3: buscar por nombre — cubre insumos manuales (rubro es texto libre)
+    const nombreCrudo = String(ins?.rubro_nombre || ins?.rubroNombre || ins?.rubro || '');
+    if (nombreCrudo && nombreCrudo !== 'undefined' && nombreCrudo !== 'null') {
       const porNombre = rubroNombreToInfo.get(nombreCrudo);
       if (porNombre) return porNombre;
+      // Sin match en el mapa: crear info sintético para insumos manuales
+      return { codigo: nombreCrudo, nombre: nombreCrudo, es_elaborador: ins?.es_elaborado === true };
     }
     return null;
   }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
 
   const filteredBase = useMemo(() => {
+    console.log('[filteredBase] activeInsumoListId:', activeInsumoListId, '| activeInsumoListItems.size:', activeInsumoListItems?.size);
+    const hasActiveList = activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0;
+
+    // Si hay lista activa, filtrar desde TODOS los insumos activos, no solo los de la agrupación
+    const baseForFilter = hasActiveList ? baseActivos : sidebarBase;
     // Si hay lista activa de insumos → mostrar todos los insumos de la lista
     // ignorando el filtro de agrupación/visibleIds
-    const effectiveIds = (activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0)
-      ? activeInsumoListItems
-      : visibleIds;
+    const effectiveIds = hasActiveList ? activeInsumoListItems : visibleIds;
 
-    let base = !effectiveIds ? sidebarBase : (sidebarBase || []).filter((ins) => {
+    let base = !effectiveIds ? baseForFilter : (baseForFilter || []).filter((ins) => {
       const id = Number(ins?.id);
       if (!Number.isFinite(id) || !effectiveIds.has(id)) return false;
       if (!isDiscView && discontinuadosIds.has(id)) return false;
@@ -858,16 +881,17 @@ export default function InsumosMain() {
     }
 
     return base;
-  }, [sidebarBase, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
+  }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
 
   const rubrosTree = useMemo(() => {
-    if (!filteredBase.length || rubrosMap.size === 0) return [];
+    if (!filteredBase.length) return [];
     const map = new Map();
     filteredBase.forEach((insumo) => {
       // Resolver el rubroInfo usando ambos mapas para obtener el código Maxi real
+      // Fallback: usar insumo.rubro directamente si rubrosMap está vacío (negocio sin Maxi)
       const info = resolveRubroInfo(insumo);
-      const rubroNombre = info?.nombre || String(insumo.rubro_codigo || insumo.rubro || '') || 'Sin rubro';
-      const rubroCodigo = info?.codigo ?? String(insumo.rubro_codigo || insumo.rubro || '');
+      const rubroNombre = info?.nombre || String(insumo.rubro_nombre || insumo.rubro_codigo || insumo.rubro || '') || 'Sin rubro';
+      const rubroCodigo = info?.codigo ?? String(insumo.rubro_codigo || insumo.rubro || rubroNombre);
       const esElaborador = info?.es_elaborador === true;
       if (!map.has(rubroNombre)) map.set(rubroNombre, { nombre: rubroNombre, codigo: rubroCodigo, es_elaborador: esElaborador, insumos: [] });
       map.get(rubroNombre).insumos.push(insumo);
@@ -882,7 +906,9 @@ export default function InsumosMain() {
     return base.filter((i) => {
       const info = resolveRubroInfo(i);
       const codigoReal = info?.codigo ?? String(i?.rubro_codigo || i?.rubro || '');
-      return String(codigoReal) === String(codigoSel);
+      // También comparar por nombre de rubro para insumos manuales sin código Maxi
+      const nombreReal = info?.nombre || String(i?.rubro_nombre || i?.rubro || '');
+      return String(codigoReal) === String(codigoSel) || nombreReal === rubroSeleccionado?.nombre;
     });
   }, [filteredBase, rubroSeleccionado, resolveRubroInfo]);
 
@@ -1311,6 +1337,9 @@ export default function InsumosMain() {
             onDownloadList={handleDownloadList}
             onDeleteList={deleteInsumoList}
             insumoLists={insumoLists}
+            activeInsumoListId={activeInsumoListId}
+            onSelectInsumoList={selectInsumoList}
+            onClearInsumoList={clearInsumoList}
           />
         </div>
 
@@ -1402,6 +1431,7 @@ export default function InsumosMain() {
             nombre: recetaInsumoModal.nombre,
             precio: recetaInsumoModal.precio_ref || recetaInsumoModal.precio || 0,
           }}
+          esElaborado={true}
           businessId={resolvedBizId}
           getRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
           saveRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}

@@ -16,7 +16,7 @@ import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
-import { Snackbar, Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack } from '@mui/material';
+import { Snackbar, Alert, Button, Box, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack } from '@mui/material';
 import { emitUiAction } from '../servicios/uiEvents';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
@@ -26,6 +26,7 @@ import { useFirstDate } from '../hooks/useFirstDate';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import Buscador from '@/componentes/Buscador';
 import SubBusinessCreateModal from '../componentes/SubBusinessCreateModal';
+import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import ReactDOM from 'react-dom';
 import instructionImage1 from '../assets/brand/maxirest-menu.jpeg';
 import instructionImage2 from '../assets/brand/maxirest-config.jpeg';
@@ -36,6 +37,8 @@ import {
   notifyGroupFavoriteChanged,
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
+import { saveRedondeoConfig, getRedondeoConfig } from '@/utils/redondeoUtils';
+import { useConfig } from '@/context/ConfigContext';
 import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -128,9 +131,10 @@ export default function ArticulosMain(props) {
   const [recetasCostos, setRecetasCostos] = useState({});
   // ── Price config save con confirmación y deshacer ──
   const [dlgConfirm, setDlgConfirm] = useState(null);
-  const prevConfigRef = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
+  const prevConfigRef = React.useRef(null);
   const [priceConfig, setPriceConfig] = useState({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
-  const [globalCostoIdeal, setGlobalCostoIdeal] = useState(30); // default 30%, se pisa con el de /config
+  // Leer globalCostoIdeal del contexto global — se actualiza automáticamente desde ConfiguracionMain
+  const { articulosCostoIdeal: globalCostoIdeal } = useConfig();
   // Estado de sincronización — se activa con sync:start y se apaga con sync:completed
   // Al montar, verificar si hay un sync en curso (puede haberse iniciado antes de navegar aquí)
   const [isSyncing, setIsSyncing] = useState(() => {
@@ -146,6 +150,7 @@ export default function ArticulosMain(props) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [subBizModalOpen, setSubBizModalOpen] = useState(false);
   const [groupForSubBiz, setGroupForSubBiz] = useState(null);
+  const [alertaVentas, setAlertaVentas] = useState(null);
   const [orgNameModalOpen, setOrgNameModalOpen] = useState(false);
   const [orgNameInput, setOrgNameInput] = useState('');
   const [orgNameSaving, setOrgNameSaving] = useState(false);
@@ -283,7 +288,7 @@ export default function ArticulosMain(props) {
     // 'main' = sin branch_id, null = todas, number = sucursal específica
     branchId: activeBranchFilter?.mode === 'main' ? 'main'
       : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-        : 'main',   // modo 'all' → columna base = solo principal
+        : null,   // modo 'all' → suma total de todas las sucursales
   });
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
@@ -471,13 +476,13 @@ export default function ArticulosMain(props) {
     Promise.all([
       RecetasAPI.getCostos(recetasBizId).catch(() => ({ costos: {} })),
       PriceConfigAPI.getAll(configBizId).catch(() => ({ byArticle: {}, byRubro: {}, byAgrupacion: {} })),
-      fetch(`${BASE}/businesses/${configBizId}/config`, {
+      fetch(`${BASE}/businesses/${configBizId}/articles-alertas-ventas`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
           'X-Business-Id': String(configBizId),
         },
-      }).then(r => r.json()).catch(() => ({})),
-    ]).then(([costosRes, configRes, configNegocio]) => {
+      }).then(r => r.json()).catch(() => ({ hayAlerta: false })),
+    ]).then(([costosRes, configRes, alertaVentasRes]) => {
       if (!alive) return;
       setRecetasCostos(costosRes?.costos || {});
       setPriceConfig({
@@ -485,9 +490,7 @@ export default function ArticulosMain(props) {
         byRubro: configRes?.byRubro || {},
         byAgrupacion: configRes?.byAgrupacion || {},
       });
-      if (configNegocio?.config?.articulos_costo_ideal) {
-        setGlobalCostoIdeal(Number(configNegocio.config.articulos_costo_ideal));
-      }
+      setAlertaVentas(alertaVentasRes || null);
     });
 
     return () => { alive = false; };
@@ -519,14 +522,34 @@ export default function ArticulosMain(props) {
 
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
-    console.log('[handlePriceConfigSave] body recibido:', body);
     const bizId = Number(activeBizId);
     const doSave = async () => {
       try {
-        const result = await PriceConfigAPI.save(bizId, body);
-        console.log('[handlePriceConfigSave] resultado backend:', result);
+        // Actualización optimista
+        if (body.scope === 'articulo' && body.scopeId) {
+          setPriceConfig(prev => ({
+            ...prev,
+            byArticle: {
+              ...prev.byArticle,
+              [String(body.scopeId)]: {
+                ...(prev.byArticle?.[String(body.scopeId)] || {}),
+                precioManual: (body._deleteManual || body._delete) ? null : (body.precioManual ?? null),
+                objetivo: body.objetivo ?? prev.byArticle?.[String(body.scopeId)]?.objetivo,
+              },
+            },
+          }));
+        }
+
+        if (body._deleteManual) {
+          // DELETE explícito del precio manual — borra el registro si no tiene objetivo
+          await PriceConfigAPI.remove(bizId, { scope: body.scope, scopeId: body.scopeId });
+        } else {
+          const { _delete, _deleteManual, ...cleanBody } = body;
+          await PriceConfigAPI.save(bizId, cleanBody);
+        }
+
+        // Confirmar con el valor real del back
         const r = await PriceConfigAPI.getAll(bizId);
-        console.log('[handlePriceConfigSave] nuevo priceConfig:', r);
         setPriceConfig({
           byArticle: r?.byArticle || {},
           byRubro: r?.byRubro || {},
@@ -536,7 +559,6 @@ export default function ArticulosMain(props) {
         console.error('[handlePriceConfigSave]', e);
       }
     };
-
     doSave();
   }, [activeBizId, setPriceConfig]);
 
@@ -545,12 +567,43 @@ export default function ArticulosMain(props) {
     const bizId = Number(activeBizId);
     if (!bizId || !updates?.length) return;
     try {
-      await Promise.all(
-        updates.map(({ artId, precioManual }) =>
-          PriceConfigAPI.save(bizId, { scope: 'articulo', scopeId: String(artId), precioManual })
-            .catch(e => console.warn('[handleBulkManualSave] fallo artículo', artId, e.message))
-        )
-      );
+      // Separar borrados de guardados
+      const toDelete = updates.filter(u => u.precioManual == null);
+      const toSave = updates.filter(u => u.precioManual != null);
+
+      // Actualización optimista inmediata
+      setPriceConfig(prev => {
+        const byArticle = { ...prev.byArticle };
+        updates.forEach(({ artId, precioManual }) => {
+          byArticle[String(artId)] = {
+            ...(byArticle[String(artId)] || {}),
+            precioManual: precioManual ?? null,
+          };
+        });
+        return { ...prev, byArticle };
+      });
+
+      // Guardar los que tienen valor
+      if (toSave.length) {
+        await Promise.all(
+          toSave.map(({ artId, precioManual }) =>
+            PriceConfigAPI.save(bizId, { scope: 'articulo', scopeId: String(artId), precioManual })
+              .catch(e => console.warn('[handleBulkManualSave] save fallo', artId, e.message))
+          )
+        );
+      }
+
+      // Borrar los que son null — usar DELETE explícito
+      if (toDelete.length) {
+        await Promise.all(
+          toDelete.map(({ artId }) =>
+            PriceConfigAPI.remove(bizId, { scope: 'articulo', scopeId: String(artId) })
+              .catch(e => console.warn('[handleBulkManualSave] delete fallo', artId, e.message))
+          )
+        );
+      }
+
+      // Confirmar con el valor real
       const r = await PriceConfigAPI.getAll(bizId);
       setPriceConfig({
         byArticle: r?.byArticle || {},
@@ -562,15 +615,48 @@ export default function ArticulosMain(props) {
     }
   }, [activeBizId, setPriceConfig]);
 
-  // Escuchar ui:undo para restaurar el objetivo previo
+  // ── Escuchar cambios de config global — limpiar overrides locales ──
+  React.useEffect(() => {
+    const onConfigUpdated = (e) => {
+      const { key } = e?.detail || {};
+      // Cuando se guarda el costo ideal global, limpiar priceConfig local
+      // para que la tabla refleje solo el global sin overrides
+      if (key === 'articulos_costo_ideal') {
+        setPriceConfig({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
+      }
+    };
+    window.addEventListener('config:updated', onConfigUpdated);
+    return () => window.removeEventListener('config:updated', onConfigUpdated);
+  }, []);
   React.useEffect(() => {
     const onUndo = async (e) => {
       const d = e?.detail;
-      if (d?.kind !== 'objetivo_update') return;
+      // Soportar ambos kinds por compatibilidad
+      if (d?.kind !== 'objetivo_update' && d?.kind !== 'objetivo_change') return;
       const bizId = Number(activeBizId);
+
+      // Si viene con payload directo (undo desde toast de tabla)
+      if (d?.payload?.scope && d?.payload?.val != null) {
+        const { scope, scopeId, valAnterior, articleIds } = d.payload;
+        try {
+          await PriceConfigAPI.save(bizId, {
+            scope, scopeId,
+            objetivo: valAnterior ?? null,
+            articleIds, pisarTodo: true,
+          });
+          const r = await PriceConfigAPI.getAll(bizId);
+          setPriceConfig({
+            byArticle: r?.byArticle || {},
+            byRubro: r?.byRubro || {},
+            byAgrupacion: r?.byAgrupacion || {},
+          });
+        } catch (err) { console.error('[undo objetivo_change]', err); }
+        return;
+      }
+
+      // Undo completo con snapshot previo
       const prevConfig = d?.payload?.prevConfig || prevConfigRef.current;
       if (!prevConfig) return;
-
       try {
         await PriceConfigAPI.remove(bizId, { scope: 'all' });
         const entries = [
@@ -588,9 +674,7 @@ export default function ArticulosMain(props) {
           byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         });
-      } catch (err) {
-        console.error('[undo objetivo_update]', err);
-      }
+      } catch (err) { console.error('[undo objetivo_update]', err); }
     };
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
@@ -642,6 +726,15 @@ export default function ArticulosMain(props) {
         sample: Array.from(ventasMap.entries()).slice(0, 3)
       });
     }
+  }, [ventasMap]);
+
+  const totalBizAmount = useMemo(() => {
+    if (!ventasMap || ventasMap.size === 0) return 0;
+    let total = 0;
+    for (const [, v] of ventasMap) {
+      total += Number(v?.amount ?? 0);
+    }
+    return total;
   }, [ventasMap]);
 
   // ✅ CAMBIO 2: Guardar/cargar favorita por negocio
@@ -848,7 +941,7 @@ export default function ArticulosMain(props) {
 
       const branchId = activeBranchFilter?.mode === 'main' ? 'main'
         : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-        : null;
+          : null;
 
       const blob = await downloadVentasCSV(bid, {
         from: periodo.from,
@@ -2065,6 +2158,57 @@ export default function ArticulosMain(props) {
     console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
 
+  const handleRedondeoChange = useCallback(async (nuevoValor) => {
+    saveRedondeoConfig(Number(activeBizId), nuevoValor, true);
+    try {
+      await BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: nuevoValor } });
+    } catch (e) {
+      console.warn('[handleRedondeoChange] error al guardar en DB:', e.message);
+    }
+  }, [activeBizId]);
+
+  // ── Estado vacío: sin negocio activo ──
+  const [showCreateBiz, setShowCreateBiz] = React.useState(false);
+  if (!activeBizId) {
+    return (
+      <Box sx={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: '60vh', gap: 3, p: 4,
+      }}>
+        <Box sx={{ fontSize: 64, lineHeight: 1 }}>🏪</Box>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h5" fontWeight={800} gutterBottom>
+            ¡Bienvenido a Lazarillo!
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 420 }}>
+            Todavía no tenés ningún negocio configurado. Creá tu primer negocio para empezar a gestionar artículos, precios y ventas.
+          </Typography>
+        </Box>
+        <Button
+          variant="contained" size="large"
+          startIcon={<span style={{ fontSize: '1.2rem' }}>+</span>}
+          onClick={() => setShowCreateBiz(true)}
+          sx={{
+            px: 4, py: 1.5, borderRadius: 2, fontWeight: 700, fontSize: '1rem',
+            bgcolor: 'var(--color-primary, #3b82f6)',
+            '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary, #3b82f6)' },
+          }}>
+          Crear mi primer negocio
+        </Button>
+        <BusinessCreateModal
+          open={showCreateBiz}
+          onClose={() => setShowCreateBiz(false)}
+          onCreateComplete={async (biz) => {
+            setShowCreateBiz(false);
+            if (biz?.id) {
+              try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } })); } catch { }
+            }
+          }}
+        />
+      </Box>
+    );
+  }
+
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -2136,6 +2280,7 @@ export default function ArticulosMain(props) {
             lists={lists}
             activeListId={activeListId}
             activeListItems={activeListItems}
+            alertaVentas={alertaVentas}
           />
           <SucursalSelector variant="inline" />
           <SelectionToolbar
@@ -2231,6 +2376,7 @@ export default function ArticulosMain(props) {
             activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
+            totalBizAmount={totalBizAmount}
           />
         </div>
 
@@ -2238,8 +2384,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
-            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
-            ventasMapByBranch={activeBranchFilter?.mode === 'all' ? ventasMapByBranch : {}}
+            branches={[]}
+            ventasMapByBranch={{}}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             orgAssignedIds={orgAssignedIds}
@@ -2288,6 +2434,7 @@ export default function ArticulosMain(props) {
             nameById={nameById}
             onRemoveMemberFromLink={removeMemberFromLink}
             onDeleteLink={deleteLink}
+            onRedondeoChange={handleRedondeoChange}
           />
         </div>
       </div>

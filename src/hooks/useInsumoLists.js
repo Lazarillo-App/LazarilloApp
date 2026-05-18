@@ -102,6 +102,11 @@ export function useInsumoLists(bizId) {
     ));
   }, [bizId]);
 
-  return { lists, loading, load, createList, deleteList, getItems, addItems,
-           activeListId, activeListItems, loadingItems, selectList };
-}
+  const clearList = useCallback(() => {
+  setActiveListId(null);
+  setActiveListItems(new Set());
+}, []);
+
+return { lists, loading, load, createList, deleteList, getItems, addItems,
+         activeListId, activeListItems, loadingItems, selectList, clearList };
+} 

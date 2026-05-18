@@ -1,330 +1,580 @@
 // src/componentes/UploadInsumosModal.jsx
-import React, { useState } from 'react';
+// Importador inteligente con vista previa y detección de columnas
+// Sirve para artículos e insumos (prop tipo = 'insumos' | 'articulos')
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, LinearProgress, Alert, Box, Typography,
-  IconButton, Stepper, Step, StepLabel, StepContent, Paper,
+  Button, Alert, Box, Typography, IconButton, Chip,
+  Table, TableHead, TableBody, TableRow, TableCell,
+  Select, MenuItem, FormControl, LinearProgress, Tooltip,
+  Stack, Divider,
 } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon       from '@mui/icons-material/Error';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import CloseIcon       from '@mui/icons-material/Close';
-import Inventory2Icon  from '@mui/icons-material/Inventory2';
+import CloudUploadIcon  from '@mui/icons-material/CloudUpload';
+import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
+import ErrorIcon        from '@mui/icons-material/Error';
+import CloseIcon        from '@mui/icons-material/Close';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { BASE } from '../servicios/apiBase';
 
-// ─── Modal de instrucciones ───────────────────────────────────────────────────
-function InstructionsModal({ open, onClose, themeColors }) {
-  const steps = [
-    {
-      label: 'Ir a Stock → Insumos → Exportar a Excel',
-      description: (
-        <Box component="ul" sx={{ pl: 2, mt: 1, mb: 0 }}>
-          <li>Desde el menú lateral de MaxiRest navegar a <strong>Stock</strong></li>
-          <li>Ir a la sección <strong>Insumos</strong></li>
-          <li>Buscar el botón de <strong>exportar / Excel 📊</strong></li>
-          <li>Exportar <strong>sin filtros</strong> para traer el catálogo completo</li>
-        </Box>
-      ),
-    },
-    {
-      label: 'Verificar el archivo antes de subir',
-      description: (
-        <Box component="ul" sx={{ pl: 2, mt: 1, mb: 0 }}>
-          <li>El archivo debe tener las columnas: <strong>CODIGO, NOMBRE</strong> (mínimo)</li>
-          <li>Columnas opcionales que se importan si están: <strong>RUBRO, MEDIDA, PRECIO, DISCONTINUADO</strong></li>
-          <li>Los insumos que ya existen en Lazarillo se <strong>actualizan</strong></li>
-          <li>Los insumos nuevos se <strong>agregan</strong></li>
-          <li style={{ fontWeight: 900, color: '#166534' }}>✅ No se borra ningún insumo — solo se agrega/actualiza</li>
-          <li style={{ fontWeight: 900 }}>⚠️ No modificar las columnas antes de subir</li>
-        </Box>
-      ),
-    },
-  ];
+// ─── Definición de campos por tipo ───────────────────────────────────────────
+const CAMPOS = {
+  insumos: {
+    requeridos: [
+      { key: 'nombre', label: 'Nombre', desc: 'Nombre del insumo' },
+    ],
+    opcionales: [
+      { key: 'codigo',    label: 'Código',          desc: 'Código externo (Maxi, etc.)' },
+      { key: 'rubro',     label: 'Rubro',            desc: 'Categoría del insumo' },
+      { key: 'unidad',    label: 'Unidad de medida', desc: 'kg, gr, lt, u, etc.' },
+      { key: 'precio',    label: 'Precio',           desc: 'Precio de referencia' },
+      { key: 'elaborado', label: 'Elaborado',        desc: 'Si/No — si se produce internamente' },
+    ],
+  },
+  articulos: {
+    requeridos: [
+      { key: 'nombre', label: 'Nombre', desc: 'Nombre del artículo' },
+    ],
+    opcionales: [
+      { key: 'codigo',   label: 'Código',   desc: 'Código externo (Maxi, etc.)' },
+      { key: 'rubro',    label: 'Rubro',    desc: 'Categoría' },
+      { key: 'subrubro', label: 'Subrubro', desc: 'Subcategoría' },
+      { key: 'precio',   label: 'Precio',   desc: 'Precio de venta' },
+    ],
+  },
+  ventas: {
+    requeridos: [
+      { key: 'fecha',    label: 'Fecha',    desc: 'Fecha de la venta (YYYY-MM-DD o DD/MM/YYYY)' },
+      { key: 'codigo',   label: 'Código',   desc: 'Código del artículo vendido' },
+      { key: 'unidades', label: 'Unidades', desc: 'Cantidad vendida' },
+      { key: 'importe',  label: 'Importe',  desc: 'Monto total de la venta' },
+    ],
+    opcionales: [
+      { key: 'nombre', label: 'Nombre artículo', desc: 'Nombre descriptivo (no requerido)' },
+      { key: 'costo',  label: 'Costo',           desc: 'Costo unitario' },
+      { key: 'neto',   label: 'Neto',            desc: 'Importe neto sin impuestos' },
+    ],
+  },
+  compras: {
+    requeridos: [
+      { key: 'fecha',    label: 'Fecha',    desc: 'Fecha de la compra' },
+      { key: 'codigo',   label: 'Código',   desc: 'Código del insumo comprado' },
+      { key: 'cantidad', label: 'Cantidad', desc: 'Cantidad comprada' },
+      { key: 'importe',  label: 'Importe',  desc: 'Monto total de la compra' },
+    ],
+    opcionales: [
+      { key: 'nombre',     label: 'Nombre',     desc: 'Nombre del insumo' },
+      { key: 'proveedor',  label: 'Proveedor',  desc: 'Nombre del proveedor' },
+      { key: 'precio',     label: 'Precio unit.', desc: 'Precio por unidad' },
+      { key: 'medida',     label: 'Medida',     desc: 'Unidad de medida' },
+    ],
+  },
+};
 
+const ALIASES = {
+  nombre:    ['nombre','name','descripcion','description','producto','insumo','articulo','item','article_name'],
+  codigo:    ['codigo','code','cod','sku','id','codigomaxi','codigo_maxi','codigoexterno','article_id','codrui','cod_rui'],
+  rubro:     ['rubro','categoria','category','tipo','grupo','group','family','cod_ru','codrubro','cod_rubro'],
+  subrubro:  ['subrubro','subcategoria','subcategory','subgrupo','subgroup'],
+  unidad:    ['unidad','medida','um','unidadmedida','unidad_med','unidadmed','unit','medida'],
+  precio:    ['precio','price','precioventa','precio_venta','precioref','precio_ref','costo','cost','importe','p_prom'],
+  elaborado: ['elaborado','eselaborado','es_elaborado','elaborated'],
+  // Ventas
+  fecha:     ['fecha','date','fecha_venta','fechaventa','dia','day','ult_compra','ultcompra','ultima_compra'],
+  unidades:  ['unidades','qty','quantity','cant','cantidad_vendida','cantidadvendida','unid'],
+  importe:   ['importe','amount','total','monto','p_total','neto','subtotal'],
+  // Compras
+  cantidad:  ['cantidad','qty','quantity','cant','unidades'],
+  proveedor: ['proveedor','supplier','prov'],
+  medida:    ['medida','unidad','um','unit'],
+};
+
+function normalizeKey(k) {
+  return String(k || '').toLowerCase().replace(/[\s_\-.]/g, '');
+}
+
+function detectarColumna(colName) {
+  const norm = normalizeKey(colName);
+  for (const [campo, aliases] of Object.entries(ALIASES)) {
+    if (aliases.some(a => normalizeKey(a) === norm || norm.startsWith(normalizeKey(a)))) {
+      return campo;
+    }
+  }
+  return null;
+}
+
+async function parseFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv') {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return { headers: [], rows: [] };
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const headers = lines[0].split(sep).map(h => h.trim().replace(/^["']|["']$/g, ''));
+    const rows = lines.slice(1, 6).map(line => {
+      const vals = line.split(sep).map(v => v.trim().replace(/^["']|["']$/g, ''));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+      return obj;
+    });
+    return { headers, rows };
+  }
+  // Excel — extraer headers leyendo el archivo en el servidor
+  // Mandamos el archivo al backend para que nos devuelva solo las columnas
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'ods') {
+    try {
+      const token = localStorage.getItem('token') || '';
+      const formData = new FormData();
+      formData.append('file', file);
+      const r = await fetch(`${BASE}/businesses/upload/preview-headers`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const headers = Array.isArray(d.headers) ? d.headers : [];
+        return { headers, rows: d.rows || [], serverOnly: false };
+      }
+    } catch { /* ignorar, caer a serverOnly */ }
+    return { headers: [], rows: [], serverOnly: true };
+  }
+  return { headers: [], rows: [], serverOnly: true };
+}
+
+function ColChip({ estado, label }) {
+  const MAP = {
+    ok:      { color: 'success', icon: '✓' },
+    falta:   { color: 'error',   icon: '✗' },
+    extra:   { color: 'default', icon: '~' },
+    mapeada: { color: 'warning', icon: '↔' },
+  };
+  const { color, icon } = MAP[estado] || MAP.extra;
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Box display="flex" alignItems="center" gap={1}>
-            <HelpOutlineIcon sx={{ color: themeColors.primary }} />
-            <Typography variant="h6">¿Cómo exportar insumos desde MaxiRest?</Typography>
-          </Box>
-          <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
-        </Box>
-      </DialogTitle>
-
-      <DialogContent>
-        <Stepper orientation="vertical">
-          {steps.map((step, index) => (
-            <Step key={index} expanded active>
-              <StepLabel>
-                <Typography variant="subtitle1" fontWeight="bold">Paso {index + 1}</Typography>
-              </StepLabel>
-              <StepContent>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body1" fontWeight="medium" gutterBottom>{step.label}</Typography>
-                  <Typography variant="body2" color="text.secondary" component="div" sx={{ mb: 1 }}>
-                    {step.description}
-                  </Typography>
-                </Box>
-              </StepContent>
-            </Step>
-          ))}
-        </Stepper>
-
-        <Alert severity="info" sx={{ mt: 3 }}>
-          <Typography variant="body2">
-            💡 <strong>Tip:</strong> Si MaxiRest está devolviendo datos incompletos o rotos,
-            podés exportar el catálogo desde cualquier negocio que tenga la información correcta
-            y subirlo acá — los códigos se cruzan automáticamente.
-          </Typography>
-        </Alert>
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} variant="contained"
-          sx={{ bgcolor: themeColors.primary, '&:hover': { filter: 'brightness(0.9)' } }}>
-          Entendido
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <Chip size="small" label={`${icon} ${label}`} color={color}
+      sx={{ fontSize: '0.72rem', height: 22, fontWeight: estado === 'falta' ? 700 : 400 }} />
   );
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
-export default function UploadInsumosModal({ open, onClose, businessId, onSuccess }) {
-  const [file,             setFile]             = useState(null);
-  const [uploading,        setUploading]        = useState(false);
-  const [progress,         setProgress]         = useState(null);
-  const [error,            setError]            = useState(null);
-  const [success,          setSuccess]          = useState(false);
-  const [showInstructions, setShowInstructions] = useState(false);
+export default function UploadInsumosModal({
+  open, onClose, businessId, onSuccess,
+  tipo = 'insumos',
+}) {
+  const themeColor    = 'var(--color-primary, #3b82f6)';
+  const camposConfig  = CAMPOS[tipo] || CAMPOS.insumos;
+  const todosCampos   = [...camposConfig.requeridos, ...camposConfig.opcionales];
+  const tipoLabel     = tipo === 'articulos' ? 'artículos' : 'insumos';
 
-  const themeColors = React.useMemo(() => {
-    if (typeof window === 'undefined') return { primary: '#1976d2', secondary: '#10b981', onPrimary: '#ffffff' };
-    const styles = getComputedStyle(document.documentElement);
-    return {
-      primary:   styles.getPropertyValue('--color-primary')?.trim()   || '#1976d2',
-      secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-      onPrimary: styles.getPropertyValue('--on-primary')?.trim()      || '#ffffff',
-    };
+  const [step, setStep]       = useState('upload');
+  const [file, setFile]       = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [mapeo, setMapeo]     = useState({});
+  const [parsing, setParsing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const analisis = useMemo(() => {
+    if (!preview) return null;
+    const headers = preview.headers || [];
+
+    const autoMapeo = {};
+    headers.forEach(h => {
+      const campo = detectarColumna(h);
+      if (campo && !autoMapeo[campo]) autoMapeo[campo] = h;
+    });
+
+    const mapeoFinal = { ...autoMapeo, ...mapeo };
+
+    const estadoCampos = todosCampos.map(c => ({
+      ...c,
+      columna: mapeoFinal[c.key] || null,
+      estado: mapeoFinal[c.key]
+        ? (mapeo[c.key] && !autoMapeo[c.key] ? 'mapeada' : 'ok')
+        : null,
+    }));
+
+    const mapeadas = new Set(Object.values(mapeoFinal).filter(Boolean));
+    const extras = headers.filter(h => !mapeadas.has(h));
+    const faltantes = camposConfig.requeridos.filter(c => !mapeoFinal[c.key]);
+
+    return { estadoCampos, extras, faltantes, mapeoFinal, autoMapeo };
+  }, [preview, mapeo, todosCampos, camposConfig.requeridos]);
+
+  const handleFile = useCallback(async (f) => {
+    if (!f) return;
+    setFile(f);
+    setErrorMsg('');
+    setParsing(true);
+    try {
+      const parsed = await parseFile(f);
+      setPreview(parsed);
+      setMapeo({});
+      setStep('preview');
+    } catch (e) {
+      setErrorMsg('No se pudo leer el archivo: ' + e.message);
+    } finally {
+      setParsing(false);
+    }
   }, []);
 
-  const handleFileChange = (e) => {
-    const f = e.target.files[0];
-    if (f) { setFile(f); setError(null); setSuccess(false); }
-  };
-
   const handleUpload = async () => {
-    if (!file) return;
+    if (!file || !analisis || analisis.faltantes.length > 0) return;
+    setStep('uploading');
     setUploading(true);
-    setError(null);
-    setProgress({ inserted: 0, updated: 0, total: 0, failed: 0 });
-
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('mapeo', JSON.stringify(analisis.mapeoFinal));
 
-      const token    = localStorage.getItem('token');
-      const response = await fetch(
-        `${BASE}/businesses/${businessId}/insumos/import-csv`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
-      );
+      const token = localStorage.getItem('token') || '';
+      const endpoints = {
+        articulos: `${BASE}/businesses/${businessId}/articles/import-csv`,
+        insumos:   `${BASE}/businesses/${businessId}/insumos/import-csv`,
+        ventas:    `${BASE}/businesses/${businessId}/sales/import-csv`,
+        compras:   `${BASE}/businesses/${businessId}/purchases/import-csv`,
+      };
+      const endpoint = endpoints[tipo] || endpoints.insumos;
 
-      const result = await response.json();
-      console.log('[UploadInsumosModal] Respuesta:', result);
+      const res  = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        body: formData,
+      });
 
-      if (result.ok || response.ok) {
-        const s = result.summary || result;
-        setProgress({
-          inserted: Number(s.inserted ?? 0),
-          updated:  Number(s.updated  ?? 0),
-          total:    Number(s.total_rows ?? 0),
-          failed:   Number(s.failed   ?? 0),
-        });
-        setSuccess(true);
-      } else {
-        throw new Error(result.message || result.error || 'Error al importar insumos');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+          (data?.columnas_detectadas ? `Columnas detectadas: ${data.columnas_detectadas.join(', ')}` : `Error ${res.status}`)
+        );
       }
-    } catch (err) {
-      console.error('[UploadInsumosModal] Error:', err);
-      setError(err.message || 'Error desconocido');
+      setResult(data.summary || data);
+      setStep('done');
+    } catch (e) {
+      setErrorMsg(e.message);
+      setStep('error');
     } finally {
       setUploading(false);
     }
   };
 
   const handleClose = () => {
-    if (!uploading) {
-      if (success && onSuccess) onSuccess();
-      setFile(null); setProgress(null); setError(null); setSuccess(false);
-      onClose();
-    }
+    if (uploading) return;
+    if (step === 'done') onSuccess?.();
+    setFile(null); setPreview(null); setMapeo({});
+    setResult(null); setErrorMsg(''); setStep('upload');
+    onClose();
   };
 
   return (
-    <>
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Box display="flex" alignItems="center" gap={1}>
-              <Inventory2Icon sx={{ color: themeColors.primary }} />
-              <Typography variant="h6">
-                {success ? '✓ Importación Completada' : 'Importar Insumos desde Archivo'}
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography fontWeight={700} sx={{ fontSize: '1rem' }}>
+            {step === 'done'
+              ? `✓ ${tipoLabel.charAt(0).toUpperCase() + tipoLabel.slice(1)} importados`
+              : `Importar ${tipoLabel}`}
+          </Typography>
+          <IconButton size="small" onClick={handleClose} disabled={uploading}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent sx={{ pt: 1 }}>
+
+        {/* PASO 1 — Subir */}
+        {step === 'upload' && (
+          <Stack spacing={2}>
+            <Alert severity="info" sx={{ py: 0.5, fontSize: '0.82rem' }}>
+              Subí un CSV o Excel con tus {tipoLabel}. El sistema detectará las columnas
+              automáticamente y mostrará una vista previa antes de importar.
+            </Alert>
+
+            <Box
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              onClick={() => document.getElementById('import-file-input').click()}
+              sx={{
+                border: `2px dashed ${themeColor}`, borderRadius: 2, p: 5,
+                textAlign: 'center', cursor: 'pointer', bgcolor: `${themeColor}08`,
+                transition: 'all 0.2s', '&:hover': { bgcolor: `${themeColor}15` },
+              }}
+            >
+              <CloudUploadIcon sx={{ fontSize: 52, color: themeColor, mb: 1 }} />
+              <Typography fontWeight={600} sx={{ color: themeColor }}>
+                Arrastrá o hacé clic para seleccionar
+              </Typography>
+              <Typography variant="caption" color="text.secondary">CSV, XLS, XLSX</Typography>
+              <input id="import-file-input" type="file" accept=".csv,.xls,.xlsx"
+                style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+            </Box>
+
+            {parsing && <LinearProgress />}
+            {errorMsg && <Alert severity="error" sx={{ py: 0.5 }}>{errorMsg}</Alert>}
+
+            <Box>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                COLUMNAS QUE RECONOCE EL IMPORTADOR
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                {camposConfig.requeridos.map(c => (
+                  <Chip key={c.key} label={`${c.label} *`} size="small" color="error" variant="outlined"
+                    sx={{ fontSize: '0.7rem', height: 20 }} />
+                ))}
+                {camposConfig.opcionales.map(c => (
+                  <Chip key={c.key} label={c.label} size="small" variant="outlined"
+                    sx={{ fontSize: '0.7rem', height: 20, color: 'text.secondary' }} />
+                ))}
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                * Requerido. Las demás son opcionales.
               </Typography>
             </Box>
-            <Box display="flex" gap={1}>
-              {!success && (
-                <IconButton onClick={() => setShowInstructions(true)}
-                  sx={{ color: themeColors.primary, backgroundColor: `${themeColors.primary}15`,
-                    '&:hover': { backgroundColor: `${themeColors.primary}25` } }}
-                  title="¿Cómo exportar desde MaxiRest?">
-                  <HelpOutlineIcon />
-                </IconButton>
-              )}
-              <IconButton onClick={handleClose} disabled={uploading} size="small"
-                sx={{ color: uploading ? 'text.disabled' : 'text.secondary' }}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </Box>
-        </DialogTitle>
+          </Stack>
+        )}
 
-        <DialogContent>
-          <Box sx={{ py: 2 }}>
-            {/* Sin archivo */}
-            {!file && !success && (
-              <>
-                <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
-                  <Typography variant="body2" gutterBottom>
-                    <strong>📋 ¿Faltan insumos o los datos de MaxiRest están incompletos?</strong>
-                  </Typography>
-                  <Typography variant="caption" display="block">
-                    Exportá el catálogo de insumos desde MaxiRest y subilo acá. Solo se agregan/actualizan
-                    insumos — nunca se borra ninguno.
-                    Hacé clic en{' '}
-                    <HelpOutlineIcon sx={{ fontSize: 16, verticalAlign: 'middle', color: themeColors.primary }} />{' '}
-                    para ver las instrucciones.
-                  </Typography>
-                </Alert>
-
-                <Box
-                  sx={{
-                    border: `2px dashed ${themeColors.primary}`, borderRadius: 2, p: 5,
-                    textAlign: 'center', cursor: 'pointer', backgroundColor: `${themeColors.primary}08`,
-                    transition: 'all 0.3s',
-                    '&:hover': { backgroundColor: `${themeColors.primary}15`, transform: 'scale(1.01)' },
-                  }}
-                  onClick={() => document.getElementById('insumos-file-input').click()}
-                >
-                  <Inventory2Icon sx={{ fontSize: 64, color: themeColors.primary, mb: 2 }} />
-                  <Typography variant="h6" sx={{ color: themeColors.primary }} gutterBottom fontWeight="medium">
-                    Seleccioná tu archivo
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Arrastrá y soltá o hacé clic para seleccionar
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" display="block">
-                    Formatos: CSV, XLS, XLSX (exportado desde MaxiRest)
-                  </Typography>
-                  <input id="insumos-file-input" type="file" accept=".csv,.xls,.xlsx"
-                    style={{ display: 'none' }} onChange={handleFileChange} />
-                </Box>
-              </>
-            )}
-
-            {/* Archivo seleccionado */}
-            {file && !success && (
-              <Box>
-                <Alert severity="success" sx={{ mb: 2, bgcolor: `${themeColors.secondary}15`,
-                  '& .MuiAlert-icon': { color: themeColors.secondary } }}>
-                  <Typography variant="body2" fontWeight="medium">📄 {file.name}</Typography>
-                  <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                    Tamaño: {(file.size / 1024 / 1024).toFixed(2)} MB
-                  </Typography>
-                </Alert>
-                {uploading && (
-                  <Box sx={{ mt: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2" fontWeight="medium">Procesando...</Typography>
-                    </Box>
-                    <LinearProgress sx={{ height: 10, borderRadius: 1,
-                      '& .MuiLinearProgress-bar': { bgcolor: themeColors.primary } }} />
-                  </Box>
+        {/* PASO 2 — Vista previa */}
+        {step === 'preview' && preview && analisis && (
+          <Stack spacing={2}>
+            {/* Estado de columnas */}
+            <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                📄 {file?.name} — ANÁLISIS DE COLUMNAS
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                {analisis.estadoCampos
+                  .filter(c => c.columna)
+                  .map(c => (
+                    <Tooltip key={c.key} title={`"${c.columna}" → ${c.desc}`}>
+                      <span><ColChip estado={c.estado} label={c.label} /></span>
+                    </Tooltip>
+                  ))
+                }
+                {analisis.faltantes.map(c => (
+                  <Tooltip key={c.key} title={`Requerida: ${c.desc}`}>
+                    <span><ColChip estado="falta" label={c.label} /></span>
+                  </Tooltip>
+                ))}
+                {analisis.extras.length > 0 && (
+                  <Tooltip title={`Se ignoran: ${analisis.extras.join(', ')}`}>
+                    <Chip size="small" label={`${analisis.extras.length} columna${analisis.extras.length !== 1 ? 's' : ''} extra (se ignora${analisis.extras.length !== 1 ? 'n' : ''})`}
+                      sx={{ fontSize: '0.7rem', height: 22, color: 'text.secondary', bgcolor: '#f1f5f9' }} />
+                  </Tooltip>
                 )}
-              </Box>
-            )}
+              </Stack>
+            </Box>
 
-            {/* Éxito */}
-            {success && progress && (
-              <Box>
-                <Alert severity="success" icon={<CheckCircleIcon fontSize="large" />}
-                  sx={{ bgcolor: `${themeColors.secondary}15`,
-                    '& .MuiAlert-icon': { color: themeColors.secondary } }}>
-                  <Typography variant="h6" gutterBottom fontWeight="bold">✅ Importación completada</Typography>
-                  <Typography variant="body2">
-                    <strong style={{ color: '#166534' }}>+{progress.inserted}</strong> insumos nuevos
-                    · <strong>{progress.updated}</strong> actualizados
-                    {progress.failed > 0 && (
-                      <span style={{ color: '#d32f2f' }}> · ⚠️ {progress.failed} fallidos</span>
-                    )}
-                  </Typography>
-                  {progress.total > 0 && (
-                    <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Total procesado: {progress.total} filas
-                    </Typography>
-                  )}
-                </Alert>
-
-                <Box sx={{ mt: 2, p: 2, bgcolor: `${themeColors.primary}08`, borderRadius: 1,
-                  border: `1px solid ${themeColors.primary}20` }}>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                    📄 Archivo procesado:
-                  </Typography>
-                  <Typography variant="body2" fontWeight="medium">{file?.name}</Typography>
-                </Box>
-              </Box>
-            )}
-
-            {/* Error */}
-            {error && (
-              <Alert severity="error" icon={<ErrorIcon />} sx={{ mt: 2 }}>
-                <Typography variant="body2"><strong>Error al importar:</strong> {error}</Typography>
-                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Verificá que el archivo tenga las columnas CODIGO y NOMBRE y volvé a intentar.
-                </Typography>
+            {/* Alerta faltantes */}
+            {analisis.faltantes.length > 0 && (
+              <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.82rem' }}>
+                <strong>Columnas requeridas no detectadas automáticamente:</strong>{' '}
+                {analisis.faltantes.map(c => c.label).join(', ')}.
+                Seleccioná manualmente qué columna del archivo corresponde.
               </Alert>
             )}
-          </Box>
-        </DialogContent>
 
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-          {success ? (
-            <Button onClick={handleClose} variant="contained" fullWidth size="large"
-              sx={{ bgcolor: themeColors.secondary, color: themeColors.onPrimary,
-                '&:hover': { filter: 'brightness(0.9)' } }}>
-              ✓ Finalizar y actualizar catálogo
+            {/* Mapeo manual */}
+            {(analisis.faltantes.length > 0 || camposConfig.opcionales.some(c => !analisis.autoMapeo[c.key])) && (
+              <Box sx={{ bgcolor: '#fafafa', border: '1px solid #e2e8f0', borderRadius: 1.5, p: 1.5 }}>
+                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  MAPEO DE COLUMNAS
+                </Typography>
+                <Stack spacing={0.75}>
+                  {/* Requeridas sin detección */}
+                  {camposConfig.requeridos.filter(c => !analisis.autoMapeo[c.key]).map(campo => (
+                    <Stack key={campo.key} direction="row" alignItems="center" spacing={1}>
+                      <Typography variant="body2" fontWeight={700} color="error" sx={{ minWidth: 100, fontSize: '0.8rem' }}>
+                        {campo.label} *
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ flex: 1, fontSize: '0.72rem' }}>
+                        {campo.desc}
+                      </Typography>
+                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <Select value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
+                          onChange={e => setMapeo(m => ({ ...m, [campo.key]: e.target.value || undefined }))}>
+                          <MenuItem value=""><em>— Seleccioná —</em></MenuItem>
+                          {preview.headers.map(h => <MenuItem key={h} value={h} sx={{ fontSize: '0.8rem' }}>{h}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Stack>
+                  ))}
+
+                  {camposConfig.opcionales.filter(c => !analisis.autoMapeo[c.key]).length > 0 && (
+                    <>
+                      <Divider sx={{ my: 0.5 }} />
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>OPCIONAL</Typography>
+                      {camposConfig.opcionales.filter(c => !analisis.autoMapeo[c.key]).map(campo => (
+                        <Stack key={campo.key} direction="row" alignItems="center" spacing={1}>
+                          <Typography variant="body2" color="text.secondary" sx={{ minWidth: 100, fontSize: '0.8rem' }}>
+                            {campo.label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ flex: 1, fontSize: '0.72rem' }}>
+                            {campo.desc}
+                          </Typography>
+                          <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <Select value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
+                              onChange={e => setMapeo(m => ({ ...m, [campo.key]: e.target.value || undefined }))}>
+                              <MenuItem value=""><em>— No importar —</em></MenuItem>
+                              {preview.headers.map(h => <MenuItem key={h} value={h} sx={{ fontSize: '0.8rem' }}>{h}</MenuItem>)}
+                            </Select>
+                          </FormControl>
+                        </Stack>
+                      ))}
+                    </>
+                  )}
+                </Stack>
+              </Box>
+            )}
+
+            {/* Vista previa de filas */}
+            {!preview.serverOnly && preview.rows?.length > 0 && (
+              <Box>
+                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                  VISTA PREVIA — PRIMERAS {preview.rows.length} FILAS
+                </Typography>
+                <Box sx={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                        {preview.headers.map(h => {
+                          const campo = analisis.estadoCampos.find(c => c.columna === h);
+                          const esExtra = !campo;
+                          return (
+                            <TableCell key={h} sx={{ fontSize: '0.7rem', fontWeight: 700, py: 0.75, whiteSpace: 'nowrap' }}>
+                              <Stack direction="row" alignItems="center" spacing={0.5}>
+                                <span>{h}</span>
+                                {campo && (
+                                  <Chip size="small" label={campo.label} color="success"
+                                    sx={{ fontSize: '0.6rem', height: 16 }} />
+                                )}
+                                {esExtra && (
+                                  <Chip size="small" label="extra"
+                                    sx={{ fontSize: '0.6rem', height: 16, bgcolor: '#f1f5f9', color: '#94a3b8' }} />
+                                )}
+                              </Stack>
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {preview.rows.map((row, i) => (
+                        <TableRow key={i} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
+                          {preview.headers.map(h => {
+                            const campo = analisis.estadoCampos.find(c => c.columna === h);
+                            return (
+                              <TableCell key={h} sx={{
+                                fontSize: '0.75rem', py: 0.5,
+                                maxWidth: 160, overflow: 'hidden',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                color: campo ? 'inherit' : '#94a3b8',
+                              }}>
+                                {String(row[h] ?? '')}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Vista previa de las primeras {preview.rows.length} filas. Los datos en gris se ignorarán.
+                </Typography>
+              </Box>
+            )}
+
+            {preview.serverOnly && (
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.82rem' }}>
+                Los archivos XLS/XLSX se procesan directamente en el servidor.
+                El importador reconocerá las columnas automáticamente al subir.
+              </Alert>
+            )}
+          </Stack>
+        )}
+
+        {/* PASO 3 — Cargando */}
+        {step === 'uploading' && (
+          <Stack spacing={2} alignItems="center" py={3}>
+            <LinearProgress sx={{ width: '100%', height: 6, borderRadius: 3 }} />
+            <Typography variant="body2" color="text.secondary">
+              Importando {tipoLabel}…
+            </Typography>
+          </Stack>
+        )}
+
+        {/* PASO 4 — Éxito */}
+        {step === 'done' && result && (
+          <Alert severity="success" icon={<CheckCircleIcon />} sx={{ py: 1.5 }}>
+            <Typography fontWeight={700} sx={{ fontSize: '0.9rem' }}>Importación completada</Typography>
+            <Stack direction="row" spacing={2} mt={0.75} flexWrap="wrap">
+              <Typography variant="body2">
+                <strong style={{ color: '#166534' }}>+{result.inserted ?? 0}</strong> nuevos
+              </Typography>
+              <Typography variant="body2">
+                <strong>{result.updated ?? 0}</strong> actualizados
+              </Typography>
+              {(result.skipped ?? 0) > 0 && (
+                <Typography variant="body2" color="text.secondary">{result.skipped} omitidos</Typography>
+              )}
+            </Stack>
+            {result.batchId && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Lote: {result.batchId}
+              </Typography>
+            )}
+          </Alert>
+        )}
+
+        {/* ERROR */}
+        {step === 'error' && (
+          <Alert severity="error" icon={<ErrorIcon />} sx={{ py: 1 }}>
+            <Typography fontWeight={700} sx={{ fontSize: '0.9rem' }}>Error al importar</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>{errorMsg}</Typography>
+          </Alert>
+        )}
+
+      </DialogContent>
+
+      <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
+        {step === 'upload' && (
+          <Button size="small" color="inherit" onClick={handleClose}>Cancelar</Button>
+        )}
+        {step === 'preview' && (
+          <>
+            <Button size="small" color="inherit" onClick={() => { setStep('upload'); setPreview(null); }}>
+              ← Cambiar archivo
             </Button>
-          ) : (
-            <>
-              <Button onClick={handleClose} disabled={uploading} variant="outlined"
-                sx={{ borderColor: 'text.secondary', color: 'text.secondary' }}>
-                Cancelar
-              </Button>
-              <Button onClick={handleUpload} disabled={!file || uploading}
-                variant="contained" startIcon={uploading ? null : <CloudUploadIcon />} size="large"
-                sx={{ bgcolor: themeColors.primary, color: themeColors.onPrimary,
-                  '&:hover': { filter: 'brightness(0.9)' } }}>
-                {uploading ? 'Importando...' : 'Importar Insumos'}
-              </Button>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      <InstructionsModal open={showInstructions} onClose={() => setShowInstructions(false)}
-        themeColors={themeColors} />
-    </>
+            <Box flex={1} />
+            {analisis?.faltantes.length > 0 && (
+              <Typography variant="caption" color="error" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                <WarningAmberIcon sx={{ fontSize: 13, mb: '-2px' }} /> Mapeá las columnas requeridas
+              </Typography>
+            )}
+            <Button size="small" variant="contained"
+              onClick={handleUpload} disabled={!!(analisis?.faltantes.length)}
+              startIcon={<CloudUploadIcon />}
+              sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
+              Importar {tipoLabel}
+            </Button>
+          </>
+        )}
+        {step === 'done' && (
+          <Button size="small" variant="contained" onClick={handleClose} fullWidth
+            sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
+            Finalizar
+          </Button>
+        )}
+        {step === 'error' && (
+          <>
+            <Button size="small" color="inherit" onClick={handleClose}>Cerrar</Button>
+            <Button size="small" variant="outlined" onClick={() => { setStep('upload'); setErrorMsg(''); }}>
+              Reintentar
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }

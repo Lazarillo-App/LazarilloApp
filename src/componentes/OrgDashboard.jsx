@@ -6,23 +6,33 @@
 // Activar / Editar / Eliminar en cada card.
 
 import React, { useMemo, useState, useRef } from 'react';
-import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
-import EditIcon         from '@mui/icons-material/Edit';
-import DeleteIcon       from '@mui/icons-material/Delete';
-import AutorenewIcon    from '@mui/icons-material/Autorenew';
-import Inventory2Icon   from '@mui/icons-material/Inventory2';
-import PointOfSaleIcon  from '@mui/icons-material/PointOfSale';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import CircularProgress from '@mui/material/CircularProgress';
-
-import { useOrganization }  from '../context/OrganizationContext';
-import { useBusiness }      from '@/context/BusinessContext';
+import BusinessCreateModal from './BusinessCreateModal';
+import { useOrganization } from '../context/OrganizationContext';
+import { useBusiness } from '@/context/BusinessContext';
+import { useBranch } from '@/hooks/useBranch';
 import { syncArticulos, syncInsumos, isMaxiConfigured } from '@/servicios/syncService';
-import { purchasesSync } from '@/servicios/apiPurchases';
 import { checkNewArticlesAndSuggest, applyAutoGrouping, createNewAgrupacion } from '@/servicios/autoGrouping';
-import AutoGroupModal    from './AutoGroupModal';
-import BusinessEditModal   from './BusinessEditModal';
-import SyncComprasModal    from './SyncComprasModal';
+import {
+  getOrgPriceListConfig,
+  getBusinessPriceList,
+  setBusinessPriceList,
+} from '@/servicios/apiPriceLists';
+import AutoGroupModal from './AutoGroupModal';
+import BusinessEditModal from './BusinessEditModal';
+import BranchFormModal from './BranchFormModal';
+import SyncComprasModal from './SyncComprasModal';
+import PriceListConfigModal from './PriceListConfigModal';
+import PriceChangeIcon from '@mui/icons-material/PriceChange';
+import SettingsIcon from '@mui/icons-material/Settings';
+import StoreIcon from '@mui/icons-material/Store';
 
 /* ─────────────────────────────────────────────────────── helpers */
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://lazarilloapp-backend.onrender.com';
@@ -36,36 +46,73 @@ const toAbsolute = (u) => {
 };
 
 const getBranding = (b) => b?.branding || b?.props?.branding || {};
-const getPhoto    = (b) => toAbsolute(b?.photo_url || getBranding(b)?.cover_url || b?.image_url || '');
-const getLogo     = (b) => toAbsolute(getBranding(b)?.logo_url || '');
+const getPhoto = (b) => toAbsolute(b?.photo_url || getBranding(b)?.cover_url || b?.image_url || '');
+const getLogo = (b) => toAbsolute(getBranding(b)?.logo_url || '');
 
 /* ─────────────────────────────────────────────────────── OrgBizCard */
-function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete, showNotice }) {
+function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSucursal, onDelete, showNotice, orgId, allLists, onListsUpdated, rawBranches, onBranchesChange }) {
   const isActive = String(activeId) === String(biz.id);
 
-  const [syncingArt,     setSyncingArt]     = useState(false);
+  const [syncingArt, setSyncingArt] = useState(false);
   const [syncingInsumos, setSyncingInsumos] = useState(false);
-  const [syncingCompras, setSyncingCompras] = useState(false);
   const [comprasModalOpen, setComprasModalOpen] = useState(false);
-  const [maxiOk,         setMaxiOk]         = useState(null); // null=cargando, true/false
-  const syncArtRef     = useRef(false);
+  const [maxiOk, setMaxiOk] = useState(null);
+  const syncArtRef = useRef(false);
   const syncInsumosRef = useRef(false);
 
   const [autoGroupModal, setAutoGroupModal] = useState({ open: false, suggestions: [], loading: false });
 
-  // Chequear Maxi solo si es el principal
+  // ── Sucursales de este negocio específico ──
+  const sucursales = useMemo(() =>
+    (rawBranches || []).filter(b => !b.props?.is_main && String(b.business_id) === String(biz.id)),
+    [rawBranches, biz.id]
+  );
+  const [editingSuc, setEditingSuc] = useState(null);  // null = nueva, objeto = editar
+  const [sucModalOpen, setSucModalOpen] = useState(false);
+  const [deletingSucId, setDeletingSucId] = useState(null);
+
+  // ── Lista de precios ──
+  const defaultLists = [1, 2, 3, 4].map(n => ({
+    listNumber: n, alias: `Lista ${n}`, isPrincipal: n === 1, discountPct: null,
+  }));
+  const safeLists = Array.isArray(allLists) && allLists.length > 0 ? allLists : defaultLists;
+  const [activeListNum, setActiveListNum] = useState(1);
+  const [loadingList, setLoadingList] = useState(true);
+  const [savingList, setSavingList] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (!biz?.id) return;
+    setLoadingList(true);
+    getBusinessPriceList(biz.id)
+      .then(n => setActiveListNum(n ?? 1))
+      .catch(() => setActiveListNum(1))
+      .finally(() => setLoadingList(false));
+  }, [biz?.id]);
+
+  const handleListChange = async (listNumber) => {
+    setSavingList(true);
+    try {
+      await setBusinessPriceList(biz.id, listNumber);
+      setActiveListNum(listNumber);
+    } catch (e) { showNotice?.(`❌ Error: ${e.message}`); }
+    finally { setSavingList(false); }
+  };
+
+  const activeListData = safeLists.find(l => l.listNumber === activeListNum);
+  // ──────────────────────
+
   React.useEffect(() => {
     if (!isPrincipal) { setMaxiOk(false); return; }
     let alive = true;
     isMaxiConfigured(biz.id)
-      .then(ok  => { if (alive) setMaxiOk(ok); })
-      .catch(()  => { if (alive) setMaxiOk(false); });
+      .then(ok => { if (alive) setMaxiOk(ok); })
+      .catch(() => { if (alive) setMaxiOk(false); });
     return () => { alive = false; };
   }, [biz.id, isPrincipal]);
 
-  /* ── visual ── */
-  const logo      = getLogo(biz);
-  const photo     = getPhoto(biz);
+  const logo = getLogo(biz);
+  const photo = getPhoto(biz);
   const thumbnail = logo || photo;
   const isLogoThumb = !!logo;
 
@@ -79,7 +126,6 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
     return String(raw || '');
   })();
 
-  /* ── sync handlers ── */
   const handleSyncArticulos = async () => {
     if (syncingArt || syncArtRef.current) return;
     setSyncingArt(true); syncArtRef.current = true;
@@ -94,7 +140,7 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
           try {
             const suggestions = await checkNewArticlesAndSuggest(biz.id);
             if (suggestions?.length > 0) setAutoGroupModal({ open: true, suggestions, loading: false });
-          } catch {}
+          } catch { }
         }, 1500);
       }
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
@@ -112,8 +158,6 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
     finally { setSyncingInsumos(false); syncInsumosRef.current = false; }
   };
-
-  const handleSyncCompras = () => setComprasModalOpen(true);
 
   const handleApplyAutoGrouping = async (selections) => {
     setAutoGroupModal(p => ({ ...p, loading: true }));
@@ -138,6 +182,7 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
 
   return (
     <>
+      <div className="grid"></div>
       <AutoGroupModal
         open={autoGroupModal.open}
         suggestions={autoGroupModal.suggestions}
@@ -154,8 +199,22 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
         onSuccess={(msg) => showNotice?.(msg)}
       />
 
+      {configModalOpen && (
+        <PriceListConfigModal
+          open={configModalOpen}
+          onClose={() => setConfigModalOpen(false)}
+          orgId={orgId}
+          bizId={biz.id}
+          listNumber={activeListNum}
+          allLists={safeLists}
+          onSaved={(updatedLists) => {
+            onListsUpdated?.(updatedLists);
+            setConfigModalOpen(false);
+          }}
+        />
+      )}
+
       <div className="bc-card">
-        {/* TOP */}
         <div className="bc-top">
           <div className="bc-left">
             <div className="bc-title-row">
@@ -185,7 +244,6 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
           </div>
         </div>
 
-        {/* ACCIONES */}
         <div className="bc-actions">
           <div className="bc-actions-main">
             {!isActive && (
@@ -196,13 +254,18 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
             <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(biz)}>
               <EditIcon fontSize="small" /> Editar
             </button>
+            {isPrincipal && (
+              <button className="bc-btn bc-btn-outline" onClick={() => onEditSucursal?.(biz)}
+                title="Editar datos de la sucursal principal (independiente del negocio)">
+                <StoreIcon fontSize="small" /> Sucursal
+              </button>
+            )}
             <button className="bc-icon bc-icon-danger" title="Eliminar negocio"
-              onClick={e => { try { e.currentTarget.blur(); } catch {} e.stopPropagation(); onDelete?.(biz); }}>
+              onClick={e => { try { e.currentTarget.blur(); } catch { } e.stopPropagation(); onDelete?.(biz); }}>
               <DeleteIcon fontSize="small" />
             </button>
           </div>
 
-          {/* SYNC — solo principal */}
           {isPrincipal && (
             <div className="bc-actions-sync">
               <button className="bc-btn bc-btn-outline" onClick={handleSyncArticulos}
@@ -223,13 +286,6 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
                   {syncingInsumos ? ' Insumos…' : ' Insumos'}
                 </button>
               )}
-              {/* {maxiOk === true && (
-                <button className="bc-btn bc-btn-outline" onClick={handleSyncCompras}
-                  disabled={syncingCompras} title="Sincronizar compras del mes actual desde Maxi">
-                  {syncingCompras ? <CircularProgress size={16} /> : <ShoppingCartIcon fontSize="small" />}
-                  {syncingCompras ? ' Compras…' : ' Compras'}
-                </button>
-              )} */}
               {maxiOk === false && (
                 <button className="bc-btn bc-btn-outline" disabled
                   title="Configurá Maxi para habilitar la sincronización"
@@ -240,6 +296,143 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
             </div>
           )}
         </div>
+
+        {/* ── Lista de precios ── */}
+        <div className="bc-price-section">
+          <span className="bc-price-label">
+            <PriceChangeIcon style={{ fontSize: 13 }} />
+            Lista de precios
+          </span>
+          <div className="bc-price-row">
+            {loadingList ? (
+              <CircularProgress size={14} />
+            ) : (
+              <select
+                className="bc-price-select"
+                value={activeListNum}
+                disabled={savingList}
+                onChange={e => handleListChange(Number(e.target.value))}
+              >
+                {safeLists.map(l => (
+                  <option key={l.listNumber} value={l.listNumber}>
+                    {l.alias || `Lista ${l.listNumber}`}
+                    {l.isPrincipal ? '  ⭐' : ''}
+                    {!l.isPrincipal && l.discountPct ? `  (−${l.discountPct}%)` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            {savingList && <CircularProgress size={13} />}
+            <button
+              className="bc-btn bc-btn-outline bc-price-cfg-btn"
+              onClick={() => setConfigModalOpen(true)}
+              disabled={loadingList}
+              title={`Configurar "${activeListData?.alias || `Lista ${activeListNum}`}"`}
+            >
+              <SettingsIcon style={{ fontSize: 14 }} />
+              Configurar
+            </button>
+          </div>
+          {!loadingList && activeListData && !activeListData.isPrincipal && activeListData.discountPct && (
+            <span className="bc-price-discount-badge">
+              −{activeListData.discountPct}% sobre{' '}
+              {safeLists.find(l => l.isPrincipal)?.alias || 'lista principal'}
+            </span>
+          )}
+        </div>
+
+        {/* ── Sucursales ── */}
+        <div className="bc-branches-section">
+          <div className="bc-branches-header">
+            <span className="bc-price-label">
+              <StoreIcon style={{ fontSize: 13 }} />
+              Sucursales
+              {isActive && sucursales.length > 0 && (
+                <span className="bc-branches-count">{sucursales.length}</span>
+              )}
+            </span>
+            {isActive && (
+              <button className="bc-btn bc-btn-outline bc-branches-add"
+                onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}
+                title="Agregar sucursal">
+                <AddIcon style={{ fontSize: 14 }} /> Nueva
+              </button>
+            )}
+          </div>
+
+          {!isActive ? (
+            <div className="bc-branches-empty">
+              Activá este negocio para ver y gestionar sus sucursales
+            </div>
+          ) : sucursales.length === 0 ? (
+            <div className="bc-branches-empty">
+              Sin sucursales adicionales —{' '}
+              <span className="bc-branches-add-link"
+                onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}>
+                agregar
+              </span>
+            </div>
+          ) : (
+            <div className="bc-branches-list">
+              {sucursales.map(suc => (
+                <div key={suc.id} className="bc-branch-row">
+                  <div className="bc-branch-info">
+                    <span className="bc-branch-name">{suc.name || `Sucursal #${suc.id}`}</span>
+                    {suc.address?.line1 && (
+                      <span className="bc-branch-addr">{suc.address.line1}{suc.address.city ? `, ${suc.address.city}` : ''}</span>
+                    )}
+                  </div>
+                  <div className="bc-branch-actions">
+                    <button className="bc-icon" title="Editar sucursal"
+                      onClick={() => { setEditingSuc(suc); setSucModalOpen(true); }}>
+                      <EditIcon style={{ fontSize: 14 }} />
+                    </button>
+                    <button className="bc-icon bc-icon-danger" title="Eliminar sucursal"
+                      disabled={deletingSucId === suc.id}
+                      onClick={async () => {
+                        if (!window.confirm(`¿Eliminar la sucursal "${suc.name}"?`)) return;
+                        setDeletingSucId(suc.id);
+                        try {
+                          const { BranchesAPI } = await import('@/servicios/apiBranches');
+                          await BranchesAPI.remove(suc.id);
+                          showNotice?.(`Sucursal "${suc.name}" eliminada`);
+                          onBranchesChange?.();
+                        } catch (e) { showNotice?.(`❌ Error: ${e.message}`); }
+                        finally { setDeletingSucId(null); }
+                      }}>
+                      {deletingSucId === suc.id ? <CircularProgress size={12} /> : <DeleteIcon style={{ fontSize: 14 }} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {isActive && (
+          <BranchFormModal
+            open={sucModalOpen}
+            onClose={() => setSucModalOpen(false)}
+            onSaved={() => { setSucModalOpen(false); showNotice?.('Sucursal guardada'); onBranchesChange?.(); }}
+            bizId={biz.id}
+            branch={editingSuc}
+          />
+        )}
+
+        <style>{`
+          .bc-branches-section{border-top:1px solid var(--color-border,#e5e7eb);padding-top:10px;display:flex;flex-direction:column;gap:8px;}
+          .bc-branches-header{display:flex;align-items:center;justify-content:space-between;}
+          .bc-branches-count{display:inline-flex;align-items:center;justify-content:center;background:var(--color-primary,#3b82f6);color:#fff;font-size:10px;font-weight:700;width:16px;height:16px;border-radius:50%;margin-left:4px;}
+          .bc-branches-add{padding:4px 8px;font-size:0.75rem;border-radius:7px;}
+          .bc-branches-empty{font-size:0.78rem;color:#94a3b8;font-style:italic;}
+          .bc-branches-add-link{color:var(--color-primary,#3b82f6);cursor:pointer;font-style:normal;font-weight:600;text-decoration:underline;}
+          .bc-branches-list{display:flex;flex-direction:column;gap:4px;}
+          .bc-branch-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;background:#f8fafc;border:1px solid #e8edf2;}
+          .bc-branch-info{display:flex;flex-direction:column;min-width:0;flex:1;}
+          .bc-branch-name{font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .bc-branch-addr{font-size:0.72rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .bc-branch-actions{display:flex;gap:4px;flex-shrink:0;}
+        `}</style>
 
         <style>{`
           .bc-card{background:var(--color-surface,#fff);border:1px solid var(--color-border,#e5e7eb);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}
@@ -268,6 +461,14 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
           .bc-icon{width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid var(--color-border,#e5e7eb);display:grid;place-items:center;cursor:pointer;}
           .bc-icon-danger{color:#e11d48;}
           .bc-icon-danger:hover{background:#fff1f2;border-color:#fecdd3;}
+          .bc-price-section{border-top:1px solid var(--color-border,#e5e7eb);padding-top:10px;display:flex;flex-direction:column;gap:6px;}
+          .bc-price-label{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;}
+          .bc-price-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+          .bc-price-select{border:1px solid var(--color-border,#e5e7eb);border-radius:8px;padding:6px 10px;font-size:0.82rem;font-weight:600;background:var(--color-surface,#fff);color:var(--color-fg,#111827);cursor:pointer;outline:none;transition:border-color .15s;flex:1;min-width:140px;max-width:260px;}
+          .bc-price-select:hover:not(:disabled){border-color:var(--color-primary,#0ea5e9);}
+          .bc-price-select:disabled{opacity:.6;cursor:default;}
+          .bc-price-cfg-btn{padding:6px 10px;font-size:0.78rem;border-radius:8px;white-space:nowrap;flex-shrink:0;}
+          .bc-price-discount-badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;width:fit-content;}
           @media(max-width:720px){.bc-thumb-wrap{width:140px;}}
         `}</style>
       </div>
@@ -279,9 +480,24 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onDelete,
 export default function OrgDashboard({ compact = false, onSelectBusiness }) {
   const { organization, allBusinesses, rootBusiness } = useOrganization();
   const { activeBusinessId, selectBusiness, refetchBusinesses } = useBusiness();
-
+  const { rawBranches } = useBranch() || {};
+  const [showCreate, setShowCreate] = useState(false);
   const [editingBiz, setEditingBiz] = useState(null);
-  const [notice,     setNotice]     = useState('');
+  const [editingMainBranch, setEditingMainBranch] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [allLists, setAllLists] = useState([]);
+
+  // Cargar config de listas de la org
+  React.useEffect(() => {
+    const orgId = organization?.id;
+    if (!orgId) return;
+    const defaultLists = [1, 2, 3, 4].map(n => ({
+      listNumber: n, alias: `Lista ${n}`, isPrincipal: n === 1, discountPct: null,
+    }));
+    getOrgPriceListConfig(orgId)
+      .then(cfg => setAllLists(Array.isArray(cfg) && cfg.length > 0 ? cfg : defaultLists))
+      .catch(() => setAllLists(defaultLists));
+  }, [organization?.id]);
 
   const showNotice = (msg) => setNotice(msg);
   React.useEffect(() => {
@@ -292,9 +508,18 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
 
   const principalId = rootBusiness?.id;
 
-  const todosOrdenados = useMemo(() =>
-    (allBusinesses || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
-    [allBusinesses]
+  // Si no hay org, construir lista desde los negocios del contexto de Business
+  const { items: bizItems } = useBusiness();
+
+  const todosOrdenados = useMemo(() => {
+    const base = allBusinesses?.length > 0 ? allBusinesses : (bizItems || []);
+    return base.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }, [allBusinesses, bizItems]);
+
+  if (!organization && (!bizItems || bizItems.length === 0)) return (
+    <div style={{ padding: '32px 24px', textAlign: 'center', color: '#94a3b8' }}>
+      No hay negocios configurados todavía.
+    </div>
   );
 
   const handleSetActive = async (bizId) => {
@@ -316,10 +541,26 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
     } catch (e) { showNotice(`❌ No se pudo eliminar: ${e.message}`); }
   };
 
-  if (!organization) return null;
+  if (!organization && todosOrdenados.length === 0) return (
+    <div style={{ padding: '32px 24px', textAlign: 'center', color: '#94a3b8' }}>
+      No hay negocios configurados todavía.
+    </div>
+  );
 
   return (
     <div style={{ padding: compact ? 0 : '32px 24px', maxWidth: compact ? '100%' : 1100, margin: compact ? 0 : '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button
+          onClick={() => setShowCreate(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '10px 18px', borderRadius: 10, border: 'none',
+            background: 'var(--color-primary, #3b82f6)',
+            color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+          }}>
+          + Nuevo negocio
+        </button>
+      </div>
       {notice && (
         <div style={{
           marginBottom: 12, padding: '10px 16px', borderRadius: 10,
@@ -344,8 +585,26 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
               activeId={activeBusinessId}
               onSetActive={handleSetActive}
               onEdit={setEditingBiz}
+              onEditSucursal={(biz) => {
+                const mainStored = (rawBranches || []).find(b => b.props?.is_main === true);
+                setEditingMainBranch({
+                  name: mainStored?.name ?? biz.name ?? '',
+                  logo_url: mainStored?.logo_url ?? '',
+                  address: mainStored?.address ?? {},
+                  contacts: mainStored?.contacts ?? {},
+                  props: mainStored?.props ?? { social: {} },
+                  isMain: true,
+                });
+              }}
               onDelete={handleDelete}
               showNotice={showNotice}
+              orgId={organization?.id}
+              allLists={allLists}
+              onListsUpdated={setAllLists}
+              rawBranches={rawBranches}
+              onBranchesChange={() => {
+                window.dispatchEvent(new CustomEvent('branch:updated'));
+              }}
             />
           ))}
         </div>
@@ -361,6 +620,29 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
           window.dispatchEvent(new Event('business:updated'));
         }}
       />
+
+      <BranchFormModal
+        open={!!editingMainBranch}
+        onClose={() => setEditingMainBranch(null)}
+        onSaved={() => {
+          setEditingMainBranch(null);
+          window.dispatchEvent(new CustomEvent('branch:updated'));
+        }}
+        bizId={Number(principalId)}
+        branch={editingMainBranch}
+      />
+
+      <BusinessCreateModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreateComplete={async (biz) => {
+          setShowCreate(false);
+          await refetchBusinesses?.();
+          showNotice(`✅ "${biz.name}" creado`);
+          window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } }));
+        }}
+      />
+
     </div>
   );
 }

@@ -15,6 +15,8 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SyncIcon from '@mui/icons-material/Sync';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import Badge from '@mui/material/Badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -22,7 +24,8 @@ export default function VentasActionsMenu({
     onImport,
     onExport,
     rango,
-    disabled = false
+    disabled = false,
+    alertaVentas = null, // { diasSinVentas, diasAlerta, ultimaVenta } | null
 }) {
     const [anchorEl, setAnchorEl] = useState(null);
     const open = Boolean(anchorEl);
@@ -86,25 +89,34 @@ export default function VentasActionsMenu({
 
     return (
         <>
-            <Button
-                variant="contained"
-                startIcon={<SyncIcon />}
-                onClick={handleClick}
-                disabled={disabled}
-                sx={{
-                    textTransform: 'none',
-                    bgcolor: themeColors.primary,
-                    color: themeColors.onPrimary,
-                    '&:hover': {
-                        bgcolor: themeColors.primary,
-                        filter: 'brightness(0.9)',
-                    },
-                    boxShadow: 2,
-                    padding: '7.5px 9px',
-                }}
+            <Badge
+                badgeContent={alertaVentas?.hayAlerta ? '!' : null}
+                color="warning"
+                sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', minWidth: 16, height: 16, fontWeight: 700 } }}
             >
-                Gestionar ventas
-            </Button>
+                <Button
+                    variant="contained"
+                    startIcon={<SyncIcon />}
+                    onClick={handleClick}
+                    disabled={disabled}
+                    sx={{
+                        textTransform: 'none',
+                        bgcolor: themeColors.primary,
+                        color: themeColors.onPrimary,
+                        '&:hover': {
+                            bgcolor: themeColors.primary,
+                            filter: 'brightness(0.9)',
+                        },
+                        boxShadow: 2,
+                        padding: '7.5px 9px',
+                    }}
+                >
+                    Gestionar ventas
+                    {alertaVentas?.hayAlerta && (
+                        <WarningAmberIcon sx={{ fontSize: 14, ml: 0.5, color: '#fbbf24' }} />
+                    )}
+                </Button>
+            </Badge>
 
             <Menu
                 anchorEl={anchorEl}

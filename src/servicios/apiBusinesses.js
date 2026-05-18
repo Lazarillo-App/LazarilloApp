@@ -439,6 +439,7 @@ uploadLogo: async (id, file) => {
       method: 'POST',
       body,
       withBusinessId: false,
+      noAuthRedirect: true,   // un 401 transitorio no debe borrar la sesión
     }),
 
   async getViewPrefs(businessId, { divisionId = null, scope = null } = {}) {

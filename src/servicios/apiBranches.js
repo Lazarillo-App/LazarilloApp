@@ -45,22 +45,13 @@ export const BranchesAPI = {
 
   /**
    * Editar la sucursal PRINCIPAL (el negocio mismo).
-   * Hace PATCH a /businesses/:bizId con los campos de sucursal
-   * mapeados a los campos del negocio (name, props.address, props.contact, etc.)
+   * Hace PATCH a /businesses/:bizId/branches/main
+   * Crea o actualiza la sucursal principal como branch independiente.
+   * NO toca el negocio padre.
    */
   updateMain: (bizId, payload) => {
-    const bizPayload = {
-      name: payload.name,
-      logo_url: payload.logo_url,
-      props: {
-        branding: payload.color ? { primary: payload.color } : undefined,
-        address:  payload.address,
-        contact:  payload.contacts,
-        social:   payload.props?.social,
-      },
-    };
     const token = localStorage.getItem('token') || '';
-    const url   = `${BASE}/businesses/${bizId}`;
+    const url   = `${BASE}/businesses/${bizId}/branches/main`;
     return fetch(url, {
       method: 'PATCH',
       headers: {
@@ -68,7 +59,13 @@ export const BranchesAPI = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         'X-Business-Id': String(bizId),
       },
-      body: JSON.stringify(bizPayload),
+      body: JSON.stringify({
+        name:     payload.name,
+        logo_url: payload.logo_url,
+        address:  payload.address,
+        contacts: payload.contacts,
+        props:    payload.props,
+      }),
     }).then(async (res) => {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);

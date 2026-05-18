@@ -116,7 +116,11 @@ export default function App() {
           return;
         }
 
-        const id = await ensureActiveBusiness();
+        const id = await ensureActiveBusiness().catch(e => {
+          // Sin negocios — flujo válido para usuario nuevo
+          if (e?.message?.includes('Sin negocios')) return null;
+          throw e;
+        });
         setActiveBusinessId(id ? String(id) : '');
       } finally {
         setBootReady(true);
