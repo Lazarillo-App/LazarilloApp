@@ -6,13 +6,13 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import TuneIcon           from '@mui/icons-material/Tune';
-import ReceiptLongIcon    from '@mui/icons-material/ReceiptLong';
-import AddIcon            from '@mui/icons-material/Add';
-import CloudUploadIcon    from '@mui/icons-material/CloudUpload';
-import SaveIcon           from '@mui/icons-material/Save';
-import PercentIcon        from '@mui/icons-material/Percent';
-import WarningAmberIcon   from '@mui/icons-material/WarningAmber';
+import TuneIcon from '@mui/icons-material/Tune';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import AddIcon from '@mui/icons-material/Add';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import SaveIcon from '@mui/icons-material/Save';
+import PercentIcon from '@mui/icons-material/Percent';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LotesPanelArticulos from './LotesPanelArticulos';
 
 function Card({ children, accent }) {
@@ -50,16 +50,16 @@ function CardBody({ children }) {
 }
 
 function ChipsRedondeo({ value, savedValue, onChange }) {
-  const tc   = 'var(--color-primary, #3b82f6)';
+  const tc = 'var(--color-primary, #3b82f6)';
   const OPTS = [2, 5, 10, 20, 50, 100, 500, 1000];
   // Normalizar a número para comparación estricta (el valor de DB puede llegar como string)
-  const valueNum     = value     != null ? Number(value)     : null;
+  const valueNum = value != null ? Number(value) : null;
   const savedValueNum = savedValue != null ? Number(savedValue) : null;
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
       {OPTS.map(op => {
+        const isSaved = savedValueNum === op;
         const isSelected = valueNum === op;
-        const isSaved    = savedValueNum === op;
         return (
           <Box key={op} sx={{ position: 'relative' }}>
             <Chip label={`$${op}`} size="small"
@@ -179,13 +179,18 @@ export default function ConfigArticulosTab({
   onUploadArticulos,
   abrirEquivalencias,
   themeColor,
+  mostrarModalRedondeo = true,
+  onToggleMostrarModal,
 }) {
   const tc = themeColor || 'var(--color-primary, #3b82f6)';
   const [confirmDlg, setConfirmDlg] = React.useState(null);
   // Valor guardado en DB — para el indicador visual del chip activo
   const [savedRedondeo, setSavedRedondeo] = React.useState(config?.redondeo_precios ?? null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.articulos_costo_ideal ?? '');
-  React.useEffect(() => { setSavedRedondeo(config?.redondeo_precios ?? null); }, [config?.redondeo_precios]);
+
+  React.useEffect(() => { 
+  setSavedRedondeo(config?.redondeo_precios ?? null); 
+}, [config?.redondeo_precios]);
   React.useEffect(() => { setSavedCostoIdeal(config?.articulos_costo_ideal ?? ''); }, [config?.articulos_costo_ideal]);
 
   const handleConfirm = () => {
@@ -198,7 +203,7 @@ export default function ConfigArticulosTab({
       setSavedRedondeo(config.redondeo_precios);
     }
     setConfirmDlg(null);
-  };  return (
+  }; return (
     <Box>
       <Tabs value={subTab ?? 0} onChange={(_, v) => setSubTab(v)} sx={{
         mb: 3, borderBottom: '1px solid #eee',
@@ -266,6 +271,18 @@ export default function ConfigArticulosTab({
                     savedValue={savedRedondeo}
                     onChange={v => setConfig(c => ({ ...c, redondeo_precios: v }))}
                   />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                    <input
+                      type="checkbox"
+                      id="mostrar-modal-redondeo"
+                      checked={!mostrarModalRedondeo}
+                      onChange={(e) => onToggleMostrarModal?.(!e.target.checked)}
+                      style={{ width: 14, height: 14, cursor: 'pointer', accentColor: tc }}
+                    />
+                    <label htmlFor="mostrar-modal-redondeo" style={{ fontSize: '0.8rem', cursor: 'pointer', color: '#555' }}>
+                      No mostrar aviso al aplicar aumentos
+                    </label>
+                  </Box>
                   {config.redondeo_precios && (
                     <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
                       Los precios se redondean al múltiplo de <strong>${config.redondeo_precios}</strong> más cercano.

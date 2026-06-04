@@ -133,6 +133,7 @@ function SidebarCategorias({
   onDeleteList,        // (listId) => void
   onDownloadList,      // (listId, listName) => void
   totalBizAmount = 0,
+  visibleSubrubro = null,
 }) {
   const categoriasSafe = Array.isArray(categorias) ? categorias : [];
   const loading = categoriasSafe.length === 0;
@@ -731,6 +732,8 @@ function SidebarCategorias({
             const keyStr = String(sub?.subrubro || (localListMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro'));
             const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
             const monto = montoArticulosSub(sub);
+            const isScrollVisible = !active && visibleSubrubro &&
+              norm(sub?.subrubro || '') === norm(visibleSubrubro || '');
             const articuloIdsRaw = (sub?.categorias || []).flatMap((c) => c?.articulos || []).map((a) => safeId(a)).filter(Boolean);
             const articuloIds = (activeIds instanceof Set && activeIds.size > 0)
               ? articuloIdsRaw.filter(id => activeIds.has(id)) : articuloIdsRaw;
@@ -749,30 +752,52 @@ function SidebarCategorias({
               <li key={keyStr}
                 className={[active ? 'categoria-activa' : ''].join(' ').trim()}
                 title={keyStr}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                style={{
+                  userSelect: 'none',
+                  borderLeft: isScrollVisible ? '3px solid var(--color-primary)' : '3px solid transparent',
+                  background: isScrollVisible ? 'color-mix(in srgb, var(--color-primary) 6%, transparent)' : undefined,
+                  transition: 'background 0.2s, border-left 0.2s',
+                }}
               >
-                <span onClick={() => handleCategoriaClick(sub)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <span className="icono" />
-                  {keyStr}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <small style={{ opacity: 0.65, display: 'flex', alignItems: 'center', gap: 3 }}>
-                    {typeof monto === 'number' && monto > 0 && (
-                      <>
+                {/* Fila principal — toda clickeable */}
+                <div
+                  onClick={() => handleCategoriaClick(sub)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', gap: 8, cursor: 'pointer',
+                    flex: 1, width: '100%',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <span className="icono" />
+                    <span style={{ wordBreak: 'break-word', lineHeight: 1.3 }}>
+                      {keyStr}
+                    </span>
+                  </span>
+
+                  {/* Monto + % apilados verticalmente */}
+                  {typeof monto === 'number' && monto > 0 && (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+                      opacity: 0.75, flexShrink: 0,
+                    }}>
+                      <small style={{ fontSize: '0.72 rem', fontWeight: 600 }}>
                         {fmtCurrency(monto)}
-                        {agrupMonto > 0 && (
-                          <span style={{
-                            color: 'var(--color-primary)',
-                            fontSize: '0.68rem',
-                            fontWeight: 600,
-                            opacity: 0.85,
-                          }}>
-                            {` (${fmt(monto / agrupMonto * 100)}%)`}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </small>
+                      </small>
+                      {agrupMonto > 0 && (
+                        <span style={{
+                          color: 'black',
+                          fontSize: '0.65rem', fontWeight: 600,
+                        }}>
+                          {fmt(monto / agrupMonto * 100)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Botones siempre en su propia fila */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
                   <SubrubroAccionesMenu
                     subrubro={sub?.subrubro}
                     articuloIds={articuloIds}

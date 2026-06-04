@@ -458,82 +458,112 @@ function InsumosSidebar({
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
         {/* Toggle Agrupaciones / Listas */}
-        <Box sx={{ display: 'flex', mb: 1, mt: 1, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
-          {['agrupaciones', 'listas'].map(tab => (
-            <Box
-              key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                if (tab === 'agrupaciones') onClearInsumoList?.();
-              }}
-              sx={{
-                flex: 1, textAlign: 'center', py: 0.75, cursor: 'pointer', fontSize: '0.8rem',
-                fontWeight: activeTab === tab ? 700 : 400,
-                background: activeTab === tab ? 'var(--color-primary, #1976d2)' : 'transparent',
-                color: activeTab === tab ? '#fff' : 'text.secondary',
-                textTransform: 'capitalize', transition: 'all .15s',
-                userSelect: 'none',
-              }}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Box>
-          ))}
-        </Box>
+        <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
+          <button
+            onClick={() => { setActiveTab('agrupaciones'); onClearInsumoList?.(); }}
+            style={{
+              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
+              border: '1px solid #e2e8f0', borderRight: 'none',
+              borderRadius: '6px 0 0 6px', cursor: 'pointer',
+              background: activeTab === 'agrupaciones' ? '#1e293b' : 'transparent',
+              color: activeTab === 'agrupaciones' ? '#fff' : '#64748b',
+              transition: 'all 0.15s',
+            }}
+          >
+            Agrupaciones
+          </button>
+          <button
+            onClick={() => setActiveTab('listas')}
+            style={{
+              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
+              border: '1px solid #e2e8f0',
+              borderRadius: '0 6px 6px 0', cursor: 'pointer',
+              background: activeTab === 'listas' ? '#1e293b' : 'transparent',
+              color: activeTab === 'listas' ? '#fff' : '#64748b',
+              transition: 'all 0.15s',
+            }}
+          >
+            Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}
+          </button>
+        </div>
 
         {/* ── Panel Listas ─────────────────────────────────────── */}
         {activeTab === 'listas' && (
-          <Box sx={{ px: 1, pb: 1 }}>
+          <div style={{ marginBottom: 8 }}>
             {(!insumoLists || insumoLists.length === 0) ? (
-              <Typography variant="caption" color="text.secondary" sx={{ px: 0.5, display: 'block', fontStyle: 'italic' }}>
-                No hay listas. Usá "Seleccionar" arriba para crear una.
-              </Typography>
+              <div style={{
+                padding: '10px 12px', fontSize: '0.78rem', color: '#94a3b8',
+                background: '#f8fafc', borderRadius: 8, border: '1px dashed #e2e8f0',
+                textAlign: 'center', lineHeight: 1.5,
+              }}>
+                No hay listas guardadas.<br />
+                <span style={{ fontSize: '0.72rem' }}>Seleccioná insumos y usá el botón "Lista".</span>
+              </div>
             ) : (
-              insumoLists.map(list => {
-                const isActive = activeInsumoListId === list.id;
-                return (
-                  <Box
-                    key={list.id}
-                    onClick={() => onSelectInsumoList?.(list.id)}
-                    sx={{
-                      display: 'flex', alignItems: 'center',
-                      px: 1, py: 0.6, borderRadius: 1, cursor: 'pointer',
-                      background: isActive ? 'var(--color-primary, #1976d2)' : 'transparent',
-                      color: isActive ? '#fff' : 'inherit',
-                      '&:hover': { background: isActive ? 'var(--color-primary, #1976d2)' : '#f0f0f0' },
-                      '&:hover .la': { opacity: 1 },
-                      '& .la': { opacity: 0, transition: 'opacity .15s' },
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ flex: 1, fontSize: '0.82rem', fontWeight: isActive ? 700 : 500, color: 'inherit' }}>
-                      {list.name}
-                      <span style={{ fontSize: '0.72rem', opacity: 0.6, marginLeft: 4 }}>
-                        ({list.item_count || 0})
-                      </span>
-                    </Typography>
-                    <Box className="la" sx={{ display: 'flex' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {insumoLists.map(list => {
+                  const isActive = activeInsumoListId === list.id;
+                  return (
+                    <div
+                      key={list.id}
+                      onClick={() => onSelectInsumoList?.(isActive ? null : list.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                        background: isActive ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'transparent',
+                        border: isActive ? '1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)' : '1px solid transparent',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                          background: list.color || 'var(--color-primary)',
+                        }} />
+                        <span style={{
+                          fontSize: '0.82rem', fontWeight: isActive ? 600 : 500,
+                          color: isActive ? 'var(--color-primary)' : '#374151',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {list.name}
+                        </span>
+                        {list.item_count > 0 && (
+                          <span style={{ fontSize: '0.68rem', color: '#94a3b8', flexShrink: 0 }}>
+                            ({list.item_count})
+                          </span>
+                        )}
+                      </div>
                       {onDownloadList && (
-                        <Tooltip title="Descargar compras">
-                          <IconButton size="small" onClick={() => onDownloadList(list.id, list.name)}
-                            sx={{ color: isActive ? '#fff' : 'inherit' }}>
-                            <DownloadIcon sx={{ fontSize: 15 }} />
+                        <Tooltip title="Descargar compras de esta lista">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); onDownloadList(list.id, list.name); }}
+                            sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
+                          >
+                            <DownloadIcon fontSize="inherit" color="primary" />
                           </IconButton>
                         </Tooltip>
                       )}
                       {onDeleteList && (
                         <Tooltip title="Eliminar lista">
-                          <IconButton size="small" onClick={() => {
-                            if (window.confirm(`¿Eliminar "${list.name}"?`)) onDeleteList(list.id);
-                          }} sx={{ color: isActive ? '#ffaaaa' : 'error.main' }}>
-                            <DeleteIcon sx={{ fontSize: 15 }} />
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`¿Eliminar "${list.name}"?`)) onDeleteList(list.id);
+                            }}
+                            sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
+                          >
+                            <DeleteIcon fontSize="inherit" color="error" />
                           </IconButton>
                         </Tooltip>
                       )}
-                    </Box>
-                  </Box>
-                );
-              })
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </Box>
+          </div>
         )}
       </div>
 
@@ -695,50 +725,55 @@ function InsumosSidebar({
                     key={keyStr}
                     className={active ? 'categoria-activa' : ''}
                     title={rubro.nombre}
-                    style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}
                   >
-                    <span onClick={() => handleRubroClick(rubro)} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                      <span className="icono" />
-                      {rubro.nombre}
-                    </span>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <small style={{ opacity: 0.65 }}>
+                    <div
+                      onClick={() => handleRubroClick(rubro)}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'center', gap: 8, cursor: 'pointer',
+                        flex: 1, width: '100%', minWidth: 0,
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                        <span className="icono" />
+                        <span style={{ wordBreak: 'break-word', lineHeight: 1.3 }}>
+                          {rubro.nombre}
+                        </span>
+                      </span>
+                      <small style={{ opacity: 0.65, flexShrink: 0 }}>
                         {count}
                         {typeof monto === 'number' && monto > 0 ? ` · ${fmtCurrency(monto)}` : ''}
                       </small>
-
-                      <InsumoRubroAccionesMenu
-                        rubroLabel={rubro.nombre}
-                        rubroCodigo={(() => {
-                          // Intentar resolver el código Maxi desde rubrosMap usando el nombre
-                          if (rubrosMap && typeof rubrosMap.get === 'function') {
-                            // rubrosMap tiene codigo → info, necesitamos buscar por nombre
-                            for (const [codigo, info] of rubrosMap.entries()) {
-                              if (info?.nombre === rubro.nombre) return String(codigo);
-                            }
-                          }
-                          return String(rubro.codigo || '');
-                        })()}
-                        isElaborado={rubro.es_elaborador === true}
-                        insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
-                        groups={groups}
-                        selectedGroupId={selectedGroupId}
-                        discontinuadosGroupId={discontinuadosGroupId}
-                        onRefetch={onRefetch}
-                        notify={notify}
-                        onMutateGroups={onMutateGroups}
-                        onCreateGroupFromRubro={onCreateGroupFromRubro}
-                        todoGroupId={todoGroupId}
-                        isTodoView={isTodoView}
-                        onReloadCatalogo={onReloadCatalogo}
-                        onAfterRubroUpdate={onRefetch}
-                        fromSidebar
-                        businessId={originalBusinessId || businessId}
-                      />
                     </div>
-                  </li>
-                );
+
+                    <InsumoRubroAccionesMenu
+                      rubroLabel={rubro.nombre}
+                      rubroCodigo={(() => {
+                        if (rubrosMap && typeof rubrosMap.get === 'function') {
+                          for (const [codigo, info] of rubrosMap.entries()) {
+                            if (info?.nombre === rubro.nombre) return String(codigo);
+                          }
+                        }
+                        return String(rubro.codigo || '');
+                      })()}
+                      isElaborado={rubro.es_elaborador === true}
+                      insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}
+                      groups={groups}
+                      selectedGroupId={selectedGroupId}
+                      discontinuadosGroupId={discontinuadosGroupId}
+                      onRefetch={onRefetch}
+                      notify={notify}
+                      onMutateGroups={onMutateGroups}
+                      onCreateGroupFromRubro={onCreateGroupFromRubro}
+                      todoGroupId={todoGroupId}
+                      isTodoView={isTodoView}
+                      onReloadCatalogo={onReloadCatalogo}
+                      onAfterRubroUpdate={onRefetch}
+                      fromSidebar
+                      businessId={originalBusinessId || businessId}
+                    />
+                  </li>);
               })}
 
             {!loading && treeByRubro.length === 0 && (

@@ -177,23 +177,15 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   // 1) Escuchar eventos globales ui:action (con dedupe mejorado)
   useEffect(() => {
     const makeSig = (d) => {
-      // ✅ Firma mejorada: kind + scope + groupId + groupName
       const groupId = String(d?.payload?.groupId ?? '');
       const groupName = String(d?.payload?.groupName ?? d?.message ?? '').toLowerCase().trim();
-      
       const ids = (d?.payload?.ids || [])
-        .map(Number)
-        .filter((n) => Number.isFinite(n) && n > 0)
-        .sort((a, b) => a - b)
-        .join(',');
+        .map(Number).filter((n) => Number.isFinite(n) && n > 0)
+        .sort((a, b) => a - b).join(',');
 
-      return [
-        d?.kind || '',
-        d?.scope || d?.payload?.scope || '',
-        groupId,
-        groupName,
-        ids,
-      ].join('|');
+      const val = String(d?.payload?.val ?? d?.payload?.objetivo ?? '');
+
+      return [d?.kind || '', d?.scope || d?.payload?.scope || '', groupId, groupName, ids, val].join('|');
     };
 
     const onUiAction = (e) => {
@@ -255,7 +247,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           const diff = now - t;
           return Number.isFinite(t) && diff < 5000; // 5s
         });
-        
+
         if (repeated) {
           console.log('🚫 [NotificationsPanel] DUPLICADO por firma:', {
             sig,
@@ -396,7 +388,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     () => (uiNotifs || []).filter((n) => !n.read && !n.resolved).length,
     [uiNotifs]
   );
-  
+
   // ✅ Badge solo cuenta UI notifs
   const badgeCount = unreadUiCount;
 
@@ -427,6 +419,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   }, []);
 
   const undoUiNotif = async (uiNotif) => {
+    console.log('[undoUiNotif] payload:', JSON.stringify(uiNotif.payload));
     emitUiUndo({
       kind: uiNotif.kind,
       scope: uiNotif.scope,

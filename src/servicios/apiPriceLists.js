@@ -40,23 +40,24 @@ export async function getBusinessPrices(bizId) {
 }
 
 // ── Excepciones de descuento ──────────────────────────────────────────────
-export async function getDiscountExceptions(orgId) {
-  const res = await http(`${BASE_ORG(orgId)}/discount-exceptions`, { withBusinessId: false });
+export async function getDiscountExceptions(orgId, listNumber = null) {
+  const qs = listNumber ? `?list_number=${listNumber}` : '';
+  const res = await http(`${BASE_ORG(orgId)}/discount-exceptions${qs}`, { withBusinessId: false });
   return res?.exceptions ?? [];
 }
 
-export async function addDiscountException(orgId, scope, scopeId) {
+export async function addDiscountException(orgId, scope, scopeId, listNumber = null) {
   return http(`${BASE_ORG(orgId)}/discount-exceptions`, {
     method: 'POST',
-    body: { scope, scopeId: String(scopeId) },
+    body: { scope, scopeId: String(scopeId), listNumber },
     withBusinessId: false,
   });
 }
 
-export async function removeDiscountException(orgId, scope, scopeId) {
+export async function removeDiscountException(orgId, scope, scopeId, listNumber = null) {
   return http(`${BASE_ORG(orgId)}/discount-exceptions`, {
     method: 'DELETE',
-    body: { scope, scopeId: String(scopeId) },
+    body: { scope, scopeId: String(scopeId), listNumber },
     withBusinessId: false,
   });
 }

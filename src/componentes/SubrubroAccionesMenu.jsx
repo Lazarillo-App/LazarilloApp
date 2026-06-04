@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Typography, Box, CircularProgress,
+  Button, TextField, Typography, Box, CircularProgress, Divider
 } from '@mui/material';
 
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -16,9 +16,13 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
+import { useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
-
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import Checkbox from '@mui/material/Checkbox';
+import { BASE } from "@/servicios/apiBase";
+import { getOrgPriceListConfig, getDiscountExceptions, addDiscountException, removeDiscountException } from '@/servicios/apiPriceLists';
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -123,23 +127,32 @@ function MoverAModal({
     return agrupacionesExternas;
   }, [selectedBizId, isSameBiz, agrupacionesLocales, agrupacionesExternas, currentGroupId]);
 
+  // Resetear grupo al cambiar negocio
   useEffect(() => { setSelectedGroupId(''); }, [selectedBizId]);
 
+  // Pre-seleccionar negocio activo al abrir — UN SOLO useEffect
   useEffect(() => {
-    if (open) { setSelectedBizId(String(activeBizId || '')); setSelectedGroupId(''); }
+    if (open) {
+      setSelectedBizId(String(activeBizId || ''));
+      setSelectedGroupId('');
+    }
   }, [open, activeBizId]);
+
+  // Auto-seleccionar si hay un solo negocio y selectedBizId está vacío
+  useEffect(() => {
+    if (negocios.length === 1 && !selectedBizId) {
+      setSelectedBizId(String(negocios[0].id));
+    }
+  }, [negocios, selectedBizId]);
 
   const handleConfirm = useCallback(async () => {
     if (!selectedGroupId) return;
-    const bizId = Number(selectedBizId);
+    const bizId = Number(selectedBizId) || Number(activeBizId);  // ← fallback a activeBizId
     const groupId = Number(selectedGroupId);
     const grupo = agrupacionesMostrar.find(g => Number(g.id) === groupId);
-    console.log('[MoverAModal] grupo encontrado:', grupo);
-    console.log('[MoverAModal] grupo.business_id:', grupo?.business_id);
     const realBizId = Number(grupo?.business_id) || bizId;
-    console.log('[MoverAModal] realBizId final:', realBizId, '| bizId del selector:', bizId);
     await onConfirm({ bizId: realBizId, groupId, groupNombre: grupo?.nombre || '' });
-  }, [selectedBizId, selectedGroupId, agrupacionesMostrar, onConfirm]);
+  }, [selectedBizId, selectedGroupId, agrupacionesMostrar, onConfirm, activeBizId]);
 
   const showBizSelect = negocios.length > 1;
 
@@ -152,7 +165,7 @@ function MoverAModal({
         {showBizSelect && (
           <TextField
             select SelectProps={{ native: true }}
-            label="Sub-negocio" value={selectedBizId}
+            label="Negocio" value={selectedBizId}
             onChange={e => setSelectedBizId(e.target.value)}
             fullWidth size="small"
           >
@@ -174,7 +187,7 @@ function MoverAModal({
           ) : (
             <TextField
               select SelectProps={{ native: true }}
-              label="Agrupación destino" value={selectedGroupId}
+              label="" value={selectedGroupId}
               onChange={e => setSelectedGroupId(e.target.value)}
               fullWidth size="small"
               disabled={agrupacionesMostrar.length === 0}
@@ -203,6 +216,7 @@ function MoverAModal({
 // Componente principal
 // ════════════════════════════════════════════════════════════════════════════
 function SubrubroAccionesMenu({
+  articulo,
   subrubro,
   todosArticulos = [],
   agrupacionSeleccionada,
@@ -226,18 +240,16 @@ function SubrubroAccionesMenu({
     localStorage.getItem('effectiveBusinessId') ?? null;
   const realActiveBizId = localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ?? businessId ?? null;
-
-  const { rootBusiness, allBusinesses } = useOrganization();
+  const { rootBusiness, allBusinesses, organization } = useOrganization() || {};
   const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
   const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
-  const agrupBizId = Number(realActiveBizId) || rootBizId || Number(effectiveBusinessId);
+  const agrupBizId = Number(businessId) || Number(realActiveBizId) || rootBizId || Number(effectiveBusinessId);
 
   const resolveAgrupBizId = useCallback((agrupacion) => {
     const agBizId = Number(agrupacion?.business_id);
     if (Number.isFinite(agBizId) && agBizId > 0) return agBizId;
-    return agrupBizId;
-  }, [agrupBizId]);
-  const discBizId = rootBizId || agrupBizId;
+    return Number(businessId) || agrupBizId;
+  }, [agrupBizId, businessId]);
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -246,7 +258,7 @@ function SubrubroAccionesMenu({
   const [preselect, setPreselect] = useState(null);
   const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
   const [origenReactivar, setOrigenReactivar] = useState(null);
-
+  const { items: bizItems } = useBusiness() || {};
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
   const haveExternalTree = Array.isArray(todosArticulos) && todosArticulos.length > 0;
@@ -257,6 +269,11 @@ function SubrubroAccionesMenu({
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleClose = useCallback(() => setAnchorEl(null), []);
   const loadedRef = useRef(false);
+
+  const [excluirAnchor, setExcluirAnchor] = useState(null);
+  const [priceLists, setPriceLists] = useState([]);
+  const [exclusionesArt, setExclusionesArt] = useState(new Set());
+  const [orgIdLocal, setOrgIdLocal] = useState(null);
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
@@ -281,7 +298,6 @@ function SubrubroAccionesMenu({
   );
 
   const subName = useMemo(() => norm(subrubro?.nombre || subrubro), [subrubro]);
-
   const allArticleIdsForSub = useMemo(() => {
     const baseIds = (articuloIds || []).map(getNum).filter(Boolean);
     if (!baseIds.length) return baseIds;
@@ -311,10 +327,11 @@ function SubrubroAccionesMenu({
 
   const openMover = useCallback(() => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
+  const discBizId = rootBizId || agrupBizId;
 
   // ── Mover bloque a otro negocio/agrupación ────────────────────────────────
   async function ejecutarMover({ bizId: toBizId, groupId: toId, groupNombre }) {
-    const ids = articuloIds.map(getNum).filter(Boolean);
+    const ids = allArticleIdsForSub;
     if (!ids.length) return;
 
     const fromId = !isTodo && currentGroupId ? Number(currentGroupId) : null;
@@ -333,7 +350,7 @@ function SubrubroAccionesMenu({
         const fromAgrup = (agrupaciones || []).find(g => Number(g.id) === fromId);
         const toAgrup = (agrupaciones || []).find(g => Number(g.id) === toId);
         const fromMoverBizId = resolveAgrupBizId(fromAgrup ?? agrupacionSeleccionada);
-        const toMoverBizId = resolveAgrupBizId(toAgrup);
+        const toMoverBizId = resolveAgrupBizId(toAgrup) || agrupBizId;
 
         if (fromId) {
           onMutateGroups?.({ type: 'remove', groupId: fromId, ids });
@@ -387,6 +404,61 @@ function SubrubroAccionesMenu({
       closeMover();
     }
   }
+
+  useEffect(() => {
+  if (!open) return;
+  const orgId = organization?.id;
+  if (!orgId) return;
+  setOrgIdLocal(orgId);
+
+  const ids = allArticleIdsForSub;
+  if (!ids.length) return;
+
+  Promise.all([
+    getOrgPriceListConfig(orgId).catch(() => []),
+    getDiscountExceptions(orgId).catch(() => []),
+  ]).then(([lists, exc]) => {
+    setPriceLists(Array.isArray(lists) ? lists : []);
+    
+    // Por cada lista, contar cuántos artículos del subrubro están excluidos
+    // Considerar "excluida" solo si TODOS los artículos del subrubro están excluidos
+    const idsSet = new Set(ids.map(String));
+    const excByList = {}; // { listNumber: Set<articleId excluido> }
+    (exc || []).forEach(e => {
+      if (e.scope === 'articulo' && idsSet.has(String(e.scope_id))) {
+        if (!excByList[e.list_number]) excByList[e.list_number] = new Set();
+        excByList[e.list_number].add(String(e.scope_id));
+      }
+    });
+    
+    const excSet = new Set();
+    Object.entries(excByList).forEach(([listNum, artSet]) => {
+      // Si TODOS los artículos del subrubro están excluidos en esta lista, marcar como excluida
+      if (artSet.size === ids.length) excSet.add(Number(listNum));
+    });
+    setExclusionesArt(excSet);
+  });
+}, [open, allArticleIdsForSub, organization?.id]);
+
+  // Filtrar negocios: solo los de la misma org, o solo el activo si no hay org
+  const negociosFiltrados = useMemo(() => {
+    const activoNum = Number(businessId) || Number(agrupBizId);
+
+    // Si hay org Y el negocio activo pertenece a esa org → mostrar solo los de la org
+    if (organization?.id && organization?.businesses?.length > 0) {
+      const orgIds = new Set(organization.businesses.map(b => Number(b.id)));
+      if (orgIds.has(activoNum)) {
+        // El negocio activo ES de esta org → mostrar todos los de la org
+        return organization.businesses.filter(b => Number(b.id) > 0);
+      }
+    }
+
+    // El negocio activo NO pertenece a ninguna org (o la org no lo incluye)
+    // → mostrar SOLO el negocio activo
+    const fuente = Array.isArray(bizItems) ? bizItems : [];
+    const activo = fuente.find(b => Number(b.id) === activoNum);
+    return activo ? [activo] : [{ id: activoNum, nombre: 'Negocio actual', name: 'Negocio actual' }];
+  }, [organization, bizItems, businessId, agrupBizId]);
 
   async function quitarDeActual() {
     const ids = articuloIds.map(getNum).filter(Boolean);
@@ -499,12 +571,13 @@ function SubrubroAccionesMenu({
   }
 
   async function ejecutarReactivarBloque() {
+    const discBizIdLocal = rootBizId || agrupBizId;
     const { ids, origenesMap = {}, sinOrigen = [], labelCount } = origenReactivar || {};
     if (!ids?.length || !Number.isFinite(discontinuadosId)) return;
 
     try {
       for (const id of ids) {
-        try { await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${id}`, { method: 'DELETE' }, discBizId); } catch { }
+        try { await httpBiz(`/agrupaciones/${discontinuadosId}/articulos/${id}`, { method: 'DELETE' }, discBizIdLocal); } catch { }
       }
       for (const grupo of Object.values(origenesMap)) {
         if (!grupo.groupId || !grupo.bizId || !grupo.ids?.length) continue;
@@ -557,6 +630,49 @@ function SubrubroAccionesMenu({
     return () => { alive = false; };
   }, [openCrearAgr, haveExternalTree, loading, effectiveBusinessId]);
 
+  const toggleExclusionLista = useCallback(async (listNumber) => {
+  if (!orgIdLocal) return;
+  const ids = allArticleIdsForSub;
+  if (!ids.length) return;
+  
+  const isExcluido = exclusionesArt.has(listNumber);
+  try {
+    // Aplicar a TODOS los artículos del subrubro
+    for (const id of ids) {
+      if (isExcluido) {
+        await removeDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => {});
+      } else {
+        await addDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => {});
+      }
+    }
+    setExclusionesArt(prev => {
+      const next = new Set(prev);
+      isExcluido ? next.delete(listNumber) : next.add(listNumber);
+      return next;
+    });
+    notify?.(
+      isExcluido 
+        ? `${ids.length} artículo(s) restaurados en lista` 
+        : `${ids.length} artículo(s) excluidos`,
+      'success'
+    );
+  } catch (e) {
+    notify?.('No se pudo cambiar la exclusión', 'error');
+  }
+}, [orgIdLocal, allArticleIdsForSub, exclusionesArt, notify]);
+
+  const toggleExclusionTodas = useCallback(async () => {
+    const noPrincipales = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
+    const todasExcluidas = noPrincipales.every(l => exclusionesArt.has(l.listNumber));
+    for (const l of noPrincipales) {
+      if (todasExcluidas) {
+        if (exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
+      } else {
+        if (!exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
+      }
+    }
+  }, [priceLists, exclusionesArt, toggleExclusionLista]);
+
   return (
     <>
       <IconButton size="small" onClick={handleOpen} title="Acciones de subrubro">
@@ -585,6 +701,60 @@ function SubrubroAccionesMenu({
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{`Crear agrupación a partir de "${subDisplayName}"`}</ListItemText>
         </MenuItem>
+        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).length > 0 && (
+          <MenuItem onClick={(e) => {
+            e.stopPropagation();
+            setExcluirAnchor(e.currentTarget);
+          }}>
+            <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>
+              Excluir de descuentos
+              {exclusionesArt.size > 0 && (
+                <Typography component="span" variant="caption" sx={{ ml: 1, color: '#f59e0b', fontWeight: 700 }}>
+                  ({exclusionesArt.size})
+                </Typography>
+              )}
+            </ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
+      <Menu
+        anchorEl={excluirAnchor}
+        open={Boolean(excluirAnchor)}
+        onClose={() => setExcluirAnchor(null)}
+        PaperProps={{ sx: { minWidth: 240 } }}
+      >
+        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="caption" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' }}>
+            Excluir de listas
+          </Typography>
+        </Box>
+
+        <MenuItem onClick={toggleExclusionTodas}>
+          <Checkbox
+            checked={priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))}
+            indeterminate={
+              exclusionesArt.size > 0 &&
+              !priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))
+            }
+            size="small"
+          />
+          <Typography variant="body2" fontWeight={700}>Todas las listas</Typography>
+        </MenuItem>
+
+        <Divider />
+
+        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).map(l => (
+          <MenuItem key={l.listNumber} onClick={() => toggleExclusionLista(l.listNumber)}>
+            <Checkbox checked={exclusionesArt.has(l.listNumber)} size="small" />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2">{l.alias || `Lista ${l.listNumber}`}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {l.tipo === 'descuento' ? '−' : '+'}{l.discountPct}%
+              </Typography>
+            </Box>
+          </MenuItem>
+        ))}
       </Menu>
 
       {/* ── Diálogo de reactivación en bloque ── */}
@@ -644,8 +814,8 @@ function SubrubroAccionesMenu({
         tituloExtra={`${articuloIds.length} artículo(s)`}
         agrupacionesLocales={agrupacionesLocalesParaMover}
         currentGroupId={currentGroupId}
-        allBusinesses={allBusinesses}
-        activeBizId={agrupBizId}
+        allBusinesses={negociosFiltrados}
+        activeBizId={Number(businessId) || Number(agrupBizId)}
         onConfirm={ejecutarMover}
         isMoving={isMoving}
       />

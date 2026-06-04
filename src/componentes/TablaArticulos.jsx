@@ -22,7 +22,10 @@ import LinkChainIcon from "./LinkChainIcon";
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useBusinessPrices } from '@/hooks/useBusinessPrices';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
-import { setBusinessPriceList, getBusinessPriceList } from '@/servicios/apiPriceLists';
+import { setBusinessPriceList, getBusinessPriceList, getDiscountExceptions } from '@/servicios/apiPriceLists';
+import { BASE } from "@/servicios/apiBase";
+import RubroEditModal from './RubroEditModal';
+import { useOrganization } from '@/context/OrganizationContext';
 import "../css/TablaArticulos.css";
 
 /* ---------------- utils ---------------- */
@@ -241,6 +244,8 @@ export default function TablaArticulos({
   onDeleteLink,
   totalBizAmount = 0,
   onRedondeoChange,
+  allPriceLists = [],
+  onVisibleSubrubroChange,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -250,6 +255,22 @@ export default function TablaArticulos({
   const [excludedIds, setExcludedIds] = useState(new Set());
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
+
+  // Escuchar eventos de undo para limpiar objetivos locales
+  useEffect(() => {
+    const onClearLocal = (e) => {
+      const { articleIds } = e.detail || {};
+      if (!Array.isArray(articleIds) || articleIds.length === 0) return;
+      setObjetivos(prev => {
+        const next = { ...prev };
+        articleIds.forEach(id => { delete next[String(id)]; });
+        return next;
+      });
+    };
+    window.addEventListener('articulos:clear-local-objetivos', onClearLocal);
+    return () => window.removeEventListener('articulos:clear-local-objetivos', onClearLocal);
+  }, []);
+
   const [manualesIndividuales, setManualesIndividuales] = useState(new Set());
   const [snack, setSnack] = useState({ open: false, msg: "", type: "success" });
   const [blockObjetivos, setBlockObjetivos] = useState({});
@@ -264,6 +285,10 @@ export default function TablaArticulos({
   const [priceListOpen, setPriceListOpen] = useState(false);
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
   const [redondeoModalPendiente, setRedondeoModalPendiente] = useState(null);
+  const [visibleSubrubro, setVisibleSubrubro] = useState(null);
+  const [dragOverColIdx, setDragOverColIdx] = useState(null);
+  const [excludedFromDiscount, setExcludedFromDiscount] = useState(new Set()); // articleIds excluidos
+  const [orgIdLocal, setOrgIdLocal] = useState(null);
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
@@ -339,6 +364,8 @@ export default function TablaArticulos({
   const [recetaArticulo, setRecetaArticulo] = useState(null);
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
+  const { organization } = useOrganization() || {};
+  const [rubroEditModal, setRubroEditModal] = useState(null);
 
   const findPath = useCallback((cats, id) => {
     for (const sub of cats || []) {
@@ -400,13 +427,37 @@ export default function TablaArticulos({
   useEffect(() => {
     if (!activeBizId) return;
     setRedondeoConfig(getRedondeoConfig(activeBizId));
+
     const onChanged = (e) => {
       if (String(e.detail?.bizId) === String(activeBizId)) {
         setRedondeoConfig({ valor: e.detail.valor ?? null, mostrarModal: !!e.detail.mostrarModal });
       }
     };
+
+    const onConfigUpdated = (e) => {
+      const { key, value } = e?.detail || {};
+      if (key === 'redondeo_precios') {
+        setRedondeoConfig(prev => ({ ...prev, valor: value }));
+        saveRedondeoConfig(activeBizId, value, redondeoConfig?.mostrarModal ?? true);
+        // ← guardar en DB también
+        try {
+          BusinessesAPI.update(Number(activeBizId), {
+            props: { redondeo_precios: value }
+          });
+        } catch { }
+      }
+      if (key === 'redondeo_mostrar_modal') {
+        setRedondeoConfig(prev => ({ ...prev, mostrarModal: value }));
+        saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, value);
+      }
+    };
+
     window.addEventListener('redondeo:changed', onChanged);
-    return () => window.removeEventListener('redondeo:changed', onChanged);
+    window.addEventListener('config:updated', onConfigUpdated);
+    return () => {
+      window.removeEventListener('redondeo:changed', onChanged);
+      window.removeEventListener('config:updated', onConfigUpdated);
+    };
   }, [activeBizId]);
 
   // ── Cargar lista de precios activa ──
@@ -582,7 +633,12 @@ export default function TablaArticulos({
     const pctNum = Number(pct);
 
     // Si no hay redondeo configurado Y mostrarModal=true → interceptar
-    if (!redondeoConfig?.valor && redondeoConfig?.mostrarModal) {
+    if (!redondeoConfig?.mostrarModal) {
+      // No mostrar modal, aplicar directo
+      executeBulkPct(pctNum, ids, 'todos');
+      return;
+    }
+    if (!redondeoConfig?.valor) {
       setRedondeoModalPendiente({ pct: pctNum, ids, inputRef, blockKey });
       return;
     }
@@ -915,6 +971,19 @@ export default function TablaArticulos({
     return rows;
   }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
 
+  const handleScroll = useCallback((e) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    const firstVisibleIdx = Math.floor(scrollTop / ITEM_H);
+
+    let lastHeader = null;
+    for (let i = Math.min(firstVisibleIdx, flatRows.length - 1); i >= 0; i--) {
+      if (flatRows[i].kind === 'header') { lastHeader = flatRows[i]; break; }
+    }
+    const sub = lastHeader?.subrubro || null;
+    setVisibleSubrubro(sub);
+    onVisibleSubrubroChange?.(sub);
+  }, [flatRows]);
+
   const idToIndex = useMemo(() => {
     const m = new Map();
     flatRows.forEach((r, i) => {
@@ -960,6 +1029,33 @@ export default function TablaArticulos({
 
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
+
+  useEffect(() => {
+    if (!activeBizId) return;
+    const token = localStorage.getItem('token') || '';
+
+    // 1. Obtener orgId del negocio
+    fetch(`${BASE}/businesses/${activeBizId}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) }
+    })
+      .then(r => r.json())
+      .then(biz => {
+        const oid = biz?.organization_id;
+        if (!oid) return;
+        setOrgIdLocal(oid);
+
+        // 2. Cargar exclusiones para esta lista
+        return getDiscountExceptions(oid, activePriceList)
+          .then(exc => {
+            const excSet = new Set();
+            (exc || []).forEach(e => {
+              if (e.scope === 'articulo') excSet.add(String(e.scope_id));
+            });
+            setExcludedFromDiscount(excSet);
+          });
+      })
+      .catch(() => setExcludedFromDiscount(new Set()));
+  }, [activeBizId, activePriceList]);
 
   const afterMutation = useCallback((removedIds) => {
     const ids = (removedIds || []).map(Number).filter(Number.isFinite);
@@ -1031,6 +1127,29 @@ export default function TablaArticulos({
     const r = recetasCostos[id] || recetasCostos[Number(id)];
     return r && r.costoTotal > 0;
   }, [recetasCostos]);
+
+  const getPrecioEfectivo = useCallback((a) => {
+    const id = String(getId(a));
+    const precioBase = num(a.precio); // precio de lista principal (precio1)
+
+    // Si está excluido de descuento o usa lista principal → precio base sin tocar
+    if (excludedFromDiscount.has(id) || activePriceList === 1) {
+      return precioBase;
+    }
+
+    // Buscar config de la lista activa
+    const listCfg = allPriceLists.find(l => l.listNumber === activePriceList);
+    if (!listCfg || listCfg.discountPct == null || listCfg.isPrincipal) {
+      return precioBase;
+    }
+
+    const pct = Number(listCfg.discountPct);
+    const tipo = listCfg.tipo || 'descuento';
+
+    return tipo === 'recargo'
+      ? precioBase * (1 + pct / 100)
+      : precioBase * (1 - pct / 100);
+  }, [excludedFromDiscount, activePriceList, allPriceLists]);
 
   const dragColIdx = useRef(null);
 
@@ -1104,11 +1223,11 @@ export default function TablaArticulos({
             {row.totalVentas > 0 && ventasVista === '$' && (
               <>
                 {fmtCurrency(row.totalVentas)}
-                {totalTodasAgrupaciones > 0 && (
+                {/* {totalTodasAgrupaciones > 0 && (
                   <span style={{ color: 'var(--color-primary)', fontSize: '0.72rem', fontWeight: 600, marginLeft: 5, opacity: 0.9 }}>
                     {`(${(row.totalVentas / totalTodasAgrupaciones * 100).toFixed(1).replace('.', ',')}%)`}
                   </span>
-                )}
+                )} */}
               </>
             )}
             {row.totalVentas > 0 && ventasVista === 'U' && (
@@ -1151,7 +1270,10 @@ export default function TablaArticulos({
                     }}
                     title="Cambiar lista de precios"
                   >
-                    {priceListLoading ? '…' : `Lista ${activePriceList}`}
+                    {priceListLoading
+                      ? '…'
+                      : (allPriceLists.find(l => l.listNumber === activePriceList)?.alias || `Lista ${activePriceList}`)
+                    }
                     <span style={{ fontSize: '0.58rem' }}>{priceListOpen ? '▲' : '▼'}</span>
                   </button>
                   {priceListOpen && (
@@ -1164,22 +1286,26 @@ export default function TablaArticulos({
                       }}
                       onMouseLeave={() => setPriceListOpen(false)}
                     >
-                      {[1, 2, 3, 4].map(n => (
-                        <div
-                          key={n}
-                          onClick={(e) => { e.stopPropagation(); handleChangePriceList(n); }}
-                          style={{
-                            padding: '5px 12px', cursor: 'pointer',
-                            fontSize: '0.78rem', fontWeight: activePriceList === n ? 700 : 400,
-                            background: activePriceList === n ? 'var(--color-primary, #3b82f6)12' : 'transparent',
-                            color: activePriceList === n ? 'var(--color-primary, #3b82f6)' : '#374151',
-                            display: 'flex', alignItems: 'center', gap: 6,
-                          }}
-                        >
-                          {activePriceList === n && <span>✓</span>}
-                          Lista {n}
-                        </div>
-                      ))}
+                      {[1, 2, 3, 4].map(n => {
+                        const listData = allPriceLists.find(l => l.listNumber === n);
+                        const label = listData?.alias || `Lista ${n}`;
+                        return (
+                          <div
+                            key={n}
+                            onClick={(e) => { e.stopPropagation(); handleChangePriceList(n); }}
+                            style={{
+                              padding: '5px 12px', cursor: 'pointer',
+                              fontSize: '0.78rem', fontWeight: activePriceList === n ? 700 : 400,
+                              background: activePriceList === n ? 'var(--color-primary, #3b82f6)12' : 'transparent',
+                              color: activePriceList === n ? 'var(--color-primary, #3b82f6)' : '#374151',
+                              display: 'flex', alignItems: 'center', gap: 6,
+                            }}
+                          >
+                            {activePriceList === n && <span>✓</span>}
+                            {label}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1207,7 +1333,7 @@ export default function TablaArticulos({
                         onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids, pisarTodo: true });
                         setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
                         // Emitir para notificaciones
-                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'agrupacion', scopeId: agrupId, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch {}
+                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'agrupacion', scopeId: agrupId, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch { }
                         // Toast con Deshacer
                         setPendingObjConfirm({ scope: 'agrupacion', scopeId: agrupId, val, ids, valAnterior, label, bkKey: bkObj });
                       }}
@@ -1219,8 +1345,20 @@ export default function TablaArticulos({
                     visible={!!(blockObjetivos[bkObj] || objValDb)}
                     onClick={() => {
                       setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
-                      onPriceConfigSave?.({ scope: 'agrupacion', scopeId: agrupId, objetivo: null, articleIds: ids });
-                      setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { delete next[String(artId)]; }); return next; });
+
+                      // Borrar objetivo de la agrupación con DELETE
+                      onPriceConfigSave?.({
+                        scope: 'agrupacion',
+                        scopeId: agrupId,
+                        _deleteObjetivo: true,   // ← nueva señal
+                        articleIds: ids,
+                      });
+
+                      setObjetivos(prev => {
+                        const next = { ...prev };
+                        ids.forEach(artId => { delete next[String(artId)]; });
+                        return next;
+                      });
                     }}
                   />
                 </div>
@@ -1294,7 +1432,26 @@ export default function TablaArticulos({
               />
             </div>
           )}
-          <div style={{ gridColumn: selectionMode ? "2 / 4" : "1 / 3" }}>{label}</div>
+          <div
+            style={{
+              gridColumn: selectionMode ? "2 / 4" : "1 / 3",
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+              const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
+              setRubroEditModal({
+                rubroKey,
+                rubroDisplay: label,
+                articleIds: row.ids || [],
+                initialObjetivo: cfgRubro.objetivo,
+              });
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+          >
+            {label}
+          </div>
 
           <div style={cellNum}>
             {ventasVista === '$' ? (
@@ -1332,48 +1489,44 @@ export default function TablaArticulos({
             if (col.id === 'objetivo' && esAgrupEspecifica) {
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
-              const objValDb = cfgRubro.objetivo != null ? String(cfgRubro.objetivo) : '';
+              const objValDb = cfgRubro.objetivo;
               const firstObjLocal = ids.length ? objetivos[String(ids[0])] : undefined;
-              const bkRubroObj = `rubro-obj-${rubroKey}`;
+              const objMostrar = objValDb != null ? Number(objValDb)
+                : firstObjLocal != null ? Number(firstObjLocal)
+                  : null;
               return (
-                <div key="objetivo" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div className="input-symbol-wrapper" data-symbol="%">
-                    <input type="number"
-                      placeholder={firstObjLocal != null ? String(firstObjLocal) : String(globalCostoIdeal)}
-                      value={blockObjetivos[bkRubroObj] ?? (ids.length && objetivos[String(ids[0])] != null ? String(objetivos[String(ids[0])]) : (priceConfig.byRubro?.[rubroKey]?.objetivo != null ? String(priceConfig.byRubro[rubroKey].objetivo) : objValDb))}
-                      onChange={(e) => setBlockObjetivos(prev => ({ ...prev, [bkRubroObj]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return;
-                        e.target.blur();
-                        const val = e.target.value === '' ? null : Number(e.target.value);
-                        if (!onPriceConfigSave || val == null) return;
-                        const valAnterior = cfgRubro.objetivo != null ? Number(cfgRubro.objetivo) : null;
-                        const label = rubroKey || 'este rubro';
-                        // Aplicar inmediatamente
-                        setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { next[String(artId)] = val; }); return next; });
-                        onPriceConfigSave({ scope: 'rubro', scopeId: rubroKey, objetivo: val, articleIds: ids, pisarTodo: true });
-                        setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkRubroObj]; return n; });
-                        // Emitir para notificaciones
-                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'rubro', scopeId: rubroKey, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch {}
-                        // Toast con Deshacer
-                        setPendingObjConfirm({ scope: 'rubro', scopeId: rubroKey, val, ids, valAnterior, label, bkKey: bkRubroObj });
-                      }}
-                      className="input-with-suffix"
-                      style={{ width: 52, fontSize: '0.75rem', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4, color: TABLE_TEXT }}
-                    />
-                  </div>
-                  <ClearBtn
-                    visible={!!(blockObjetivos[bkRubroObj] || objValDb)}
-                    onClick={() => {
-                      setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkRubroObj]; return n; });
-                      onPriceConfigSave?.({ scope: 'rubro', scopeId: rubroKey, objetivo: null, articleIds: ids });
-                      setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { delete next[String(artId)]; }); return next; });
-                    }}
-                  />
+                <div
+                  key="objetivo"
+                  style={{
+                    ...cellNum,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    setRubroEditModal({
+                      rubroKey,
+                      rubroDisplay: tableHeaderMode === "cat-first"
+                        ? `${row.subrubro} - ${row.categoria}`
+                        : `${row.categoria} - ${row.subrubro}`,
+                      articleIds: row.ids || [],
+                      initialObjetivo: cfgRubro.objetivo,
+                    });
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+                >
+                  <Typography variant="caption" sx={{
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    color: objMostrar != null ? TABLE_TEXT : TABLE_MUTED,
+                  }}>
+                    {objMostrar != null ? `${fmt(objMostrar, 0)}%` : '—'}
+                  </Typography>
                 </div>
               );
-            }
-            if (col.id === 'manual' && esAgrupEspecifica) {
+            } if (col.id === 'manual' && esAgrupEspecifica) {
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const bkRubroMan = `rubro-man-${rubroKeyManual}`;
               return (
@@ -1469,7 +1622,7 @@ export default function TablaArticulos({
         {leftBar}
         {selectionMode && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isLinked ? (
+            {isLinked && selectionMode === 'link' ? (
               <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
             ) : (
               <input type="checkbox" checked={isChecked} onChange={() => onToggleSelected?.(Number(id))}
@@ -1479,7 +1632,7 @@ export default function TablaArticulos({
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
-          {!selectionMode && isLinked && (
+          {(selectionMode === 'list' || !selectionMode) && isLinked && (
             <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
           )}
           <span>{id}</span>
@@ -1541,12 +1694,16 @@ export default function TablaArticulos({
                 </div>
               );
 
-            case 'costoPct':
+            case 'costoPct': {
+              const bajoPorcentaje = costoPct > 0 && objetivoArticulo > 0 && costoPct < (objetivoArticulo / 2);
+              const colorCosto = superaObjetivo || bajoPorcentaje ? '#ef4444' : undefined;
+              const boldCosto = superaObjetivo || bajoPorcentaje;
               return (
-                <div key="costoPct" style={{ ...cellNum, color: superaObjetivo ? '#ef4444' : undefined, fontWeight: superaObjetivo ? 700 : 500 }}>
+                <div key="costoPct" style={{ ...cellNum, color: colorCosto, fontWeight: boldCosto ? 700 : 500 }}>
                   {costoPct > 0 ? `${fmt(costoPct, 1)}%` : <span style={{ color: TABLE_MUTED }}>—</span>}
                 </div>
               );
+            }
 
             case 'objetivo':
               return (
@@ -1626,7 +1783,8 @@ export default function TablaArticulos({
       {recetaArticulo && (
         <RecetaModal
           open={!!recetaArticulo} onClose={() => setRecetaArticulo(null)}
-          articulo={recetaArticulo} businessId={rootBizId ?? activeBizId}
+          articulo={recetaArticulo}
+          businessId={activeBizId}
           esElaborado={false}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           recetasElaborados={recetasElaborados}
@@ -1683,28 +1841,32 @@ export default function TablaArticulos({
               ))}
 
               {visibleCols.map((col, colIdx) => {
+                const isDragOver = dragOverColIdx === colIdx && dragColIdx.current !== colIdx;
+                const dragIndicatorStyle = {
+                  cursor: 'grab',
+                  borderLeft: isDragOver ? '3px solid var(--color-primary)' : '3px solid transparent',
+                  background: isDragOver ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : undefined,
+                  transition: 'all 0.1s',
+                };
+
                 const dragProps = {
                   draggable: true,
                   onDragStart: (e) => { e.stopPropagation(); handleColDragStart(colIdx); },
-                  onDragOver: (e) => e.preventDefault(),
-                  onDrop: (e) => { e.stopPropagation(); handleColDrop(colIdx); },
+                  onDragOver: (e) => { e.preventDefault(); setDragOverColIdx(colIdx); },
+                  onDragLeave: () => setDragOverColIdx(null),
+                  onDrop: (e) => { e.stopPropagation(); handleColDrop(colIdx); setDragOverColIdx(null); },
                 };
+
                 switch (col.id) {
-                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ cursor: 'grab' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ cursor: 'grab' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={{ cursor: 'grab' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={{ cursor: 'grab' }}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={{ cursor: 'grab' }}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'manual': return <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable" style={{ cursor: 'grab' }}>Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={dragIndicatorStyle}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={dragIndicatorStyle}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={dragIndicatorStyle}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'manual': return <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable" style={dragIndicatorStyle}>Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'acciones': return (
                     <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                       <span style={{ fontSize: '0.75rem' }}>Acciones</span>
-                      {/* Botón configurar columnas — descomentar para activar
-                      <button onClick={e => { e.stopPropagation(); setColDlgOpen(true); }} title="Configurar columnas"
-                        style={{ padding: '2px 6px', fontSize: '0.65rem', border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', cursor: 'pointer', lineHeight: 1.4 }}>
-                        <SettingsIcon />
-                      </button>
-                      */}
                     </div>
                   );
                   default: return null;
@@ -1716,13 +1878,15 @@ export default function TablaArticulos({
           {flatRows.length === 0 ? (
             <p style={{ marginTop: "2rem", fontSize: "1.2rem", color: "#777", padding: "0 8px" }}>No hay artículos.</p>
           ) : (
-            <VirtualList
-              ref={listRef} rows={flatRows} rowHeight={ITEM_H}
-              height={typeof window !== "undefined" && window.innerHeight ? Math.max(240, window.innerHeight - 220) : 520}
-              overscan={8} onVisibleItemsIds={handleVisibleIds}
-              getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
-              renderRow={renderRow} extraData={(ventasPorArticulo?.size || 0) + selectedIds.size + (selectionMode ? 1 : 0)}
-            />
+            <div onScroll={handleScroll}>
+              <VirtualList
+                ref={listRef} rows={flatRows} rowHeight={ITEM_H}
+                height={typeof window !== "undefined" && window.innerHeight ? Math.max(240, window.innerHeight - 220) : 520}
+                overscan={8} onVisibleItemsIds={handleVisibleIds}
+                getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
+                renderRow={renderRow} extraData={(ventasPorArticulo?.size || 0) + selectedIds.size + (selectionMode ? 1 : 0)}
+              />
+            </div>
           )}
         </div>
 
@@ -1751,11 +1915,14 @@ export default function TablaArticulos({
                   key={op}
                   label={`$${op}`}
                   onClick={() => {
-                    const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
+                    console.log('[chip redondeo] op:', op, 'onRedondeoChange:', typeof onRedondeoChange);
                     saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
                     setRedondeoConfig(prev => ({ ...prev, valor: op }));
-                    setRedondeoModalPendiente(null);
-                    continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
+                    onRedondeoChange?.(op);
+                    BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
+                    window.dispatchEvent(new CustomEvent('config:updated', {
+                      detail: { key: 'redondeo_precios', value: op }
+                    }));
                   }}
                   variant="outlined"
                   size="small"
@@ -1772,6 +1939,12 @@ export default function TablaArticulos({
                   const noMostrar = e.target.checked;
                   saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
                   setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                  // ← agregar en los dos:
+                  try {
+                    BusinessesAPI.update(Number(activeBizId), {
+                      props: { redondeo_mostrar_modal: !noMostrar }
+                    });
+                  } catch { }
                 }}
                 style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
               />
@@ -1819,9 +1992,14 @@ export default function TablaArticulos({
                     size="small"
                     variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
                     onClick={() => {
+                      console.log('[chip redondeo] op:', op, 'onRedondeoChange:', typeof onRedondeoChange);
                       saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
                       setRedondeoConfig(prev => ({ ...prev, valor: op }));
                       onRedondeoChange?.(op);
+                      BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
+                      window.dispatchEvent(new CustomEvent('config:updated', {
+                        detail: { key: 'redondeo_precios', value: op }
+                      }));
                     }}
                     sx={{
                       cursor: 'pointer',
@@ -1841,6 +2019,9 @@ export default function TablaArticulos({
                     saveRedondeoConfig(activeBizId, null, redondeoConfig?.mostrarModal ?? true);
                     setRedondeoConfig(prev => ({ ...prev, valor: null }));
                     onRedondeoChange?.(null);
+                    window.dispatchEvent(new CustomEvent('config:updated', {
+                      detail: { key: 'redondeo_precios', value: null }
+                    }));
                   }}
                   sx={{
                     cursor: 'pointer',
@@ -1857,6 +2038,12 @@ export default function TablaArticulos({
                     const noMostrar = e.target.checked;
                     saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
                     setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                    // ← agregar en los dos:
+                    try {
+                      BusinessesAPI.update(Number(activeBizId), {
+                        props: { redondeo_mostrar_modal: !noMostrar }
+                      });
+                    } catch { }
                   }}
                   style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
                 />
@@ -1920,8 +2107,75 @@ export default function TablaArticulos({
 
       <ColOrderModal open={colDlgOpen} cols={colConfig} onSave={saveColConfig} onClose={() => setColDlgOpen(false)} />
 
-      {/* Toast de acción objetivo con Deshacer */}
-      {/* El objetivo se notifica solo via el panel de notificaciones */}
+      {rubroEditModal && (
+        <RubroEditModal
+          open={!!rubroEditModal}
+          onClose={() => setRubroEditModal(null)}
+          rubroKey={rubroEditModal.rubroKey}
+          rubroDisplay={rubroEditModal.rubroDisplay}
+          articleIds={rubroEditModal.articleIds}
+          initialObjetivo={rubroEditModal.initialObjetivo}
+          globalCostoIdeal={globalCostoIdeal}
+          priceLists={allPriceLists}
+          orgId={organization?.id}
+          onSave={({ objetivo, articleIds }) => {
+            console.log('[RubroModal onSave] disparado', { objetivo, articleIds });
+            if (!onPriceConfigSave) {
+              console.warn('[RubroModal onSave] onPriceConfigSave NO EXISTE');
+              return;
+            }
+            const rubroKey = rubroEditModal.rubroKey;
+            const rubroLabel = rubroEditModal.rubroDisplay || 'este rubro';
+            const valAnterior = rubroEditModal.initialObjetivo != null
+              ? Number(rubroEditModal.initialObjetivo)
+              : null;
+
+            setObjetivos(prev => {
+              const next = { ...prev };
+              articleIds.forEach(artId => { next[String(artId)] = objetivo; });
+              return next;
+            });
+            onPriceConfigSave({
+              scope: 'rubro',
+              scopeId: rubroKey,
+              objetivo,
+              articleIds,
+              pisarTodo: true
+            });
+
+            console.log('[RubroModal onSave] disparando ui:action', {
+              kind: 'objetivo_change',
+              title: `🎯 Objetivo ${objetivo}% en ${rubroLabel}`,
+              scope: 'rubro',
+              scopeId: rubroKey,
+            });
+            try {
+              window.dispatchEvent(new CustomEvent('ui:action', {
+                detail: {
+                  kind: 'objetivo_change',
+                  title: objetivo != null
+                    ? `🎯 Objetivo ${objetivo}% en ${rubroLabel}`
+                    : `🗑 Objetivo borrado en ${rubroLabel}`,
+                  message: `${articleIds.length} artículo(s) actualizados.`,
+                  createdAt: new Date().toISOString(),
+                  scope: 'articulo',
+                  payload: {
+                    scope: 'rubro',
+                    scopeId: rubroKey,
+                    val: objetivo,
+                    valAnterior,
+                    articleIds,
+                    pisarTodo: true,
+                  },
+                },
+              }));
+              console.log('[RubroModal onSave] ui:action disparado OK');
+            } catch (e) {
+              console.error('[RubroModal onSave] error en dispatch:', e);
+            }
+          }}
+        />
+      )}
     </>
   );
 }

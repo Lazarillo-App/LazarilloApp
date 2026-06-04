@@ -12,13 +12,13 @@ import {
   Divider, Typography, Chip, IconButton, CircularProgress,
 } from '@mui/material';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
-import PlaylistAddIcon          from '@mui/icons-material/PlaylistAdd';
-import LinkIcon                 from '@mui/icons-material/Link';
-import CloseIcon                from '@mui/icons-material/Close';
-import CheckIcon                from '@mui/icons-material/Check';
-import ArrowDropDownIcon        from '@mui/icons-material/ArrowDropDown';
-import SaveIcon                 from '@mui/icons-material/Save';
-import FileDownloadIcon         from '@mui/icons-material/FileDownload';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import LinkIcon from '@mui/icons-material/Link';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckIcon from '@mui/icons-material/Check';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import SaveIcon from '@mui/icons-material/Save';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 
 /**
  * SelectionToolbar
@@ -45,7 +45,7 @@ export default function SelectionToolbar({
   existingLists = [],
   onAddToList,
 }) {
-  const [modeAnchor, setModeAnchor]   = useState(null);
+  const [modeAnchor, setModeAnchor] = useState(null);
   const [actionAnchor, setActionAnchor] = useState(null);
   const [listNameInput, setListNameInput] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
@@ -57,7 +57,7 @@ export default function SelectionToolbar({
 
   // ── Colores por modo ──────────────────────────────────────────────────
   const modeColor = selectionMode === 'link' ? '#7c3aed' : '#0369a1';
-  const modeBg    = selectionMode === 'link' ? 'rgba(124,58,237,0.08)' : 'rgba(3,105,161,0.08)';
+  const modeBg = selectionMode === 'link' ? 'rgba(124,58,237,0.08)' : 'rgba(3,105,161,0.08)';
 
   const handleSelectMode = (mode) => {
     setModeAnchor(null);
@@ -133,7 +133,7 @@ export default function SelectionToolbar({
             </ListItemIcon>
             <ListItemText
               primary={<span style={{ fontWeight: 600, fontSize: '0.88rem' }}>Vincular artículos</span>}
-              secondary="Receta, objetivo y precio se sincronizan entre todos"
+              secondary="Los productos vinculados tendrán el mismo precio"
               secondaryTypographyProps={{ sx: { fontSize: '0.75rem' } }}
             />
           </MenuItem>
@@ -179,14 +179,25 @@ export default function SelectionToolbar({
       )}
 
       {/* Botón de acción principal */}
+      {/* Botón de acción principal */}
       {hasSelection && (
         <>
           <Button
-            onClick={(e) => setActionAnchor(e.currentTarget)}
+            onClick={(e) => {
+              if (selectionMode === 'link') {
+                // Vincular: ejecutar directo sin menú
+                handleCreateLink();
+              } else {
+                // Lista: abrir menú con opciones (nueva o existente)
+                setActionAnchor(e.currentTarget);
+              }
+            }}
             disabled={saving}
             endIcon={saving
               ? <CircularProgress size={12} sx={{ color: modeColor }} />
-              : <ArrowDropDownIcon sx={{ fontSize: '14px !important' }} />
+              : selectionMode === 'link'
+                ? null
+                : <ArrowDropDownIcon sx={{ fontSize: '14px !important' }} />
             }
             sx={{
               textTransform: 'none', fontWeight: 700, fontSize: '0.8rem',
@@ -223,7 +234,11 @@ export default function SelectionToolbar({
                       ref={inputRef}
                       value={listNameInput}
                       onChange={e => setListNameInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleCreateList(); if (e.key === 'Escape') setShowNameInput(false); }}
+                      onKeyDown={e => {
+                        e.stopPropagation(); // ← evita que el Menu capture las letras
+                        if (e.key === 'Enter') handleCreateList();
+                        if (e.key === 'Escape') setShowNameInput(false);
+                      }}
                       placeholder="Nombre de la lista..."
                       style={{
                         flex: 1, padding: '6px 10px', fontSize: '0.85rem',
@@ -259,16 +274,6 @@ export default function SelectionToolbar({
               </>
             )}
 
-            {selectionMode === 'link' && (
-              <MenuItem onClick={handleCreateLink} sx={{ py: 1.25 }}>
-                <ListItemIcon><LinkIcon sx={{ color: '#7c3aed' }} /></ListItemIcon>
-                <ListItemText
-                  primary={<span style={{ fontWeight: 600, fontSize: '0.88rem' }}>Crear vinculación</span>}
-                  secondary={`${count} artículos quedarán sincronizados`}
-                  secondaryTypographyProps={{ sx: { fontSize: '0.75rem' } }}
-                />
-              </MenuItem>
-            )}
           </Menu>
         </>
       )}

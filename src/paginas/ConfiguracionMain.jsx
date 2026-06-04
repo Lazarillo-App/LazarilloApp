@@ -4,39 +4,39 @@
 // src/paginas/ConfiguracionMain.jsx
 // Shell liviano — la lógica de cada tab vive en su propio componente
 import React, { useState, useEffect, useCallback } from 'react';
-import { useOrganization }   from '@/context/OrganizationContext';
-import { useSearchParams }   from 'react-router-dom';
+import { useOrganization } from '@/context/OrganizationContext';
+import { useSearchParams } from 'react-router-dom';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
-import { ensureTodo }        from '../servicios/apiAgrupacionesTodo';
+import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 import {
   Box, Stack, Typography, Tabs, Tab, Snackbar, Alert,
   CircularProgress, FormControl, InputLabel, Select, MenuItem,
   Button, Grid, Avatar, Chip, Paper, Skeleton, IconButton, Tooltip,
 } from '@mui/material';
-import TuneIcon          from '@mui/icons-material/Tune';
+import TuneIcon from '@mui/icons-material/Tune';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import ShoppingCartIcon  from '@mui/icons-material/ShoppingCart';
-import PublicIcon        from '@mui/icons-material/Public';
-import BusinessIcon      from '@mui/icons-material/Business';
-import SaveIcon          from '@mui/icons-material/Save';
-import AddIcon           from '@mui/icons-material/Add';
-import PersonIcon        from '@mui/icons-material/Person';
-import EmailIcon         from '@mui/icons-material/Email';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import PublicIcon from '@mui/icons-material/Public';
+import BusinessIcon from '@mui/icons-material/Business';
+import SaveIcon from '@mui/icons-material/Save';
+import AddIcon from '@mui/icons-material/Add';
+import PersonIcon from '@mui/icons-material/Person';
+import EmailIcon from '@mui/icons-material/Email';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { BusinessesAPI, RecetasAPI, PriceConfigAPI } from '../servicios/apiBusinesses';
-import { BASE }          from '../servicios/apiBase';
+import { BASE } from '../servicios/apiBase';
 import { getRedondeoConfig, saveRedondeoConfig } from '../utils/redondeoUtils';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
-import BusinessEditModal   from '../componentes/BusinessEditModal';
-import SyncDialog          from '../componentes/SyncDialog';
-import OrgDashboard        from '../componentes/OrgDashboard';
-import BusinessCard        from '../componentes/BusinessCard';
-import SucursalesSection   from '../componentes/SucursalesSection';
-import RecetaModal         from '../componentes/RecetaModal';
-import UploadInsumosModal  from '../componentes/UploadInsumosModal';
+import BusinessEditModal from '../componentes/BusinessEditModal';
+import SyncDialog from '../componentes/SyncDialog';
+import OrgDashboard from '../componentes/OrgDashboard';
+import BusinessCard from '../componentes/BusinessCard';
+import SucursalesSection from '../componentes/SucursalesSection';
+import RecetaModal from '../componentes/RecetaModal';
+import UploadInsumosModal from '../componentes/UploadInsumosModal';
 // Sub-tabs extraídos
-import ConfigArticulosTab  from '../componentes/configuracion/ConfigArticulosTab';
-import ConfigInsumosTab    from '../componentes/configuracion/ConfigInsumosTab';
+import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
+import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
@@ -45,9 +45,9 @@ import '../css/theme-layout.css';
 export { getRedondeoConfig, saveRedondeoConfig };
 
 export default function ConfiguracionMain() {
-  const { businessId }      = useActiveBusiness();
+  const { businessId } = useActiveBusiness();
   const [searchParams, setSearchParams] = useSearchParams();
-  const themeColor          = 'var(--color-primary, #3b82f6)';
+  const themeColor = 'var(--color-primary, #3b82f6)';
 
   // ── Tabs ──
   const [tab, setTab] = useState(() => {
@@ -64,20 +64,20 @@ export default function ConfiguracionMain() {
     divisa: '', precio_costeo_insumos: 'ultima_compra', redondeo_precios: null,
   });
   const [configLoading, setConfigLoading] = useState(true);
-  const [saving, setSaving]       = useState({});
-  const [snack, setSnack]         = useState({ open: false, msg: '', sev: 'success' });
+  const [saving, setSaving] = useState({});
+  const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
 
   // ── Modales ABM ──
-  const [showNuevoArticulo,   setShowNuevoArticulo]   = useState(false);
-  const [showNuevoInsumo,     setShowNuevoInsumo]     = useState(false);
-  const [showUploadInsumos,   setShowUploadInsumos]   = useState(false);
+  const [showNuevoArticulo, setShowNuevoArticulo] = useState(false);
+  const [showNuevoInsumo, setShowNuevoInsumo] = useState(false);
+  const [showUploadInsumos, setShowUploadInsumos] = useState(false);
   const [showUploadArticulos, setShowUploadArticulos] = useState(false);
 
   // ── Alertas insumos ──
-  const [alertasInsumos,  setAlertasInsumos]  = useState([]);
-  const [alertasLoading,  setAlertasLoading]  = useState(false);
-  const [alertasTotal,    setAlertasTotal]    = useState(0);
-  const [alertaExpanded,  setAlertaExpanded]  = useState(null);
+  const [alertasInsumos, setAlertasInsumos] = useState([]);
+  const [alertasLoading, setAlertasLoading] = useState(false);
+  const [alertasTotal, setAlertasTotal] = useState(0);
+  const [alertaExpanded, setAlertaExpanded] = useState(null);
   const [recetaModalData, setRecetaModalData] = useState(null);
 
   // ── Org ──
@@ -87,9 +87,9 @@ export default function ConfiguracionMain() {
     activeId, selectBusiness, items, active, refetchBusinesses,
   } = useBusiness() || {};
   const [showCreate, setShowCreate] = useState(false);
-  const [editing,    setEditing]    = useState(null);
-  const [notice,     setNotice]     = useState({ open: false, title: '', message: '' });
-  const showNotice  = (title, message) => setNotice({ open: true, title, message });
+  const [editing, setEditing] = useState(null);
+  const [notice, setNotice] = useState({ open: false, title: '', message: '' });
+  const showNotice = (title, message) => setNotice({ open: true, title, message });
   const closeNotice = () => setNotice(s => ({ ...s, open: false }));
 
   const notify = useCallback((msg, sev = 'success') => {
@@ -107,16 +107,19 @@ export default function ConfiguracionMain() {
         const res = await fetch(`${BASE}/businesses/${businessId}/config`, {
           headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
         });
-        const d   = await res.json().catch(() => ({}));
+        const d = await res.json().catch(() => ({}));
         const cfg = d?.config || {};
+        const localRedondeo = getRedondeoConfig(businessId);
         setConfig({
-          articulos_costo_ideal:  String(cfg.articulos_costo_ideal  ?? ''),
-          insumos_costo_ideal:    String(cfg.insumos_costo_ideal    ?? ''),
+          articulos_costo_ideal: String(cfg.articulos_costo_ideal ?? ''),
+          insumos_costo_ideal: String(cfg.insumos_costo_ideal ?? ''),
           compras_alerta_semanas: String(cfg.compras_alerta_semanas ?? ''),
-          ventas_alerta_dias:     String(cfg.ventas_alerta_dias     ?? ''),
-          divisa:                 String(cfg.divisa                 ?? ''),
-          precio_costeo_insumos:  cfg.precio_costeo_insumos         || 'ultima_compra',
-          redondeo_precios:       cfg.redondeo_precios              ?? null,
+          ventas_alerta_dias: String(cfg.ventas_alerta_dias ?? ''),
+          divisa: String(cfg.divisa ?? ''),
+          precio_costeo_insumos: cfg.precio_costeo_insumos || 'ultima_compra',
+          // Si DB devuelve null, usar localStorage como fallback
+          redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
+          redondeo_mostrar_modal: cfg.redondeo_mostrar_modal ?? localRedondeo?.mostrarModal ?? true,
         });
         if (cfg.redondeo_precios !== undefined) {
           const local = getRedondeoConfig(businessId);
@@ -128,6 +131,20 @@ export default function ConfiguracionMain() {
       finally { setConfigLoading(false); }
     })();
   }, [businessId]);
+
+  useEffect(() => {
+    const onConfigUpdated = (e) => {
+      const { key, value } = e?.detail || {};
+      if (key === 'redondeo_precios') {
+        setConfig(c => ({ ...c, redondeo_precios: value }));
+      }
+      if (key === 'redondeo_mostrar_modal') {
+        setConfig(c => ({ ...c, redondeo_mostrar_modal: value }));
+      }
+    };
+    window.addEventListener('config:updated', onConfigUpdated);
+    return () => window.removeEventListener('config:updated', onConfigUpdated);
+  }, []);
 
   // ── Undo de costo_ideal desde notificaciones ──
   React.useEffect(() => {
@@ -145,6 +162,7 @@ export default function ConfiguracionMain() {
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
   }, [businessId, notify]);
+
   useEffect(() => {
     if (tab !== 1 || subTabIns !== 0 || !businessId) return;
     setAlertasLoading(true);
@@ -182,8 +200,10 @@ export default function ConfiguracionMain() {
         const token = localStorage.getItem('token') || '';
         await fetch(`${BASE}/businesses/${businessId}/recetas-elaborados/reset-objetivo`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId),
-            'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId),
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({ porcentajeVenta: Number(config[key]) }),
         }).catch(e => console.warn('[saveConfig] No se pudo propagar objetivo elaborados:', e.message));
       }
@@ -213,6 +233,17 @@ export default function ConfiguracionMain() {
     }
   }, [businessId, config, notify]);
 
+  const handleToggleMostrarModal = useCallback(async (mostrar) => {
+    setConfig(c => ({ ...c, redondeo_mostrar_modal: mostrar }));
+    try {
+      await BusinessesAPI.update(businessId, { props: { redondeo_mostrar_modal: mostrar } });
+      saveRedondeoConfig(businessId, config.redondeo_precios, mostrar);
+      window.dispatchEvent(new CustomEvent('config:updated', {
+        detail: { key: 'redondeo_mostrar_modal', value: mostrar }
+      }));
+    } catch (e) { notify('Error al guardar preferencia', 'error'); }
+  }, [businessId, config.redondeo_precios, notify]);
+
   const saveConfigCosteo = useCallback(async () => {
     if (!businessId) return;
     setSaving(s => ({ ...s, precio_costeo: true }));
@@ -236,28 +267,42 @@ export default function ConfiguracionMain() {
     if (!businessId) return;
     setSaving(s => ({ ...s, redondeo: true }));
     try {
-      await BusinessesAPI.update(businessId, { props: { redondeo_precios: config.redondeo_precios } });
-      saveRedondeoConfig(businessId, config.redondeo_precios, true);
+      await BusinessesAPI.update(businessId, {
+        props: {
+          redondeo_precios: config.redondeo_precios,
+          redondeo_mostrar_modal: config.redondeo_mostrar_modal ?? true,
+        }
+      });
+      saveRedondeoConfig(businessId, config.redondeo_precios, config.redondeo_mostrar_modal ?? true);
+
+      // ← agregar estos dos dispatches
+      window.dispatchEvent(new CustomEvent('config:updated', {
+        detail: { key: 'redondeo_precios', value: config.redondeo_precios }
+      }));
+      window.dispatchEvent(new CustomEvent('config:updated', {
+        detail: { key: 'redondeo_mostrar_modal', value: config.redondeo_mostrar_modal ?? true }
+      }));
+
       notify(config.redondeo_precios ? `Redondeo a $${config.redondeo_precios} guardado` : 'Redondeo desactivado');
     } catch (e) {
       notify('Error al guardar: ' + (e.message || e), 'error');
     } finally {
       setSaving(s => ({ ...s, redondeo: false }));
     }
-  }, [businessId, config.redondeo_precios, notify]);
+  }, [businessId, config.redondeo_precios, config.redondeo_mostrar_modal, notify]);
 
   // ── Equivalencias (abre UploadInsumosModal con tipo) ──
   const abrirEquivalencias = useCallback((tipo) => {
-    if (tipo === 'insumos')   setShowUploadInsumos(true);
+    if (tipo === 'insumos') setShowUploadInsumos(true);
     if (tipo === 'articulos') setShowUploadArticulos(true);
-    if (tipo === 'ventas')    setShowUploadArticulos(true); // TODO: modal ventas
-    if (tipo === 'compras')   setShowUploadInsumos(true);  // TODO: modal compras
+    if (tipo === 'ventas') setShowUploadArticulos(true); // TODO: modal ventas
+    if (tipo === 'compras') setShowUploadInsumos(true);  // TODO: modal compras
   }, []);
 
   // ── Org helpers ──
-  const activeBiz  = active || null;
-  const list       = Array.isArray(items) ? items : [];
-  const orgBizIds  = new Set((allBusinesses || []).map(b => String(b.id)));
+  const activeBiz = active || null;
+  const list = Array.isArray(items) ? items : [];
+  const orgBizIds = new Set((allBusinesses || []).map(b => String(b.id)));
   const outsideOrg = organization && orgBizIds.size > 1 ? list.filter(b => !orgBizIds.has(String(b.id))) : list;
 
   const onCreateComplete = async (biz) => {
@@ -270,7 +315,7 @@ export default function ConfiguracionMain() {
         const maxiOk = await isMaxiConfigured(bizId);
         if (maxiOk) {
           showNotice('Sincronizando datos', 'Iniciando sincronización automática…');
-          const result = await syncAll(bizId, { onProgress: () => {} });
+          const result = await syncAll(bizId, { onProgress: () => { } });
           if (result?.ok) {
             showNotice('Sincronización completa', 'Artículos e insumos sincronizados correctamente');
             try { await ensureTodo(bizId); } catch { }
@@ -286,7 +331,7 @@ export default function ConfiguracionMain() {
   };
 
   const handleDeleteBusiness = async (biz) => {
-    const id   = biz?.id;
+    const id = biz?.id;
     if (!id) return;
     const name = biz?.name || `#${id}`;
     if (!window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`)) return;
@@ -345,20 +390,11 @@ export default function ConfiguracionMain() {
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                   Artículos y ventas
-                  {config.redondeo_precios && (
-                    <Box component="span" sx={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      bgcolor: themeColor, color: '#fff', borderRadius: 1,
-                      fontSize: '0.62rem', fontWeight: 700, px: 0.6, py: 0.1, lineHeight: 1.4,
-                    }}>
-                      ${config.redondeo_precios}
-                    </Box>
-                  )}
                 </Box>
               } />
-            <Tab icon={<ShoppingCartIcon  fontSize="small" />} iconPosition="start" label="Insumos y compras" />
-            <Tab icon={<PublicIcon        fontSize="small" />} iconPosition="start" label="General" />
-            <Tab icon={<BusinessIcon      fontSize="small" />} iconPosition="start" label="Organización" />
+            <Tab icon={<ShoppingCartIcon fontSize="small" />} iconPosition="start" label="Insumos y compras" />
+            <Tab icon={<PublicIcon fontSize="small" />} iconPosition="start" label="General" />
+            <Tab icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
           </Tabs>
 
           {/* TAB 0 — ARTÍCULOS Y VENTAS */}
@@ -375,6 +411,8 @@ export default function ConfiguracionMain() {
               onUploadArticulos={() => setShowUploadArticulos(true)}
               abrirEquivalencias={abrirEquivalencias}
               themeColor={themeColor}
+              mostrarModalRedondeo={config.redondeo_mostrar_modal ?? true}
+              onToggleMostrarModal={handleToggleMostrarModal}
             />
           </TabPanel>
 
@@ -473,42 +511,18 @@ export default function ConfiguracionMain() {
 
               return (
                 <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-
-                  {/* ── Usuario ── */}
-                  <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden', mb: 3 }}>
-                    <Box sx={{ height: 5, bgcolor: themeColor }} />
-                    <Box sx={{ p: 2.5 }}>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                        <Avatar sx={{ width: 60, height: 60, fontSize: '1.3rem', fontWeight: 700, bgcolor: themeColor, flexShrink: 0 }}>
-                          {userInitials || <PersonIcon />}
-                        </Avatar>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" fontWeight={800} lineHeight={1.2} mb={0.5}>{meName}</Typography>
-                          <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap" gap={0.5}>
-                            {me?.email && (
-                              <Stack direction="row" alignItems="center" spacing={0.5}>
-                                <EmailIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
-                                <Typography variant="caption" color="text.secondary">{me.email}</Typography>
-                              </Stack>
-                            )}
-                            {organization?.name && (
-                              <>
-                                <Typography variant="caption" color="text.disabled">·</Typography>
-                                <Chip size="small" label={organization.name}
-                                  icon={<BusinessIcon sx={{ fontSize: '0.75rem !important' }} />}
-                                  sx={{ fontSize: '0.7rem', height: 20 }} />
-                              </>
-                            )}
-                          </Stack>
-                        </Box>
-                        <Button variant="contained" size="small" startIcon={<AddIcon />}
-                          onClick={() => setShowCreate(true)}
-                          sx={{ bgcolor: themeColor, flexShrink: 0, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
-                          Nuevo local
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Paper>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                    <button
+                      onClick={() => setShowCreate(true)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '10px 18px', borderRadius: 10, border: 'none',
+                        background: 'var(--color-primary, #3b82f6)',
+                        color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                      }}>
+                      + Nuevo negocio
+                    </button>
+                  </div>
 
                   {/* ── Organización con sus negocios ── */}
                   {organization && (allBusinesses || []).length > 1 && (
@@ -527,7 +541,8 @@ export default function ConfiguracionMain() {
                       </Box>
                     </Paper>
                   )}
-
+                  {/* hgjzgosgn
+fnsvldhfjggmc */}
                   {/* ── Mis locales (fuera de org) ── */}
                   {!(outsideOrg.length === 0 && organization && orgBizIds.size > 1) && (
                     <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
@@ -549,7 +564,7 @@ export default function ConfiguracionMain() {
                       </Stack>
                       <Box sx={{ p: 2 }}>
                         {businessesLoading ? (
-                          <Stack spacing={1.5}>{[1,2].map(n => <Skeleton key={n} variant="rounded" height={80} />)}</Stack>
+                          <Stack spacing={1.5}>{[1, 2].map(n => <Skeleton key={n} variant="rounded" height={80} />)}</Stack>
                         ) : outsideOrg.length === 0 ? (
                           <Box sx={{ border: '1px dashed #e5e7eb', borderRadius: 2, p: 3, textAlign: 'center' }}>
                             <Typography variant="body2" color="text.secondary">Aún no tenés locales. Creá el primero.</Typography>

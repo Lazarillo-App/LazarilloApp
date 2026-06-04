@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/InsumosTable.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef } from "react";
@@ -251,16 +252,102 @@ const InsumosTable = forwardRef(function InsumosTable({
     [rubrosMap]
   );
 
+  // ── Drag-and-drop de columnas reordenables ──
+  // Columnas fijas (no se mueven): Código, Nombre, Unidad, Precio, [Branches dinámicas], Acciones
+  const REORDERABLE_COLS_NO_ELAB = [
+    { id: 'desperdicio', label: '% Desperdicio', width: '.7fr', sortKey: 'desperdicio' },
+    { id: 'total', label: 'Total', width: '.7fr', sortKey: 'total' },
+    { id: 'compras', label: 'Compras', width: '.65fr', sortKey: 'total_compras' },
+  ];
+  const REORDERABLE_COLS_ELAB = [
+    { id: 'total', label: 'Total', width: '.6fr', sortKey: 'total' },
+    { id: 'vencimiento', label: 'Vencimiento', width: '.6fr', sortKey: null },
+    { id: 'fecha', label: 'Fecha', width: '.65fr', sortKey: 'fecha' },
+  ];
+
+  const colStorageKey = isElaborados ? 'insumos_col_order_elab' : 'insumos_col_order_no_elab';
+  const baseCols = isElaborados ? REORDERABLE_COLS_ELAB : REORDERABLE_COLS_NO_ELAB;
+
+  const [colConfig, setColConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem(colStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const base = baseCols.map(c => {
+          const s = parsed.find(p => p.id === c.id);
+          return { ...c, visible: s ? s.visible : true };
+        });
+        const order = parsed.map(p => p.id);
+        return base.sort((a, b) => {
+          const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+      }
+    } catch { }
+    return baseCols.map(c => ({ ...c, visible: true }));
+  });
+
+  // Resetear colConfig al cambiar entre vista elaborados/no elaborados
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(colStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const base = baseCols.map(c => {
+          const s = parsed.find(p => p.id === c.id);
+          return { ...c, visible: s ? s.visible : true };
+        });
+        const order = parsed.map(p => p.id);
+        setColConfig(base.sort((a, b) => {
+          const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        }));
+      } else {
+        setColConfig(baseCols.map(c => ({ ...c, visible: true })));
+      }
+    } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isElaborados]);
+
+  const saveColConfig = useCallback((newCols) => {
+    setColConfig(newCols);
+    try {
+      localStorage.setItem(colStorageKey,
+        JSON.stringify(newCols.map(c => ({ id: c.id, visible: c.visible })))
+      );
+    } catch { }
+  }, [colStorageKey]);
+
+  const visibleCols = useMemo(() => colConfig.filter(c => c.visible), [colConfig]);
+
+  const dragColIdx = useRef(null);
+  const [dragOverColIdx, setDragOverColIdx] = useState(null);
+
+  const handleColDragStart = useCallback((i) => { dragColIdx.current = i; }, []);
+  const handleColDrop = useCallback((i) => {
+    if (dragColIdx.current === null || dragColIdx.current === i) return;
+    const next = [...colConfig];
+    const [moved] = next.splice(dragColIdx.current, 1);
+    next.splice(i, 0, moved);
+    dragColIdx.current = null;
+    saveColConfig(next);
+  }, [colConfig, saveColConfig]);
+
   const branchExtraCols = branches && branches.length > 1
     ? branches.map(() => '.55fr').join(' ')
     : '';
   const checkCol = selectionMode ? '28px ' : '';
-  const GRID_NO_ELAB = branches && branches.length > 1
-    ? `${checkCol}.4fr 2fr .35fr .7fr .7fr .65fr ${branchExtraCols} 1fr .4fr`
-    : `${checkCol}.4fr 2fr .35fr .7fr .7fr .65fr 1fr .4fr`;
-  const GRID_ELAB = branches && branches.length > 1
-    ? `${checkCol}.4fr 2fr .45fr .7fr 1fr .6fr .6fr ${branchExtraCols} .65fr .4fr`
-    : `${checkCol}.4fr 2fr .45fr .7fr 1fr .6fr .6fr .65fr .65fr .4fr`;
+
+  // Columnas FIJAS al inicio: check, código(.4fr), nombre(2fr), unidad(.35-.45fr), precio(.7fr)
+  // Luego van las columnas reordenables (visibleCols)
+  // Al final: branches dinámicas + acciones(.4fr)
+  const fixedStartElab = `${checkCol}.4fr 2fr .45fr .7fr`;
+  const fixedStartNoElab = `${checkCol}.4fr 2fr .35fr .7fr`;
+  const dynCols = visibleCols.map(c => c.width).join(' ');
+  const fixedEnd = branches && branches.length > 1 ? `${branchExtraCols} .4fr` : '.4fr';
+
+  const GRID_NO_ELAB = `${fixedStartNoElab} ${dynCols} ${fixedEnd}`;
+  const GRID_ELAB = `${fixedStartElab} ${dynCols} ${fixedEnd}`;
 
   const displayCode = (r) =>
     r.codigo_mostrar ||
@@ -323,6 +410,7 @@ const InsumosTable = forwardRef(function InsumosTable({
 
   const [sortBy, setSortBy] = useState("nombre");
   const [sortDir, setSortDir] = useState("asc");
+
 
   useEffect(() => {
     setSortBy("nombre");
@@ -629,62 +717,93 @@ const InsumosTable = forwardRef(function InsumosTable({
               {precioHeaderLabel} {sortIcon("precio")}
             </div>
 
-            {isElaborados ? (
-              <>
-                <div>Precio final</div>
-                <div onClick={() => toggleSort("total")} className="col-sortable">
-                  {totalHeaderLabel} {sortIcon("total")}
-                </div>
-                <div>Vencimiento</div>
-                <div onClick={() => toggleSort("fecha")} className="col-sortable">
-                  Fecha {sortIcon("fecha")}
-                </div>
-                <div style={{ textAlign: "center" }}>Acciones</div>
-              </>
-            ) : (
-              <>
-                <div onClick={() => toggleSort("desperdicio")} className="col-sortable">
-                  % Desperdicio {sortIcon("desperdicio")}
-                </div>
-                <div onClick={() => toggleSort("total")} className="col-sortable">
-                  {totalHeaderLabel} {sortIcon("total")}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div
-                    onClick={() => toggleSort("total_compras")}
-                    className="col-sortable"
-                    style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
-                    title="Total compras del período (clic para ver detalle)"
-                  >
-                    Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
+            {/* Columnas reordenables (drag-and-drop) */}
+            {visibleCols.map((col, colIdx) => {
+              const isDragOver = dragOverColIdx === colIdx && dragColIdx.current !== colIdx;
+              const dragStyle = {
+                cursor: 'grab',
+                borderLeft: isDragOver ? '3px solid var(--color-primary)' : '3px solid transparent',
+                background: isDragOver ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : undefined,
+                transition: 'all 0.1s',
+                display: 'flex', alignItems: 'center', gap: 4,
+              };
+              const dragProps = {
+                draggable: true,
+                onDragStart: (e) => { e.stopPropagation(); handleColDragStart(colIdx); },
+                onDragOver: (e) => { e.preventDefault(); setDragOverColIdx(colIdx); },
+                onDragLeave: () => setDragOverColIdx(null),
+                onDrop: (e) => { e.stopPropagation(); handleColDrop(colIdx); setDragOverColIdx(null); },
+              };
+
+              if (col.id === 'compras') {
+                return (
+                  <div key="compras" {...dragProps} style={dragStyle}>
+                    <div
+                      onClick={() => toggleSort("total_compras")}
+                      className="col-sortable"
+                      style={{ color: comprasLoading ? 'var(--color-border)' : 'var(--color-primary)', fontSize: '0.85rem' }}
+                      title="Total compras del período (clic para ver detalle)"
+                    >
+                      Compras{comprasLoading ? ' ⟳' : ''} ($) {sortIcon("total_compras")}
+                    </div>
+                    <span
+                      onClick={() => onToggleSoloConCompras?.()}
+                      title={soloConCompras ? 'Mostrando solo con compras — click para ver todos' : 'Filtrar: solo insumos con compras'}
+                      style={{
+                        cursor: 'pointer', fontSize: '0.8rem',
+                        opacity: soloConCompras ? 1 : 0.35,
+                        color: soloConCompras ? 'var(--color-primary)' : 'inherit',
+                        lineHeight: 1, userSelect: 'none',
+                      }}
+                    >
+                      👁
+                    </span>
                   </div>
-                  <span
-                    onClick={() => onToggleSoloConCompras?.()}
-                    title={soloConCompras ? 'Mostrando solo con compras — click para ver todos' : 'Filtrar: solo insumos con compras'}
-                    style={{
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      opacity: soloConCompras ? 1 : 0.35,
-                      color: soloConCompras ? 'var(--color-primary)' : 'inherit',
-                      lineHeight: 1,
-                      userSelect: 'none',
-                    }}
-                  >
-                    👁
-                  </span>
-                </div>
-                {branches && branches.length > 1 && branches.map(branch => (
-                  <div
-                    key={branch.id}
-                    style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                    title={`Compras — ${branch.name}`}
-                  >
-                    {branch.name}
+                );
+              }
+              if (col.id === 'total') {
+                return (
+                  <div key="total" {...dragProps} onClick={() => toggleSort("total")} className="col-sortable" style={dragStyle}>
+                    {totalHeaderLabel} {sortIcon("total")}
                   </div>
-                ))}
-                <div style={{ textAlign: "center" }}>Acciones</div>
-              </>
-            )}
+                );
+              }
+              if (col.id === 'desperdicio') {
+                return (
+                  <div key="desperdicio" {...dragProps} onClick={() => toggleSort("desperdicio")} className="col-sortable" style={dragStyle}>
+                    % Desperdicio {sortIcon("desperdicio")}
+                  </div>
+                );
+              }
+              if (col.id === 'vencimiento') {
+                return (
+                  <div key="vencimiento" {...dragProps} style={dragStyle}>
+                    Vencimiento
+                  </div>
+                );
+              }
+              if (col.id === 'fecha') {
+                return (
+                  <div key="fecha" {...dragProps} onClick={() => toggleSort("fecha")} className="col-sortable" style={dragStyle}>
+                    Fecha {sortIcon("fecha")}
+                  </div>
+                );
+              }
+              return null;
+            })}
+
+            {/* Branches dinámicas (al final, fijas) */}
+            {!isElaborados && branches && branches.length > 1 && branches.map(branch => (
+              <div
+                key={branch.id}
+                style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', color: branch.color || 'var(--color-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                title={`Compras — ${branch.name}`}
+              >
+                {branch.name}
+              </div>
+            ))}
+
+            <div style={{ textAlign: "center" }}>Acciones</div>
           </div>
         </div>
 
@@ -860,18 +979,23 @@ const InsumosTable = forwardRef(function InsumosTable({
 
                   {isElaborados ? (
                     <>
-                      {/* Precio final (de receta si existe, o precio_ref) */}
-                      <div style={{ fontWeight: tieneReceta ? 700 : 400, color: tieneReceta ? 'color: black' : 'color: black' }}>
-                        {tieneReceta
-                          ? formatMoney(recetaData.costoTotal / (recetaData.porciones || 1), 1)
-                          : formatMoney(getDisplayedPrice(r), 2)
+                      {/* Celdas reordenables (siguiendo el orden de visibleCols) */}
+                      {visibleCols.map(col => {
+                        if (col.id === 'total') {
+                          return <div key="total">{renderTotalValue(r)}</div>;
                         }
-                      </div>
-                      <div>{renderTotalValue(r)}</div>
-                      <div>{r.vencimiento ? formatDate(r.vencimiento) : "-"}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                        {formatDate(r.updated_at || r.created_at)}
-                      </div>
+                        if (col.id === 'vencimiento') {
+                          return <div key="vencimiento">{r.vencimiento ? formatDate(r.vencimiento) : "-"}</div>;
+                        }
+                        if (col.id === 'fecha') {
+                          return (
+                            <div key="fecha" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                              {formatDate(r.updated_at || r.created_at)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
 
                       <div style={{ textAlign: "center" }}>
                         <InsumoAccionesMenu
@@ -893,19 +1017,33 @@ const InsumosTable = forwardRef(function InsumosTable({
                     </>
                   ) : (
                     <>
-                      <div>-</div>
-                      <div>{renderTotalValue(r)}</div>
-                      <ComprasCell
-                        insumoId={r.id}
-                        insumoNombre={r.nombre}
-                        insumoUnidad={r.unidad_med || ''}
-                        comprasEntry={comprasMap.get(Number(r.id))}
-                        from={rangoCompras?.from}
-                        to={rangoCompras?.to}
-                        businessId={originalBusinessId || businessId}
-                        businesses={businesses}
-                        loading={comprasLoading}
-                      />
+                      {/* Celdas reordenables (siguiendo el orden de visibleCols) */}
+                      {visibleCols.map(col => {
+                        if (col.id === 'desperdicio') {
+                          return <div key="desperdicio">-</div>;
+                        }
+                        if (col.id === 'total') {
+                          return <div key="total">{renderTotalValue(r)}</div>;
+                        }
+                        if (col.id === 'compras') {
+                          return (
+                            <ComprasCell
+                              key="compras"
+                              insumoId={r.id}
+                              insumoNombre={r.nombre}
+                              insumoUnidad={r.unidad_med || ''}
+                              comprasEntry={comprasMap.get(Number(r.id))}
+                              from={rangoCompras?.from}
+                              to={rangoCompras?.to}
+                              businessId={originalBusinessId || businessId}
+                              businesses={businesses}
+                              loading={comprasLoading}
+                            />
+                          );
+                        }
+                        return null;
+                      })}
+
                       {branches && branches.length > 1 && branches.map(branch => {
                         const bMap = comprasMapByBranch[branch.id] || comprasMapByBranch[String(branch.id)];
                         const bEntry = bMap ? bMap.get(Number(r.id)) : null;

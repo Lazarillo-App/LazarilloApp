@@ -25,7 +25,6 @@ import {
   getBusinessPriceList,
   setBusinessPriceList,
 } from '@/servicios/apiPriceLists';
-import AutoGroupModal from './AutoGroupModal';
 import BusinessEditModal from './BusinessEditModal';
 import BranchFormModal from './BranchFormModal';
 import SyncComprasModal from './SyncComprasModal';
@@ -183,15 +182,6 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
   return (
     <>
       <div className="grid"></div>
-      <AutoGroupModal
-        open={autoGroupModal.open}
-        suggestions={autoGroupModal.suggestions}
-        onClose={() => setAutoGroupModal({ open: false, suggestions: [], loading: false })}
-        onApply={handleApplyAutoGrouping}
-        onCreateGroup={handleCreateGroup}
-        loading={autoGroupModal.loading}
-      />
-
       <SyncComprasModal
         open={comprasModalOpen}
         onClose={() => setComprasModalOpen(false)}
@@ -205,11 +195,11 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
           onClose={() => setConfigModalOpen(false)}
           orgId={orgId}
           bizId={biz.id}
-          listNumber={activeListNum}
           allLists={safeLists}
           onSaved={(updatedLists) => {
             onListsUpdated?.(updatedLists);
             setConfigModalOpen(false);
+            window.dispatchEvent(new CustomEvent('pricelists:updated', { detail: { lists: updatedLists } }));
           }}
         />
       )}
@@ -316,7 +306,7 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
                 {safeLists.map(l => (
                   <option key={l.listNumber} value={l.listNumber}>
                     {l.alias || `Lista ${l.listNumber}`}
-                    {l.isPrincipal ? '  ⭐' : ''}
+                    {l.isPrincipal ? '' : ''}
                     {!l.isPrincipal && l.discountPct ? `  (−${l.discountPct}%)` : ''}
                   </option>
                 ))}
@@ -549,18 +539,7 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
 
   return (
     <div style={{ padding: compact ? 0 : '32px 24px', maxWidth: compact ? '100%' : 1100, margin: compact ? 0 : '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '10px 18px', borderRadius: 10, border: 'none',
-            background: 'var(--color-primary, #3b82f6)',
-            color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-          }}>
-          + Nuevo negocio
-        </button>
-      </div>
+      
       {notice && (
         <div style={{
           marginBottom: 12, padding: '10px 16px', borderRadius: 10,

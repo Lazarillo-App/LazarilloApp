@@ -96,19 +96,19 @@ const LinksAPI = {
 
 export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   // ── Modo de selección ──
-  const [selectionMode, setSelectionMode]   = useState(null); // null | 'list' | 'link'
-  const [selectedIds, setSelectedIds]       = useState(new Set());
-  const [saving, setSaving]                 = useState(false);
+  const [selectionMode, setSelectionMode] = useState(null); // null | 'list' | 'link'
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [saving, setSaving] = useState(false);
 
   // ── Listas ──
-  const [lists, setLists]                   = useState([]);
-  const [loadingLists, setLoadingLists]     = useState(false);
-  const [activeListId, setActiveListId]     = useState(null); // lista activa en sidebar
+  const [lists, setLists] = useState([]);
+  const [loadingLists, setLoadingLists] = useState(false);
+  const [activeListId, setActiveListId] = useState(null); // lista activa en sidebar
   const [activeListItems, setActiveListItems] = useState(new Set()); // IDs en la lista activa
 
   // ── Vinculaciones ──
   // linkByArticleId: Map<articleId, { groupId, groupName, memberIds: Set }>
-  const [linkGroups, setLinkGroups]         = useState([]); // [{id, name, members:[{article_id}]}]
+  const [linkGroups, setLinkGroups] = useState([]); // [{id, name, members:[{article_id}]}]
 
   // Construir índice: articleId → groupInfo
   const linkByArticleId = useMemo(() => {
@@ -150,13 +150,28 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
       const { groupId, count, changeType } = e.detail || {};
       const typeLabel = changeType === 'recipe' ? 'receta'
         : changeType === 'objetivo' ? 'objetivo %'
-        : 'precio manual';
+          : 'precio manual';
       notify?.(`🔗 ${typeLabel} aplicada a ${count} artículo${count !== 1 ? 's' : ''} vinculado${count !== 1 ? 's' : ''}`);
       onLinkPropagated?.({ groupId, count, changeType });
     };
     window.addEventListener('article:link-propagated', onProp);
     return () => window.removeEventListener('article:link-propagated', onProp);
   }, [notify, onLinkPropagated]);
+
+  // ── Escuchar cambios en vínculos (creación/modificación desde modales) ──
+  useEffect(() => {
+    if (!bizId) return;
+    const onLinksChanged = async () => {
+      try {
+        const r = await LinksAPI.getAll(bizId);
+        setLinkGroups(r?.groups || []);
+      } catch (e) {
+        console.warn('[useArticleSelection] reload links failed:', e.message);
+      }
+    };
+    window.addEventListener('article:links-changed', onLinksChanged);
+    return () => window.removeEventListener('article:links-changed', onLinksChanged);
+  }, [bizId]);
 
   // ── Selección ──────────────────────────────────────────────────────────
   const toggleSelected = useCallback((id) => {

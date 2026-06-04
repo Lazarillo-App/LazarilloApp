@@ -30,6 +30,7 @@ import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import ReactDOM from 'react-dom';
 import instructionImage1 from '../assets/brand/maxirest-menu.jpeg';
 import instructionImage2 from '../assets/brand/maxirest-config.jpeg';
+import { getOrgPriceListConfig, getBusinessPriceList } from '@/servicios/apiPriceLists';
 import {
   notifyGroupRenamed,
   notifyGroupDeleted,
@@ -156,9 +157,10 @@ export default function ArticulosMain(props) {
   const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
-
+  const [allPriceLists, setAllPriceLists] = useState([]);
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
+  const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
   const {
     selectionMode, selectedIds, saving: selectionSaving,
@@ -204,12 +206,6 @@ export default function ArticulosMain(props) {
   }, [activeBizId]);
 
   useEffect(() => {
-    console.log('[DEBUG] activeBranchFilter:', activeBranchFilter);
-    console.log('[DEBUG] branchId a useSalesData:',
-      activeBranchFilter?.mode === 'main' ? 'main'
-        : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-          : 'main'
-    );
   }, [activeBranchFilter]);
 
   const periodoRef = useRef(periodo);
@@ -234,7 +230,6 @@ export default function ArticulosMain(props) {
       setVentasMapByBranch({});
       return;
     }
-    console.log('[DEBUG] ventasMapByBranch fetch - branches:', branches.map(b => b.id));
     let cancelled = false;
     const token = localStorage.getItem('token') || '';
     const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
@@ -269,7 +264,8 @@ export default function ArticulosMain(props) {
     });
     return () => { cancelled = true; };
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
-  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
+
+  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization() || {};
 
   usePersistUiActions(activeBizId);
 
@@ -455,12 +451,9 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     if (!activeBizId) {
-      console.log('[ArticulosMain] Sin businessId, limpiando agrupaciones');
       setAgrupaciones([]);
       return;
     }
-
-    console.log('[ArticulosMain] Cargando agrupaciones inicial...');
     refetchAgrupaciones();
   }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
 
@@ -469,28 +462,23 @@ export default function ArticulosMain(props) {
   useEffect(() => {
     if (!activeBizId) return;
     let alive = true;
-    // Recetas viven en el principal; price config en el negocio activo
     const recetasBizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
     const configBizId = Number(activeBizId);
+    const orgId = organization?.id;
 
     Promise.all([
       RecetasAPI.getCostos(recetasBizId).catch(() => ({ costos: {} })),
       PriceConfigAPI.getAll(configBizId).catch(() => ({ byArticle: {}, byRubro: {}, byAgrupacion: {} })),
       fetch(`${BASE}/businesses/${configBizId}/articles-alertas-ventas`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-          'X-Business-Id': String(configBizId),
-        },
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}`, 'X-Business-Id': String(configBizId) },
       }).then(r => r.json()).catch(() => ({ hayAlerta: false })),
-    ]).then(([costosRes, configRes, alertaVentasRes]) => {
+      orgId ? getOrgPriceListConfig(orgId).catch(() => []) : Promise.resolve([]),
+    ]).then(([costosRes, configRes, alertaVentasRes, listsRes]) => {
       if (!alive) return;
       setRecetasCostos(costosRes?.costos || {});
-      setPriceConfig({
-        byArticle: configRes?.byArticle || {},
-        byRubro: configRes?.byRubro || {},
-        byAgrupacion: configRes?.byAgrupacion || {},
-      });
+      setPriceConfig({ byArticle: configRes?.byArticle || {}, byRubro: configRes?.byRubro || {}, byAgrupacion: configRes?.byAgrupacion || {} });
       setAlertaVentas(alertaVentasRes || null);
+      if (Array.isArray(listsRes) && listsRes.length > 0) setAllPriceLists(listsRes);
     });
 
     return () => { alive = false; };
@@ -525,30 +513,27 @@ export default function ArticulosMain(props) {
     const bizId = Number(activeBizId);
     const doSave = async () => {
       try {
-        // Actualización optimista
-        if (body.scope === 'articulo' && body.scopeId) {
-          setPriceConfig(prev => ({
-            ...prev,
-            byArticle: {
-              ...prev.byArticle,
-              [String(body.scopeId)]: {
-                ...(prev.byArticle?.[String(body.scopeId)] || {}),
-                precioManual: (body._deleteManual || body._delete) ? null : (body.precioManual ?? null),
-                objetivo: body.objetivo ?? prev.byArticle?.[String(body.scopeId)]?.objetivo,
-              },
-            },
-          }));
-        }
+        const { _deleteIndividuales, _deleteObjetivo, _delete, _deleteManual, ...cleanBody } = body;
 
-        if (body._deleteManual) {
-          // DELETE explícito del precio manual — borra el registro si no tiene objetivo
+        if (_deleteObjetivo) {
+          // Borrar objetivo de la agrupación
+          await PriceConfigAPI.remove(bizId, { scope: body.scope, scopeId: body.scopeId });
+
+          // Borrar objetivos individuales de todos los artículos
+          if (Array.isArray(body.articleIds) && body.articleIds.length > 0) {
+            await Promise.all(
+              body.articleIds.map(artId =>
+                PriceConfigAPI.remove(bizId, { scope: 'articulo', scopeId: String(artId) })
+                  .catch(() => { })
+              )
+            );
+          }
+        } else if (_deleteManual) {
           await PriceConfigAPI.remove(bizId, { scope: body.scope, scopeId: body.scopeId });
         } else {
-          const { _delete, _deleteManual, ...cleanBody } = body;
           await PriceConfigAPI.save(bizId, cleanBody);
         }
 
-        // Confirmar con el valor real del back
         const r = await PriceConfigAPI.getAll(bizId);
         setPriceConfig({
           byArticle: r?.byArticle || {},
@@ -567,11 +552,10 @@ export default function ArticulosMain(props) {
     const bizId = Number(activeBizId);
     if (!bizId || !updates?.length) return;
     try {
-      // Separar borrados de guardados
-      const toDelete = updates.filter(u => u.precioManual == null);
       const toSave = updates.filter(u => u.precioManual != null);
+      const toDelete = updates.filter(u => u.precioManual == null);
 
-      // Actualización optimista inmediata
+      // Optimista
       setPriceConfig(prev => {
         const byArticle = { ...prev.byArticle };
         updates.forEach(({ artId, precioManual }) => {
@@ -583,27 +567,12 @@ export default function ArticulosMain(props) {
         return { ...prev, byArticle };
       });
 
-      // Guardar los que tienen valor
-      if (toSave.length) {
-        await Promise.all(
-          toSave.map(({ artId, precioManual }) =>
-            PriceConfigAPI.save(bizId, { scope: 'articulo', scopeId: String(artId), precioManual })
-              .catch(e => console.warn('[handleBulkManualSave] save fallo', artId, e.message))
-          )
-        );
-      }
+      // Un solo request
+      await PriceConfigAPI.bulkSave(bizId, {
+        updates: toSave.map(({ artId, precioManual }) => ({ artId, precioManual })),
+        deletes: toDelete.map(({ artId }) => ({ artId })),
+      });
 
-      // Borrar los que son null — usar DELETE explícito
-      if (toDelete.length) {
-        await Promise.all(
-          toDelete.map(({ artId }) =>
-            PriceConfigAPI.remove(bizId, { scope: 'articulo', scopeId: String(artId) })
-              .catch(e => console.warn('[handleBulkManualSave] delete fallo', artId, e.message))
-          )
-        );
-      }
-
-      // Confirmar con el valor real
       const r = await PriceConfigAPI.getAll(bizId);
       setPriceConfig({
         byArticle: r?.byArticle || {},
@@ -644,6 +613,14 @@ export default function ArticulosMain(props) {
             objetivo: valAnterior ?? null,
             articleIds, pisarTodo: true,
           });
+
+          // Notificar a TablaArticulos para que limpie su state local 'objetivos'
+          try {
+            window.dispatchEvent(new CustomEvent('articulos:clear-local-objetivos', {
+              detail: { articleIds, scope, scopeId }
+            }));
+          } catch { }
+
           const r = await PriceConfigAPI.getAll(bizId);
           setPriceConfig({
             byArticle: r?.byArticle || {},
@@ -679,6 +656,8 @@ export default function ArticulosMain(props) {
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
   }, [activeBizId, setPriceConfig]);
+
+
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -721,10 +700,6 @@ export default function ArticulosMain(props) {
     window.__DEBUG_VENTAS_MAP = ventasMap;
 
     if (ventasMap && ventasMap.size > 0) {
-      console.log('[ArticulosMain] ventasMap:', {
-        size: ventasMap.size,
-        sample: Array.from(ventasMap.entries()).slice(0, 3)
-      });
     }
   }, [ventasMap]);
 
@@ -748,14 +723,7 @@ export default function ArticulosMain(props) {
   }, [favoriteGroupId, activeBizId]);
 
   const mutateGroups = useCallback(async (action) => {
-    console.log('[mutateGroups]', action.type, {
-      groupId: action.groupId,
-      fromId: action.fromId,
-      toId: action.toId,
-      id: action.id,
-      idsCount: action.ids?.length,
-      articulosCount: action.articulos?.length,
-    });
+
     setAgrupaciones(prev => {
       switch (action.type) {
         case 'create':
@@ -883,12 +851,6 @@ export default function ArticulosMain(props) {
         }
       }
 
-      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
-      console.log('[downloadVentasCSV] articleIds param:', articleIds);
-      console.log('[downloadVentasCSV] listId param:', listId);
-      console.log('[export] articleIds que llegan al handler:', articleIds);
-      console.log('[export] activeListItems al momento de exportar:', activeListItems);
-      console.log('[export] listId:', listId);
       const blob = await downloadVentasCSV(bid, {
         from,
         to,
@@ -912,8 +874,6 @@ export default function ArticulosMain(props) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
-      console.log('[downloadVentasCSV] url final:', url);
     } catch (err) {
       console.error('Error al descargar CSV de ventas', err);
       showAlert(`Error al descargar CSV de ventas: ${err.message || err}`, 'error');
@@ -1520,13 +1480,6 @@ export default function ArticulosMain(props) {
       // Usar el rootBusinessId para las llamadas HTTP del UNDO
       const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
 
-      console.log('🔄 [UNDO discontinue]', {
-        ids,
-        wasInDiscontinuados,
-        discontinuadosGroupId,
-        fromGroupId,
-      });
-
       if (!ids.length) {
         showMiss('No hay artículos para deshacer');
         return;
@@ -1622,6 +1575,14 @@ export default function ArticulosMain(props) {
     metaById,
     rootBusiness,
   ]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail?.lists) setAllPriceLists(e.detail.lists);
+    };
+    window.addEventListener('pricelists:updated', handler);
+    return () => window.removeEventListener('pricelists:updated', handler);
+  }, []);
 
   const handleDiscontinuarBloque = useCallback(
     async (idsRaw = []) => {
@@ -2154,8 +2115,6 @@ export default function ArticulosMain(props) {
 
   const bizCtx = useBusiness();
   useEffect(() => {
-    console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
-    console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
 
   const handleRedondeoChange = useCallback(async (nuevoValor) => {
@@ -2163,7 +2122,7 @@ export default function ArticulosMain(props) {
     try {
       await BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: nuevoValor } });
     } catch (e) {
-      console.warn('[handleRedondeoChange] error al guardar en DB:', e.message);
+      console.warn('[handleRedondeoChange] error:', e.message);
     }
   }, [activeBizId]);
 
@@ -2377,6 +2336,8 @@ export default function ArticulosMain(props) {
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
             totalBizAmount={totalBizAmount}
+            businessId={activeBizId}
+            visibleSubrubro={visibleSubrubro}
           />
         </div>
 
@@ -2435,6 +2396,8 @@ export default function ArticulosMain(props) {
             onRemoveMemberFromLink={removeMemberFromLink}
             onDeleteLink={deleteLink}
             onRedondeoChange={handleRedondeoChange}
+            allPriceLists={allPriceLists}
+            onVisibleSubrubroChange={setVisibleSubrubro}
           />
         </div>
       </div>

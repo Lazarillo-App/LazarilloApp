@@ -538,7 +538,7 @@ export default function BusinessCard({
                   {allLists.map(l => (
                     <option key={l.listNumber} value={l.listNumber}>
                       {l.alias || `Lista ${l.listNumber}`}
-                      {l.isPrincipal ? '  ⭐' : ''}
+                      {l.isPrincipal ? '  ' : ''}
                       {!l.isPrincipal && l.discountPct ? `  (−${l.discountPct}%)` : ''}
                     </option>
                   ))}

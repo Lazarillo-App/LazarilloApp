@@ -28,9 +28,9 @@ export function OrganizationProvider({ children }) {
   const { isLogged, booting } = useAuth();
   const { activeId, activeBusinessId, refetchBusinesses, items: bizItems } = useBusiness() || {};
 
-  const [organization, setOrganization]   = useState(null);
-  const [orgLoading, setOrgLoading]       = useState(false);
-  const [orgError, setOrgError]           = useState(null);
+  const [organization, setOrganization] = useState(null);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState(null);
 
   // Para evitar fetch duplicado cuando cambia activeId
   const lastFetchedBizId = useRef(null);
@@ -40,23 +40,24 @@ export function OrganizationProvider({ children }) {
   ───────────────────────────────────────────────── */
   const refetchOrg = useCallback(async () => {
     if (!isLogged) return;
-
-    const currentBizId = activeId || activeBusinessId;
+    const currentBizId = Number(activeId || activeBusinessId);
     if (!currentBizId) return;
-
-    // Evitar refetch innecesario
-    if (lastFetchedBizId.current === String(currentBizId)) return;
-    lastFetchedBizId.current = String(currentBizId);
 
     setOrgLoading(true);
     setOrgError(null);
-
     try {
       const org = await getMyOrganization();
+
+      if (org?.businesses?.length > 0) {
+        const orgBizIds = new Set(org.businesses.map(b => Number(b.id)));
+        if (!orgBizIds.has(currentBizId)) {
+          setOrganization(null);
+          return;
+        }
+      }
+
       setOrganization(org);
-      console.log('[OrganizationContext] ✅ Org cargada:', org?.name || 'sin org');
     } catch (e) {
-      console.error('[OrganizationContext] ❌ Error cargando org:', e);
       setOrgError(e?.message || 'error_loading_org');
     } finally {
       setOrgLoading(false);
@@ -187,14 +188,19 @@ export function OrganizationProvider({ children }) {
   /* ─────────────────────────────────────────────────
      Helpers derivados (SIN parent_id, todos hermanos)
   ───────────────────────────────────────────────── */
-  
+
   // TODOS los businesses son hermanos, no hay parent_id
+  // DESPUÉS
   const allBusinesses = useMemo(() => {
-    // Con org: usar los negocios de la org
+    // Con org: solo los negocios de ESA org
     if (organization?.businesses?.length > 0) return organization.businesses;
-    // Sin org (negocio independiente): usar los negocios del BusinessContext
-    return Array.isArray(bizItems) ? bizItems : [];
-  }, [organization, bizItems]);
+
+    // Sin org (negocio independiente): solo el negocio activo
+    const activoNum = Number(activeId || activeBusinessId);
+    const lista = Array.isArray(bizItems) ? bizItems : [];
+    const activo = lista.find(b => Number(b.id) === activoNum);
+    return activo ? [activo] : [];
+  }, [organization, bizItems, activeId, activeBusinessId]);
 
   const subBusinesses = allBusinesses;
 
@@ -218,7 +224,7 @@ export function OrganizationProvider({ children }) {
     createOrg,
     updateOrg,
     createSubBusiness,
-    
+
     // Helpers
     allBusinesses,      // ✅ TODOS los negocios (sin distinción de padre/hijo)
     subBusinesses,      // alias de allBusinesses para compat
