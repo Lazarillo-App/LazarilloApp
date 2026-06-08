@@ -407,6 +407,7 @@ export default function TablaArticulos({
         subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? "Sin subrubro"),
         precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
         costo: Number(row?.costo ?? raw?.costo ?? 0),
+        origen: row?.origen ?? raw?.origen ?? null,
       };
     }).filter((a) => Number.isFinite(a.id));
 
@@ -1635,7 +1636,10 @@ export default function TablaArticulos({
           {(selectionMode === 'list' || !selectionMode) && isLinked && (
             <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
           )}
-          <span>{id}</span>
+          {a.origen === 'manual'
+            ? <span title="Artículo cargado manualmente en Lazarillo" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>L{id}</span>
+            : <span>{id}</span>
+          }
         </div>
 
         <div onClick={() => { const objetivoResuelto = getObjetivoArticulo(a, agrupId); setRecetaArticulo({ ...a, objetivoResuelto }); }}

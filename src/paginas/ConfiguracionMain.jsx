@@ -34,6 +34,7 @@ import BusinessCard from '../componentes/BusinessCard';
 import SucursalesSection from '../componentes/SucursalesSection';
 import RecetaModal from '../componentes/RecetaModal';
 import UploadInsumosModal from '../componentes/UploadInsumosModal';
+import UploadArticulosModal from '../componentes/UploadArticulosModal';
 // Sub-tabs extraídos
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
@@ -643,12 +644,11 @@ fnsvldhfjggmc */}
         onSuccess={() => { setShowUploadInsumos(false); notify('Insumos importados correctamente'); setSubTabIns(2); }}
       />
 
-      <UploadInsumosModal
+      <UploadArticulosModal
         open={showUploadArticulos}
         onClose={() => setShowUploadArticulos(false)}
         businessId={businessId}
-        tipo="articulos"
-        onSuccess={() => { setShowUploadArticulos(false); notify('Artículos importados correctamente'); window.dispatchEvent(new CustomEvent('articulos:updated')); }}
+        onSuccess={() => { notify('Importación completada'); window.dispatchEvent(new CustomEvent('articulos:updated')); }}
       />
 
       <InsumoNuevoModal

@@ -18,7 +18,7 @@ import AppAlertModal from './componentes/AppAlertModal';
 import AppPromptModal from './componentes/AppPromptModal';
 import AppConfirmModal from './componentes/AppConfirmModal';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
-
+import LazarilloLanding from './paginas/LazarilloLanding';
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
 
@@ -206,6 +206,8 @@ export default function App() {
       {isLogged && <Navbar />}
 
       <Routes>
+        {/* Públicas */}
+        <Route path="/" element={<LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -213,14 +215,12 @@ export default function App() {
         <Route path="/upload-foto" element={<UploadFoto />} />
 
         <Route element={<ProtectedRoute />}>
-          {/* ADMIN independiente del negocio */}
           <Route path="/admin/*" element={<AdminApp />} />
 
-          {/* App “normal” solo si no es app_admin */}
           {role !== 'app_admin' ? (
             <Route element={<OnboardingGuard />}>
               <Route
-                path="/"
+                path="/app"                        
                 element={
                   <RequireMaxi onReady={() => { }}>
                     <ArticulosMain
@@ -236,29 +236,17 @@ export default function App() {
                   </RequireMaxi>
                 }
               />
-              {/* <Route
-                path="/agrupaciones"
-                element={<Agrupaciones actualizarAgrupaciones={recargarAgrupaciones} />}
-              /> */}
-              <Route
-                path="/agrupacioneslist"
-                element={<AgrupacionesList agrupaciones={agrupaciones} />}
-              />
-              <Route
-                path="/insumos"
-                element={
-                  <Insumos />
-                }
-              />
+              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
+              <Route path="/insumos" element={<Insumos />} />
               <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
               <Route path="/configuracion" element={<ConfiguracionMain />} />
             </Route>
           ) : (
-            <Route path="/" element={<AdminApp />} />
-          )}
+            <Route path="/app" element={<AdminApp />} /> 
+        )}
         </Route>
 
-        <Route path="*" element={<Login />} />
+        <Route path="*" element={<LazarilloLanding />} />  {/* ← mejor que Login para 404 */}
       </Routes>
     </ThemeProviderNegocio>
   );
