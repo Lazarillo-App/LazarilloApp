@@ -193,7 +193,7 @@ export default function Navbar() {
     navigate('/login', { replace: true });
   };
 
-  const homeTo = isAppAdmin ? '/admin' : '/';
+  const homeTo = isAppAdmin ? '/admin' : '/app';
 
   return (
     <>

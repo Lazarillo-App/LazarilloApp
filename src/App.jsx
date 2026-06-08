@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
 //import Agrupaciones from './componentes/Agrupaciones';
@@ -207,7 +207,7 @@ export default function App() {
 
       <Routes>
         {/* Públicas */}
-        <Route path="/" element={<LazarilloLanding />} />
+        <Route path="/"element={isLogged ? <Navigate to="/app" replace /> : <LazarilloLanding />}/>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
