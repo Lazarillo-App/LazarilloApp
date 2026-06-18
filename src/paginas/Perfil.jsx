@@ -86,6 +86,8 @@ function TeamSection() {
   // Menú contextual por fila
   const [menuRow, setMenuRow] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState(null);
+  
+  const [snack, setSnack] = useState(null);
 
   const puedeGestionar = canDo('manage_team') && !!bizId;
 
@@ -301,7 +303,18 @@ function TeamSection() {
         scopeType="business"
         scopeId={bizId}
         scopeName={bizName}
-        onCreated={fetchMembers}
+        onCreated={(res) => {
+          fetchMembers();
+          if (res?.successMessage) setSnack(res.successMessage);
+        }}
+      />
+
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={3500}
+        onClose={() => setSnack(null)}
+        message={snack || ''}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </>
   );
