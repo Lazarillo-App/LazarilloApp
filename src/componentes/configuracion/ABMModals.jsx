@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Stack, Alert, Box, Typography,
-  FormControl, InputLabel, Select, MenuItem,
-  InputAdornment, Divider, CircularProgress,
+  Button, TextField, MenuItem, InputAdornment, FormControl,
+  InputLabel, Select, Divider, Alert, Stack, CircularProgress,
+  Autocomplete, Checkbox, Typography, Box,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { BASE } from '@/servicios/apiBase';
@@ -18,9 +18,9 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
   const [form, setForm] = useState({
     nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false,
   });
-  const [rubros, setRubros]   = useState([]);
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState('');
+  const [rubros, setRubros] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Nuevo insumo</DialogTitle>
       <DialogContent>
         <Stack spacing={2} pt={0.5}>
-          {error   && <Alert severity="error"   sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
+          {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
           {success && (
             <Alert severity="success" sx={{ py: 0.5, fontSize: '0.82rem' }}>
               Insumo <strong>{success.nombre}</strong> creado — SKU: <code>{success.codigo_maxi}</code>
@@ -129,7 +129,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
             <Stack direction="row" spacing={1}>
               {[
                 { value: false, label: 'De compra', desc: 'Se compra a proveedor', icon: '🛒' },
-                { value: true,  label: 'Elaborado',  desc: 'Se produce internamente', icon: '👨‍🍳' },
+                { value: true, label: 'Elaborado', desc: 'Se produce internamente', icon: '👨‍🍳' },
               ].map(opt => {
                 const active = form.esElaborado === opt.value;
                 return (
@@ -177,25 +177,32 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '' };
-  const [form, setForm]             = useState(EMPTY_FORM);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [rubroNuevo, setRubroNuevo] = useState('');
   const [subrubroNuevo, setSubrubroNuevo] = useState('');
-  const [rubros, setRubros]         = useState([]);
+  const [rubros, setRubros] = useState([]);
   const [agrupaciones, setAgrupaciones] = useState([]);
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // 🆕 Padrino (artículo de referencia para autocompletar)
+  const [usarPadrino, setUsarPadrino] = useState(false);
+  const [padrinoSelected, setPadrinoSelected] = useState(null);
+  const [padrinoQuery, setPadrinoQuery] = useState('');
+  const [padrinoCandidates, setPadrinoCandidates] = useState([]);
+  const [padrinoLoading, setPadrinoLoading] = useState(false);
 
   const subrubrosDelRubro = useMemo(() => {
     const r = rubros.find(r => r.nombre === form.rubro);
     return r?.subrubros || [];
   }, [rubros, form.rubro]);
 
-  const esRubroNuevo    = form.rubro    === '__nuevo__';
+  const esRubroNuevo = form.rubro === '__nuevo__';
   const esSubrubroNuevo = form.subrubro === '__nuevo__';
 
   useEffect(() => {
     if (!open || !businessId) return;
-    const token   = localStorage.getItem('token') || '';
+    const token = localStorage.getItem('token') || '';
     const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) };
     Promise.all([
       fetch(`${BASE}/businesses/${businessId}/rubros`, { headers }).then(r => r.json()).catch(() => ({})),
@@ -212,12 +219,76 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
     }
   }, [open]);
 
-  const rubroEfectivo    = esRubroNuevo    ? rubroNuevo.trim()    : form.rubro;
+  // 🆕 Buscar candidatos de padrino con debounce
+  useEffect(() => {
+    if (!usarPadrino || !businessId) {
+      setPadrinoCandidates([]);
+      return;
+    }
+    const q = padrinoQuery.trim();
+    if (q.length < 2) {
+      setPadrinoCandidates([]);
+      return;
+    }
+    let cancel = false;
+    setPadrinoLoading(true);
+    const timeoutId = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const url = `${BASE}/businesses/${businessId}/articles/search-padrino?q=${encodeURIComponent(q)}`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        });
+        const data = await res.json();
+        if (!cancel) setPadrinoCandidates(data?.candidatos || []);
+      } catch {
+        if (!cancel) setPadrinoCandidates([]);
+      } finally {
+        if (!cancel) setPadrinoLoading(false);
+      }
+    }, 300);
+    return () => { cancel = true; clearTimeout(timeoutId); };
+  }, [usarPadrino, padrinoQuery, businessId]);
+
+  // 🆕 Autocompletar formulario al seleccionar padrino
+  const onPadrinoSelected = (padrino) => {
+    setPadrinoSelected(padrino);
+    if (!padrino) return;
+
+    const rubroPadrino = padrino.rubro || '';
+    const subrubroPadrino = padrino.subrubro || '';
+
+    setRubros(prev => {
+      if (!rubroPadrino) return prev;
+      const exists = prev.some(r => r.nombre === rubroPadrino);
+      if (!exists) {
+        return [
+          ...prev,
+          { nombre: rubroPadrino, subrubros: subrubroPadrino ? [subrubroPadrino] : [] },
+        ];
+      }
+      if (!subrubroPadrino) return prev;
+      return prev.map(r => {
+        if (r.nombre !== rubroPadrino) return r;
+        if ((r.subrubros || []).includes(subrubroPadrino)) return r;
+        return { ...r, subrubros: [...(r.subrubros || []), subrubroPadrino] };
+      });
+    });
+
+    setForm(f => ({
+      ...f,
+      rubro: rubroPadrino || f.rubro,
+      subrubro: subrubroPadrino || '',
+      precio: String(padrino.precio || ''),
+    }));
+  };
+
+  const rubroEfectivo = esRubroNuevo ? rubroNuevo.trim() : form.rubro;
   const subrubroEfectivo = esSubrubroNuevo ? subrubroNuevo.trim() : form.subrubro;
 
   const handleSave = async () => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
-    if (!rubroEfectivo)      { setError('El rubro es obligatorio');  return; }
+    if (!rubroEfectivo) { setError('El rubro es obligatorio'); return; }
     setSaving(true); setError('');
     try {
       const token = localStorage.getItem('token') || '';
@@ -229,10 +300,10 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          nombre:       form.nombre.trim(),
-          rubro:        rubroEfectivo,
-          subrubro:     subrubroEfectivo || null,
-          precio:       form.precio ? Number(form.precio) : 0,
+          nombre: form.nombre.trim(),
+          rubro: rubroEfectivo,
+          subrubro: subrubroEfectivo || null,
+          precio: form.precio ? Number(form.precio) : 0,
           agrupacionId: form.agrupacionId ? Number(form.agrupacionId) : null,
         }),
       });
@@ -251,6 +322,64 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
       <DialogContent>
         <Stack spacing={2} pt={0.5}>
           {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
+
+          {/* 🆕 Toggle padrino + autocomplete */}
+          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: -1 }}>
+              <Checkbox size="small" checked={usarPadrino}
+                onChange={(e) => {
+                  setUsarPadrino(e.target.checked);
+                  if (!e.target.checked) {
+                    setPadrinoSelected(null);
+                    setPadrinoQuery('');
+                    setPadrinoCandidates([]);
+                  }
+                }}
+              />
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Crear a partir de otro artículo
+              </Typography>
+            </Stack>
+
+            {usarPadrino && (
+              <Autocomplete
+                size="small" sx={{ mt: 1 }}
+                options={padrinoCandidates}
+                loading={padrinoLoading}
+                value={padrinoSelected}
+                onChange={(_, val) => onPadrinoSelected(val)}
+                onInputChange={(_, val) => setPadrinoQuery(val)}
+                getOptionLabel={(opt) => opt?.nombre || ''}
+                isOptionEqualToValue={(opt, val) => Number(opt?.id) === Number(val?.id)}
+                renderOption={(props, opt) => (
+                  <li {...props} key={opt.id}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{opt.nombre}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
+                        {' · '}${Number(opt.precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {opt.sku ? ` · ${opt.sku}` : ''}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Buscar por nombre o SKU…" size="small"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {padrinoLoading && <CircularProgress size={14} />}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+                noOptionsText={padrinoQuery.trim().length < 2 ? 'Escribí al menos 2 caracteres' : 'Sin resultados'}
+              />
+            )}
+          </Box>
 
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />

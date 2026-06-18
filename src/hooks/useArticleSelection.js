@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/hooks/useArticleSelection.js
 //
 // Maneja todo el estado de selección de artículos:
@@ -9,6 +10,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { BASE } from '@/servicios/apiBase';
+import { deleteReceta } from '@/servicios/apiOrganizations';
 
 const authHeaders = (bizId) => ({
   'Content-Type': 'application/json',
@@ -164,6 +166,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     const onLinksChanged = async () => {
       try {
         const r = await LinksAPI.getAll(bizId);
+        console.log('[onLinksChanged] nuevo linkGroups:', r?.groups?.length, 'grupos');
         setLinkGroups(r?.groups || []);
       } catch (e) {
         console.warn('[useArticleSelection] reload links failed:', e.message);
@@ -324,10 +327,20 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     if (!bizId) return;
     try {
       await LinksAPI.removeMember(bizId, groupId, articleId);
+
+      // Borrar la receta del artículo desvinculado (consistente con quitarGemelo del RecetaModal)
+      await deleteReceta(bizId, articleId).catch(e =>
+        console.warn('[removeMemberFromLink] no se pudo borrar receta:', e.message)
+      );
+
       setLinkGroups(prev => prev.map(g => {
         if (g.id !== groupId) return g;
         return { ...g, members: (g.members || []).filter(m => Number(m.article_id) !== Number(articleId)) };
       }));
+
+      // Avisar a la tabla para que refresque los íconos de vinculación y costos
+      try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
+
       notify?.('Artículo desvinculado');
     } catch (e) {
       console.error('[removeMemberFromLink]', e);

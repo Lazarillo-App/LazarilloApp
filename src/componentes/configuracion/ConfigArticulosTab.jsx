@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/componentes/configuracion/ConfigArticulosTab.jsx
 import React from 'react';
 import {
@@ -13,7 +14,10 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SaveIcon from '@mui/icons-material/Save';
 import PercentIcon from '@mui/icons-material/Percent';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import LotesPanel from './LotesPanel';
 import LotesPanelArticulos from './LotesPanelArticulos';
+import DeleteRecetasModal from './DeleteRecetasModal';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 function Card({ children, accent }) {
   const tc = 'var(--color-primary, #3b82f6)';
@@ -187,10 +191,11 @@ export default function ConfigArticulosTab({
   // Valor guardado en DB — para el indicador visual del chip activo
   const [savedRedondeo, setSavedRedondeo] = React.useState(config?.redondeo_precios ?? null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.articulos_costo_ideal ?? '');
+  const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
 
-  React.useEffect(() => { 
-  setSavedRedondeo(config?.redondeo_precios ?? null); 
-}, [config?.redondeo_precios]);
+  React.useEffect(() => {
+    setSavedRedondeo(config?.redondeo_precios ?? null);
+  }, [config?.redondeo_precios]);
   React.useEffect(() => { setSavedCostoIdeal(config?.articulos_costo_ideal ?? ''); }, [config?.articulos_costo_ideal]);
 
   const handleConfirm = () => {
@@ -354,9 +359,16 @@ export default function ConfigArticulosTab({
                   desc="Alta manual cuando el artículo no llegó de Maxi todavía. Se genera un SKU provisorio que se reemplaza al sincronizar.">
                   <PrimaryBtn icon={<AddIcon />} label="Nuevo artículo" onClick={onNuevoArticulo} tc={tc} />
                 </ActionRow>
-                <ActionRow icon={<CloudUploadIcon />} title="Importar desde archivo"
-                  desc="Subí un CSV o Excel. El sistema detecta las columnas y te pide mapear las que no reconoce.">
-                  <PrimaryBtn icon={<CloudUploadIcon />} label="Importar" onClick={onUploadArticulos} tc={tc} />
+                <ActionRow icon={<DeleteForeverIcon />} title="Borrar recetas masivas"
+                  desc="Borrá todas las recetas de artículos o las de una agrupación específica. Acción irreversible.">
+                  <Button
+                    variant="outlined" size="small" color="error"
+                    startIcon={<DeleteForeverIcon />}
+                    onClick={() => setDeleteRecetasOpen(true)}
+                    sx={{ fontWeight: 600, fontSize: '0.82rem', px: 2, py: 0.9, borderRadius: 1.5 }}
+                  >
+                    Borrar recetas
+                  </Button>
                 </ActionRow>
               </CardBody>
             </Card>
@@ -447,6 +459,15 @@ export default function ConfigArticulosTab({
           </Grid>
         </Grid>
       )}
+
+      {/* Modal de borrado masivo de recetas */}
+      <DeleteRecetasModal
+        open={deleteRecetasOpen}
+        onClose={() => setDeleteRecetasOpen(false)}
+        businessId={businessId}
+        tipo="articulo"
+        themeColor={tc}
+      />
 
       {/* Dialog de confirmación */}
       <Dialog open={!!confirmDlg} onClose={() => setConfirmDlg(null)} maxWidth="xs" fullWidth>

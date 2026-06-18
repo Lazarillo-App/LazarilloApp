@@ -1588,6 +1588,7 @@ function ItemRow({
 ════════════════════════════════════════ */
 export default function RecetaModal({
   open, onClose, articulo, businessId, onSaved, costoObjetivoExterno,
+  insumosBizId = null,
   recetasElaborados = {},
   esElaborado = false,
   getRecetaUrl = null,
@@ -1711,7 +1712,16 @@ export default function RecetaModal({
       headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
     })
       .then(r => r.json())
-      .then(d => setGemelosGroup(d?.group || null))
+      .then(d => {
+        const group = d?.group || null;
+        // Solo nos interesan los grupos de tipo "receta" en este modal.
+        // Las vinculaciones por precio se gestionan desde la tabla.
+        if (group && group.syncRecipe === false) {
+          setGemelosGroup(null);
+          return;
+        }
+        setGemelosGroup(group);
+      })
       .catch(() => setGemelosGroup(null))
       .finally(() => setGemelosLoading(false));
   }, [businessId, articulo?.id, esElaborado]);
@@ -1838,35 +1848,36 @@ export default function RecetaModal({
       try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
     } catch (e) { console.error('[quitarGemelo]', e.message); }
   }, [businessId, gemelosGroup]);
+
   const actualizarObjetivoGemelo = useCallback(async (targetArticleId, pctObjetivo) => {
-    if (!businessId || !gemelosGroup) return;
-    const token = localStorage.getItem('token') || '';
+    if (!businessId || !gemelosGroup || !onPriceConfigSave) return;
+    const val = pctObjetivo != null ? Number(pctObjetivo) : null;
     try {
-      await fetch(
-        `${BASE}/businesses/${businessId}/article-links/${gemelosGroup.groupId}/members/${targetArticleId}`,
-        {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pct_objetivo: pctObjetivo != null ? Number(pctObjetivo) : null }),
-        }
-      );
-      // Actualizar estado local optimistamente
+      // Guardar en article_price_config (misma fuente que usa la tabla principal
+      // y el modal del gemelo cuando edita su Costo Objetivo).
+      onPriceConfigSave({
+        scope: 'articulo',
+        scopeId: String(targetArticleId),
+        objetivo: val,
+      });
+      // Optimistic update sobre el panel
       setGemelosGroup(prev => prev ? {
         ...prev,
         members: prev.members.map(m =>
           Number(m.article_id) === Number(targetArticleId)
-            ? { ...m, pct_objetivo: pctObjetivo != null ? Number(pctObjetivo) : null }
+            ? { ...m, pct_objetivo: val }
             : m
         ),
       } : null);
+      try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
     } catch (e) { console.error('[actualizarObjetivoGemelo]', e.message); }
-  }, [businessId, gemelosGroup]);
+  }, [businessId, gemelosGroup, onPriceConfigSave]);
 
   /* ── Cargar insumos ── */
   useEffect(() => {
     if (!open || !businessId) return;
     setInsumosLoading(true);
-    insumosList(businessId, { limit: 99999 })
+    insumosList(insumosBizId || businessId, { limit: 99999 })
       .then(resp => {
         const lista = Array.isArray(resp?.data) ? resp.data : Array.isArray(resp?.insumos) ? resp.insumos : [];
         setInsumos(lista);
@@ -2044,6 +2055,7 @@ export default function RecetaModal({
       const last = prev[prev.length - 1];
       if (last && !last.supplyId) {
         setNewItemIndex(prev.length - 1);
+        setOpenSearchIdx(prev.length - 1); // ← sincronizar para evitar race con el useEffect del remove
         return prev;
       }
       const next = [...prev, {
@@ -2054,9 +2066,10 @@ export default function RecetaModal({
         ultimaCompra: null, observaciones: '', updatedAt: null,
       }];
       setNewItemIndex(next.length - 1);
+      setOpenSearchIdx(next.length - 1); // ← sincronizar para evitar race con el useEffect del remove
       return next;
     });
-  }, []);
+  }, []);;
 
   /* ── Cálculos ── */
   const costoTotal = useMemo(() =>
@@ -2231,14 +2244,19 @@ export default function RecetaModal({
         const d = await res.json().catch(() => ({}));
         throw new Error(d?.message || `Error ${res.status}`);
       }
-      // Después de confirmar que el DELETE fue exitoso, propagar a vinculados:
-      try {
-        const token2 = localStorage.getItem('token') || '';
-        await fetch(
-          `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta/propagate-delete`,
-          { method: 'POST', headers: { Authorization: `Bearer ${token2}`, 'X-Business-Id': String(businessId) } }
-        );
-      } catch { /* no crítico */ }
+      // Sacar el artículo del grupo de gemelos (autodesvinculación).
+      // El resto de gemelos mantiene su receta igual — consistente con "quitar de vinculación" en la tabla.
+      if (gemelosGroup?.groupId) {
+        try {
+          await fetch(
+            `${BASE}/businesses/${businessId}/article-links/${gemelosGroup.groupId}/members/${articulo.id}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) } }
+          );
+          try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
+        } catch (e) {
+          console.warn('[handleDelete] no se pudo autodesvincular:', e.message);
+        }
+      }
       // Notificar al padre que la receta fue borrada (costoTotal=0)
       onSaved?.({
         article_id: articulo.id,
@@ -2566,8 +2584,12 @@ export default function RecetaModal({
                                   if (Number(art.id) === Number(articulo?.id)) return null;
                                   return (
                                     <Box key={art.id}
-                                      onClick={() => {
-                                        if (!yaGemelo && !tieneReceta) agregarGemelo(art.id);
+                                      onClick={async () => {
+                                        if (yaGemelo || tieneReceta) return;
+                                        await agregarGemelo(art.id);
+                                        setGemelosSearch('');
+                                        setGemelosResults([]);
+                                        gemelosSearchRef.current?.focus();
                                       }}
                                       sx={{
                                         px: 1.5, py: 0.6, cursor: (yaGemelo || tieneReceta) ? 'default' : 'pointer',
@@ -2652,13 +2674,61 @@ export default function RecetaModal({
                                     </Typography>
                                   </Box>
 
-                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}>
-                                    <Typography variant="caption" sx={{
-                                      fontSize: '0.78rem', fontWeight: 600,
-                                      color: objVal != null ? 'text.primary' : 'text.disabled',
-                                    }}>
-                                      {objVal != null ? `${objVal}%` : '—'}
-                                    </Typography>
+                                  <Box
+                                    onClick={(e) => e.stopPropagation()}
+                                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}
+                                  >
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      defaultValue={objVal != null ? objVal : ''}
+                                      placeholder="—"
+                                      onClick={(e) => e.stopPropagation()}
+                                      onBlur={(e) => {
+                                        const raw = e.target.value;
+                                        const nuevo = raw === '' ? null : Number(raw);
+                                        const anterior = objVal;
+                                        // Solo persistir si cambió realmente
+                                        if (nuevo === anterior) return;
+                                        if (nuevo != null && (!Number.isFinite(nuevo) || nuevo < 0 || nuevo > 150)) return;
+                                        actualizarObjetivoGemelo(m.article_id, nuevo);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          e.target.blur();
+                                        }
+                                        if (e.key === 'Escape') {
+                                          e.target.value = objVal != null ? objVal : '';
+                                          e.target.blur();
+                                        }
+                                      }}
+                                      inputProps={{
+                                        min: 0,
+                                        max: 150,
+                                        style: {
+                                          textAlign: 'center',
+                                          fontSize: '0.78rem',
+                                          fontWeight: 600,
+                                          padding: '2px 4px',
+                                          width: 44,
+                                        },
+                                      }}
+                                      InputProps={{
+                                        endAdornment: (
+                                          <InputAdornment position="end" sx={{ ml: 0, '& .MuiTypography-root': { fontSize: '0.72rem' } }}>
+                                            %
+                                          </InputAdornment>
+                                        ),
+                                        sx: {
+                                          fontSize: '0.78rem',
+                                          bgcolor: '#fff',
+                                          '& fieldset': { borderColor: 'transparent' },
+                                          '&:hover fieldset': { borderColor: 'rgba(124,58,237,0.3) !important' },
+                                          '&.Mui-focused fieldset': { borderColor: 'rgba(124,58,237,0.5) !important' },
+                                        },
+                                      }}
+                                    />
                                   </Box>
 
                                   <Tooltip title="Desvincular">

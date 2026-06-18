@@ -114,7 +114,7 @@ export default function Register() {
     try {
       await AuthAPI.register({ name: name.trim(), email: email.trim(), password });
       setOk(true);
-      setTimeout(() => nav('/perfil', { replace: true }), 500);
+      setTimeout(() => nav('/activar', { replace: true }), 500);
     } catch (e2) {
       setErr(e2.message || 'No se pudo registrar');
     } finally {

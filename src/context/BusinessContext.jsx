@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 /* eslint-disable react-refresh/only-export-components */
 import React, {
   createContext, useContext, useEffect, useMemo, useState, useCallback
@@ -347,6 +348,12 @@ export function BusinessProvider({ children }) {
     const token = localStorage.getItem('token') || '';
     if (!token) return;
 
+    // app_admin no tiene negocios — no llamar listMine
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      if (u?.role === 'app_admin') { setLoading(false); return; }
+    } catch { }
+
     let alive = true;
     setLoading(true);
 
@@ -368,6 +375,15 @@ export function BusinessProvider({ children }) {
           if (first) localStorage.setItem('activeBusinessId', first);
           return first;
         });
+      })
+      .catch(err => {
+        if (!alive) return;
+        // Si la cuenta está inactiva, no es un error — el guard del front lo maneja
+        const msg = String(err?.message || err?.data?.error || '');
+        if (!msg.includes('account_inactive') && !msg.includes('forbidden')) {
+          console.error('[BusinessContext] listMine error:', err);
+        }
+        setItems([]);
       })
       .finally(() => alive && setLoading(false));
 

@@ -2,17 +2,16 @@
    Variables (fallbacks)
    =========================== */
 :root {
-  /* Colores – el provider los sobreescribe */
-  --color-primary: #3b82f6;
-  --color-secondary: #6366f1;
+  /* Colores Lazarillo – el provider los sobreescribe por negocio */
+  --color-primary: #2492C8;    /* celeste profundo */
+  --color-secondary: #5BC2EA;  /* celeste */
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
 
-  --color-fg: #1a4f67;
-  /* texto general */
+  --color-fg: #15213E;         /* tinta */
   --color-bg: #ffffff;
-  --color-surface: #f8fafc;
+  --color-surface: #F2F4F7;    /* paper */
   --color-border: #e2e8f0;
 
   /* Derivados (el provider también los setea) */

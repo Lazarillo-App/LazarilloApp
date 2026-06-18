@@ -11,11 +11,11 @@ import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
 import { useBusiness } from '@/context/BusinessContext';
+import { useAccess } from '@/context/AccessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
 import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
-import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -69,13 +69,15 @@ export default function Navbar() {
     if (path.includes('/articulos') || path === '/') return '0'; // tab Artículos
     return null; // sin preferencia
   };
+
   const logged = !!localStorage.getItem('token');
   const role = getUserRole();
   const isAppAdmin = role === 'app_admin';
 
+  // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
+  const { isOwner } = useAccess() || {};
+
   const { activeBusinessId } = useBusiness() || {};
-  // Persistir acciones globalmente — Navbar siempre está montado en todas las páginas
-  usePersistUiActions(activeBusinessId);
 
   // Badge de alertas en el ícono de configuración
   const [alertasBadge, setAlertasBadge] = useState(0);
@@ -187,13 +189,14 @@ export default function Navbar() {
     const uid = getUser()?.id || null;
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('activeBusinessId');
     localStorage.removeItem('bizTheme');
     if (uid) localStorage.removeItem(`bizTheme:${uid}`);
     window.dispatchEvent(new Event('auth:logout'));
     navigate('/login', { replace: true });
   };
 
-  const homeTo = isAppAdmin ? '/admin' : '/app';
+  const homeTo = isAppAdmin ? '/admin' : '/';
 
   return (
     <>
@@ -226,13 +229,11 @@ export default function Navbar() {
                 src={brandSrc}
                 alt="Lazarillo"
                 sx={{
-                  height: 28,
+                  height: 45,
                   display: 'block',
                   filter: isLightBg
                     ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
-                    : 'drop-shadow(0 0 1px rgba(255,255,255,.35))',
-                  outline: isLightBg ? '1px solid rgba(0,0,0,.06)' : 'transparent',
-                  outlineOffset: -1,
+                    : 'none',
                 }}
               />
             </Box>
@@ -264,7 +265,7 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  <MenuItem component={NavLink} to={homeTo} onClick={() => setNavEl(null)}>
+                  <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     Menú
                   </MenuItem>
 
@@ -295,7 +296,7 @@ export default function Navbar() {
 
             {/* Desktop – links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
-              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to={homeTo}>
+              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/menu">
                 Menú
               </Button>
 
@@ -339,7 +340,7 @@ export default function Navbar() {
 
             {!isAppAdmin && logged && (
               <Box sx={{ ml: 1, flexShrink: 0 }}>
-                <BusinessDivisionSelector />
+                <BusinessDivisionSelector canCreate={!!isOwner} />
               </Box>
             )}
 

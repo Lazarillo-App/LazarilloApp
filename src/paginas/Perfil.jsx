@@ -1,10 +1,11 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 // src/paginas/Perfil.jsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Box, Stack, Typography, Avatar, Chip, Button, Paper,
   Divider, IconButton, Tooltip, Table, TableHead,
-  TableRow, TableCell, TableBody,
+  TableRow, TableCell, TableBody, CircularProgress, Menu, MenuItem,
 } from '@mui/material';
 import PersonIcon            from '@mui/icons-material/Person';
 import EmailIcon             from '@mui/icons-material/Email';
@@ -15,11 +16,20 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LockOutlinedIcon      from '@mui/icons-material/LockOutlined';
 import EditOutlinedIcon      from '@mui/icons-material/EditOutlined';
 import BadgeOutlinedIcon     from '@mui/icons-material/BadgeOutlined';
+import MoreVertIcon          from '@mui/icons-material/MoreVert';
+import RefreshIcon           from '@mui/icons-material/Refresh';
+import DeleteOutlineIcon     from '@mui/icons-material/DeleteOutline';
+
 import { useOrganization }   from '@/context/OrganizationContext';
 import { useBusiness }       from '@/context/BusinessContext';
+import { useAccess }         from '@/context/AccessContext';
 import BusinessCreateModal   from '@/componentes/BusinessCreateModal';
+import InvitarMiembroModal   from '@/componentes/InvitarMiembroModal';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncservice';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
+import {
+  listMembers, resendInvitation, revokeAssignment,
+} from '@/servicios/apiTeam';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
@@ -62,75 +72,238 @@ function DataRow({ label, value, mono }) {
   );
 }
 
-/* ─── Equipo placeholder ─── */
+/* ─── EQUIPO funcional ─── */
 function TeamSection() {
-  const members = [];
+  const { currentBusiness, currentRole, canDo, isOwner } = useAccess();
+  const bizId = currentBusiness?.id || null;
+  const bizName = currentBusiness?.name || null;
+
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showInvite, setShowInvite] = useState(false);
+
+  // Menú contextual por fila
+  const [menuRow, setMenuRow] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+
+  const puedeGestionar = canDo('manage_team') && !!bizId;
+
+  const fetchMembers = useCallback(async () => {
+    if (!bizId) return;
+    setLoading(true); setError(null);
+    try {
+      const rows = await listMembers({ scopeType: 'business', scopeId: bizId });
+      setMembers(rows);
+    } catch (e) {
+      setError(e?.message || 'Error al cargar equipo');
+    } finally {
+      setLoading(false);
+    }
+  }, [bizId]);
+
+  useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
+  useEffect(() => {
+    const onChange = () => fetchMembers();
+    window.addEventListener('team:changed', onChange);
+    return () => window.removeEventListener('team:changed', onChange);
+  }, [fetchMembers]);
+
+  const handleResend = async (assignmentId) => {
+    try {
+      const res = await resendInvitation(assignmentId);
+      alert(res?.delivered
+        ? 'Invitación reenviada.'
+        : 'Invitación regenerada (el mail no se pudo enviar).');
+    } catch (e) {
+      alert(`Error: ${e?.message || 'no_se_pudo_reenviar'}`);
+    }
+    setMenuRow(null); setMenuAnchor(null);
+  };
+
+  const handleRevoke = async (m) => {
+    if (!window.confirm(`¿Revocar acceso de "${m.alias || m.email}" a este negocio?`)) {
+      setMenuRow(null); setMenuAnchor(null);
+      return;
+    }
+    try {
+      await revokeAssignment(m.id);
+      try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
+      fetchMembers();
+    } catch (e) {
+      alert(`Error: ${e?.message || 'no_se_pudo_revocar'}`);
+    }
+    setMenuRow(null); setMenuAnchor(null);
+  };
+
+  if (!bizId) {
+    return (
+      <Section icon={<GroupsIcon />} title="Equipo">
+        <Typography variant="body2" color="text.secondary">
+          Elegí un negocio para ver y gestionar su equipo.
+        </Typography>
+      </Section>
+    );
+  }
+
   return (
-    <Section
-      icon={<GroupsIcon />}
-      title="Equipo"
-      badge="Próximamente"
-      action={
-        <Tooltip title="Invitar miembro (próximamente)">
-          <span>
-            <IconButton size="small" disabled><AddIcon fontSize="small" /></IconButton>
-          </span>
-        </Tooltip>
-      }
-    >
-      {members.length === 0 ? (
-        <Stack alignItems="center" spacing={1.5} py={2}>
-          <Box sx={{
-            width: 52, height: 52, borderRadius: '50%',
-            bgcolor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <GroupsIcon sx={{ fontSize: 26, color: '#cbd5e1' }} />
-          </Box>
-          <Stack alignItems="center" spacing={0.5}>
-            <Typography variant="body2" fontWeight={600} color="text.secondary">
-              Aún no hay equipo configurado
-            </Typography>
-            <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: 340 }}>
-              Próximamente podrás invitar colaboradores con distintos roles y permisos a tu negocio.
-            </Typography>
+    <>
+      <Section
+        icon={<GroupsIcon />}
+        title="Equipo"
+        badge={bizName ? `de ${bizName}` : undefined}
+        action={
+          puedeGestionar ? (
+            <Tooltip title="Invitar miembro">
+              <IconButton
+                size="small"
+                onClick={() => setShowInvite(true)}
+                sx={{ color: tc }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : null
+        }
+      >
+        {loading ? (
+          <Stack alignItems="center" py={3}>
+            <CircularProgress size={24} />
           </Stack>
-        </Stack>
-      ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              {['Usuario', 'Email', 'Rol', 'Estado'].map(h => (
-                <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{h}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {members.map(m => (
-              <TableRow key={m.id}>
-                <TableCell>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc }}>
-                      {(m.name || 'U')[0].toUpperCase()}
-                    </Avatar>
-                    <Typography variant="body2" fontWeight={600}>{m.name}</Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{m.email}</TableCell>
-                <TableCell>
-                  <Chip label={m.role} size="small"
-                    icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
-                    sx={{ fontSize: '0.7rem' }} />
-                </TableCell>
-                <TableCell>
-                  <Chip label={m.active ? 'Activo' : 'Invitado'} size="small"
-                    color={m.active ? 'success' : 'default'} sx={{ fontSize: '0.7rem' }} />
-                </TableCell>
+        ) : error ? (
+          <Typography variant="body2" color="error">{error}</Typography>
+        ) : members.length === 0 ? (
+          <Stack alignItems="center" spacing={1.5} py={2}>
+            <Box sx={{
+              width: 52, height: 52, borderRadius: '50%',
+              bgcolor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <GroupsIcon sx={{ fontSize: 26, color: '#cbd5e1' }} />
+            </Box>
+            <Stack alignItems="center" spacing={0.5}>
+              <Typography variant="body2" fontWeight={600} color="text.secondary">
+                Todavía no invitaste a nadie
+              </Typography>
+              {puedeGestionar && (
+                <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ maxWidth: 340 }}>
+                  Sumá administradores o staff para que te ayuden a gestionar el negocio.
+                </Typography>
+              )}
+            </Stack>
+            {puedeGestionar && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => setShowInvite(true)}
+                sx={{ mt: 0.5, borderRadius: 1.6 }}
+              >
+                Invitar miembro
+              </Button>
+            )}
+          </Stack>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {['Alias', 'Email', 'Rol', 'Estado', ''].map(h => (
+                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem' }}>{h}</TableCell>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </Section>
+            </TableHead>
+            <TableBody>
+              {members.map(m => {
+                const esYo = false; // luego comparamos con user.id si querés
+                const esOwner = m.role === 'owner';
+                const accStatus = m.account_status;
+                const estaInvitado = accStatus === 'invited';
+                return (
+                  <TableRow key={m.id}>
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Avatar sx={{
+                          width: 26, height: 26, fontSize: '0.72rem',
+                          bgcolor: esOwner ? '#16a34a' : tc,
+                        }}>
+                          {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
+                        </Avatar>
+                        <Typography variant="body2" fontWeight={600}>
+                          {m.alias || m.name || '—'}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
+                      {m.email}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={m.role}
+                        size="small"
+                        icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
+                        sx={{
+                          fontSize: '0.7rem',
+                          bgcolor: esOwner ? '#16a34a15' : `${tc}15`,
+                          color: esOwner ? '#16a34a' : tc,
+                          fontWeight: 600,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={estaInvitado ? 'Invitación pendiente' : 'Activo'}
+                        size="small"
+                        color={estaInvitado ? 'warning' : 'success'}
+                        variant={estaInvitado ? 'outlined' : 'filled'}
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      {puedeGestionar && !esOwner && !esYo && (
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { setMenuRow(m); setMenuAnchor(e.currentTarget); }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+
+      {/* Menú contextual */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={!!menuAnchor}
+        onClose={() => { setMenuAnchor(null); setMenuRow(null); }}
+      >
+        {menuRow?.account_status === 'invited' && (
+          <MenuItem onClick={() => handleResend(menuRow.id)}>
+            <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
+            Reenviar invitación
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => handleRevoke(menuRow)} sx={{ color: 'error.main' }}>
+          <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />
+          Revocar acceso
+        </MenuItem>
+      </Menu>
+
+      {/* Modal invitar */}
+      <InvitarMiembroModal
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        scopeType="business"
+        scopeId={bizId}
+        scopeName={bizName}
+        onCreated={fetchMembers}
+      />
+    </>
   );
 }
 
@@ -167,6 +340,7 @@ function SecuritySection() {
 export default function Perfil() {
   const { organization } = useOrganization() || {};
   const { items, refetchBusinesses } = useBusiness() || {};
+  const { currentRole } = useAccess() || {};
   const sinNegocios = !items || items.length === 0;
   const [showCreateBiz, setShowCreateBiz] = React.useState(false);
 
@@ -177,10 +351,12 @@ export default function Perfil() {
 
   const meName      = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
   const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-  const roleLabel   = me?.role === 'admin' ? 'Administrador'
-    : me?.role === 'owner' ? 'Propietario'
-    : me?.role === 'staff' ? 'Staff'
-    : me?.role || 'Usuario';
+
+  // Rol mostrado en el header viene del negocio actual (AccessContext), no del JWT
+  const roleLabel = currentRole === 'admin' ? 'Administrador'
+    : currentRole === 'owner' ? 'Propietario'
+    : currentRole === 'staff' ? 'Staff'
+    : 'Usuario';
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -225,7 +401,7 @@ export default function Perfil() {
                   <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
                     {meName}
                   </Typography>
-                  {me?.role && (
+                  {currentRole && (
                     <Chip label={roleLabel} size="small"
                       icon={<BadgeOutlinedIcon sx={{ fontSize: '0.75rem !important' }} />}
                       sx={{ fontSize: '0.68rem', height: 20, bgcolor: `${tc}12`, color: tc, border: `1px solid ${tc}25` }} />
@@ -290,7 +466,6 @@ export default function Perfil() {
             if (biz?.id) {
               const bizId = Number(biz.id);
               try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch {}
-              // Sync automático si Maxi está configurado
               try {
                 const maxiOk = await isMaxiConfigured(bizId);
                 if (maxiOk) {
@@ -307,6 +482,7 @@ export default function Perfil() {
             }
           }}
         />
+
         <Section icon={<PersonIcon />} title="Información personal"
           action={
             <Tooltip title="Editar perfil (próximamente)">
@@ -326,7 +502,7 @@ export default function Perfil() {
           </Stack>
         </Section>
 
-        {/* ── Equipo ── */}
+        {/* ── Equipo (FUNCIONAL) ── */}
         <TeamSection />
 
         {/* ── Seguridad ── */}

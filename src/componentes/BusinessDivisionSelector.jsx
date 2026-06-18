@@ -38,7 +38,7 @@ const getBranding = (b) => b?.branding || b?.props?.branding || {};
 const getBizLogoUrl = (b) =>
   toAbsolute(getBranding(b)?.logo_url || b?.photo_url || getBranding(b)?.cover_url || b?.image_url || '');
 
-export default function BusinessDivisionSelector() {
+export default function BusinessDivisionSelector({ canCreate = true }) {
   const biz = useBusiness() || {};
   const {
     activeBusinessId, active, selectBusiness,
@@ -252,10 +252,12 @@ export default function BusinessDivisionSelector() {
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, gap: 0.5 }}>
             <ListItemText primary={b.name} />
-            <IconButton size="small" onClick={e => startEdit(e, b)} sx={iconBtnSx}
-              aria-label={`Editar nombre de ${b.name}`}>
-              <EditIcon fontSize="small" />
-            </IconButton>
+            {canCreate && (
+              <IconButton size="small" onClick={e => startEdit(e, b)} sx={iconBtnSx}
+                aria-label={`Editar nombre de ${b.name}`}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            )}
             {isActiveBiz && bizDivisions.length > 1 && (
               <IconButton size="small"
                 onClick={e => { e.stopPropagation(); setExpandedBizId(p => p === String(b.id) ? null : String(b.id)); }}
@@ -285,8 +287,10 @@ export default function BusinessDivisionSelector() {
                       <span>{div.name}</span>
                       {(div.assigned_groups_count || 0) > 0 && (
                         <Chip label={div.assigned_groups_count} size="small"
-                          sx={{ height: 18, fontSize: '0.65rem', minWidth: 24,
-                                bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)', color: 'inherit' }} />
+                          sx={{
+                            height: 18, fontSize: '0.65rem', minWidth: 24,
+                            bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)', color: 'inherit'
+                          }} />
                       )}
                     </Box>
                   } />
@@ -432,7 +436,7 @@ export default function BusinessDivisionSelector() {
                   }}>
                     {orgName}
                   </Typography>
-                  {isActiveOrg && !isCollapsed && (
+                  {isActiveOrg && !isCollapsed && canCreate && (
                     <IconButton size="small"
                       onClick={e => { e.stopPropagation(); startEditOrg(e); }}
                       sx={iconBtnSx} aria-label="Editar nombre de organización">
@@ -472,8 +476,10 @@ export default function BusinessDivisionSelector() {
               <ListItemIcon sx={{ minWidth: 32, color: 'inherit', opacity: .6 }}>
                 <BusinessIcon sx={{ fontSize: 18 }} />
               </ListItemIcon>
-              <Typography variant="caption" sx={{ opacity: 0.75, fontSize: '.72rem', fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: '.07em', flex: 1, color: 'inherit' }}>
+              <Typography variant="caption" sx={{
+                opacity: 0.75, fontSize: '.72rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '.07em', flex: 1, color: 'inherit'
+              }}>
                 {hayOrgs ? 'Otros locales' : 'Negocios'}
               </Typography>
               {collapsedOtros
@@ -494,8 +500,8 @@ export default function BusinessDivisionSelector() {
           </MenuItem>
         )}
 
-        {/* Nuevo negocio */}
-        {!loadingBiz && [
+        {/* Nuevo negocio — solo si es owner */}
+        {!loadingBiz && canCreate && [
           <Divider key="div-nuevo"
             sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 15%, transparent)', my: 0.5 }} />,
           <MenuItem key="nuevo-negocio"

@@ -5,7 +5,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import AdminLayout from './components/AdminLayout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
-import AdminUserDetail from './pages/AdminUserDetail'; // 👈 FALTABAAAA
+import AdminUserDetail from './pages/AdminUserDetail';
+import AdminAcceso     from './pages/AdminAcceso';
 
 // Lee el rol desde localStorage (y opcionalmente desde el JWT)
 const isAdmin = () => {
@@ -32,7 +33,8 @@ export default function AdminApp() {
       <Routes>
         <Route index element={<AdminDashboard />} />
         <Route path="usuarios" element={<AdminUsers />} />
-        <Route path="usuarios/:id" element={<AdminUserDetail />} /> {/* 👈 detalle */}
+        <Route path="usuarios/:id" element={<AdminUserDetail />} />
+        <Route path="acceso" element={<AdminAcceso />} />
       </Routes>
     </AdminLayout>
   );

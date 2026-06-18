@@ -3,7 +3,7 @@
    Aquí van ajustes puntuales. */
 
 .tabla-articulos-container table td[align="right"] { text-align: right; }
-.acciones-cell { text-align: center; width: 64px; }
+.acciones-cell { text-align: left; width: 64px; }
 .rubro-row td { letter-spacing: .2px; }
 
 /* ── Inputs con símbolo interno ($  %) ────────────────────────────────────── */

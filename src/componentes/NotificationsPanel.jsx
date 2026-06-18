@@ -75,30 +75,13 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   const [open, setOpen] = useState(false);
 
-  // Abrir el panel cuando se recibe una nueva acción importante
+  // El panel solo se abre por interacción del usuario (clic en el ícono) o
+  // por solicitud explícita de otro componente (evento 'notifications:open').
+  // Las nuevas notificaciones se contabilizan en el badge sin expandir el drawer.
   useEffect(() => {
-    const onAction = (e) => {
-      const d = e?.detail;
-      if (!d?.kind) return;
-      // Kinds que abren el panel automáticamente
-      const autoOpenKinds = new Set([
-        'objetivo_change', 'objetivo_update',
-        'group_create', 'group_rename', 'group_delete', 'group_move_division',
-        'discontinue',
-        'articulo_create', 'articulo_delete', 'articulo_move',
-        'insumo_create', 'insumo_delete', 'insumo_move',
-        'insumo_group_create', 'insumo_group_rename', 'insumo_group_delete',
-        'move', 'info',
-      ]);
-      if (autoOpenKinds.has(d.kind)) setOpen(true);
-    };
     const onOpen = () => setOpen(true);
-    window.addEventListener('ui:action', onAction);
     window.addEventListener('notifications:open', onOpen);
-    return () => {
-      window.removeEventListener('ui:action', onAction);
-      window.removeEventListener('notifications:open', onOpen);
-    };
+    return () => window.removeEventListener('notifications:open', onOpen);
   }, []);
 
   const {

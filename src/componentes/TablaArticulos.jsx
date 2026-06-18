@@ -19,7 +19,9 @@ import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import LinkChainIcon from "./LinkChainIcon";
-import SettingsIcon from '@mui/icons-material/Settings';
+import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
+import TuneIcon from '@mui/icons-material/Tune';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useBusinessPrices } from '@/hooks/useBusinessPrices';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
 import { setBusinessPriceList, getBusinessPriceList, getDiscountExceptions } from '@/servicios/apiPriceLists';
@@ -75,7 +77,8 @@ const getId = (x) => {
     x?.article_id ?? x?.articulo_id ?? x?.articuloId ?? x?.idArticulo ??
     x?.id ?? x?.codigo ?? x?.codigoArticulo;
   const id = Number(raw);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  // id !== 0 — acepta negativos (artículos manuales)
+  return Number.isFinite(id) && id !== 0 ? id : null;
 };
 
 const num = (v) => Number(v ?? 0);
@@ -253,6 +256,26 @@ export default function TablaArticulos({
   const [categorias, setCategorias] = useState([]);
   const [todoGroupId, setTodoGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
+
+  // 🆕 Escuchar evento de "incluir de vuelta" (cuando se reactiva un artículo desde Discontinuados)
+  // Limpia los IDs del Set excludedIds para que vuelvan a verse en Sin Agrupación al instante.
+  useEffect(() => {
+    const handler = (ev) => {
+      const ids = (ev?.detail?.ids || []).map(Number).filter(Number.isFinite);
+      if (!ids.length) return;
+      setExcludedIds(prev => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const id of ids) {
+          if (next.delete(id)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    };
+    window.addEventListener('articulos:include-back', handler);
+    return () => window.removeEventListener('articulos:include-back', handler);
+  }, []);
+
   const [objetivos, setObjetivos] = useState({});
   const [manuales, setManuales] = useState({});
 
@@ -352,6 +375,8 @@ export default function TablaArticulos({
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
 
+  const { organization } = useOrganization() || {};
+
   // Refetch cuando se crea un artículo manual desde Configuración
   useEffect(() => {
     const handler = () => refetchLocal();
@@ -364,7 +389,7 @@ export default function TablaArticulos({
   const [recetaArticulo, setRecetaArticulo] = useState(null);
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
-  const { organization } = useOrganization() || {};
+
   const [rubroEditModal, setRubroEditModal] = useState(null);
 
   const findPath = useCallback((cats, id) => {
@@ -633,33 +658,35 @@ export default function TablaArticulos({
     if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
     const pctNum = Number(pct);
 
-    // Si no hay redondeo configurado Y mostrarModal=true → interceptar
-    if (!redondeoConfig?.mostrarModal) {
-      // No mostrar modal, aplicar directo
-      executeBulkPct(pctNum, ids, 'todos');
-      return;
-    }
-    if (!redondeoConfig?.valor) {
-      setRedondeoModalPendiente({ pct: pctNum, ids, inputRef, blockKey });
-      return;
-    }
-
     const idsConNuevoPrecio = ids.filter(id => {
       const key = String(id);
       return (manuales[key] !== undefined && manuales[key] !== '') ||
         priceConfig.byArticle?.[key]?.precioManual != null;
     });
 
-    if (idsConNuevoPrecio.length > 0 && redondeoConfig?.mostrarModal) {
-      setBulkPctDlg({ pct: pctNum, idsAll: ids, idsConNuevoPrecio, inputRef, blockKey });
-    } else {
+    const necesitaConfigurarRedondeo = !redondeoConfig?.valor;
+    const necesitaConfirmarManuales = idsConNuevoPrecio.length > 0 && (redondeoConfig?.mostrarModal ?? true);
+
+    // Sin razón para modal → aplicar directo
+    if (!necesitaConfigurarRedondeo && !necesitaConfirmarManuales) {
       executeBulkPct(pctNum, ids, 'todos');
       if (blockKey) {
         setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
         setLastAppliedPct(prev => ({ ...prev, [blockKey]: pctNum }));
       }
       if (inputRef?.current) inputRef.current.value = '';
+      return;
     }
+
+    // Hay al menos una razón → un solo modal
+    setBulkPctDlg({
+      pct: pctNum,
+      idsAll: ids,
+      idsConNuevoPrecio,
+      inputRef,
+      blockKey,
+      motivoConfigRedondeo: necesitaConfigurarRedondeo,
+    });
   }, [manuales, priceConfig, executeBulkPct, redondeoConfig]);
 
   // Helper para continuar después del modal de redondeo
@@ -712,14 +739,14 @@ export default function TablaArticulos({
       (agrupacionesParaTodo || [])
         .filter((g) => g && !esTodoGroup(g))
         .flatMap((g) => (g.articulos || []).map(getId))
-        .filter((id) => Number.isFinite(id) && id > 0)
+        .filter((id) => Number.isFinite(id) && id !== 0)
     ),
     [agrupacionesParaTodo]
   );
 
   const idsAsignadosGlobal = useMemo(() => {
     if (Array.isArray(orgAssignedIds) && orgAssignedIds.length > 0) {
-      return new Set(orgAssignedIds.map(Number).filter(n => n > 0));
+      return new Set(orgAssignedIds.map(Number).filter(n => Number.isFinite(n) && n !== 0));
     }
     return idsEnOtras;
   }, [orgAssignedIds, idsEnOtras]);
@@ -1082,7 +1109,7 @@ export default function TablaArticulos({
     return `${check}.3fr .7fr .35fr ${branchCols}${dynCols}`;
   }, [selectionMode, hasBranches, branches, visibleCols]);
 
-  const cellNum = { textAlign: "center", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
+  const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
   const ITEM_H = 44;
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
 
@@ -1351,7 +1378,7 @@ export default function TablaArticulos({
                       onPriceConfigSave?.({
                         scope: 'agrupacion',
                         scopeId: agrupId,
-                        _deleteObjetivo: true,   // ← nueva señal
+                        objetivo: null,
                         articleIds: ids,
                       });
 
@@ -1385,7 +1412,15 @@ export default function TablaArticulos({
                     />
                   </div>
                   <ClearBtn
-                    onClick={() => setClearDlg({ type: 'manual', ids, scopeType: 'agrupacion', scopeId: agrupId, bkBlock: bkManual, setBlock: setBlockManuales })} />
+                    onClick={() => {
+                      setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
+                      setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
+                      if (onBulkManualSave) {
+                        onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
+                      } else {
+                        ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
+                      }
+                    }} />
                 </div>
               );
             }
@@ -1633,22 +1668,26 @@ export default function TablaArticulos({
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
-          {(selectionMode === 'list' || !selectionMode) && isLinked && (
-            <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
-          )}
-          {a.origen === 'manual'
+          <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
+            {(selectionMode === 'list' || !selectionMode) && isLinked && (
+              <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
+            )}
+          </span>
+          {(a.origen === 'manual' || Number(id) < 0)
             ? <span title="Artículo cargado manualmente en Lazarillo" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>L{id}</span>
             : <span>{id}</span>
           }
         </div>
 
         <div onClick={() => { const objetivoResuelto = getObjetivoArticulo(a, agrupId); setRecetaArticulo({ ...a, objetivoResuelto }); }}
-          style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
           title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
-          {hayAlertaInsumo && <span title="Algún insumo sin compra reciente" style={{ color: '#f59e0b', marginRight: 3, fontSize: '0.7rem' }}>⚠</span>}
-          {hayReceta && !hayAlertaInsumo && <span style={{ color: '#6366f1', marginRight: 4, fontSize: '0.7rem' }}>●</span>}
-          {hayReceta && hayAlertaInsumo && <span style={{ color: '#f59e0b', marginRight: 4, fontSize: '0.7rem' }}>●</span>}
-          {a.nombre}
+          <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem' }}>
+            {hayAlertaInsumo ? <span style={{ color: '#f59e0b' }}>⚠</span>
+              : hayReceta ? <span style={{ color: '#6366f1' }}>●</span>
+                : null}
+          </span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.nombre}</span>
         </div>
 
         <div style={cellNum}>
@@ -1754,6 +1793,12 @@ export default function TablaArticulos({
                           onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
                         }
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.target.blur();
+                        }
+                      }}
                       style={{ width: 58, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 6px', color: TABLE_TEXT, background: 'transparent' }}
                     />
                   </div>
@@ -1789,6 +1834,7 @@ export default function TablaArticulos({
           open={!!recetaArticulo} onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo}
           businessId={activeBizId}
+          insumosBizId={rootBizId || activeBizId}
           esElaborado={false}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           recetasElaborados={recetasElaborados}
@@ -1869,8 +1915,15 @@ export default function TablaArticulos({
                   case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={dragIndicatorStyle}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'manual': return <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable" style={dragIndicatorStyle}>Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'acciones': return (
-                    <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                      <span style={{ fontSize: '0.75rem' }}>Acciones</span>
+                    <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setColDlgOpen(true)}
+                        title="Configurar columnas"
+                        sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
+                      >
+                        <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
+                      </IconButton>
                     </div>
                   );
                   default: return null;
@@ -1977,85 +2030,93 @@ export default function TablaArticulos({
           </DialogTitle>
           <DialogContent>
             <Typography variant="body2" sx={{ mb: 2 }}>
-              Se aplicará el aumento a <strong>{bulkPctDlg.idsAll.length}</strong> artículos.
+              Se aplicará un aumento de <strong>{bulkPctDlg.pct}%</strong> a <strong>{bulkPctDlg.idsAll.length}</strong> artículo{bulkPctDlg.idsAll.length !== 1 ? 's' : ''}.
               {redondeoConfig?.valor
                 ? ` Los precios se redondearán al múltiplo de $${redondeoConfig.valor} más cercano.`
-                : ' Sin redondeo configurado.'}
+                : ''}
             </Typography>
 
-            {/* Sección de redondeo */}
-            <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
-              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Redondeo de precios
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
-                {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
+            {bulkPctDlg.idsConNuevoPrecio.length > 0 && (
+              <Alert severity="warning" sx={{ mb: 2, fontSize: '0.82rem' }}>
+                {bulkPctDlg.idsConNuevoPrecio.length} artículo{bulkPctDlg.idsConNuevoPrecio.length !== 1 ? 's tienen' : ' tiene'} un nuevo precio cargado manualmente que será reemplazado.
+              </Alert>
+            )}
+
+            {/* Sección de redondeo solo si no hay valor configurado */}
+            {bulkPctDlg.motivoConfigRedondeo && (
+              <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Redondeo de precios (sin configurar)
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+                  {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
+                    <Chip
+                      key={op}
+                      label={`$${op}`}
+                      size="small"
+                      variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
+                      onClick={() => {
+                        saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
+                        setRedondeoConfig(prev => ({ ...prev, valor: op }));
+                        onRedondeoChange?.(op);
+                        BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
+                        window.dispatchEvent(new CustomEvent('config:updated', {
+                          detail: { key: 'redondeo_precios', value: op }
+                        }));
+                      }}
+                      sx={{
+                        cursor: 'pointer',
+                        fontWeight: redondeoConfig?.valor === op ? 700 : 400,
+                        ...(redondeoConfig?.valor === op && {
+                          bgcolor: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)',
+                        }),
+                      }}
+                    />
+                  ))}
                   <Chip
-                    key={op}
-                    label={`$${op}`}
+                    key="none"
+                    label="Sin redondeo"
                     size="small"
-                    variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
+                    variant="outlined"
                     onClick={() => {
-                      console.log('[chip redondeo] op:', op, 'onRedondeoChange:', typeof onRedondeoChange);
-                      saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
-                      setRedondeoConfig(prev => ({ ...prev, valor: op }));
-                      onRedondeoChange?.(op);
-                      BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
+                      // Dejar explícito que no quiere redondeo → cerrar y aplicar
+                      executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'todos');
+                      if (bulkPctDlg.blockKey) {
+                        setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                        setLastAppliedPct(prev => ({ ...prev, [bulkPctDlg.blockKey]: bulkPctDlg.pct }));
+                      }
+                      if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
+                      setBulkPctDlg(null);
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <input
+                    type="checkbox"
+                    id="bulk-redondeo-no-mostrar"
+                    checked={!(redondeoConfig?.mostrarModal ?? true)}
+                    onChange={(e) => {
+                      const noMostrar = e.target.checked;
+                      saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
+                      setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                      try {
+                        BusinessesAPI.update(Number(activeBizId), {
+                          props: { redondeo_mostrar_modal: !noMostrar }
+                        });
+                      } catch { }
                       window.dispatchEvent(new CustomEvent('config:updated', {
-                        detail: { key: 'redondeo_precios', value: op }
+                        detail: { key: 'redondeo_mostrar_modal', value: !noMostrar }
                       }));
                     }}
-                    sx={{
-                      cursor: 'pointer',
-                      fontWeight: redondeoConfig?.valor === op ? 700 : 400,
-                      ...(redondeoConfig?.valor === op && {
-                        bgcolor: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)',
-                      }),
-                    }}
+                    style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
                   />
-                ))}
-                <Chip
-                  key="none"
-                  label="Sin redondeo"
-                  size="small"
-                  variant={!redondeoConfig?.valor ? 'filled' : 'outlined'}
-                  onClick={() => {
-                    saveRedondeoConfig(activeBizId, null, redondeoConfig?.mostrarModal ?? true);
-                    setRedondeoConfig(prev => ({ ...prev, valor: null }));
-                    onRedondeoChange?.(null);
-                    window.dispatchEvent(new CustomEvent('config:updated', {
-                      detail: { key: 'redondeo_precios', value: null }
-                    }));
-                  }}
-                  sx={{
-                    cursor: 'pointer',
-                    ...(!redondeoConfig?.valor && { bgcolor: '#64748b', color: '#fff', borderColor: '#64748b' }),
-                  }}
-                />
+                  <label htmlFor="bulk-redondeo-no-mostrar" style={{ fontSize: '0.78rem', cursor: 'pointer', color: '#555' }}>
+                    No volver a mostrar este aviso
+                  </label>
+                </Box>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <input
-                  type="checkbox"
-                  id="bulk-redondeo-no-mostrar"
-                  checked={!(redondeoConfig?.mostrarModal ?? true)}
-                  onChange={(e) => {
-                    const noMostrar = e.target.checked;
-                    saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
-                    setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
-                    // ← agregar en los dos:
-                    try {
-                      BusinessesAPI.update(Number(activeBizId), {
-                        props: { redondeo_mostrar_modal: !noMostrar }
-                      });
-                    } catch { }
-                  }}
-                  style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
-                />
-                <label htmlFor="bulk-redondeo-no-mostrar" style={{ fontSize: '0.78rem', cursor: 'pointer', color: '#555' }}>
-                  No volver a mostrar este aviso
-                </label>
-              </Box>
-            </Box>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
             <Button size="small" variant="text" color="inherit" onClick={() => setBulkPctDlg(null)}>
@@ -2075,35 +2136,6 @@ export default function TablaArticulos({
               }}
               sx={{ bgcolor: 'var(--color-primary)', '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary)' } }}>
               Aplicar a todos
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
-      {clearDlg && (
-        <Dialog open onClose={() => setClearDlg(null)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
-            ¿Borrar nuevo precio de {clearDlg.scopeType === 'agrupacion' ? 'la agrupación' : 'este rubro'}?
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary">
-              Se borrará el nuevo precio de <strong>{clearDlg.ids.length}</strong> artículo{clearDlg.ids.length !== 1 ? 's' : ''}.
-            </Typography>
-          </DialogContent>
-          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
-            <Button size="small" variant="text" color="inherit" onClick={() => setClearDlg(null)}>Cancelar</Button>
-            <Button size="small" variant="contained" color="error"
-              onClick={() => {
-                const { ids, bkBlock, setBlock } = clearDlg;
-                setBlock(prev => { const n = { ...prev }; delete n[bkBlock]; return n; });
-                setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
-                if (onBulkManualSave) {
-                  onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
-                } else {
-                  ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
-                }
-                setClearDlg(null);
-              }}>
-              Borrar
             </Button>
           </DialogActions>
         </Dialog>

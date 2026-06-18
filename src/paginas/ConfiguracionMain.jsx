@@ -35,6 +35,7 @@ import SucursalesSection from '../componentes/SucursalesSection';
 import RecetaModal from '../componentes/RecetaModal';
 import UploadInsumosModal from '../componentes/UploadInsumosModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
+import { useAccess } from '@/context/AccessContext';
 // Sub-tabs extraídos
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
@@ -47,6 +48,7 @@ export { getRedondeoConfig, saveRedondeoConfig };
 
 export default function ConfiguracionMain() {
   const { businessId } = useActiveBusiness();
+  const { isOwner } = useAccess() || {};
   const [searchParams, setSearchParams] = useSearchParams();
   const themeColor = 'var(--color-primary, #3b82f6)';
 
@@ -512,18 +514,20 @@ export default function ConfiguracionMain() {
 
               return (
                 <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                    <button
-                      onClick={() => setShowCreate(true)}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '10px 18px', borderRadius: 10, border: 'none',
-                        background: 'var(--color-primary, #3b82f6)',
-                        color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                      }}>
-                      + Nuevo negocio
-                    </button>
-                  </div>
+                  {isOwner && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                      <button
+                        onClick={() => setShowCreate(true)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '10px 18px', borderRadius: 10, border: 'none',
+                          background: 'var(--color-primary, #3b82f6)',
+                          color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                        }}>
+                        + Nuevo negocio
+                      </button>
+                    </div>
+                  )}
 
                   {/* ── Organización con sus negocios ── */}
                   {organization && (allBusinesses || []).length > 1 && (
@@ -542,8 +546,7 @@ export default function ConfiguracionMain() {
                       </Box>
                     </Paper>
                   )}
-                  {/* hgjzgosgn
-fnsvldhfjggmc */}
+
                   {/* ── Mis locales (fuera de org) ── */}
                   {!(outsideOrg.length === 0 && organization && orgBizIds.size > 1) && (
                     <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
@@ -557,11 +560,6 @@ fnsvldhfjggmc */}
                               sx={{ fontSize: '0.65rem', height: 18, bgcolor: `${themeColor}18`, color: themeColor, fontWeight: 700 }} />
                           )}
                         </Stack>
-                        <Button size="small" variant="outlined" startIcon={<AddIcon />}
-                          onClick={() => setShowCreate(true)}
-                          sx={{ borderColor: themeColor, color: themeColor, fontSize: '0.75rem' }}>
-                          Nuevo
-                        </Button>
                       </Stack>
                       <Box sx={{ p: 2 }}>
                         {businessesLoading ? (
@@ -575,8 +573,9 @@ fnsvldhfjggmc */}
                             {outsideOrg.map(biz => (
                               <BusinessCard key={biz.id} biz={biz} activeId={activeId}
                                 onSetActive={async (id) => { await selectBusiness?.(id); }}
-                                onEdit={setEditing}
-                                onDelete={handleDeleteBusiness}
+                                onEdit={isOwner ? setEditing : null}
+                                onDelete={isOwner ? handleDeleteBusiness : null}
+                                canEdit={isOwner}
                                 showNotice={(msg) => showNotice('Aviso', msg)} />
                             ))}
                           </Box>
@@ -586,7 +585,7 @@ fnsvldhfjggmc */}
                   )}
 
                   {/* ── Sucursales ── */}
-                  {activeId && (
+                  {activeId && isOwner && (
                     <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
                       <Stack direction="row" alignItems="center" spacing={1}
                         sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>

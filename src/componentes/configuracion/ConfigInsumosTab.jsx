@@ -5,19 +5,22 @@ import {
   TextField, InputAdornment, Chip, CircularProgress, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
-import ShoppingCartIcon   from '@mui/icons-material/ShoppingCart';
-import TuneIcon           from '@mui/icons-material/Tune';
-import WarningAmberIcon   from '@mui/icons-material/WarningAmber';
-import CloudUploadIcon    from '@mui/icons-material/CloudUpload';
-import ReceiptLongIcon    from '@mui/icons-material/ReceiptLong';
-import AddIcon            from '@mui/icons-material/Add';
-import SaveIcon           from '@mui/icons-material/Save';
-import PercentIcon        from '@mui/icons-material/Percent';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import TuneIcon from '@mui/icons-material/Tune';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import AddIcon from '@mui/icons-material/Add';
+import SaveIcon from '@mui/icons-material/Save';
+import PercentIcon from '@mui/icons-material/Percent';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import RefreshIcon        from '@mui/icons-material/Refresh';
-import CheckCircleIcon    from '@mui/icons-material/CheckCircle';
-import LotesPanel         from './LotesPanel';
-import LotesPanelInsumos  from './LotesPanelInsumos';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LotesPanel from './LotesPanel';
+import LotesPanelInsumos from './LotesPanelInsumos';
+import CategoryIcon from '@mui/icons-material/Category';
+import DeleteRecetasModal from './DeleteRecetasModal';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 /* ─── Componentes de layout (espejo exacto de ConfigArticulosTab) ─── */
 function Card({ children, accent }) {
@@ -144,9 +147,9 @@ function ColChips({ requeridas, opcionales }) {
 
 /* ── Modos de costeo ── */
 const MODOS_COSTEO = [
-  { value: 'ultima_compra', label: 'Última compra',    desc: 'Precio de la compra más reciente (recomendado)', badge: true },
-  { value: 'promedio_30',   label: 'Promedio 30 días', desc: 'Promedio de compras de los últimos 30 días' },
-  { value: 'precio_db',     label: 'Precio DB',        desc: 'Precio de referencia del sistema como fallback' },
+  { value: 'ultima_compra', label: 'Última compra', desc: 'Precio de la compra más reciente (recomendado)', badge: true },
+  { value: 'promedio_30', label: 'Promedio 30 días', desc: 'Promedio de compras de los últimos 30 días' },
+  { value: 'precio_db', label: 'Precio DB', desc: 'Precio de referencia del sistema como fallback' },
 ];
 
 function ModosCosteo({ value, onChange }) {
@@ -270,6 +273,7 @@ export default function ConfigInsumosTab({
   setAlertasTotal,
   onNuevoInsumo,
   onUploadInsumos,
+  onUploadInsumosRubros,
   onOpenReceta,
   abrirEquivalencias,
   RecetasAPI,
@@ -279,6 +283,7 @@ export default function ConfigInsumosTab({
   const [confirmDlg, setConfirmDlg] = React.useState(null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.insumos_costo_ideal ?? '');
   React.useEffect(() => { setSavedCostoIdeal(config?.insumos_costo_ideal ?? ''); }, [config?.insumos_costo_ideal]);
+  const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
 
   const handleConfirm = () => {
     if (!confirmDlg) return;
@@ -295,7 +300,7 @@ export default function ConfigInsumosTab({
     setAlertasLoading(true);
     RecetasAPI.getAlertas(Number(businessId))
       .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setAlertasLoading(false));
   };
 
@@ -399,6 +404,22 @@ export default function ConfigInsumosTab({
                 <ActionRow icon={<CloudUploadIcon />} title="Importar desde archivo"
                   desc="Subí un CSV o Excel con insumos. El sistema detecta las columnas y te pide mapear las que no reconoce.">
                   <PrimaryBtn icon={<CloudUploadIcon />} label="Importar" onClick={onUploadInsumos} tc={tc} />
+                </ActionRow>
+                <ActionRow icon={<CategoryIcon />} title="Importar rubros de insumos"
+                  desc="Subí una tabla con códigos y nombres de rubros para categorizar tus insumos.">
+                  <PrimaryBtn icon={<CategoryIcon />} label="Importar rubros"
+                    onClick={onUploadInsumosRubros} tc={tc} />
+                </ActionRow>
+                <ActionRow icon={<DeleteForeverIcon />} title="Borrar recetas masivas"
+                  desc="Borrá todas las recetas de insumos elaborados o las de una agrupación específica. Acción irreversible.">
+                  <Button
+                    variant="outlined" size="small" color="error"
+                    startIcon={<DeleteForeverIcon />}
+                    onClick={() => setDeleteRecetasOpen(true)}
+                    sx={{ fontWeight: 600, fontSize: '0.82rem', px: 2, py: 0.9, borderRadius: 1.5 }}
+                  >
+                    Borrar recetas
+                  </Button>
                 </ActionRow>
               </CardBody>
             </Card>
@@ -566,6 +587,14 @@ export default function ConfigInsumosTab({
           </Grid>
         </Grid>
       )}
+
+      <DeleteRecetasModal
+        open={deleteRecetasOpen}
+        onClose={() => setDeleteRecetasOpen(false)}
+        businessId={businessId}
+        tipo="elaborado"
+        themeColor={tc}
+      />
 
       {/* Dialog de confirmación */}
       <Dialog open={!!confirmDlg} onClose={() => setConfirmDlg(null)} maxWidth="xs" fullWidth>

@@ -40,6 +40,7 @@ export default function BusinessCard({
   onEdit,
   onDelete,
   showNotice,
+  canEdit = true,
 }) {
   const {
     activeDivisionId,
@@ -425,14 +426,18 @@ export default function BusinessCard({
                 Activar
               </button>
             )}
-            <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(viewBiz)}>
-              <EditIcon fontSize="small" /> Editar
-            </button>
-            <button className="bc-icon bc-icon-danger"
-              onClick={(e) => { try { e.currentTarget.blur(); } catch { } e.stopPropagation(); onDelete?.(viewBiz); }}
-              title="Eliminar negocio">
-              <DeleteIcon fontSize="small" />
-            </button>
+            {canEdit && (
+              <>
+                <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(viewBiz)}>
+                  <EditIcon fontSize="small" /> Editar
+                </button>
+                <button className="bc-icon bc-icon-danger"
+                  onClick={(e) => { try { e.currentTarget.blur(); } catch { } e.stopPropagation(); onDelete?.(viewBiz); }}
+                  title="Eliminar negocio">
+                  <DeleteIcon fontSize="small" />
+                </button>
+              </>
+            )}
           </div>
 
           <div className="bc-actions-sync">
@@ -460,8 +465,8 @@ export default function BusinessCard({
           </div>
         </div>
 
-        {/* ── SUCURSALES ── */}
-        {isActive && (
+        {/* ── SUCURSALES ── solo si puede gestionarlas */}
+        {isActive && canEdit && (
           <div className="bc-branches">
             <div className="bc-branches-header">
               <span className="bc-branches-label">Sucursales</span>

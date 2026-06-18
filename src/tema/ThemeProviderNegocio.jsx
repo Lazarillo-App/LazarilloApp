@@ -7,18 +7,18 @@ const Ctx = createContext(null);
 export const useBizTheme = () => useContext(Ctx);
 
 const DEFAULTS = {
-  name: 'Default',
-  primary: '#3b82f6',
-  secondary: '#6366f1',
+  name: 'Lazarillo',
+  primary: '#2492C8',    // celeste profundo — navbar, botones
+  secondary: '#5BC2EA',  // celeste — acentos y hover
   success: '#10b981',
   warning: '#f59e0b',
   error: '#ef4444',
-  fg: '#1a4f67',
+  fg: '#15213E',         // tinta — textos
   bg: '#ffffff',
-  surface: '#f8fafc',
+  surface: '#F2F4F7',    // paper — superficies
   border: '#e2e8f0',
-  hover: 'rgba(40,90,115,.10)',
-  font: 'Inter, system-ui, sans-serif',
+  hover: 'rgba(36,146,200,.10)',
+  font: "'Archivo', system-ui, sans-serif",
 };
 
 /* ---------- helpers ---------- */
@@ -151,8 +151,10 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
   // 1) hidratar desde cache por-biz (o espejo current) para evitar “flash”
   const initialFromLS = (() => {
     try {
-      const k = bizIdInitial ? keyFor(bizIdInitial) : CURRENT_KEY;
-      return JSON.parse(localStorage.getItem(k) || localStorage.getItem(CURRENT_KEY) || 'null') || DEFAULTS;
+      // Sin negocio activo → siempre paleta Lazarillo, nunca cache viejo
+      if (!bizIdInitial) return DEFAULTS;
+      const k = keyFor(bizIdInitial);
+      return JSON.parse(localStorage.getItem(k) || 'null') || DEFAULTS;
     } catch { return DEFAULTS; }
   })();
 

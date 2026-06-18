@@ -106,21 +106,21 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 }`;
 
 const marqueeChips = [
-  "Costos reales por plato","Política de precios que se sostiene","Ingeniería de menú",
-  "Tableros para cada equipo","Precios claros para el cliente","Lanzamientos sin caos",
-  "Decisiones con datos","Un equipo interdependiente","Trazabilidad","Digitaliza tu gestión",
+  "Costos reales por plato", "Política de precios que se sostiene", "Ingeniería de menú",
+  "Tableros para cada equipo", "Precios claros para el cliente", "Lanzamientos sin caos",
+  "Decisiones con datos", "Un equipo interdependiente", "Trazabilidad", "Digitaliza tu gestión",
 ];
 
 const pillars = [
-  { n:"01", t:"Ordená tu menú como funciona tu negocio", d:"Reagrupalo por rubros y subnegocios para gestionar cada parte por separado, no todo en una misma bolsa." },
-  { n:"02", t:"Definí tu política de precios", d:"La regla que sostiene tu rentabilidad en el tiempo, no una mejora de una sola vez." },
-  { n:"03", t:"Recetas y costos reales", d:"Conocé cuánto te cuesta y cuánto te deja cada plato. Sin estimar a ojo: la base de toda buena decisión." },
-  { n:"04", t:"Tableros que comunican solos", d:"Información clara para producción, despacho y atención —y tableros de precios listos para tus clientes." },
-  { n:"05", t:"Visibilidad de tu ganancia", d:"Descubrí tus platos estrella y los que conviene rotar o sacar.", soon:" Con Anthony, nuestra IA — muy pronto." },
-  { n:"06", t:"Tu negocio entero en un tablero", d:"Resultados económicos, proveedores, gastos y los KPIs clave del rubro, en un solo lugar." },
+  { n: "01", t: "Ordená tu menú como funciona tu negocio", d: "Reagrupalo por rubros y subnegocios para gestionar cada parte por separado, no todo en una misma bolsa." },
+  { n: "02", t: "Definí tu política de precios", d: "La regla que sostiene tu rentabilidad en el tiempo, no una mejora de una sola vez." },
+  { n: "03", t: "Recetas y costos reales", d: "Conocé cuánto te cuesta y cuánto te deja cada plato. Sin estimar a ojo: la base de toda buena decisión." },
+  { n: "04", t: "Tableros que comunican solos", d: "Información clara para producción, despacho y atención —y tableros de precios listos para tus clientes." },
+  { n: "05", t: "Visibilidad de tu ganancia", d: "Descubrí tus platos estrella y los que conviene rotar o sacar.", soon: " Con Anthony, nuestra IA — muy pronto." },
+  { n: "06", t: "Tu negocio entero en un tablero", d: "Resultados económicos, proveedores, gastos y los KPIs clave del rubro, en un solo lugar." },
 ];
 
-const visionChips = ["Compras","Recursos Humanos","Stock","Política de precios","Resultados"];
+const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
 const WA = "https://wa.me/5491163989934";
 
 // Modal de contacto
@@ -207,7 +207,7 @@ export default function LazarilloLanding() {
       <header className="hero">
         <div className="wrap">
           <div>
-            <div className="kick" style={{ color:"var(--sky)" }}>Gestión gastronómica · Para dueños de restaurantes</div>
+            <div className="kick" style={{ color: "var(--sky)" }}>Gestión gastronómica · Para dueños de restaurantes</div>
             <h1>Tu POS te dice cuánto vendiste. <span>Lazarillo hace que te rinda.</span></h1>
             <p>Se apoya en el sistema que ya tenés y convierte los números de tu negocio en decisiones claras que todo tu equipo ve, entiende y ejecuta —todos los días.</p>
             <div className="actions">
@@ -232,7 +232,8 @@ export default function LazarilloLanding() {
       <section className="insight">
         <div className="wrap">
           <span className="q">"</span>
-          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo viene a resolver eso: convierte el corazón de tu restaurante —su menú y su ingeniería— en información clara para toda tu operación.</p>
+          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo viene a resolver eso:
+            convierte el corazón de tu restaurante —su menú y su ingeniería— en información clara para toda tu operación.</p>
         </div>
       </section>
 
@@ -284,7 +285,7 @@ export default function LazarilloLanding() {
       <section className="cta" id="contacto">
         <div className="wrap">
           <h2>Empezá a ver lo que tu negocio te esconde.</h2>
-          <p style={{ color:"rgba(255,255,255,.7)", fontSize:"18px" }}>Escribinos y te mostramos Lazarillo funcionando sobre tu carta.</p>
+          <p style={{ color: "rgba(255,255,255,.7)", fontSize: "18px" }}>Escribinos y te mostramos Lazarillo funcionando sobre tu carta.</p>
           <div className="actions">
             <button className="btn btn-sky" onClick={openModal}>Pedí tu demo gratuita</button>
             <a className="btn btn-ghost" href={WA} target="_blank" rel="noopener">WhatsApp directo</a>
@@ -297,14 +298,14 @@ export default function LazarilloLanding() {
       <footer>
         <div className="wrap">
           <img src={LOGO} alt="Lazarillo" />
-          <div className="c"><span>web</span> www.lazarillo.com.ar · <span>ig</span> <a href="https://www.instagram.com/lazarillo.erp/" target="_blank" rel="noopener" style={{ color:'var(--sky)', fontWeight:600, textDecoration:'none' }}>@lazarillo.erp</a><br />© Lazarillo · Conectamos con lo que no ves</div>
+          <div className="c"><span>web</span> www.lazarillo.com.ar · <span>ig</span> <a href="https://www.instagram.com/lazarillo.erp/" target="_blank" rel="noopener" style={{ color: 'var(--sky)', fontWeight: 600, textDecoration: 'none' }}>@lazarillo.erp</a><br />© Lazarillo · Conectamos con lo que no ves</div>
         </div>
       </footer>
 
       {/* WA FLOAT */}
       <a className="wa-float" href={WA} target="_blank" rel="noopener" aria-label="WhatsApp">
         <svg viewBox="0 0 32 32" fill="#fff" xmlns="http://www.w3.org/2000/svg">
-          <path d="M16 .4C7.4.4.4 7.4.4 16c0 2.8.7 5.5 2.1 7.9L.3 31.7l8-2.1c2.3 1.3 4.9 1.9 7.6 1.9h.1c8.6 0 15.6-7 15.6-15.6 0-4.2-1.6-8.1-4.6-11C24.1 2 20.2.4 16 .4zm0 28.5h-.1c-2.4 0-4.7-.6-6.7-1.9l-.5-.3-5 1.3 1.3-4.9-.3-.5C3.3 21 2.7 18.5 2.7 16 2.7 8.7 8.7 2.8 16 2.8c3.5 0 6.8 1.4 9.3 3.9 2.5 2.5 3.9 5.8 3.9 9.3 0 7.3-6 13.2-13.2 13.2zm7.2-9.9c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3.1-.5 0-.7-.1-.2-.9-2.2-1.3-3-.3-.8-.7-.7-.9-.7h-.8c-.3 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.2s1.4 3.7 1.5 3.9c.2.3 2.7 4.2 6.6 5.9.9.4 1.6.6 2.2.8.9.3 1.8.2 2.4.2.7-.1 2.3-.9 2.6-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z"/>
+          <path d="M16 .4C7.4.4.4 7.4.4 16c0 2.8.7 5.5 2.1 7.9L.3 31.7l8-2.1c2.3 1.3 4.9 1.9 7.6 1.9h.1c8.6 0 15.6-7 15.6-15.6 0-4.2-1.6-8.1-4.6-11C24.1 2 20.2.4 16 .4zm0 28.5h-.1c-2.4 0-4.7-.6-6.7-1.9l-.5-.3-5 1.3 1.3-4.9-.3-.5C3.3 21 2.7 18.5 2.7 16 2.7 8.7 8.7 2.8 16 2.8c3.5 0 6.8 1.4 9.3 3.9 2.5 2.5 3.9 5.8 3.9 9.3 0 7.3-6 13.2-13.2 13.2zm7.2-9.9c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3.1-.5 0-.7-.1-.2-.9-2.2-1.3-3-.3-.8-.7-.7-.9-.7h-.8c-.3 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.2s1.4 3.7 1.5 3.9c.2.3 2.7 4.2 6.6 5.9.9.4 1.6.6 2.2.8.9.3 1.8.2 2.4.2.7-.1 2.3-.9 2.6-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z" />
         </svg>
       </a>
     </>

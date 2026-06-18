@@ -16,7 +16,7 @@ import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
-import { Snackbar, Alert, Button, Box, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack } from '@mui/material';
+import { Snackbar, Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem } from '@mui/material';
 import { emitUiAction } from '../servicios/uiEvents';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
@@ -24,13 +24,13 @@ import VentasActionsMenu from '../componentes/VentasActionsMenu';
 import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
 import { useFirstDate } from '../hooks/useFirstDate';
 import UploadCSVModal from '../componentes/UploadCSVModal';
+import UploadArticulosModal from '../componentes/UploadArticulosModal';
+import { ArticuloNuevoModal } from '../componentes/configuracion/ABMModals';
 import Buscador from '@/componentes/Buscador';
 import SubBusinessCreateModal from '../componentes/SubBusinessCreateModal';
-import BusinessCreateModal from '../componentes/BusinessCreateModal';
 import ReactDOM from 'react-dom';
 import instructionImage1 from '../assets/brand/maxirest-menu.jpeg';
 import instructionImage2 from '../assets/brand/maxirest-config.jpeg';
-import { getOrgPriceListConfig, getBusinessPriceList } from '@/servicios/apiPriceLists';
 import {
   notifyGroupRenamed,
   notifyGroupDeleted,
@@ -38,8 +38,7 @@ import {
   notifyGroupFavoriteChanged,
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
-import { saveRedondeoConfig, getRedondeoConfig } from '@/utils/redondeoUtils';
-import { useConfig } from '@/context/ConfigContext';
+import { saveRedondeoConfig } from '@/utils/redondeoUtils';
 import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -65,7 +64,8 @@ const getArtId = (a) => {
     a?.code;
 
   const id = Number(raw);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  // id !== 0 — acepta negativos (artículos manuales)
+  return Number.isFinite(id) && id !== 0 ? id : null;
 };
 
 const normalize = (s) =>
@@ -132,10 +132,9 @@ export default function ArticulosMain(props) {
   const [recetasCostos, setRecetasCostos] = useState({});
   // ── Price config save con confirmación y deshacer ──
   const [dlgConfirm, setDlgConfirm] = useState(null);
-  const prevConfigRef = React.useRef(null);
+  const prevConfigRef = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
   const [priceConfig, setPriceConfig] = useState({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
-  // Leer globalCostoIdeal del contexto global — se actualiza automáticamente desde ConfiguracionMain
-  const { articulosCostoIdeal: globalCostoIdeal } = useConfig();
+  const [globalCostoIdeal, setGlobalCostoIdeal] = useState(30); // default 30%, se pisa con el de /config
   // Estado de sincronización — se activa con sync:start y se apaga con sync:completed
   // Al montar, verificar si hay un sync en curso (puede haberse iniciado antes de navegar aquí)
   const [isSyncing, setIsSyncing] = useState(() => {
@@ -149,6 +148,10 @@ export default function ArticulosMain(props) {
   );
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [agregarMenuAnchor, setAgregarMenuAnchor] = useState(null);
+  const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
+  const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
+  const [uploadArticulosMode, setUploadArticulosMode] = useState('articulos'); // 'articulos' | 'rubros'
   const [subBizModalOpen, setSubBizModalOpen] = useState(false);
   const [groupForSubBiz, setGroupForSubBiz] = useState(null);
   const [alertaVentas, setAlertaVentas] = useState(null);
@@ -157,10 +160,9 @@ export default function ArticulosMain(props) {
   const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
-  const [allPriceLists, setAllPriceLists] = useState([]);
+
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
-  const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
   const {
     selectionMode, selectedIds, saving: selectionSaving,
@@ -206,6 +208,12 @@ export default function ArticulosMain(props) {
   }, [activeBizId]);
 
   useEffect(() => {
+    console.log('[DEBUG] activeBranchFilter:', activeBranchFilter);
+    console.log('[DEBUG] branchId a useSalesData:',
+      activeBranchFilter?.mode === 'main' ? 'main'
+        : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
+          : 'main'
+    );
   }, [activeBranchFilter]);
 
   const periodoRef = useRef(periodo);
@@ -230,6 +238,7 @@ export default function ArticulosMain(props) {
       setVentasMapByBranch({});
       return;
     }
+    console.log('[DEBUG] ventasMapByBranch fetch - branches:', branches.map(b => b.id));
     let cancelled = false;
     const token = localStorage.getItem('token') || '';
     const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
@@ -264,8 +273,7 @@ export default function ArticulosMain(props) {
     });
     return () => { cancelled = true; };
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
-
-  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization() || {};
+  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
 
   usePersistUiActions(activeBizId);
 
@@ -284,7 +292,7 @@ export default function ArticulosMain(props) {
     // 'main' = sin branch_id, null = todas, number = sucursal específica
     branchId: activeBranchFilter?.mode === 'main' ? 'main'
       : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-        : null,   // modo 'all' → suma total de todas las sucursales
+        : 'main',   // modo 'all' → columna base = solo principal
   });
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
@@ -360,14 +368,14 @@ export default function ArticulosMain(props) {
         : Array.isArray(g.data) ? g.data
           : [];
     const fromAppIds = Array.isArray(g.app_articles_ids)
-      ? g.app_articles_ids.map(id => ({ id: Number(id) })).filter(a => a.id > 0)
+      ? g.app_articles_ids.map(id => ({ id: Number(id) })).filter(a => Number.isFinite(a.id) && a.id !== 0)
       : [];
     if (!fromAppIds.length) return fromJsonb;
     // Combinar sin duplicar: app_articles_ids tiene precedencia (tiene IDs reales)
     const seenIds = new Set(fromAppIds.map(a => a.id));
     const extra = fromJsonb.filter(a => {
       const id = Number(a?.id ?? a?.articulo_id);
-      return id > 0 && !seenIds.has(id);
+      return Number.isFinite(id) && id !== 0 && !seenIds.has(id);
     });
     return [...fromAppIds, ...extra];
   };
@@ -451,9 +459,12 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     if (!activeBizId) {
+      console.log('[ArticulosMain] Sin businessId, limpiando agrupaciones');
       setAgrupaciones([]);
       return;
     }
+
+    console.log('[ArticulosMain] Cargando agrupaciones inicial...');
     refetchAgrupaciones();
   }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
 
@@ -462,23 +473,40 @@ export default function ArticulosMain(props) {
   useEffect(() => {
     if (!activeBizId) return;
     let alive = true;
+    // Recetas viven en el principal; price config en el negocio activo
     const recetasBizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
     const configBizId = Number(activeBizId);
-    const orgId = organization?.id;
 
     Promise.all([
       RecetasAPI.getCostos(recetasBizId).catch(() => ({ costos: {} })),
       PriceConfigAPI.getAll(configBizId).catch(() => ({ byArticle: {}, byRubro: {}, byAgrupacion: {} })),
+      fetch(`${BASE}/businesses/${configBizId}/config`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          'X-Business-Id': String(configBizId),
+        },
+      }).then(r => r.json()).catch(() => ({})),
       fetch(`${BASE}/businesses/${configBizId}/articles-alertas-ventas`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}`, 'X-Business-Id': String(configBizId) },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          'X-Business-Id': String(configBizId),
+        },
       }).then(r => r.json()).catch(() => ({ hayAlerta: false })),
-      orgId ? getOrgPriceListConfig(orgId).catch(() => []) : Promise.resolve([]),
-    ]).then(([costosRes, configRes, alertaVentasRes, listsRes]) => {
+    ]).then(([costosRes, configRes, configNegocio, alertaVentasRes]) => {
       if (!alive) return;
       setRecetasCostos(costosRes?.costos || {});
-      setPriceConfig({ byArticle: configRes?.byArticle || {}, byRubro: configRes?.byRubro || {}, byAgrupacion: configRes?.byAgrupacion || {} });
+      setPriceConfig({
+        byArticle: configRes?.byArticle || {},
+        byRubro: configRes?.byRubro || {},
+        byAgrupacion: configRes?.byAgrupacion || {},
+      });
+      if (configNegocio?.config?.articulos_costo_ideal) {
+        setGlobalCostoIdeal(Number(configNegocio.config.articulos_costo_ideal));
+      }
+      if (configNegocio?.config?.redondeo_precios !== undefined) {
+        saveRedondeoConfig(configBizId, configNegocio.config.redondeo_precios, true);
+      }
       setAlertaVentas(alertaVentasRes || null);
-      if (Array.isArray(listsRes) && listsRes.length > 0) setAllPriceLists(listsRes);
     });
 
     return () => { alive = false; };
@@ -510,31 +538,14 @@ export default function ArticulosMain(props) {
 
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
+    console.log('[handlePriceConfigSave] body recibido:', body);
     const bizId = Number(activeBizId);
     const doSave = async () => {
       try {
-        const { _deleteIndividuales, _deleteObjetivo, _delete, _deleteManual, ...cleanBody } = body;
-
-        if (_deleteObjetivo) {
-          // Borrar objetivo de la agrupación
-          await PriceConfigAPI.remove(bizId, { scope: body.scope, scopeId: body.scopeId });
-
-          // Borrar objetivos individuales de todos los artículos
-          if (Array.isArray(body.articleIds) && body.articleIds.length > 0) {
-            await Promise.all(
-              body.articleIds.map(artId =>
-                PriceConfigAPI.remove(bizId, { scope: 'articulo', scopeId: String(artId) })
-                  .catch(() => { })
-              )
-            );
-          }
-        } else if (_deleteManual) {
-          await PriceConfigAPI.remove(bizId, { scope: body.scope, scopeId: body.scopeId });
-        } else {
-          await PriceConfigAPI.save(bizId, cleanBody);
-        }
-
+        const result = await PriceConfigAPI.save(bizId, body);
+        console.log('[handlePriceConfigSave] resultado backend:', result);
         const r = await PriceConfigAPI.getAll(bizId);
+        console.log('[handlePriceConfigSave] nuevo priceConfig:', r);
         setPriceConfig({
           byArticle: r?.byArticle || {},
           byRubro: r?.byRubro || {},
@@ -544,35 +555,35 @@ export default function ArticulosMain(props) {
         console.error('[handlePriceConfigSave]', e);
       }
     };
+
     doSave();
   }, [activeBizId, setPriceConfig]);
 
-  // ── Bulk precioManual: un save por artículo + un solo getAll al final ──
   const handleBulkManualSave = React.useCallback(async (updates) => {
     const bizId = Number(activeBizId);
     if (!bizId || !updates?.length) return;
+
+    // Separar updates reales (con valor) y deletes (precioManual === null)
+    const realUpdates = [];
+    const deletes = [];
+    for (const u of updates) {
+      const artId = Number(u.artId);
+      if (!Number.isFinite(artId) || artId === 0) continue;
+      if (u.precioManual == null) deletes.push({ artId });
+      else realUpdates.push({ artId, precioManual: Number(u.precioManual) });
+    }
+
     try {
-      const toSave = updates.filter(u => u.precioManual != null);
-      const toDelete = updates.filter(u => u.precioManual == null);
-
-      // Optimista
-      setPriceConfig(prev => {
-        const byArticle = { ...prev.byArticle };
-        updates.forEach(({ artId, precioManual }) => {
-          byArticle[String(artId)] = {
-            ...(byArticle[String(artId)] || {}),
-            precioManual: precioManual ?? null,
-          };
-        });
-        return { ...prev, byArticle };
+      const token = localStorage.getItem('token') || '';
+      await fetch(`${BASE}/businesses/${bizId}/article-price-config/bulk`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Business-Id': String(bizId),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ updates: realUpdates, deletes }),
       });
-
-      // Un solo request
-      await PriceConfigAPI.bulkSave(bizId, {
-        updates: toSave.map(({ artId, precioManual }) => ({ artId, precioManual })),
-        deletes: toDelete.map(({ artId }) => ({ artId })),
-      });
-
       const r = await PriceConfigAPI.getAll(bizId);
       setPriceConfig({
         byArticle: r?.byArticle || {},
@@ -584,56 +595,15 @@ export default function ArticulosMain(props) {
     }
   }, [activeBizId, setPriceConfig]);
 
-  // ── Escuchar cambios de config global — limpiar overrides locales ──
-  React.useEffect(() => {
-    const onConfigUpdated = (e) => {
-      const { key } = e?.detail || {};
-      // Cuando se guarda el costo ideal global, limpiar priceConfig local
-      // para que la tabla refleje solo el global sin overrides
-      if (key === 'articulos_costo_ideal') {
-        setPriceConfig({ byArticle: {}, byRubro: {}, byAgrupacion: {} });
-      }
-    };
-    window.addEventListener('config:updated', onConfigUpdated);
-    return () => window.removeEventListener('config:updated', onConfigUpdated);
-  }, []);
+  // Escuchar ui:undo para restaurar el objetivo previo
   React.useEffect(() => {
     const onUndo = async (e) => {
       const d = e?.detail;
-      // Soportar ambos kinds por compatibilidad
-      if (d?.kind !== 'objetivo_update' && d?.kind !== 'objetivo_change') return;
+      if (d?.kind !== 'objetivo_update') return;
       const bizId = Number(activeBizId);
-
-      // Si viene con payload directo (undo desde toast de tabla)
-      if (d?.payload?.scope && d?.payload?.val != null) {
-        const { scope, scopeId, valAnterior, articleIds } = d.payload;
-        try {
-          await PriceConfigAPI.save(bizId, {
-            scope, scopeId,
-            objetivo: valAnterior ?? null,
-            articleIds, pisarTodo: true,
-          });
-
-          // Notificar a TablaArticulos para que limpie su state local 'objetivos'
-          try {
-            window.dispatchEvent(new CustomEvent('articulos:clear-local-objetivos', {
-              detail: { articleIds, scope, scopeId }
-            }));
-          } catch { }
-
-          const r = await PriceConfigAPI.getAll(bizId);
-          setPriceConfig({
-            byArticle: r?.byArticle || {},
-            byRubro: r?.byRubro || {},
-            byAgrupacion: r?.byAgrupacion || {},
-          });
-        } catch (err) { console.error('[undo objetivo_change]', err); }
-        return;
-      }
-
-      // Undo completo con snapshot previo
       const prevConfig = d?.payload?.prevConfig || prevConfigRef.current;
       if (!prevConfig) return;
+
       try {
         await PriceConfigAPI.remove(bizId, { scope: 'all' });
         const entries = [
@@ -651,13 +621,30 @@ export default function ArticulosMain(props) {
           byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         });
-      } catch (err) { console.error('[undo objetivo_update]', err); }
+      } catch (err) {
+        console.error('[undo objetivo_update]', err);
+      }
     };
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
   }, [activeBizId, setPriceConfig]);
 
-
+  // Listener: refrescar costos de receta cuando se borren recetas masivamente
+  // (por bulk delete o por desvinculación de gemelos de receta)
+  useEffect(() => {
+    if (!activeBizId) return;
+    const handler = async () => {
+      try {
+        const bizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
+        const res = await RecetasAPI.getCostos(bizId);
+        if (res?.costos) setRecetasCostos(res.costos);
+      } catch (e) {
+        console.warn('[recetas:bulk-deleted listener] refetch falló:', e.message);
+      }
+    };
+    window.addEventListener('recetas:bulk-deleted', handler);
+    return () => window.removeEventListener('recetas:bulk-deleted', handler);
+  }, [activeBizId, rootBusiness]);
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -682,7 +669,8 @@ export default function ArticulosMain(props) {
     const todoIdsSet = new Set(
       idsSinAgrupArray
         .map((v) => Number(v))
-        .filter((n) => Number.isFinite(n) && n > 0)
+        // n !== 0 — acepta negativos (artículos manuales)
+        .filter((n) => Number.isFinite(n) && n !== 0)
     );
 
     const idsSinAgrupCount = Number.isFinite(Number(safe.idsSinAgrupCount))
@@ -700,16 +688,11 @@ export default function ArticulosMain(props) {
     window.__DEBUG_VENTAS_MAP = ventasMap;
 
     if (ventasMap && ventasMap.size > 0) {
+      console.log('[ArticulosMain] ventasMap:', {
+        size: ventasMap.size,
+        sample: Array.from(ventasMap.entries()).slice(0, 3)
+      });
     }
-  }, [ventasMap]);
-
-  const totalBizAmount = useMemo(() => {
-    if (!ventasMap || ventasMap.size === 0) return 0;
-    let total = 0;
-    for (const [, v] of ventasMap) {
-      total += Number(v?.amount ?? 0);
-    }
-    return total;
   }, [ventasMap]);
 
   // ✅ CAMBIO 2: Guardar/cargar favorita por negocio
@@ -723,7 +706,14 @@ export default function ArticulosMain(props) {
   }, [favoriteGroupId, activeBizId]);
 
   const mutateGroups = useCallback(async (action) => {
-
+    console.log('[mutateGroups]', action.type, {
+      groupId: action.groupId,
+      fromId: action.fromId,
+      toId: action.toId,
+      id: action.id,
+      idsCount: action.ids?.length,
+      articulosCount: action.articulos?.length,
+    });
     setAgrupaciones(prev => {
       switch (action.type) {
         case 'create':
@@ -764,11 +754,12 @@ export default function ArticulosMain(props) {
       if (!Array.isArray(prev)) return prev;
       let toAdd = [];
       if (action.type === 'create') {
-        toAdd = (action.articulos || []).map(a => Number(a?.id ?? a)).filter(n => n > 0);
+        // n !== 0 — acepta negativos (artículos manuales)
+        toAdd = (action.articulos || []).map(a => Number(a?.id ?? a)).filter(n => Number.isFinite(n) && n !== 0);
       } else if (action.type === 'append') {
-        toAdd = (action.articulos || []).map(a => Number(a?.id ?? a)).filter(n => n > 0);
+        toAdd = (action.articulos || []).map(a => Number(a?.id ?? a)).filter(n => Number.isFinite(n) && n !== 0);
       } else if (action.type === 'move') {
-        toAdd = (action.ids || []).map(Number).filter(n => n > 0);
+        toAdd = (action.ids || []).map(Number).filter(n => Number.isFinite(n) && n !== 0);
       }
       if (!toAdd.length) return prev;
       const prevSet = new Set(prev);
@@ -851,6 +842,12 @@ export default function ArticulosMain(props) {
         }
       }
 
+      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
+      console.log('[downloadVentasCSV] articleIds param:', articleIds);
+      console.log('[downloadVentasCSV] listId param:', listId);
+      console.log('[export] articleIds que llegan al handler:', articleIds);
+      console.log('[export] activeListItems al momento de exportar:', activeListItems);
+      console.log('[export] listId:', listId);
       const blob = await downloadVentasCSV(bid, {
         from,
         to,
@@ -874,6 +871,8 @@ export default function ArticulosMain(props) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
+      console.log('[downloadVentasCSV] url final:', url);
     } catch (err) {
       console.error('Error al descargar CSV de ventas', err);
       showAlert(`Error al descargar CSV de ventas: ${err.message || err}`, 'error');
@@ -1318,7 +1317,8 @@ export default function ArticulosMain(props) {
       const out = new Set();
       for (const id of base) {
         const n = Number(id);
-        if (!Number.isFinite(n) || n <= 0) continue;
+        // n !== 0 — acepta negativos (artículos manuales)
+        if (!Number.isFinite(n) || n === 0) continue;
         if (discIds.has(n)) continue;
         out.add(n);
       }
@@ -1348,7 +1348,8 @@ export default function ArticulosMain(props) {
   const focusArticle = useCallback(
     (rawId, preferGroupId = null) => {
       const id = Number(rawId);
-      if (!Number.isFinite(id) || id <= 0) return;
+      // id !== 0 — acepta negativos (artículos manuales)
+      if (!Number.isFinite(id) || id === 0) return;
 
       const alreadyVisible = !visibleIds || visibleIds.has(id);
 
@@ -1445,12 +1446,20 @@ export default function ArticulosMain(props) {
   const handleDiscontinuadoChange = useCallback(
     async (rawId, isNowDiscontinuado, opts = {}) => {
       const id = Number(rawId);
-      if (!Number.isFinite(id) || id <= 0) return;
+      if (!Number.isFinite(id) || id === 0) return;
 
       try {
         await refetchAgrupaciones();
       } catch (e) {
         console.error('Error refrescando agrupaciones:', e);
+      }
+
+      // 🆕 Al reactivar: avisar a TablaArticulos para que saque el id de su Set local
+      // `excludedIds` (sino el artículo queda excluido silenciosamente hasta F5)
+      if (!isNowDiscontinuado) {
+        try {
+          window.dispatchEvent(new CustomEvent('articulos:include-back', { detail: { ids: [id] } }));
+        } catch { /* */ }
       }
 
       if (isNowDiscontinuado) {
@@ -1479,6 +1488,13 @@ export default function ArticulosMain(props) {
       // ✅ Los grupos de Discontinuados y los originales viven en el principal
       // Usar el rootBusinessId para las llamadas HTTP del UNDO
       const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
+
+      console.log('🔄 [UNDO discontinue]', {
+        ids,
+        wasInDiscontinuados,
+        discontinuadosGroupId,
+        fromGroupId,
+      });
 
       if (!ids.length) {
         showMiss('No hay artículos para deshacer');
@@ -1576,19 +1592,12 @@ export default function ArticulosMain(props) {
     rootBusiness,
   ]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.detail?.lists) setAllPriceLists(e.detail.lists);
-    };
-    window.addEventListener('pricelists:updated', handler);
-    return () => window.removeEventListener('pricelists:updated', handler);
-  }, []);
-
   const handleDiscontinuarBloque = useCallback(
     async (idsRaw = []) => {
       const ids = (idsRaw || [])
         .map(Number)
-        .filter(n => Number.isFinite(n) && n > 0);
+        // n !== 0 — acepta negativos (artículos manuales)
+        .filter(n => Number.isFinite(n) && n !== 0);
 
       if (!ids.length) return;
 
@@ -1633,6 +1642,46 @@ export default function ArticulosMain(props) {
       showMiss,
     ]
   );
+
+  // 🆕 Listener: navegar al origen cuando se reactiva un artículo desde Discontinuados
+  const pendingFocusAfterBizSwitchRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (ev) => {
+      const detail = ev?.detail || {};
+      const articleId = Number(detail.articleId);
+      const groupId = Number(detail.groupId);
+      const bizId = Number(detail.bizId);
+      console.log('[navigate listener] received:', detail, '| activeBusinessId:', activeBusinessId);
+      if (!Number.isFinite(articleId) || articleId === 0) return;
+      if (!Number.isFinite(groupId) || !Number.isFinite(bizId)) return;
+
+      if (Number(bizId) === Number(activeBusinessId)) {
+        // Mismo negocio → focus directo
+        focusArticle(articleId, groupId);
+      } else {
+        // Otro negocio → cambiar negocio y dejar el focus pendiente
+        pendingFocusAfterBizSwitchRef.current = { articleId, groupId, bizId };
+        try { selectBusiness(bizId); } catch (e) { console.error(e); }
+      }
+    };
+    window.addEventListener('articulos:navigate-to-reactivated', handler);
+    return () => window.removeEventListener('articulos:navigate-to-reactivated', handler);
+  }, [activeBusinessId, focusArticle, selectBusiness]);
+
+  // 🆕 Aplicar focus pendiente cuando termine de cargar el negocio nuevo
+  useEffect(() => {
+    const pending = pendingFocusAfterBizSwitchRef.current;
+    if (!pending) return;
+    if (Number(activeBusinessId) !== Number(pending.bizId)) return;
+    if (!agrupacionesRich || !agrupacionesRich.length) return;
+    // 🆕 Esperar también a que el grupo target esté en agrupacionesRich,
+    // porque agrupacionesRich puede estar todavía con los datos del biz viejo
+    const targetExists = agrupacionesRich.some(g => Number(g?.id) === Number(pending.groupId));
+    if (!targetExists) return;
+    pendingFocusAfterBizSwitchRef.current = null;
+    focusArticle(pending.articleId, pending.groupId);
+  }, [activeBusinessId, agrupacionesRich, focusArticle]);
 
   useEffect(() => {
     const id = Number(pendingJumpRef.current);
@@ -2010,7 +2059,8 @@ export default function ArticulosMain(props) {
 
         const ids = Array.from(baseSet)
           .map(Number)
-          .filter((n) => Number.isFinite(n) && n > 0);
+          // n !== 0 — acepta negativos (artículos manuales)
+          .filter((n) => Number.isFinite(n) && n !== 0);
 
         if (!ids.length) {
           showAlert('No hay artículos en "Sin agrupación" para capturar.', 'warning');
@@ -2115,6 +2165,8 @@ export default function ArticulosMain(props) {
 
   const bizCtx = useBusiness();
   useEffect(() => {
+    console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
+    console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
 
   const handleRedondeoChange = useCallback(async (nuevoValor) => {
@@ -2122,51 +2174,9 @@ export default function ArticulosMain(props) {
     try {
       await BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: nuevoValor } });
     } catch (e) {
-      console.warn('[handleRedondeoChange] error:', e.message);
+      console.warn('[handleRedondeoChange] error al guardar en DB:', e.message);
     }
   }, [activeBizId]);
-
-  // ── Estado vacío: sin negocio activo ──
-  const [showCreateBiz, setShowCreateBiz] = React.useState(false);
-  if (!activeBizId) {
-    return (
-      <Box sx={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        minHeight: '60vh', gap: 3, p: 4,
-      }}>
-        <Box sx={{ fontSize: 64, lineHeight: 1 }}>🏪</Box>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="h5" fontWeight={800} gutterBottom>
-            ¡Bienvenido a Lazarillo!
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 420 }}>
-            Todavía no tenés ningún negocio configurado. Creá tu primer negocio para empezar a gestionar artículos, precios y ventas.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained" size="large"
-          startIcon={<span style={{ fontSize: '1.2rem' }}>+</span>}
-          onClick={() => setShowCreateBiz(true)}
-          sx={{
-            px: 4, py: 1.5, borderRadius: 2, fontWeight: 700, fontSize: '1rem',
-            bgcolor: 'var(--color-primary, #3b82f6)',
-            '&:hover': { filter: 'brightness(0.9)', bgcolor: 'var(--color-primary, #3b82f6)' },
-          }}>
-          Crear mi primer negocio
-        </Button>
-        <BusinessCreateModal
-          open={showCreateBiz}
-          onClose={() => setShowCreateBiz(false)}
-          onCreateComplete={async (biz) => {
-            setShowCreateBiz(false);
-            if (biz?.id) {
-              try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: biz.id } })); } catch { }
-            }
-          }}
-        />
-      </Box>
-    );
-  }
 
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (
@@ -2241,7 +2251,7 @@ export default function ArticulosMain(props) {
             activeListItems={activeListItems}
             alertaVentas={alertaVentas}
           />
-          <SucursalSelector variant="inline" />
+          {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
           <SelectionToolbar
             selectionMode={selectionMode}
             selectedIds={selectedIds}
@@ -2272,6 +2282,45 @@ export default function ArticulosMain(props) {
                 focusArticle(id);
               }}
             />
+          </div>
+
+          {/* Botón + Agregar */}
+          <div>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={e => setAgregarMenuAnchor(e.currentTarget)}
+              sx={{
+                background: '#2492C8',
+                '&:hover': { background: '#1a7aaa' },
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                whiteSpace: 'nowrap',
+                px: 2,
+              }}
+            >
+              + Agregar
+            </Button>
+            <Menu
+              anchorEl={agregarMenuAnchor}
+              open={Boolean(agregarMenuAnchor)}
+              onClose={() => setAgregarMenuAnchor(null)}
+              PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
+            >
+              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
+                <span style={{ fontSize: 16 }}>📄</span> Un artículo
+              </MenuItem>
+              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('articulos'); setUploadArticulosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
+                <span style={{ fontSize: 16 }}>📦</span> Cargar lote (CSV)
+              </MenuItem>
+              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('rubros'); setUploadArticulosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
+                <span style={{ fontSize: 16 }}>🗂️</span> Rubros / subrubros
+              </MenuItem>
+            </Menu>
           </div>
         </div>
       </div>
@@ -2335,9 +2384,6 @@ export default function ArticulosMain(props) {
             activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
-            totalBizAmount={totalBizAmount}
-            businessId={activeBizId}
-            visibleSubrubro={visibleSubrubro}
           />
         </div>
 
@@ -2345,8 +2391,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
-            branches={[]}
-            ventasMapByBranch={{}}
+            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
+            ventasMapByBranch={activeBranchFilter?.mode === 'all' ? ventasMapByBranch : {}}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             orgAssignedIds={orgAssignedIds}
@@ -2393,11 +2439,17 @@ export default function ArticulosMain(props) {
             onSelectAll={selectAll}
             linkByArticleId={linkByArticleId}
             nameById={nameById}
-            onRemoveMemberFromLink={removeMemberFromLink}
-            onDeleteLink={deleteLink}
+            onRemoveMemberFromLink={async (...args) => {
+              const result = await removeMemberFromLink(...args);
+              try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
+              return result;
+            }}
+            onDeleteLink={async (...args) => {
+              const result = await deleteLink(...args);
+              try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
+              return result;
+            }}
             onRedondeoChange={handleRedondeoChange}
-            allPriceLists={allPriceLists}
-            onVisibleSubrubroChange={setVisibleSubrubro}
           />
         </div>
       </div>
@@ -2456,6 +2508,22 @@ export default function ArticulosMain(props) {
       </Dialog>
 
       {/* El deshacer de objetivo_update se maneja desde el panel de notificaciones */}
+      {/* ── Agregar artículo manual ── */}
+      <ArticuloNuevoModal
+        open={agregarArticuloOpen}
+        onClose={() => setAgregarArticuloOpen(false)}
+        businessId={activeBusinessId}
+        onCreated={() => { window.dispatchEvent(new Event('business:synced')); }}
+      />
+
+      {/* ── Upload artículos / rubros ── */}
+      <UploadArticulosModal
+        open={uploadArticulosOpen}
+        onClose={() => setUploadArticulosOpen(false)}
+        businessId={activeBusinessId}
+        initialMode={uploadArticulosMode}
+      />
+
       <UploadCSVModal
         open={uploadModalOpen}
         onClose={() => setUploadModalOpen(false)}

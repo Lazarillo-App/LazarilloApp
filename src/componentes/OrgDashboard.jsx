@@ -20,6 +20,7 @@ import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { syncArticulos, syncInsumos, isMaxiConfigured } from '@/servicios/syncService';
 import { checkNewArticlesAndSuggest, applyAutoGrouping, createNewAgrupacion } from '@/servicios/autoGrouping';
+import { useAccess } from '@/context/AccessContext';
 import {
   getOrgPriceListConfig,
   getBusinessPriceList,
@@ -49,7 +50,23 @@ const getPhoto = (b) => toAbsolute(b?.photo_url || getBranding(b)?.cover_url || 
 const getLogo = (b) => toAbsolute(getBranding(b)?.logo_url || '');
 
 /* ─────────────────────────────────────────────────────── OrgBizCard */
-function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSucursal, onDelete, showNotice, orgId, allLists, onListsUpdated, rawBranches, onBranchesChange }) {
+function OrgBizCard({
+  biz,
+  isPrincipal,
+  activeId,
+  onSetActive,
+  onEdit,
+  onEditSucursal,
+  onDelete,
+  showNotice,
+  orgId,
+  allLists,
+  onListsUpdated,
+  rawBranches,
+  onBranchesChange,
+  canEdit
+  = true
+}) {
   const isActive = String(activeId) === String(biz.id);
 
   const [syncingArt, setSyncingArt] = useState(false);
@@ -241,19 +258,23 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
                 Activar
               </button>
             )}
-            <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(biz)}>
-              <EditIcon fontSize="small" /> Editar
-            </button>
-            {isPrincipal && (
-              <button className="bc-btn bc-btn-outline" onClick={() => onEditSucursal?.(biz)}
-                title="Editar datos de la sucursal principal (independiente del negocio)">
-                <StoreIcon fontSize="small" /> Sucursal
-              </button>
+            {canEdit && (
+              <>
+                <button className="bc-btn bc-btn-edit" onClick={() => onEdit?.(biz)}>
+                  <EditIcon fontSize="small" /> Editar
+                </button>
+                {isPrincipal && (
+                  <button className="bc-btn bc-btn-outline" onClick={() => onEditSucursal?.(biz)}
+                    title="Editar datos de la sucursal principal (independiente del negocio)">
+                    <StoreIcon fontSize="small" /> Sucursal
+                  </button>
+                )}
+                <button className="bc-icon bc-icon-danger" title="Eliminar negocio"
+                  onClick={e => { try { e.currentTarget.blur(); } catch { } e.stopPropagation(); onDelete?.(biz); }}>
+                  <DeleteIcon fontSize="small" />
+                </button>
+              </>
             )}
-            <button className="bc-icon bc-icon-danger" title="Eliminar negocio"
-              onClick={e => { try { e.currentTarget.blur(); } catch { } e.stopPropagation(); onDelete?.(biz); }}>
-              <DeleteIcon fontSize="small" />
-            </button>
           </div>
 
           {isPrincipal && (
@@ -332,72 +353,74 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
         </div>
 
         {/* ── Sucursales ── */}
-        <div className="bc-branches-section">
-          <div className="bc-branches-header">
-            <span className="bc-price-label">
-              <StoreIcon style={{ fontSize: 13 }} />
-              Sucursales
-              {isActive && sucursales.length > 0 && (
-                <span className="bc-branches-count">{sucursales.length}</span>
+        {canEdit && (
+          <div className="bc-branches-section">
+            <div className="bc-branches-header">
+              <span className="bc-price-label">
+                <StoreIcon style={{ fontSize: 13 }} />
+                Sucursales
+                {isActive && sucursales.length > 0 && (
+                  <span className="bc-branches-count">{sucursales.length}</span>
+                )}
+              </span>
+              {isActive && (
+                <button className="bc-btn bc-btn-outline bc-branches-add"
+                  onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}
+                  title="Agregar sucursal">
+                  <AddIcon style={{ fontSize: 14 }} /> Nueva
+                </button>
               )}
-            </span>
-            {isActive && (
-              <button className="bc-btn bc-btn-outline bc-branches-add"
-                onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}
-                title="Agregar sucursal">
-                <AddIcon style={{ fontSize: 14 }} /> Nueva
-              </button>
+            </div>
+
+            {!isActive ? (
+              <div className="bc-branches-empty">
+                Activá este negocio para ver y gestionar sus sucursales
+              </div>
+            ) : sucursales.length === 0 ? (
+              <div className="bc-branches-empty">
+                Sin sucursales adicionales —{' '}
+                <span className="bc-branches-add-link"
+                  onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}>
+                  agregar
+                </span>
+              </div>
+            ) : (
+              <div className="bc-branches-list">
+                {sucursales.map(suc => (
+                  <div key={suc.id} className="bc-branch-row">
+                    <div className="bc-branch-info">
+                      <span className="bc-branch-name">{suc.name || `Sucursal #${suc.id}`}</span>
+                      {suc.address?.line1 && (
+                        <span className="bc-branch-addr">{suc.address.line1}{suc.address.city ? `, ${suc.address.city}` : ''}</span>
+                      )}
+                    </div>
+                    <div className="bc-branch-actions">
+                      <button className="bc-icon" title="Editar sucursal"
+                        onClick={() => { setEditingSuc(suc); setSucModalOpen(true); }}>
+                        <EditIcon style={{ fontSize: 14 }} />
+                      </button>
+                      <button className="bc-icon bc-icon-danger" title="Eliminar sucursal"
+                        disabled={deletingSucId === suc.id}
+                        onClick={async () => {
+                          if (!window.confirm(`¿Eliminar la sucursal "${suc.name}"?`)) return;
+                          setDeletingSucId(suc.id);
+                          try {
+                            const { BranchesAPI } = await import('@/servicios/apiBranches');
+                            await BranchesAPI.remove(suc.id);
+                            showNotice?.(`Sucursal "${suc.name}" eliminada`);
+                            onBranchesChange?.();
+                          } catch (e) { showNotice?.(`❌ Error: ${e.message}`); }
+                          finally { setDeletingSucId(null); }
+                        }}>
+                        {deletingSucId === suc.id ? <CircularProgress size={12} /> : <DeleteIcon style={{ fontSize: 14 }} />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-
-          {!isActive ? (
-            <div className="bc-branches-empty">
-              Activá este negocio para ver y gestionar sus sucursales
-            </div>
-          ) : sucursales.length === 0 ? (
-            <div className="bc-branches-empty">
-              Sin sucursales adicionales —{' '}
-              <span className="bc-branches-add-link"
-                onClick={() => { setEditingSuc(null); setSucModalOpen(true); }}>
-                agregar
-              </span>
-            </div>
-          ) : (
-            <div className="bc-branches-list">
-              {sucursales.map(suc => (
-                <div key={suc.id} className="bc-branch-row">
-                  <div className="bc-branch-info">
-                    <span className="bc-branch-name">{suc.name || `Sucursal #${suc.id}`}</span>
-                    {suc.address?.line1 && (
-                      <span className="bc-branch-addr">{suc.address.line1}{suc.address.city ? `, ${suc.address.city}` : ''}</span>
-                    )}
-                  </div>
-                  <div className="bc-branch-actions">
-                    <button className="bc-icon" title="Editar sucursal"
-                      onClick={() => { setEditingSuc(suc); setSucModalOpen(true); }}>
-                      <EditIcon style={{ fontSize: 14 }} />
-                    </button>
-                    <button className="bc-icon bc-icon-danger" title="Eliminar sucursal"
-                      disabled={deletingSucId === suc.id}
-                      onClick={async () => {
-                        if (!window.confirm(`¿Eliminar la sucursal "${suc.name}"?`)) return;
-                        setDeletingSucId(suc.id);
-                        try {
-                          const { BranchesAPI } = await import('@/servicios/apiBranches');
-                          await BranchesAPI.remove(suc.id);
-                          showNotice?.(`Sucursal "${suc.name}" eliminada`);
-                          onBranchesChange?.();
-                        } catch (e) { showNotice?.(`❌ Error: ${e.message}`); }
-                        finally { setDeletingSucId(null); }
-                      }}>
-                      {deletingSucId === suc.id ? <CircularProgress size={12} /> : <DeleteIcon style={{ fontSize: 14 }} />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         {isActive && (
           <BranchFormModal
@@ -470,6 +493,7 @@ function OrgBizCard({ biz, isPrincipal, activeId, onSetActive, onEdit, onEditSuc
 export default function OrgDashboard({ compact = false, onSelectBusiness }) {
   const { organization, allBusinesses, rootBusiness } = useOrganization();
   const { activeBusinessId, selectBusiness, refetchBusinesses } = useBusiness();
+  const { isOwner } = useAccess() || {};
   const { rawBranches } = useBranch() || {};
   const [showCreate, setShowCreate] = useState(false);
   const [editingBiz, setEditingBiz] = useState(null);
@@ -539,7 +563,7 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
 
   return (
     <div style={{ padding: compact ? 0 : '32px 24px', maxWidth: compact ? '100%' : 1100, margin: compact ? 0 : '0 auto' }}>
-      
+
       {notice && (
         <div style={{
           marginBottom: 12, padding: '10px 16px', borderRadius: 10,
@@ -560,11 +584,12 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
             <OrgBizCard
               key={biz.id}
               biz={biz}
+              canEdit={!!isOwner}
               isPrincipal={String(biz.id) === String(principalId)}
               activeId={activeBusinessId}
               onSetActive={handleSetActive}
-              onEdit={setEditingBiz}
-              onEditSucursal={(biz) => {
+              onEdit={isOwner ? setEditingBiz : null}
+              onEditSucursal={isOwner ? (biz) => {
                 const mainStored = (rawBranches || []).find(b => b.props?.is_main === true);
                 setEditingMainBranch({
                   name: mainStored?.name ?? biz.name ?? '',
@@ -574,8 +599,8 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
                   props: mainStored?.props ?? { social: {} },
                   isMain: true,
                 });
-              }}
-              onDelete={handleDelete}
+              } : null}
+              onDelete={isOwner ? handleDelete : null}
               showNotice={showNotice}
               orgId={organization?.id}
               allLists={allLists}

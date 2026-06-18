@@ -47,7 +47,7 @@ export function notifyGroupRenamed({ businessId, groupId, oldName, newName, scop
  * @param {number} params.itemCount - Cantidad de items que tenía
  * @param {string} [params.scope='articulo'] - Scope (articulo/insumo)
  */
-export function notifyGroupDeleted({ businessId, groupId, groupName, itemCount, scope = 'articulo' }) {
+export function notifyGroupDeleted({ businessId, groupId, groupName, itemCount, itemIds = [], scope = 'articulo' }) {
   const actionId = `delete_${groupId}_${Date.now()}`;
 
   window.dispatchEvent(
@@ -64,6 +64,7 @@ export function notifyGroupDeleted({ businessId, groupId, groupName, itemCount, 
           groupId,
           groupName,
           itemCount,
+          itemIds,
           scope,
         },
       },

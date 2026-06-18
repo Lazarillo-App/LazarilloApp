@@ -393,6 +393,13 @@ function SubrubroAccionesMenu({
         }));
       } catch { }
 
+      // 🆕 Navegar al destino (resalta el primer artículo del bloque)
+      try {
+        window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
+          detail: { articleId: Number(ids[0]), groupId: Number(toId), bizId: Number(toBizId) },
+        }));
+      } catch { /* */ }
+
       onAfterMutation?.(ids);
       if (!isTodo) onRefetch?.();
     } catch (e) {
@@ -406,39 +413,39 @@ function SubrubroAccionesMenu({
   }
 
   useEffect(() => {
-  if (!open) return;
-  const orgId = organization?.id;
-  if (!orgId) return;
-  setOrgIdLocal(orgId);
+    if (!open) return;
+    const orgId = organization?.id;
+    if (!orgId) return;
+    setOrgIdLocal(orgId);
 
-  const ids = allArticleIdsForSub;
-  if (!ids.length) return;
+    const ids = allArticleIdsForSub;
+    if (!ids.length) return;
 
-  Promise.all([
-    getOrgPriceListConfig(orgId).catch(() => []),
-    getDiscountExceptions(orgId).catch(() => []),
-  ]).then(([lists, exc]) => {
-    setPriceLists(Array.isArray(lists) ? lists : []);
-    
-    // Por cada lista, contar cuántos artículos del subrubro están excluidos
-    // Considerar "excluida" solo si TODOS los artículos del subrubro están excluidos
-    const idsSet = new Set(ids.map(String));
-    const excByList = {}; // { listNumber: Set<articleId excluido> }
-    (exc || []).forEach(e => {
-      if (e.scope === 'articulo' && idsSet.has(String(e.scope_id))) {
-        if (!excByList[e.list_number]) excByList[e.list_number] = new Set();
-        excByList[e.list_number].add(String(e.scope_id));
-      }
+    Promise.all([
+      getOrgPriceListConfig(orgId).catch(() => []),
+      getDiscountExceptions(orgId).catch(() => []),
+    ]).then(([lists, exc]) => {
+      setPriceLists(Array.isArray(lists) ? lists : []);
+
+      // Por cada lista, contar cuántos artículos del subrubro están excluidos
+      // Considerar "excluida" solo si TODOS los artículos del subrubro están excluidos
+      const idsSet = new Set(ids.map(String));
+      const excByList = {}; // { listNumber: Set<articleId excluido> }
+      (exc || []).forEach(e => {
+        if (e.scope === 'articulo' && idsSet.has(String(e.scope_id))) {
+          if (!excByList[e.list_number]) excByList[e.list_number] = new Set();
+          excByList[e.list_number].add(String(e.scope_id));
+        }
+      });
+
+      const excSet = new Set();
+      Object.entries(excByList).forEach(([listNum, artSet]) => {
+        // Si TODOS los artículos del subrubro están excluidos en esta lista, marcar como excluida
+        if (artSet.size === ids.length) excSet.add(Number(listNum));
+      });
+      setExclusionesArt(excSet);
     });
-    
-    const excSet = new Set();
-    Object.entries(excByList).forEach(([listNum, artSet]) => {
-      // Si TODOS los artículos del subrubro están excluidos en esta lista, marcar como excluida
-      if (artSet.size === ids.length) excSet.add(Number(listNum));
-    });
-    setExclusionesArt(excSet);
-  });
-}, [open, allArticleIdsForSub, organization?.id]);
+  }, [open, allArticleIdsForSub, organization?.id]);
 
   // Filtrar negocios: solo los de la misma org, o solo el activo si no hay org
   const negociosFiltrados = useMemo(() => {
@@ -591,6 +598,23 @@ function SubrubroAccionesMenu({
       }
 
       const grupos = Object.values(origenesMap);
+
+      // 🆕 Navegar al grupo con más artículos reactivados (si hay varios orígenes)
+      if (grupos.length > 0) {
+        const primario = grupos.reduce((a, b) => (a.ids.length >= b.ids.length ? a : b));
+        if (primario.groupId && primario.bizId && primario.ids[0]) {
+          try {
+            window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
+              detail: {
+                articleId: Number(primario.ids[0]),
+                groupId: Number(primario.groupId),
+                bizId: Number(primario.bizId),
+              },
+            }));
+          } catch { /* */ }
+        }
+      }
+
       const resumen = grupos.length > 0 ? grupos.map(g => `"${g.groupName}"`).join(', ') : null;
       emitUiAction({
         businessId: effectiveBusinessId, kind: 'info', scope: 'articulo',
@@ -631,35 +655,35 @@ function SubrubroAccionesMenu({
   }, [openCrearAgr, haveExternalTree, loading, effectiveBusinessId]);
 
   const toggleExclusionLista = useCallback(async (listNumber) => {
-  if (!orgIdLocal) return;
-  const ids = allArticleIdsForSub;
-  if (!ids.length) return;
-  
-  const isExcluido = exclusionesArt.has(listNumber);
-  try {
-    // Aplicar a TODOS los artículos del subrubro
-    for (const id of ids) {
-      if (isExcluido) {
-        await removeDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => {});
-      } else {
-        await addDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => {});
+    if (!orgIdLocal) return;
+    const ids = allArticleIdsForSub;
+    if (!ids.length) return;
+
+    const isExcluido = exclusionesArt.has(listNumber);
+    try {
+      // Aplicar a TODOS los artículos del subrubro
+      for (const id of ids) {
+        if (isExcluido) {
+          await removeDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => { });
+        } else {
+          await addDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => { });
+        }
       }
+      setExclusionesArt(prev => {
+        const next = new Set(prev);
+        isExcluido ? next.delete(listNumber) : next.add(listNumber);
+        return next;
+      });
+      notify?.(
+        isExcluido
+          ? `${ids.length} artículo(s) restaurados en lista`
+          : `${ids.length} artículo(s) excluidos`,
+        'success'
+      );
+    } catch (e) {
+      notify?.('No se pudo cambiar la exclusión', 'error');
     }
-    setExclusionesArt(prev => {
-      const next = new Set(prev);
-      isExcluido ? next.delete(listNumber) : next.add(listNumber);
-      return next;
-    });
-    notify?.(
-      isExcluido 
-        ? `${ids.length} artículo(s) restaurados en lista` 
-        : `${ids.length} artículo(s) excluidos`,
-      'success'
-    );
-  } catch (e) {
-    notify?.('No se pudo cambiar la exclusión', 'error');
-  }
-}, [orgIdLocal, allArticleIdsForSub, exclusionesArt, notify]);
+  }, [orgIdLocal, allArticleIdsForSub, exclusionesArt, notify]);
 
   const toggleExclusionTodas = useCallback(async () => {
     const noPrincipales = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);

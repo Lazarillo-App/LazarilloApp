@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
 //import Agrupaciones from './componentes/Agrupaciones';
@@ -18,15 +18,22 @@ import AppAlertModal from './componentes/AppAlertModal';
 import AppPromptModal from './componentes/AppPromptModal';
 import AppConfirmModal from './componentes/AppConfirmModal';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
-import LazarilloLanding from './paginas/LazarilloLanding';
+
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
 
 import Login from './paginas/Login';
+import LazarilloLanding from './paginas/LazarilloLanding';
 import Register from './paginas/Register';
 import Perfil from './paginas/Perfil';
 import ProtectedRoute from './componentes/ProtectedRoute';
+import RequireActiveAccount from './routing/RequireActiveAccount';
+import Activar from './paginas/Activar';
 import AdminApp from './admin/AdminApp';
+// ── NUEVAS PÁGINAS ──
+import AceptarInvitacion from './paginas/AceptarInvitacion';
+import SelectorNegocio  from './paginas/SelectorNegocio';
+
 import './css/global.css';
 import './css/theme-layout.css';
 
@@ -58,9 +65,7 @@ export default function App() {
     const out = [];
     if (!Array.isArray(categorias)) return out;
 
-    // ---------- ARTÍCULOS ----------
     categorias.forEach((item) => {
-      // Caso 1: estructura árbol (subrubro > categoría > artículos)
       if (Array.isArray(item.categorias)) {
         const subName = item.subrubro || 'Sin subrubro';
         item.categorias.forEach((cat) => {
@@ -74,15 +79,12 @@ export default function App() {
               type: 'articulo',
               articuloId: id,
               label: `[ART] ${subName} › ${catName} · ${nombre} · ${id}`,
-              // texto "limpio" para filtrar en tablas/APIs
               searchText: nombre,
             });
           });
         });
         return;
       }
-
-      // Caso 2: lista plana de artículos
       const id = Number(item.id);
       if (!Number.isFinite(id)) return;
       const nombre = (item.nombre || '').trim() || `#${id}`;
@@ -116,11 +118,7 @@ export default function App() {
           return;
         }
 
-        const id = await ensureActiveBusiness().catch(e => {
-          // Sin negocios — flujo válido para usuario nuevo
-          if (e?.message?.includes('Sin negocios')) return null;
-          throw e;
-        });
+        const id = await ensureActiveBusiness();
         setActiveBusinessId(id ? String(id) : '');
       } finally {
         setBootReady(true);
@@ -155,7 +153,6 @@ export default function App() {
     };
   }, []);
 
-  // carga de datos solo para usuarios NO-admin con negocio activo
   const recargarAgrupaciones = async () => {
     try {
       const data = await apiObtenerAgrupaciones();
@@ -203,24 +200,35 @@ export default function App() {
       <AppAlertModal />
       <AppPromptModal />
       <AppConfirmModal />
-      {isLogged && <Navbar />}
+      {isLogged && role !== 'app_admin' && <Navbar />}
 
       <Routes>
-        {/* Públicas */}
-        <Route path="/"element={isLogged ? <Navigate to="/app" replace /> : <LazarilloLanding />}/>
+        <Route path="/" element={<LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/activar" element={<Activar />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/upload-foto" element={<UploadFoto />} />
 
+        {/* ── Pública: aceptar invitación ── */}
+        <Route path="/aceptar-invitacion" element={<AceptarInvitacion />} />
+
         <Route element={<ProtectedRoute />}>
+          {/* ADMIN independiente del negocio */}
           <Route path="/admin/*" element={<AdminApp />} />
 
+          {/* App "normal" solo si no es app_admin */}
           {role !== 'app_admin' ? (
-            <Route element={<OnboardingGuard />}>
+            <Route element={<RequireActiveAccount />}>
+              {/* ── Selector full-screen: NO va dentro de OnboardingGuard
+                   (el selector justamente sirve para elegir negocio cuando
+                    hay varios y aún no se seleccionó uno) ── */}
+              <Route path="/seleccionar-negocio" element={<SelectorNegocio />} />
+
+              <Route element={<OnboardingGuard />}>
               <Route
-                path="/app"                        
+                path="/menu"
                 element={
                   <RequireMaxi onReady={() => { }}>
                     <ArticulosMain
@@ -236,17 +244,26 @@ export default function App() {
                   </RequireMaxi>
                 }
               />
-              <Route path="/agrupacioneslist" element={<AgrupacionesList agrupaciones={agrupaciones} />} />
-              <Route path="/insumos" element={<Insumos />} />
+              <Route
+                path="/agrupacioneslist"
+                element={<AgrupacionesList agrupaciones={agrupaciones} />}
+              />
+              <Route
+                path="/insumos"
+                element={
+                  <Insumos />
+                }
+              />
               <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
               <Route path="/configuracion" element={<ConfiguracionMain />} />
             </Route>
+            </Route>
           ) : (
-            <Route path="/app" element={<AdminApp />} /> 
-        )}
+            <Route path="/menu" element={<AdminApp />} />
+          )}
         </Route>
 
-        <Route path="*" element={<LazarilloLanding />} />  {/* ← mejor que Login para 404 */}
+        <Route path="*" element={<LazarilloLanding />} />
       </Routes>
     </ThemeProviderNegocio>
   );

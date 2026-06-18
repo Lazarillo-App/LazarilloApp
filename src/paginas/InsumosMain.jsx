@@ -14,6 +14,7 @@ import { BusinessesAPI } from '../servicios/apiBusinesses';
 import {
   insumosList,
   insumoGroupsList,
+  insumoGroupCreate,
   insumoGroupUpdate,
   insumoGroupDelete,
   insumosRubrosList,
@@ -35,7 +36,7 @@ import {
 } from '../servicios/notifyGroupActions';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
-import { Snackbar, Alert, Button, CircularProgress, Tooltip } from '@mui/material';
+import { Snackbar, Alert, Menu, MenuItem, Button, CircularProgress, Tooltip } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -45,12 +46,15 @@ import { useFirstDate } from '../hooks/useFirstDate';
 import { purchasesSync, purchasesList, purchasesDownloadCsv, purchasesDownloadCsvByIds, buildComprasMap } from '../servicios/apiPurchases';
 import ComprasActionsMenu from '../componentes/ComprasActionsMenu.jsx';
 import UploadComprasModal from '../componentes/UploadComprasModal.jsx';
+import UploadInsumosModal from '../componentes/UploadInsumosModal.jsx';
+import UploadInsumosRubrosModal from '../componentes/UploadInsumosRubrosModal.jsx';
 import SucursalSelector from '@/componentes/SucursalSelector';
 import InsumoListToolbar from '@/componentes/InsumoListToolbar';
 import { useInsumoLists } from '@/hooks/useInsumoLists';
 import { useBranch } from '@/hooks/useBranch';
 import { BASE } from '@/servicios/apiBase';
 import RecetaModal from '../componentes/RecetaModal';
+import { InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -161,7 +165,6 @@ export default function InsumosMain() {
   const { firstDate: firstDateCompras, loadingFirst: loadingFirstCompras } =
     useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
   const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
-  const [insumosConfigKey, setInsumosConfigKey] = useState(0); // fuerza re-fetch del config al abrir modal
 
   const [soloConCompras, setSoloConCompras] = useState(() => {
     try { return localStorage.getItem('insumosFiltroCon Compras') === 'true'; }
@@ -178,22 +181,6 @@ export default function InsumosMain() {
 
   const handleOpenRecetaElaborado = useCallback((insumo) => {
     setRecetaInsumoModal(insumo);
-  }, []);
-
-  // Escuchar cambios de config para invalidar el modal si está abierto
-  React.useEffect(() => {
-    const onCfg = (e) => {
-      if (e?.detail?.key === 'insumos_costo_ideal') setInsumosConfigKey(k => k + 1);
-    };
-    window.addEventListener('config:updated', onCfg);
-    return () => window.removeEventListener('config:updated', onCfg);
-  }, []);
-
-  // Escuchar creación manual de insumos (desde ConfiguracionMain u otros) → recargar catálogo
-  useEffect(() => {
-    const onInsumoCreado = () => setReloadKey(k => k + 1);
-    window.addEventListener('insumos:updated', onInsumoCreado);
-    return () => window.removeEventListener('insumos:updated', onInsumoCreado);
   }, []);
 
   useEffect(() => {
@@ -306,6 +293,9 @@ export default function InsumosMain() {
   const [searchText, setSearchText] = useState('');
   const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
   const [uploadComprasOpen, setUploadComprasOpen] = useState(false);
+  const [uploadInsumosOpen, setUploadInsumosOpen] = useState(false);
+  const [agregarMenuAnchor, setAgregarMenuAnchor] = useState(null);
+  const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
 
   usePersistUiActions(businessId);
@@ -809,13 +799,11 @@ export default function InsumosMain() {
       const porId = rubrosIdMap.get(codigoCrudo);
       if (porId) return porId;
     }
-    // Fallback nivel 3: buscar por nombre — cubre insumos manuales (rubro es texto libre)
-    const nombreCrudo = String(ins?.rubro_nombre || ins?.rubroNombre || ins?.rubro || '');
-    if (nombreCrudo && nombreCrudo !== 'undefined' && nombreCrudo !== 'null') {
+    // Fallback: buscar por nombre si el insumo lo trae
+    const nombreCrudo = String(ins?.rubro_nombre || ins?.rubroNombre || '');
+    if (nombreCrudo) {
       const porNombre = rubroNombreToInfo.get(nombreCrudo);
       if (porNombre) return porNombre;
-      // Sin match en el mapa: crear info sintético para insumos manuales
-      return { codigo: nombreCrudo, nombre: nombreCrudo, es_elaborador: ins?.es_elaborado === true };
     }
     return null;
   }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
@@ -887,16 +875,27 @@ export default function InsumosMain() {
     if (!filteredBase.length) return [];
     const map = new Map();
     filteredBase.forEach((insumo) => {
-      // Resolver el rubroInfo usando ambos mapas para obtener el código Maxi real
-      // Fallback: usar insumo.rubro directamente si rubrosMap está vacío (negocio sin Maxi)
-      const info = resolveRubroInfo(insumo);
-      const rubroNombre = info?.nombre || String(insumo.rubro_nombre || insumo.rubro_codigo || insumo.rubro || '') || 'Sin rubro';
-      const rubroCodigo = info?.codigo ?? String(insumo.rubro_codigo || insumo.rubro || rubroNombre);
-      const esElaborador = info?.es_elaborador === true;
-      if (!map.has(rubroNombre)) map.set(rubroNombre, { nombre: rubroNombre, codigo: rubroCodigo, es_elaborador: esElaborador, insumos: [] });
+      let rubroNombre, rubroCodigo, esElaborador;
+
+      if (rubrosMap.size > 0) {
+        // Con mapa de rubros (viene de Maxi): cruzar por código numérico
+        const info = resolveRubroInfo(insumo);
+        rubroNombre = info?.nombre || String(insumo.rubro || '') || 'Sin rubro';
+        rubroCodigo = info?.codigo ?? String(insumo.rubro || '');
+        esElaborador = info?.es_elaborador === true;
+      } else {
+        // Sin mapa (insumos manuales): usar el campo rubro como texto directo
+        rubroNombre = String(insumo.rubro || '').trim() || 'Sin rubro';
+        rubroCodigo = rubroNombre;
+        esElaborador = false;
+      }
+
+      if (!map.has(rubroNombre)) {
+        map.set(rubroNombre, { nombre: rubroNombre, codigo: rubroCodigo, es_elaborador: esElaborador, insumos: [] });
+      }
       map.get(rubroNombre).insumos.push(insumo);
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   }, [filteredBase, rubrosMap, resolveRubroInfo]);
 
   const tableRows = useMemo(() => {
@@ -904,13 +903,17 @@ export default function InsumosMain() {
     const codigoSel = rubroSeleccionado?.codigo;
     if (codigoSel == null) return base;
     return base.filter((i) => {
-      const info = resolveRubroInfo(i);
-      const codigoReal = info?.codigo ?? String(i?.rubro_codigo || i?.rubro || '');
-      // También comparar por nombre de rubro para insumos manuales sin código Maxi
-      const nombreReal = info?.nombre || String(i?.rubro_nombre || i?.rubro || '');
-      return String(codigoReal) === String(codigoSel) || nombreReal === rubroSeleccionado?.nombre;
+      if (rubrosMap.size > 0) {
+        // Con mapa: cruzar por código numérico
+        const info = resolveRubroInfo(i);
+        const codigoReal = info?.codigo ?? String(i?.rubro || '');
+        return String(codigoReal) === String(codigoSel);
+      } else {
+        // Sin mapa: comparar por texto directo del campo rubro
+        return String(i?.rubro || '').trim() === String(codigoSel);
+      }
     });
-  }, [filteredBase, rubroSeleccionado, resolveRubroInfo]);
+  }, [filteredBase, rubroSeleccionado, rubrosMap, resolveRubroInfo]);
 
   const tableRowsFiltrados = useMemo(() => {
     if (!soloConCompras) return tableRows;
@@ -1092,10 +1095,13 @@ export default function InsumosMain() {
   }, [resolvedBizId, notify]);
 
   const handleDeleteGroup = useCallback(async (group) => {
-    if (!await showConfirm(`¿Eliminar la agrupación "${group.nombre}"? Esta acción no se puede deshacer.`, { danger: true })) return;
+    if (!await showConfirm(`¿Eliminar la agrupación "${group.nombre}"?`, { danger: true })) return;
     try {
+      // Capturar IDs antes de borrar para que el undo pueda restaurar la composición
+      const items = group.items || group.insumos || [];
+      const itemIds = items.map((it) => Number(it.insumo_id ?? it.id)).filter((n) => Number.isFinite(n) && n > 0);
       await insumoGroupDelete(resolvedBizId, group.id);
-      notifyGroupDeleted({ businessId: resolvedBizId, groupId: Number(group.id), groupName: group.nombre, itemCount: (group.items || group.insumos || []).length, scope: 'insumo' });
+      notifyGroupDeleted({ businessId: resolvedBizId, groupId: Number(group.id), groupName: group.nombre, itemCount: items.length, itemIds, scope: 'insumo' });
       if (selectedGroupId && Number(selectedGroupId) === Number(group.id)) setSelectedGroupId(null);
       if (favoriteGroupId && Number(favoriteGroupId) === Number(group.id)) setFavoriteGroupId(null);
       const res = await insumoGroupsList(resolvedBizId);
@@ -1195,6 +1201,59 @@ export default function InsumosMain() {
       const kind = ui.kind;
       const payload = ui.payload || {};
       const ids = (payload?.ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+      // ── Undo RENAME: restaurar el nombre anterior ─────────────────────────
+      if (kind === 'group_rename') {
+        const groupId = Number(payload.groupId);
+        const oldName = payload.oldName;
+        if (!Number.isFinite(groupId) || !oldName) return;
+        try {
+          await insumoGroupUpdate(resolvedBizId, groupId, { nombre: oldName });
+          await loadGroups();
+          notify(`✅ Nombre restaurado: "${oldName}"`, 'info');
+        } catch {
+          notify('❌ No se pudo deshacer el renombrado', 'error');
+        }
+        return;
+      }
+
+      // ── Undo DELETE: recrear el grupo y reagregar items ───────────────────
+      if (kind === 'group_delete') {
+        const groupName = payload.groupName;
+        const itemIds = (payload.itemIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+        if (!groupName) return;
+        try {
+          const res = await insumoGroupCreate(resolvedBizId, { nombre: groupName });
+          const newId = Number(res?.data?.id ?? res?.id);
+          if (Number.isFinite(newId) && itemIds.length) {
+            await insumoGroupAddMultipleItems(newId, itemIds, resolvedBizId);
+          }
+          await loadGroups();
+          forceRefresh();
+          notify(`✅ Agrupación "${groupName}" restaurada con ${itemIds.length} insumo${itemIds.length !== 1 ? 's' : ''}`, 'info');
+        } catch {
+          notify('❌ No se pudo deshacer la eliminación', 'error');
+        }
+        return;
+      }
+
+      // ── Undo FAVORITE: invertir el estado ────────────────────────────────
+      if (kind === 'group_favorite_set' || kind === 'group_favorite_unset') {
+        const groupId = Number(payload.groupId);
+        const wasMarked = payload.isFavorite === true; // true si se marcó, false si se desmarcó
+        if (!Number.isFinite(groupId)) return;
+        try {
+          const newFav = wasMarked ? null : groupId;
+          await BusinessesAPI.saveFavoriteGroup(resolvedBizId, newFav, {
+            scope: 'insumo',
+            divisionId: payload.divisionId ?? activeDivisionId,
+          });
+          setFavoriteGroupId(newFav);
+          notify(newFav ? '✅ Favorita restaurada' : '✅ Favorita removida', 'info');
+        } catch {
+          notify('❌ No se pudo deshacer', 'error');
+        }
+        return;
+      }
       if (kind === 'discontinue') {
         const prev = payload?.undo?.payload?.prev || payload?.prev || {};
         const discId = Number(prev.discontinuadosGroupId ?? discontinuadosGroupId);
@@ -1221,7 +1280,7 @@ export default function InsumosMain() {
     };
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
-  }, [businessId, discontinuadosGroupId, loadGroups, forceRefresh, notify, resolvedBizId]);
+  }, [businessId, discontinuadosGroupId, loadGroups, forceRefresh, notify, resolvedBizId, forceRefresh ]);
 
   const titulo = useMemo(() => {
     const base = businessName ? `Insumos — ${businessName}` : 'Insumos';
@@ -1262,7 +1321,7 @@ export default function InsumosMain() {
             onExport={handleDownloadCompras}
             disabled={!businessId || comprasLoading}
           />
-          <SucursalSelector variant="inline" />
+          {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
           <InsumoListToolbar
             selectionMode={insumoSelectionMode}
             selectedIds={selectedInsumoIds}
@@ -1295,6 +1354,45 @@ export default function InsumosMain() {
                 focusInsumo(id);
               }}
             />
+          </div>
+
+          {/* Botón + Agregar */}
+          <div>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={e => setAgregarMenuAnchor(e.currentTarget)}
+              sx={{
+                background: '#2492C8',
+                '&:hover': { background: '#1a7aaa' },
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                whiteSpace: 'nowrap',
+                px: 2,
+              }}
+            >
+              + Agregar
+            </Button>
+            <Menu
+              anchorEl={agregarMenuAnchor}
+              open={Boolean(agregarMenuAnchor)}
+              onClose={() => setAgregarMenuAnchor(null)}
+              PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
+            >
+              <MenuItem
+                onClick={() => { setAgregarMenuAnchor(null); setUploadRubrosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+              >
+                <span style={{ fontSize: 16 }}>🗂️</span> Rubros de insumos
+              </MenuItem>
+              <MenuItem
+                onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+              >
+                <span style={{ fontSize: 16 }}>📦</span> Cargar insumos (CSV)
+              </MenuItem>
+            </Menu>
           </div>
         </div>
       </div>
@@ -1340,6 +1438,9 @@ export default function InsumosMain() {
             activeInsumoListId={activeInsumoListId}
             onSelectInsumoList={selectInsumoList}
             onClearInsumoList={clearInsumoList}
+            idsSinAgrupCount={idsSinAgrupActivos.size}
+            idsSinAgrupSet={idsSinAgrupActivos}
+            comprasMap={comprasMap}
           />
         </div>
 
@@ -1401,6 +1502,20 @@ export default function InsumosMain() {
         rubrosMap={rubrosMap}
         allInsumos={allInsumos}
       />
+      <UploadInsumosModal
+        open={uploadInsumosOpen}
+        onClose={() => setUploadInsumosOpen(false)}
+        businessId={resolvedBizId}
+        onSuccess={() => { setUploadInsumosOpen(false); window.dispatchEvent(new Event('insumos:recargar')); }}
+      />
+
+      <UploadInsumosRubrosModal
+        open={uploadRubrosOpen}
+        onClose={() => setUploadRubrosOpen(false)}
+        businessId={resolvedBizId}
+        onSuccess={() => window.dispatchEvent(new Event('insumos:recargar'))}
+      />
+
       <UploadComprasModal
         open={uploadComprasOpen}
         onClose={() => setUploadComprasOpen(false)}
@@ -1431,7 +1546,6 @@ export default function InsumosMain() {
             nombre: recetaInsumoModal.nombre,
             precio: recetaInsumoModal.precio_ref || recetaInsumoModal.precio || 0,
           }}
-          esElaborado={true}
           businessId={resolvedBizId}
           getRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
           saveRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}

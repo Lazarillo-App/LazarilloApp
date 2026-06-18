@@ -443,13 +443,17 @@ function ArticuloAccionesMenu({
         return;
 
       } else {
-        // REACTIVAR → buscar origen y abrir diálogo
+        // REACTIVAR → buscar origen usando el endpoint plural (igual que SubrubroAccionesMenu)
+        // El plural lee la metadata fromGroupId/fromBizId del JSONB de Discontinuados,
+        // que es la fuente confiable cuando el artículo solo vive en Discontinuados.
         let origenData = null;
         try {
           const res = await httpBiz(
-            `/agrupaciones/articulo/${idNum}/origen`, { method: 'GET' }, discBizId
+            `/agrupaciones/articulos/origenes`,
+            { method: 'POST', body: { ids: [idNum] } },
+            discBizId
           );
-          origenData = res?.origen ?? null;
+          origenData = res?.origenes?.[idNum] ?? res?.origenes?.[String(idNum)] ?? null;
         } catch (e) {
           console.warn('[reactivar] No se pudo obtener origen:', e.message);
         }
@@ -515,6 +519,17 @@ function ArticuloAccionesMenu({
       });
 
       onDiscontinuadoChange?.(idNum, false, { stay: true });
+
+      // 🆕 Navegar al origen del artículo reactivado
+      console.log('[reactivar] origenReactivar:', origenReactivar, '| fromGroupId:', fromGroupId, '| fromBizId:', fromBizId);
+      if (fromGroupId && fromBizId) {
+        try {
+          console.log('[reactivar] dispatching navigate event', { articleId: idNum, groupId: Number(fromGroupId), bizId: Number(fromBizId) });
+          window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
+            detail: { articleId: idNum, groupId: Number(fromGroupId), bizId: Number(fromBizId) },
+          }));
+        } catch { /* */ }
+      }
     } catch (e) {
       console.error('REACTIVAR_ERROR', e);
       notify?.('No se pudo reactivar el artículo', 'error');
@@ -613,6 +628,13 @@ function ArticuloAccionesMenu({
       });
 
       onAfterMutation?.([idNum]);
+
+      // 🆕 Navegar al destino (mismo negocio o cross-biz)
+      try {
+        window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
+          detail: { articleId: idNum, groupId: Number(toId), bizId: Number(toBizId) },
+        }));
+      } catch { /* */ }
     } catch (e) {
       console.error('MOVER_ERROR', e);
       notify?.('No se pudo mover el artículo', 'error');

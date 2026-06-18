@@ -10,6 +10,12 @@ import ComprasCell from './ComprasCell';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import RecetaModal from "./RecetaModal";
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, Typography, Box, Chip, IconButton,
+} from "@mui/material";
+import TuneIcon from '@mui/icons-material/Tune';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -118,6 +124,93 @@ function RecetaIcon({ filled = false, size = 14 }) {
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
       {filled && <path d="M9 7h6M9 11h6M9 15h4" stroke="var(--color-primary, #3b82f6)" />}
     </svg>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Modal de configuración de columnas
+// ─────────────────────────────────────────────
+function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
+  const [local, setLocal] = React.useState(cols);
+  const dragIdx = React.useRef(null);
+
+  React.useEffect(() => { if (open) setLocal(cols); }, [open, cols]);
+  if (!open) return null;
+
+  // Columnas fijas de insumos (no se reordenan ni se ocultan)
+  const FIXED_INSUMOS = ['Código', 'Nombre', 'U. medida', 'Precio'];
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+        Configurar columnas {isElaborados ? '(elaborados)' : '(no elaborados)'}
+      </DialogTitle>
+      <DialogContent sx={{ pb: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Arrastrá para reordenar · activá/desactivá para mostrar u ocultar
+        </Typography>
+
+        {/* Fijas */}
+        {FIXED_INSUMOS.map(f => (
+          <Box key={f} sx={{
+            display: 'flex', alignItems: 'center', gap: 1,
+            py: 0.75, px: 1.5, mb: 0.5, borderRadius: 1,
+            bgcolor: 'action.hover', opacity: 0.55,
+          }}>
+            <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{f}</Typography>
+            <Chip label="fija" size="small" sx={{ fontSize: '0.65rem', height: 16 }} />
+          </Box>
+        ))}
+
+        {/* Reordenables */}
+        <Box sx={{ mt: 1 }}>
+          {local.map((col, i) => (
+            <Box key={col.id} draggable
+              onDragStart={() => { dragIdx.current = i; }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={() => {
+                if (dragIdx.current === null || dragIdx.current === i) return;
+                const next = [...local];
+                const [moved] = next.splice(dragIdx.current, 1);
+                next.splice(i, 0, moved);
+                dragIdx.current = null;
+                setLocal([...next]);
+              }}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1,
+                py: 0.75, px: 1.5, mb: 0.5,
+                border: '1px solid', borderColor: 'divider',
+                borderRadius: 1, cursor: 'grab', bgcolor: 'background.paper',
+                '&:hover': { borderColor: 'var(--color-primary)', bgcolor: 'action.hover' },
+              }}>
+              <Typography sx={{ color: 'text.disabled', mr: 0.5, fontSize: '1rem', lineHeight: 1 }}>⠿</Typography>
+              <Typography variant="body2" sx={{ flex: 1 }}>{col.label}</Typography>
+              <Button
+                size="small"
+                variant={col.visible ? 'contained' : 'outlined'}
+                onClick={() => setLocal(prev => prev.map((c, j) => j === i ? { ...c, visible: !c.visible } : c))}
+                sx={{
+                  minWidth: 0, px: 1.25, py: 0.25, fontSize: '0.7rem',
+                  ...(col.visible && {
+                    bgcolor: 'var(--color-primary)',
+                    '&:hover': { bgcolor: 'var(--color-primary)', filter: 'brightness(0.9)' },
+                  }),
+                }}>
+                {col.visible ? 'Visible' : 'Oculta'}
+              </Button>
+            </Box>
+          ))}
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+        <Button size="small" variant="text" color="inherit" onClick={onClose}>Cancelar</Button>
+        <Button size="small" variant="contained"
+          onClick={() => { onSave(local); onClose(); }}
+          sx={{ bgcolor: 'var(--color-primary)', '&:hover': { bgcolor: 'var(--color-primary)', filter: 'brightness(0.9)' } }}>
+          Aplicar
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -286,6 +379,8 @@ const InsumosTable = forwardRef(function InsumosTable({
     } catch { }
     return baseCols.map(c => ({ ...c, visible: true }));
   });
+
+  const [colDlgOpen, setColDlgOpen] = useState(false);
 
   // Resetear colConfig al cambiar entre vista elaborados/no elaborados
   useEffect(() => {
@@ -563,8 +658,62 @@ const InsumosTable = forwardRef(function InsumosTable({
     return groups;
   }, [sortedRows, getRubroLabel, metaById, sortBy, sortDir, precioMode, comprasMap, rubrosMap, rubroNombreToInfo]);
 
-  const flatRows = useMemo(() => {
+  // ── Detección de agrupación específica para el header de totales ─────────
+  const isAgrupEspecifica = useMemo(() => {
+    if (!selectedGroupId) return false;
+    const g = (groups || []).find(x => Number(x.id) === Number(selectedGroupId));
+    if (!g) return false;
+    if (esDiscontinuadosGroup(g)) return false;
+    if (todoGroupId && Number(selectedGroupId) === Number(todoGroupId)) return false;
+    if (isElaborados) return false; // solo tiene sentido en vista no-elaborados
+    return true;
+  }, [selectedGroupId, groups, todoGroupId, isElaborados]);
+
+  const agrupacionInfo = useMemo(() => {
+    if (!isAgrupEspecifica) return null;
+    const g = (groups || []).find(x => Number(x.id) === Number(selectedGroupId));
+    const ids = (rows || []).map(r => Number(r.id)).filter(n => Number.isFinite(n) && n > 0);
+
+    let totalCompras = 0;
+    const byBranch = {};
+
+    for (const id of ids) {
+      const c = comprasMap.get(id);
+      if (c) totalCompras += Number(c.neto ?? 0) + Number(c.iva ?? 0);
+
+      for (const branch of (branches || [])) {
+        const bKey = branch.id;
+        const bMap = comprasMapByBranch[bKey] || comprasMapByBranch[String(bKey)];
+        const bEntry = bMap ? bMap.get(id) : null;
+        if (bEntry) {
+          const amt = Number(bEntry.neto ?? 0) + Number(bEntry.iva ?? 0);
+          byBranch[bKey] = (byBranch[bKey] || 0) + amt;
+        }
+      }
+    }
+
+    return {
+      nombre: g?.nombre || '',
+      count: ids.length,
+      totalCompras,
+      comprasByBranch: byBranch,
+    };
+  }, [isAgrupEspecifica, selectedGroupId, groups, rows, comprasMap, comprasMapByBranch, branches]);
+
+ const flatRows = useMemo(() => {
     const out = [];
+
+    // Header de agrupación: solo cuando hay agrupación específica + insumos visibles
+    if (agrupacionInfo && groupedRows.length > 0) {
+      out.push({
+        type: "agrupacion-header",
+        key: "AGRUP-HEADER",
+        label: agrupacionInfo.nombre,
+        count: agrupacionInfo.count,
+        totalCompras: agrupacionInfo.totalCompras,
+        comprasByBranch: agrupacionInfo.comprasByBranch,
+      });
+    }
 
     groupedRows.forEach((group) => {
       const elaboradoState = calcElaboradoState(group.rows);
@@ -592,7 +741,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     });
 
     return out;
-  }, [groupedRows]);
+  }, [groupedRows, agrupacionInfo]);
 
   const idToIndex = useMemo(() => {
     const m = new Map();
@@ -803,7 +952,16 @@ const InsumosTable = forwardRef(function InsumosTable({
               </div>
             ))}
 
-            <div style={{ textAlign: "center" }}>Acciones</div>
+            <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <IconButton
+                size="medium"
+                onClick={() => setColDlgOpen(true)}
+                title="Configurar columnas"
+                sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
+              >
+                <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
+              </IconButton>
+            </div>
           </div>
         </div>
 
@@ -833,8 +991,91 @@ const InsumosTable = forwardRef(function InsumosTable({
               return null;
             }}
             renderRow={({ row, style }) => {
+              // ── HEADER DE AGRUPACIÓN ──
+              if (row.type === "agrupacion-header") {
+                return (
+                  <div
+                    style={{
+                      ...style,
+                      display: "grid",
+                      alignItems: "center",
+                      gridTemplateColumns: GRID_NO_ELAB,
+                      gap: 8,
+                      background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
+                      borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
+                      padding: "0 4px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {selectionMode && <div />}
+                    <div
+                      style={{
+                        gridColumn: selectionMode ? "2 / 6" : "1 / 5",
+                        color: "#1e1e2e",
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {row.label}
+                    </div>
+
+                    {/* Columnas reordenables: total compras en la celda compras, el resto vacío */}
+                    {visibleCols.map(col => {
+                      if (col.id === 'compras') {
+                        return (
+                          <div
+                            key="compras"
+                            style={{
+                              textAlign: 'right',
+                              color: 'var(--color-primary)',
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {row.totalCompras > 0
+                              ? `$${row.totalCompras.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                              : '—'}
+                          </div>
+                        );
+                      }
+                      return <div key={col.id} />;
+                    })}
+
+                    {/* Totales por sucursal (solo cuando hay 2+ branches en modo "Todas") */}
+                    {branches && branches.length > 1 && branches.map(branch => {
+                      const amt = row.comprasByBranch?.[branch.id] || row.comprasByBranch?.[String(branch.id)] || 0;
+                      const branchColor = branch.color || 'var(--color-primary)';
+                      return (
+                        <div
+                          key={branch.id}
+                          style={{
+                            textAlign: 'right',
+                            fontSize: '0.78rem',
+                            color: amt > 0 ? branchColor : '#94a3b8',
+                            fontWeight: 600,
+                            fontVariantNumeric: 'tabular-nums',
+                            paddingRight: 4,
+                          }}
+                        >
+                          {amt > 0
+                            ? `$${amt.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                            : '—'}
+                        </div>
+                      );
+                    })}
+
+                    {/* Celda de acciones vacía */}
+                    <div />
+                  </div>
+                );
+              }
+
               // ── HEADER DE RUBRO ──
               if (row.type === "rubro") {
+
                 return (
                   <div
                     className="table-section-row"
@@ -1082,6 +1323,13 @@ const InsumosTable = forwardRef(function InsumosTable({
           />
         )}
       </div>
+      <ColOrderModal
+        open={colDlgOpen}
+        cols={colConfig}
+        onSave={saveColConfig}
+        onClose={() => setColDlgOpen(false)}
+        isElaborados={isElaborados}
+      />
     </div>
   );
 });

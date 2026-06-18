@@ -85,7 +85,8 @@ const safeId = (x) => {
     x?.codigoArticulo;
 
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // n !== 0 — acepta negativos (artículos manuales)
+  return Number.isFinite(n) && n !== 0 ? n : null;
 };
 
 const normalize = (s) => String(s || "").trim().toLowerCase();

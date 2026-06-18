@@ -51,8 +51,8 @@ const getItems = (group) => {
  */
 const setItems = (group, items) => {
   const key = group.articulos ? 'articulos' :
-              group.insumos ? 'insumos' :
-              'items';
+    group.insumos ? 'insumos' :
+      'items';
   return { ...group, [key]: items };
 };
 
@@ -67,9 +67,10 @@ const getItemId = (item) => {
     item?.insumo_id ??
     item?.insumoId ??
     item?.articuloId;
-  
+
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // n !== 0 — acepta negativos (artículos manuales)
+  return Number.isFinite(n) && n !== 0 ? n : null;
 };
 
 /**
@@ -77,13 +78,13 @@ const getItemId = (item) => {
  */
 const enrichItem = (item, baseById) => {
   if (!baseById) return item;
-  
+
   const id = getItemId(item);
   if (id == null) return item;
-  
+
   const base = baseById.get(id);
   if (!base) return item;
-  
+
   // Merge: prioridad a item (puede tener datos más actualizados)
   return {
     ...base,
@@ -118,13 +119,13 @@ export function applyCreateGroup(groups, newGroup) {
     console.warn('[groupMutations] applyCreateGroup: newGroup inválido', newGroup);
     return groups;
   }
-  
+
   // Evitar duplicados
   const exists = groups.find(g => Number(g.id) === Number(newGroup.id));
   if (exists) {
     return groups;
   }
-  
+
   return [...groups, deepClone(newGroup)];
 }
 
@@ -151,19 +152,19 @@ export function applyAppend(groups, { groupId, articulos, insumos, baseById }) {
     console.warn('[groupMutations] applyAppend: groupId inválido', groupId);
     return groups;
   }
-  
+
   const newItems = articulos || insumos || [];
   if (!Array.isArray(newItems) || !newItems.length) {
     console.warn('[groupMutations] applyAppend: sin items', { groupId, articulos, insumos });
     return groups;
   }
-  
+
   return groups.map(g => {
     if (Number(g.id) !== gid) return g;
-    
+
     const current = getItems(g);
     const currentIds = new Set(current.map(getItemId).filter(Boolean));
-    
+
     // Solo agregar los que no estén ya
     const toAdd = newItems
       .filter(item => {
@@ -171,9 +172,9 @@ export function applyAppend(groups, { groupId, articulos, insumos, baseById }) {
         return id != null && !currentIds.has(id);
       })
       .map(item => enrichItem(item, baseById));
-    
+
     if (!toAdd.length) return g;
-    
+
     return setItems(g, [...current, ...toAdd]);
   });
 }
@@ -199,23 +200,23 @@ export function applyRemove(groups, { groupId, ids }) {
     console.warn('[groupMutations] applyRemove: groupId inválido', groupId);
     return groups;
   }
-  
+
   if (!Array.isArray(ids) || !ids.length) {
     console.warn('[groupMutations] applyRemove: ids inválido', ids);
     return groups;
   }
-  
+
   const idsSet = new Set(ids.map(Number).filter(Number.isFinite));
-  
+
   return groups.map(g => {
     if (Number(g.id) !== gid) return g;
-    
+
     const current = getItems(g);
     const filtered = current.filter(item => {
       const id = getItemId(item);
       return id == null || !idsSet.has(id);
     });
-    
+
     return setItems(g, filtered);
   });
 }
@@ -242,38 +243,38 @@ export function applyRemove(groups, { groupId, ids }) {
 export function applyMove(groups, { fromId, toId, ids, baseById }) {
   const fid = Number(fromId);
   const tid = Number(toId);
-  
+
   if (!Number.isFinite(fid) || fid <= 0) {
     console.warn('[groupMutations] applyMove: fromId inválido', fromId);
     return groups;
   }
-  
+
   if (!Number.isFinite(tid) || tid <= 0) {
     console.warn('[groupMutations] applyMove: toId inválido', toId);
     return groups;
   }
-  
+
   if (fid === tid) {
     console.warn('[groupMutations] applyMove: fromId === toId', fid);
     return groups;
   }
-  
+
   if (!Array.isArray(ids) || !ids.length) {
     console.warn('[groupMutations] applyMove: ids inválido', ids);
     return groups;
   }
-  
+
   const idsSet = new Set(ids.map(Number).filter(Number.isFinite));
-  
+
   // 1. Extraer items del grupo origen
   let itemsToMove = [];
-  
+
   const afterRemove = groups.map(g => {
     if (Number(g.id) !== fid) return g;
-    
+
     const current = getItems(g);
     const kept = [];
-    
+
     for (const item of current) {
       const id = getItemId(item);
       if (id != null && idsSet.has(id)) {
@@ -282,30 +283,30 @@ export function applyMove(groups, { fromId, toId, ids, baseById }) {
         kept.push(item);
       }
     }
-    
+
     return setItems(g, kept);
   });
-  
+
   if (!itemsToMove.length) {
     console.warn('[groupMutations] applyMove: no se encontraron items en origen', { fromId, ids });
     return groups;
   }
-  
+
   // 2. Agregar al grupo destino
   return afterRemove.map(g => {
     if (Number(g.id) !== tid) return g;
-    
+
     const current = getItems(g);
     const currentIds = new Set(current.map(getItemId).filter(Boolean));
-    
+
     // Solo agregar los que no estén ya
     const toAdd = itemsToMove.filter(item => {
       const id = getItemId(item);
       return id != null && !currentIds.has(id);
     });
-    
+
     if (!toAdd.length) return g;
-    
+
     return setItems(g, [...current, ...toAdd]);
   });
 }
@@ -331,13 +332,13 @@ export function applyRename(groups, { groupId, nombre }) {
     console.warn('[groupMutations] applyRename: groupId inválido', groupId);
     return groups;
   }
-  
+
   const trimmed = String(nombre || '').trim();
   if (!trimmed) {
     console.warn('[groupMutations] applyRename: nombre vacío', nombre);
     return groups;
   }
-  
+
   return groups.map(g => {
     if (Number(g.id) !== gid) return g;
     return { ...g, nombre: trimmed };
@@ -361,7 +362,7 @@ export function applyDelete(groups, { groupId }) {
     console.warn('[groupMutations] applyDelete: groupId inválido', groupId);
     return groups;
   }
-  
+
   return groups.filter(g => Number(g.id) !== gid);
 }
 
@@ -386,7 +387,7 @@ export function applySetFavorite(groups, { groupId, isFavorite }) {
     console.warn('[groupMutations] applySetFavorite: groupId inválido', groupId);
     return groups;
   }
-  
+
   return groups.map(g => {
     // Si es la que queremos marcar, la marcamos
     if (Number(g.id) === gid) {
@@ -426,7 +427,7 @@ export function applyMutation(groups, action) {
     console.warn('[groupMutations] applyMutation: action sin type', action);
     return groups;
   }
-  
+
   switch (action.type) {
     case 'create':
       return applyCreateGroup(groups, {
@@ -435,7 +436,7 @@ export function applyMutation(groups, action) {
         articulos: action.articulos,
         insumos: action.insumos,
       });
-      
+
     case 'append':
       return applyAppend(groups, {
         groupId: action.groupId,
@@ -443,13 +444,13 @@ export function applyMutation(groups, action) {
         insumos: action.insumos,
         baseById: action.baseById,
       });
-      
+
     case 'remove':
       return applyRemove(groups, {
         groupId: action.groupId,
         ids: action.ids,
       });
-      
+
     case 'move':
       return applyMove(groups, {
         fromId: action.fromId,
@@ -457,24 +458,24 @@ export function applyMutation(groups, action) {
         ids: action.ids,
         baseById: action.baseById,
       });
-      
+
     case 'rename':
       return applyRename(groups, {
         groupId: action.groupId,
         nombre: action.nombre,
       });
-      
+
     case 'delete':
       return applyDelete(groups, {
         groupId: action.groupId,
       });
-      
+
     case 'setFavorite':
       return applySetFavorite(groups, {
         groupId: action.groupId,
         isFavorite: action.isFavorite,
       });
-      
+
     default:
       console.warn('[groupMutations] applyMutation: tipo desconocido', action.type);
       return groups;

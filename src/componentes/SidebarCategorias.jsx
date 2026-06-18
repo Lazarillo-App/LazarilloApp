@@ -53,7 +53,8 @@ const safeId = (a) => {
     a?.article_id ?? a?.articulo_id ?? a?.articuloId ??
     a?.idArticulo ?? a?.id ?? a?.codigo ?? a?.code;
   const id = Number(raw);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  // id !== 0 — acepta negativos (artículos manuales)
+  return Number.isFinite(id) && id !== 0 ? id : null;
 };
 
 const fmtCurrency = (v) => {
@@ -366,7 +367,8 @@ function SidebarCategorias({
     if (!getAmountForId) return totalBizAmount;
     let total = 0;
     for (const g of opcionesSelect || []) {
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) continue;
+      // Sin Agrupación SÍ cuenta como agrupación. Solo excluimos Discontinuados.
+      if (esDiscontinuadosGroup(g)) continue;
       for (const a of (g.articulos || [])) {
         const id = Number(a?.id ?? a?.articulo_id);
         if (Number.isFinite(id)) total += getAmountForId(id) || 0;
@@ -510,7 +512,7 @@ function SidebarCategorias({
                     return acc + (Number.isFinite(id) ? (getAmountForId(id) || 0) : 0);
                   }, 0)
                   : 0;
-                const gPct = totalAgrupacionesAmount > 0 && gMonto > 0 && !esTodoGroup(g) && !esDiscontinuadosGroup(g)
+                const gPct = totalAgrupacionesAmount > 0 && gMonto > 0 && !esDiscontinuadosGroup(g)
                   ? (gMonto / totalAgrupacionesAmount * 100).toFixed(1).replace('.', ',')
                   : null;
                 return (
@@ -518,7 +520,7 @@ function SidebarCategorias({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
                       <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
                         {labelAgrup(g)}
-                        {gMonto > 0 && !esDiscontinuadosGroup(g) && !esTodoGroup(g) && (
+                        {gMonto > 0 && !esDiscontinuadosGroup(g) && (
                           <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600 }}>
                             {fmtCurrency(gMonto)}
                             {gPct && <span style={{ color: 'var(--color-text-secondary, #6b7280)', fontWeight: 500 }}> ({gPct}%)</span>}

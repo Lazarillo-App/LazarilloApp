@@ -99,7 +99,8 @@ export function AuthProvider({ children }) {
     console.log('[AuthContext] 🔒 Logout');
     apiLogout();
     setUser(null);
-    localStorage.removeItem('user'); // ✅ Limpiar user del LS
+    localStorage.removeItem('user'); 
+    localStorage.removeItem('activeBusinessId');
     window.dispatchEvent(new Event('auth:logout'));
   };
 

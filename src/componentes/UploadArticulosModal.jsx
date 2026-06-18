@@ -7,30 +7,30 @@ import {
   TableRow, TableCell, Select, MenuItem, FormControl,
   Chip, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
-import CloudUploadIcon    from '@mui/icons-material/CloudUpload';
-import CheckCircleIcon    from '@mui/icons-material/CheckCircle';
-import ErrorIcon          from '@mui/icons-material/Error';
-import CloseIcon          from '@mui/icons-material/Close';
-import PointOfSaleIcon    from '@mui/icons-material/PointOfSale';
-import CategoryIcon       from '@mui/icons-material/Category';
-import ArrowBackIcon      from '@mui/icons-material/ArrowBack';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import CloseIcon from '@mui/icons-material/Close';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import CategoryIcon from '@mui/icons-material/Category';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { BASE } from '../servicios/apiBase';
 
 // ─── Roles para artículos ─────────────────────────────────────────────────────
 const ROLES_ART = [
-  { value: 'ignorar',  label: '— Ignorar —',   color: '#94a3b8', bg: '#f1f5f9' },
-  { value: 'codigo',   label: '✓ Código',       color: '#166534', bg: '#dcfce7' },
-  { value: 'nombre',   label: '✓ Nombre',       color: '#1e40af', bg: '#dbeafe' },
-  { value: 'precio',   label: '✓ Precio',       color: '#7c3aed', bg: '#ede9fe' },
-  { value: 'rubro',    label: '○ Rubro/Cat.',   color: '#92400e', bg: '#fef3c7' },
-  { value: 'subrubro', label: '○ Subrubro',     color: '#065f46', bg: '#d1fae5' },
+  { value: 'ignorar', label: '— Ignorar —', color: '#94a3b8', bg: '#f1f5f9' },
+  { value: 'codigo', label: '✓ Código', color: '#166534', bg: '#dcfce7' },
+  { value: 'nombre', label: '✓ Nombre', color: '#1e40af', bg: '#dbeafe' },
+  { value: 'precio', label: '✓ Precio', color: '#7c3aed', bg: '#ede9fe' },
+  { value: 'rubro', label: '○ Rubro/Cat.', color: '#92400e', bg: '#fef3c7' },
+  { value: 'subrubro', label: '○ Subrubro', color: '#065f46', bg: '#d1fae5' },
 ];
 
 // Roles para rubros (mucho más simple)
 const ROLES_RUB = [
-  { value: 'ignorar', label: '— Ignorar —',      color: '#94a3b8', bg: '#f1f5f9' },
-  { value: 'codigo',  label: '✓ Código de rubro', color: '#166534', bg: '#dcfce7' },
-  { value: 'nombre',  label: '✓ Nombre de rubro', color: '#1e40af', bg: '#dbeafe' },
+  { value: 'ignorar', label: '— Ignorar —', color: '#94a3b8', bg: '#f1f5f9' },
+  { value: 'codigo', label: '✓ Código de rubro', color: '#166534', bg: '#dcfce7' },
+  { value: 'nombre', label: '✓ Nombre de rubro', color: '#1e40af', bg: '#dbeafe' },
 ];
 
 function getRoles(tipo) {
@@ -45,11 +45,11 @@ function roleInfo(tipo, rol) {
 function detectarRol(col, tipo) {
   const c = col.toLowerCase().replace(/[\s_]/g, '');
   if (['codigo', 'code', 'codarticulo', 'codrua', 'codru'].includes(c)) return 'codigo';
-  if (['nombre', 'name', 'descripcion', 'descripción'].includes(c))      return 'nombre';
+  if (['nombre', 'name', 'descripcion', 'descripción'].includes(c)) return 'nombre';
   if (tipo === 'articulos') {
-    if (['precio1', 'precio', 'price', 'precioventa'].includes(c))        return 'precio';
-    if (['rubro', 'categoria', 'categoría'].includes(c))                  return 'rubro';
-    if (['subrubro', 'subcategoria'].includes(c))                         return 'subrubro';
+    if (['precio1', 'precio', 'price', 'precioventa'].includes(c)) return 'precio';
+    if (['rubro', 'categoria', 'categoría'].includes(c)) return 'rubro';
+    if (['subrubro', 'subcategoria'].includes(c)) return 'subrubro';
   }
   return 'ignorar';
 }
@@ -65,9 +65,9 @@ function useTheme() {
     if (typeof window === 'undefined') return { primary: '#1976d2', secondary: '#10b981', onPrimary: '#fff' };
     const s = getComputedStyle(document.documentElement);
     return {
-      primary:   s.getPropertyValue('--color-primary')?.trim()   || '#1976d2',
+      primary: s.getPropertyValue('--color-primary')?.trim() || '#1976d2',
       secondary: s.getPropertyValue('--color-secondary')?.trim() || '#10b981',
-      onPrimary: s.getPropertyValue('--on-primary')?.trim()      || '#ffffff',
+      onPrimary: s.getPropertyValue('--on-primary')?.trim() || '#ffffff',
     };
   }, []);
 }
@@ -88,9 +88,13 @@ function StepSeleccionar({ tipo, onTipo, onFile, themeColors }) {
         value={tipo} exclusive onChange={(_, v) => v && onTipo(v)}
         sx={{ mb: 2.5, width: '100%' }}
       >
-        <ToggleButton value="articulos" sx={{ flex: 1, gap: 1, py: 1.25,
-          '&.Mui-selected': { bgcolor: `${themeColors.primary}15`, color: themeColors.primary,
-            borderColor: themeColors.primary, fontWeight: 700 } }}>
+        <ToggleButton value="articulos" sx={{
+          flex: 1, gap: 1, py: 1.25,
+          '&.Mui-selected': {
+            bgcolor: `${themeColors.primary}15`, color: themeColors.primary,
+            borderColor: themeColors.primary, fontWeight: 700
+          }
+        }}>
           <PointOfSaleIcon fontSize="small" />
           <Box textAlign="left">
             <Typography variant="body2" fontWeight={600}>Artículos</Typography>
@@ -99,9 +103,13 @@ function StepSeleccionar({ tipo, onTipo, onFile, themeColors }) {
             </Typography>
           </Box>
         </ToggleButton>
-        <ToggleButton value="rubros" sx={{ flex: 1, gap: 1, py: 1.25,
-          '&.Mui-selected': { bgcolor: `${themeColors.primary}15`, color: themeColors.primary,
-            borderColor: themeColors.primary, fontWeight: 700 } }}>
+        <ToggleButton value="rubros" sx={{
+          flex: 1, gap: 1, py: 1.25,
+          '&.Mui-selected': {
+            bgcolor: `${themeColors.primary}15`, color: themeColors.primary,
+            borderColor: themeColors.primary, fontWeight: 700
+          }
+        }}>
           <CategoryIcon fontSize="small" />
           <Box textAlign="left">
             <Typography variant="body2" fontWeight={600}>Rubros / Categorías</Typography>
@@ -136,7 +144,7 @@ function StepSeleccionar({ tipo, onTipo, onFile, themeColors }) {
       >
         {tipo === 'articulos'
           ? <PointOfSaleIcon sx={{ fontSize: 44, color: themeColors.primary, mb: 1 }} />
-          : <CategoryIcon    sx={{ fontSize: 44, color: themeColors.primary, mb: 1 }} />
+          : <CategoryIcon sx={{ fontSize: 44, color: themeColors.primary, mb: 1 }} />
         }
         <Typography variant="h6" sx={{ color: themeColors.primary }} fontWeight="medium" gutterBottom>
           Seleccioná o arrastrá tu archivo
@@ -152,30 +160,32 @@ function StepSeleccionar({ tipo, onTipo, onFile, themeColors }) {
 
 // ─── Paso 2: mapeo de columnas ────────────────────────────────────────────────
 function StepColumnas({ tipo, file, columnas, muestra, mapeo, onChange, themeColors, destino, onDestino }) {
-  const roles   = Object.values(mapeo);
-  const tieneC  = roles.includes('codigo');
-  const tieneN  = roles.includes('nombre');
-  const tieneP  = roles.includes('precio');
+  const roles = Object.values(mapeo);
+  const tieneC = roles.includes('codigo');
+  const tieneN = roles.includes('nombre');
+  const tieneP = roles.includes('precio');
 
   const chips = tipo === 'articulos'
     ? [
-        { ok: tieneC, label: tieneC ? '✓ Código'  : '⚠ Sin Código',  bg: tieneC ? '#dcfce7' : '#fee2e2', color: tieneC ? '#166534' : '#b91c1c' },
-        { ok: tieneN, label: tieneN ? '✓ Nombre'  : '⚠ Sin Nombre',  bg: tieneN ? '#dbeafe' : '#fee2e2', color: tieneN ? '#1e40af' : '#b91c1c' },
-        { ok: tieneP, label: tieneP ? '✓ Precio'  : '○ Sin Precio',  bg: tieneP ? '#ede9fe' : '#f1f5f9', color: tieneP ? '#7c3aed' : '#94a3b8' },
-      ]
+      { ok: tieneC, label: tieneC ? '✓ Código' : '⚠ Sin Código', bg: tieneC ? '#dcfce7' : '#fee2e2', color: tieneC ? '#166534' : '#b91c1c' },
+      { ok: tieneN, label: tieneN ? '✓ Nombre' : '⚠ Sin Nombre', bg: tieneN ? '#dbeafe' : '#fee2e2', color: tieneN ? '#1e40af' : '#b91c1c' },
+      { ok: tieneP, label: tieneP ? '✓ Precio' : '○ Sin Precio', bg: tieneP ? '#ede9fe' : '#f1f5f9', color: tieneP ? '#7c3aed' : '#94a3b8' },
+    ]
     : [
-        { ok: tieneC, label: tieneC ? '✓ Código de rubro' : '⚠ Sin Código', bg: tieneC ? '#dcfce7' : '#fee2e2', color: tieneC ? '#166534' : '#b91c1c' },
-        { ok: tieneN, label: tieneN ? '✓ Nombre de rubro' : '⚠ Sin Nombre', bg: tieneN ? '#dbeafe' : '#fee2e2', color: tieneN ? '#1e40af' : '#b91c1c' },
-      ];
+      { ok: tieneC, label: tieneC ? '✓ Código de rubro' : '⚠ Sin Código', bg: tieneC ? '#dcfce7' : '#fee2e2', color: tieneC ? '#166534' : '#b91c1c' },
+      { ok: tieneN, label: tieneN ? '✓ Nombre de rubro' : '⚠ Sin Nombre', bg: tieneN ? '#dbeafe' : '#fee2e2', color: tieneN ? '#1e40af' : '#b91c1c' },
+    ];
 
   return (
     <Box>
       {/* Header archivo */}
-      <Box sx={{ mb: 1.5, p: 1.25, bgcolor: `${themeColors.primary}08`, borderRadius: 1.5,
-        border: `1px solid ${themeColors.primary}20`, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{
+        mb: 1.5, p: 1.25, bgcolor: `${themeColors.primary}08`, borderRadius: 1.5,
+        border: `1px solid ${themeColors.primary}20`, display: 'flex', alignItems: 'center', gap: 1
+      }}>
         {tipo === 'articulos'
           ? <PointOfSaleIcon sx={{ fontSize: 16, color: themeColors.primary }} />
-          : <CategoryIcon    sx={{ fontSize: 16, color: themeColors.primary }} />
+          : <CategoryIcon sx={{ fontSize: 16, color: themeColors.primary }} />
         }
         <Typography variant="body2" fontWeight={600} sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {file.name}
@@ -193,8 +203,8 @@ function StepColumnas({ tipo, file, columnas, muestra, mapeo, onChange, themeCol
           </Typography>
           <Stack direction="row" spacing={1}>
             {[
-              { value: 'categoria', label: '📂 Rubro',     desc: 'Campo principal de agrupación' },
-              { value: 'subrubro',  label: '📁 Subrubro', desc: 'Nivel secundario de agrupación' },
+              { value: 'categoria', label: '📂 Rubro', desc: 'Campo principal de agrupación' },
+              { value: 'subrubro', label: '📁 Subrubro', desc: 'Nivel secundario de agrupación' },
             ].map(opt => (
               <Box key={opt.value} onClick={() => onDestino(opt.value)}
                 sx={{
@@ -241,11 +251,13 @@ function StepColumnas({ tipo, file, columnas, muestra, mapeo, onChange, themeCol
           <TableHead>
             <TableRow sx={{ bgcolor: '#f8fafc' }}>
               {columnas.map(col => {
-                const rol  = mapeo[col] || 'ignorar';
+                const rol = mapeo[col] || 'ignorar';
                 const info = roleInfo(tipo, rol);
                 return (
-                  <TableCell key={col} sx={{ py: 0.75, px: 1, verticalAlign: 'top',
-                    borderRight: '1px solid #f1f5f9', minWidth: 130 }}>
+                  <TableCell key={col} sx={{
+                    py: 0.75, px: 1, verticalAlign: 'top',
+                    borderRight: '1px solid #f1f5f9', minWidth: 130
+                  }}>
                     <Typography variant="caption" sx={{
                       display: 'block', fontFamily: 'monospace', color: '#64748b',
                       fontSize: '0.63rem', mb: 0.5, whiteSpace: 'nowrap',
@@ -282,9 +294,9 @@ function StepColumnas({ tipo, file, columnas, muestra, mapeo, onChange, themeCol
             {muestra.map((row, i) => (
               <TableRow key={i} sx={{ '&:hover': { bgcolor: '#fafafa' } }}>
                 {columnas.map(col => {
-                  const rol  = mapeo[col] || 'ignorar';
+                  const rol = mapeo[col] || 'ignorar';
                   const info = roleInfo(tipo, rol);
-                  const ign  = rol === 'ignorar';
+                  const ign = rol === 'ignorar';
                   return (
                     <TableCell key={col} sx={{
                       fontSize: '0.7rem', py: 0.5, px: 1,
@@ -317,19 +329,21 @@ function StepColumnas({ tipo, file, columnas, muestra, mapeo, onChange, themeCol
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
-export default function UploadArticulosModal({ open, onClose, businessId, onSuccess }) {
+export default function UploadArticulosModal({ open, onClose, businessId, onSuccess, initialMode = 'articulos' }) {
   const themeColors = useTheme();
-
-  const [tipo,      setTipo]      = useState('articulos'); // 'articulos' | 'rubros'
-  const [step,      setStep]      = useState('select');    // 'select'|'columns'|'uploading'|'done'|'error'
-  const [file,      setFile]      = useState(null);
-  const [columnas,  setColumnas]  = useState([]);
-  const [muestra,   setMuestra]   = useState([]);
-  const [mapeo,     setMapeo]     = useState({});
-  const [destino,   setDestino]   = useState('categoria'); // 'categoria' | 'subrubro'
+  const [tipo, setTipo] = useState(initialMode);
+  React.useEffect(() => {
+    if (open) setTipo(initialMode);
+  }, [open, initialMode]);
+  const [step, setStep] = useState('select');    // 'select'|'columns'|'uploading'|'done'|'error'
+  const [file, setFile] = useState(null);
+  const [columnas, setColumnas] = useState([]);
+  const [muestra, setMuestra] = useState([]);
+  const [mapeo, setMapeo] = useState({});
+  const [destino, setDestino] = useState('categoria'); // 'categoria' | 'subrubro'
   const [analyzing, setAnalyzing] = useState(false);
-  const [progress,  setProgress]  = useState(null);
-  const [error,     setError]     = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
 
   const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
 
@@ -354,7 +368,7 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
       const fd = new FormData();
       fd.append('file', f);
       // Usamos el mismo endpoint de preview — funciona para ambos tipos
-      const res  = await fetch(`${BASE}/businesses/${businessId}/articles/preview-columns`, {
+      const res = await fetch(`${BASE}/businesses/${businessId}/articles/preview-columns`, {
         method: 'POST', headers: authH(), body: fd,
       });
       const data = await res.json();
@@ -413,16 +427,16 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
         ? `${BASE}/businesses/${businessId}/articles/import-rubros-csv`
         : `${BASE}/businesses/${businessId}/articles/import-csv`;
 
-      const res  = await fetch(endpoint, { method: 'POST', headers: authH(), body: fd });
+      const res = await fetch(endpoint, { method: 'POST', headers: authH(), body: fd });
       const data = await res.json();
 
       if (data.ok || res.ok) {
         const s = data.summary || data;
         setProgress({
           inserted: Number(s.inserted ?? 0),
-          updated:  Number(s.updated  ?? 0),
-          total:    Number(s.total_rows ?? s.total ?? 0),
-          failed:   Number(s.failed   ?? 0),
+          updated: Number(s.updated ?? 0),
+          total: Number(s.total_rows ?? s.total ?? 0),
+          failed: Number(s.failed ?? 0),
           articulosActualizados: Number(data.articulosActualizados ?? 0),
         });
         setStep('done');
@@ -436,15 +450,15 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
     }
   };
 
-  const roles      = Object.values(mapeo);
-  const puedeImp   = roles.includes('codigo') && roles.includes('nombre');
+  const roles = Object.values(mapeo);
+  const puedeImp = roles.includes('codigo') && roles.includes('nombre');
 
   const titles = {
-    select:    'Importar desde archivo',
-    columns:   tipo === 'rubros' ? 'Importar rubros' : 'Importar artículos',
+    select: 'Importar desde archivo',
+    columns: tipo === 'rubros' ? 'Importar rubros' : 'Importar artículos',
     uploading: 'Importando...',
-    done:      '✓ Importación completada',
-    error:     'Error al importar',
+    done: '✓ Importación completada',
+    error: 'Error al importar',
   };
 
   return (
@@ -456,7 +470,7 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Box display="flex" alignItems="center" gap={1}>
             {tipo === 'rubros'
-              ? <CategoryIcon    sx={{ color: themeColors.primary }} />
+              ? <CategoryIcon sx={{ color: themeColors.primary }} />
               : <PointOfSaleIcon sx={{ color: themeColors.primary }} />
             }
             <Typography variant="h6" fontWeight={700}>{titles[step]}</Typography>
@@ -496,8 +510,10 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
             <Typography variant="body2" fontWeight="medium" gutterBottom>
               {tipo === 'rubros' ? 'Importando rubros…' : 'Procesando artículos…'}
             </Typography>
-            <LinearProgress sx={{ height: 8, borderRadius: 1,
-              '& .MuiLinearProgress-bar': { bgcolor: themeColors.primary } }} />
+            <LinearProgress sx={{
+              height: 8, borderRadius: 1,
+              '& .MuiLinearProgress-bar': { bgcolor: themeColors.primary }
+            }} />
           </Box>
         )}
 
@@ -543,8 +559,10 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
       <DialogActions sx={{ px: 3, py: 1.5, gap: 1 }}>
         {step === 'done' ? (
           <Button onClick={handleClose} variant="contained" fullWidth
-            sx={{ bgcolor: themeColors.secondary, color: themeColors.onPrimary,
-              '&:hover': { filter: 'brightness(0.9)' } }}>
+            sx={{
+              bgcolor: themeColors.secondary, color: themeColors.onPrimary,
+              '&:hover': { filter: 'brightness(0.9)' }
+            }}>
             ✓ Cerrar
           </Button>
         ) : step === 'columns' ? (
@@ -556,8 +574,10 @@ export default function UploadArticulosModal({ open, onClose, businessId, onSucc
             <Button onClick={handleImport} variant="contained"
               startIcon={<CloudUploadIcon />} size="large"
               disabled={!puedeImp}
-              sx={{ bgcolor: themeColors.primary, color: themeColors.onPrimary,
-                '&:hover': { filter: 'brightness(0.9)' } }}>
+              sx={{
+                bgcolor: themeColors.primary, color: themeColors.onPrimary,
+                '&:hover': { filter: 'brightness(0.9)' }
+              }}>
               {tipo === 'rubros' ? 'Importar rubros' : 'Importar artículos'}
             </Button>
           </>

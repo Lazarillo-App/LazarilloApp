@@ -465,7 +465,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
     city:        '',
     addrLine1:   '',
     description: '',
-    primary:     '#38e07b',
+    primary:     '#2492C8',
     secondary:   '#1f2923',
     background:  '#f6f8f7',
     logoUrl:     '',
@@ -502,7 +502,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
         city:        '',
         addrLine1:   '',
         description: '',
-        primary:     '#38e07b',
+        primary:     '#2492C8',
         secondary:   '#1f2923',
         background:  '#f6f8f7',
         logoUrl:     '',
@@ -763,7 +763,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
           transition: color .2s;
         }
         .sbc-step-dot.active .sbc-step-num {
-          background: var(--color-primary, #38e07b); color: #0a0a0a;
+          background: var(--color-primary, #2492C8); color: #0a0a0a;
         }
         .sbc-step-dot.active .sbc-step-name { color: #333; }
         .sbc-step-dot.done .sbc-step-num    { background: #d4f5e4; color: #1a7a46; }
@@ -779,7 +779,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
         .sbc-progress { height: 3px; background: #f2f2f2; flex-shrink: 0; }
         .sbc-progress-fill {
           height: 100%;
-          background: var(--color-primary, #38e07b);
+          background: var(--color-primary, #2492C8);
           transition: width .35s cubic-bezier(.4,0,.2,1);
         }
 
@@ -802,7 +802,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
         .sbc-origin-tag   { font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #bbb; }
         .sbc-origin-name  { font-weight: 800; font-size: .95rem; color: #111; }
         .sbc-origin-pill  {
-          background: var(--color-primary, #38e07b); color: #0a0a0a;
+          background: var(--color-primary, #2492C8); color: #0a0a0a;
           border-radius: 999px; padding: 4px 12px;
           font-size: .75rem; font-weight: 800; flex-shrink: 0;
         }
@@ -832,8 +832,8 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
           background: #fff; color: #111; width: 100%; box-sizing: border-box;
         }
         .sbc-input:focus {
-          border-color: var(--color-primary, #38e07b);
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary,#38e07b) 16%, transparent);
+          border-color: var(--color-primary, #2492C8);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary,#2492C8) 16%, transparent);
         }
         .sbc-input:disabled { opacity:.55; background:#fafafa; }
         .sbc-input-hex { margin-top:6px; }
@@ -890,7 +890,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
         .sbc-success-title { margin:0 0 10px; font-size:1.2rem; font-weight:800; color:#111; }
         .sbc-success-body  { margin:0 0 6px; font-size:.9rem; color:#444; max-width:360px; }
         .sbc-success-hint  { margin:0 0 20px; font-size:.78rem; color:#aaa; max-width:320px; }
-        .sbc-success-pill  { display:inline-flex; align-items:center; gap:8px; border:2px solid var(--c,#38e07b); border-radius:999px; padding:6px 16px; font-weight:700; font-size:.88rem; color:#111; margin-bottom:20px; }
+        .sbc-success-pill  { display:inline-flex; align-items:center; gap:8px; border:2px solid var(--c,#2492C8); border-radius:999px; padding:6px 16px; font-weight:700; font-size:.88rem; color:#111; margin-bottom:20px; }
         .sbc-dot           { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
 
         /* Footer */
@@ -900,7 +900,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
         /* Buttons */
         .sbc-btn { border:none; border-radius:10px; padding:11px 20px; font-size:.88rem; font-weight:800; cursor:pointer; transition:all .15s; line-height:1; white-space:nowrap; }
         .sbc-btn:disabled  { opacity:.5; cursor:default; pointer-events:none; }
-        .sbc-btn.primary   { background:var(--color-primary,#38e07b); color:var(--on-primary,#0a0a0a); }
+        .sbc-btn.primary   { background:var(--color-primary,#2492C8); color:var(--on-primary,#0a0a0a); }
         .sbc-btn.primary:hover:not(:disabled) { filter:brightness(1.07); transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.14); }
         .sbc-btn.ghost     { background:#fff; border:1.5px solid #e0e0e5; color:#555; }
         .sbc-btn.ghost:hover:not(:disabled) { background:#f7f7f8; color:#222; }
@@ -983,7 +983,7 @@ const SubBusinessCreateModal = React.memo(function SubBusinessCreateModal({ open
               borderRadius: 10, outline: 'none',
               transition: 'border-color .15s',
             }}
-            onFocus={e => { if (!orgErr) e.target.style.borderColor = 'var(--color-primary, #38e07b)'; }}
+            onFocus={e => { if (!orgErr) e.target.style.borderColor = 'var(--color-primary, #2492C8)'; }}
             onBlur={e => { if (!orgErr) e.target.style.borderColor = '#e0e0e5'; }}
           />
           {orgErr && (

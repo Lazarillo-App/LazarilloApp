@@ -15,7 +15,6 @@ const WA = 'https://wa.me/5491163989934';
 
 const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim());
 
-// ── Mensajes rotantes ────────────────────────────────────────────────────────
 const MESSAGES = [
   { emoji: '📊', text: 'Controlá costos y márgenes de cada plato en tiempo real.' },
   { emoji: '💡', text: 'Tomá decisiones con datos, no con intuición.' },
@@ -43,38 +42,33 @@ function RotatingMessages() {
   const msg = MESSAGES[current];
 
   return (
-    <div
-      style={{
-        transition: 'opacity .35s ease, transform .35s ease',
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(8px)',
-        background: 'rgba(255,255,255,.04)',
-        border: '1px solid rgba(91,194,234,.25)',
-        borderRadius: '14px',
-        padding: '16px 18px',
-        display: 'flex',
-        gap: '12px',
-        alignItems: 'flex-start',
-        width: '100%',
-      }}
-    >
+    <div style={{
+      transition: 'opacity .35s ease, transform .35s ease',
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(8px)',
+      background: 'rgba(255,255,255,.04)',
+      border: '1px solid rgba(91,194,234,.25)',
+      borderRadius: '14px',
+      padding: '16px 18px',
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'flex-start',
+      width: '100%',
+    }}>
       <span style={{ fontSize: '22px', lineHeight: 1, flexShrink: 0 }}>{msg.emoji}</span>
-      <p
-        style={{
-          fontFamily: "'Archivo', system-ui, sans-serif",
-          fontSize: '14px',
-          color: 'rgba(255,255,255,.75)',
-          lineHeight: 1.55,
-          margin: 0,
-        }}
-      >
+      <p style={{
+        fontFamily: "'Archivo', system-ui, sans-serif",
+        fontSize: '14px',
+        color: 'rgba(255,255,255,.75)',
+        lineHeight: 1.55,
+        margin: 0,
+      }}>
         {msg.text}
       </p>
     </div>
   );
 }
 
-// ── Modal de demo ────────────────────────────────────────────────────────────
 function ContactModal({ onClose }) {
   const [form, setForm] = useState({ nombre: '', restaurante: '', mensaje: '' });
   const [sent, setSent] = useState(false);
@@ -85,7 +79,7 @@ function ContactModal({ onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
-    await new Promise((r) => setTimeout(r, 1200)); // reemplazar con llamada real
+    await new Promise((r) => setTimeout(r, 1200));
     setSending(false);
     setSent(true);
   };
@@ -132,49 +126,78 @@ function ContactModal({ onClose }) {
     <div style={S.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={S.box}>
         <button style={S.close} onClick={onClose} aria-label="Cerrar">×</button>
-
         {sent ? (
           <>
             <div style={{ fontSize: '44px', textAlign: 'center', marginBottom: '10px' }}>✅</div>
             <p style={S.okTitle}>¡Listo! Te contactamos pronto.</p>
-            <p style={S.okSub}>
-              Nos pondremos en contacto en menos de 24 h para mostrarte Lazarillo
-              funcionando en tu restaurante.
-            </p>
+            <p style={S.okSub}>Nos pondremos en contacto en menos de 24 h.</p>
           </>
         ) : (
           <>
             <h3 style={S.h3}>Pedí tu demo</h3>
-            <p style={S.sub}>
-              Contanos de tu negocio y te mostramos Lazarillo funcionando sobre tu carta.
-            </p>
+            <p style={S.sub}>Contanos de tu negocio y te mostramos Lazarillo funcionando sobre tu carta.</p>
             <form onSubmit={handleSubmit}>
               <label style={S.lbl} htmlFor="dm-nombre">Tu nombre</label>
-              <input id="dm-nombre" name="nombre" style={S.inp}
-                value={form.nombre} onChange={handleChange}
-                placeholder="Ej: Ana López" required />
-
+              <input id="dm-nombre" name="nombre" style={S.inp} value={form.nombre} onChange={handleChange} placeholder="Ej: Ana López" required />
               <label style={S.lbl} htmlFor="dm-rest">Nombre del restaurante</label>
-              <input id="dm-rest" name="restaurante" style={S.inp}
-                value={form.restaurante} onChange={handleChange}
-                placeholder="Ej: La Parrilla del Centro" required />
-
+              <input id="dm-rest" name="restaurante" style={S.inp} value={form.restaurante} onChange={handleChange} placeholder="Ej: La Parrilla del Centro" required />
               <label style={S.lbl} htmlFor="dm-msg">¿Qué querés mejorar? (opcional)</label>
-              <textarea id="dm-msg" name="mensaje" style={S.textarea}
-                value={form.mensaje} onChange={handleChange}
-                placeholder="Ej: quiero controlar mejor mis costos y precios." />
-
-              <button
-                type="submit"
-                className="btn btn-sky w-full"
-                style={{ marginTop: '18px' }}
-                disabled={!valid || sending}
-              >
+              <textarea id="dm-msg" name="mensaje" style={S.textarea} value={form.mensaje} onChange={handleChange} placeholder="Ej: quiero controlar mejor mis costos y precios." />
+              <button type="submit" className="btn btn-sky w-full" style={{ marginTop: '18px' }} disabled={!valid || sending}>
                 {sending ? 'Enviando…' : 'Quiero mi demo gratuita'}
               </button>
             </form>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Aviso de cuenta inactiva ─────────────────────────────────────────────────
+const ACCOUNT_STATUS_INFO = {
+  pending: {
+    color: '#1d4ed8',
+    bg: '#eff6ff',
+    border: '#93c5fd',
+    icon: '⏳',
+    title: 'Cuenta pendiente de activación',
+    msg: 'Tu cuenta fue creada correctamente pero todavía no fue activada. Pronto recibirás un código de acceso para comenzar a usar Lazarillo.',
+  },
+  expired: {
+    color: '#c2410c',
+    bg: '#fff7ed',
+    border: '#fed7aa',
+    icon: '⏰',
+    title: 'Tu período de acceso venció',
+    msg: 'Tu período de prueba o suscripción llegó a su fin. Contactanos para renovar el acceso.',
+  },
+  suspended: {
+    color: '#b91c1c',
+    bg: '#fef2f2',
+    border: '#fca5a5',
+    icon: '🔒',
+    title: 'Cuenta suspendida',
+    msg: 'Tu cuenta fue suspendida temporalmente. Contactanos para más información.',
+  },
+};
+
+function AccountStatusBanner({ status }) {
+  const info = ACCOUNT_STATUS_INFO[status];
+  if (!info) return null;
+  return (
+    <div style={{
+      background: info.bg,
+      border: `1px solid ${info.border}`,
+      borderRadius: 10,
+      padding: '14px 16px',
+      marginBottom: 12,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6, color: info.color }}>
+        {info.icon} {info.title}
+      </div>
+      <div style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.5, marginBottom: 8 }}>
+        {info.msg}
       </div>
     </div>
   );
@@ -192,6 +215,7 @@ export default function Login() {
   const [err, setErr] = useState('');
   const [touched, setTouched] = useState({ email: false, password: false });
   const [showModal, setShowModal] = useState(false);
+  const [accountStatus, setAccountStatus] = useState(null);
 
   const valid = useMemo(
     () => emailOk(email) && String(password).length >= 1,
@@ -210,11 +234,22 @@ export default function Login() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr('');
+    setAccountStatus(null);
     if (!valid) { setTouched({ email: true, password: true }); return; }
     setBusy(true);
     try {
       const data = await AuthAPI.login(email.trim(), password);
       const user = data?.user ?? (JSON.parse(localStorage.getItem('user') || 'null') || {});
+
+      // ── Verificar estado de cuenta ──
+      const acctStatus = user?.account_status;
+      if (acctStatus && ['pending', 'expired', 'suspended'].includes(acctStatus)) {
+        setAccountStatus(acctStatus);
+        setBusy(false);
+        return;
+      }
+
+      // ── Post-login normal ──
       let activeBizId = null;
       try {
         const list = await BusinessesAPI.listMine();
@@ -237,7 +272,7 @@ export default function Login() {
       syncAllBusinesses({ scope: 'articles', alsoSalesDays: 14, concurrency: 2 }).catch(() => { });
 
       const role = user?.role ?? (JSON.parse(localStorage.getItem('user') || 'null') || {}).role;
-      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/app');
+      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/menu');
       nav(to, { replace: true });
     } catch (e2) {
       console.error('LOGIN ERROR >>>', e2);
@@ -254,8 +289,6 @@ export default function Login() {
       {/* ── ASIDE IZQUIERDO ─────────────────────────────────────────── */}
       <aside className="auth-aside">
         <div className="auth-aside-inner">
-
-          {/* Brand — mismo tamaño que el nav de la landing */}
           <Link to="/" className="auth-brand">
             {LOGO
               ? <img src={LOGO} alt="Lazarillo" style={{ height: '40px' }} />
@@ -265,17 +298,10 @@ export default function Login() {
 
           <div className="auth-aside-kick">Gestión gastronómica</div>
 
-          {/* Mascota */}
           {DOG && (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px', flexShrink: 0 }}>
-              <img
-                src={DOG}
-                alt="Anthony, la mascota de Lazarillo"
-                style={{
-                  width: '175px',
-                  filter: 'drop-shadow(0 16px 32px rgba(0,0,0,.4))',
-                }}
-              />
+              <img src={DOG} alt="Anthony, la mascota de Lazarillo"
+                style={{ width: '175px', filter: 'drop-shadow(0 16px 32px rgba(0,0,0,.4))' }} />
             </div>
           )}
 
@@ -284,52 +310,41 @@ export default function Login() {
           </h2>
           <p style={{
             fontFamily: "'Archivo', system-ui, sans-serif",
-            fontSize: '14px',
-            color: 'rgba(255,255,255,.5)',
-            textAlign: 'center',
-            marginTop: '4px',
-            flexShrink: 0,
+            fontSize: '14px', color: 'rgba(255,255,255,.5)',
+            textAlign: 'center', marginTop: '4px', flexShrink: 0,
           }}>
             Tu guía para gestionar mejor tu restaurante.
           </p>
 
-          {/* Mensaje rotante — ocupa el espacio libre */}
           <div className="auth-aside-msg">
             <RotatingMessages />
           </div>
 
-          {/* CTAs — pegados al fondo */}
           <div className="auth-aside-actions">
             <button className="btn btn-sky" onClick={() => setShowModal(true)}>
               Pedí una demo gratuita
             </button>
-            <a className="wa-float"
-              href={WA}
-              target="_blank"
-              rel="noopener"
-              aria-label="WhatsApp"
-            >
+            <a className="wa-float" href={WA} target="_blank" rel="noopener" aria-label="WhatsApp">
               <svg viewBox="0 0 32 32" fill="#fff" xmlns="http://www.w3.org/2000/svg">
                 <path d="M16 .4C7.4.4.4 7.4.4 16c0 2.8.7 5.5 2.1 7.9L.3 31.7l8-2.1c2.3 1.3 4.9 1.9 7.6 1.9h.1c8.6 0 15.6-7 15.6-15.6 0-4.2-1.6-8.1-4.6-11C24.1 2 20.2.4 16 .4zm0 28.5h-.1c-2.4 0-4.7-.6-6.7-1.9l-.5-.3-5 1.3 1.3-4.9-.3-.5C3.3 21 2.7 18.5 2.7 16 2.7 8.7 8.7 2.8 16 2.8c3.5 0 6.8 1.4 9.3 3.9 2.5 2.5 3.9 5.8 3.9 9.3 0 7.3-6 13.2-13.2 13.2zm7.2-9.9c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3.1-.5 0-.7-.1-.2-.9-2.2-1.3-3-.3-.8-.7-.7-.9-.7h-.8c-.3 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.2s1.4 3.7 1.5 3.9c.2.3 2.7 4.2 6.6 5.9.9.4 1.6.6 2.2.8.9.3 1.8.2 2.4.2.7-.1 2.3-.9 2.6-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z" />
               </svg>
             </a>
-
-            <span className="auth-aside-wa-hint">
-              Respondemos en menos de 24 h
-            </span>
+            <span className="auth-aside-wa-hint">Respondemos en menos de 24 h</span>
           </div>
-
         </div>
-      </aside >
+      </aside>
 
       {/* ── MAIN DERECHO ────────────────────────────────────────────── */}
-      < main className="auth-main" >
+      <main className="auth-main">
         <form className="auth-card compact" onSubmit={onSubmit} noValidate>
 
           <header className="auth-head">
             <h2 className="auth-title">Bienvenido 👋</h2>
             <p className="auth-sub">Ingresá para gestionar tus locales.</p>
           </header>
+
+          {/* Aviso de cuenta inactiva */}
+          {accountStatus && <AccountStatusBanner status={accountStatus} />}
 
           {err && <div className="auth-error">{err}</div>}
 
@@ -359,12 +374,8 @@ export default function Login() {
               placeholder="Tu contraseña"
               style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent' }}
             />
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => setShowPw((s) => !s)}
-              aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            >
+            <button type="button" className="ghost-btn" onClick={() => setShowPw((s) => !s)}
+              aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
               {showPw ? 'Ocultar' : 'Mostrar'}
             </button>
           </div>
@@ -384,13 +395,11 @@ export default function Login() {
 
           <footer className="auth-foot compact-foot">
             ¿No tenés cuenta?{' '}
-            <Link to="/register" className="auth-link">
-              Crear cuenta
-            </Link>
+            <Link to="/register" className="auth-link">Crear cuenta</Link>
           </footer>
 
         </form>
-      </main >
+      </main>
 
       <style>{`
         @keyframes anthonyFloat {
@@ -398,6 +407,6 @@ export default function Login() {
           50%       { transform: translateY(-10px); }
         }
       `}</style>
-    </div >
+    </div>
   );
 }
