@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Typography, Box, CircularProgress, Divider,
+  Button, TextField, Typography, Box, CircularProgress,
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
@@ -20,9 +20,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import Checkbox from '@mui/material/Checkbox';
-import { BASE } from "@/servicios/apiBase";
-import { getOrgPriceListConfig, getDiscountExceptions, addDiscountException, removeDiscountException } from '@/servicios/apiPriceLists';
+import ExcluirListasModal from './ExcluirListasModal';
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
 const isDiscontinuadosGroup = (g) => {
@@ -263,6 +261,8 @@ function ArticuloAccionesMenu({
   businessId,
   rootBizId: rootBizIdProp = null,
   allowedIds,
+   priceLists = [],  
+  priceListsByList = {},
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
@@ -284,10 +284,7 @@ function ArticuloAccionesMenu({
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleClose = useCallback(() => setAnchorEl(null), []);
 
-  const [excluirAnchor, setExcluirAnchor] = useState(null);
-  const [priceLists, setPriceLists] = useState([]);
-  const [exclusionesArt, setExclusionesArt] = useState(new Set());
-  const [orgIdLocal, setOrgIdLocal] = useState(null);
+  const [excluirOpen, setExcluirOpen] = useState(false);
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
@@ -538,27 +535,6 @@ function ArticuloAccionesMenu({
     }
   }
 
-  useEffect(() => {
-    if (!open || !articuloIdNum) return;
-    const orgId = organization?.id;
-    if (!orgId) return;
-    setOrgIdLocal(orgId);
-
-    Promise.all([
-      getOrgPriceListConfig(orgId).catch(() => []),
-      getDiscountExceptions(orgId).catch(() => []),
-    ]).then(([lists, exc]) => {
-      setPriceLists(Array.isArray(lists) ? lists : []);
-      const excSet = new Set();
-      (exc || []).forEach(e => {
-        if (e.scope === 'articulo' && String(e.scope_id) === String(articuloIdNum)) {
-          excSet.add(e.list_number);
-        }
-      });
-      setExclusionesArt(excSet);
-    });
-  }, [open, articuloIdNum, organization?.id]);
-
   // ── Mover a otro negocio/agrupación ────────────────────────────────────────
   async function ejecutarMover({ bizId: toBizId, groupId: toId, groupNombre }) {
     const idNum = articuloIdNum;
@@ -701,37 +677,25 @@ function ArticuloAccionesMenu({
     return () => { alive = false; };
   }, [openCrearAgr, haveExternalTree, loading]);
 
-  const toggleExclusionLista = useCallback(async (listNumber) => {
-    if (!orgIdLocal) return;
-    const isExcluido = exclusionesArt.has(listNumber);
-    try {
-      if (isExcluido) {
-        await removeDiscountException(orgIdLocal, 'articulo', String(articuloIdNum), listNumber);
-      } else {
-        await addDiscountException(orgIdLocal, 'articulo', String(articuloIdNum), listNumber);
-      }
-      setExclusionesArt(prev => {
-        const next = new Set(prev);
-        isExcluido ? next.delete(listNumber) : next.add(listNumber);
-        return next;
-      });
-      notify?.(isExcluido ? 'Artículo restaurado en lista' : 'Artículo excluido', 'success');
-    } catch (e) {
-      notify?.('No se pudo cambiar la exclusión', 'error');
+  // Contador de listas en las que está excluido este artículo (leído del byList del hook).
+  const exclusionesCount = useMemo(() => {
+    if (!articuloIdNum || !priceLists?.length) return 0;
+    let n = 0;
+    // Global cuenta como una marca activa que pisa todas
+    const baseEntry = priceListsByList?._base?.byArticle?.[String(articuloIdNum)];
+    if (baseEntry?.excluido) return priceLists.filter(l => !l.is_favorite).length;
+    for (const l of priceLists) {
+      if (l.is_favorite) continue;
+      const entry = priceListsByList?.[l.id]?.byArticle?.[String(articuloIdNum)];
+      if (entry?.excluido) n++;
     }
-  }, [orgIdLocal, articuloIdNum, exclusionesArt, notify]);
+    return n;
+  }, [articuloIdNum, priceLists, priceListsByList]);
 
-  const toggleExclusionTodas = useCallback(async () => {
-    const noPrincipales = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
-    const todasExcluidas = noPrincipales.every(l => exclusionesArt.has(l.listNumber));
-    for (const l of noPrincipales) {
-      if (todasExcluidas) {
-        if (exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      } else {
-        if (!exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      }
-    }
-  }, [priceLists, exclusionesArt, toggleExclusionLista]);
+  const hayListasNoFavoritas = useMemo(
+    () => (priceLists || []).some(l => !l.is_favorite),
+    [priceLists]
+  );
 
   return (
     <>
@@ -761,60 +725,19 @@ function ArticuloAccionesMenu({
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{`Crear agrupación a partir de "${articuloDisplayName}"`}</ListItemText>
         </MenuItem>
-        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).length > 0 && (
-          <MenuItem onClick={(e) => {
-            e.stopPropagation();
-            setExcluirAnchor(e.currentTarget);
-          }}>
+        {hayListasNoFavoritas && (
+          <MenuItem onClick={() => { handleClose(); setTimeout(() => setExcluirOpen(true), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
             <ListItemText>
-              Excluir de descuentos
-              {exclusionesArt.size > 0 && (
+              Excluir de listas
+              {exclusionesCount > 0 && (
                 <Typography component="span" variant="caption" sx={{ ml: 1, color: '#f59e0b', fontWeight: 700 }}>
-                  ({exclusionesArt.size})
+                  ({exclusionesCount})
                 </Typography>
               )}
             </ListItemText>
           </MenuItem>
         )}
-      </Menu>
-      <Menu
-        anchorEl={excluirAnchor}
-        open={Boolean(excluirAnchor)}
-        onClose={() => setExcluirAnchor(null)}
-        PaperProps={{ sx: { minWidth: 240 } }}
-      >
-        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="caption" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' }}>
-            Excluir de listas
-          </Typography>
-        </Box>
-
-        <MenuItem onClick={toggleExclusionTodas}>
-          <Checkbox
-            checked={priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))}
-            indeterminate={
-              exclusionesArt.size > 0 &&
-              !priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))
-            }
-            size="small"
-          />
-          <Typography variant="body2" fontWeight={700}>Todas las listas</Typography>
-        </MenuItem>
-
-        <Divider />
-
-        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).map(l => (
-          <MenuItem key={l.listNumber} onClick={() => toggleExclusionLista(l.listNumber)}>
-            <Checkbox checked={exclusionesArt.has(l.listNumber)} size="small" />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2">{l.alias || `Lista ${l.listNumber}`}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {l.tipo === 'descuento' ? '−' : '+'}{l.discountPct}%
-              </Typography>
-            </Box>
-          </MenuItem>
-        ))}
       </Menu>
 
       {/* ── Modal unificado "Mover a…" ── */}
@@ -919,6 +842,19 @@ function ArticuloAccionesMenu({
         businessId={effectiveBusinessId}
         allowedIds={allowedIds || null}
       />
+
+      <ExcluirListasModal
+        open={excluirOpen}
+        onClose={() => setExcluirOpen(false)}
+        bizId={effectiveBusinessId}
+        lists={priceLists}
+        byList={priceListsByList}
+        scope="articulo"
+        scopeIds={Number.isFinite(articuloIdNum) ? [articuloIdNum] : []}
+        scopeLabel={articuloDisplayName}
+        notify={notify}
+      />
+
     </>
   );
 }

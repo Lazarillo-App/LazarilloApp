@@ -18,6 +18,8 @@ import LotesPanel from './LotesPanel';
 import LotesPanelArticulos from './LotesPanelArticulos';
 import DeleteRecetasModal from './DeleteRecetasModal';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import PriceChangeIcon from '@mui/icons-material/PriceChange';
+import PriceListConfigModal from '../PriceListConfigModal';
 
 function Card({ children, accent }) {
   const tc = 'var(--color-primary, #3b82f6)';
@@ -192,6 +194,7 @@ export default function ConfigArticulosTab({
   const [savedRedondeo, setSavedRedondeo] = React.useState(config?.redondeo_precios ?? null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.articulos_costo_ideal ?? '');
   const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
+  const [pricelistsModalOpen, setPricelistsModalOpen] = React.useState(false);
 
   React.useEffect(() => {
     setSavedRedondeo(config?.redondeo_precios ?? null);
@@ -359,6 +362,10 @@ export default function ConfigArticulosTab({
                   desc="Alta manual cuando el artículo no llegó de Maxi todavía. Se genera un SKU provisorio que se reemplaza al sincronizar.">
                   <PrimaryBtn icon={<AddIcon />} label="Nuevo artículo" onClick={onNuevoArticulo} tc={tc} />
                 </ActionRow>
+                <ActionRow icon={<PriceChangeIcon />} title="Listas de precios"
+                  desc="Gestioná las listas de precios del negocio (Lista 1, Lista 2, etc.). La favorita define el precio base; las otras aplican un % de ajuste sobre esa.">
+                  <PrimaryBtn icon={<PriceChangeIcon />} label="Configurar listas" onClick={() => setPricelistsModalOpen(true)} tc={tc} />
+                </ActionRow>
                 <ActionRow icon={<DeleteForeverIcon />} title="Borrar recetas masivas"
                   desc="Borrá todas las recetas de artículos o las de una agrupación específica. Acción irreversible.">
                   <Button
@@ -492,6 +499,12 @@ export default function ConfigArticulosTab({
           </Button>
         </DialogActions>
       </Dialog>
+      {/* Modal de configuración de listas de precios */}
+      <PriceListConfigModal
+        open={pricelistsModalOpen}
+        onClose={() => setPricelistsModalOpen(false)}
+        bizId={businessId}
+      />
     </Box>
   );
 }

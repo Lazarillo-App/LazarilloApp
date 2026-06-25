@@ -1381,16 +1381,10 @@ export default function InsumosMain() {
               PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
             >
               <MenuItem
-                onClick={() => { setAgregarMenuAnchor(null); setUploadRubrosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-              >
-                <span style={{ fontSize: 16 }}>🗂️</span> Rubros de insumos
-              </MenuItem>
-              <MenuItem
                 onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
               >
-                <span style={{ fontSize: 16 }}>📦</span> Cargar insumos (CSV)
+                <span style={{ fontSize: 16 }}>📦</span> Carga manual de insumos
               </MenuItem>
             </Menu>
           </div>

@@ -45,6 +45,7 @@ import { getReceta, saveReceta } from '@/servicios/apiOrganizations';
 import { insumosList } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
+import ExcluirListasModal from './ExcluirListasModal';
 
 /* ── constantes ── */
 const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda'];
@@ -1248,28 +1249,55 @@ function ItemRow({
                   {item.supplyNombre || `#${item.supplyId}`}
                 </Typography>
 
-                {/* Precio en unidad base — para elaborados muestra costo/porción */}
-                {(item.precioRefDB > 0 || elaborado) && (
-                  <Chip
-                    label={
-                      elaborado
-                        ? (costoEnUnidadElegida > 0 ? `$${fmt(costoEnUnidadElegida)}/u` : '—')
-                        : `$${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'}`
+                {/* Precio + unidad base — siempre visible cuando hay insumo seleccionado.
+                    Si no hay precio cargado (insumo sin compras), muestra solo la unidad
+                    en gris para que el contexto de la fila siga siendo claro. */}
+                {item.supplyId && (() => {
+                  const unidadStr = item.supplyMedida || 'u';
+                  const tienePrecio = elaborado
+                    ? costoEnUnidadElegida > 0
+                    : item.precioRefDB > 0;
+
+                  const label = (() => {
+                    if (elaborado) {
+                      return tienePrecio
+                        ? `$${fmt(costoEnUnidadElegida)}/${unidadStr}`
+                        : `/${unidadStr}`;
                     }
-                    size="small"
-                    sx={{
-                      height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
-                      bgcolor: elaborado ? '#f0fdf4' : `${PRIMARY}18`,
-                      color: elaborado ? '#16a34a' : PRIMARY,
-                      border: 'none',
-                    }}
-                    title={
-                      elaborado
-                        ? `Costo de receta elaborada: $${fmt(costoEnUnidadElegida)}/u`
-                        : `Precio de DB: $${fmt(item.precioRefDB)}/${item.supplyMedida || 'u'} (fijo)`
+                    return tienePrecio
+                      ? `$${fmt(item.precioRefDB)}/${unidadStr}`
+                      : `/${unidadStr}`;
+                  })();
+
+                  const titleStr = (() => {
+                    if (elaborado) {
+                      return tienePrecio
+                        ? `Costo de receta elaborada: $${fmt(costoEnUnidadElegida)}/${unidadStr}`
+                        : `Unidad base: ${unidadStr} (la receta elaborada aún no tiene costo calculado)`;
                     }
-                  />
-                )}
+                    return tienePrecio
+                      ? `Precio de DB: $${fmt(item.precioRefDB)}/${unidadStr} (fijo)`
+                      : `Unidad base: ${unidadStr} (insumo sin compras registradas)`;
+                  })();
+
+                  return (
+                    <Chip
+                      label={label}
+                      size="small"
+                      sx={{
+                        height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
+                        bgcolor: elaborado
+                          ? '#f0fdf4'
+                          : (tienePrecio ? `${PRIMARY}18` : '#f1f5f9'),
+                        color: elaborado
+                          ? '#16a34a'
+                          : (tienePrecio ? PRIMARY : '#64748b'),
+                        border: 'none',
+                      }}
+                      title={titleStr}
+                    />
+                  );
+                })()}
                 {/* Botón ver compras (solo insumos no elaborados) */}
                 {!elaborado && (
                   <Tooltip title="Ver últimas compras">
@@ -1595,10 +1623,15 @@ export default function RecetaModal({
   saveRecetaUrl = null,
   onPriceConfigSave = null,
   allArticulos = [],
+  priceLists = [],
+  priceListsByList = {},
 }) {
   const [receta, setReceta] = useState(null);
   const [nombre, setNombre] = useState('');
   const [rendimiento, setRendimiento] = useState(1);
+  const [rendimientoUnidad, setRendimientoUnidad] = useState('porcion');
+  const [rendimientoPeso, setRendimientoPeso] = useState(null);
+  const [unidadPeso, setUnidadPeso] = useState(null);
   // Leer config global del contexto — se actualiza automáticamente sin fetch propio
   const appConfig = useConfig();
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
@@ -1608,6 +1641,7 @@ export default function RecetaModal({
     ? (appConfig.insumosCostoIdeal ?? 30)
     : (appConfig.articulosCostoIdeal ?? 30);
   const [items, setItems] = useState([]);
+  const bodyRef = useRef(null);
   const [newItemIndex, setNewItemIndex] = useState(null);
   const [insumos, setInsumos] = useState([]);
   const alertaSemanas = appConfig.comprasAlertaSemanas ?? 4;
@@ -1638,10 +1672,6 @@ export default function RecetaModal({
   const recetasElabRef = useRef(recetasElaborados);
 
   const [excluirOpen, setExcluirOpen] = useState(false);
-  const [excluirAnchor, setExcluirAnchor] = useState(null);
-  const [priceLists, setPriceLists] = useState([]);
-  const [exclusionesArt, setExclusionesArt] = useState(new Set()); // listNumbers donde está excluido
-  const [orgIdLocal, setOrgIdLocal] = useState(null);
 
   useEffect(() => {
     const prev = JSON.stringify(recetasElabRef.current);
@@ -1917,7 +1947,10 @@ export default function RecetaModal({
         setReceta(rec);
         if (rec) {
           setNombre(rec.nombre || artNombre);
-          setRendimiento(rec.porciones || rec.rendimiento || 1);
+          setRendimiento(Number(rec.porciones) || Number(rec.rendimiento) || 1);
+          setRendimientoUnidad(rec.rendimiento_unidad || 'porcion');
+          setRendimientoPeso(rec.rendimiento_peso != null ? Number(rec.rendimiento_peso) : null);
+          setUnidadPeso(rec.unidad_peso || null);
           setPctCostoIdeal(resolveObjetivo(rec.porcentaje_venta));
           setNotas(rec.notas || '');
           setNotasUpdatedAt(rec.notas_updated_at || rec.notasUpdatedAt || null);
@@ -1986,6 +2019,9 @@ export default function RecetaModal({
         } else {
           setNombre(artNombre);
           setRendimiento(1);
+          setRendimientoUnidad('porcion');
+          setRendimientoPeso(null);
+          setUnidadPeso(null);
           setPctCostoIdeal(resolveObjetivo(null));
           setNotas('');
           setNotasUpdatedAt(null);
@@ -2055,7 +2091,7 @@ export default function RecetaModal({
       const last = prev[prev.length - 1];
       if (last && !last.supplyId) {
         setNewItemIndex(prev.length - 1);
-        setOpenSearchIdx(prev.length - 1); // ← sincronizar para evitar race con el useEffect del remove
+        setOpenSearchIdx(prev.length - 1);
         return prev;
       }
       const next = [...prev, {
@@ -2066,10 +2102,20 @@ export default function RecetaModal({
         ultimaCompra: null, observaciones: '', updatedAt: null,
       }];
       setNewItemIndex(next.length - 1);
-      setOpenSearchIdx(next.length - 1); // ← sincronizar para evitar race con el useEffect del remove
+      setOpenSearchIdx(next.length - 1);
       return next;
     });
-  }, []);;
+
+    // Scroll al final para que el dropdown del search recién abierto sea visible
+    requestAnimationFrame(() => {
+      if (bodyRef.current) {
+        bodyRef.current.scrollTo({
+          top: bodyRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
+    });
+  }, []);
 
   /* ── Cálculos ── */
   const costoTotal = useMemo(() =>
@@ -2104,6 +2150,19 @@ export default function RecetaModal({
     }, 0),
     [items, localRecetasElaborados]);
 
+  // Label para el cuadro "Costo / unidad" según el rendimiento del lote
+  const labelPorUnidad = useMemo(() => {
+    const unidadStr = {
+      porcion: 'porción',
+      u: 'unidad',
+      lt: 'litro',
+      ml: 'ml',
+      kg: 'kilo',
+      gr: 'gr',
+    }[rendimientoUnidad] || 'porción';
+    return `Costo / ${unidadStr} (÷${Number(rendimiento)})`;
+  }, [rendimiento, rendimientoUnidad]);
+
   const costoXRendimiento = rendimiento > 0 ? costoTotal / rendimiento : 0;
   const precioSugerido = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
   const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
@@ -2133,8 +2192,11 @@ export default function RecetaModal({
 
     const payload = {
       nombre: nombre || artNombre,
-      porciones: Math.max(1, Number(rendimiento) || 1),
+      porciones: Math.max(0.001, Number(rendimiento) || 1),
       porcentajeVenta: pctCostoIdeal,
+      rendimientoUnidad,
+      rendimientoPeso,
+      unidadPeso,
       notas,
       notasUpdatedAt: notasUpdatedAt || null,
       foto,
@@ -2240,7 +2302,10 @@ export default function RecetaModal({
           'X-Business-Id': String(businessId),
         },
       });
-      if (!res.ok) {
+      // Si tira 404, la receta no existe a nivel article_id (lo más común: este
+      // artículo es gemelo y la receta real vive en otro miembro del grupo).
+      // Seguimos con la auto-desvinculación: el efecto para el usuario es el mismo.
+      if (!res.ok && res.status !== 404) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d?.message || `Error ${res.status}`);
       }
@@ -2290,86 +2355,24 @@ export default function RecetaModal({
     onClose();
   }, [saving, deleting, onClose]);
 
-  useEffect(() => {
-    if (!open || !articulo?.id || !businessId) return;
-    const token = localStorage.getItem('token') || '';
+  const articuloIdNum = Number(articulo?.id);
+  const hayListasNoFavoritas = useMemo(
+    () => !esElaborado && (priceLists || []).some(l => !l.is_favorite),
+    [priceLists, esElaborado]
+  );
 
-    // 1. Obtener orgId del negocio
-    fetch(`${BASE}/businesses/${businessId}`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) }
-    })
-      .then(r => r.json())
-      .then(biz => {
-        const oid = biz?.organization_id;
-        if (!oid) return;
-        setOrgIdLocal(oid);
-
-        // 2. Cargar config de listas
-        return fetch(`${BASE}/organizations/${oid}/price-lists/config`, {
-          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) }
-        })
-          .then(r => r.json())
-          .then(d => {
-            setPriceLists(d?.config || []);
-
-            // 3. Cargar exclusiones de este artículo
-            return fetch(`${BASE}/organizations/${oid}/price-lists/discount-exceptions`, {
-              headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) }
-            })
-              .then(r => r.json())
-              .then(exc => {
-                const excSet = new Set();
-                (exc?.exceptions || []).forEach(e => {
-                  if (e.scope === 'articulo' && String(e.scope_id) === String(articulo.id)) {
-                    excSet.add(e.list_number);
-                  }
-                });
-                setExclusionesArt(excSet);
-              });
-          });
-      })
-      .catch(() => { });
-  }, [open, articulo?.id, businessId]);
-
-  // Toggle exclusión de una lista
-  const toggleExclusionLista = useCallback(async (listNumber) => {
-    if (!orgIdLocal || !articulo?.id) return;
-    const token = localStorage.getItem('token') || '';
-    const isExcluido = exclusionesArt.has(listNumber);
-
-    try {
-      const url = `${BASE}/organizations/${orgIdLocal}/price-lists/discount-exceptions`;
-      await fetch(url, {
-        method: isExcluido ? 'DELETE' : 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Business-Id': String(businessId),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ scope: 'articulo', scopeId: String(articulo.id), listNumber }),
-      });
-
-      setExclusionesArt(prev => {
-        const next = new Set(prev);
-        isExcluido ? next.delete(listNumber) : next.add(listNumber);
-        return next;
-      });
-    } catch (e) { console.error('[toggleExclusionLista]', e.message); }
-  }, [orgIdLocal, articulo?.id, exclusionesArt, businessId]);
-
-  // Toggle TODAS las listas no-principales
-  const toggleExclusionTodas = useCallback(async () => {
-    const noPrincipales = priceLists.filter(l => !l.isPrincipal);
-    const todasExcluidas = noPrincipales.every(l => exclusionesArt.has(l.listNumber));
-
-    for (const l of noPrincipales) {
-      if (todasExcluidas) {
-        if (exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      } else {
-        if (!exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      }
+  const exclusionesCount = useMemo(() => {
+    if (!articuloIdNum || !priceLists?.length) return 0;
+    const baseEntry = priceListsByList?._base?.byArticle?.[String(articuloIdNum)];
+    if (baseEntry?.excluido) return priceLists.filter(l => !l.is_favorite).length;
+    let n = 0;
+    for (const l of priceLists) {
+      if (l.is_favorite) continue;
+      const entry = priceListsByList?.[l.id]?.byArticle?.[String(articuloIdNum)];
+      if (entry?.excluido) n++;
     }
-  }, [priceLists, exclusionesArt, toggleExclusionLista]);
+    return n;
+  }, [articuloIdNum, priceLists, priceListsByList]);
 
   return (
     <>
@@ -2405,19 +2408,19 @@ export default function RecetaModal({
             </Stack>
             <Stack direction="row" alignItems="center" spacing={0.5}>
               {/* Botón exclusión de descuentos */}
-              {priceLists.length > 0 && (
-                <Tooltip title="Excluir de listas con descuento/recargo">
+              {hayListasNoFavoritas && (
+                <Tooltip title="Excluir de listas de precios">
                   <IconButton
                     size="small"
-                    onClick={(e) => setExcluirAnchor(e.currentTarget)}
+                    onClick={() => setExcluirOpen(true)}
                     sx={{
                       color: 'inherit',
-                      opacity: exclusionesArt.size > 0 ? 1 : 0.7,
+                      opacity: exclusionesCount > 0 ? 1 : 0.7,
                       '&:hover': { opacity: 1 }
                     }}
                   >
                     <LocalOfferIcon fontSize="small" />
-                    {exclusionesArt.size > 0 && (
+                    {exclusionesCount > 0 && (
                       <Box sx={{
                         position: 'absolute', top: 2, right: 2, width: 8, height: 8,
                         borderRadius: '50%', bgcolor: '#fbbf24', border: '1px solid #fff',
@@ -2447,7 +2450,7 @@ export default function RecetaModal({
           </Box>
 
           {/* ── BODY ── */}
-          <Box sx={{ flex: 1, overflowY: 'auto', p: 2.5 }}>
+          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5 }}>
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
@@ -2457,8 +2460,9 @@ export default function RecetaModal({
                 {/* ── Datos generales ── */}
                 <Box sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '2fr 80px 100px' },
+                  gridTemplateColumns: { xs: '1fr', sm: '1.5fr auto 96px' },
                   gap: 1.5, mb: 2,
+                  alignItems: 'stretch',
                 }}>
                   <TextField
                     label="Nombre de la receta"
@@ -2467,15 +2471,91 @@ export default function RecetaModal({
                     size="small"
                     placeholder={artNombre}
                   />
-                  <TextField
-                    label="Rendimiento"
-                    type="number"
-                    value={rendimiento}
-                    onChange={e => setRendimiento(Math.max(1, Number(e.target.value) || 1))}
-                    size="small"
-                    inputProps={{ min: 1 }}
-                    helperText="porciones"
-                  />
+
+                  {/* ── Bloque rendimiento del lote ── */}
+                  <Box sx={{
+                    border: '1px solid', borderColor: `${PRIMARY}40`,
+                    borderRadius: 1.5, p: 1.25, pt: 0.75,
+                    bgcolor: `${PRIMARY}08`,
+                    minWidth: 360,
+                    display: 'flex', flexDirection: 'column', gap: 0.5,
+                  }}>
+                    <Typography variant="caption" sx={{
+                      color: PRIMARY, fontWeight: 700, fontSize: '0.65rem',
+                      textTransform: 'uppercase', letterSpacing: '0.04em',
+                    }}>
+                      Rendimiento del lote
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        label="Cantidad"
+                        type="number"
+                        value={rendimiento}
+                        onChange={e => {
+                          const v = Number(e.target.value);
+                          setRendimiento(Number.isFinite(v) && v > 0 ? v : 1);
+                        }}
+                        size="small"
+                        inputProps={{ min: 0.001, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
+                        sx={{ width: 72, flexShrink: 0 }}
+                      />
+
+                      <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
+                        <Select
+                          value={rendimientoUnidad}
+                          onChange={e => {
+                            const nueva = e.target.value;
+                            setRendimientoUnidad(nueva);
+                            // Si pasamos a una unidad sin peso, limpiar peso equiv.
+                            if (!['lt', 'ml', 'u'].includes(nueva)) {
+                              setRendimientoPeso(null);
+                              setUnidadPeso(null);
+                            } else if (!unidadPeso) {
+                              setUnidadPeso('gr');
+                            }
+                          }}
+                          sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
+                        >
+                          <MenuItem value="porcion">Porción</MenuItem>
+                          <MenuItem value="u">Unidad</MenuItem>
+                          <MenuItem value="lt">Litro</MenuItem>
+                          <MenuItem value="ml">ml</MenuItem>
+                          <MenuItem value="kg">Kilo</MenuItem>
+                          <MenuItem value="gr">gr</MenuItem>
+                        </Select>
+                      </FormControl>
+
+                      {/* Peso equivalente — solo para lt / ml / u */}
+                      {['lt', 'ml', 'u'].includes(rendimientoUnidad) && (
+                        <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
+                          <TextField
+                            label="Peso equiv."
+                            type="number"
+                            value={rendimientoPeso ?? ''}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setRendimientoPeso(v === '' ? null : Number(v));
+                            }}
+                            placeholder="—"
+                            size="small"
+                            inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
+                            sx={{ flex: 1, minWidth: 0 }}
+                          />
+                          <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
+                            <Select
+                              value={unidadPeso || 'gr'}
+                              onChange={e => setUnidadPeso(e.target.value)}
+                              sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { py: '6px' } }}
+                            >
+                              <MenuItem value="gr">gr</MenuItem>
+                              <MenuItem value="kg">kg</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+
                   <TextField
                     label="Costo Objetivo"
                     type="number"
@@ -2587,8 +2667,11 @@ export default function RecetaModal({
                                       onClick={async () => {
                                         if (yaGemelo || tieneReceta) return;
                                         await agregarGemelo(art.id);
-                                        setGemelosSearch('');
-                                        setGemelosResults([]);
+                                        // Mantener el término escrito y refrescar resultados
+                                        // (el recién agregado pasa a verse como "✓" gracias a yaGemelo)
+                                        if (gemelosSearch.trim()) {
+                                          buscarGemelos(gemelosSearch);
+                                        }
                                         gemelosSearchRef.current?.focus();
                                       }}
                                       sx={{
@@ -2862,7 +2945,9 @@ export default function RecetaModal({
 
                   <Box>
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      {Number(rendimiento) > 1 ? `Costo x porción (÷${Number(rendimiento)})` : 'Costo total'}
+                      {Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion'
+                        ? labelPorUnidad
+                        : 'Costo total'}
                     </Typography>
                     <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
                   </Box>
@@ -2999,44 +3084,17 @@ export default function RecetaModal({
         </DialogActions>
       </Dialog>
 
-      <Menu
-        anchorEl={excluirAnchor}
-        open={Boolean(excluirAnchor)}
-        onClose={() => setExcluirAnchor(null)}
-        PaperProps={{ sx: { minWidth: 240 } }}
-      >
-        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="caption" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' }}>
-            Excluir de listas
-          </Typography>
-        </Box>
-
-        <MenuItem onClick={toggleExclusionTodas}>
-          <Checkbox
-            checked={priceLists.filter(l => !l.isPrincipal).every(l => exclusionesArt.has(l.listNumber))}
-            indeterminate={
-              exclusionesArt.size > 0 &&
-              !priceLists.filter(l => !l.isPrincipal).every(l => exclusionesArt.has(l.listNumber))
-            }
-            size="small"
-          />
-          <Typography variant="body2" fontWeight={700}>Todas las listas</Typography>
-        </MenuItem>
-
-        <Divider />
-
-        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).map(l => (
-          <MenuItem key={l.listNumber} onClick={() => toggleExclusionLista(l.listNumber)}>
-            <Checkbox checked={exclusionesArt.has(l.listNumber)} size="small" />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2">{l.alias}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {l.tipo === 'descuento' ? '−' : '+'}{l.discountPct}%
-              </Typography>
-            </Box>
-          </MenuItem>
-        ))}
-      </Menu>
+      <ExcluirListasModal
+        open={excluirOpen}
+        onClose={() => setExcluirOpen(false)}
+        bizId={businessId}
+        lists={priceLists}
+        byList={priceListsByList}
+        scope="articulo"
+        scopeIds={articuloIdNum ? [articuloIdNum] : []}
+        scopeLabel={artNombre}
+        notify={(msg) => { /* opcional */ }}
+      />
 
       {
         elaboradosStack.map((elaborado, stackIdx) => (
@@ -3068,6 +3126,9 @@ export default function RecetaModal({
                 : `${BASE}/businesses/${businessId}/insumos/${elaborado.id}/receta`
             }
             recetasElaborados={localRecetasElaborados}
+            recetasElaborados={localRecetasElaborados}
+            priceLists={priceLists}
+            priceListsByList={priceListsByList}
             onSaved={(saved) => {
               popElaborado();
               // Refrescar gemelos del modal base si era el último

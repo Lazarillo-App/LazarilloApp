@@ -16,7 +16,7 @@ import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
-import { Snackbar, Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem } from '@mui/material';
+import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem } from '@mui/material';
 import { emitUiAction } from '../servicios/uiEvents';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
@@ -43,6 +43,9 @@ import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import SucursalSelector from '@/componentes/SucursalSelector';
+import ArticleListSelector from '../componentes/ArticleListSelector';
+import PriceListConfigModal from '../componentes/PriceListConfigModal';
+import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -175,6 +178,18 @@ export default function ArticulosMain(props) {
     notify: showMiss,
   });
 
+  const [priceListsConfigOpen, setPriceListsConfigOpen] = useState(false);
+
+  const {
+    lists: priceLists,
+    byList: priceListsByList,
+    currentList: currentPriceList,
+    currentListId: currentPriceListId,
+    setCurrentList: setCurrentPriceList,
+    isFavoriteActive: isPriceListFavorite,
+    calcPrecio: calcPrecioPorLista,
+  } = useArticleLists(activeBizId);
+
   const { activeBranchId, activeBranch, activeBranchFilter, branches: allBranches, rawBranches } = useBranch() || {};
 
   // Inicializar rango con valores reales desde el inicio
@@ -231,48 +246,12 @@ export default function ArticulosMain(props) {
   // Ventas por sucursal — solo cuando hay 2+ sucursales
   const [ventasMapByBranch, setVentasMapByBranch] = React.useState({});
   useEffect(() => {
-
-    // Solo calcular cuando está en modo "Todas" — rawBranches son las sucursales reales
-    const branches = rawBranches || [];
-    if (branches.length === 0 || !activeBizId || !periodo.from || !periodo.to) {
-      setVentasMapByBranch({});
-      return;
-    }
-    console.log('[DEBUG] ventasMapByBranch fetch - branches:', branches.map(b => b.id));
-    let cancelled = false;
-    const token = localStorage.getItem('token') || '';
-    const MAXI_ENABLED = import.meta.env.VITE_MAXI_ENABLED === 'true';
-    // Solo fetchear sucursales reales para columnas paralelas
-    // La columna "Ventas $" ya muestra el total de todas
-    const allToFetch = [...branches];
-    Promise.all(
-      allToFetch.map(async (branch) => {
-        const branchParam = branch.isMain ? '' : `&branch_id=${branch.id}`;
-        const url = MAXI_ENABLED
-          ? `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/items?from=${periodo.from}&to=${periodo.to}${branchParam}`
-          : `https://lazarilloapp-backend.onrender.com/api/businesses/${activeBizId}/sales/summary?from=${periodo.from}&to=${periodo.to}&source=csv${branchParam}`;
-        try {
-          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) } });
-          const data = await res.json();
-          const rows = Array.isArray(data) ? data : (data?.items || []);
-          const map = new Map();
-          for (const r of rows) {
-            const id = Number(r.article_id ?? r.articuloId ?? r.id);
-            if (!Number.isFinite(id) || id <= 0) continue;
-            map.set(id, { qty: Number(r.total_qty ?? r.qty ?? 0), amount: Number(r.total_amount ?? r.amount ?? 0) });
-            map.set(String(id), { qty: Number(r.total_qty ?? r.qty ?? 0), amount: Number(r.total_amount ?? r.amount ?? 0) });
-          }
-          return { branchId: branch.id, map };
-        } catch { return { branchId: branch.id, map: new Map() }; }
-      })
-    ).then(results => {
-      if (cancelled) return;
-      const byBranch = {};
-      results.forEach(({ branchId, map }) => { byBranch[branchId] = map; });
-      setVentasMapByBranch(byBranch);
-    });
-    return () => { cancelled = true; };
+    // Columnas paralelas por sucursal deshabilitadas — la columna "Ventas $" ya
+    // muestra el total sumado en modo "todas". Si más adelante se reactiva,
+    // recuperar el fetch paralelo del historial de git.
+    setVentasMapByBranch({});
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
+
   const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
 
   usePersistUiActions(activeBizId);
@@ -289,10 +268,10 @@ export default function ArticulosMain(props) {
     to: periodo.to,
     enabled: !!activeBizId && !!periodo.from && !!periodo.to,
     syncVersion,
-    // 'main' = sin branch_id, null = todas, number = sucursal específica
+    // 'main' = solo principal (sin branch_id), null = todas (suma global), number = sucursal específica
     branchId: activeBranchFilter?.mode === 'main' ? 'main'
       : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-        : 'main',   // modo 'all' → columna base = solo principal
+        : null,   // modo 'all' → suma total de todas las sucursales
   });
 
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
@@ -469,12 +448,11 @@ export default function ArticulosMain(props) {
   }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
 
   // ── Fetch recetas-costos y article-price-config al cambiar de negocio ──
-  // Las recetas se guardan siempre en el negocio principal (rootBusiness)
+  // Cada negocio (principal o sub) tiene sus propias recetas y price_config.
   useEffect(() => {
     if (!activeBizId) return;
     let alive = true;
-    // Recetas viven en el principal; price config en el negocio activo
-    const recetasBizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
+    const recetasBizId = Number(activeBizId);
     const configBizId = Number(activeBizId);
 
     Promise.all([
@@ -528,13 +506,13 @@ export default function ArticulosMain(props) {
     // Refetch completo de costos para capturar los artículos vinculados
     // que el backend acaba de actualizar via propagateRecipe
     try {
-      const bizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
+      const bizId = Number(activeBizId);
       const res = await RecetasAPI.getCostos(bizId);
       if (res?.costos) setRecetasCostos(res.costos);
     } catch (e) {
       console.warn('[handleRecetaSaved] refetch costos falló:', e.message);
     }
-  }, [activeBizId, rootBusiness]);
+  }, [activeBizId]);
 
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
@@ -635,7 +613,7 @@ export default function ArticulosMain(props) {
     if (!activeBizId) return;
     const handler = async () => {
       try {
-        const bizId = rootBusiness?.id ? Number(rootBusiness.id) : Number(activeBizId);
+        const bizId = Number(activeBizId);
         const res = await RecetasAPI.getCostos(bizId);
         if (res?.costos) setRecetasCostos(res.costos);
       } catch (e) {
@@ -644,7 +622,7 @@ export default function ArticulosMain(props) {
     };
     window.addEventListener('recetas:bulk-deleted', handler);
     return () => window.removeEventListener('recetas:bulk-deleted', handler);
-  }, [activeBizId, rootBusiness]);
+  }, [activeBizId]);
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -2182,18 +2160,28 @@ export default function ArticulosMain(props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
-        <h2 style={{ margin: 0 }}>
-          Gestión de Artículos
-          {activeBranch && (
-            <span style={{
-              marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
-              color: activeBranch.color || 'var(--color-primary)',
-              verticalAlign: 'middle',
-            }}>
-              — {activeBranch.name}
-            </span>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          <h2 style={{ margin: 0 }}>
+            Gestión de Artículos
+            {activeBranch && (
+              <span style={{
+                marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
+                color: activeBranch.color || 'var(--color-primary)',
+                verticalAlign: 'middle',
+              }}>
+                — {activeBranch.name}
+              </span>
+            )}
+          </h2>
+          {priceLists.length > 0 && (
+            <ArticleListSelector
+              lists={priceLists}
+              currentListId={currentPriceListId}
+              onChange={setCurrentPriceList}
+              onOpenConfig={() => setPriceListsConfigOpen(true)}
+            />
           )}
-        </h2>
+        </Box>
 
         {isSyncing && (
           <Alert
@@ -2251,7 +2239,7 @@ export default function ArticulosMain(props) {
             activeListItems={activeListItems}
             alertaVentas={alertaVentas}
           />
-          {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
+          <SucursalSelector variant="inline" />
           <SelectionToolbar
             selectionMode={selectionMode}
             selectedIds={selectedIds}
@@ -2314,11 +2302,7 @@ export default function ArticulosMain(props) {
               </MenuItem>
               <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('articulos'); setUploadArticulosOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>📦</span> Cargar lote (CSV)
-              </MenuItem>
-              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('rubros'); setUploadArticulosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>🗂️</span> Rubros / subrubros
+                <span style={{ fontSize: 16 }}>📦</span> Cargar lote de Artículos
               </MenuItem>
             </Menu>
           </div>
@@ -2391,8 +2375,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
           <TablaArticulos
-            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
-            ventasMapByBranch={activeBranchFilter?.mode === 'all' ? ventasMapByBranch : {}}
+            branches={[]}
+            ventasMapByBranch={{}}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
             orgAssignedIds={orgAssignedIds}
@@ -2450,6 +2434,12 @@ export default function ArticulosMain(props) {
               return result;
             }}
             onRedondeoChange={handleRedondeoChange}
+            priceLists={priceLists}
+            priceListsByList={priceListsByList}
+            currentPriceListId={currentPriceListId}
+            isPriceListFavorite={isPriceListFavorite}
+            calcPrecioPorLista={calcPrecioPorLista}
+            currentPriceList={currentPriceList}
           />
         </div>
       </div>
@@ -2545,6 +2535,18 @@ export default function ArticulosMain(props) {
         onClose={handleSubBizClose}
         onCreated={handleSubBizCreated}
         onNeedOrgName={handleNeedOrgName}
+      />
+
+      {/* Modal de configuración de listas de precios */}
+      <PriceListConfigModal
+        open={priceListsConfigOpen}
+        onClose={() => {
+          setPriceListsConfigOpen(false);
+          try { window.dispatchEvent(new Event('article-lists:updated')); } catch { /* */ }
+        }}
+        bizId={activeBizId}
+        byList={priceListsByList}
+        articleNameById={nameById}
       />
 
       {/* Modal para nombrar la organización — portal para escapar cualquier overflow/stacking */}

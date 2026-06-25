@@ -368,8 +368,7 @@ async function _syncAll(bizId, opts = {}) {
   try { sessionStorage.setItem(`lazarillo:syncDone:${id}`, Date.now().toString()); } catch {}
 
   if (allOk) {
-    console.log('[syncAll] ✅ Sincronización completa exitosa');
-    onProgress?.('✅ Sincronización completa exitosa', 'success', 'done');
+    onProgress?.();
   } else {
     console.warn(`[syncAll] ⚠️ Sincronización con ${errors.length} error(es):`, errors);
     onProgress?.(`⚠️ Sincronización con ${errors.length} error(es)`, 'warning', 'done');

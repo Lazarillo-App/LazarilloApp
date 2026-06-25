@@ -20,9 +20,7 @@ import { useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import Checkbox from '@mui/material/Checkbox';
-import { BASE } from "@/servicios/apiBase";
-import { getOrgPriceListConfig, getDiscountExceptions, addDiscountException, removeDiscountException } from '@/servicios/apiPriceLists';
+import ExcluirListasModal from './ExcluirListasModal';
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -235,6 +233,8 @@ function SubrubroAccionesMenu({
   businessId,
   rootBizId: rootBizIdProp = null,
   allowedIds,
+  priceLists = [],
+  priceListsByList = {},
 }) {
   const effectiveBusinessId = businessId ?? localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ?? null;
@@ -270,10 +270,7 @@ function SubrubroAccionesMenu({
   const handleClose = useCallback(() => setAnchorEl(null), []);
   const loadedRef = useRef(false);
 
-  const [excluirAnchor, setExcluirAnchor] = useState(null);
-  const [priceLists, setPriceLists] = useState([]);
-  const [exclusionesArt, setExclusionesArt] = useState(new Set());
-  const [orgIdLocal, setOrgIdLocal] = useState(null);
+const [excluirOpen, setExcluirOpen] = useState(false);
 
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
@@ -411,41 +408,6 @@ function SubrubroAccionesMenu({
       closeMover();
     }
   }
-
-  useEffect(() => {
-    if (!open) return;
-    const orgId = organization?.id;
-    if (!orgId) return;
-    setOrgIdLocal(orgId);
-
-    const ids = allArticleIdsForSub;
-    if (!ids.length) return;
-
-    Promise.all([
-      getOrgPriceListConfig(orgId).catch(() => []),
-      getDiscountExceptions(orgId).catch(() => []),
-    ]).then(([lists, exc]) => {
-      setPriceLists(Array.isArray(lists) ? lists : []);
-
-      // Por cada lista, contar cuántos artículos del subrubro están excluidos
-      // Considerar "excluida" solo si TODOS los artículos del subrubro están excluidos
-      const idsSet = new Set(ids.map(String));
-      const excByList = {}; // { listNumber: Set<articleId excluido> }
-      (exc || []).forEach(e => {
-        if (e.scope === 'articulo' && idsSet.has(String(e.scope_id))) {
-          if (!excByList[e.list_number]) excByList[e.list_number] = new Set();
-          excByList[e.list_number].add(String(e.scope_id));
-        }
-      });
-
-      const excSet = new Set();
-      Object.entries(excByList).forEach(([listNum, artSet]) => {
-        // Si TODOS los artículos del subrubro están excluidos en esta lista, marcar como excluida
-        if (artSet.size === ids.length) excSet.add(Number(listNum));
-      });
-      setExclusionesArt(excSet);
-    });
-  }, [open, allArticleIdsForSub, organization?.id]);
 
   // Filtrar negocios: solo los de la misma org, o solo el activo si no hay org
   const negociosFiltrados = useMemo(() => {
@@ -654,48 +616,28 @@ function SubrubroAccionesMenu({
     return () => { alive = false; };
   }, [openCrearAgr, haveExternalTree, loading, effectiveBusinessId]);
 
-  const toggleExclusionLista = useCallback(async (listNumber) => {
-    if (!orgIdLocal) return;
-    const ids = allArticleIdsForSub;
-    if (!ids.length) return;
+  const hayListasNoFavoritas = useMemo(
+    () => (priceLists || []).some(l => !l.is_favorite),
+    [priceLists]
+  );
 
-    const isExcluido = exclusionesArt.has(listNumber);
-    try {
-      // Aplicar a TODOS los artículos del subrubro
-      for (const id of ids) {
-        if (isExcluido) {
-          await removeDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => { });
-        } else {
-          await addDiscountException(orgIdLocal, 'articulo', String(id), listNumber).catch(() => { });
-        }
-      }
-      setExclusionesArt(prev => {
-        const next = new Set(prev);
-        isExcluido ? next.delete(listNumber) : next.add(listNumber);
-        return next;
+  // Cuenta listas no-favoritas donde TODOS los artículos del bloque están excluidos
+  // (por override por-lista o por _base global).
+  const exclusionesCount = useMemo(() => {
+    if (!allArticleIdsForSub.length || !priceLists?.length) return 0;
+    const noFavoritas = priceLists.filter(l => !l.is_favorite);
+    let n = 0;
+    for (const l of noFavoritas) {
+      const todos = allArticleIdsForSub.every(id => {
+        const cfg = priceListsByList?.[l.id]?.byArticle?.[String(id)];
+        if (cfg?.excluido === true) return true;
+        if (cfg?.excluido === false) return false; // override pisa _base
+        return priceListsByList?._base?.byArticle?.[String(id)]?.excluido === true;
       });
-      notify?.(
-        isExcluido
-          ? `${ids.length} artículo(s) restaurados en lista`
-          : `${ids.length} artículo(s) excluidos`,
-        'success'
-      );
-    } catch (e) {
-      notify?.('No se pudo cambiar la exclusión', 'error');
+      if (todos) n++;
     }
-  }, [orgIdLocal, allArticleIdsForSub, exclusionesArt, notify]);
-
-  const toggleExclusionTodas = useCallback(async () => {
-    const noPrincipales = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
-    const todasExcluidas = noPrincipales.every(l => exclusionesArt.has(l.listNumber));
-    for (const l of noPrincipales) {
-      if (todasExcluidas) {
-        if (exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      } else {
-        if (!exclusionesArt.has(l.listNumber)) await toggleExclusionLista(l.listNumber);
-      }
-    }
-  }, [priceLists, exclusionesArt, toggleExclusionLista]);
+    return n;
+  }, [allArticleIdsForSub, priceLists, priceListsByList]);
 
   return (
     <>
@@ -725,60 +667,19 @@ function SubrubroAccionesMenu({
           <ListItemIcon><GroupAddIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{`Crear agrupación a partir de "${subDisplayName}"`}</ListItemText>
         </MenuItem>
-        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).length > 0 && (
-          <MenuItem onClick={(e) => {
-            e.stopPropagation();
-            setExcluirAnchor(e.currentTarget);
-          }}>
+        {hayListasNoFavoritas && (
+          <MenuItem onClick={() => { handleClose(); setTimeout(() => setExcluirOpen(true), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
             <ListItemText>
-              Excluir de descuentos
-              {exclusionesArt.size > 0 && (
+              Excluir de listas
+              {exclusionesCount > 0 && (
                 <Typography component="span" variant="caption" sx={{ ml: 1, color: '#f59e0b', fontWeight: 700 }}>
-                  ({exclusionesArt.size})
+                  ({exclusionesCount})
                 </Typography>
               )}
             </ListItemText>
           </MenuItem>
         )}
-      </Menu>
-      <Menu
-        anchorEl={excluirAnchor}
-        open={Boolean(excluirAnchor)}
-        onClose={() => setExcluirAnchor(null)}
-        PaperProps={{ sx: { minWidth: 240 } }}
-      >
-        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="caption" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' }}>
-            Excluir de listas
-          </Typography>
-        </Box>
-
-        <MenuItem onClick={toggleExclusionTodas}>
-          <Checkbox
-            checked={priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))}
-            indeterminate={
-              exclusionesArt.size > 0 &&
-              !priceLists.filter(l => !l.isPrincipal && l.discountPct != null).every(l => exclusionesArt.has(l.listNumber))
-            }
-            size="small"
-          />
-          <Typography variant="body2" fontWeight={700}>Todas las listas</Typography>
-        </MenuItem>
-
-        <Divider />
-
-        {priceLists.filter(l => !l.isPrincipal && l.discountPct != null).map(l => (
-          <MenuItem key={l.listNumber} onClick={() => toggleExclusionLista(l.listNumber)}>
-            <Checkbox checked={exclusionesArt.has(l.listNumber)} size="small" />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2">{l.alias || `Lista ${l.listNumber}`}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {l.tipo === 'descuento' ? '−' : '+'}{l.discountPct}%
-              </Typography>
-            </Box>
-          </MenuItem>
-        ))}
       </Menu>
 
       {/* ── Diálogo de reactivación en bloque ── */}
@@ -869,6 +770,19 @@ function SubrubroAccionesMenu({
         groupName={subDisplayName}
         allowedIds={allowedIds || null}
       />
+
+      <ExcluirListasModal
+        open={excluirOpen}
+        onClose={() => setExcluirOpen(false)}
+        bizId={effectiveBusinessId}
+        lists={priceLists}
+        byList={priceListsByList}
+        scope="articulo"
+        scopeIds={allArticleIdsForSub}
+        scopeLabel={subDisplayName}
+        notify={notify}
+      />
+      
     </>
   );
 }

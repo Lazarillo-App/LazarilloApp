@@ -176,7 +176,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 /* ─── Alta de Artículo ─── */
 export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
-  const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '' };
+  const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
   const [form, setForm] = useState(EMPTY_FORM);
   const [rubroNuevo, setRubroNuevo] = useState('');
   const [subrubroNuevo, setSubrubroNuevo] = useState('');
@@ -185,7 +185,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // 🆕 Padrino (artículo de referencia para autocompletar)
+  // Padrino
   const [usarPadrino, setUsarPadrino] = useState(false);
   const [padrinoSelected, setPadrinoSelected] = useState(null);
   const [padrinoQuery, setPadrinoQuery] = useState('');
@@ -200,6 +200,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
   const esRubroNuevo = form.rubro === '__nuevo__';
   const esSubrubroNuevo = form.subrubro === '__nuevo__';
 
+  // Cargar rubros y agrupaciones al abrir
   useEffect(() => {
     if (!open || !businessId) return;
     const token = localStorage.getItem('token') || '';
@@ -213,13 +214,21 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
     });
   }, [open, businessId]);
 
+  // Reset TOTAL al abrir/cerrar — incluye estado del padrino
   useEffect(() => {
     if (!open) {
-      setForm(EMPTY_FORM); setRubroNuevo(''); setSubrubroNuevo(''); setError('');
+      setForm(EMPTY_FORM);
+      setRubroNuevo('');
+      setSubrubroNuevo('');
+      setError('');
+      setUsarPadrino(false);
+      setPadrinoSelected(null);
+      setPadrinoQuery('');
+      setPadrinoCandidates([]);
     }
   }, [open]);
 
-  // 🆕 Buscar candidatos de padrino con debounce
+  // Buscar candidatos de padrino con debounce
   useEffect(() => {
     if (!usarPadrino || !businessId) {
       setPadrinoCandidates([]);
@@ -250,7 +259,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
     return () => { cancel = true; clearTimeout(timeoutId); };
   }, [usarPadrino, padrinoQuery, businessId]);
 
-  // 🆕 Autocompletar formulario al seleccionar padrino
+  // Autocompletar formulario al seleccionar padrino
   const onPadrinoSelected = (padrino) => {
     setPadrinoSelected(padrino);
     if (!padrino) return;
@@ -275,11 +284,21 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
       });
     });
 
+    // Si el padrino tiene agrupación que no está en la lista local, la sumamos
+    if (padrino.agrupacion_id && padrino.agrupacion_nombre) {
+      setAgrupaciones(prev => {
+        const exists = prev.some(a => Number(a.id) === Number(padrino.agrupacion_id));
+        if (exists) return prev;
+        return [...prev, { id: padrino.agrupacion_id, nombre: padrino.agrupacion_nombre }];
+      });
+    }
+
     setForm(f => ({
       ...f,
       rubro: rubroPadrino || f.rubro,
       subrubro: subrubroPadrino || '',
       precio: String(padrino.precio || ''),
+      agrupacionId: padrino.agrupacion_id ?? '',
     }));
   };
 
@@ -305,6 +324,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
           subrubro: subrubroEfectivo || null,
           precio: form.precio ? Number(form.precio) : 0,
           agrupacionId: form.agrupacionId ? Number(form.agrupacionId) : null,
+          skuExterno: form.skuExterno?.trim() || null,
         }),
       });
       const data = await res.json();
@@ -316,6 +336,8 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
     } finally { setSaving(false); }
   };
 
+  const sinSku = !form.skuExterno?.trim();
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Nuevo artículo</DialogTitle>
@@ -323,7 +345,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
         <Stack spacing={2} pt={0.5}>
           {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
 
-          {/* 🆕 Toggle padrino + autocomplete */}
+          {/* Toggle padrino + autocomplete */}
           <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: -1 }}>
               <Checkbox size="small" checked={usarPadrino}
@@ -358,6 +380,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
                       <Typography variant="caption" color="text.secondary">
                         {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
                         {' · '}${Number(opt.precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {opt.agrupacion_nombre ? ` · 📁 ${opt.agrupacion_nombre}` : ''}
                         {opt.sku ? ` · ${opt.sku}` : ''}
                       </Typography>
                     </Box>
@@ -384,7 +407,22 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
 
-          {/* ── Rubro ── */}
+          {/* SKU externo */}
+          <TextField
+            label="SKU / Código de Maxi"
+            size="small" fullWidth
+            value={form.skuExterno}
+            onChange={e => setForm(f => ({ ...f, skuExterno: e.target.value }))}
+            placeholder="Ej: 3092"
+            helperText={sinSku
+              ? '⚠ Sin SKU el artículo no se sincronizará con Maxi'
+              : 'Se usará para el match con MaxiRest al sincronizar'}
+            FormHelperTextProps={{
+              sx: { color: sinSku ? '#d97706' : 'text.secondary', fontWeight: sinSku ? 600 : 400 },
+            }}
+          />
+
+          {/* Rubro */}
           <Stack direction="row" spacing={1.5}>
             <Stack sx={{ flex: 1 }} spacing={0.75}>
               <FormControl size="small" fullWidth>
@@ -415,7 +453,6 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
               )}
             </Stack>
 
-            {/* ── Subrubro ── */}
             <Stack sx={{ flex: 1 }} spacing={0.75}>
               <FormControl size="small" fullWidth>
                 <InputLabel>Subrubro</InputLabel>
@@ -457,10 +494,6 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
               </Select>
             </FormControl>
           </Stack>
-
-          <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
-            Se generará un SKU provisorio automáticamente. Podés agregar el código externo (Maxi) después para vincularlo.
-          </Alert>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 2.5, pb: 2 }}>

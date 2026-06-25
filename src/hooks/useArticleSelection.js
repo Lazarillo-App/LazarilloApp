@@ -137,7 +137,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
           LinksAPI.getAll(bizId).catch(() => ({ groups: [] })),
         ]);
         if (!alive) return;
-        setLists(listsRes?.lists || []);
+        setLists((listsRes?.lists || []).filter(l => !l.is_favorite));
         setLinkGroups(linksRes?.groups || []);
       } finally {
         if (alive) setLoadingLists(false);
@@ -244,9 +244,15 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   }, [bizId, selectedIds, lists, notify, clearSelection, toggleMode]);
 
   const deleteList = useCallback(async (listId) => {
-    if (!bizId) return;
-    try {
-      await ListsAPI.delete(bizId, listId);
+  if (!bizId) return;
+  // Guard extra: no intentar borrar favoritas
+  const list = lists.find(l => l.id === listId);
+  if (list?.is_favorite) {
+    notify?.('Esta lista no se puede eliminar');
+    return;
+  }
+  try {
+    await ListsAPI.delete(bizId, listId);
       setLists(prev => prev.filter(l => l.id !== listId));
       if (activeListId === listId) setActiveListId(null);
       notify?.('Lista eliminada');

@@ -21,16 +21,9 @@ import { useBranch } from '@/hooks/useBranch';
 import { syncArticulos, syncInsumos, isMaxiConfigured } from '@/servicios/syncService';
 import { checkNewArticlesAndSuggest, applyAutoGrouping, createNewAgrupacion } from '@/servicios/autoGrouping';
 import { useAccess } from '@/context/AccessContext';
-import {
-  getOrgPriceListConfig,
-  getBusinessPriceList,
-  setBusinessPriceList,
-} from '@/servicios/apiPriceLists';
 import BusinessEditModal from './BusinessEditModal';
 import BranchFormModal from './BranchFormModal';
 import SyncComprasModal from './SyncComprasModal';
-import PriceListConfigModal from './PriceListConfigModal';
-import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import SettingsIcon from '@mui/icons-material/Settings';
 import StoreIcon from '@mui/icons-material/Store';
 
@@ -87,37 +80,7 @@ function OrgBizCard({
   const [sucModalOpen, setSucModalOpen] = useState(false);
   const [deletingSucId, setDeletingSucId] = useState(null);
 
-  // ── Lista de precios ──
-  const defaultLists = [1, 2, 3, 4].map(n => ({
-    listNumber: n, alias: `Lista ${n}`, isPrincipal: n === 1, discountPct: null,
-  }));
-  const safeLists = Array.isArray(allLists) && allLists.length > 0 ? allLists : defaultLists;
-  const [activeListNum, setActiveListNum] = useState(1);
-  const [loadingList, setLoadingList] = useState(true);
-  const [savingList, setSavingList] = useState(false);
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-
-  React.useEffect(() => {
-    if (!biz?.id) return;
-    setLoadingList(true);
-    getBusinessPriceList(biz.id)
-      .then(n => setActiveListNum(n ?? 1))
-      .catch(() => setActiveListNum(1))
-      .finally(() => setLoadingList(false));
-  }, [biz?.id]);
-
-  const handleListChange = async (listNumber) => {
-    setSavingList(true);
-    try {
-      await setBusinessPriceList(biz.id, listNumber);
-      setActiveListNum(listNumber);
-    } catch (e) { showNotice?.(`❌ Error: ${e.message}`); }
-    finally { setSavingList(false); }
-  };
-
-  const activeListData = safeLists.find(l => l.listNumber === activeListNum);
-  // ──────────────────────
-
+ 
   React.useEffect(() => {
     if (!isPrincipal) { setMaxiOk(false); return; }
     let alive = true;
@@ -206,21 +169,6 @@ function OrgBizCard({
         onSuccess={(msg) => showNotice?.(msg)}
       />
 
-      {configModalOpen && (
-        <PriceListConfigModal
-          open={configModalOpen}
-          onClose={() => setConfigModalOpen(false)}
-          orgId={orgId}
-          bizId={biz.id}
-          allLists={safeLists}
-          onSaved={(updatedLists) => {
-            onListsUpdated?.(updatedLists);
-            setConfigModalOpen(false);
-            window.dispatchEvent(new CustomEvent('pricelists:updated', { detail: { lists: updatedLists } }));
-          }}
-        />
-      )}
-
       <div className="bc-card">
         <div className="bc-top">
           <div className="bc-left">
@@ -305,50 +253,6 @@ function OrgBizCard({
                 </button>
               )}
             </div>
-          )}
-        </div>
-
-        {/* ── Lista de precios ── */}
-        <div className="bc-price-section">
-          <span className="bc-price-label">
-            <PriceChangeIcon style={{ fontSize: 13 }} />
-            Lista de precios
-          </span>
-          <div className="bc-price-row">
-            {loadingList ? (
-              <CircularProgress size={14} />
-            ) : (
-              <select
-                className="bc-price-select"
-                value={activeListNum}
-                disabled={savingList}
-                onChange={e => handleListChange(Number(e.target.value))}
-              >
-                {safeLists.map(l => (
-                  <option key={l.listNumber} value={l.listNumber}>
-                    {l.alias || `Lista ${l.listNumber}`}
-                    {l.isPrincipal ? '' : ''}
-                    {!l.isPrincipal && l.discountPct ? `  (−${l.discountPct}%)` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-            {savingList && <CircularProgress size={13} />}
-            <button
-              className="bc-btn bc-btn-outline bc-price-cfg-btn"
-              onClick={() => setConfigModalOpen(true)}
-              disabled={loadingList}
-              title={`Configurar "${activeListData?.alias || `Lista ${activeListNum}`}"`}
-            >
-              <SettingsIcon style={{ fontSize: 14 }} />
-              Configurar
-            </button>
-          </div>
-          {!loadingList && activeListData && !activeListData.isPrincipal && activeListData.discountPct && (
-            <span className="bc-price-discount-badge">
-              −{activeListData.discountPct}% sobre{' '}
-              {safeLists.find(l => l.isPrincipal)?.alias || 'lista principal'}
-            </span>
           )}
         </div>
 
@@ -500,18 +404,6 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
   const [editingMainBranch, setEditingMainBranch] = useState(null);
   const [notice, setNotice] = useState('');
   const [allLists, setAllLists] = useState([]);
-
-  // Cargar config de listas de la org
-  React.useEffect(() => {
-    const orgId = organization?.id;
-    if (!orgId) return;
-    const defaultLists = [1, 2, 3, 4].map(n => ({
-      listNumber: n, alias: `Lista ${n}`, isPrincipal: n === 1, discountPct: null,
-    }));
-    getOrgPriceListConfig(orgId)
-      .then(cfg => setAllLists(Array.isArray(cfg) && cfg.length > 0 ? cfg : defaultLists))
-      .catch(() => setAllLists(defaultLists));
-  }, [organization?.id]);
 
   const showNotice = (msg) => setNotice(msg);
   React.useEffect(() => {

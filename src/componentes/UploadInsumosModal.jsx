@@ -9,10 +9,10 @@ import {
   Select, MenuItem, FormControl, LinearProgress, Tooltip,
   Stack, Divider,
 } from '@mui/material';
-import CloudUploadIcon  from '@mui/icons-material/CloudUpload';
-import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
-import ErrorIcon        from '@mui/icons-material/Error';
-import CloseIcon        from '@mui/icons-material/Close';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import CloseIcon from '@mui/icons-material/Close';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { BASE } from '../servicios/apiBase';
 
@@ -23,11 +23,11 @@ const CAMPOS = {
       { key: 'nombre', label: 'Nombre', desc: 'Nombre del insumo' },
     ],
     opcionales: [
-      { key: 'codigo',    label: 'Código',          desc: 'Código externo (Maxi, etc.)' },
-      { key: 'rubro',     label: 'Rubro',            desc: 'Categoría del insumo' },
-      { key: 'unidad',    label: 'Unidad de medida', desc: 'kg, gr, lt, u, etc.' },
-      { key: 'precio',    label: 'Precio',           desc: 'Precio de referencia' },
-      { key: 'elaborado', label: 'Elaborado',        desc: 'Si/No — si se produce internamente' },
+      { key: 'codigo', label: 'Código', desc: 'Código externo (Maxi, etc.)' },
+      { key: 'rubro', label: 'Rubro', desc: 'Categoría del insumo' },
+      { key: 'unidad', label: 'Unidad de medida', desc: 'kg, gr, lt, u, etc.' },
+      { key: 'precio', label: 'Precio', desc: 'Precio de referencia' },
+      { key: 'elaborado', label: 'Elaborado', desc: 'Si/No — si se produce internamente' },
     ],
   },
   articulos: {
@@ -35,57 +35,57 @@ const CAMPOS = {
       { key: 'nombre', label: 'Nombre', desc: 'Nombre del artículo' },
     ],
     opcionales: [
-      { key: 'codigo',   label: 'Código',   desc: 'Código externo (Maxi, etc.)' },
-      { key: 'rubro',    label: 'Rubro',    desc: 'Categoría' },
+      { key: 'codigo', label: 'Código', desc: 'Código externo (Maxi, etc.)' },
+      { key: 'rubro', label: 'Rubro', desc: 'Categoría' },
       { key: 'subrubro', label: 'Subrubro', desc: 'Subcategoría' },
-      { key: 'precio',   label: 'Precio',   desc: 'Precio de venta' },
+      { key: 'precio', label: 'Precio', desc: 'Precio de venta' },
     ],
   },
   ventas: {
     requeridos: [
-      { key: 'fecha',    label: 'Fecha',    desc: 'Fecha de la venta (YYYY-MM-DD o DD/MM/YYYY)' },
-      { key: 'codigo',   label: 'Código',   desc: 'Código del artículo vendido' },
+      { key: 'fecha', label: 'Fecha', desc: 'Fecha de la venta (YYYY-MM-DD o DD/MM/YYYY)' },
+      { key: 'codigo', label: 'Código', desc: 'Código del artículo vendido' },
       { key: 'unidades', label: 'Unidades', desc: 'Cantidad vendida' },
-      { key: 'importe',  label: 'Importe',  desc: 'Monto total de la venta' },
+      { key: 'importe', label: 'Importe', desc: 'Monto total de la venta' },
     ],
     opcionales: [
       { key: 'nombre', label: 'Nombre artículo', desc: 'Nombre descriptivo (no requerido)' },
-      { key: 'costo',  label: 'Costo',           desc: 'Costo unitario' },
-      { key: 'neto',   label: 'Neto',            desc: 'Importe neto sin impuestos' },
+      { key: 'costo', label: 'Costo', desc: 'Costo unitario' },
+      { key: 'neto', label: 'Neto', desc: 'Importe neto sin impuestos' },
     ],
   },
   compras: {
     requeridos: [
-      { key: 'fecha',    label: 'Fecha',    desc: 'Fecha de la compra' },
-      { key: 'codigo',   label: 'Código',   desc: 'Código del insumo comprado' },
+      { key: 'fecha', label: 'Fecha', desc: 'Fecha de la compra' },
+      { key: 'codigo', label: 'Código', desc: 'Código del insumo comprado' },
       { key: 'cantidad', label: 'Cantidad', desc: 'Cantidad comprada' },
-      { key: 'importe',  label: 'Importe',  desc: 'Monto total de la compra' },
+      { key: 'importe', label: 'Importe', desc: 'Monto total de la compra' },
     ],
     opcionales: [
-      { key: 'nombre',     label: 'Nombre',     desc: 'Nombre del insumo' },
-      { key: 'proveedor',  label: 'Proveedor',  desc: 'Nombre del proveedor' },
-      { key: 'precio',     label: 'Precio unit.', desc: 'Precio por unidad' },
-      { key: 'medida',     label: 'Medida',     desc: 'Unidad de medida' },
+      { key: 'nombre', label: 'Nombre', desc: 'Nombre del insumo' },
+      { key: 'proveedor', label: 'Proveedor', desc: 'Nombre del proveedor' },
+      { key: 'precio', label: 'Precio unit.', desc: 'Precio por unidad' },
+      { key: 'medida', label: 'Medida', desc: 'Unidad de medida' },
     ],
   },
 };
 
 const ALIASES = {
-  nombre:    ['nombre','name','descripcion','description','producto','insumo','articulo','item','article_name'],
-  codigo:    ['codigo','code','cod','sku','id','codigomaxi','codigo_maxi','codigoexterno','article_id','codrui','cod_rui'],
-  rubro:     ['rubro','categoria','category','tipo','grupo','group','family','cod_ru','codrubro','cod_rubro'],
-  subrubro:  ['subrubro','subcategoria','subcategory','subgrupo','subgroup'],
-  unidad:    ['unidad','medida','um','unidadmedida','unidad_med','unidadmed','unit','medida'],
-  precio:    ['precio','price','precioventa','precio_venta','precioref','precio_ref','costo','cost','importe','p_prom'],
-  elaborado: ['elaborado','eselaborado','es_elaborado','elaborated'],
+  nombre: ['nombre', 'name', 'descripcion', 'description', 'producto', 'insumo', 'articulo', 'item', 'article_name'],
+  codigo: ['codigo', 'code', 'cod', 'sku', 'id', 'codigomaxi', 'codigo_maxi', 'codigoexterno', 'article_id', 'codrui', 'cod_rui'],
+  rubro: ['rubro', 'categoria', 'category', 'tipo', 'grupo', 'group', 'family', 'cod_ru', 'codrubro', 'cod_rubro'],
+  subrubro: ['subrubro', 'subcategoria', 'subcategory', 'subgrupo', 'subgroup'],
+  unidad: ['unidad', 'medida', 'um', 'unidadmedida', 'unidad_med', 'unidadmed', 'unit', 'medida'],
+  precio: ['precio', 'price', 'precioventa', 'precio_venta', 'precioref', 'precio_ref', 'costo', 'cost', 'importe', 'p_prom'],
+  elaborado: ['elaborado', 'eselaborado', 'es_elaborado', 'elaborated'],
   // Ventas
-  fecha:     ['fecha','date','fecha_venta','fechaventa','dia','day','ult_compra','ultcompra','ultima_compra'],
-  unidades:  ['unidades','qty','quantity','cant','cantidad_vendida','cantidadvendida','unid'],
-  importe:   ['importe','amount','total','monto','p_total','neto','subtotal'],
+  fecha: ['fecha', 'date', 'fecha_venta', 'fechaventa', 'dia', 'day', 'ult_compra', 'ultcompra', 'ultima_compra'],
+  unidades: ['unidades', 'qty', 'quantity', 'cant', 'cantidad_vendida', 'cantidadvendida', 'unid'],
+  importe: ['importe', 'amount', 'total', 'monto', 'p_total', 'neto', 'subtotal'],
   // Compras
-  cantidad:  ['cantidad','qty','quantity','cant','unidades'],
-  proveedor: ['proveedor','supplier','prov'],
-  medida:    ['medida','unidad','um','unit'],
+  cantidad: ['cantidad', 'qty', 'quantity', 'cant', 'unidades'],
+  proveedor: ['proveedor', 'supplier', 'prov'],
+  medida: ['medida', 'unidad', 'um', 'unit'],
 };
 
 function normalizeKey(k) {
@@ -143,9 +143,9 @@ async function parseFile(file) {
 
 function ColChip({ estado, label }) {
   const MAP = {
-    ok:      { color: 'success', icon: '✓' },
-    falta:   { color: 'error',   icon: '✗' },
-    extra:   { color: 'default', icon: '~' },
+    ok: { color: 'success', icon: '✓' },
+    falta: { color: 'error', icon: '✗' },
+    extra: { color: 'default', icon: '~' },
     mapeada: { color: 'warning', icon: '↔' },
   };
   const { color, icon } = MAP[estado] || MAP.extra;
@@ -159,18 +159,19 @@ export default function UploadInsumosModal({
   open, onClose, businessId, onSuccess,
   tipo = 'insumos',
 }) {
-  const themeColor    = 'var(--color-primary, #3b82f6)';
-  const camposConfig  = CAMPOS[tipo] || CAMPOS.insumos;
-  const todosCampos   = [...camposConfig.requeridos, ...camposConfig.opcionales];
-  const tipoLabel     = tipo === 'articulos' ? 'artículos' : 'insumos';
+  const themeColor = 'var(--color-primary, #3b82f6)';
+  const camposConfig = CAMPOS[tipo] || CAMPOS.insumos;
+  const todosCampos = [...camposConfig.requeridos, ...camposConfig.opcionales];
+  const tipoLabel = tipo === 'articulos' ? 'artículos' : 'insumos';
 
-  const [step, setStep]       = useState('upload');
-  const [file, setFile]       = useState(null);
+  const [step, setStep] = useState('upload');
+  const [file, setFile] = useState(null);
+  const [fileRubros, setFileRubros] = useState(null);  // solo para tipo === 'insumos'
   const [preview, setPreview] = useState(null);
-  const [mapeo, setMapeo]     = useState({});
+  const [mapeo, setMapeo] = useState({});
   const [parsing, setParsing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [result, setResult]   = useState(null);
+  const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const analisis = useMemo(() => {
@@ -218,6 +219,47 @@ export default function UploadInsumosModal({
   }, []);
 
   const handleUpload = async () => {
+    // Modo paired: insumos + rubros opcional, sin preview/mapeo
+    if (tipo === 'insumos' && (fileRubros || (file && step === 'upload'))) {
+      if (!file) return;
+      setStep('uploading');
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('insumos', file);
+        if (fileRubros) formData.append('rubros', fileRubros);
+
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(
+          `${BASE}/insumos/import-csv-paired`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+            body: formData,
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+        setResult({
+          inserted: data.insumos?.inserted ?? 0,
+          updated: data.insumos?.updated ?? 0,
+          skipped: data.insumos?.skipped ?? 0,
+          batchId: data.batchId,
+          rubrosInserted: data.rubros?.inserted ?? 0,
+          rubrosUpdated: data.rubros?.updated ?? 0,
+          autoMarked: data.autoMarked ?? 0,
+        });
+        setStep('done');
+      } catch (e) {
+        setErrorMsg(e.message);
+        setStep('error');
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
+    // Modo original (artículos/ventas/compras): preview + mapeo
     if (!file || !analisis || analisis.faltantes.length > 0) return;
     setStep('uploading');
     setUploading(true);
@@ -229,18 +271,17 @@ export default function UploadInsumosModal({
       const token = localStorage.getItem('token') || '';
       const endpoints = {
         articulos: `${BASE}/businesses/${businessId}/articles/import-csv`,
-        insumos:   `${BASE}/businesses/${businessId}/insumos/import-csv`,
-        ventas:    `${BASE}/businesses/${businessId}/sales/import-csv`,
-        compras:   `${BASE}/businesses/${businessId}/purchases/import-csv`,
+        insumos: `${BASE}/businesses/${businessId}/insumos/import-csv`,
+        ventas: `${BASE}/businesses/${businessId}/sales/import-csv`,
+        compras: `${BASE}/businesses/${businessId}/purchases/import-csv`,
       };
       const endpoint = endpoints[tipo] || endpoints.insumos;
 
-      const res  = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
         body: formData,
       });
-
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -261,7 +302,7 @@ export default function UploadInsumosModal({
   const handleClose = () => {
     if (uploading) return;
     if (step === 'done') onSuccess?.();
-    setFile(null); setPreview(null); setMapeo({});
+    setFile(null); setFileRubros(null); setPreview(null); setMapeo({});
     setResult(null); setErrorMsg(''); setStep('upload');
     onClose();
   };
@@ -284,7 +325,97 @@ export default function UploadInsumosModal({
       <DialogContent sx={{ pt: 1 }}>
 
         {/* PASO 1 — Subir */}
-        {step === 'upload' && (
+        {step === 'upload' && tipo === 'insumos' && (
+          <Stack spacing={2}>
+            <Alert severity="info" sx={{ py: 0.5, fontSize: '0.82rem' }}>
+              Subí los <strong>dos archivos</strong> de Maxi: rubros (opcional, si ya están en el sistema)
+              e insumos. Los rubros se cruzan automáticamente por el código <code>COD_RUI</code>.
+            </Alert>
+
+            {/* Dropzone 1: Rubros (opcional) */}
+            <Box>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                1️⃣ LISTADO DE RUBROS (OPCIONAL)
+              </Typography>
+              <Box
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); setFileRubros(e.dataTransfer.files[0]); }}
+                onClick={() => document.getElementById('import-file-rubros').click()}
+                sx={{
+                  border: `2px dashed ${fileRubros ? '#16a34a' : '#cbd5e1'}`, borderRadius: 2, p: 2,
+                  textAlign: 'center', cursor: 'pointer',
+                  bgcolor: fileRubros ? '#f0fdf4' : '#f8fafc',
+                  transition: 'all 0.2s',
+                  '&:hover': { bgcolor: fileRubros ? '#dcfce7' : '#f1f5f9' },
+                }}
+              >
+                {fileRubros ? (
+                  <Stack direction="row" alignItems="center" spacing={1} justifyContent="center">
+                    <CheckCircleIcon sx={{ color: '#16a34a' }} />
+                    <Typography variant="body2" fontWeight={600}>{fileRubros.name}</Typography>
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); setFileRubros(null); }}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Arrastrá o hacé clic — archivo de rubros (xls/xlsx)
+                  </Typography>
+                )}
+                <input id="import-file-rubros" type="file" accept=".csv,.xls,.xlsx"
+                  style={{ display: 'none' }} onChange={e => setFileRubros(e.target.files[0])} />
+              </Box>
+            </Box>
+
+            {/* Dropzone 2: Insumos (requerido) */}
+            <Box>
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                2️⃣ LISTADO DE INSUMOS (REQUERIDO)
+              </Typography>
+              <Box
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); setFile(e.dataTransfer.files[0]); setErrorMsg(''); }}
+                onClick={() => document.getElementById('import-file-insumos').click()}
+                sx={{
+                  border: `2px dashed ${file ? '#16a34a' : themeColor}`, borderRadius: 2, p: 3,
+                  textAlign: 'center', cursor: 'pointer',
+                  bgcolor: file ? '#f0fdf4' : `${themeColor}08`,
+                  transition: 'all 0.2s',
+                  '&:hover': { bgcolor: file ? '#dcfce7' : `${themeColor}15` },
+                }}
+              >
+                {file ? (
+                  <Stack direction="row" alignItems="center" spacing={1} justifyContent="center">
+                    <CheckCircleIcon sx={{ color: '#16a34a' }} />
+                    <Typography variant="body2" fontWeight={600}>{file.name}</Typography>
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); setFile(null); }}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ) : (
+                  <>
+                    <CloudUploadIcon sx={{ fontSize: 36, color: themeColor, mb: 0.5 }} />
+                    <Typography variant="body2" fontWeight={600} sx={{ color: themeColor }}>
+                      Arrastrá o hacé clic — archivo de insumos
+                    </Typography>
+                  </>
+                )}
+                <input id="import-file-insumos" type="file" accept=".csv,.xls,.xlsx"
+                  style={{ display: 'none' }} onChange={e => { setFile(e.target.files[0]); setErrorMsg(''); }} />
+              </Box>
+            </Box>
+
+            {errorMsg && <Alert severity="error" sx={{ py: 0.5 }}>{errorMsg}</Alert>}
+
+            <Alert severity="success" sx={{ py: 0.5, fontSize: '0.78rem' }} icon={false}>
+              💡 <strong>Cruce automático:</strong> el campo <code>COD_RUI</code> del archivo de insumos
+              se cruza con el <code>CODIGO</code> de rubros. Los insumos van directo a su rubro sin pasos extra.
+            </Alert>
+          </Stack>
+        )}
+
+        {/* PASO 1 — Subir (modo clásico para otros tipos) */}
+        {step === 'upload' && tipo !== 'insumos' && (
           <Stack spacing={2}>
             <Alert severity="info" sx={{ py: 0.5, fontSize: '0.82rem' }}>
               Subí un CSV o Excel con tus {tipoLabel}. El sistema detectará las columnas
@@ -510,7 +641,7 @@ export default function UploadInsumosModal({
             <Typography fontWeight={700} sx={{ fontSize: '0.9rem' }}>Importación completada</Typography>
             <Stack direction="row" spacing={2} mt={0.75} flexWrap="wrap">
               <Typography variant="body2">
-                <strong style={{ color: '#166534' }}>+{result.inserted ?? 0}</strong> nuevos
+                <strong style={{ color: '#166534' }}>+{result.inserted ?? 0}</strong> insumos nuevos
               </Typography>
               <Typography variant="body2">
                 <strong>{result.updated ?? 0}</strong> actualizados
@@ -519,6 +650,12 @@ export default function UploadInsumosModal({
                 <Typography variant="body2" color="text.secondary">{result.skipped} omitidos</Typography>
               )}
             </Stack>
+            {(result.rubrosInserted > 0 || result.rubrosUpdated > 0) && (
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                Rubros: <strong style={{ color: '#166534' }}>+{result.rubrosInserted}</strong> nuevos,{' '}
+                <strong>{result.rubrosUpdated}</strong> actualizados
+              </Typography>
+            )}
             {result.batchId && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 Lote: {result.batchId}
@@ -538,8 +675,20 @@ export default function UploadInsumosModal({
       </DialogContent>
 
       <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
-        {step === 'upload' && (
+        {step === 'upload' && tipo !== 'insumos' && (
           <Button size="small" color="inherit" onClick={handleClose}>Cancelar</Button>
+        )}
+        {step === 'upload' && tipo === 'insumos' && (
+          <>
+            <Button size="small" color="inherit" onClick={handleClose}>Cancelar</Button>
+            <Box flex={1} />
+            <Button size="small" variant="contained"
+              onClick={handleUpload} disabled={!file}
+              startIcon={<CloudUploadIcon />}
+              sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
+              Importar
+            </Button>
+          </>
         )}
         {step === 'preview' && (
           <>

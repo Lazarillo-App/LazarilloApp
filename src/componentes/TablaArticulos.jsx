@@ -22,9 +22,7 @@ import LinkChainIcon from "./LinkChainIcon";
 import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import { useBusinessPrices } from '@/hooks/useBusinessPrices';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
-import { setBusinessPriceList, getBusinessPriceList, getDiscountExceptions } from '@/servicios/apiPriceLists';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
 import { useOrganization } from '@/context/OrganizationContext';
@@ -247,8 +245,13 @@ export default function TablaArticulos({
   onDeleteLink,
   totalBizAmount = 0,
   onRedondeoChange,
-  allPriceLists = [],
+  priceLists = [],
+  currentPriceListId = null,
+  isPriceListFavorite = true,
+  calcPrecioPorLista,
+  currentPriceList = null,
   onVisibleSubrubroChange,
+  priceListsByList = {}
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -303,15 +306,10 @@ export default function TablaArticulos({
   const [clearDlg, setClearDlg] = useState(null);
   const [ventasVista, setVentasVista] = useState('$');
   const [lastAppliedPct, setLastAppliedPct] = useState({});
-  const [activePriceList, setActivePriceList] = useState(1);
-  const [priceListLoading, setPriceListLoading] = useState(false);
-  const [priceListOpen, setPriceListOpen] = useState(false);
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
   const [redondeoModalPendiente, setRedondeoModalPendiente] = useState(null);
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
-  const [excludedFromDiscount, setExcludedFromDiscount] = useState(new Set()); // articleIds excluidos
-  const [orgIdLocal, setOrgIdLocal] = useState(null);
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
@@ -486,31 +484,6 @@ export default function TablaArticulos({
     };
   }, [activeBizId]);
 
-  // ── Cargar lista de precios activa ──
-  useEffect(() => {
-    if (!activeBizId) return;
-    getBusinessPriceList(activeBizId)
-      .then(n => setActivePriceList(n || 1))
-      .catch(() => setActivePriceList(1));
-  }, [activeBizId]);
-
-  // ── Cambiar lista de precios ──
-  const handleChangePriceList = async (listNum) => {
-    if (listNum === activePriceList) { setPriceListOpen(false); return; }
-    setPriceListLoading(true);
-    setPriceListOpen(false);
-    try {
-      await setBusinessPriceList(activeBizId, listNum);
-      setActivePriceList(listNum);
-      // Disparar evento para que ArticulosMain recargue precios
-      window.dispatchEvent(new CustomEvent('pricelist:changed', { detail: { listNum, bizId: activeBizId } }));
-    } catch (e) {
-      console.warn('[handleChangePriceList]', e.message);
-    } finally {
-      setPriceListLoading(false);
-    }
-  };
-
   useEffect(() => {
     setCategorias([]);
     setTodoGroupId(null);
@@ -620,12 +593,10 @@ export default function TablaArticulos({
         if (tieneManual) return;
       }
 
-      const art = baseById.get(artId);
-      // Usar el precio de la lista activa si está disponible, sino el precio base
-      const precioLista = activePriceList > 1
-        ? (num(art?.[`precio${activePriceList}`]) || num(art?.precio ?? 0))
-        : num(art?.precio ?? 0);
-      const base = precioLista;
+     const art = baseById.get(artId);
+      // Base = precio actual (manual si existe, sino precio de la favorita)
+      const manualActual = num(manuales[String(artId)] ?? priceConfig.byArticle?.[String(artId)]?.precioManual);
+      const base = manualActual > 0 ? manualActual : num(art?.precio ?? 0);
 
       if (base > 0) {
         const precioCalculado = base * (1 + pct / 100);
@@ -652,7 +623,7 @@ export default function TablaArticulos({
         onPriceConfigSave({ scope: 'articulo', scopeId: String(artId), precioManual });
       });
     }
-  }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig, redondeoConfig, activePriceList]);
+  }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig, redondeoConfig]);
 
   const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey) => {
     if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
@@ -1058,33 +1029,6 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
-  useEffect(() => {
-    if (!activeBizId) return;
-    const token = localStorage.getItem('token') || '';
-
-    // 1. Obtener orgId del negocio
-    fetch(`${BASE}/businesses/${activeBizId}`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) }
-    })
-      .then(r => r.json())
-      .then(biz => {
-        const oid = biz?.organization_id;
-        if (!oid) return;
-        setOrgIdLocal(oid);
-
-        // 2. Cargar exclusiones para esta lista
-        return getDiscountExceptions(oid, activePriceList)
-          .then(exc => {
-            const excSet = new Set();
-            (exc || []).forEach(e => {
-              if (e.scope === 'articulo') excSet.add(String(e.scope_id));
-            });
-            setExcludedFromDiscount(excSet);
-          });
-      })
-      .catch(() => setExcludedFromDiscount(new Set()));
-  }, [activeBizId, activePriceList]);
-
   const afterMutation = useCallback((removedIds) => {
     const ids = (removedIds || []).map(Number).filter(Number.isFinite);
     if (!ids.length) { refetchLocal(); return; }
@@ -1132,9 +1076,12 @@ export default function TablaArticulos({
     if (objetivos[id] !== undefined && objetivos[id] !== '') return num(objetivos[id]);
     const cfgArt = priceConfig.byArticle?.[id];
     if (cfgArt?.objetivo != null) return num(cfgArt.objetivo);
-    const rubroKey = String(a.categoria || a.rubro || '');
-    const cfgRubro = priceConfig.byRubro?.[rubroKey];
-    if (cfgRubro?.objetivo != null) return num(cfgRubro.objetivo);
+    // El rubro puede estar guardado bajo subrubro (vista cat-first) o categoria (vista sr-first).
+    // Probamos ambos: si el usuario cambia de vista, el objetivo guardado debe seguir aplicando.
+    const cfgRubroSub = priceConfig.byRubro?.[String(a.subrubro || '')];
+    if (cfgRubroSub?.objetivo != null) return num(cfgRubroSub.objetivo);
+    const cfgRubroCat = priceConfig.byRubro?.[String(a.categoria || a.rubro || '')];
+    if (cfgRubroCat?.objetivo != null) return num(cfgRubroCat.objetivo);
     if (agrupacionId) {
       const cfgAgrup = priceConfig.byAgrupacion?.[String(agrupacionId)];
       if (cfgAgrup?.objetivo != null) return num(cfgAgrup.objetivo);
@@ -1150,34 +1097,32 @@ export default function TablaArticulos({
     return null;
   }, [manuales, priceConfig]);
 
+  // ── Color de la lista activa (para teñir UI) ──
+  const DEFAULT_LIST_COLORS = ['#2492C8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  const currentListColor = useMemo(() => {
+    if (!currentPriceList) return 'var(--color-primary)';
+    if (currentPriceList.color) return currentPriceList.color;
+    const idx = priceLists.findIndex(l => Number(l.id) === Number(currentPriceListId));
+    return DEFAULT_LIST_COLORS[(idx < 0 ? 0 : idx) % DEFAULT_LIST_COLORS.length];
+  }, [currentPriceList, priceLists, currentPriceListId]);
+
+  // ── Precio efectivo en la lista activa para un artículo ──
+  // Si estamos en la favorita: devuelve null (la celda usa el comportamiento de "Nuevo precio" actual).
+  // Si no: aplica el cálculo con jerarquía via calcPrecioPorLista().
+  const getPrecioListaActiva = useCallback((a, agrupacionId) => {
+    if (isPriceListFavorite || !calcPrecioPorLista) return null;
+    const id = Number(getId(a));
+    const rubroKey = String(a.categoria || a.rubro || '');
+    // Base = precio manual (si existe) o precio de lista
+    const base = getPrecioManualArticulo(a) ?? num(a.precio);
+    return calcPrecioPorLista(base, id, rubroKey, agrupacionId, currentPriceListId);
+  }, [isPriceListFavorite, calcPrecioPorLista, currentPriceListId, getPrecioManualArticulo]);
+
   const tieneReceta = useCallback((a) => {
     const id = String(getId(a));
     const r = recetasCostos[id] || recetasCostos[Number(id)];
     return r && r.costoTotal > 0;
   }, [recetasCostos]);
-
-  const getPrecioEfectivo = useCallback((a) => {
-    const id = String(getId(a));
-    const precioBase = num(a.precio); // precio de lista principal (precio1)
-
-    // Si está excluido de descuento o usa lista principal → precio base sin tocar
-    if (excludedFromDiscount.has(id) || activePriceList === 1) {
-      return precioBase;
-    }
-
-    // Buscar config de la lista activa
-    const listCfg = allPriceLists.find(l => l.listNumber === activePriceList);
-    if (!listCfg || listCfg.discountPct == null || listCfg.isPrincipal) {
-      return precioBase;
-    }
-
-    const pct = Number(listCfg.discountPct);
-    const tipo = listCfg.tipo || 'descuento';
-
-    return tipo === 'recargo'
-      ? precioBase * (1 + pct / 100)
-      : precioBase * (1 - pct / 100);
-  }, [excludedFromDiscount, activePriceList, allPriceLists]);
 
   const dragColIdx = useRef(null);
 
@@ -1243,8 +1188,38 @@ export default function TablaArticulos({
               />
             </div>
           )}
-          <div style={{ gridColumn: selectionMode ? "2 / 4" : "1 / 3", color: "#1e1e2e", paddingLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div
+            style={{
+              gridColumn: selectionMode ? "2 / 4" : "1 / 3",
+              color: "#1e1e2e",
+              paddingLeft: 4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
+              setRubroEditModal({
+                scope: 'agrupacion',
+                rubroKey: agrupId,
+                rubroDisplay: row.nombre,
+                articleIds: row.ids || [],
+                initialObjetivo: cfgAgrup.objetivo,
+              });
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+          >
             {row.nombre}
+            {(() => {
+              const objA = priceConfig.byAgrupacion?.[agrupId]?.objetivo;
+              return objA != null ? (
+                <span style={{ marginLeft: 8, fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
+                  · objetivo {fmt(objA, 0)}%
+                </span>
+              ) : null;
+            })()}
           </div>
 
           <div style={{ ...cellNum, color: TABLE_TEXT, fontWeight: 700 }}>
@@ -1283,114 +1258,11 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-            if (col.id === 'precio') {
-              return (
-                <div key="precio" style={{ ...cellNum, position: 'relative' }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setPriceListOpen(o => !o); }}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 3,
-                      padding: '2px 7px', borderRadius: 5, cursor: 'pointer',
-                      border: '1px solid var(--color-primary, #3b82f6)',
-                      background: priceListOpen ? 'var(--color-primary, #3b82f6)' : 'transparent',
-                      color: priceListOpen ? '#fff' : 'var(--color-primary, #3b82f6)',
-                      fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.5,
-                    }}
-                    title="Cambiar lista de precios"
-                  >
-                    {priceListLoading
-                      ? '…'
-                      : (allPriceLists.find(l => l.listNumber === activePriceList)?.alias || `Lista ${activePriceList}`)
-                    }
-                    <span style={{ fontSize: '0.58rem' }}>{priceListOpen ? '▲' : '▼'}</span>
-                  </button>
-                  {priceListOpen && (
-                    <div
-                      style={{
-                        position: 'absolute', top: '110%', right: 0, zIndex: 999,
-                        background: '#fff', border: '1px solid #e2e8f0',
-                        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
-                        minWidth: 110, padding: '4px 0',
-                      }}
-                      onMouseLeave={() => setPriceListOpen(false)}
-                    >
-                      {[1, 2, 3, 4].map(n => {
-                        const listData = allPriceLists.find(l => l.listNumber === n);
-                        const label = listData?.alias || `Lista ${n}`;
-                        return (
-                          <div
-                            key={n}
-                            onClick={(e) => { e.stopPropagation(); handleChangePriceList(n); }}
-                            style={{
-                              padding: '5px 12px', cursor: 'pointer',
-                              fontSize: '0.78rem', fontWeight: activePriceList === n ? 700 : 400,
-                              background: activePriceList === n ? 'var(--color-primary, #3b82f6)12' : 'transparent',
-                              color: activePriceList === n ? 'var(--color-primary, #3b82f6)' : '#374151',
-                              display: 'flex', alignItems: 'center', gap: 6,
-                            }}
-                          >
-                            {activePriceList === n && <span>✓</span>}
-                            {label}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
+           if (col.id === 'precio') {
+              return <div key="precio" />;
             }
-            if (col.id === 'objetivo') {
-              return (
-                <div key="objetivo" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div className="input-symbol-wrapper" data-symbol="%">
-                    <input
-                      type="number"
-                      placeholder={String(globalCostoIdeal)}
-                      value={blockObjetivos[bkObj] ?? objValDb}
-                      onChange={(e) => setBlockObjetivos(prev => ({ ...prev, [bkObj]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return;
-                        e.target.blur();
-                        const val = e.target.value === '' ? null : Number(e.target.value);
-                        if (!onPriceConfigSave || val == null) return;
-                        const idsAplicar = ids.filter(artId => !tieneObjetivoIndividual(artId));
-                        const valAnterior = cfgAgrup.objetivo != null ? Number(cfgAgrup.objetivo) : null;
-                        const label = agrupacionSeleccionada?.nombre || 'esta agrupación';
-                        // Aplicar inmediatamente
-                        setObjetivos(prev => { const next = { ...prev }; ids.forEach(artId => { next[String(artId)] = val; }); return next; });
-                        onPriceConfigSave({ scope: 'agrupacion', scopeId: agrupId, objetivo: val, articleIds: ids, pisarTodo: true });
-                        setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
-                        // Emitir para notificaciones
-                        try { window.dispatchEvent(new CustomEvent('ui:action', { detail: { kind: 'objetivo_change', title: `🎯 Objetivo ${val}% en ${label}`, message: `${ids.length} artículo(s) actualizados.`, createdAt: new Date().toISOString(), payload: { scope: 'agrupacion', scopeId: agrupId, val, valAnterior, articleIds: ids, pisarTodo: true } } })); } catch { }
-                        // Toast con Deshacer
-                        setPendingObjConfirm({ scope: 'agrupacion', scopeId: agrupId, val, ids, valAnterior, label, bkKey: bkObj });
-                      }}
-                      className="input-with-suffix input-group-level"
-                      style={{ width: 52, fontSize: '0.78rem', textAlign: 'center', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
-                    />
-                  </div>
-                  <ClearBtn
-                    visible={!!(blockObjetivos[bkObj] || objValDb)}
-                    onClick={() => {
-                      setBlockObjetivos(prev => { const n = { ...prev }; delete n[bkObj]; return n; });
-
-                      // Borrar objetivo de la agrupación con DELETE
-                      onPriceConfigSave?.({
-                        scope: 'agrupacion',
-                        scopeId: agrupId,
-                        objetivo: null,
-                        articleIds: ids,
-                      });
-
-                      setObjetivos(prev => {
-                        const next = { ...prev };
-                        ids.forEach(artId => { delete next[String(artId)]; });
-                        return next;
-                      });
-                    }}
-                  />
-                </div>
-              );
+           if (col.id === 'objetivo') {
+              return <div key="objetivo" />;
             }
             if (col.id === 'manual') {
               return (
@@ -1487,6 +1359,15 @@ export default function TablaArticulos({
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
             {label}
+            {(() => {
+              const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+              const objR = priceConfig.byRubro?.[rubroKey]?.objetivo;
+              return objR != null ? (
+                <span style={{ marginLeft: 8, fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
+                  · objetivo {fmt(objR, 0)}%
+                </span>
+              ) : null;
+            })()}
           </div>
 
           <div style={cellNum}>
@@ -1522,46 +1403,8 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-            if (col.id === 'objetivo' && esAgrupEspecifica) {
-              const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
-              const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
-              const objValDb = cfgRubro.objetivo;
-              const firstObjLocal = ids.length ? objetivos[String(ids[0])] : undefined;
-              const objMostrar = objValDb != null ? Number(objValDb)
-                : firstObjLocal != null ? Number(firstObjLocal)
-                  : null;
-              return (
-                <div
-                  key="objetivo"
-                  style={{
-                    ...cellNum,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => {
-                    setRubroEditModal({
-                      rubroKey,
-                      rubroDisplay: tableHeaderMode === "cat-first"
-                        ? `${row.subrubro} - ${row.categoria}`
-                        : `${row.categoria} - ${row.subrubro}`,
-                      articleIds: row.ids || [],
-                      initialObjetivo: cfgRubro.objetivo,
-                    });
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
-                >
-                  <Typography variant="caption" sx={{
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    color: objMostrar != null ? TABLE_TEXT : TABLE_MUTED,
-                  }}>
-                    {objMostrar != null ? `${fmt(objMostrar, 0)}%` : '—'}
-                  </Typography>
-                </div>
-              );
+           if (col.id === 'objetivo' && esAgrupEspecifica) {
+              return <div key="objetivo" />;
             } if (col.id === 'manual' && esAgrupEspecifica) {
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const bkRubroMan = `rubro-man-${rubroKeyManual}`;
@@ -1615,6 +1458,9 @@ export default function TablaArticulos({
                   treeMode={tableHeaderMode}
                   onDiscontinuarBloque={onDiscontinuarBloque}
                   allowedIds={filterIds}
+                  rootBizId={rootBizId}
+                  priceLists={priceLists}
+                  priceListsByList={priceListsByList}
                   rootBizId={rootBizId}
                 />
               );
@@ -1714,21 +1560,10 @@ export default function TablaArticulos({
 
         {visibleCols.map(col => {
           switch (col.id) {
-            case 'precio': {
-              const precioLista = activePriceList > 1
-                ? (num(a[`precio${activePriceList}`]) || num(a.precio))
-                : num(a.precio);
-              return (
-                <div key="precio" style={cellNum}>
-                  {fmtCurrency(precioLista)}
-                  {activePriceList > 1 && num(a.precio1 || a.precio) !== precioLista && (
-                    <span style={{ fontSize: '0.62rem', color: '#94a3b8', marginLeft: 2 }}>
-                      L{activePriceList}
-                    </span>
-                  )}
-                </div>
-              );
-            }
+            case 'precio':
+              // La columna "Precio" siempre muestra el precio de la favorita (precio base).
+              // La columna que cambia con la lista es "Nuevo precio".
+              return <div key="precio" style={cellNum}>{fmtCurrency(num(a.precio))}</div>;
 
             case 'costo':
               return (
@@ -1765,7 +1600,123 @@ export default function TablaArticulos({
                 </div>
               );
 
-            case 'manual':
+            case 'manual': {
+              const precioListaCalc = getPrecioListaActiva(a, agrupId);
+
+              // En lista no-favorita → celda editable con ingeniería inversa al guardar
+              if (precioListaCalc) {
+                const { precio, excluido, ajuste } = precioListaCalc;
+                const redondeo = redondeoConfig?.valor;
+                const precioFinal = redondeo > 0
+                  ? Math.round(precio / redondeo) * redondeo
+                  : Math.round(precio);
+
+                // Si está excluido → mostrar gris, no editable
+                if (excluido) {
+                  return (
+                    <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                      <div
+                        title="Excluido — usa precio de la lista favorita"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+                          width: 85, padding: '4px 8px', borderRadius: 6,
+                          border: '1px dashed #cbd5e1', background: '#f8fafc',
+                          color: '#94a3b8', fontWeight: 700, fontSize: '0.78rem',
+                          lineHeight: '20px',
+                        }}
+                      >
+                        {fmtCurrency(precioFinal)}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Editable con ingeniería inversa: el usuario ve y edita el precio en la lista actual,
+                // pero internamente guardamos el precio base de la favorita.
+                const localOverride = manuales[`__list_${currentPriceListId}_${id}`];
+                const valorMostrado = localOverride !== undefined ? localOverride : precioFinal;
+
+                return (
+                  <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      border: `1px solid ${currentListColor}50`,
+                      borderRadius: 6, overflow: 'hidden',
+                      background: `${currentListColor}08`,
+                      width: 85,
+                    }}>
+                      <span style={{
+                        padding: '0 5px', fontSize: '0.72rem',
+                        color: currentListColor,
+                        background: `${currentListColor}15`,
+                        borderRight: `1px solid ${currentListColor}30`,
+                        lineHeight: '28px', userSelect: 'none', fontWeight: 700,
+                      }}>$</span>
+                      <input
+                        type="text"
+                        title={`${currentPriceList?.name} · ${ajuste > 0 ? '+' : ''}${ajuste}% sobre favorita`}
+                        value={(() => {
+                          if (valorMostrado === '' || valorMostrado == null) return '';
+                          const n = Number(String(valorMostrado).replace(/\./g, ''));
+                          return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(valorMostrado);
+                        })()}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                          setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: raw === '' ? '' : Number(raw) }));
+                        }}
+                        onBlur={(e) => {
+                          const raw = String(manuales[`__list_${currentPriceListId}_${id}`] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                          const valEnLista = raw === '' ? null : Number(raw);
+
+                          if (valEnLista === null) {
+                            // Limpiar solo el override de visualización, no tocar nada más
+                            setManuales(s => { const next = { ...s }; delete next[`__list_${currentPriceListId}_${id}`]; return next; });
+                            return;
+                          }
+
+                          // Ingeniería inversa: precio_base_favorita = valEnLista / (1 + ajuste/100)
+                          const factor = 1 + (Number(ajuste) || 0) / 100;
+                          if (factor <= 0) {
+                            setManuales(s => { const next = { ...s }; delete next[`__list_${currentPriceListId}_${id}`]; return next; });
+                            return;
+                          }
+                          const baseSinRedondear = valEnLista / factor;
+                          const redondeo = redondeoConfig?.valor;
+                          const precioBaseNuevo = redondeo > 0
+                            ? Math.round(baseSinRedondear / redondeo) * redondeo
+                            : Math.round(baseSinRedondear);
+
+                          // Actualizar el manual local de la favorita ANTES de limpiar el override de la lista.
+                          // Así el próximo render ve el nuevo precio base mientras esperamos la respuesta del backend.
+                          setManuales(s => {
+                            const next = { ...s };
+                            next[id] = precioBaseNuevo;                       // nuevo manual de favorita
+                            delete next[`__list_${currentPriceListId}_${id}`]; // limpiar override visual
+                            return next;
+                          });
+
+                          bulkSetIdsRef.current.delete(Number(id));
+                          onPriceConfigSave?.({
+                            scope: 'articulo',
+                            scopeId: String(id),
+                            precioManual: precioBaseNuevo,
+                          });
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+                        }}
+                        style={{
+                          width: 58, fontSize: '0.78rem', textAlign: 'right',
+                          border: 'none', outline: 'none', padding: '0 6px',
+                          color: currentListColor, fontWeight: 700, background: 'transparent',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+
+              // En la favorita → input editable (comportamiento clásico)
               return (
                 <div key="manual" style={{ ...cellNum, position: 'relative' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 85 }}>
@@ -1787,7 +1738,6 @@ export default function TablaArticulos({
                         const val = raw === '' ? null : Number(raw);
                         bulkSetIdsRef.current.delete(Number(id));
                         if (val === null) {
-                          // Campo borrado — DELETE explícito
                           onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), _deleteManual: true });
                         } else {
                           onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
@@ -1804,6 +1754,7 @@ export default function TablaArticulos({
                   </div>
                 </div>
               );
+            }
 
             case 'acciones':
               return (
@@ -1816,6 +1767,8 @@ export default function TablaArticulos({
                     notify={(m, t) => openSnack(m, t)} onGroupCreated={onGroupCreated}
                     onDiscontinuadoChange={onDiscontinuadoChange} treeMode={modalTreeMode}
                     allowedIds={filterIds} businessId={activeBizId} rootBizId={rootBizId}
+                    priceLists={priceLists}
+                    priceListsByList={priceListsByList}
                   />
                 </div>
               );
@@ -1840,6 +1793,8 @@ export default function TablaArticulos({
           recetasElaborados={recetasElaborados}
           onPriceConfigSave={onPriceConfigSave}
           allArticulos={allArticulos}
+          priceLists={priceLists}
+          priceListsByList={priceListsByList}
           onSaved={(savedReceta) => {
             if (savedReceta?.article_id && savedReceta?.costo_total != null) onSaved?.(savedReceta);
           }}
@@ -1913,7 +1868,18 @@ export default function TablaArticulos({
                   case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={dragIndicatorStyle}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'manual': return <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable" style={dragIndicatorStyle}>Nuevo precio{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'manual': {
+                    const headerLabel = !isPriceListFavorite && currentPriceList?.name
+                      ? currentPriceList.name
+                      : 'Nuevo precio';
+                    const headerColor = !isPriceListFavorite ? currentListColor : undefined;
+                    return (
+                      <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
+                        style={{ ...dragIndicatorStyle, color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined }}>
+                        {headerLabel}{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                      </div>
+                    );
+                  }
                   case 'acciones': return (
                     <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <IconButton
@@ -2144,68 +2110,51 @@ export default function TablaArticulos({
       <ColOrderModal open={colDlgOpen} cols={colConfig} onSave={saveColConfig} onClose={() => setColDlgOpen(false)} />
 
       {rubroEditModal && (
-        <RubroEditModal
+       <RubroEditModal
           open={!!rubroEditModal}
           onClose={() => setRubroEditModal(null)}
+          scope={rubroEditModal.scope || 'rubro'}
           rubroKey={rubroEditModal.rubroKey}
           rubroDisplay={rubroEditModal.rubroDisplay}
           articleIds={rubroEditModal.articleIds}
           initialObjetivo={rubroEditModal.initialObjetivo}
           globalCostoIdeal={globalCostoIdeal}
-          priceLists={allPriceLists}
           orgId={organization?.id}
           onSave={({ objetivo, articleIds }) => {
-            console.log('[RubroModal onSave] disparado', { objetivo, articleIds });
-            if (!onPriceConfigSave) {
-              console.warn('[RubroModal onSave] onPriceConfigSave NO EXISTE');
-              return;
-            }
-            const rubroKey = rubroEditModal.rubroKey;
-            const rubroLabel = rubroEditModal.rubroDisplay || 'este rubro';
+            if (!onPriceConfigSave) return;
+            const scope = rubroEditModal.scope || 'rubro';
+            const scopeKey = rubroEditModal.rubroKey;
+            const scopeLabel = rubroEditModal.rubroDisplay || (scope === 'agrupacion' ? 'esta agrupación' : 'este rubro');
             const valAnterior = rubroEditModal.initialObjetivo != null
               ? Number(rubroEditModal.initialObjetivo)
               : null;
 
             setObjetivos(prev => {
               const next = { ...prev };
-              articleIds.forEach(artId => { next[String(artId)] = objetivo; });
+              articleIds.forEach(artId => { delete next[String(artId)]; });
               return next;
             });
+
             onPriceConfigSave({
-              scope: 'rubro',
-              scopeId: rubroKey,
+              scope,
+              scopeId: scopeKey,
               objetivo,
               articleIds,
-              pisarTodo: true
             });
 
-            console.log('[RubroModal onSave] disparando ui:action', {
-              kind: 'objetivo_change',
-              title: `🎯 Objetivo ${objetivo}% en ${rubroLabel}`,
-              scope: 'rubro',
-              scopeId: rubroKey,
-            });
             try {
               window.dispatchEvent(new CustomEvent('ui:action', {
                 detail: {
                   kind: 'objetivo_change',
                   title: objetivo != null
-                    ? `🎯 Objetivo ${objetivo}% en ${rubroLabel}`
-                    : `🗑 Objetivo borrado en ${rubroLabel}`,
-                  message: `${articleIds.length} artículo(s) actualizados.`,
+                    ? `🎯 Objetivo ${objetivo}% en ${scopeLabel}`
+                    : `🗑 Objetivo borrado en ${scopeLabel}`,
+                  message: `${articleIds.length} artículo(s) afectado(s).`,
                   createdAt: new Date().toISOString(),
                   scope: 'articulo',
-                  payload: {
-                    scope: 'rubro',
-                    scopeId: rubroKey,
-                    val: objetivo,
-                    valAnterior,
-                    articleIds,
-                    pisarTodo: true,
-                  },
+                  payload: { scope, scopeId: scopeKey, val: objetivo, valAnterior, articleIds },
                 },
               }));
-              console.log('[RubroModal onSave] ui:action disparado OK');
             } catch (e) {
               console.error('[RubroModal onSave] error en dispatch:', e);
             }
