@@ -162,18 +162,8 @@ export default function Navbar() {
       setSyncRunning(true);
     };
 
-    const onDone = (e) => {
-      const ok = Number(e?.detail?.ok || 0);
-      const fail = Number(e?.detail?.fail || 0);
+    const onDone = () => {
       setSyncRunning(false);
-      setSnack({
-        open: true,
-        sev: fail > 0 ? 'warning' : 'success',
-        msg:
-          fail > 0
-            ? `Sincronización completa: ${ok} OK, ${fail} con aviso.`
-            : `Sincronización completa: ${ok} OK.`,
-      });
     };
 
     window.addEventListener('business:auto-sync-start', onStart);
