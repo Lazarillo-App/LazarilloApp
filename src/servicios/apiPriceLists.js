@@ -1,63 +1,46 @@
-import { http } from './apiBusinesses';
+// src/servicios/apiPriceLists.js
+// API de listas de precios custom de Lazarillo (Salon, Mostrador, etc).
+// Tabla price_lists, endpoints /price-lists/*.
 
-const BASE_ORG = (orgId) => `/organizations/${orgId}/price-lists`;
-const BASE_BIZ = (bizId) => `/businesses/${bizId}/price-list`;
+import { httpBiz } from './apiBusinesses';
 
-// ── Config de org ────────────────────────────────────────────────────────
-export async function getOrgPriceListConfig(orgId) {
-  const res = await http(`${BASE_ORG(orgId)}/config`, { withBusinessId: false });
-  return res?.config ?? [];
-}
+export const PriceListsAPI = {
+  // GET /api/businesses/:bizId/price-lists
+  list(bizId) {
+    return httpBiz('/price-lists', { method: 'GET' }, bizId);
+  },
 
-export async function saveOrgPriceListConfig(orgId, lists) {
-  const res = await http(`${BASE_ORG(orgId)}/config`, {
-    method: 'PUT',
-    body: { lists },
-    withBusinessId: false,
-  });
-  return res?.ok ?? false;
-}
+  // GET /api/businesses/:bizId/price-lists/full-state
+  // Devuelve { lists, byList: { _base: {...}, [listId]: {...} } }
+  fullState(bizId) {
+    return httpBiz('/price-lists/full-state', { method: 'GET' }, bizId);
+  },
 
-// ── Lista activa por negocio ──────────────────────────────────────────────
-export async function getBusinessPriceList(bizId) {
-  const res = await http(`${BASE_BIZ(bizId)}`, { withBusinessId: false });
-  return res?.listNumber ?? 1;
-}
+  // POST /api/businesses/:bizId/price-lists
+  create(bizId, { name, description = null, color = null, ajuste_pct = 0 } = {}) {
+    return httpBiz('/price-lists', {
+      method: 'POST',
+      body: { name, description, color, ajuste_pct },
+    }, bizId);
+  },
 
-export async function setBusinessPriceList(bizId, listNumber) {
-  const res = await http(`${BASE_BIZ(bizId)}`, {
-    method: 'PUT',
-    body: { listNumber },
-    withBusinessId: false,
-  });
-  return res?.ok ?? false;
-}
+  // PUT /api/businesses/:bizId/price-lists/:listId
+  update(bizId, listId, patch = {}) {
+    return httpBiz(`/price-lists/${listId}`, {
+      method: 'PUT',
+      body: patch,
+    }, bizId);
+  },
 
-// ── Precios desde Maxi para el negocio activo ────────────────────────────
-export async function getBusinessPrices(bizId) {
-  const res = await http(`${BASE_BIZ(bizId)}/prices`, { withBusinessId: false });
-  return res ?? { prices: {}, listNumber: 1, discountPct: null };
-}
+  // DELETE /api/businesses/:bizId/price-lists/:listId
+  remove(bizId, listId) {
+    return httpBiz(`/price-lists/${listId}`, { method: 'DELETE' }, bizId);
+  },
 
-// ── Excepciones de descuento ──────────────────────────────────────────────
-export async function getDiscountExceptions(orgId, listNumber = null) {
-  const qs = listNumber ? `?list_number=${listNumber}` : '';
-  const res = await http(`${BASE_ORG(orgId)}/discount-exceptions${qs}`, { withBusinessId: false });
-  return res?.exceptions ?? [];
-}
+  // POST /api/businesses/:bizId/price-lists/:listId/set-favorite
+  setFavorite(bizId, listId) {
+    return httpBiz(`/price-lists/${listId}/set-favorite`, { method: 'POST' }, bizId);
+  },
+};
 
-export async function addDiscountException(orgId, scope, scopeId, listNumber = null) {
-  return http(`${BASE_ORG(orgId)}/discount-exceptions`, {
-    method: 'POST',
-    body: { scope, scopeId: String(scopeId), listNumber },
-    withBusinessId: false,
-  });
-}
-
-export async function removeDiscountException(orgId, scope, scopeId, listNumber = null) {
-  return http(`${BASE_ORG(orgId)}/discount-exceptions`, {
-    method: 'DELETE',
-    body: { scope, scopeId: String(scopeId), listNumber },
-    withBusinessId: false,
-  });
-}
+export default PriceListsAPI;

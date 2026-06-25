@@ -1,4 +1,4 @@
-/* eslint-disable no-empty */
+﻿/* eslint-disable no-empty */
 // src/componentes/PriceListConfigModal.jsx
 // Modal de gestión de listas de precios (modelo nuevo).
 // Cada cambio guarda inmediato al onBlur — no hay "Guardar" final.
@@ -20,7 +20,7 @@ import AddIcon from '@mui/icons-material/Add';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ExcluirListasModal from './ExcluirListasModal';
-import { ArticleListsAPI } from '@/servicios/apiArticleLists';
+import { PriceListsAPI } from '@/servicios/apiPriceLists';
 
 const PRIMARY = 'var(--color-primary, #2492C8)';
 
@@ -61,7 +61,7 @@ export default function PriceListConfigModal({
     setLoading(true);
     setError(null);
     try {
-      const res = await ArticleListsAPI.list(bizId);
+      const res = await PriceListsAPI.list(bizId);
       setLists(Array.isArray(res?.lists) ? res.lists : []);
     } catch (e) {
       setError(e.message || 'Error cargando listas');
@@ -92,7 +92,7 @@ export default function PriceListConfigModal({
     // 2) PUT al backend
     markSaving(listId, true);
     try {
-      const res = await ArticleListsAPI.update(bizId, listId, patch);
+      const res = await PriceListsAPI.update(bizId, listId, patch);
       // Si el backend devuelve la lista actualizada, sincronizar
       if (res?.list) {
         setLists(prev => prev.map(l => l.id === listId ? { ...l, ...res.list } : l));
@@ -113,7 +113,7 @@ export default function PriceListConfigModal({
       // Nombre default: "Lista N+1" donde N es la cantidad actual
       const nextNumber = lists.length + 1;
       const name = `Lista ${nextNumber}`;
-      const res = await ArticleListsAPI.create(bizId, {
+      const res = await PriceListsAPI.create(bizId, {
         name,
         ajuste_pct: 0,
       });
@@ -136,7 +136,7 @@ export default function PriceListConfigModal({
 
     markSaving(list.id, true);
     try {
-      await ArticleListsAPI.remove(bizId, list.id);
+      await PriceListsAPI.remove(bizId, list.id);
       setLists(prev => prev.filter(l => l.id !== list.id));
     } catch (e) {
       setError(e.message || 'Error eliminando lista');
@@ -162,8 +162,8 @@ export default function PriceListConfigModal({
     // PUT cada uno con su nuevo orden (solo los dos afectados)
     try {
       await Promise.all([
-        ArticleListsAPI.update(bizId, reordered[idx].id, { orden: reordered[idx].orden }),
-        ArticleListsAPI.update(bizId, reordered[target].id, { orden: reordered[target].orden }),
+        PriceListsAPI.update(bizId, reordered[idx].id, { orden: reordered[idx].orden }),
+        PriceListsAPI.update(bizId, reordered[target].id, { orden: reordered[target].orden }),
       ]);
     } catch (e) {
       setError(e.message || 'Error reordenando');

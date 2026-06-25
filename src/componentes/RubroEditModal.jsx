@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars */
+﻿/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -12,7 +12,7 @@ import {
   getDiscountExceptions,
   addDiscountException,
   removeDiscountException,
-} from '@/servicios/apiPriceLists';
+} from '@/servicios/apiMaxiPriceLists';
 
 export default function RubroEditModal({
   open,

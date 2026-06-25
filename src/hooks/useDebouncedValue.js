@@ -1,10 +1,10 @@
-// src/hooks/useBusinessPrices.js
+﻿// src/hooks/useBusinessPrices.js
 // Trae los precios Maxi para el negocio activo según su lista configurada.
 // Devuelve: { prices: { [codigo]: precio }, listNumber, discountPct, loading }
 // El back aplica el descuento y las excepciones antes de devolver.
 
 import { useState, useEffect } from 'react';
-import { getBusinessPrices } from '@/servicios/apiPriceLists';
+import { getBusinessPrices } from '@/servicios/apiMaxiPriceLists';
 
 export function useBusinessPrices(bizId) {
   const [prices,      setPrices]      = useState({});

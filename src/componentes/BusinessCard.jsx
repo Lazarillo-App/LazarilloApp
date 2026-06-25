@@ -1,4 +1,4 @@
-/* eslint-disable no-empty */
+﻿/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/BusinessCard.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
@@ -30,7 +30,7 @@ import {
   getOrgPriceListConfig,
   getBusinessPriceList,
   setBusinessPriceList,
-} from "@/servicios/apiPriceLists";
+} from "@/servicios/apiMaxiPriceLists";
 import PriceListConfigModal from "./PriceListConfigModal";
 
 export default function BusinessCard({

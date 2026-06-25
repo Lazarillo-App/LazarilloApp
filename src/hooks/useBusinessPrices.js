@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { getBusinessPrices } from '@/servicios/apiPriceLists';
+﻿import { useState, useEffect } from 'react';
+import { getBusinessPrices } from '@/servicios/apiMaxiPriceLists';
 
 /**
  * Trae los precios Maxi para el negocio activo según su lista configurada.

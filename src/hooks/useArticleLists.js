@@ -1,11 +1,11 @@
-// src/hooks/useArticleLists.js
+﻿// src/hooks/useArticleLists.js
 // Hook centralizado para listas de precios del modelo nuevo.
 // - Carga listas + ajustes en un solo request (fullState).
 // - Persiste la lista activa por business en localStorage.
 // - Expone helper calcPrecio() con jerarquía artículo > rubro > agrupación > lista.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ArticleListsAPI } from '@/servicios/apiArticleLists';
+import { PriceListsAPI } from '@/servicios/apiPriceLists';
 
 const lsKey = (bizId) => `lazarillo:currentArticleListId:${bizId || 'default'}`;
 
@@ -22,7 +22,7 @@ export function useArticleLists(bizId) {
     setLoading(true);
     setError(null);
     try {
-      const res = await ArticleListsAPI.fullState(bizId);
+      const res = await PriceListsAPI.fullState(bizId);
       const ls = Array.isArray(res?.lists) ? res.lists : [];
       const bl = res?.byList || { _base: { byArticle: {}, byRubro: {}, byAgrupacion: {} } };
       setLists(ls);
