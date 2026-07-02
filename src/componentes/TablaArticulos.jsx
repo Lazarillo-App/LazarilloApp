@@ -1558,7 +1558,8 @@ export default function TablaArticulos({
               <>
                 {linkGroupsList.map(g => (
                   <LinkChainIcon
-                    articleId={id} groupInfo={linkGroupsList.find(g => g.linkType === 'precio')}
+                    key={g.groupId ?? g.id}
+                    articleId={id} groupInfo={g}
                     nameById={nameById}
                     onRemoveSelf={onRemoveMemberFromLink}
                     onDeleteGroup={onDeleteLink}

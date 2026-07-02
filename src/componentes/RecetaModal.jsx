@@ -47,6 +47,7 @@ import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
+import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 
 /* ── constantes ── */
 const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda'];
@@ -103,7 +104,7 @@ function isCompatibleUnits(a, b) {
   if (UNID.has(na) && UNID.has(nb)) return true;
   return false;
 }
-
+ 
 /**
  * Dado el precio_ref de la DB (expresado en unidadDB),
  * devuelve el precio por cada 1 unidad de unidadElegida.
@@ -1528,21 +1529,18 @@ function ItemRow({
         <TextField
           inputRef={cantidadRef}
           size="small"
-          type="number"
-          value={item.cantidad === '' ? '' : item.cantidad}
+          type="text"
+          inputMode="decimal"
+          value={item.cantidad === '' ? '' : String(item.cantidad).replace('.', ',')}
           onChange={e => {
-            const val = e.target.value === '' ? '' : Number(e.target.value);
-            onChange(index, { cantidad: val });
+            const raw = e.target.value;
+            if (raw === '') { onChange(index, { cantidad: '' }); return; }
+            onChange(index, { cantidad: sanitizeDecimal(raw) });
           }}
           onFocus={e => e.target.select()}
           placeholder="0"
           inputProps={{
-            min: 0,
-            step: (() => {
-              const n = Number(item.cantidad) || 1;
-              const digitos = Math.floor(Math.log10(Math.max(n, 1))) + 1;
-              return Math.pow(10, digitos - 1) / 2;
-            })(),
+            inputMode: 'decimal',
             style: { textAlign: 'right', fontSize: '0.78rem', padding: '4px 6px' }
           }}
         />
@@ -2656,14 +2654,15 @@ export default function RecetaModal({
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                       <TextField
                         label="Cantidad"
-                        type="number"
-                        value={rendimiento}
+                        type="text"
+                        inputMode="decimal"
+                        value={rendimiento === '' ? '' : String(rendimiento).replace('.', ',')}
                         onChange={e => {
-                          const v = Number(e.target.value);
-                          setRendimiento(Number.isFinite(v) && v > 0 ? v : 1);
+                          const raw = e.target.value;
+                          setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
                         }}
                         size="small"
-                        inputProps={{ min: 0.001, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
+                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '6px 8px' } }}
                         sx={{ width: 72, flexShrink: 0 }}
                       />
 
@@ -2697,11 +2696,12 @@ export default function RecetaModal({
                         <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
                           <TextField
                             label="Peso equiv."
-                            type="number"
-                            value={rendimientoPeso ?? ''}
+                            type="text"
+                            inputMode="decimal"
+                            value={rendimientoPeso == null ? '' : String(rendimientoPeso).replace('.', ',')}
                             onChange={e => {
-                              const v = e.target.value;
-                              setRendimientoPeso(v === '' ? null : Number(v));
+                              const raw = e.target.value;
+                              setRendimientoPeso(raw === '' ? null : sanitizeDecimal(raw));
                             }}
                             placeholder="—"
                             size="small"
@@ -2725,9 +2725,10 @@ export default function RecetaModal({
 
                   <TextField
                     label="Costo Objetivo"
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={pctCostoIdeal}
-                    onChange={e => setPctCostoIdeal(Number(e.target.value) || 0)}
+                    onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
                     onBlur={(e) => {
                       const val = Number(e.target.value) || 0;
                       if (!val || !articulo?.id) return;
@@ -2930,13 +2931,14 @@ export default function RecetaModal({
                                   >
                                     <TextField
                                       size="small"
-                                      type="number"
-                                      defaultValue={objVal != null ? objVal : ''}
+                                      type="text"
+                                      inputMode="decimal"
+                                      defaultValue={objVal != null ? String(objVal).replace('.', ',') : ''}
                                       placeholder="—"
                                       onClick={(e) => e.stopPropagation()}
                                       onBlur={(e) => {
                                         const raw = e.target.value;
-                                        const nuevo = raw === '' ? null : Number(raw);
+                                        const nuevo = raw === '' ? null : parseDecimal(raw);
                                         const anterior = objVal;
                                         // Solo persistir si cambió realmente
                                         if (nuevo === anterior) return;

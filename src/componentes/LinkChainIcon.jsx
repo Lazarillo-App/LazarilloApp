@@ -162,7 +162,10 @@ export default function LinkChainIcon({
               '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
             }}
           >
-            {/* Agregar artículos a esta vinculación */}
+            Quitar de la vinculación
+          </Button>
+
+          {/* Agregar artículos a esta vinculación */}
           {onAddMembers && (
             <Button
               size="small"
@@ -180,8 +183,6 @@ export default function LinkChainIcon({
               Agregar artículos
             </Button>
           )}
-            Quitar de la vinculación
-          </Button>
 
           {/* Eliminar toda la vinculación */}
           <Button
