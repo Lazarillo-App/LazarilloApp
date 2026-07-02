@@ -6,12 +6,14 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Typography, Box, CircularProgress,
 } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
@@ -19,10 +21,11 @@ import AgrupacionCreateModal from './AgrupacionCreateModal';
 import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ExcluirListasModal from './ExcluirListasModal';
+
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
+
 const isDiscontinuadosGroup = (g) => {
   const n = norm(g?.nombre);
   return n === 'discontinuados' || n === 'descontinuados';
@@ -89,7 +92,6 @@ function useAgrupacionesBiz(bizId) {
     setLoading(true);
     obtenerAgrupaciones(id).then(({ list }) => {
       if (!alive) return;
-      // Filtrar solo agrupaciones reales (sin TODO ni Discontinuados)
       const reales = (list || []).filter(g => !esTodoGroup(g) && !isDiscontinuadosGroup(g));
       setAgrupaciones(reales);
     }).catch(() => {
@@ -106,23 +108,21 @@ function useAgrupacionesBiz(bizId) {
 // ── Modal unificado "Mover a…" con selector de sub-negocio ──────────────────
 function MoverAModal({
   open, onClose,
-  tituloExtra = '',         // ej: "artículo #123"
-  agrupacionesLocales = [], // agrupaciones del negocio activo ya cargadas
+  tituloExtra = '',
+  agrupacionesLocales = [],
   currentGroupId = null,
-  allBusinesses = [],       // lista de sub-negocios disponibles
-  activeBizId,              // negocio activo (para pre-seleccionar)
-  onConfirm,                // ({ bizId, groupId, groupNombre }) => Promise<void>
+  allBusinesses = [],
+  activeBizId,
+  onConfirm,
   isMoving = false,
 }) {
   const [selectedBizId, setSelectedBizId] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('');
 
-  // Negocios disponibles: incluye el activo + otros sub-negocios
   const negocios = useMemo(() => {
     return (allBusinesses || []).filter(b => Number(b.id) > 0);
   }, [allBusinesses]);
 
-  // Cargar agrupaciones del negocio seleccionado (si es distinto al activo)
   const isSameBiz = Number(selectedBizId) === Number(activeBizId);
   const { agrupaciones: agrupacionesExternas, loading: loadingExt } = useAgrupacionesBiz(
     !isSameBiz && selectedBizId ? selectedBizId : null
@@ -131,16 +131,13 @@ function MoverAModal({
   const agrupacionesMostrar = useMemo(() => {
     if (!selectedBizId) return [];
     if (isSameBiz) {
-      // Negocio activo: excluir el grupo actual
       return (agrupacionesLocales || []).filter(g => Number(g.id) !== currentGroupId);
     }
     return agrupacionesExternas;
   }, [selectedBizId, isSameBiz, agrupacionesLocales, agrupacionesExternas, currentGroupId]);
 
-  // Resetear grupo al cambiar negocio
   useEffect(() => { setSelectedGroupId(''); }, [selectedBizId]);
 
-  // Pre-seleccionar negocio activo al abrir — UN SOLO useEffect
   useEffect(() => {
     if (open) {
       setSelectedBizId(String(activeBizId || ''));
@@ -148,7 +145,6 @@ function MoverAModal({
     }
   }, [open, activeBizId]);
 
-  // Auto-seleccionar si hay un solo negocio y selectedBizId está vacío
   useEffect(() => {
     if (negocios.length === 1 && !selectedBizId) {
       setSelectedBizId(String(negocios[0].id));
@@ -160,11 +156,7 @@ function MoverAModal({
     const bizId = Number(selectedBizId);
     const groupId = Number(selectedGroupId);
     const grupo = agrupacionesMostrar.find(g => Number(g.id) === groupId);
-    console.log('[MoverAModal] grupo encontrado:', grupo);
-    console.log('[MoverAModal] grupo.business_id:', grupo?.business_id);
     const realBizId = Number(grupo?.business_id) || bizId;
-    console.log('[MoverAModal] realBizId final:', realBizId, '| bizId del selector:', bizId);
-    console.log('[MoverAModal] allBusinesses:', allBusinesses?.length, allBusinesses);
     await onConfirm({ bizId: realBizId, groupId, groupNombre: grupo?.nombre || '' });
   }, [selectedBizId, selectedGroupId, agrupacionesMostrar, onConfirm]);
 
@@ -177,7 +169,6 @@ function MoverAModal({
       </DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
 
-        {/* Select de sub-negocio (solo si hay más de uno) */}
         {showBizSelect && (
           <TextField
             select
@@ -198,7 +189,6 @@ function MoverAModal({
           </TextField>
         )}
 
-        {/* Select de agrupación */}
         {selectedBizId && (
           loadingExt ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', fontSize: '0.82rem' }}>
@@ -261,9 +251,10 @@ function ArticuloAccionesMenu({
   businessId,
   rootBizId: rootBizIdProp = null,
   allowedIds,
-   priceLists = [],  
+  priceLists = [],
   priceListsByList = {},
 }) {
+  // ── Estado UI ──────────────────────────────────────────────────────────────
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
@@ -271,11 +262,18 @@ function ArticuloAccionesMenu({
   const [preselect, setPreselect] = useState(null);
   const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
   const [origenReactivar, setOrigenReactivar] = useState(null);
-  const { rootBusiness, allBusinesses, organization } = useOrganization() || {};
+  const [excluirOpen, setExcluirOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
+  const loadedRef = useRef(false);
+
+  const { rootBusiness, allBusinesses, organization } = useOrganization() || {};
   const { items: bizItems } = useBusiness() || {};
+
   const haveExternalTree = Array.isArray(todosArticulos) && todosArticulos.length > 0;
   const effectiveTree = haveExternalTree ? todosArticulos : treeLocal;
   const effectiveLoading = haveExternalTree ? !!loading : loadingLocal;
@@ -284,18 +282,16 @@ function ArticuloAccionesMenu({
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleClose = useCallback(() => setAnchorEl(null), []);
 
-  const [excluirOpen, setExcluirOpen] = useState(false);
-
-  const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
-
-  const discontinuadosGroup = useMemo(
-    () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)),
-    [agrupaciones]
-  );
-  const discontinuadosId = discontinuadosGroup ? Number(discontinuadosGroup.id) : null;
-
+  // ── Derivados básicos del artículo ─────────────────────────────────────────
   const articuloIdNum = getNum(articulo?.id);
 
+  const articuloDisplayName = useMemo(() => {
+    if (!articulo) return `Artículo #${articuloIdNum || ''}`;
+    const raw = articulo.raw || {};
+    return articulo.nombre || raw.nombre || raw.descripcion || `Artículo #${articuloIdNum || ''}`;
+  }, [articulo, articuloIdNum]);
+
+  // ── BizIds resueltos ───────────────────────────────────────────────────────
   const effectiveBusinessIdRaw =
     businessId ?? localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ?? null;
@@ -306,11 +302,20 @@ function ArticuloAccionesMenu({
     localStorage.getItem('effectiveBusinessId') ?? businessId
   );
 
-  const articuloDisplayName = useMemo(() => {
-    if (!articulo) return `Artículo #${articuloIdNum || ''}`;
-    const raw = articulo.raw || {};
-    return articulo.nombre || raw.nombre || raw.descripcion || `Artículo #${articuloIdNum || ''}`;
-  }, [articulo, articuloIdNum]);
+  const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
+  const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
+
+  const agrupBizId = realActiveBizId || rootBizId || effectiveBusinessId;
+  const discBizId = rootBizId || agrupBizId;
+
+  // ── Agrupaciones derivadas ─────────────────────────────────────────────────
+  const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
+
+  const discontinuadosGroup = useMemo(
+    () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)),
+    [agrupaciones]
+  );
+  const discontinuadosId = discontinuadosGroup ? Number(discontinuadosGroup.id) : null;
 
   const isInDiscontinuados = useMemo(() => {
     if (!Number.isFinite(articuloIdNum) || !discontinuadosId) return false;
@@ -319,13 +324,22 @@ function ArticuloAccionesMenu({
     return arts.some((a) => Number(a?.id) === articuloIdNum);
   }, [agrupaciones, articuloIdNum, discontinuadosId]);
 
-  const loadedRef = useRef(false);
+  const agrupacionesLocalesParaMover = useMemo(() => {
+    return (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g));
+  }, [agrupaciones]);
 
+  // ── Handlers básicos ───────────────────────────────────────────────────────
   const openMover = useCallback(() => {
     handleClose();
     setTimeout(() => setDlgMoverOpen(true), 0);
   }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
+
+  const openRename = useCallback(() => {
+    setRenameValue(articuloDisplayName);
+    handleClose();
+    setTimeout(() => setRenameOpen(true), 0);
+  }, [articuloDisplayName, handleClose]);
 
   const pushUi = useCallback((payload) => {
     try {
@@ -336,26 +350,39 @@ function ArticuloAccionesMenu({
     } catch { }
   }, [effectiveBusinessId]);
 
-  const rootBizIdFromContext = rootBusiness?.id ? Number(rootBusiness.id) : null;
-  const rootBizId = rootBizIdProp || rootBizIdFromContext || null;
+  const ejecutarRename = useCallback(async () => {
+    const nuevo = renameValue.trim();
+    if (!nuevo || nuevo === articuloDisplayName) {
+      setRenameOpen(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      await httpBiz(`/articles/${articuloIdNum}`, {
+        method: 'PATCH', body: { nombre: nuevo },
+      }, effectiveBusinessId);
+      notify?.(`Artículo renombrado a "${nuevo}"`, 'success');
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      setRenameOpen(false);
+    } catch (e) {
+      console.error('RENAME_ERROR', e);
+      notify?.('No se pudo renombrar el artículo', 'error');
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, articuloDisplayName, articuloIdNum, effectiveBusinessId, notify]);
 
-  const agrupBizId = realActiveBizId || rootBizId || effectiveBusinessId;
-  const discBizId = rootBizId || agrupBizId;
-
+  // ── Negocios filtrados para el modal Mover ─────────────────────────────────
   const negociosFiltrados = useMemo(() => {
     const activoNum = Number(businessId) || Number(agrupBizId);
 
-    // Si hay org Y el negocio activo pertenece a esa org → mostrar solo los de la org
     if (organization?.id && organization?.businesses?.length > 0) {
       const orgIds = new Set(organization.businesses.map(b => Number(b.id)));
       if (orgIds.has(activoNum)) {
-        // El negocio activo ES de esta org → mostrar todos los de la org
         return organization.businesses.filter(b => Number(b.id) > 0);
       }
     }
 
-    // El negocio activo NO pertenece a ninguna org (o la org no lo incluye)
-    // → mostrar SOLO el negocio activo
     const fuente = Array.isArray(bizItems) ? bizItems : [];
     const activo = fuente.find(b => Number(b.id) === activoNum);
     return activo ? [activo] : [{ id: activoNum, nombre: 'Negocio actual', name: 'Negocio actual' }];
@@ -365,11 +392,7 @@ function ArticuloAccionesMenu({
     return realActiveBizId || rootBizId || effectiveBusinessId;
   }, [realActiveBizId, rootBizId, effectiveBusinessId]);
 
-  // ── Agrupaciones locales (negocio activo) para el modal Mover ─────────────
-  const agrupacionesLocalesParaMover = useMemo(() => {
-    return (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g));
-  }, [agrupaciones]);
-
+  // ── Discontinuar / Reactivar ───────────────────────────────────────────────
   async function toggleDiscontinuado() {
     const idNum = articuloIdNum;
     if (!Number.isFinite(idNum)) return;
@@ -396,7 +419,6 @@ function ArticuloAccionesMenu({
           }, discBizId);
         }
 
-        // Quitar de la agrupación actual en la DB
         if (currentGroupId && currentGroupId !== resolvedDiscId) {
           try {
             await httpBiz(`/agrupaciones/${currentGroupId}/articulos`, {
@@ -440,9 +462,7 @@ function ArticuloAccionesMenu({
         return;
 
       } else {
-        // REACTIVAR → buscar origen usando el endpoint plural (igual que SubrubroAccionesMenu)
-        // El plural lee la metadata fromGroupId/fromBizId del JSONB de Discontinuados,
-        // que es la fuente confiable cuando el artículo solo vive en Discontinuados.
+        // REACTIVAR
         let origenData = null;
         try {
           const res = await httpBiz(
@@ -517,11 +537,8 @@ function ArticuloAccionesMenu({
 
       onDiscontinuadoChange?.(idNum, false, { stay: true });
 
-      // 🆕 Navegar al origen del artículo reactivado
-      console.log('[reactivar] origenReactivar:', origenReactivar, '| fromGroupId:', fromGroupId, '| fromBizId:', fromBizId);
       if (fromGroupId && fromBizId) {
         try {
-          console.log('[reactivar] dispatching navigate event', { articleId: idNum, groupId: Number(fromGroupId), bizId: Number(fromBizId) });
           window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
             detail: { articleId: idNum, groupId: Number(fromGroupId), bizId: Number(fromBizId) },
           }));
@@ -539,7 +556,6 @@ function ArticuloAccionesMenu({
   async function ejecutarMover({ bizId: toBizId, groupId: toId, groupNombre }) {
     const idNum = articuloIdNum;
 
-    // Si el artículo está en Discontinuados, el origen siempre es discontinuadosId
     const fromId = isInDiscontinuados
       ? discontinuadosId
       : (!isTodo && currentGroupId ? Number(currentGroupId) : null);
@@ -555,7 +571,6 @@ function ArticuloAccionesMenu({
     setIsMoving(true);
     try {
       if (isSameBiz) {
-        // ── Mismo negocio: lógica original ──────────────────────────────────
         const destGroup = (agrupaciones || []).find((g) => Number(g.id) === toId);
         const fromGroup = (agrupaciones || []).find((g) => Number(g.id) === fromId);
         const fromIsDisc = fromId != null && fromId === discontinuadosId;
@@ -584,13 +599,11 @@ function ArticuloAccionesMenu({
         }
 
       } else {
-        // ── Distinto negocio: limpiar de toda la org y mover al destino ──────
         await httpBiz('/agrupaciones/move-cross-biz', {
           method: 'POST',
           body: { articleIds: [idNum], toGroupId: toId, toBizId },
         }, agrupBizId);
 
-        // Mutación optimista: quitar del grupo origen local
         if (fromId) {
           onMutateGroups?.({ type: 'remove', groupId: fromId, ids: [idNum] });
         }
@@ -605,7 +618,6 @@ function ArticuloAccionesMenu({
 
       onAfterMutation?.([idNum]);
 
-      // 🆕 Navegar al destino (mismo negocio o cross-biz)
       try {
         window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
           detail: { articleId: idNum, groupId: Number(toId), bizId: Number(toBizId) },
@@ -621,6 +633,7 @@ function ArticuloAccionesMenu({
     }
   }
 
+  // ── Quitar de agrupación actual ────────────────────────────────────────────
   async function quitarDeActual() {
     const idNum = articuloIdNum;
     if (isTodo && todoGroupId) {
@@ -652,6 +665,7 @@ function ArticuloAccionesMenu({
     } finally { handleClose(); }
   }
 
+  // ── Lazy load del árbol para AgrupacionCreateModal ─────────────────────────
   const isArticuloBloqueadoCreate = useMemo(() => {
     const esTodo = (g) => { const n = norm(g?.nombre); return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' || n === 'sin agrupar' || n === 'sin grupo'; };
     const assigned = new Set();
@@ -677,11 +691,10 @@ function ArticuloAccionesMenu({
     return () => { alive = false; };
   }, [openCrearAgr, haveExternalTree, loading]);
 
-  // Contador de listas en las que está excluido este artículo (leído del byList del hook).
+  // ── Listas de precios: contador de exclusiones ─────────────────────────────
   const exclusionesCount = useMemo(() => {
     if (!articuloIdNum || !priceLists?.length) return 0;
     let n = 0;
-    // Global cuenta como una marca activa que pisa todas
     const baseEntry = priceListsByList?._base?.byArticle?.[String(articuloIdNum)];
     if (baseEntry?.excluido) return priceLists.filter(l => !l.is_favorite).length;
     for (const l of priceLists) {
@@ -704,6 +717,10 @@ function ArticuloAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
+        <MenuItem onClick={openRename}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Editar nombre</ListItemText>
+        </MenuItem>
         <MenuItem onClick={toggleDiscontinuado}>
           <ListItemIcon>{isInDiscontinuados ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}</ListItemIcon>
           <ListItemText>{isInDiscontinuados ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
@@ -780,13 +797,11 @@ function ArticuloAccionesMenu({
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
-          {/* Botón: reactivar en origen */}
           <Button variant="contained" size="small" onClick={ejecutarReactivar} sx={{ flex: 1, minWidth: 140, textTransform: 'none' }}>
             {origenReactivar?.fromGroupName
               ? `Reactivar en origen`
               : 'Reactivar (sin agrupación)'}
           </Button>
-          {/* Botón: mover a otro lugar (abre MoverAModal) */}
           <Button
             variant="outlined" size="small"
             sx={{ flex: 1, minWidth: 140, textTransform: 'none' }}
@@ -820,20 +835,15 @@ function ArticuloAccionesMenu({
           const todoGrpId = preselect?.todoGroupId;
           const fromGrpId = preselect?.fromGroupId ? Number(preselect.fromGroupId) : null;
 
-          // 1. Crear el nuevo grupo optimistamente
           onMutateGroups?.({ type: 'create', id: Number(newId), nombre: nombreCreado, articulos: Array.isArray(articulos) ? articulos : [] });
 
-          // 2. Quitar artículos del grupo origen (mutación optimista)
           if (isTodo && todoGrpId && movingIds.length) {
-            // Venía de Sin Agrupación
             onMutateGroups?.({ type: 'remove', groupId: Number(todoGrpId), ids: movingIds });
           } else if (!isTodo && fromGrpId && movingIds.length) {
-            // Venía de una agrupación real (ej: "Cafeteria") — quitarlos optimistamente
             onMutateGroups?.({ type: 'remove', groupId: fromGrpId, ids: movingIds });
           }
 
           onGroupCreated?.(nombreCreado, newId, articulos);
-          // Refetch para consolidar con backend (la DB ya está correcta)
           onRefetch?.();
         }}
         existingNames={(agrupaciones || []).map((g) => String(g?.nombre || '')).filter(Boolean)}
@@ -854,6 +864,27 @@ function ArticuloAccionesMenu({
         scopeLabel={articuloDisplayName}
         notify={notify}
       />
+
+      {/* ── Diálogo de renombrar ── */}
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del artículo</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            autoFocus fullWidth size="small"
+            label="Nombre"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+          <Button onClick={ejecutarRename} variant="contained"
+            disabled={renaming || !renameValue.trim()}>
+            {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </>
   );

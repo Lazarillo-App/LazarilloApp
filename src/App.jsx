@@ -18,7 +18,7 @@ import AppAlertModal from './componentes/AppAlertModal';
 import AppPromptModal from './componentes/AppPromptModal';
 import AppConfirmModal from './componentes/AppConfirmModal';
 import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
-
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
 
@@ -46,6 +46,7 @@ function readRole() {
 }
 
 export default function App() {
+  useDocumentTitle();
   const [bootReady, setBootReady] = useState(false);
   const [isLogged, setIsLogged] = useState(!!localStorage.getItem('token'));
   const [role, setRole] = useState(readRole());
@@ -193,8 +194,9 @@ export default function App() {
     cargarCategorias();
   };
 
-  if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
+  useDocumentTitle();
 
+  if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
       <AppAlertModal />

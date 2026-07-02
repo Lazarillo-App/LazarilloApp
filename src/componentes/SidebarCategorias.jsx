@@ -102,6 +102,7 @@ function SidebarCategorias({
   setBusqueda,
   categoriaSeleccionada,
   todoGroupId,
+  todoIds,
   todoCountOverride = {},
   visibleIds,
   onManualPick,
@@ -248,9 +249,8 @@ function SidebarCategorias({
     const appIds = Array.isArray(gActual?.app_articles_ids) ? gActual.app_articles_ids : [];
     const s = new Set();
     arr.forEach((a) => { const id = safeId(a); if (id != null) s.add(id); });
-    appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
-    if (s.size === 0 && visibleIds instanceof Set && visibleIds.size > 0) return visibleIds;
-    return s;
+      appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
+      return s;
   }, [agrupaciones, agrupacionSeleccionada, visibleIds]);
 
   useEffect(() => {
@@ -288,7 +288,7 @@ function SidebarCategorias({
 
   const treeBySubrubro = useMemo(() => {
     if (!activeIds) return categoriasSafe;
-    if (!activeIdsIntersectsTree) return categoriasSafe;
+    if (!activeIdsIntersectsTree) return [];
     const pruned = categoriasSafe
       .map((sub) => {
         const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
@@ -334,10 +334,14 @@ function SidebarCategorias({
     }
     const out = [];
     for (const [catName, arts] of catMap.entries()) {
-      const filtered = !activeIds || !activeIdsIntersectsTree ? arts : arts.filter((a) => {
-        const id = safeId(a);
-        return id != null && activeIds.has(id);
-      });
+      const filtered = !activeIds
+          ? arts
+          : !activeIdsIntersectsTree
+            ? []
+            : arts.filter((a) => {
+                const id = safeId(a);
+                return id != null && activeIds.has(id);
+              });
       if (filtered.length > 0) {
         let ventasMonto = 0;
         for (const art of filtered) ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
@@ -369,13 +373,17 @@ function SidebarCategorias({
     for (const g of opcionesSelect || []) {
       // Sin Agrupación SÍ cuenta como agrupación. Solo excluimos Discontinuados.
       if (esDiscontinuadosGroup(g)) continue;
-      for (const a of (g.articulos || [])) {
-        const id = Number(a?.id ?? a?.articulo_id);
-        if (Number.isFinite(id)) total += getAmountForId(id) || 0;
+      if (esTodoGroup(g) && todoIds instanceof Set) {
+        for (const id of todoIds) total += getAmountForId(Number(id)) || 0;
+      } else {
+        for (const a of (g.articulos || [])) {
+          const id = Number(a?.id ?? a?.articulo_id);
+          if (Number.isFinite(id)) total += getAmountForId(id) || 0;
+        }
       }
     }
     return total > 0 ? total : totalBizAmount;
-  }, [opcionesSelect, getAmountForId, totalBizAmount]);
+  }, [opcionesSelect, getAmountForId, totalBizAmount, todoIds]);
 
   useEffect(() => {
     if (!categoriaSeleccionada) return;
@@ -505,13 +513,21 @@ function SidebarCategorias({
               }}
             >
               {opcionesSelect.map((g) => {
-                const gArts = (g.articulos || []);
-                const gMonto = getAmountForId
-                  ? gArts.reduce((acc, a) => {
-                    const id = Number(a?.id ?? a?.articulo_id);
-                    return acc + (Number.isFinite(id) ? (getAmountForId(id) || 0) : 0);
-                  }, 0)
-                  : 0;
+                const isTodo = esTodoGroup(g);
+                let gMonto = 0;
+                if (getAmountForId) {
+                  if (isTodo && todoIds instanceof Set) {
+                    for (const id of todoIds) {
+                      gMonto += getAmountForId(Number(id)) || 0;
+                    }
+                  } else {
+                    const gArts = (g.articulos || []);
+                    gMonto = gArts.reduce((acc, a) => {
+                      const id = Number(a?.id ?? a?.articulo_id);
+                      return acc + (Number.isFinite(id) ? (getAmountForId(id) || 0) : 0);
+                    }, 0);
+                  }
+                }
                 const gPct = totalAgrupacionesAmount > 0 && gMonto > 0 && !esDiscontinuadosGroup(g)
                   ? (gMonto / totalAgrupacionesAmount * 100).toFixed(1).replace('.', ',')
                   : null;

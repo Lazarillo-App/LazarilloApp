@@ -26,4 +26,16 @@ export const MeAPI = {
       withBusinessId: false,
     });
   },
+
+  /**
+   * PUT /api/auth/me
+   * Actualiza el perfil del usuario logueado. Acepta: name, displayName.
+   */
+  async updateMe({ displayName, name } = {}) {
+    return http('/auth/me', {
+      method: 'PUT',
+      body: { displayName, name },
+      withBusinessId: false,
+    });
+  },
 };

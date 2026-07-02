@@ -7,24 +7,27 @@ import {
   Divider, IconButton, Tooltip, Table, TableHead, Snackbar,
   TableRow, TableCell, TableBody, CircularProgress, Menu, MenuItem,
 } from '@mui/material';
-import PersonIcon            from '@mui/icons-material/Person';
-import EmailIcon             from '@mui/icons-material/Email';
-import GroupsIcon            from '@mui/icons-material/Groups';
-import AddIcon               from '@mui/icons-material/Add';
-import BusinessIcon          from '@mui/icons-material/Business';
+import PersonIcon from '@mui/icons-material/Person';
+import EmailIcon from '@mui/icons-material/Email';
+import GroupsIcon from '@mui/icons-material/Groups';
+import AddIcon from '@mui/icons-material/Add';
+import BusinessIcon from '@mui/icons-material/Business';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import LockOutlinedIcon      from '@mui/icons-material/LockOutlined';
-import EditOutlinedIcon      from '@mui/icons-material/EditOutlined';
-import BadgeOutlinedIcon     from '@mui/icons-material/BadgeOutlined';
-import MoreVertIcon          from '@mui/icons-material/MoreVert';
-import RefreshIcon           from '@mui/icons-material/Refresh';
-import DeleteOutlineIcon     from '@mui/icons-material/DeleteOutline';
-
-import { useOrganization }   from '@/context/OrganizationContext';
-import { useBusiness }       from '@/context/BusinessContext';
-import { useAccess }         from '@/context/AccessContext';
-import BusinessCreateModal   from '@/componentes/BusinessCreateModal';
-import InvitarMiembroModal   from '@/componentes/InvitarMiembroModal';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
+import { useAuth } from '@/context/AuthContext';
+import { MeAPI } from '@/servicios/apiMe';
+import { useOrganization } from '@/context/OrganizationContext';
+import { useBusiness } from '@/context/BusinessContext';
+import { useAccess } from '@/context/AccessContext';
+import BusinessCreateModal from '@/componentes/BusinessCreateModal';
+import InvitarMiembroModal from '@/componentes/InvitarMiembroModal';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncservice';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
@@ -86,7 +89,7 @@ function TeamSection() {
   // Menú contextual por fila
   const [menuRow, setMenuRow] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState(null);
-  
+
   const [snack, setSnack] = useState(null);
 
   const puedeGestionar = canDo('manage_team') && !!bizId;
@@ -131,7 +134,7 @@ function TeamSection() {
     }
     try {
       await revokeAssignment(m.id);
-      try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('team:changed')); } catch { }
       fetchMembers();
     } catch (e) {
       alert(`Error: ${e?.message || 'no_se_pudo_revocar'}`);
@@ -357,19 +360,60 @@ export default function Perfil() {
   const sinNegocios = !items || items.length === 0;
   const [showCreateBiz, setShowCreateBiz] = React.useState(false);
 
+const { user, setUser } = useAuth();
+
   const me = useMemo(() => {
+    if (user) return user;
     try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; }
     catch { return {}; }
-  }, []);
+  }, [user]);
 
-  const meName      = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
+  // Prioridad: display_name personal > name del owner > primer/último nombre > 'Usuario'
+  const meName = me?.display_name
+    || me?.name
+    || [me?.firstName, me?.lastName].filter(Boolean).join(' ')
+    || 'Usuario';
+
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [snack, setSnack] = useState({ open: false, msg: '', type: 'success' });
+
+  const openRename = useCallback(() => {
+    setRenameValue(me?.display_name || me?.name || '');
+    setRenameOpen(true);
+  }, [me]);
+
+  const ejecutarRename = useCallback(async () => {
+    const nuevo = renameValue.trim();
+    if (!nuevo || nuevo.length < 2) {
+      setSnack({ open: true, msg: 'Ingresá al menos 2 caracteres', type: 'error' });
+      return;
+    }
+    setRenaming(true);
+    try {
+      const updated = await MeAPI.updateMe({ displayName: nuevo });
+      // updated viene del backend con los campos nuevos
+      const newUser = { ...me, ...updated, display_name: updated?.display_name ?? nuevo };
+      setUser?.(newUser);
+      try { localStorage.setItem('user', JSON.stringify(newUser)); } catch { }
+      setSnack({ open: true, msg: 'Nombre actualizado', type: 'success' });
+      setRenameOpen(false);
+    } catch (e) {
+      console.error('RENAME_PROFILE_ERROR', e);
+      setSnack({ open: true, msg: 'No se pudo actualizar el nombre', type: 'error' });
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, me, setUser]);
+
   const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
   // Rol mostrado en el header viene del negocio actual (AccessContext), no del JWT
   const roleLabel = currentRole === 'admin' ? 'Administrador'
     : currentRole === 'owner' ? 'Propietario'
-    : currentRole === 'staff' ? 'Staff'
-    : 'Usuario';
+      : currentRole === 'staff' ? 'Staff'
+        : 'Usuario';
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -398,12 +442,12 @@ export default function Perfil() {
                 </Avatar>
                 <Tooltip title="Cambiar foto (próximamente)">
                   <span>
-                  <IconButton size="small" disabled sx={{
-                    position: 'absolute', bottom: -2, right: -2,
-                    bgcolor: '#fff', border: '1px solid #e2e8f0', width: 24, height: 24,
-                  }}>
-                    <EditOutlinedIcon sx={{ fontSize: 13 }} />
-                  </IconButton>
+                    <IconButton size="small" disabled sx={{
+                      position: 'absolute', bottom: -2, right: -2,
+                      bgcolor: '#fff', border: '1px solid #e2e8f0', width: 24, height: 24,
+                    }}>
+                      <EditOutlinedIcon sx={{ fontSize: 13 }} />
+                    </IconButton>
                   </span>
                 </Tooltip>
               </Box>
@@ -411,10 +455,15 @@ export default function Perfil() {
               {/* Datos */}
               <Stack spacing={0.5} sx={{ flex: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                  <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
-                    {meName}
-                  </Typography>
-                  {currentRole && (
+                    <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+                      {meName}
+                    </Typography>
+                    <Tooltip title="Editar nombre">
+                      <IconButton size="small" onClick={openRename} sx={{ p: 0.5, color: tc }}>
+                        <EditIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    {currentRole && (
                     <Chip label={roleLabel} size="small"
                       icon={<BadgeOutlinedIcon sx={{ fontSize: '0.75rem !important' }} />}
                       sx={{ fontSize: '0.68rem', height: 20, bgcolor: `${tc}12`, color: tc, border: `1px solid ${tc}25` }} />
@@ -478,7 +527,7 @@ export default function Perfil() {
             await refetchBusinesses?.();
             if (biz?.id) {
               const bizId = Number(biz.id);
-              try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch {}
+              try { window.dispatchEvent(new CustomEvent('business:created', { detail: { id: bizId } })); } catch { }
               try {
                 const maxiOk = await isMaxiConfigured(bizId);
                 if (maxiOk) {
@@ -489,23 +538,14 @@ export default function Perfil() {
                     },
                   });
                   window.dispatchEvent(new CustomEvent('sync:completed', { detail: { bizId, ok: !!result?.ok } }));
-                  try { await ensureTodo(bizId); } catch {}
+                  try { await ensureTodo(bizId); } catch { }
                 }
-              } catch {}
+              } catch { }
             }
           }}
         />
 
         <Section icon={<PersonIcon />} title="Información personal"
-          action={
-            <Tooltip title="Editar perfil (próximamente)">
-              <span>
-                <IconButton size="small" disabled>
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          }
         >
           <Stack divider={<Divider flexItem />}>
             <DataRow label="Nombre" value={meName} />
@@ -522,6 +562,37 @@ export default function Perfil() {
         <SecuritySection />
 
       </Stack>
+      {/* Diálogo editar nombre */}
+        <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar tu nombre</DialogTitle>
+          <DialogContent sx={{ pt: '12px !important' }}>
+            <TextField
+              autoFocus fullWidth size="small"
+              label="¿Cómo te llamás?"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+              helperText="Así aparecerá tu nombre en Lazarillo"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+            <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
+              {renaming ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Snackbar
+          open={snack.open}
+          autoHideDuration={3000}
+          onClose={() => setSnack(s => ({ ...s, open: false }))}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <div style={{ background: snack.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem' }}>
+            {snack.msg}
+          </div>
+        </Snackbar>
     </Box>
   );
 }

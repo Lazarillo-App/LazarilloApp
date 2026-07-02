@@ -47,6 +47,11 @@ import ArticleListSelector from '../componentes/ArticleListSelector';
 import PriceListConfigModal from '../componentes/PriceListConfigModal';
 import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
+import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
+import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
+import { useNavigate } from 'react-router-dom';
+import CrearPromoModal from '../componentes/CrearPromoModal';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -116,6 +121,7 @@ export default function ArticulosMain(props) {
     activeBizId: activeBizIdProp = '',
   } = props;
 
+  const navigate = useNavigate();
   const {
     activeDivisionId,
     activeDivisionAgrupacionIds,
@@ -133,6 +139,18 @@ export default function ArticulosMain(props) {
   const [activeIds, setActiveIds] = useState(new Set());
   const [reloadKey, setReloadKey] = useState(0);
   const [recetasCostos, setRecetasCostos] = useState({});
+  const [addMembersModal, setAddMembersModal] = useState(null);
+  const [soloConVentas, setSoloConVentas] = useState(() => {
+    try { return localStorage.getItem('articulos_solo_con_ventas') === '1'; } catch { return false; }
+  });
+  const toggleSoloConVentas = useCallback(() => {
+    setSoloConVentas(prev => {
+      const next = !prev;
+      try { localStorage.setItem('articulos_solo_con_ventas', next ? '1' : '0'); } catch { }
+      return next;
+    });
+  }, []);
+
   // ── Price config save con confirmación y deshacer ──
   const [dlgConfirm, setDlgConfirm] = useState(null);
   const prevConfigRef = React.useRef(null); // backup para deshacer  // { [articleId]: { costoTotal, porciones } }
@@ -163,7 +181,7 @@ export default function ArticulosMain(props) {
   const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
-
+  const [promoModalOpen, setPromoModalOpen] = useState(false);
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
@@ -172,7 +190,7 @@ export default function ArticulosMain(props) {
     toggleMode, toggleSelected, selectAll, clearSelection,
     lists, loadingLists, activeListId, activeListItems,
     createList, addToExistingList, deleteList, selectList,
-    linkGroups, linkByArticleId, createLink, deleteLink, removeMemberFromLink,
+    linkGroups, linkByArticleId, createLink, deleteLink, removeMemberFromLink, addArticlesToLink,
   } = useArticleSelection({
     bizId: activeBizId,
     notify: showMiss,
@@ -961,6 +979,16 @@ export default function ArticulosMain(props) {
     };
   }, []);
 
+  useEffect(() => {
+    const handler = () => {
+      refetchAgrupaciones().catch(e =>
+        console.warn('[articulos:updated listener] refetch falló:', e.message)
+      );
+    };
+    window.addEventListener('articulos:updated', handler);
+    return () => window.removeEventListener('articulos:updated', handler);
+  }, [refetchAgrupaciones]);
+
   const activeBizRef = useRef(localStorage.getItem('activeBusinessId') || '');
   useEffect(() => {
     activeBizRef.current = activeBizId;
@@ -1119,6 +1147,16 @@ export default function ArticulosMain(props) {
 
   const getGroupQty = useCallback(
     (g) => {
+      const todoId = todoInfo?.todoGroupId ? Number(todoInfo.todoGroupId) : null;
+      const esGrupoTodo = todoId && Number(g?.id) === todoId;
+
+      if (esGrupoTodo) {
+        const ids = todoInfo?.todoIds instanceof Set ? todoInfo.todoIds : new Set();
+        let total = 0;
+        for (const id of ids) total += getQtyForId(Number(id));
+        return total;
+      }
+
       const items = getGroupItemsRaw(g);
       if (!items.length) return 0;
       let total = 0;
@@ -1128,21 +1166,32 @@ export default function ArticulosMain(props) {
       }
       return total;
     },
-    [getQtyForId]
+    [getQtyForId, todoInfo?.todoGroupId, todoInfo?.todoIds]
   );
 
   const getGroupAmount = useCallback(
     (g) => {
-      const items = getGroupItemsRaw(g);
-      if (!items.length) return 0;
-      let total = 0;
-      for (const a of items) {
-        const id = Number(a?.id ?? a?.articuloId);
-        total += getAmountForId(id);
+      // Si es el grupo TODO/Sin Agrupación, sumar solo los IDs realmente huérfanos
+      const todoId = todoInfo?.todoGroupId ? Number(todoInfo.todoGroupId) : null;
+      const esGrupoTodo = todoId && Number(g?.id) === todoId;
+
+      if (esGrupoTodo) {
+        const ids = todoInfo?.todoIds instanceof Set ? todoInfo.todoIds : new Set();
+        console.log('[SIN AGRUPACION DEBUG]', {
+          idsCount: ids.size,
+          ids: Array.from(ids).slice(0, 20),
+        });
+        let total = 0;
+        for (const id of ids) {
+          const amt = getAmountForId(Number(id));
+          if (amt > 0) console.log('  → ID', id, '= $', amt);
+          total += amt;
+        }
+        console.log('[SIN AGRUPACION TOTAL] $', total);
+        return Number(total || 0);
       }
-      return Number(total || 0);
     },
-    [getAmountForId]
+    [getAmountForId, todoInfo?.todoGroupId]
   );
 
   const agrupacionesOrdenadas = useMemo(() => {
@@ -1704,6 +1753,24 @@ export default function ArticulosMain(props) {
     return m;
   }, [categorias]);
 
+  const catalogoPlano = useMemo(() => {
+    const arr = [];
+    (categorias || []).forEach(sub =>
+      (sub.categorias || []).forEach(cat =>
+        (cat.articulos || []).forEach(a => {
+          const id = getArtId(a);
+          if (id == null) return;
+          arr.push({
+            id,
+            nombre: String(a.nombre || '').trim(),
+            codigo: a?.sku || String(id),
+          });
+        })
+      )
+    );
+    return arr;
+  }, [categorias]);
+
   useEffect(() => {
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
     if (!agrupacionSeleccionada && todoGroupId && catsReady) {
@@ -1811,7 +1878,7 @@ export default function ArticulosMain(props) {
     for (const g of agrupacionesRich || []) {
       for (const a of (g.articulos || [])) {
         const id = Number(a?.id);
-        if (!id || id <= 0 || seen.has(id)) continue;
+        if (!id || seen.has(id)) continue;
 
         // ← CAMBIO: incluir si pertenece al negocio activo O si está en Discontinuados
         const esDiscontinuado = isDiscontinuadosGroup(g);
@@ -1821,7 +1888,7 @@ export default function ArticulosMain(props) {
         const nombre = a?.nombre && !String(a.nombre).startsWith('#')
           ? String(a.nombre)
           : (metaById.get(id)?.nombre || nameById.get(id) || `#${id}`);
-        result.push({ id, nombre, codigo: String(id) });
+        result.push({ id, nombre, codigo: a?.sku || String(id) });
       }
     }
 
@@ -1829,15 +1896,32 @@ export default function ArticulosMain(props) {
     const sinAgrupIds = todoInfo?.todoIds?.size ? todoInfo.todoIds : todoIdsFromTree;
     for (const rawId of sinAgrupIds) {
       const id = Number(rawId);
-      if (!id || id <= 0 || seen.has(id)) continue;
+      if (!id || seen.has(id)) continue;
       if (!idsNegocioActivo.has(id)) continue;
       seen.add(id);
       const nombre = metaById.get(id)?.nombre || nameById.get(id) || `#${id}`;
-      result.push({ id, nombre, codigo: String(id) });
+      result.push({ id, nombre, codigo: metaById.get(id)?.sku || String(id) });
     }
 
     return result;
   }, [agrupacionesRich, nameById, metaById, todoInfo?.todoIds, todoIdsFromTree, idsNegocioActivo]);
+
+  // Pickup de focus pendiente cuando llegamos desde Insumos
+  useEffect(() => {
+    if (!activeBizId) return;
+    if (!opcionesBuscador?.length) return; // esperar a que la data esté lista
+    try {
+      const pendiente = sessionStorage.getItem('pendingFocusArticulo');
+      if (pendiente) {
+        const id = Number(pendiente);
+        if (Number.isFinite(id)) focusArticle(id);
+        sessionStorage.removeItem('pendingFocusArticulo');
+      }
+    } catch { }
+  }, [activeBizId, opcionesBuscador, focusArticle]);
+
+  // Buscador global: artículos + insumos
+  const { opciones: opcionesGlobales } = useGlobalSearchOptions(activeBizId);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -1887,6 +1971,25 @@ export default function ArticulosMain(props) {
     setFiltroBusqueda('');
     setCategoriaSeleccionada(null);
   }, [mutateGroups]);
+
+  const openAddMembers = useCallback((groupId) => {
+    const grp = linkGroups.find(g => Number(g.id) === Number(groupId));
+    if (!grp) return;
+    const linkType = grp.link_type ?? (grp.sync_precio ? 'precio' : grp.sync_recipe ? 'receta' : 'objetivo');
+    const currentMemberIds = (grp.members || []).map(m => Number(m.article_id));
+    setAddMembersModal({
+      groupId: Number(groupId),
+      groupName: grp.name,
+      linkType,
+      currentMemberIds,
+    });
+  }, [linkGroups]);
+
+  const handleConfirmAddMembers = useCallback(async (articleIds) => {
+    if (!addMembersModal?.groupId || !articleIds?.length) return;
+    await addArticlesToLink(addMembersModal.groupId, articleIds);
+    try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
+  }, [addMembersModal, addArticlesToLink]);
 
   // Ref para leer agrupacionSeleccionada sin que sea una dep del efecto
   const agrupSelRef = useRef(agrupacionSeleccionada);
@@ -2212,12 +2315,6 @@ export default function ArticulosMain(props) {
           </Alert>
         )}
 
-        {ventasError && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Error al cargar ventas: {ventasError}
-          </Alert>
-        )}
-
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
             value={rango}
@@ -2255,19 +2352,26 @@ export default function ArticulosMain(props) {
           />
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
-              placeholder="Buscar artículos..."
-              opciones={opcionesBuscador}
+              placeholder="Buscar artículos, insumos…"
+              opciones={opcionesGlobales}
               value={searchText}
               onChange={(v) => setSearchText(v || '')}
               clearOnPick={false}
               autoFocusAfterPick
-              noResultsText="No se encontró ningún artículo"
+              noResultsText="Sin resultados"
               onPick={(opt) => {
                 const id = Number(opt?.id);
                 if (!Number.isFinite(id)) return;
                 setFiltroBusqueda('');
                 setSearchText('');
-                focusArticle(id);
+
+                if (opt?.tipo === 'insumo') {
+                  // Cambio de página → navegar a Insumos con el id
+                  try { sessionStorage.setItem('pendingFocusInsumo', String(id)); } catch { }
+                  navigate('/insumos');
+                } else {
+                  focusArticle(id);
+                }
               }}
             />
           </div>
@@ -2331,6 +2435,7 @@ export default function ArticulosMain(props) {
             setFiltroBusqueda={setFiltroBusqueda}
             setBusqueda={setFiltroBusqueda}
             todoGroupId={todoInfo.todoGroupId}
+            todoIds={todoInfo.todoIds}
             todoCountOverride={
               todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
             }
@@ -2371,6 +2476,19 @@ export default function ArticulosMain(props) {
           />
         </div>
 
+        {String(agrupacionSeleccionada?.nombre || '').toLowerCase() === 'promociones' && (
+          <div style={{ padding: '8px 12px', background: '#faf5ff', borderBottom: '1px solid #e9d5ff' }}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<LocalOfferIcon />}
+              onClick={() => setPromoModalOpen(true)}
+              sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+            >
+              Crear promoción
+            </Button>
+          </div>
+        )}
         <div
           id="tabla-scroll"
           style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
@@ -2433,6 +2551,7 @@ export default function ArticulosMain(props) {
               try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
               return result;
             }}
+            onAddMembersToLink={openAddMembers}
             onRedondeoChange={handleRedondeoChange}
             priceLists={priceLists}
             priceListsByList={priceListsByList}
@@ -2440,6 +2559,8 @@ export default function ArticulosMain(props) {
             isPriceListFavorite={isPriceListFavorite}
             calcPrecioPorLista={calcPrecioPorLista}
             currentPriceList={currentPriceList}
+            soloConVentas={soloConVentas}
+            onToggleSoloConVentas={toggleSoloConVentas}
           />
         </div>
       </div>
@@ -2537,6 +2658,16 @@ export default function ArticulosMain(props) {
         onNeedOrgName={handleNeedOrgName}
       />
 
+      <CrearPromoModal
+        open={promoModalOpen}
+        onClose={() => setPromoModalOpen(false)}
+        businessId={activeBizId}
+        onCreated={(promo) => {
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          refetchAgrupaciones?.();
+        }}
+      />
+
       {/* Modal de configuración de listas de precios */}
       <PriceListConfigModal
         open={priceListsConfigOpen}
@@ -2625,6 +2756,17 @@ export default function ArticulosMain(props) {
         </div>,
         document.body
       )}
+      <LinkAddMembersModal
+        open={!!addMembersModal}
+        onClose={() => setAddMembersModal(null)}
+        groupId={addMembersModal?.groupId}
+        groupName={addMembersModal?.groupName}
+        linkType={addMembersModal?.linkType}
+        currentMemberIds={addMembersModal?.currentMemberIds || []}
+        catalogo={catalogoPlano}
+        linkByArticleId={linkByArticleId}
+        onConfirm={handleConfirmAddMembers}
+      />
     </div>
   );
 }

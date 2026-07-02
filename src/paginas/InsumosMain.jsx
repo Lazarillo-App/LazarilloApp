@@ -55,6 +55,8 @@ import { useBranch } from '@/hooks/useBranch';
 import { BASE } from '@/servicios/apiBase';
 import RecetaModal from '../componentes/RecetaModal';
 import { InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
+import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
+import { useNavigate } from 'react-router-dom';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -134,6 +136,7 @@ const vistaForInsumo = (insumo, rubrosMap, rubroNombreToInfo, rubrosIdMap) => {
 export default function InsumosMain() {
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
+  const navigate = useNavigate();
 
   // ── Listas de insumos + modo selección ────────────────────────────────────
   // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
@@ -223,7 +226,7 @@ export default function InsumosMain() {
   // ── Listas de insumos — usar businessId del negocio activo ──────────────
   const activeBizIdNum = Number(businessId);
   const validBizId = Number.isFinite(activeBizIdNum) && activeBizIdNum > 0 ? activeBizIdNum : null;
-
+  const { opciones: opcionesGlobales } = useGlobalSearchOptions(businessId);
   const {
     lists: insumoLists,
     createList: _createInsumoList,
@@ -1059,6 +1062,19 @@ export default function InsumosMain() {
     setTimeout(() => setJumpToInsumoId(null), 1400);
   }, [baseAll, groupsScoped, insumosGroupIndex, todoGroupId, selectedGroupId, rubrosMap, rubrosIdMap, rubroNombreToInfo, vista]);
 
+    useEffect(() => {
+    if (!businessId) return;
+    if (!baseAll?.length) return;
+    try {
+      const pendiente = sessionStorage.getItem('pendingFocusInsumo');
+      if (pendiente) {
+        const id = Number(pendiente);
+        if (Number.isFinite(id)) focusInsumo(id);
+        sessionStorage.removeItem('pendingFocusInsumo');
+      }
+    } catch { }
+  }, [businessId, baseAll, focusInsumo]);
+
   const handleSelectGroupId = useCallback((rawId) => {
     const n = Number(rawId);
     markManualPick();
@@ -1280,7 +1296,7 @@ export default function InsumosMain() {
     };
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
-  }, [businessId, discontinuadosGroupId, loadGroups, forceRefresh, notify, resolvedBizId, forceRefresh ]);
+  }, [businessId, discontinuadosGroupId, loadGroups, forceRefresh, notify, resolvedBizId, forceRefresh]);
 
   const titulo = useMemo(() => {
     const base = businessName ? `Insumos — ${businessName}` : 'Insumos';
@@ -1339,19 +1355,25 @@ export default function InsumosMain() {
           />
           <div style={{ minWidth: 260, maxWidth: 260 }}>
 
-            <Buscador
-              placeholder="Buscar insumo…"
-              opciones={insumosSearchOptions}
+           <Buscador
+              placeholder="Buscar insumos, artículos…"
+              opciones={opcionesGlobales}
               value={searchText}
               onChange={(v) => setSearchText(v || '')}
               clearOnPick={false}
               autoFocusAfterPick
-              noResultsText="No se encontró ningún insumo"
+              noResultsText="Sin resultados"
               onPick={(opt) => {
                 const id = Number(opt?.id);
                 if (!Number.isFinite(id)) return;
                 setSearchText('');
-                focusInsumo(id);
+
+                if (opt?.tipo === 'articulo') {
+                  try { sessionStorage.setItem('pendingFocusArticulo', String(id)); } catch { }
+                  navigate('/menu');
+                } else {
+                  focusInsumo(id);
+                }
               }}
             />
           </div>

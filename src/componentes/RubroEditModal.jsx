@@ -1,9 +1,11 @@
-﻿/* eslint-disable no-unused-vars */
+﻿/* eslint-disable no-empty */
+/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Typography, Box, Stack, Checkbox,
   IconButton, InputAdornment, Divider,
+  Select, MenuItem, FormControl,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PercentIcon from '@mui/icons-material/Percent';
@@ -13,6 +15,9 @@ import {
   addDiscountException,
   removeDiscountException,
 } from '@/servicios/apiMaxiPriceLists';
+import { insumosList } from '@/servicios/apiInsumos';
+import { RecetasAPI } from '@/servicios/apiBusinesses';
+import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 
 export default function RubroEditModal({
   open,
@@ -24,12 +29,20 @@ export default function RubroEditModal({
   globalCostoIdeal = 30,
   priceLists = [],     // listas de la org [{listNumber, alias, isPrincipal, discountPct, tipo}]
   orgId,
+  businessId,
   onSave,              // ({ objetivo, articleIds }) => void
 }) {
   const [objetivo, setObjetivo] = useState('');
   const [exclusionesRubro, setExclusionesRubro] = useState(new Set()); // listNumbers donde TODOS los artículos están excluidos
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // ── Receta en bloque ──
+  const [insumosCatalogo, setInsumosCatalogo] = useState([]);
+  const [insumoQuery, setInsumoQuery] = useState('');
+  const [insumoSel, setInsumoSel] = useState(null);
+  const [recCantidad, setRecCantidad] = useState('');
+  const [recUnidad, setRecUnidad] = useState('u');
+  const [addingReceta, setAddingReceta] = useState(false);
 
   // Resetear al abrir
   useEffect(() => {
@@ -61,15 +74,26 @@ export default function RubroEditModal({
       .finally(() => setLoading(false));
   }, [open, orgId, articleIds]);
 
+  useEffect(() => {
+    if (!open || !businessId) return;
+    insumosList(businessId, { limit: 99999 })
+      .then(resp => {
+        const lista = Array.isArray(resp?.data) ? resp.data
+          : Array.isArray(resp?.insumos) ? resp.insumos : [];
+        setInsumosCatalogo(lista);
+      })
+      .catch(() => setInsumosCatalogo([]));
+  }, [open, businessId]);
+
   const toggleExclusionLista = useCallback(async (listNumber) => {
     if (!orgId || !articleIds.length) return;
     const isExcluido = exclusionesRubro.has(listNumber);
     try {
       for (const id of articleIds) {
         if (isExcluido) {
-          await removeDiscountException(orgId, 'articulo', String(id), listNumber).catch(() => {});
+          await removeDiscountException(orgId, 'articulo', String(id), listNumber).catch(() => { });
         } else {
-          await addDiscountException(orgId, 'articulo', String(id), listNumber).catch(() => {});
+          await addDiscountException(orgId, 'articulo', String(id), listNumber).catch(() => { });
         }
       }
       setExclusionesRubro(prev => {
@@ -107,6 +131,44 @@ export default function RubroEditModal({
 
   const listasConDescuento = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
 
+  const insumosFiltrados = React.useMemo(() => {
+    const q = insumoQuery.trim().toLowerCase();
+    if (!q) return [];
+    return insumosCatalogo
+      .filter(i => String(i.nombre || '').toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [insumoQuery, insumosCatalogo]);
+
+  const handleAddRecetaBloque = async () => {
+    if (!insumoSel || !businessId) return;
+    setAddingReceta(true);
+    try {
+      const r = await RecetasAPI.bulkAddInsumo(businessId, {
+        articleIds,
+        insumoId: insumoSel.id,
+        cantidad: Number(recCantidad) || 0,
+        unidad: recUnidad,
+      });
+      setInsumoSel(null); setInsumoQuery(''); setRecCantidad('');
+      try {
+        window.dispatchEvent(new CustomEvent('ui:action', {
+          detail: {
+            kind: 'receta_bulk_add', scope: 'articulo',
+            title: `Insumo agregado en bloque`,
+            message: `${r.insumo}: ${r.agregados} agregado(s), ${r.salteados} ya lo tenían${r.recetasCreadas ? `, ${r.recetasCreadas} receta(s) nueva(s)` : ''}.`,
+            createdAt: new Date().toISOString(),
+          },
+        }));
+      } catch { }
+      window.dispatchEvent(new CustomEvent('recetas:bulk-added', { detail: r }));
+      onClose();
+    } catch (e) {
+      console.error('[bulk-add-insumo]', e);
+    } finally {
+      setAddingReceta(false);
+    }
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -138,7 +200,88 @@ export default function RubroEditModal({
             helperText={`${articleIds.length} artículo(s) en este bloque`}
           />
         </Box>
+        {/* Receta en bloque */}
+        <Divider sx={{ my: 2 }} />
+        <Box sx={{ mb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+            <RestaurantMenuIcon sx={{ fontSize: 16, color: 'var(--color-primary)' }} />
+            <Typography variant="caption" fontWeight={700} sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>
+              Receta en bloque
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Agrega este insumo a la receta de los {articleIds.length} artículo(s). Los que ya lo tengan se saltean.
+          </Typography>
 
+          {insumoSel ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, p: 1, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+              <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>{insumoSel.nombre}</Typography>
+              <IconButton size="small" onClick={() => { setInsumoSel(null); setInsumoQuery(''); }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          ) : (
+            <Box sx={{ position: 'relative', mb: 1 }}>
+              <TextField
+                size="small" fullWidth placeholder="Buscar insumo…"
+                value={insumoQuery}
+                onChange={e => setInsumoQuery(e.target.value)}
+              />
+              {insumosFiltrados.length > 0 && (
+                <Box sx={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, bgcolor: '#fff', border: '1px solid #e2e8f0', borderRadius: 1, maxHeight: 200, overflowY: 'auto', boxShadow: 2 }}>
+                  {insumosFiltrados.map(ins => (
+                    <Box key={ins.id}
+                      onClick={() => {
+                        setInsumoSel(ins);
+                        const u = String(ins.unidad_med || 'u').trim().toLowerCase();
+                        const permitidas = ['u', 'kg', 'gr', 'l', 'ml'];
+                        setRecUnidad(permitidas.includes(u) ? u : 'u');
+                      }}
+                      sx={{ px: 1.5, py: 0.75, cursor: 'pointer', fontSize: '0.85rem', '&:hover': { bgcolor: 'action.hover' } }}>
+                      {ins.nombre}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+              
+            </Box>
+          )}
+
+          {insumoSel && (
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <TextField
+                size="small" type="number" label="Cantidad" sx={{ flex: 1 }}
+                value={recCantidad} onChange={e => setRecCantidad(e.target.value)}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+              <FormControl size="small" sx={{ width: 90 }}>
+                <Select
+                  value={recUnidad}
+                  onChange={e => setRecUnidad(e.target.value)}
+                >
+                  <MenuItem value="u">u</MenuItem>
+                  <MenuItem value="kg">kg</MenuItem>
+                  <MenuItem value="gr">gr</MenuItem>
+                  <MenuItem value="l">L</MenuItem>
+                  <MenuItem value="ml">ml</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                variant="contained" size="small"
+                disabled={addingReceta}
+                onClick={handleAddRecetaBloque}
+              >
+                {addingReceta ? '...' : 'Agregar'}
+              </Button>
+            </Stack>
+          )}
+          {insumoSel && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Precio de referencia: ${Number(insumoSel.precio_ref || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/{insumoSel.unidad_med || 'u'}
+            </Typography>
+          )}
+          
+        </Box>
         {/* Exclusiones */}
         {listasConDescuento.length > 0 && (
           <>

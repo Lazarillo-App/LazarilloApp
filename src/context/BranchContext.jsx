@@ -30,6 +30,7 @@ export function BranchProvider({ children }) {
       return {
         ...stored,
         id: MAIN_BRANCH_ID,
+        realId: stored.id, // ID real en app_branches, necesario para el backend
         isMain: true,
       };
     }

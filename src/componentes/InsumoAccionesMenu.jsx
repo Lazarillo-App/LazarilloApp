@@ -5,6 +5,7 @@ import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
 } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
@@ -57,6 +58,15 @@ function InsumoAccionesMenu({
   const currentGroupId = selectedGroupId ? Number(selectedGroupId) : null;
   const isTodoView = todoGroupId && currentGroupId === todoGroupId;
   const insumoNombre = String(insumo?.nombre || '').trim() || `INS-${insumoId}`;
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  const openRename = useCallback(() => {
+    setRenameValue(insumoNombre);
+    handleClose();
+    setTimeout(() => setRenameOpen(true), 0);
+  }, [insumoNombre, handleClose]);
 
   // Derivado del objeto insumo — única fuente de verdad
   const isElaborado = Boolean(insumo?.es_elaborado);
@@ -102,6 +112,39 @@ function InsumoAccionesMenu({
       notify?.('Error al cambiar estado elaborado', 'error');
     }
   }
+
+  /* ========== RENOMBRAR ========== */
+  const ejecutarRename = useCallback(async () => {
+    const nuevo = renameValue.trim();
+    if (!nuevo || nuevo === insumoNombre) {
+      setRenameOpen(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      // Llamada al PUT /insumos/:id que ya existe
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`/api/insumos/${insumoId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Business-Id': String(businessId || ''),
+        },
+        body: JSON.stringify({ nombre: nuevo }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      notify?.(`Insumo renombrado a "${nuevo}"`, 'success');
+      window.dispatchEvent(new CustomEvent('insumos:updated'));
+      await onReloadCatalogo?.();
+      setRenameOpen(false);
+    } catch (e) {
+      console.error('RENAME_INSUMO_ERROR', e);
+      notify?.('No se pudo renombrar el insumo', 'error');
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, insumoNombre, insumoId, businessId, notify, onReloadCatalogo]);
 
   /* ========== DISCONTINUAR / REACTIVAR ========== */
   async function toggleDiscontinuar() {
@@ -298,7 +341,12 @@ function InsumoAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        {/* 1. Discontinuar / Reactivar */}
+        {/* 1. Renombrar*/}
+        <MenuItem onClick={openRename}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Editar nombre</ListItemText>
+        </MenuItem>
+        {/* 2. Discontinuar / Reactivar */}
         <MenuItem onClick={toggleDiscontinuar}>
           <ListItemIcon>
             {isInDiscontinuados ? (
@@ -314,7 +362,7 @@ function InsumoAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 2. Quitar de esta agrupación */}
+        {/* 3. Quitar de esta agrupación */}
         <MenuItem onClick={quitarDeActual} disabled={isTodoView}>
           <ListItemIcon>
             <UndoIcon fontSize="small" />
@@ -324,7 +372,7 @@ function InsumoAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 0. Marcar / desmarcar como elaborado */}
+        {/* 4. Marcar / desmarcar como elaborado */}
         <MenuItem onClick={handleToggleElaborado}>
           <ListItemIcon>
             {isElaborado ? (
@@ -338,7 +386,7 @@ function InsumoAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 3. Mover a… */}
+        {/* 5. Mover a… */}
         <MenuItem onClick={openMover}>
           <ListItemIcon>
             <DriveFileMoveIcon fontSize="small" />
@@ -395,6 +443,26 @@ function InsumoAccionesMenu({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del insumo</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            autoFocus fullWidth size="small"
+            label="Nombre"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+          <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
+            {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </>
   );
 }

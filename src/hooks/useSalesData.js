@@ -129,7 +129,7 @@ export function useSalesData({
       setVentasMap(new Map(map));
     } catch (err) {
       console.error("❌ [useSalesData] error:", err);
-      setError(err?.message || "Error al cargar ventas");
+      setError(err?.message);
       setVentasMap(new Map());
     } finally {
       if (myId === reqIdRef.current) setIsLoading(false);

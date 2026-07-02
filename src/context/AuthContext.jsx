@@ -106,6 +106,7 @@ export function AuthProvider({ children }) {
 
   const value = {
     user,
+    setUser,
     booting,
     login,
     logout,

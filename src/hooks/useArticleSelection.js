@@ -87,6 +87,17 @@ const LinksAPI = {
     });
     if (!r.ok) throw new Error(await r.text());
   },
+  addMember: async (bizId, groupId, articleId) => {
+    const r = await fetch(`${BASE}/businesses/${bizId}/article-links/${groupId}/members`, {
+      method: 'POST', headers: authHeaders(bizId),
+      body: JSON.stringify({ articleId }),
+    });
+    if (!r.ok) {
+      const errBody = await r.text();
+      throw new Error(errBody);
+    }
+    return r.json();
+  },
   getPropagations: async (bizId, limit = 20) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-links/propagations?limit=${limit}`, { headers: authHeaders(bizId) });
     if (!r.ok) throw new Error(await r.text());
@@ -109,16 +120,25 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   const [activeListItems, setActiveListItems] = useState(new Set()); // IDs en la lista activa
 
   // ── Vinculaciones ──
-  // linkByArticleId: Map<articleId, { groupId, groupName, memberIds: Set }>
-  const [linkGroups, setLinkGroups] = useState([]); // [{id, name, members:[{article_id}]}]
-
-  // Construir índice: articleId → groupInfo
+  // linkByArticleId: Map<articleId, Array<{ groupId, groupName, linkType, memberIds: Set, sync_recipe, sync_precio, sync_objetivo }>>
+  const [linkGroups, setLinkGroups] = useState([]);
   const linkByArticleId = useMemo(() => {
     const m = new Map();
     for (const g of linkGroups) {
-      const memberIds = new Set((g.members || []).map(m => Number(m.article_id)));
+      const memberIds = new Set((g.members || []).map(mm => Number(mm.article_id)));
+      const entry = {
+        groupId: g.id,
+        groupName: g.name,
+        linkType: g.link_type ?? (g.sync_precio ? 'precio' : g.sync_recipe ? 'receta' : g.sync_objetivo ? 'objetivo' : null),
+        sync_recipe: !!g.sync_recipe,
+        sync_precio: !!g.sync_precio,
+        sync_objetivo: !!g.sync_objetivo,
+        memberIds,
+      };
       for (const id of memberIds) {
-        m.set(id, { groupId: g.id, groupName: g.name, memberIds });
+        const arr = m.get(id) || [];
+        arr.push(entry);
+        m.set(id, arr);
       }
     }
     return m;
@@ -244,15 +264,15 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   }, [bizId, selectedIds, lists, notify, clearSelection, toggleMode]);
 
   const deleteList = useCallback(async (listId) => {
-  if (!bizId) return;
-  // Guard extra: no intentar borrar favoritas
-  const list = lists.find(l => l.id === listId);
-  if (list?.is_favorite) {
-    notify?.('Esta lista no se puede eliminar');
-    return;
-  }
-  try {
-    await ListsAPI.delete(bizId, listId);
+    if (!bizId) return;
+    // Guard extra: no intentar borrar favoritas
+    const list = lists.find(l => l.id === listId);
+    if (list?.is_favorite) {
+      notify?.('Esta lista no se puede eliminar');
+      return;
+    }
+    try {
+      await ListsAPI.delete(bizId, listId);
       setLists(prev => prev.filter(l => l.id !== listId));
       if (activeListId === listId) setActiveListId(null);
       notify?.('Lista eliminada');
@@ -287,10 +307,14 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
       return;
     }
 
-    // Verificar que ninguno ya esté en una vinculación
-    const alreadyLinked = Array.from(selectedIds).filter(id => linkByArticleId.has(Number(id)));
-    if (alreadyLinked.length > 0) {
-      notify?.(`${alreadyLinked.length} artículo${alreadyLinked.length !== 1 ? 's' : ''} ya est${alreadyLinked.length !== 1 ? 'án' : 'á'} vinculado${alreadyLinked.length !== 1 ? 's' : ''}. Desvinculá primero.`);
+    // Verificar que ninguno ya esté en una vinculación DE PRECIO
+    // (estar en una de receta u objetivo no bloquea — son tipos independientes)
+    const alreadyLinkedByPrecio = Array.from(selectedIds).filter(id => {
+      const groups = linkByArticleId.get(Number(id)) || [];
+      return groups.some(g => g.linkType === 'precio');
+    });
+    if (alreadyLinkedByPrecio.length > 0) {
+      notify?.(`${alreadyLinkedByPrecio.length} artículo${alreadyLinkedByPrecio.length !== 1 ? 's' : ''} ya est${alreadyLinkedByPrecio.length !== 1 ? 'án' : 'á'} vinculado${alreadyLinkedByPrecio.length !== 1 ? 's' : ''} por precio. Desvinculá primero.`);
       return;
     }
 
@@ -354,6 +378,40 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     }
   }, [bizId, notify]);
 
+  const addArticlesToLink = useCallback(async (groupId, articleIds) => {
+    if (!bizId || !groupId || !articleIds?.length) return;
+    setSaving(true);
+    const results = { ok: [], errors: [] };
+    try {
+      for (const id of articleIds) {
+        try {
+          await LinksAPI.addMember(bizId, groupId, Number(id));
+          results.ok.push(Number(id));
+        } catch (e) {
+          console.warn(`[addArticlesToLink] ${id} falló:`, e.message);
+          results.errors.push({ id: Number(id), error: e.message });
+        }
+      }
+      // Actualizar state optimistamente
+      setLinkGroups(prev => prev.map(g => {
+        if (Number(g.id) !== Number(groupId)) return g;
+        const existing = new Set((g.members || []).map(m => Number(m.article_id)));
+        const nuevos = results.ok.filter(id => !existing.has(id)).map(id => ({ article_id: id }));
+        return { ...g, members: [...(g.members || []), ...nuevos] };
+      }));
+
+      if (results.ok.length) {
+        notify?.(`🔗 ${results.ok.length} artículo${results.ok.length !== 1 ? 's' : ''} agregado${results.ok.length !== 1 ? 's' : ''} a la vinculación`);
+      }
+      if (results.errors.length) {
+        notify?.(`${results.errors.length} artículo${results.errors.length !== 1 ? 's' : ''} no se pudo agregar`, 'error');
+      }
+      return results;
+    } finally {
+      setSaving(false);
+    }
+  }, [bizId, notify]);
+
   return {
     // Selección
     selectionMode, selectedIds, saving,
@@ -365,7 +423,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
 
     // Vinculaciones
     linkGroups, linkByArticleId,
-    createLink, deleteLink, removeMemberFromLink,
+    createLink, deleteLink, removeMemberFromLink, addArticlesToLink,
   };
 }
 

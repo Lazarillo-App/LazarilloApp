@@ -49,7 +49,7 @@ function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors })
           <li>Agrupación: <strong>Detallado</strong></li>
           <li>✅ Tildar: <strong>Incluye artículos discontinuados</strong></li>
           <li>✅ Tildar: <strong>Incluye artículos en cero</strong></li>
-          <li style={{ fontWeight: "900"}}>⚠️ Asegurate de que no haya otros filtros aplicados</li>
+          <li style={{ fontWeight: "900" }}>⚠️ Asegurate de que no haya otros filtros aplicados</li>
         </Box>
       ),
       imageUrl: image2Url,
@@ -86,11 +86,11 @@ function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors })
                   <Typography variant="body1" fontWeight="medium" gutterBottom>
                     {step.label}
                   </Typography>
-                  
+
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {step.description}
                   </Typography>
-                  
+
                   {/* Imagen de referencia */}
                   {step.imageUrl && (
                     <Paper
@@ -117,7 +117,7 @@ function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors })
                     </Paper>
                   )}
 
-                  <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>                 
+                  <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
                   </Box>
                 </Box>
               </StepContent>
@@ -133,8 +133,8 @@ function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors })
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button 
-          onClick={onClose} 
+        <Button
+          onClick={onClose}
           variant="contained"
           sx={{
             bgcolor: themeColors.primary,
@@ -152,21 +152,33 @@ function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors })
 }
 
 // Componente principal
-export default function UploadCSVModal({ 
-  open, 
-  onClose, 
-  businessId, 
+export default function UploadCSVModal({
+  open,
+  onClose,
+  businessId,
   onSuccess,
   instructionImage1,
   instructionImage2,
   activeBranchId,
 }) {
-  const { branches, hasBranches } = useBranch() || {};
-  const [branchId, setBranchId] = useState(null);
 
-  // Inicializar con la sucursal activa cuando se abre
+  const { branches, hasBranches } = useBranch() || {};
+  const mainBranch = branches?.find(b => b.isMain) || null;
+  const [branchId, setBranchId] = useState(null);
+  // Pre-seleccionar: sucursal activa real > principal (id real) > primera no-principal
   React.useEffect(() => {
-    if (open) setBranchId(null); // siempre empieza sin sucursal — el usuario elige
+    if (!open) return;
+    // El MenuItem value="" representa la principal (con o sin datos)
+    // Las sucursales secundarias tienen value=realId
+
+    // Si veníamos de una sucursal real activa, usar esa
+    const activeRealId =
+      activeBranchId && activeBranchId !== 'main' && activeBranchId !== null
+        ? Number(activeBranchId) : null;
+
+    // Default: la principal (value="")
+    const next = activeRealId !== null ? activeRealId : '';
+    setBranchId(next);
   }, [open, activeBranchId]);
 
   const [file, setFile] = useState(null);
@@ -187,7 +199,7 @@ export default function UploadCSVModal({
 
     const root = document.documentElement;
     const styles = getComputedStyle(root);
-    
+
     return {
       primary: styles.getPropertyValue('--color-primary')?.trim() || '#1976d2',
       secondary: styles.getPropertyValue('--color-secondary')?.trim() || '#10b981',
@@ -232,16 +244,16 @@ export default function UploadCSVModal({
       );
 
       const result = await response.json();
-      
+
       console.log('[UploadCSVModal] Respuesta del servidor:', result);
 
       if (result.ok || response.ok) {
         // ✅ Capturar datos de múltiples formatos de respuesta
         const summary = result.summary || result.data?.summary || result;
-        
+
         const inserted = Number(
-          summary.inserted || 
-          summary.insertados || 
+          summary.inserted ||
+          summary.insertados ||
           summary.rows_inserted ||
           summary.ventas_insertadas ||
           summary.count ||
@@ -249,16 +261,16 @@ export default function UploadCSVModal({
         );
 
         const total = Number(
-          summary.total_rows || 
-          summary.total || 
+          summary.total_rows ||
+          summary.total ||
           summary.rows_processed ||
           summary.filas_procesadas ||
           inserted
         );
 
         const failed = Number(
-          summary.failed || 
-          summary.errors || 
+          summary.failed ||
+          summary.errors ||
           summary.fallidos ||
           0
         );
@@ -274,7 +286,7 @@ export default function UploadCSVModal({
 
         // ✅ YA NO cerramos automáticamente - el usuario tiene control
         // if (onSuccess) onSuccess();
-        
+
       } else {
         throw new Error(result.message || result.error || 'Error al importar CSV');
       }
@@ -292,7 +304,7 @@ export default function UploadCSVModal({
       if (success && onSuccess) {
         onSuccess();
       }
-      
+
       setFile(null);
       setProgress(null);
       setError(null);
@@ -353,7 +365,7 @@ export default function UploadCSVModal({
             {branches && branches.length > 0 && !success && (
               <Box sx={{ mb: 2 }}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>
+                  <InputLabel shrink>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
                     </Box>
@@ -361,35 +373,39 @@ export default function UploadCSVModal({
                   <Select
                     value={branchId === null || branchId === undefined ? '' : String(branchId)}
                     label="Sucursal"
+                    displayEmpty
                     onChange={e => { const v = e.target.value; setBranchId(v === '' ? null : (Number(v) || v)); }}
+                    renderValue={(value) => {
+                      if (!value) return mainBranch?.name || 'Negocio principal';
+                      const b = branches?.find(x => String(x.id) === String(value) || String(x.realId) === String(value));
+                      return b?.name || `Sucursal #${value}`;
+                    }}
                   >
                     <MenuItem value="">
-                      <em>Negocio completo (sin sucursal)</em>
+                      {mainBranch?.name || 'Negocio principal'}
                     </MenuItem>
-                    {(branches || []).map(b => (
-                      <MenuItem key={b.id} value={b.id}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
-                          {b.name}
-                        </Box>
-                      </MenuItem>
-                    ))}
+                    {(branches || []).map(b => {
+                      // Skipear la principal virtual (ya está como value="")
+                      if (b.isMain) return null;
+                      // La principal tiene id='main' virtual; usar realId para el backend
+                      const realId = b.isMain ? b.realId : b.id;
+                      if (!realId) return null; // skip principales sin datos guardados
+                      return (
+                        <MenuItem key={String(b.id)} value={realId}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
+                            {b.name}
+                          </Box>
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
-                {branchId && (
-                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Chip
-                      size="small"
-                      label={`Datos para: ${branches.find(b => b.id === branchId)?.name || branchId}`}
-                      sx={{ bgcolor: `${branches.find(b => b.id === branchId)?.color || 'var(--color-primary)'}20`, fontSize: '0.72rem' }}
-                    />
-                  </Box>
-                )}
               </Box>
             )}
 
             {/* Advertencia: sucursal requerida */}
-            {hasBranches && !branchId && file && !success && (
+            {hasBranches && branchId === null && file && !success && (
               <Alert severity="warning" sx={{ mb: 2 }}>
                 <strong>Seleccioná una sucursal</strong> antes de importar.
                 Todos los datos deben asignarse a una sucursal específica.
@@ -398,9 +414,9 @@ export default function UploadCSVModal({
 
             {/* Mensaje informativo inicial */}
             {!file && !success && (
-              <Alert 
-                severity="info" 
-                sx={{ 
+              <Alert
+                severity="info"
+                sx={{
                   mb: 3,
                   '& .MuiAlert-message': {
                     width: '100%',
@@ -463,9 +479,9 @@ export default function UploadCSVModal({
             {/* Estado: Archivo seleccionado */}
             {file && !success && (
               <Box>
-                <Alert 
-                  severity="success" 
-                  sx={{ 
+                <Alert
+                  severity="success"
+                  sx={{
                     mb: 2,
                     bgcolor: `${themeColors.secondary}15`,
                     color: themeColors.secondary,
@@ -495,8 +511,8 @@ export default function UploadCSVModal({
                     <LinearProgress
                       variant="determinate"
                       value={progressPercent}
-                      sx={{ 
-                        height: 10, 
+                      sx={{
+                        height: 10,
                         borderRadius: 1,
                         backgroundColor: '#e0e0e0',
                         '& .MuiLinearProgress-bar': {
@@ -520,8 +536,8 @@ export default function UploadCSVModal({
             {/* Estado: Éxito */}
             {success && progress && (
               <Box>
-                <Alert 
-                  severity="success" 
+                <Alert
+                  severity="success"
                   icon={<CheckCircleIcon fontSize="large" />}
                   sx={{
                     bgcolor: `${themeColors.secondary}15`,
@@ -547,10 +563,10 @@ export default function UploadCSVModal({
                 </Alert>
 
                 {/* Información adicional del archivo */}
-                <Box 
-                  sx={{ 
-                    mt: 2, 
-                    p: 2, 
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
                     bgcolor: `${themeColors.primary}08`,
                     borderRadius: 1,
                     border: `1px solid ${themeColors.primary}20`
@@ -586,7 +602,7 @@ export default function UploadCSVModal({
         <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           {/* Si hubo éxito, mostrar botón para finalizar */}
           {success ? (
-            <Button 
+            <Button
               onClick={handleClose}
               variant="contained"
               fullWidth
@@ -604,8 +620,8 @@ export default function UploadCSVModal({
             </Button>
           ) : (
             <>
-              <Button 
-                onClick={handleClose} 
+              <Button
+                onClick={handleClose}
                 disabled={uploading}
                 variant="outlined"
                 sx={{
@@ -617,7 +633,7 @@ export default function UploadCSVModal({
               </Button>
               <Button
                 onClick={handleUpload}
-                disabled={!file || uploading || (hasBranches && !branchId)}
+                disabled={!file || uploading || (hasBranches && branchId === null)}
                 variant="contained"
                 startIcon={uploading ? null : <CloudUploadIcon />}
                 size="large"

@@ -121,6 +121,26 @@ export default function LotesPanelArticulos({ businessId }) {
     finally { setPreviewLoading(false); }
   };
 
+  const deleteArticleFromBatch = async (articleId, articleName) => {
+    if (!window.confirm(`¿Eliminar "${articleName}" del lote?`)) return;
+    try {
+      const res = await fetch(
+        `${BASE}/businesses/${businessId}/articles/${articleId}`,
+        { method: 'DELETE', headers: authH() }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Error');
+      showNotify(`"${articleName}" eliminado`);
+      // Refrescar preview
+      setPreviewData(prev => prev.filter(r => r.id !== articleId && r.article_id !== articleId));
+      // Refrescar lista de lotes (puede haber bajado el total)
+      await loadLotes();
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+    } catch (e) {
+      showNotify('Error al eliminar: ' + e.message, 'error');
+    }
+  };
+
   const doDelete = async (lote) => {
     setConfirmDlg(null);
     setDeletingId(lote.batch_id);
@@ -271,27 +291,48 @@ export default function LotesPanelArticulos({ businessId }) {
                   {previewHeaders.map(h => (
                     <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem' }}>{h}</TableCell>
                   ))}
+                  {previewLote?.tipo !== 'rubros' && (
+                    <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', width: 50 }}></TableCell>
+                  )}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {previewData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={previewCols.length} sx={{ textAlign: 'center', color: 'text.disabled', py: 3 }}>
+                    <TableCell colSpan={previewCols.length + 1} sx={{ textAlign: 'center', color: 'text.disabled', py: 3 }}>
                       Sin datos
                     </TableCell>
                   </TableRow>
-                ) : previewData.map((row, i) => (
-                  <TableRow key={i} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                    {previewCols.map(col => (
-                      <TableCell key={col} sx={{ fontSize: col === 'nombre' ? '0.78rem' : '0.75rem',
-                        fontWeight: col === 'nombre' ? 600 : 400, color: col === 'nombre' ? 'text.primary' : 'text.secondary' }}>
-                        {col === 'precio' && row[col] != null
-                          ? `$${Number(row[col]).toLocaleString('es-AR')}`
-                          : row[col] || '—'}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
+                ) : previewData.map((row, i) => {
+                  const articleId = row.id ?? row.article_id;
+                  const articleName = row.nombre || `#${articleId}`;
+                  const isManual = Number(articleId) < 0;
+                  return (
+                    <TableRow key={i} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                      {previewCols.map(col => (
+                        <TableCell key={col} sx={{ fontSize: col === 'nombre' ? '0.78rem' : '0.75rem',
+                          fontWeight: col === 'nombre' ? 600 : 400, color: col === 'nombre' ? 'text.primary' : 'text.secondary' }}>
+                          {col === 'precio' && row[col] != null
+                            ? `$${Number(row[col]).toLocaleString('es-AR')}`
+                            : row[col] || '—'}
+                        </TableCell>
+                      ))}
+                      {previewLote?.tipo !== 'rubros' && (
+                        <TableCell sx={{ textAlign: 'right', py: 0.5 }}>
+                          {isManual && (
+                            <Tooltip title="Eliminar este artículo">
+                              <IconButton size="small"
+                                onClick={() => deleteArticleFromBatch(articleId, articleName)}
+                                sx={{ color: '#ef4444' }}>
+                                <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

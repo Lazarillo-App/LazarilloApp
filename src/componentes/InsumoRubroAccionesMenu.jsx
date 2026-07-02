@@ -15,7 +15,7 @@ import {
   TextField,
   Divider,
 } from "@mui/material";
-
+import EditIcon from "@mui/icons-material/Edit";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
 import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
@@ -33,6 +33,7 @@ import {
 } from "../servicios/apiInsumos";
 
 import { addExclusionesInsumos } from "../servicios/apiInsumosTodo";
+import { BASE } from '@/servicios/apiBase';
 
 const norm = (s) => String(s || "").trim().toLowerCase();
 
@@ -69,12 +70,64 @@ export default function InsumoRubroAccionesMenu({
   const [destId, setDestId] = useState("");
   const [isMoving, setIsMoving] = useState(false);
 
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
   const open = Boolean(anchorEl);
 
   const handleMenuOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleMenuClose = useCallback(() => setAnchorEl(null), []);
 
   const currentGroupId = selectedGroupId ? Number(selectedGroupId) : null;
+
+  const openRename = useCallback(() => {
+    setRenameValue(rubroLabel || '');
+    handleMenuClose();
+    setTimeout(() => setRenameOpen(true), 0);
+  }, [rubroLabel, handleMenuClose]);
+
+  const ejecutarRename = useCallback(async () => {
+    const nuevo = renameValue.trim();
+    if (!nuevo || nuevo === rubroLabel) {
+      setRenameOpen(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      // Si el label es un número puro (rubro huérfano sin nombre en catálogo), usarlo como código
+      const labelEsCodigo = /^\d+$/.test(String(rubroLabel || '').trim());
+      // Extraer dígitos del código (puede venir con prefijo tipo "manual_0")
+      const codigoStr = String(rubroCodigo || '').replace(/[^\d]/g, '');
+      const codigoFinal = codigoStr !== ''
+        ? Number(codigoStr)
+        : (labelEsCodigo ? Number(rubroLabel) : null);
+      console.log('[RENAME insumo rubro]', { rubroLabel, rubroCodigo, codigoFinal, nuevo });
+
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`${BASE}/insumos/rubros/rename`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Business-Id': String(businessId || ''),
+        },
+        body: JSON.stringify({ old: rubroLabel, new: nuevo, codigo: codigoFinal }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data?.error || 'Error');
+      notify?.(`Rubro renombrado a "${nuevo}"`, 'success');
+      window.dispatchEvent(new CustomEvent('insumos:updated'));
+      await onReloadCatalogo?.();
+      await onRefetch?.();
+      setRenameOpen(false);
+    } catch (e) {
+      console.error('RENAME_RUBRO_INSUMO_ERROR', e);
+      notify?.('No se pudo renombrar el rubro', 'error');
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, rubroLabel, rubroCodigo, businessId, notify, onReloadCatalogo, onRefetch]);
 
   const grupoSeleccionado = useMemo(() => {
     if (!currentGroupId) return null;
@@ -325,8 +378,8 @@ export default function InsumoRubroAccionesMenu({
 
   // ✅ Label e ícono del menú según el estado real
   const elaboradoMenuLabel = () => {
-    if (elaboradoState === 'none')  return 'Marcar rubro como elaborado';
-    if (elaboradoState === 'all')   return 'Desmarcar rubro como elaborado';
+    if (elaboradoState === 'none') return 'Marcar rubro como elaborado';
+    if (elaboradoState === 'all') return 'Desmarcar rubro como elaborado';
     // 'some' → mixto
     return 'Desmarcar todos como elaborado (mixto)';
   };
@@ -354,6 +407,10 @@ export default function InsumoRubroAccionesMenu({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
+        <MenuItem key="editar-nombre" onClick={openRename}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Editar nombre" />
+        </MenuItem>,
         {[
           // 1️⃣ Discontinuar / Reactivar
           <MenuItem key="discontinuar" onClick={handleToggleDiscontinuar}>
@@ -447,6 +504,25 @@ export default function InsumoRubroAccionesMenu({
           </Button>
           <Button onClick={handleMover} variant="contained" disabled={!destId || isMoving}>
             {isMoving ? "Moviendo…" : "Mover"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del rubro</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            autoFocus fullWidth size="small"
+            label="Nombre"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+            helperText="Afectará a todos los insumos con este rubro"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+          <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
+            {renaming ? 'Guardando…' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>

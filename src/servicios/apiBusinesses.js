@@ -321,52 +321,52 @@ export const BusinessesAPI = {
     return serverResp || { activeBusinessId: id };
   },
 
-// ---- Logo: subir archivo (FormData) ----
-uploadLogo: async (id, file) => {
-  const fd = new FormData();
-  fd.append('file', file, file?.name || 'logo.png');
+  // ---- Logo: subir archivo (FormData) ----
+  uploadLogo: async (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file, file?.name || 'logo.png');
 
-  // 🔍 Verificar que el FormData tenga el archivo
-  console.log('🔍 FormData entries:');
-  for (let [key, value] of fd.entries()) {
-    console.log(`  - ${key}:`, value instanceof File ? {
-      name: value.name,
-      type: value.type,
-      size: value.size
-    } : value);
-  }
+    // 🔍 Verificar que el FormData tenga el archivo
+    console.log('🔍 FormData entries:');
+    for (let [key, value] of fd.entries()) {
+      console.log(`  - ${key}:`, value instanceof File ? {
+        name: value.name,
+        type: value.type,
+        size: value.size
+      } : value);
+    }
 
-  const token = localStorage.getItem('token') || '';
-  
-  const url = `${BASE}/businesses/${id}/logo`;
-  
-  console.log('🚀 Upload directo:', {
-    url,
-    fileName: file?.name,
-    fileType: file?.type,
-    fileSize: file?.size,
-    hasToken: !!token,
-  });
+    const token = localStorage.getItem('token') || '';
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      ...(token && { Authorization: `Bearer ${token}` }),
-      // ⚠️ NO incluir Content-Type - el browser lo setea automáticamente con boundary
-    },
-    body: fd,
-  });
+    const url = `${BASE}/businesses/${id}/logo`;
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    console.error('❌ Error del servidor:', error);
-    throw new Error(error.error || error.message || `HTTP ${response.status}`);
-  }
+    console.log('🚀 Upload directo:', {
+      url,
+      fileName: file?.name,
+      fileType: file?.type,
+      fileSize: file?.size,
+      hasToken: !!token,
+    });
 
-  const result = await response.json();
-  console.log('✅ Upload exitoso:', result);
-  return result;
-},
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+        // ⚠️ NO incluir Content-Type - el browser lo setea automáticamente con boundary
+      },
+      body: fd,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('❌ Error del servidor:', error);
+      throw new Error(error.error || error.message || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Upload exitoso:', result);
+    return result;
+  },
 
   // ---- Branding URL directa del logo (PATCH /:id/branding-url) ----
   setBrandingUrl: (id, logo_url) =>
@@ -564,11 +564,33 @@ export const RecetasAPI = {
 
   // DELETE /businesses/:id/recetas/bulk
   // Body: { tipo: 'articulo'|'elaborado', filtroScope: 'all'|'agrupacion', agrupacionId? }
+
   bulkDelete: (businessId, { tipo, filtroScope = 'all', agrupacionId = null } = {}) =>
     http(`/businesses/${businessId}/recetas/bulk`, {
       method: 'DELETE',
       body: { tipo, filtroScope, agrupacionId },
       withBusinessId: false,
+    }),
+
+  // POST /businesses/:id/recetas/bulk-add-insumo
+  // Body: { articleIds, insumoId, cantidad, unidad }
+  // Devuelve { ok, agregados, salteados, recetasCreadas, insumo }
+  bulkAddInsumo: (businessId, { articleIds, insumoId, cantidad = 0, unidad = null }) =>
+    http(`/businesses/${businessId}/recetas/bulk-add-insumo`, {
+      method: 'POST',
+      body: { articleIds, insumoId, cantidad, unidad },
+      withBusinessId: false,
+    }),
+
+  // GET /businesses/:id/recetas/promo-components → { ids: [...] }
+  getPromoComponents: (businessId) =>
+    http(`/businesses/${businessId}/recetas/promo-components`, { withBusinessId: false }),
+};
+
+export const PromocionesAPI = {
+  crear: (businessId, body) =>
+    http(`/businesses/${businessId}/promociones`, {
+      method: 'POST', body, withBusinessId: false,
     }),
 };
 

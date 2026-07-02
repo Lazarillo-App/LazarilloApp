@@ -17,7 +17,7 @@ import VentasCell from "./VentasCell";
 import VirtualList from "./shared/VirtualList";
 import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
-import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { BusinessesAPI, RecetasAPI } from "@/servicios/apiBusinesses";
 import LinkChainIcon from "./LinkChainIcon";
 import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
@@ -251,7 +251,10 @@ export default function TablaArticulos({
   calcPrecioPorLista,
   currentPriceList = null,
   onVisibleSubrubroChange,
-  priceListsByList = {}
+  priceListsByList = {},
+  soloConVentas = false,
+  onToggleSoloConVentas,
+  onAddMembersToLink,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -304,12 +307,13 @@ export default function TablaArticulos({
   const [blockManuales, setBlockManuales] = useState({});
   const [bulkPctDlg, setBulkPctDlg] = useState(null);
   const [clearDlg, setClearDlg] = useState(null);
-  const [ventasVista, setVentasVista] = useState('$');
+  const [ventasVista, setVentasVista] = useState('U');
   const [lastAppliedPct, setLastAppliedPct] = useState({});
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
   const [redondeoModalPendiente, setRedondeoModalPendiente] = useState(null);
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
+  const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
@@ -541,6 +545,18 @@ export default function TablaArticulos({
     return () => { cancel = true; };
   }, [activeBizId, rootBizId, reloadKey, reloadTick, onCategoriasLoaded, buildTreeFromFlat, openSnack]);
 
+  useEffect(() => {
+    if (!activeBizId) { setPromoComponentIds(new Set()); return; }
+    let cancel = false;
+    RecetasAPI.getPromoComponents(activeBizId)
+      .then(r => {
+        if (cancel) return;
+        setPromoComponentIds(new Set((r?.ids || []).map(Number)));
+      })
+      .catch(() => { if (!cancel) setPromoComponentIds(new Set()); });
+    return () => { cancel = true; };
+  }, [activeBizId, reloadKey, reloadTick]);
+
   const allArticulos = useMemo(() => {
     const out = [];
     for (const sub of categorias || []) {
@@ -593,7 +609,7 @@ export default function TablaArticulos({
         if (tieneManual) return;
       }
 
-     const art = baseById.get(artId);
+      const art = baseById.get(artId);
       // Base = precio actual (manual si existe, sino precio de la favorita)
       const manualActual = num(manuales[String(artId)] ?? priceConfig.byArticle?.[String(artId)]?.precioManual);
       const base = manualActual > 0 ? manualActual : num(art?.precio ?? 0);
@@ -800,10 +816,23 @@ export default function TablaArticulos({
 
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
-    if (!filtroDefer) return articulosAMostrar;
-    const q = String(filtroDefer).toLowerCase().trim();
-    return articulosAMostrar.filter((a) => (a.nombre || "").toLowerCase().includes(q) || String(getId(a)).includes(q));
-  }, [articulosAMostrar, filtroDefer]);
+    let base = articulosAMostrar;
+    // Ocultar componentes de promo (están dentro de la promo, no son filas propias)
+    if (promoComponentIds.size > 0) {
+      base = base.filter((a) => !promoComponentIds.has(Number(getId(a))));
+    }
+    if (filtroDefer) {
+      const q = String(filtroDefer).toLowerCase().trim();
+      base = base.filter((a) => (a.nombre || "").toLowerCase().includes(q) || String(getId(a)).includes(q));
+    }
+    if (soloConVentas) {
+      base = base.filter((a) => {
+        const qty = getVentasQty(a);
+        return Number(qty) > 0;
+      });
+    }
+    return base;
+  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds]);
 
   const isRubroView = tableHeaderMode === "cat-first";
 
@@ -1258,10 +1287,10 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-           if (col.id === 'precio') {
+            if (col.id === 'precio') {
               return <div key="precio" />;
             }
-           if (col.id === 'objetivo') {
+            if (col.id === 'objetivo') {
               return <div key="objetivo" />;
             }
             if (col.id === 'manual') {
@@ -1403,7 +1432,7 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-           if (col.id === 'objetivo' && esAgrupEspecifica) {
+            if (col.id === 'objetivo' && esAgrupEspecifica) {
               return <div key="objetivo" />;
             } if (col.id === 'manual' && esAgrupEspecifica) {
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
@@ -1494,8 +1523,12 @@ export default function TablaArticulos({
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
     const selectedStyle = isSelected ? { background: "color-mix(in srgb, var(--color-primary) 10%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)", position: "relative" } : null;
     const leftBar = isSelected ? <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: "var(--color-primary)", borderRadius: 2 }} /> : null;
-    const isLinked = linkByArticleId.has(Number(id));
+    // linkByArticleId ahora devuelve un array de grupos (uno por tipo)
     const linkInfo = linkByArticleId.get(Number(id)) ?? null;
+    const linkGroupsList = Array.isArray(linkInfo) ? linkInfo : (linkInfo ? [linkInfo] : []);
+    const isLinked = linkGroupsList.length > 0;
+    // En el modo "vincular" (que es de precio), solo bloqueamos check si ya hay vinculación de precio
+    const isLinkedByPrecio = linkGroupsList.some(g => g.linkType === 'precio');
 
     return (
       <div key={row.key} data-article-id={id}
@@ -1504,8 +1537,14 @@ export default function TablaArticulos({
         {leftBar}
         {selectionMode && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isLinked && selectionMode === 'link' ? (
-              <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
+            {isLinkedByPrecio && selectionMode === 'link' ? (
+              <LinkChainIcon
+                articleId={id} groupInfo={linkGroupsList.find(g => g.linkType === 'precio')}
+                nameById={nameById}
+                onRemoveSelf={onRemoveMemberFromLink}
+                onDeleteGroup={onDeleteLink}
+                onAddMembers={onAddMembersToLink}
+              />
             ) : (
               <input type="checkbox" checked={isChecked} onChange={() => onToggleSelected?.(Number(id))}
                 style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }} />
@@ -1516,7 +1555,17 @@ export default function TablaArticulos({
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
             {(selectionMode === 'list' || !selectionMode) && isLinked && (
-              <LinkChainIcon articleId={id} groupInfo={linkInfo} nameById={nameById} onRemoveSelf={onRemoveMemberFromLink} onDeleteGroup={onDeleteLink} />
+              <>
+                {linkGroupsList.map(g => (
+                  <LinkChainIcon
+                    articleId={id} groupInfo={linkGroupsList.find(g => g.linkType === 'precio')}
+                    nameById={nameById}
+                    onRemoveSelf={onRemoveMemberFromLink}
+                    onDeleteGroup={onDeleteLink}
+                    onAddMembers={onAddMembersToLink}
+                  />
+                ))}
+              </>
             )}
           </span>
           {(a.origen === 'manual' || Number(id) < 0)
@@ -1829,9 +1878,21 @@ export default function TablaArticulos({
                   Ventas {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                 </span>
+                <span
+                  onClick={() => onToggleSoloConVentas?.()}
+                  title={soloConVentas ? 'Mostrando solo con ventas — click para ver todos' : 'Filtrar: solo artículos con ventas'}
+                  style={{
+                    cursor: 'pointer', fontSize: '0.8rem',
+                    opacity: soloConVentas ? 1 : 0.35,
+                    color: soloConVentas ? 'var(--color-primary)' : 'inherit',
+                    lineHeight: 1, userSelect: 'none',
+                  }}
+                >
+                  👁
+                </span>
                 <button
-                  onClick={() => setVentasVista(v => v === '$' ? 'U' : '$')}
-                  title={ventasVista === '$' ? 'Cambiar a unidades' : 'Cambiar a pesos'}
+                  onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
+                  title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
                   style={{ padding: '1px 7px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.4, fontSize: '0.68rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
                   {ventasVista}
                 </button>
@@ -2110,7 +2171,7 @@ export default function TablaArticulos({
       <ColOrderModal open={colDlgOpen} cols={colConfig} onSave={saveColConfig} onClose={() => setColDlgOpen(false)} />
 
       {rubroEditModal && (
-       <RubroEditModal
+        <RubroEditModal
           open={!!rubroEditModal}
           onClose={() => setRubroEditModal(null)}
           scope={rubroEditModal.scope || 'rubro'}
@@ -2120,6 +2181,7 @@ export default function TablaArticulos({
           initialObjetivo={rubroEditModal.initialObjetivo}
           globalCostoIdeal={globalCostoIdeal}
           orgId={organization?.id}
+          businessId={activeBizId}
           onSave={({ objetivo, articleIds }) => {
             if (!onPriceConfigSave) return;
             const scope = rubroEditModal.scope || 'rubro';

@@ -321,6 +321,8 @@ export default function Buscador({
         // fallback seguro si no hay id: combinar label normalizado + data-option-index
         const fallbackKey = `${option?._norm ?? label.toLowerCase()}::${rest['data-option-index'] ?? ''}`;
 
+        const tipo = option?.tipo; // 'articulo' | 'insumo' | undefined
+
         return (
           <li key={String(uniq ?? fallbackKey)} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 6, ...rest.style }}>
             {codigo && (
@@ -334,6 +336,18 @@ export default function Buscador({
             <span style={{ flex: 1 }}>
               {renderHighlighted(label, inputValue)}
             </span>
+            {tipo && (
+              <span style={{
+                fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px',
+                borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em',
+                flexShrink: 0,
+                bgcolor: tipo === 'articulo' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)',
+                color: tipo === 'articulo' ? '#1e40af' : '#92400e',
+                background: tipo === 'articulo' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)',
+              }}>
+                {tipo === 'articulo' ? 'Artículo' : 'Insumo'}
+              </span>
+            )}
           </li>
         );
       }}

@@ -46,6 +46,7 @@ import { insumosList } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
+import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 
 /* ── constantes ── */
 const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda'];
@@ -116,7 +117,9 @@ function calcPrecioEnUnidad(precioRefDB, unidadDB, unidadElegida) {
 }
 
 /* ── colores de alerta de última compra ── */
-function getAlertaColor(ultimaCompra, alertaSemanas) {
+function getAlertaColor(ultimaCompra, alertaSemanas, esElaborado = false) {
+  // Los insumos elaborados no se compran, tienen receta. No aplica alerta.
+  if (esElaborado) return null;
   if (!ultimaCompra) return alertaSemanas ? '#fef2f2' : null;
   const d = new Date(ultimaCompra);
   if (isNaN(d)) return alertaSemanas ? '#fef2f2' : null;
@@ -994,12 +997,15 @@ function ItemRow({
   item, index, onChange, onRemove, onOpenCompras,
   insumos, usedSupplyIds, alertaSemanas,
   autoOpenSearch, recetasElaborados = {},
+  allArticulos = [],
   articuloId,
   businessId,
   onOpenRecetaElaborado,
   searchOpen,
   onSearchOpen,
   onSearchClose,
+  soloConCompras = false,
+  onToggleSoloConCompras,
 }) {
   const [search, setSearch] = useState('');
   const [notasOpen, setNotasOpen] = useState(false);
@@ -1011,7 +1017,7 @@ function ItemRow({
   const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
   const recetasElaboradosRef = useRef(recetasElaborados);
 
-  const wasAutoOpened = useRef(autoOpenSearch && !item.supplyId);
+  const wasAutoOpened = useRef(autoOpenSearch && !item.supplyId && !item.articleRefId);
 
   // Sincronizar solo cuando el contenido cambia realmente (evita loop por objeto nuevo)
   useEffect(() => {
@@ -1025,13 +1031,13 @@ function ItemRow({
 
   // Si el search se cierra y no hay insumo seleccionado, eliminar la fila
   useEffect(() => {
-    if (!searchOpen && wasAutoOpened.current && !item.supplyId) {
+    if (!searchOpen && wasAutoOpened.current && !item.supplyId && !item.articleRefId) {
       onRemove(index);
     }
-    if (item.supplyId) {
+    if (item.supplyId || item.articleRefId) {
       wasAutoOpened.current = false;
     }
-  }, [searchOpen, item.supplyId, index, onRemove]);
+  }, [searchOpen, item.supplyId, item.articleRefId, index, onRemove]);
 
   useEffect(() => {
     if (autoOpenSearch) {
@@ -1077,7 +1083,21 @@ function ItemRow({
 
   const filtrados = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = q
+
+    // ── Modo artículo (promo): buscar sobre allArticulos ──
+    if (item.esArticulo) {
+      let arts = q
+        ? allArticulos.filter(a =>
+            a.nombre?.toLowerCase().includes(q) ||
+            String(a.id).includes(q))
+        : [...allArticulos];
+      // Excluir el propio artículo dueño de la receta (no puede contenerse a sí mismo)
+      arts = arts.filter(a => Number(a.id) !== Number(articuloId));
+      arts.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+      return arts.slice(0, 30);
+    }
+
+    let list = q
       ? insumos.filter(i =>
         i.nombre?.toLowerCase().includes(q) ||
         String(i.id).includes(q) ||
@@ -1085,27 +1105,54 @@ function ItemRow({
       )
       : [...insumos];
 
+    // Filtro "solo con compras"
+    if (soloConCompras) {
+      list = list.filter(i => !!i.fecha_ultima_compra);
+    }
+
     list.sort((a, b) => {
-      // 1. Más usados primero (tienen precio_promedio_periodo o total_unidades > 0)
+      // Si está activo el ojito, ordenar por cantidad de compras desc
+      if (soloConCompras) {
+        const aCnt = Number(a.cantidad_compras || 0);
+        const bCnt = Number(b.cantidad_compras || 0);
+        if (aCnt !== bCnt) return bCnt - aCnt;
+      }
+
+      // Sort normal (más usados primero, luego por precio asc, luego alfabético)
       const aUsado = Number(a.total_unidades_periodo ?? a.unidades_compradas ?? 0) > 0;
       const bUsado = Number(b.total_unidades_periodo ?? b.unidades_compradas ?? 0) > 0;
       if (aUsado !== bUsado) return aUsado ? -1 : 1;
-
-      // 2. Precio ascendente, excluyendo cero
       const aP = Number(a.precio_ref ?? a.precio_promedio ?? a.precio ?? 0);
       const bP = Number(b.precio_ref ?? b.precio_promedio ?? b.precio ?? 0);
       if (aP > 0 && bP > 0) return aP - bP;
       if (aP > 0) return -1;
       if (bP > 0) return 1;
-
-      // 3. Alfabético como desempate
       return (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' });
     });
-
-    return list.slice(0, 30); // un poco más de margen
-  }, [insumos, search]);
+    return list.slice(0, 30);
+  }, [insumos, search, soloConCompras, item.esArticulo, allArticulos, articuloId]);
 
   const selectInsumo = useCallback((ins) => {
+    // ── Modo artículo (promo): el "ins" es en realidad un artículo ──
+    if (item.esArticulo) {
+      const costoArt = Number(ins.costo) || Number(ins.costoTotal) || Number(ins.precio) || 0;
+      onChange(index, {
+        esArticulo: true,
+        articleRefId: Number(ins.id),
+        supplyId: null,
+        supplyNombre: ins.nombre,
+        supplyMedida: 'u',
+        precioRefDB: costoArt,   // costo del artículo como precio de referencia
+        codigoMaxi: ins.codigo || ins.codigo_maxi || '',
+        unidad: 'u',
+        ultimaCompra: null,
+      });
+      onSearchClose();
+      setSearch('');
+      setTimeout(() => cantidadRef.current?.focus(), 50);
+      return;
+    }
+
     const unidadDB = canonicalUnit(ins.unidad_med || ins.medida || 'u');
     const precioRef = Number(ins.precio_ref)
       || Number(ins.precio_promedio_periodo)
@@ -1128,7 +1175,7 @@ function ItemRow({
     onSearchClose();
     setSearch('');
     setTimeout(() => cantidadRef.current?.focus(), 50);
-  }, [index, onChange]);
+  }, [index, onChange, item.esArticulo]);
 
   // ── Detectar si es insumo elaborado (tiene receta propia) ──
   const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
@@ -1156,7 +1203,9 @@ function ItemRow({
         return (elaborado.precioSugerido ?? 0) / factor;
       }
       if (tipoCosto !== 'nulo' && (elaborado?.costoTotal ?? 0) > 0) {
-        return ((elaborado.costoTotal ?? 0) / porciones) / factor;
+        // Costo total de la receta del elaborado, sin dividir por rendimiento/porciones.
+        // El rendimiento es solo informativo; la conversión de unidad se mantiene.
+        return (elaborado.costoTotal ?? 0) / factor;
       }
     }
     const precioRef = Number(item.precioRefDB) || 0;
@@ -1180,8 +1229,8 @@ function ItemRow({
   }, [item.supplyId, item.supplyMedida, item.unidad, elaborado]);
 
   const alertaBg = useMemo(
-    () => getAlertaColor(item.ultimaCompra?.fecha || item.ultimaCompra, alertaSemanas),
-    [item.ultimaCompra, alertaSemanas]
+    () => getAlertaColor(item.ultimaCompra?.fecha || item.ultimaCompra, alertaSemanas, esElaborado),
+    [item.ultimaCompra, alertaSemanas, esElaborado]
   );
 
   return (
@@ -1215,14 +1264,14 @@ function ItemRow({
           <Box
             sx={{
               border: '1px solid',
-              borderColor: isDuplicate ? 'error.main' : item.supplyId ? 'success.light' : 'warning.main',
+              borderColor: isDuplicate ? 'error.main' : (item.supplyId || item.articleRefId) ? 'success.light' : 'warning.main',
               borderRadius: 1, px: 0.75, py: 0.4, cursor: 'pointer',
               minHeight: 30, display: 'flex', alignItems: 'center',
               bgcolor: 'background.paper',
               '&:hover': { borderColor: PRIMARY },
             }}
           >
-            {item.supplyId ? (
+            {(item.supplyId || item.articleRefId) ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%', overflow: 'hidden' }}>
                 {alertaBg
                   ? <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444', flexShrink: 0 }} />
@@ -1254,15 +1303,24 @@ function ItemRow({
                     en gris para que el contexto de la fila siga siendo claro. */}
                 {item.supplyId && (() => {
                   const unidadStr = item.supplyMedida || 'u';
+                  // Precio base FIJO del elaborado: costo total de su receta
+                  // (o precio sugerido si tipoCosto==='sugerido'). No varía con unidad/cantidad.
+                  const precioBaseElaborado = elaborado
+                    ? (tipoCosto === 'sugerido' && (elaborado.precioSugerido ?? 0) > 0
+                        ? elaborado.precioSugerido
+                        : (elaborado.costoTotal ?? 0))
+                    : 0;
+                  const unidadBaseStr = canonicalUnit(item.supplyMedida || 'u');
+
                   const tienePrecio = elaborado
-                    ? costoEnUnidadElegida > 0
+                    ? precioBaseElaborado > 0
                     : item.precioRefDB > 0;
 
                   const label = (() => {
                     if (elaborado) {
                       return tienePrecio
-                        ? `$${fmt(costoEnUnidadElegida)}/${unidadStr}`
-                        : `/${unidadStr}`;
+                        ? `$${fmt(precioBaseElaborado)}/${unidadBaseStr}`
+                        : `/${unidadBaseStr}`;
                     }
                     return tienePrecio
                       ? `$${fmt(item.precioRefDB)}/${unidadStr}`
@@ -1327,7 +1385,7 @@ function ItemRow({
               </Box>
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.73rem' }}>
-                Seleccioná insumo…
+                {item.esArticulo ? 'Seleccioná artículo…' : 'Seleccioná insumo…'}
               </Typography>
             )}
           </Box>
@@ -1335,7 +1393,7 @@ function ItemRow({
           {/* Dropdown búsqueda */}
           {searchOpen && (
             <Box data-search-dropdown sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
-              <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
                   value={search}
                   onChange={e => {
@@ -1343,7 +1401,25 @@ function ItemRow({
                     setFocusedIndex(-1);
                     setFocusedIndex(0);
                   }}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onToggleSoloConCompras?.(); }}
+                          title={soloConCompras ? 'Mostrando solo insumos con compras — click para ver todos' : 'Filtrar: solo insumos con compras'}
+                          style={{
+                            cursor: 'pointer', fontSize: '0.9rem',
+                            opacity: soloConCompras ? 1 : 0.35,
+                            color: soloConCompras ? 'var(--color-primary)' : 'inherit',
+                            lineHeight: 1, userSelect: 'none', padding: '0 4px',
+                          }}
+                        >
+                          👁
+                        </span>
+                      </InputAdornment>
+                    ),
+                  }}
                   onKeyDown={e => {
                     if (e.key === 'Escape') { onSearchClose(); }
                     if (e.key === 'ArrowDown') {
@@ -1368,6 +1444,39 @@ function ItemRow({
                 {filtrados.length === 0 ? (
                   <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
                 ) : filtrados.map((ins, idx) => {
+                  // ── Opción de artículo (promo) ──
+                  if (item.esArticulo) {
+                    return (
+                      <Box key={ins.id} data-option-index={idx}
+                        onClick={() => selectInsumo(ins)}
+                        sx={{
+                          px: 1.5, py: 0.75, cursor: 'pointer',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          borderBottom: '1px solid', borderColor: 'divider',
+                          bgcolor: focusedIndex === idx ? 'action.selected' : 'transparent',
+                          outline: focusedIndex === idx ? '2px solid' : 'none',
+                          outlineColor: focusedIndex === idx ? 'primary.main' : 'transparent',
+                          outlineOffset: -2,
+                          '&:hover': { bgcolor: focusedIndex === idx ? 'action.selected' : 'action.hover' },
+                        }}>
+                        <Box>
+                          <Typography component="span" variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem', display: 'block' }}>
+                            {ins.nombre}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            {ins.codigo || ins.codigo_maxi ? `Cód: ${ins.codigo || ins.codigo_maxi}` : (ins.subrubro || ins.categoria || 'Artículo')}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
+                          {(() => {
+                            const c = Number(ins.costo) || Number(ins.costoTotal) || Number(ins.precio) || 0;
+                            return c > 0 ? `$${fmt(c)}` : '—';
+                          })()}
+                        </Typography>
+                      </Box>
+                    );
+                  }
+
                   const yaUsado = usedSupplyIds.has(String(ins.id));
                   const esElab = !!localRecetasElaborados[String(ins.id)] || !!ins.es_elaborado || !!ins.tiene_receta;
                   return (
@@ -1665,6 +1774,17 @@ export default function RecetaModal({
   const [cocinaModalOpen, setCocinaModalOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const [soloConCompras, setSoloConCompras] = useState(() => {
+    try { return localStorage.getItem('receta_solo_con_compras') === '1'; } catch { return false; }
+  });
+  const toggleSoloConCompras = useCallback(() => {
+    setSoloConCompras(prev => {
+      const next = !prev;
+      try { localStorage.setItem('receta_solo_con_compras', next ? '1' : '0'); } catch { }
+      return next;
+    });
+  }, []);
+
   const artNombre = articulo?.nombre || '';
   const precioActual = Number(articulo?.precio || 0);
 
@@ -1959,11 +2079,14 @@ export default function RecetaModal({
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
             const unidad = canonicalUnit(it.unidad || supplyMedidaRaw);
+            const esArt = it.article_ref_id != null && Number(it.article_ref_id) !== 0;
             return {
+              esArticulo: esArt,
+              articleRefId: esArt ? Number(it.article_ref_id) : null,
               supplyId: it.supply_id,
-              supplyNombre: it.supply_nombre,
+              supplyNombre: it.supply_nombre || it.nombre_insumo_maxi,
               supplyMedida,
-              precioRefDB: Number(it.precio_ref_db) || Number(it.supply_precio_base) || 0,
+              precioRefDB: Number(it.precio_ref_db) || Number(it.supply_precio_base) || Number(it.costo_unitario) || 0,
               codigoMaxi: it.codigo_maxi_insumo || it.codigo_maxi || '',
               cantidad: Number(it.cantidad || 0),
               unidad,
@@ -2068,7 +2191,7 @@ export default function RecetaModal({
       const getCosto = (it) => {
         const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
         const cant = Number(it.cantidad) || 0;
-        if (elaborado) return ((elaborado.costoTotal || 0) / (Number(elaborado.porciones) || 1)) * cant;
+        if (elaborado) return (elaborado.costoTotal || 0) * cant;
         return calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u') * cant;
       };
       return getCosto(b) - getCosto(a);
@@ -2089,7 +2212,7 @@ export default function RecetaModal({
     setItems(prev => {
       // Si la última fila no tiene insumo, no agregar otra — solo enfocar la búsqueda
       const last = prev[prev.length - 1];
-      if (last && !last.supplyId) {
+      if (last && !last.supplyId && !last.articleRefId) {
         setNewItemIndex(prev.length - 1);
         setOpenSearchIdx(prev.length - 1);
         return prev;
@@ -2117,6 +2240,35 @@ export default function RecetaModal({
     });
   }, []);
 
+  // ── Agregar un item-artículo (para promos) ──
+  const addArticleItem = useCallback(() => {
+    setItems(prev => {
+      const last = prev[prev.length - 1];
+      if (last && !last.supplyId && !last.articleRefId) {
+        setNewItemIndex(prev.length - 1);
+        setOpenSearchIdx(prev.length - 1);
+        return prev;
+      }
+      const next = [...prev, {
+        esArticulo: true,
+        articleRefId: null, supplyId: null,
+        supplyNombre: '', supplyMedida: 'u',
+        cantidad: 1,
+        unidad: 'u', costoUnitario: '',
+        merma: true, pedido: true, tipoCosto: 'total',
+        ultimaCompra: null, observaciones: '', updatedAt: null,
+      }];
+      setNewItemIndex(next.length - 1);
+      setOpenSearchIdx(next.length - 1);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      if (bodyRef.current) {
+        bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
+      }
+    });
+  }, []);
+
   /* ── Cálculos ── */
   const costoTotal = useMemo(() =>
     items.reduce((acc, it) => {
@@ -2135,7 +2287,8 @@ export default function RecetaModal({
         if (it.tipoCosto === 'sugerido' && elaborado.precioSugerido > 0) {
           precioU = elaborado.precioSugerido / factor;
         } else {
-          precioU = elaborado.costoTotal > 0 ? (elaborado.costoTotal / porciones) / factor : 0;
+          // Costo total de la receta del elaborado, sin dividir por rendimiento/porciones
+          precioU = elaborado.costoTotal > 0 ? elaborado.costoTotal / factor : 0;
         }
       } else {
         // ← este bloque falta o está roto
@@ -2172,9 +2325,8 @@ export default function RecetaModal({
   const handleSave = async () => {
     setError('');
 
-    // ← Filtrar filas vacías antes de validar
-    const itemsValidos = items.filter(it => it.supplyId);
-
+    // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
+    const itemsValidos = items.filter(it => it.supplyId || it.articleRefId);
     const tieneContenido = itemsValidos.length > 0 || notas || foto || pctCostoIdeal !== 30;
     if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
@@ -2210,7 +2362,7 @@ export default function RecetaModal({
           const factor = getConversionFactor(unidadDB, unidadElegida);
           costoUnitario = it.tipoCosto === 'sugerido' && elaborado.precioSugerido > 0
             ? elaborado.precioSugerido / factor
-            : (elaborado.costoTotal > 0 ? (elaborado.costoTotal / porciones) / factor : 0);
+            : (elaborado.costoTotal > 0 ? elaborado.costoTotal / factor : 0);
         } else {
           costoUnitario = calcPrecioEnUnidad(
             Number(it.precioRefDB) || 0,
@@ -2218,8 +2370,9 @@ export default function RecetaModal({
             it.unidad || it.supplyMedida || 'u'
           );
         }
-        return {
+       return {
           supplyId: it.supplyId,
+          articleRefId: it.articleRefId ?? null,
           cantidad: Number(it.cantidad) || 0,
           unidad: it.unidad || 'u',
           precioRefDb: Number(it.precioRefDB) || 0,
@@ -2255,6 +2408,20 @@ export default function RecetaModal({
       const saved = json?.receta ?? json;
       setReceta(saved);
       setSuccess(true);
+
+      // ── Si es promo (tiene items-artículo), mover componentes + dueño a "Promociones" ──
+      const idsArticulosPromo = payload.items
+        .filter(it => it.articleRefId != null && Number(it.articleRefId) !== 0)
+        .map(it => Number(it.articleRefId));
+      if (idsArticulosPromo.length > 0) {
+        const idsMover = Array.from(new Set([Number(articulo.id), ...idsArticulosPromo]));
+        try {
+          await createOrMoveAgrupacion(businessId, { nombre: 'Promociones', ids: idsMover });
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+        } catch (e) {
+          console.warn('[promo] no se pudo mover a Promociones:', e.message);
+        }
+      }
 
       // ← Propagar a gemelos si los hay
       if (gemelosGroup?.members?.length > 1) {
@@ -2855,7 +3022,7 @@ export default function RecetaModal({
                   gridTemplateColumns: '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
                   gap: '4px', px: 0.5, mb: 0.5,
                 }}>
-                  {['', 'Insumo', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', '', ''].map((col, i) => (
+                  {['', 'Ingrediente', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', '', ''].map((col, i) => (
                     <Typography key={i} variant="caption" color="text.secondary"
                       fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: i >= 4 && i <= 6 ? 'center' : 'left' }}>
                       {col}
@@ -2904,27 +3071,33 @@ export default function RecetaModal({
                           alertaSemanas={alertaSemanas}
                           autoOpenSearch={newItemIndex === realIndex}
                           recetasElaborados={localRecetasElaborados}
+                          allArticulos={allArticulos}
                           articuloId={articulo?.id}
                           businessId={businessId}
                           searchOpen={openSearchIdx === realIndex}
                           onSearchOpen={() => setOpenSearchIdx(realIndex)}
                           onSearchClose={() => setOpenSearchIdx(null)}
+                          soloConCompras={soloConCompras}
+                          onToggleSoloConCompras={toggleSoloConCompras}
                         />
                       );
                     })}
                   </Box>
                 )}
 
-                <Button
-                  startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
-                  onClick={addItem}
-                  size="small"
-                  disabled={insumosLoading}
-                  variant="outlined"
-                  sx={{ mb: 2.5, borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  Agregar ingrediente
-                </Button>
+                <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
+                  <Button
+                    startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
+                    onClick={addItem}
+                    size="small"
+                    disabled={insumosLoading}
+                    variant="outlined"
+                    sx={{ borderColor: PRIMARY, color: PRIMARY }}
+                  >
+                    Agregar ingrediente
+                  </Button>
+                
+                </Stack>
 
                 <Divider sx={{ mb: 2 }} />
 

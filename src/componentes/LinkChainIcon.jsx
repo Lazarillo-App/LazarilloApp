@@ -12,9 +12,10 @@ import {
   Tooltip, IconButton, Popover, Box, Typography,
   List, ListItem, ListItemText, Divider, Button, Chip,
 } from '@mui/material';
-import LinkIcon       from '@mui/icons-material/Link';
-import LinkOffIcon    from '@mui/icons-material/LinkOff';
+import LinkIcon from '@mui/icons-material/Link';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AddLinkIcon from '@mui/icons-material/AddLink';
 
 /**
  * LinkChainIcon
@@ -32,12 +33,16 @@ export default function LinkChainIcon({
   nameById = new Map(),
   onRemoveSelf,
   onDeleteGroup,
+  onAddMembers,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
 
   if (!groupInfo) return null;
+  // Defensive: si por error llega un array (compat con el index viejo), tomamos el primero
+  const safeInfo = Array.isArray(groupInfo) ? groupInfo[0] : groupInfo;
+  if (!safeInfo) return null;
 
-  const { groupId, groupName, memberIds } = groupInfo;
+  const { groupId, groupName, memberIds, linkType } = safeInfo;
   const members = Array.from(memberIds || []);
   const others = members.filter(id => id !== Number(articleId));
   const open = Boolean(anchorEl);
@@ -83,6 +88,14 @@ export default function LinkChainIcon({
           <LinkIcon sx={{ fontSize: 16, color: '#7c3aed' }} />
           <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#4c1d95' }}>
             Vinculación
+            {linkType && (
+              <Chip label={linkType} size="small" sx={{
+                ml: 0.75, height: 16, fontSize: '0.62rem', fontWeight: 700,
+                bgcolor: linkType === 'precio' ? '#dbeafe' : linkType === 'receta' ? '#dcfce7' : '#fef3c7',
+                color: linkType === 'precio' ? '#1e40af' : linkType === 'receta' ? '#15803d' : '#92400e',
+                '& .MuiChip-label': { px: 0.6 },
+              }} />
+            )}
             {groupName && (
               <span style={{ fontWeight: 400, fontSize: '0.78rem', marginLeft: 6, opacity: 0.7 }}>
                 {groupName}
@@ -149,6 +162,24 @@ export default function LinkChainIcon({
               '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
             }}
           >
+            {/* Agregar artículos a esta vinculación */}
+          {onAddMembers && (
+            <Button
+              size="small"
+              startIcon={<AddLinkIcon sx={{ fontSize: 15 }} />}
+              onClick={() => {
+                onAddMembers(groupId);
+                setAnchorEl(null);
+              }}
+              sx={{
+                justifyContent: 'flex-start', textTransform: 'none',
+                fontSize: '0.8rem', color: '#7c3aed', fontWeight: 600,
+                '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' },
+              }}
+            >
+              Agregar artículos
+            </Button>
+          )}
             Quitar de la vinculación
           </Button>
 

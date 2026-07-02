@@ -426,6 +426,11 @@ function InsumosSidebar({
     return withMonto;
   }, [catalogRubros, rubrosSafe, vista, rubrosMap, activeIds, metaById, todoGroupId, selectedGroupId, getComprasAmount]);
 
+  const totalGrupoCompras = useMemo(
+    () => (treeByRubro || []).reduce((acc, r) => acc + (r.__ventasMonto || 0), 0),
+    [treeByRubro]
+  );
+
   const handleGroupChange = useCallback(
     (event) => {
       const idSel = Number(event.target.value);
@@ -814,9 +819,9 @@ function InsumosSidebar({
                           <small style={{ fontSize: '0.72rem', fontWeight: 600 }}>
                             {fmtCurrency(monto)}
                           </small>
-                          {monto > 0 && (
+                          {totalGrupoCompras > 0 && (
                             <span style={{ color: 'black', fontSize: '0.65rem', fontWeight: 600 }}>
-                              {(monto / monto * 100).toFixed(1).replace('.', ',')}%
+                              {(monto / totalGrupoCompras * 100).toFixed(1).replace('.', ',')}%
                             </span>
                           )}
                         </div>
@@ -831,7 +836,7 @@ function InsumosSidebar({
                             if (info?.nombre === rubro.nombre) return String(codigo);
                           }
                         }
-                        return String(rubro.codigo || '');
+                        return rubro.codigo != null ? String(rubro.codigo) : '';
                       })()}
                       isElaborado={rubro.es_elaborador === true}
                       insumoIds={(rubro.insumos || []).map((i) => safeId(i)).filter(Boolean)}

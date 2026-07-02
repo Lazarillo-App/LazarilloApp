@@ -6,7 +6,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Typography, Box, CircularProgress, Divider
 } from '@mui/material';
-
+import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import UndoIcon from '@mui/icons-material/Undo';
@@ -21,6 +21,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ExcluirListasModal from './ExcluirListasModal';
+
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -270,8 +271,10 @@ function SubrubroAccionesMenu({
   const handleClose = useCallback(() => setAnchorEl(null), []);
   const loadedRef = useRef(false);
 
-const [excluirOpen, setExcluirOpen] = useState(false);
-
+  const [excluirOpen, setExcluirOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const currentGroupId = agrupacionSeleccionada?.id ? Number(agrupacionSeleccionada.id) : null;
 
   const subDisplayName = useMemo(() => {
@@ -282,6 +285,41 @@ const [excluirOpen, setExcluirOpen] = useState(false);
     }
     return 'este subrubro';
   }, [subrubro]);
+
+  const openRename = useCallback(() => {
+    setRenameValue(subDisplayName);
+    handleClose();
+    setTimeout(() => setRenameOpen(true), 0);
+  }, [subDisplayName, handleClose]);
+
+  const ejecutarRename = useCallback(async () => {
+    const nuevo = renameValue.trim();
+    if (!nuevo || nuevo === subDisplayName) {
+      setRenameOpen(false);
+      return;
+    }
+    // treeMode 'cat-first' → estoy mostrando un RUBRO UI (DB: subrubro)
+    // treeMode 'sr-first'  → estoy mostrando un SUBRUBRO UI (DB: categoria)
+    const isRubroUI = treeMode === 'sr-first';
+    const endpoint = isRubroUI ? 'rubros' : 'subrubros';
+    setRenaming(true);
+    try {
+      await httpBiz(`/articles/${endpoint}/rename`, {
+        method: 'PUT',
+        body: { old: subDisplayName, new: nuevo },
+      }, effectiveBusinessId);
+      notify?.(`${isRubroUI ? 'Rubro' : 'Subrubro'} renombrado a "${nuevo}"`, 'success');
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      // Forzar refresh del árbol (rubros/subrubros)
+      window.dispatchEvent(new CustomEvent('business:synced'));
+      setRenameOpen(false);
+    } catch (e) {
+      console.error('RENAME_RUBRO_ERROR', e);
+      notify?.('No se pudo renombrar', 'error');
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameValue, subDisplayName, treeMode, effectiveBusinessId, notify]);
 
   const discontinuadosGroup = useMemo(
     () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)) || null,
@@ -644,8 +682,11 @@ const [excluirOpen, setExcluirOpen] = useState(false);
       <IconButton size="small" onClick={handleOpen} title="Acciones de subrubro">
         <MoreVertIcon fontSize="small" />
       </IconButton>
-
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
+        <MenuItem onClick={openRename}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Editar nombre</ListItemText>
+        </MenuItem>
         <MenuItem onClick={toggleDiscontinuarBloque}>
           <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{isInDiscontinuadosView ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
@@ -782,7 +823,29 @@ const [excluirOpen, setExcluirOpen] = useState(false);
         scopeLabel={subDisplayName}
         notify={notify}
       />
-      
+
+      {/* ── Diálogo de renombrar rubro/subrubro ── */}
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
+          Editar nombre de {treeMode === 'sr-first' ? 'rubro' : 'subrubro'}
+        </DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            autoFocus fullWidth size="small"
+            label="Nombre"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+            helperText={`Afectará a todos los artículos con este ${treeMode === 'sr-first' ? 'rubro' : 'subrubro'}`}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+          <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
+            {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

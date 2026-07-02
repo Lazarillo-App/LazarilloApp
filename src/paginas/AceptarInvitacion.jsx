@@ -2,7 +2,7 @@
 //
 // Página PÚBLICA: el invitado entra con un link tipo
 // /aceptar-invitacion?token=...&email=...
-// y define su contraseña. Apenas la setea, lo logueamos y lo mandamos a la app.
+// y define su contraseña + su nombre. Apenas la setea, lo logueamos y lo mandamos a la app.
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -23,17 +23,19 @@ export default function AceptarInvitacion() {
   const token = params.get('token') || '';
   const email = params.get('email') || '';
 
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm,  setConfirm]  = useState('');
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
 
   const valid = useMemo(() => {
-    return token && email && password.length >= 6 && password === confirm;
-  }, [token, email, password, confirm]);
+    return token && email && displayName.trim().length >= 2 && password.length >= 6 && password === confirm;
+  }, [token, email, displayName, password, confirm]);
 
   const passwordMismatch = confirm && password !== confirm;
   const passwordTooShort = password && password.length < 6;
+  const nameTooShort = displayName.length > 0 && displayName.trim().length < 2;
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
@@ -42,7 +44,7 @@ export default function AceptarInvitacion() {
     setError(null);
     try {
       // 1) Activar cuenta
-      const res = await acceptInvitation({ token, email, password });
+      const res = await acceptInvitation({ token, email, password, displayName: displayName.trim() });
       if (!res?.ok) throw new Error(res?.error || 'invalid_token');
 
       // 2) Loguear automáticamente con la nueva contraseña
@@ -88,7 +90,7 @@ export default function AceptarInvitacion() {
           <Typography variant="h6" fontWeight={800}>Activá tu cuenta</Typography>
           <Typography variant="body2" color="text.secondary" textAlign="center">
             Te invitaron a colaborar en Lazarillo.<br />
-            Elegí una contraseña para empezar.
+            Contanos tu nombre y elegí una contraseña.
           </Typography>
         </Stack>
 
@@ -102,6 +104,17 @@ export default function AceptarInvitacion() {
               size="small"
             />
             <TextField
+              label="¿Cómo te llamás?"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              fullWidth
+              size="small"
+              error={!!nameTooShort}
+              helperText={nameTooShort ? 'Ingresá al menos 2 caracteres' : 'Así aparecerá tu nombre en Lazarillo'}
+              autoFocus
+              placeholder="Ej: Juancho"
+            />
+            <TextField
               label="Contraseña"
               type="password"
               value={password}
@@ -110,7 +123,6 @@ export default function AceptarInvitacion() {
               size="small"
               error={!!passwordTooShort}
               helperText={passwordTooShort ? 'Mínimo 6 caracteres' : ' '}
-              autoFocus
             />
             <TextField
               label="Repetir contraseña"

@@ -80,10 +80,10 @@ export const TeamAPI = {
   /**
    * Acepta una invitación. ENDPOINT PÚBLICO (no requiere token).
    */
-  async acceptInvitation({ token, email, password }) {
+  async acceptInvitation({ token, email, password, displayName }) {
     return http('/auth/accept-invitation', {
       method: 'POST',
-      body: { token, email, password },
+      body: { token, email, password, displayName },
       withBusinessId: false,
       noAuthRedirect: true,
     });
