@@ -1154,7 +1154,17 @@ function ItemRow({
       return;
     }
 
-    const unidadDB = canonicalUnit(ins.unidad_med || ins.medida || 'u');
+    // Si es elaborado, la unidad de consumo es la de su rendimiento efectivo (peso equiv. o rendimiento medible)
+    const elabData = localRecetasElaborados[String(ins.id)];
+    console.log('[SELECT INSUMO]', ins.nombre, 'id:', ins.id, 'elabData:', elabData, 'mapSize:', Object.keys(localRecetasElaborados).length);
+    let unidadDB = canonicalUnit(ins.unidad_med || ins.medida || 'u');
+    if (elabData) {
+      if ((Number(elabData.rendimientoPeso) || 0) > 0) {
+        unidadDB = canonicalUnit(elabData.unidadPeso || 'kg');
+      } else if (['kg', 'gr', 'lt', 'ml', 'l'].includes(canonicalUnit(elabData.rendimientoUnidad || 'porcion'))) {
+        unidadDB = canonicalUnit(elabData.rendimientoUnidad);
+      }
+    }
     const precioRef = Number(ins.precio_ref)
       || Number(ins.precio_promedio_periodo)
       || Number(ins.precio_promedio)
@@ -1176,7 +1186,7 @@ function ItemRow({
     onSearchClose();
     setSearch('');
     setTimeout(() => cantidadRef.current?.focus(), 50);
-  }, [index, onChange, item.esArticulo]);
+  }, [index, onChange, item.esArticulo, localRecetasElaborados, onSearchClose]);
 
   // ── Detectar si es insumo elaborado (tiene receta propia) ──
   const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
@@ -1204,9 +1214,27 @@ function ItemRow({
         return (elaborado.precioSugerido ?? 0) / factor;
       }
       if (tipoCosto !== 'nulo' && (elaborado?.costoTotal ?? 0) > 0) {
-        const rend = Number(elaborado?.porciones) || 1;
-        // Costo por unidad de rendimiento = costoTotal / rendimiento (porciones).
-        return ((elaborado.costoTotal ?? 0) / (rend > 0 ? rend : 1)) / factor;
+        const medibles = ['kg', 'gr', 'lt', 'ml', 'l'];
+        const rendUnidad = canonicalUnit(elaborado?.rendimientoUnidad || 'porcion');
+        const pesoEq = Number(elaborado?.rendimientoPeso) || 0;
+        let divisor, unidadBase;
+        if (pesoEq > 0) {
+          // Unidad no medible con peso equivalente: costo por unidad de peso (kg/lt)
+          divisor = pesoEq;
+          unidadBase = canonicalUnit(elaborado?.unidadPeso || 'kg');
+        } else if (medibles.includes(rendUnidad)) {
+          // Rendimiento medible directo: costo por unidad de rendimiento
+          divisor = Number(elaborado?.porciones) || 1;
+          unidadBase = rendUnidad;
+        } else {
+          // Porción/unidad sin peso: costo total sin dividir
+          divisor = 1;
+          unidadBase = rendUnidad;
+        }
+        const costoPorUnidadBase = (elaborado.costoTotal ?? 0) / (divisor > 0 ? divisor : 1);
+        // Convertir de la unidad base del elaborado a la unidad elegida en la fila
+        const factorConv = getConversionFactor(unidadBase, canonicalUnit(item.unidad || unidadBase));
+        return costoPorUnidadBase / factorConv;
       }
     }
     let precioRef = Number(item.precioRefDB) || 0;
@@ -1328,12 +1356,20 @@ function ItemRow({
                     : 0;
                   // Precio base FIJO del elaborado: costo total de su receta
                   // (o precio sugerido si tipoCosto==='sugerido'). No varía con unidad/cantidad.
+                  // Divisor efectivo: peso equivalente si existe, sino porciones
+                  const divElab = (Number(elaborado?.rendimientoPeso) || 0) > 0
+                    ? Number(elaborado.rendimientoPeso)
+                    : (Number(elaborado?.porciones) || 1);
                   const precioBaseElaborado = elaborado
                     ? (tipoCosto === 'sugerido' && (elaborado.precioSugerido ?? 0) > 0
-                        ? elaborado.precioSugerido
-                        : (elaborado.costoTotal ?? 0) / (Number(elaborado.porciones) || 1))
+                      ? elaborado.precioSugerido
+                      : (elaborado.costoTotal ?? 0) / (divElab > 0 ? divElab : 1))
                     : 0;
-                  const unidadBaseStr = canonicalUnit(item.supplyMedida || 'u');
+                  const unidadBaseStr = elaborado && (Number(elaborado.rendimientoPeso) || 0) > 0
+                    ? canonicalUnit(elaborado.unidadPeso || 'kg')
+                    : (elaborado && ['kg', 'gr', 'lt', 'ml', 'l'].includes(canonicalUnit(elaborado.rendimientoUnidad || 'porcion'))
+                      ? canonicalUnit(elaborado.rendimientoUnidad)
+                      : canonicalUnit(item.supplyMedida || 'u'));
 
                   const precioMostrado = item.articleRefId ? precioArt : Number(item.precioRefDB) || 0;
                   const tienePrecio = elaborado
@@ -2148,6 +2184,9 @@ export default function RecetaModal({
                       costoTotal: Number(r.costo_total) || 0,
                       porciones: Number(r.porciones) || 1,
                       precioSugerido: Number(d.precio_sugerido) || 0,
+                      rendimientoUnidad: r.rendimiento_unidad || 'porcion',   
+                      rendimientoPeso: r.rendimiento_peso != null ? Number(r.rendimiento_peso) : null,
+                      unidadPeso: r.unidad_peso || null,                  
                     }];
                   })
                   .catch(() => null)
@@ -2339,10 +2378,16 @@ export default function RecetaModal({
       kg: 'kilo',
       gr: 'gr',
     }[rendimientoUnidad] || 'porción';
-    return `Costo / ${unidadStr} (÷${Number(rendimiento)})`;
-  }, [rendimiento, rendimientoUnidad]);
+    const divisorLabel = (Number(rendimientoPeso) || 0) > 0 ? Number(rendimientoPeso) : Number(rendimiento);
+    const unidadLabel = (Number(rendimientoPeso) || 0) > 0
+      ? ({ kg: 'kg', gr: 'gr', lt: 'litro', ml: 'ml' }[canonicalUnit(unidadPeso || 'kg')] || 'kg')
+      : unidadStr;
+    return `Costo / ${unidadLabel} (÷${divisorLabel})`;
+  }, [rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso]);
 
-  const costoXRendimiento = rendimiento > 0 ? costoTotal / rendimiento : 0;
+  // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
+  const divisorRend = (Number(rendimientoPeso) || 0) > 0 ? Number(rendimientoPeso) : (Number(rendimiento) || 1);
+  const costoXRendimiento = divisorRend > 0 ? costoTotal / divisorRend : 0;
   const precioSugerido = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
   const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
   const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;

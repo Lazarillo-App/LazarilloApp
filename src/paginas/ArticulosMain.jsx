@@ -139,6 +139,7 @@ export default function ArticulosMain(props) {
   const [activeIds, setActiveIds] = useState(new Set());
   const [reloadKey, setReloadKey] = useState(0);
   const [recetasCostos, setRecetasCostos] = useState({});
+  const [recetasElaborados, setRecetasElaborados] = useState({}); // ← agregar acá
   const [addMembersModal, setAddMembersModal] = useState(null);
   const [soloConVentas, setSoloConVentas] = useState(() => {
     try { return localStorage.getItem('articulos_solo_con_ventas') === '1'; } catch { return false; }
@@ -489,9 +490,10 @@ export default function ArticulosMain(props) {
           'X-Business-Id': String(configBizId),
         },
       }).then(r => r.json()).catch(() => ({ hayAlerta: false })),
-    ]).then(([costosRes, configRes, configNegocio, alertaVentasRes]) => {
+    ]).then(([costosRes, configRes, elaboradosRes, configNegocio, alertaVentasRes]) => {  // ← agregar elaboradosRes acá
       if (!alive) return;
       setRecetasCostos(costosRes?.costos || {});
+      setRecetasElaborados(elaboradosRes?.data || {});
       setPriceConfig({
         byArticle: configRes?.byArticle || {},
         byRubro: configRes?.byRubro || {},
@@ -2519,6 +2521,7 @@ export default function ArticulosMain(props) {
             getAmountForId={getAmountForId}
             discIds={effectiveDiscIds}
             recetasCostos={recetasCostos}
+            recetasElaborados={recetasElaborados}
             priceConfig={priceConfig}
             globalCostoIdeal={globalCostoIdeal}
             onPriceConfigSave={handlePriceConfigSave}

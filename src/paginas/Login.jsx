@@ -383,7 +383,9 @@ export default function Login() {
             <div className="field-hint error">Ingresá tu contraseña.</div>
           )}
 
-          <button className="btn btn-sky w-full" disabled={busy || !valid}>
+          <button className="btn btn-sky w-full" disabled={busy || !valid}
+          style={{ marginTop: '18px', fontSize: '15px', fontWeight: 600 }}
+          >
             {busy ? 'Entrando…' : 'Iniciar sesión'}
           </button>
 
