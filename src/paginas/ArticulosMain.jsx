@@ -182,6 +182,7 @@ export default function ArticulosMain(props) {
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
   const [promoModalOpen, setPromoModalOpen] = useState(false);
+  const [promoEditando, setPromoEditando] = useState(null);
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
@@ -2473,25 +2474,13 @@ export default function ArticulosMain(props) {
             activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
+            onCreatePromo={() => setPromoModalOpen(true)}
           />
         </div>
 
-        {String(agrupacionSeleccionada?.nombre || '').toLowerCase() === 'promociones' && (
-          <div style={{ padding: '8px 12px', background: '#faf5ff', borderBottom: '1px solid #e9d5ff' }}>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<LocalOfferIcon />}
-              onClick={() => setPromoModalOpen(true)}
-              sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
-            >
-              Crear promoción
-            </Button>
-          </div>
-        )}
         <div
           id="tabla-scroll"
-          style={{ background: '#fff', overflow: 'visible', maxHeight: 'calc(100vh - 0px)' }}>
+          style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 190px)', paddingBottom: 40 }}>
           <TablaArticulos
             branches={[]}
             ventasMapByBranch={{}}
@@ -2561,6 +2550,7 @@ export default function ArticulosMain(props) {
             currentPriceList={currentPriceList}
             soloConVentas={soloConVentas}
             onToggleSoloConVentas={toggleSoloConVentas}
+            onEditPromo={(promo) => { setPromoEditando(promo); setPromoModalOpen(true); }}
           />
         </div>
       </div>
@@ -2660,8 +2650,9 @@ export default function ArticulosMain(props) {
 
       <CrearPromoModal
         open={promoModalOpen}
-        onClose={() => setPromoModalOpen(false)}
+        onClose={() => { setPromoModalOpen(false); setPromoEditando(null); }}
         businessId={activeBizId}
+        promoExistente={promoEditando}
         onCreated={(promo) => {
           window.dispatchEvent(new CustomEvent('articulos:updated'));
           refetchAgrupaciones?.();

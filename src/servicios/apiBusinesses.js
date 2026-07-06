@@ -585,12 +585,25 @@ export const RecetasAPI = {
   // GET /businesses/:id/recetas/promo-components → { ids: [...] }
   getPromoComponents: (businessId) =>
     http(`/businesses/${businessId}/recetas/promo-components`, { withBusinessId: false }),
+
+  getPromoIds: (businessId) =>
+    http(`/businesses/${businessId}/recetas/promo-ids`, { withBusinessId: false }),
 };
 
 export const PromocionesAPI = {
   crear: (businessId, body) =>
     http(`/businesses/${businessId}/promociones`, {
       method: 'POST', body, withBusinessId: false,
+    }),
+    
+    actualizar: (businessId, promoId, body) =>
+    http(`/businesses/${businessId}/promociones/${promoId}`, {
+      method: 'PUT', body, withBusinessId: false,
+    }),
+
+    eliminar: (businessId, promoId) =>
+    http(`/businesses/${businessId}/promociones/${promoId}`, { 
+      method: 'DELETE', withBusinessId: false 
     }),
 };
 

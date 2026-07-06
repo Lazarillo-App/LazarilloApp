@@ -54,7 +54,6 @@ const UNIDADES = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda
 const TIPO_COSTO_OPTS = [
   { value: 'total', label: 'Total' },
   { value: 'nulo', label: 'Nulo' },
-  { value: 'al_costo', label: 'Al costo' },
   { value: 'sugerido', label: 'Precio sugerido' },
 ];
 
@@ -104,7 +103,7 @@ function isCompatibleUnits(a, b) {
   if (UNID.has(na) && UNID.has(nb)) return true;
   return false;
 }
- 
+
 /**
  * Dado el precio_ref de la DB (expresado en unidadDB),
  * devuelve el precio por cada 1 unidad de unidadElegida.
@@ -999,6 +998,7 @@ function ItemRow({
   insumos, usedSupplyIds, alertaSemanas,
   autoOpenSearch, recetasElaborados = {},
   allArticulos = [],
+  objetivoReceta = 30,
   articuloId,
   businessId,
   onOpenRecetaElaborado,
@@ -1089,8 +1089,8 @@ function ItemRow({
     if (item.esArticulo) {
       let arts = q
         ? allArticulos.filter(a =>
-            a.nombre?.toLowerCase().includes(q) ||
-            String(a.id).includes(q))
+          a.nombre?.toLowerCase().includes(q) ||
+          String(a.id).includes(q))
         : [...allArticulos];
       // Excluir el propio artículo dueño de la receta (no puede contenerse a sí mismo)
       arts = arts.filter(a => Number(a.id) !== Number(articuloId));
@@ -1204,16 +1204,29 @@ function ItemRow({
         return (elaborado.precioSugerido ?? 0) / factor;
       }
       if (tipoCosto !== 'nulo' && (elaborado?.costoTotal ?? 0) > 0) {
-        // Costo total de la receta del elaborado, sin dividir por rendimiento/porciones.
-        // El rendimiento es solo informativo; la conversión de unidad se mantiene.
-        return (elaborado.costoTotal ?? 0) / factor;
+        const rend = Number(elaborado?.porciones) || 1;
+        // Costo por unidad de rendimiento = costoTotal / rendimiento (porciones).
+        return ((elaborado.costoTotal ?? 0) / (rend > 0 ? rend : 1)) / factor;
       }
     }
-    const precioRef = Number(item.precioRefDB) || 0;
+    let precioRef = Number(item.precioRefDB) || 0;
+    // Item-artículo (promo): resolver según tipoCosto
+    if (item.esArticulo || item.articleRefId) {
+      const refId = Number(item.articleRefId);
+      const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === refId);
+      if (tipoCosto === 'sugerido') {
+        // Precio sugerido de la receta del artículo: costoTotal / (objetivo/100)
+        const costoArt = Number(art?.costoTotal) || 0;
+        const objArt = Number(objetivoReceta) || 30;
+        precioRef = (costoArt > 0 && objArt > 0) ? costoArt / (objArt / 100) : 0;
+      } else if (precioRef === 0) {
+        precioRef = Number(art?.precio) || 0;
+      }
+    }
     const unidadDB = canonicalUnit(item.supplyMedida || 'u');
     const unidadElegida = canonicalUnit(item.unidad || unidadDB);
     return calcPrecioEnUnidad(precioRef, unidadDB, unidadElegida);
-  }, [elaborado, tipoCosto, item.precioRefDB, item.supplyMedida, item.unidad]);
+  }, [elaborado, tipoCosto, item.precioRefDB, item.supplyMedida, item.unidad, item.esArticulo, item.articleRefId, allArticulos]);
 
   // Costo línea (cantidad × $/u efectivo)
   const costoLinea = useMemo(() => {
@@ -1285,6 +1298,11 @@ function ItemRow({
                   sx={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    // Item-artículo (promo): abrir la receta del artículo componente
+                    if (item.esArticulo || item.articleRefId) {
+                      onOpenRecetaElaborado?.(item);
+                      return;
+                    }
                     if (!item.supplyId) return;
                     const tieneCompras = !!item.ultimaCompra;
                     if (tieneCompras) {
@@ -1294,28 +1312,33 @@ function ItemRow({
                       onOpenRecetaElaborado?.(item);
                     }
                   }}
-                  title={item.ultimaCompra ? "Ver últimas compras" : "Ver/crear receta"}
+                  title={(item.esArticulo || item.articleRefId) ? "Ver receta del artículo" : (item.ultimaCompra ? "Ver últimas compras" : "Ver/crear receta")}
                 >
-                  {item.supplyNombre || `#${item.supplyId}`}
+                  {item.supplyNombre || `#${item.articleRefId || item.supplyId}`}
                 </Typography>
 
                 {/* Precio + unidad base — siempre visible cuando hay insumo seleccionado.
                     Si no hay precio cargado (insumo sin compras), muestra solo la unidad
                     en gris para que el contexto de la fila siga siendo claro. */}
-                {item.supplyId && (() => {
+                {(item.supplyId || item.articleRefId) && (() => {
                   const unidadStr = item.supplyMedida || 'u';
+                  // Para item-artículo: precio del artículo desde allArticulos
+                  const precioArt = item.articleRefId
+                    ? (Number(item.precioRefDB) || Number((allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(item.articleRefId))?.precio) || 0)
+                    : 0;
                   // Precio base FIJO del elaborado: costo total de su receta
                   // (o precio sugerido si tipoCosto==='sugerido'). No varía con unidad/cantidad.
                   const precioBaseElaborado = elaborado
                     ? (tipoCosto === 'sugerido' && (elaborado.precioSugerido ?? 0) > 0
                         ? elaborado.precioSugerido
-                        : (elaborado.costoTotal ?? 0))
+                        : (elaborado.costoTotal ?? 0) / (Number(elaborado.porciones) || 1))
                     : 0;
                   const unidadBaseStr = canonicalUnit(item.supplyMedida || 'u');
 
+                  const precioMostrado = item.articleRefId ? precioArt : Number(item.precioRefDB) || 0;
                   const tienePrecio = elaborado
                     ? precioBaseElaborado > 0
-                    : item.precioRefDB > 0;
+                    : precioMostrado > 0;
 
                   const label = (() => {
                     if (elaborado) {
@@ -1324,7 +1347,7 @@ function ItemRow({
                         : `/${unidadBaseStr}`;
                     }
                     return tienePrecio
-                      ? `$${fmt(item.precioRefDB)}/${unidadStr}`
+                      ? `$${fmt(precioMostrado)}/${unidadStr}`
                       : `/${unidadStr}`;
                   })();
 
@@ -1566,7 +1589,7 @@ function ItemRow({
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: elaborado ? '#f0fdf4' : '#f8fafc', overflow: 'hidden' }}>
           <Tooltip title={elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`}>
             <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled', whiteSpace: 'nowrap' }}>
-              {item.supplyId ? (costoEfectivoLinea > 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
+              {(item.supplyId || item.articleRefId) ? (costoEfectivoLinea > 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
             </Typography>
           </Tooltip>
         </Box>
@@ -1726,6 +1749,7 @@ export default function RecetaModal({
   insumosBizId = null,
   recetasElaborados = {},
   esElaborado = false,
+  esPromo = false,
   getRecetaUrl = null,
   saveRecetaUrl = null,
   onPriceConfigSave = null,
@@ -1853,7 +1877,7 @@ export default function RecetaModal({
 
   /* ── Cargar gemelos al abrir + función reutilizable ── */
   const loadGemelosGroup = useCallback(() => {
-    if (!businessId || !articulo?.id || esElaborado) return;
+    if (!businessId || !articulo?.id || esElaborado || esPromo) return;
     setGemelosLoading(true);
     const token = localStorage.getItem('token') || '';
     return fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
@@ -1872,7 +1896,7 @@ export default function RecetaModal({
       })
       .catch(() => setGemelosGroup(null))
       .finally(() => setGemelosLoading(false));
-  }, [businessId, articulo?.id, esElaborado]);
+  }, [businessId, articulo?.id, esElaborado, esPromo]);
 
   useEffect(() => {
     if (!open) return;
@@ -2289,17 +2313,21 @@ export default function RecetaModal({
           precioU = elaborado.costoTotal > 0 ? elaborado.costoTotal / factor : 0;
         }
       } else {
-        // ← este bloque falta o está roto
+        let precioRef = Number(it.precioRefDB) || 0;
+        // Item-artículo (promo): si no tiene precioRefDB, tomar el precio del artículo
+        if (precioRef === 0 && it.articleRefId) {
+          const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
+          precioRef = Number(art?.precio) || 0;
+        }
         precioU = calcPrecioEnUnidad(
-          Number(it.precioRefDB) || 0,
+          precioRef,
           it.supplyMedida || 'u',
           it.unidad || it.supplyMedida || 'u'
         );
       }
-
       return acc + cant * precioU;
     }, 0),
-    [items, localRecetasElaborados]);
+    [items, localRecetasElaborados, allArticulos]);
 
   // Label para el cuadro "Costo / unidad" según el rendimiento del lote
   const labelPorUnidad = useMemo(() => {
@@ -2368,7 +2396,7 @@ export default function RecetaModal({
             it.unidad || it.supplyMedida || 'u'
           );
         }
-       return {
+        return {
           supplyId: it.supplyId,
           articleRefId: it.articleRefId ?? null,
           cantidad: Number(it.cantidad) || 0,
@@ -2459,6 +2487,23 @@ export default function RecetaModal({
     setError('');
     try {
       const token = localStorage.getItem('token') || '';
+
+      // Promo: desarmar todo (receta, artículo-promo, agrupación) vía endpoint dedicado
+      if (esPromo) {
+        const res = await fetch(`${BASE}/businesses/${businessId}/promociones/${articulo.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d?.error || d?.message || `Error ${res.status}`);
+        }
+        try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+        onSaved?.({ article_id: articulo.id, deleted: true });
+        onClose();
+        return;
+      }
+
       const deleteUrl = `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
       const res = await fetch(deleteUrl, {
         method: 'DELETE',
@@ -2673,7 +2718,8 @@ export default function RecetaModal({
                             const nueva = e.target.value;
                             setRendimientoUnidad(nueva);
                             // Si pasamos a una unidad sin peso, limpiar peso equiv.
-                            if (!['lt', 'ml', 'u'].includes(nueva)) {
+                            // El equivalente solo aplica a porción/unidad (no medibles por sí solas)
+                            if (!['porcion', 'u'].includes(nueva)) {
                               setRendimientoPeso(null);
                               setUnidadPeso(null);
                             } else if (!unidadPeso) {
@@ -2691,8 +2737,8 @@ export default function RecetaModal({
                         </Select>
                       </FormControl>
 
-                      {/* Peso equivalente — solo para lt / ml / u */}
-                      {['lt', 'ml', 'u'].includes(rendimientoUnidad) && (
+                      {/* Peso/volumen equivalente — solo para porción / unidad */}
+                      {['porcion', 'u'].includes(rendimientoUnidad) && (
                         <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
                           <TextField
                             label="Peso equiv."
@@ -2745,8 +2791,9 @@ export default function RecetaModal({
                 </Box>
 
                 {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
-                {!esElaborado && (
+                {!esElaborado && !esPromo && (
                   <Box sx={{ mb: 1.5 }}>
+                    {/* Header colapsable */}
                     {/* Header colapsable */}
                     <Box onClick={() => {
                       setGemelosOpen(v => !v);
@@ -3053,7 +3100,8 @@ export default function RecetaModal({
                         <ItemRow
                           key={realIndex}
                           item={item}
-                          index={realIndex} // ← índice real, no i
+                          index={realIndex} // ←índice real, no i
+                          objetivoReceta={pctCostoIdeal}
                           onChange={(idx, partial) => {
                             changeItem(idx, partial);
                             if (newItemIndex === idx) setNewItemIndex(null);
@@ -3061,6 +3109,18 @@ export default function RecetaModal({
                           onRemove={removeItem}
                           onOpenCompras={(it) => setComprasInsumo(it)}
                           onOpenRecetaElaborado={(it) => {
+                            // Item-artículo (promo): abrir receta del artículo componente
+                            if (it.esArticulo || it.articleRefId) {
+                              const artId = Number(it.articleRefId);
+                              const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId);
+                              pushElaborado({
+                                id: artId,
+                                nombre: it.supplyNombre || art?.nombre || `#${artId}`,
+                                precio: Number(art?.precio) || 0,
+                                esArticulo: true,
+                              });
+                              return;
+                            }
                             const ins = insumos.find(i => String(i.id) === String(it.supplyId));
                             pushElaborado({
                               id: it.supplyId,
@@ -3098,7 +3158,7 @@ export default function RecetaModal({
                   >
                     Agregar ingrediente
                   </Button>
-                
+
                 </Stack>
 
                 <Divider sx={{ mb: 2 }} />
@@ -3174,7 +3234,7 @@ export default function RecetaModal({
                   startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
                   onClick={() => setConfirmDelete(true)}
                 >
-                  Borrar receta
+                  {esPromo ? 'Borrar promo' : 'Borrar receta'}
                 </Button>
               )}
               <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">

@@ -242,6 +242,7 @@ export default function TablaArticulos({
   linkByArticleId = new Map(),
   nameById = new Map(),
   onRemoveMemberFromLink,
+  onEditPromo,
   onDeleteLink,
   totalBizAmount = 0,
   onRedondeoChange,
@@ -314,11 +315,13 @@ export default function TablaArticulos({
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
+  const [promoIds, setPromoIds] = useState(() => new Set());
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
     { id: 'precio', label: 'Precio', width: '.3fr' },
     { id: 'costo', label: 'Costo $', width: '.3fr' },
+    { id: 'ganancia', label: 'Ganancia', width: '.3fr' },
     { id: 'costoPct', label: 'Costo %', width: '.3fr' },
     { id: 'objetivo', label: 'Objetivo %', width: '.3fr' },
     { id: 'sugerido', label: 'Sugerido', width: '.3fr' },
@@ -557,6 +560,15 @@ export default function TablaArticulos({
     return () => { cancel = true; };
   }, [activeBizId, reloadKey, reloadTick]);
 
+  useEffect(() => {
+    if (!activeBizId) { setPromoIds(new Set()); return; }
+    let cancel = false;
+    RecetasAPI.getPromoIds(activeBizId)
+      .then(r => { if (!cancel) setPromoIds(new Set((r?.ids || []).map(Number))); })
+      .catch(() => { if (!cancel) setPromoIds(new Set()); });
+    return () => { cancel = true; };
+  }, [activeBizId, reloadKey, reloadTick]);
+
   const allArticulos = useMemo(() => {
     const out = [];
     for (const sub of categorias || []) {
@@ -564,12 +576,19 @@ export default function TablaArticulos({
       for (const cat of sub?.categorias || []) {
         const categoriaNombre = String(cat?.categoria ?? cat?.nombre ?? "Sin categoría");
         for (const a of cat?.articulos || []) {
-          out.push({ ...a, subrubro: a?.subrubro ?? subrubroNombre, categoria: a?.categoria ?? categoriaNombre });
+          const _id = Number(a?.id ?? a?.articulo_id);
+          const _rec = recetasCostos[String(_id)] || recetasCostos[_id];
+          out.push({
+            ...a,
+            subrubro: a?.subrubro ?? subrubroNombre,
+            categoria: a?.categoria ?? categoriaNombre,
+            costoTotal: Number(_rec?.costoTotal) || 0,  // costo de su receta (para sugerido en promos)
+          });
         }
       }
     }
     return out;
-  }, [categorias]);
+  }, [categorias, recetasCostos]);
 
   const baseById = useMemo(() => {
     const m = new Map();
@@ -1575,7 +1594,11 @@ export default function TablaArticulos({
           }
         </div>
 
-        <div onClick={() => { const objetivoResuelto = getObjetivoArticulo(a, agrupId); setRecetaArticulo({ ...a, objetivoResuelto }); }}
+        <div onClick={() => {
+          const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a)));
+          const objetivoResuelto = getObjetivoArticulo(a, agrupId);
+          setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
+        }}
           style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
           title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
           <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem' }}>
@@ -1621,6 +1644,15 @@ export default function TablaArticulos({
                   {costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}
                 </div>
               );
+
+            case 'ganancia': {
+              const ganancia = num(a.precio) - costoArticulo;
+              return (
+                <div key="ganancia" style={{ ...cellNum, color: costoArticulo > 0 ? (ganancia >= 0 ? '#16a34a' : '#ef4444') : TABLE_MUTED }}>
+                  {costoArticulo > 0 ? fmtCurrency(ganancia) : <span style={{ color: TABLE_MUTED }}>—</span>}
+                </div>
+              );
+            }
 
             case 'costoPct': {
               const bajoPorcentaje = costoPct > 0 && objetivoArticulo > 0 && costoPct < (objetivoArticulo / 2);
@@ -1839,6 +1871,7 @@ export default function TablaArticulos({
           businessId={activeBizId}
           insumosBizId={rootBizId || activeBizId}
           esElaborado={false}
+          esPromo={recetaArticulo.esPromo === true}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           recetasElaborados={recetasElaborados}
           onPriceConfigSave={onPriceConfigSave}
@@ -1927,6 +1960,7 @@ export default function TablaArticulos({
                 switch (col.id) {
                   case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={dragIndicatorStyle}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={dragIndicatorStyle}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'ganancia': return <div key="ganancia" {...dragProps} onClick={() => toggleSort('ganancia')} className="col-sortable" style={dragIndicatorStyle}>Ganancia{sortBy === 'ganancia' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={dragIndicatorStyle}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;

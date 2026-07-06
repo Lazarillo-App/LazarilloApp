@@ -23,7 +23,8 @@ import AddBusinessIcon from '@mui/icons-material/AddBusiness';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import '../css/SidebarCategorias.css';
-
+import { Button } from '@mui/material';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { assignAgrupacionToDivision as assignAgrupacionToDivisionAPI } from '@/servicios/apiDivisions';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 
@@ -44,6 +45,11 @@ const esTodoGroup = (g) => {
 const esDiscontinuadosGroup = (g) => {
   const n = norm(groupLabel(g));
   return n === 'discontinuados' || n === 'descontinuados';
+};
+
+const esPromoGroup = (g) => {
+  const n = norm(groupLabel(g));
+  return n === 'promociones';
 };
 
 const labelAgrup = (g) => groupLabel(g);
@@ -106,6 +112,7 @@ function SidebarCategorias({
   todoCountOverride = {},
   visibleIds,
   onManualPick,
+  onCreatePromo,
   listMode = 'by-subrubro',
   onChangeListMode,
   priceConfig = { byAgrupacion: {} },
@@ -173,6 +180,8 @@ function SidebarCategorias({
     const todo = Number.isFinite(todoIdNum) ? arr.find((g) => Number(g.id) === todoIdNum) : null;
     const discontinuados = arr.filter(esDiscontinuadosGroup);
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
+    const promo = arr.find(esPromoGroup) || null;
+    const promoId = promo ? Number(promo.id) : null;
     const assignedSet = new Set((assignedAgrupacionIds || []).map(Number));
     const activeSet = new Set((activeDivisionAgrupacionIds || []).map(Number));
     const middle = arr.filter((g) => {
@@ -180,18 +189,34 @@ function SidebarCategorias({
       if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
       if (discIds.has(idNum)) return false;
+      if (promoId != null && idNum === promoId) return false;
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
     });
+    // Ordenar por monto de ventas descendente (mayor monto primero)
+    if (getAmountForId) {
+      const montoDeAgrup = (g) => {
+        let m = 0;
+        for (const a of (g.articulos || [])) {
+          const id = Number(a?.id ?? a?.articulo_id);
+          if (Number.isFinite(id)) m += getAmountForId(id) || 0;
+        }
+        return m;
+      };
+      middle.sort((a, b) => montoDeAgrup(b) - montoDeAgrup(a));
+    }
     const todoCount = todo ? (todoCountOverride[todo.id] ?? todo.articulos?.length ?? 0) : 0;
     const ordered = [];
     if (isMainDivision && todo && todoCount > 0) ordered.push(todo);
     ordered.push(...middle);
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo);
-    if (isMainDivision) ordered.push(...discontinuados);
+    // Promociones: siempre visible, arriba de Discontinuados. Si no existe, entrada virtual.
+    if (isMainDivision) {
+      ordered.push(promo || { id: '__promo_virtual__', nombre: 'Promociones', articulos: [], _virtual: true });
+      ordered.push(...discontinuados);
+    }
     return ordered;
-  }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision]);
-
+  }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision, getAmountForId]);
   const selectedAgrupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
     const actualId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
@@ -249,8 +274,8 @@ function SidebarCategorias({
     const appIds = Array.isArray(gActual?.app_articles_ids) ? gActual.app_articles_ids : [];
     const s = new Set();
     arr.forEach((a) => { const id = safeId(a); if (id != null) s.add(id); });
-      appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
-      return s;
+    appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
+    return s;
   }, [agrupaciones, agrupacionSeleccionada, visibleIds]);
 
   useEffect(() => {
@@ -335,13 +360,13 @@ function SidebarCategorias({
     const out = [];
     for (const [catName, arts] of catMap.entries()) {
       const filtered = !activeIds
-          ? arts
-          : !activeIdsIntersectsTree
-            ? []
-            : arts.filter((a) => {
-                const id = safeId(a);
-                return id != null && activeIds.has(id);
-              });
+        ? arts
+        : !activeIdsIntersectsTree
+          ? []
+          : arts.filter((a) => {
+            const id = safeId(a);
+            return id != null && activeIds.has(id);
+          });
       if (filtered.length > 0) {
         let ventasMonto = 0;
         for (const art of filtered) ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
@@ -395,14 +420,20 @@ function SidebarCategorias({
   }, [listaParaMostrar, categoriaSeleccionada, setCategoriaSeleccionada]);
 
   const handleAgrupacionChange = useCallback((event) => {
-    const idSel = Number(event.target.value);
+    const val = event.target.value;
+    // Promociones virtual: no selecciona agrupación, abre el modal de crear promo
+    if (val === '__promo_virtual__') {
+      onCreatePromo?.();
+      return;
+    }
+    const idSel = Number(val);
     const seleccionada = (agrupaciones || []).find((g) => Number(g?.id) === idSel) || null;
     setAgrupacionSeleccionada?.(seleccionada);
     setFiltroBusqueda?.('');
     setCategoriaSeleccionada?.(null);
     setBusqueda?.('');
     onManualPick?.();
-  }, [agrupaciones, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick]);
+  }, [agrupaciones, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick, onCreatePromo]);
 
   const handleCategoriaClick = useCallback((subItem) => {
     setCategoriaSeleccionada?.(categoriaSeleccionada?.subrubro === subItem?.subrubro ? null : subItem);
@@ -508,7 +539,7 @@ function SidebarCategorias({
               value={selectedAgrupValue}
               onChange={handleAgrupacionChange}
               renderValue={(value) => {
-                const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
+                const g = opcionesSelect.find((x) => String(x.id) === String(value));
                 return g ? labelAgrup(g) : 'Sin agrupación';
               }}
             >
@@ -532,7 +563,7 @@ function SidebarCategorias({
                   ? (gMonto / totalAgrupacionesAmount * 100).toFixed(1).replace('.', ',')
                   : null;
                 return (
-                  <MenuItem key={g.id} value={Number(g.id)}>
+                  <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
                       <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
                         {labelAgrup(g)}
@@ -547,7 +578,8 @@ function SidebarCategorias({
                         {(() => {
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
-                          if (isDisc) return null;
+                          const isPromo = esPromoGroup(g);
+                          if (isDisc || isPromo) return null;
                           if (isTodo) {
                             return onRenameGroup && (
                               <Tooltip title='Convertir "Sin agrupación" en una nueva agrupación'>
@@ -726,6 +758,21 @@ function SidebarCategorias({
             )}
           </div>
         )}
+
+        {/* ── Botón crear promoción (solo en agrupación Promociones) ── */}
+        {sidebarMode === 'agrupaciones' &&
+          String(agrupacionSeleccionada?.nombre || '').toLowerCase() === 'promociones' && (
+            <div style={{ padding: '2px 0 6px' }}>
+              <Button
+                fullWidth variant="contained" size="small"
+                startIcon={<LocalOfferIcon fontSize="small" />}
+                onClick={() => onCreatePromo?.()}
+                sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
+              >
+                Crear promoción
+              </Button>
+            </div>
+          )}
 
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
         {sidebarMode === 'agrupaciones' && (

@@ -16,12 +16,18 @@ const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita
 export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const [form, setForm] = useState({
-    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false,
+    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '',
   });
   const [rubros, setRubros] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
+  // Padrino (insumo de referencia para heredar rubro/unidad)
+  const [usarPadrino, setUsarPadrino] = useState(false);
+  const [padrinoSelected, setPadrinoSelected] = useState(null);
+  const [padrinoQuery, setPadrinoQuery] = useState('');
+  const [padrinoCandidates, setPadrinoCandidates] = useState([]);
+  const [padrinoLoading, setPadrinoLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !businessId) return;
@@ -32,7 +38,35 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
       .then(d => setRubros((d?.rubros || []).map(r => r.nombre)));
   }, [open, businessId]);
 
+  // Buscar candidatos de padrino con debounce
+  useEffect(() => {
+    if (!usarPadrino || padrinoQuery.trim().length < 2) { setPadrinoCandidates([]); return; }
+    const token = localStorage.getItem('token') || '';
+    setPadrinoLoading(true);
+    const t = setTimeout(() => {
+      fetch(`${BASE}/insumos/search-padrino?q=${encodeURIComponent(padrinoQuery.trim())}`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+      })
+        .then(r => r.json()).catch(() => ({}))
+        .then(d => setPadrinoCandidates(d?.candidatos || []))
+        .finally(() => setPadrinoLoading(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [usarPadrino, padrinoQuery, businessId]);
+
   const rubroFinal = form.rubro === '__nuevo__' ? form.rubroNuevo.trim() : form.rubro;
+
+  const onPadrinoSelected = (padrino) => {
+    setPadrinoSelected(padrino);
+    if (padrino) {
+      setForm(f => ({
+        ...f,
+        rubro: padrino.rubro || f.rubro,
+        rubroNuevo: '',
+        unidadMed: padrino.unidad_med || f.unidadMed,
+      }));
+    }
+  };
 
   const handleSave = async () => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
@@ -51,6 +85,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
           nombre: form.nombre.trim(), rubro: rubroFinal,
           unidadMed: form.unidadMed || 'u',
           precioRef: form.precioRef ? Number(form.precioRef) : null,
+          skuExterno: form.sku?.trim() || null,
           es_elaborado: form.esElaborado, origen: 'manual',
         }),
       });
@@ -71,8 +106,8 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 
   const handleClose = () => {
     if (saving) return;
-    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false });
-    setError(''); setSuccess(null); onClose();
+    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '' });
+    setError(''); setSuccess(null); onClose(); setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);;
   };
 
   return (
@@ -85,6 +120,40 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
             <Alert severity="success" sx={{ py: 0.5, fontSize: '0.82rem' }}>
               Insumo <strong>{success.nombre}</strong> creado — SKU: <code>{success.codigo_maxi}</code>
             </Alert>
+          )}
+
+          {/* Padrino: heredar rubro/unidad de otro insumo */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Checkbox size="small" checked={usarPadrino} disabled={saving || !!success}
+              onChange={e => { setUsarPadrino(e.target.checked); if (!e.target.checked) { setPadrinoSelected(null); setPadrinoQuery(''); } }} />
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Usar un insumo de referencia (padrino)</Typography>
+          </Box>
+          {usarPadrino && (
+            <Autocomplete
+              size="small"
+              options={padrinoCandidates}
+              loading={padrinoLoading}
+              value={padrinoSelected}
+              getOptionLabel={(o) => o?.nombre || ''}
+              isOptionEqualToValue={(a, b) => a?.id === b?.id}
+              onChange={(_, val) => onPadrinoSelected(val)}
+              onInputChange={(_, val) => setPadrinoQuery(val)}
+              renderOption={(props, o) => (
+                <li {...props} key={o.id}>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{o.nombre}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
+                    </Typography>
+                  </Box>
+                </li>
+              )}
+              renderInput={(params) => (
+                <TextField {...params} label="Buscar insumo padrino" placeholder="Escribí para buscar…"
+                  InputProps={{ ...params.InputProps, endAdornment: (<>{padrinoLoading ? <CircularProgress size={16} /> : null}{params.InputProps.endAdornment}</>) }} />
+              )}
+              disabled={saving || !!success}
+            />
           )}
 
           <TextField label="Nombre *" size="small" fullWidth autoFocus
@@ -121,39 +190,6 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
               onChange={e => setForm(f => ({ ...f, precioRef: e.target.value }))}
               InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
           </Stack>
-
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, mb: 0.75, display: 'block' }}>
-              Tipo de insumo
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              {[
-                { value: false, label: 'De compra', desc: 'Se compra a proveedor', icon: '🛒' },
-                { value: true, label: 'Elaborado', desc: 'Se produce internamente', icon: '👨‍🍳' },
-              ].map(opt => {
-                const active = form.esElaborado === opt.value;
-                return (
-                  <Box key={String(opt.value)}
-                    onClick={() => !saving && !success && setForm(f => ({ ...f, esElaborado: opt.value }))}
-                    sx={{
-                      flex: 1, p: 1.25, borderRadius: 1.5, cursor: 'pointer',
-                      border: `2px solid ${active ? themeColor : '#e2e8f0'}`,
-                      bgcolor: active ? `${themeColor}0d` : 'transparent',
-                      transition: 'all .15s',
-                      '&:hover': { borderColor: themeColor, bgcolor: `${themeColor}06` },
-                    }}>
-                    <Typography sx={{ fontSize: '1rem', mb: 0.25 }}>{opt.icon}</Typography>
-                    <Typography variant="body2" fontWeight={active ? 700 : 500} sx={{ fontSize: '0.83rem', color: active ? themeColor : 'text.primary' }}>
-                      {opt.label}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
-                      {opt.desc}
-                    </Typography>
-                  </Box>
-                );
-              })}
-            </Stack>
-          </Box>
 
           <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
             Se generará un SKU provisorio automáticamente (<code>LAZ-...</code>).

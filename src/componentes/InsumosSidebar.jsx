@@ -187,6 +187,20 @@ function InsumosSidebar({
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
     });
+    // Ordenar por monto de compras descendente (mayor monto primero)
+    if (comprasMap && typeof comprasMap.get === 'function') {
+      const montoDeGrupo = (g) => {
+        let m = 0;
+        for (const it of (g.items || g.insumos || [])) {
+          const id = Number(it?.id ?? it?.insumo_id ?? it);
+          if (!Number.isFinite(id) || id <= 0) continue;
+          const c = comprasMap.get(id);
+          if (c) m += Number(c.neto ?? 0) + Number(c.iva ?? 0);
+        }
+        return m;
+      };
+      middle.sort((a, b) => montoDeGrupo(b) - montoDeGrupo(a));
+    }
 
     const todoCount = idsSinAgrupCount ?? 0;
 
@@ -196,7 +210,7 @@ function InsumosSidebar({
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount]);
+  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
 
   const selectedGroupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));

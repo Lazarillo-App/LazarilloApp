@@ -300,6 +300,7 @@ export default function InsumosMain() {
   const [agregarMenuAnchor, setAgregarMenuAnchor] = useState(null);
   const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
+  const [nuevoInsumoOpen, setNuevoInsumoOpen] = useState(false);
 
   usePersistUiActions(businessId);
 
@@ -1403,10 +1404,16 @@ export default function InsumosMain() {
               PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
             >
               <MenuItem
+                onClick={() => { setAgregarMenuAnchor(null); setNuevoInsumoOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+              >
+                <span style={{ fontSize: 16 }}>➕</span> Nuevo insumo
+              </MenuItem>
+              <MenuItem
                 onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
               >
-                <span style={{ fontSize: 16 }}>📦</span> Carga manual de insumos
+                <span style={{ fontSize: 16 }}>📦</span> Carga masiva (CSV)
               </MenuItem>
             </Menu>
           </div>
@@ -1551,6 +1558,13 @@ export default function InsumosMain() {
             .catch(() => setComprasMap(new Map()))
             .finally(() => setComprasLoading(false));
         }}
+      />
+
+      <InsumoNuevoModal
+        open={nuevoInsumoOpen}
+        onClose={() => setNuevoInsumoOpen(false)}
+        businessId={resolvedBizId}
+        onCreated={() => { forceRefresh(); }}
       />
 
       {recetaInsumoModal && (
