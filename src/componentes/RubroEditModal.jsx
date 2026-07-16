@@ -40,9 +40,11 @@ export default function RubroEditModal({
   const [insumosCatalogo, setInsumosCatalogo] = useState([]);
   const [insumoQuery, setInsumoQuery] = useState('');
   const [insumoSel, setInsumoSel] = useState(null);
-  const [recCantidad, setRecCantidad] = useState('');
+  const [recCantidad, setRecCantidad] = useState('1');
   const [recUnidad, setRecUnidad] = useState('u');
   const [addingReceta, setAddingReceta] = useState(false);
+  const [insumosUsados, setInsumosUsados] = useState([]); // [{insumo_id, nombre, en_cuantos}]
+  const [totalBloque, setTotalBloque] = useState(0);
 
   // Resetear al abrir
   useEffect(() => {
@@ -84,6 +86,23 @@ export default function RubroEditModal({
       })
       .catch(() => setInsumosCatalogo([]));
   }, [open, businessId]);
+
+  useEffect(() => {
+    if (!open || !businessId || !articleIds.length) { setInsumosUsados([]); return; }
+    RecetasAPI.insumosUsados(businessId, articleIds)
+      .then(r => {
+        setInsumosUsados(Array.isArray(r?.data) ? r.data : []);
+        setTotalBloque(Number(r?.total) || articleIds.length);
+      })
+      .catch(() => setInsumosUsados([]));
+  }, [open, businessId, articleIds]);
+
+  const usadoInfo = useCallback((insumoId) => {
+    const u = insumosUsados.find(x => Number(x.insumo_id) === Number(insumoId));
+    if (!u) return null;
+    const enTodos = totalBloque > 0 && u.en_cuantos >= totalBloque;
+    return { en_cuantos: u.en_cuantos, enTodos };
+  }, [insumosUsados, totalBloque]);
 
   const toggleExclusionLista = useCallback(async (listNumber) => {
     if (!orgId || !articleIds.length) return;
@@ -131,13 +150,19 @@ export default function RubroEditModal({
 
   const listasConDescuento = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
 
-  const insumosFiltrados = React.useMemo(() => {
+ const insumosFiltrados = React.useMemo(() => {
     const q = insumoQuery.trim().toLowerCase();
-    if (!q) return [];
+    // Campo vacío → sugerir los insumos ya usados en recetas del rubro
+    if (!q) {
+      return insumosUsados
+        .map(u => insumosCatalogo.find(i => Number(i.id) === Number(u.insumo_id)))
+        .filter(Boolean)
+        .slice(0, 8);
+    }
     return insumosCatalogo
       .filter(i => String(i.nombre || '').toLowerCase().includes(q))
       .slice(0, 8);
-  }, [insumoQuery, insumosCatalogo]);
+  }, [insumoQuery, insumosCatalogo, insumosUsados]);
 
   const handleAddRecetaBloque = async () => {
     if (!insumoSel || !businessId) return;
@@ -149,7 +174,7 @@ export default function RubroEditModal({
         cantidad: Number(recCantidad) || 0,
         unidad: recUnidad,
       });
-      setInsumoSel(null); setInsumoQuery(''); setRecCantidad('');
+      setInsumoSel(null); setInsumoQuery(''); setRecCantidad('1');
       try {
         window.dispatchEvent(new CustomEvent('ui:action', {
           detail: {
@@ -161,6 +186,7 @@ export default function RubroEditModal({
         }));
       } catch { }
       window.dispatchEvent(new CustomEvent('recetas:bulk-added', { detail: r }));
+      window.dispatchEvent(new CustomEvent('articulos:updated'));  
       onClose();
     } catch (e) {
       console.error('[bulk-add-insumo]', e);
@@ -223,24 +249,46 @@ export default function RubroEditModal({
           ) : (
             <Box sx={{ position: 'relative', mb: 1 }}>
               <TextField
-                size="small" fullWidth placeholder="Buscar insumo…"
+                size="small" fullWidth placeholder={insumosUsados.length ? 'Buscar o ver ya usados…' : 'Buscar insumo…'}
                 value={insumoQuery}
                 onChange={e => setInsumoQuery(e.target.value)}
               />
               {insumosFiltrados.length > 0 && (
                 <Box sx={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, bgcolor: '#fff', border: '1px solid #e2e8f0', borderRadius: 1, maxHeight: 200, overflowY: 'auto', boxShadow: 2 }}>
-                  {insumosFiltrados.map(ins => (
-                    <Box key={ins.id}
-                      onClick={() => {
-                        setInsumoSel(ins);
-                        const u = String(ins.unidad_med || 'u').trim().toLowerCase();
-                        const permitidas = ['u', 'kg', 'gr', 'l', 'ml'];
-                        setRecUnidad(permitidas.includes(u) ? u : 'u');
-                      }}
-                      sx={{ px: 1.5, py: 0.75, cursor: 'pointer', fontSize: '0.85rem', '&:hover': { bgcolor: 'action.hover' } }}>
-                      {ins.nombre}
-                    </Box>
-                  ))}
+                  {insumosFiltrados.map(ins => {
+                    const info = usadoInfo(ins.id);
+                    return (
+                      <Box key={ins.id}
+                        onClick={() => {
+                          if (info?.enTodos) return; // ya está en todos → no hacer nada
+                          setInsumoSel(ins);
+                          const u = String(ins.unidad_med || 'u').trim().toLowerCase();
+                          const permitidas = ['u', 'kg', 'gr', 'l', 'ml'];
+                          setRecUnidad(permitidas.includes(u) ? u : 'u');
+                          setRecCantidad('1');
+                        }}
+                        sx={{
+                          px: 1.5, py: 0.75,
+                          cursor: info?.enTodos ? 'default' : 'pointer',
+                          opacity: info?.enTodos ? 0.5 : 1,
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1,
+                          fontSize: '0.85rem',
+                          '&:hover': { bgcolor: info?.enTodos ? 'transparent' : 'action.hover' },
+                        }}>
+                        <span>{ins.nombre}</span>
+                        {info && (
+                          <Typography component="span" variant="caption" sx={{
+                            flexShrink: 0, px: 0.75, py: '1px', borderRadius: 0.75, fontWeight: 700,
+                            fontSize: '0.62rem',
+                            bgcolor: info.enTodos ? '#f1f5f9' : '#fef9c3',
+                            color: info.enTodos ? '#64748b' : '#78350f',
+                          }}>
+                            {info.enTodos ? 'En todos' : `Ya usado (${info.en_cuantos}/${totalBloque})`}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
                 </Box>
               )}
               
@@ -251,6 +299,8 @@ export default function RubroEditModal({
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
               <TextField
                 size="small" type="number" label="Cantidad" sx={{ flex: 1 }}
+                autoFocus
+                onFocus={e => e.target.select()}
                 value={recCantidad} onChange={e => setRecCantidad(e.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
               />

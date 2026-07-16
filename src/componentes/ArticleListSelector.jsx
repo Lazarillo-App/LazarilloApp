@@ -57,10 +57,9 @@ export default function ArticleListSelector({
           fontFamily: 'inherit', padding: 0, ml: 1.5,
           opacity: 0.95,
           transition: 'opacity 0.15s',
-          '&:hover': { opacity: 1, textDecoration: 'underline', textDecorationThickness: '1.5px', textUnderlineOffset: '3px' },
+          '&:hover': { opacity: 1, textDecoration: '', textDecorationThickness: '1.5px', textUnderlineOffset: '3px' },
         }}
       >
-        <span style={{ opacity: 0.55, marginRight: 4, color: '#94a3b8', fontWeight: 400 }}>›</span>
         {isFav && <StarIcon sx={{ fontSize: 15, color: '#f59e0b' }} />}
         <span>{label}</span>
         <ExpandMoreIcon sx={{ fontSize: 16, opacity: 0.6 }} />

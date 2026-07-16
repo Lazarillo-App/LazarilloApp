@@ -200,8 +200,7 @@ export default function InsumosMain() {
   const resolvedBizId = (rootBusiness?.id && activeInOrg)
     ? String(rootBusiness.id)
     : businessId;
-  console.log('[InsumosMain] businessId:', businessId, '| activeInOrg:', activeInOrg, '| resolvedBizId:', resolvedBizId, '| orgBizIds:', (organization?.businesses || []).map(b => b.id));
-
+  
   const {
     activeDivisionId,
     activeDivisionInsumoGroupIds,
@@ -1571,6 +1570,7 @@ export default function InsumosMain() {
         <RecetaModal
           open={!!recetaInsumoModal}
           onClose={() => setRecetaInsumoModal(null)}
+          modoInsumo={true}
           articulo={{
             id: recetaInsumoModal.id,
             nombre: recetaInsumoModal.nombre,

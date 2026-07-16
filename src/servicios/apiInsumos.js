@@ -152,6 +152,20 @@ export const insumoDelete = async (id) => {
   return data;
 };
 
+// DELETE /insumos/:id/manual — borrado REAL, solo manuales
+export const insumoDeleteManual = async (id, bizId) => {
+  const url = `${BASE}/insumos/${id}/manual`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: authHeaders(bizId),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || `Error ${res.status}`);
+  }
+  return res.json().catch(() => ({ ok: true }));
+};
+
 // ==================== BULK OPERATIONS ====================
 
 /**
@@ -702,6 +716,56 @@ export const toggleInsumosElaboradosBulk = async (insumoIds, esElaborado, bizId)
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.ok === false) {
     throw new Error(data?.error || 'Error al actualizar insumos en bulk');
+  }
+  return data;
+};
+
+// ── Equivalencias de insumo ──
+export const insumoEquivalenciasList = async (insumoId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias`, {
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al listar equivalencias');
+  }
+  return data;
+};
+
+export const insumoEquivalenciaCreate = async (insumoId, payload, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias`, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al crear equivalencia');
+  }
+  return data;
+};
+
+export const insumoEquivalenciaUpdate = async (insumoId, eqId, payload, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias/${eqId}`, {
+    method: 'PUT',
+    headers: authHeaders(bizId),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al actualizar equivalencia');
+  }
+  return data;
+};
+
+export const insumoEquivalenciaDelete = async (insumoId, eqId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias/${eqId}`, {
+    method: 'DELETE',
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al eliminar equivalencia');
   }
   return data;
 };

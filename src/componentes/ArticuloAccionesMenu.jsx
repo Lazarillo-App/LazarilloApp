@@ -22,6 +22,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
 import ExcluirListasModal from './ExcluirListasModal';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -264,6 +265,8 @@ function ArticuloAccionesMenu({
   const [origenReactivar, setOrigenReactivar] = useState(null);
   const [excluirOpen, setExcluirOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
@@ -284,6 +287,9 @@ function ArticuloAccionesMenu({
 
   // ── Derivados básicos del artículo ─────────────────────────────────────────
   const articuloIdNum = getNum(articulo?.id);
+
+  // Solo los artículos manuales (id negativo) se pueden eliminar
+  const esManual = Number.isFinite(articuloIdNum) && articuloIdNum < 0;
 
   const articuloDisplayName = useMemo(() => {
     if (!articulo) return `Artículo #${articuloIdNum || ''}`;
@@ -552,6 +558,28 @@ function ArticuloAccionesMenu({
     }
   }
 
+  async function ejecutarEliminar() {
+    if (!esManual || !Number.isFinite(articuloIdNum)) return;
+    setEliminando(true);
+    try {
+      await BusinessesAPI.deleteManualArticle(effectiveBusinessId, articuloIdNum);
+      notify?.(`"${articuloDisplayName}" eliminado`, 'success');
+      pushUi({
+        kind: 'article_delete', scope: 'articulo',
+        title: 'Artículo eliminado',
+        message: `"${articuloDisplayName}" (#${articuloIdNum}) fue eliminado.`,
+        payload: { articleId: articuloIdNum },
+      });
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+    } catch (e) {
+      console.error('ELIMINAR_ERROR', e);
+      notify?.('No se pudo eliminar el artículo', 'error');
+    } finally {
+      setEliminando(false);
+      setDlgEliminarOpen(false);
+    }
+  }
+
   // ── Mover a otro negocio/agrupación ────────────────────────────────────────
   async function ejecutarMover({ bizId: toBizId, groupId: toId, groupNombre }) {
     const idNum = articuloIdNum;
@@ -755,6 +783,15 @@ function ArticuloAccionesMenu({
             </ListItemText>
           </MenuItem>
         )}
+        {esManual && (
+          <MenuItem
+            onClick={() => { handleClose(); setTimeout(() => setDlgEliminarOpen(true), 0); }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>Eliminar artículo</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* ── Modal unificado "Mover a…" ── */}
@@ -882,6 +919,22 @@ function ArticuloAccionesMenu({
           <Button onClick={ejecutarRename} variant="contained"
             disabled={renaming || !renameValue.trim()}>
             {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Diálogo de confirmación de eliminación ── */}
+      <Dialog open={dlgEliminarOpen} onClose={() => !eliminando && setDlgEliminarOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Eliminar artículo</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            ¿Seguro que querés eliminar <strong>{articuloDisplayName}</strong>? Esta acción no se puede deshacer.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlgEliminarOpen(false)} disabled={eliminando}>Cancelar</Button>
+          <Button onClick={ejecutarEliminar} variant="contained" color="error" disabled={eliminando}>
+            {eliminando ? 'Eliminando…' : 'Eliminar'}
           </Button>
         </DialogActions>
       </Dialog>

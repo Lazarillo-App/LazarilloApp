@@ -515,6 +515,12 @@ export const BusinessesAPI = {
     });
   },
 
+  async deleteManualArticle(businessId, articleId) {
+    return http(`/businesses/${businessId}/articles/${articleId}`, {
+      method: 'DELETE',
+    });
+  },
+
   async saveFavoriteGroup(businessId, agrupacionId, { scope = 'articulo', divisionId = null } = {}) {
     if (!businessId) return;
 
@@ -580,6 +586,14 @@ export const RecetasAPI = {
       method: 'POST',
       body: { articleIds, insumoId, cantidad, unidad },
       withBusinessId: false,
+    }),
+
+    // POST /businesses/:id/recetas/insumos-usados
+  // Body: { articleIds } → { data: [{insumo_id, nombre, en_cuantos, ...}], total }
+  insumosUsados: (businessId, articleIds) =>
+    http(`/businesses/${businessId}/recetas/insumos-usados`, {
+      method: 'POST',
+      body: { articleIds },
     }),
 
   // GET /businesses/:id/recetas/promo-components → { ids: [...] }

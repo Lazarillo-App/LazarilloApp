@@ -14,12 +14,14 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import BuildCircleIcon from '@mui/icons-material/BuildCircle';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { emitUiAction } from '@/servicios/uiEvents';
 import {
   insumoGroupAddItem,
   insumoGroupRemoveItem,
   insumoGroupReplaceItems,
   toggleInsumoElaborado,
+  insumoDeleteManual,
 } from '../servicios/apiInsumos';
 
 const getNum = (v) => Number(v ?? 0);
@@ -61,6 +63,11 @@ function InsumoAccionesMenu({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+
+  // Solo los insumos manuales se pueden eliminar
+  const esManual = String(insumo?.origen || '').toLowerCase() === 'manual';
 
   const openRename = useCallback(() => {
     setRenameValue(insumoNombre);
@@ -145,6 +152,23 @@ function InsumoAccionesMenu({
       setRenaming(false);
     }
   }, [renameValue, insumoNombre, insumoId, businessId, notify, onReloadCatalogo]);
+
+  const ejecutarEliminar = useCallback(async () => {
+    if (!esManual) return;
+    setEliminando(true);
+    try {
+      await insumoDeleteManual(insumoId, businessId);
+      notify?.(`"${insumoNombre}" eliminado`, 'success');
+      window.dispatchEvent(new CustomEvent('insumos:updated'));
+      await onReloadCatalogo?.();
+      setDlgEliminarOpen(false);
+    } catch (e) {
+      console.error('ELIMINAR_INSUMO_ERROR', e);
+      notify?.(e.message || 'No se pudo eliminar el insumo', 'error');
+    } finally {
+      setEliminando(false);
+    }
+  }, [esManual, insumoId, businessId, insumoNombre, notify, onReloadCatalogo]);
 
   /* ========== DISCONTINUAR / REACTIVAR ========== */
   async function toggleDiscontinuar() {
@@ -406,6 +430,17 @@ function InsumoAccionesMenu({
             Crear agrupación desde este insumo
           </ListItemText>
         </MenuItem>
+
+        {/* 5. Eliminar (solo manuales) */}
+        {esManual && (
+          <MenuItem
+            onClick={() => { handleClose(); setTimeout(() => setDlgEliminarOpen(true), 0); }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>Eliminar insumo</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Dialog Mover */}
@@ -459,6 +494,20 @@ function InsumoAccionesMenu({
           <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
           <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
             {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Eliminar */}
+      <Dialog open={dlgEliminarOpen} onClose={() => !eliminando && setDlgEliminarOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Eliminar insumo</DialogTitle>
+        <DialogContent>
+          ¿Seguro que querés eliminar <strong>{insumoNombre}</strong>? Esta acción no se puede deshacer.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlgEliminarOpen(false)} disabled={eliminando}>Cancelar</Button>
+          <Button onClick={ejecutarEliminar} variant="contained" color="error" disabled={eliminando}>
+            {eliminando ? 'Eliminando…' : 'Eliminar'}
           </Button>
         </DialogActions>
       </Dialog>

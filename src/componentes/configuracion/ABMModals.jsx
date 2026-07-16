@@ -16,26 +16,34 @@ const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita
 export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const [form, setForm] = useState({
-    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '',
+    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '',
+    esElaborado: false, sku: '', agrupacionId: '',
   });
   const [rubros, setRubros] = useState([]);
+  const [agrupaciones, setAgrupaciones] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
-  // Padrino (insumo de referencia para heredar rubro/unidad)
+  // Padrino (insumo de referencia para heredar rubro/unidad/precio/agrupación)
   const [usarPadrino, setUsarPadrino] = useState(false);
   const [padrinoSelected, setPadrinoSelected] = useState(null);
   const [padrinoQuery, setPadrinoQuery] = useState('');
   const [padrinoCandidates, setPadrinoCandidates] = useState([]);
   const [padrinoLoading, setPadrinoLoading] = useState(false);
 
+  // Cargar rubros y agrupaciones al abrir
   useEffect(() => {
     if (!open || !businessId) return;
     const token = localStorage.getItem('token') || '';
-    fetch(`${BASE}/insumos/rubros`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
-    }).then(r => r.json()).catch(() => ({}))
-      .then(d => setRubros((d?.rubros || []).map(r => r.nombre)));
+    const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) };
+    // Rubros (el endpoint devuelve { items: [{ codigo, nombre, ... }] })
+    fetch(`${BASE}/insumos/rubros`, { headers })
+      .then(r => r.json()).catch(() => ({}))
+      .then(d => setRubros((d?.items || []).map(r => r.nombre)));
+    // Agrupaciones de insumos (groups_list → { data: [{ id, nombre, ... }] })
+    fetch(`${BASE}/insumos/groups`, { headers })
+      .then(r => r.json()).catch(() => ({}))
+      .then(d => setAgrupaciones((d?.data || []).map(g => ({ id: g.id, nombre: g.nombre }))));
   }, [open, businessId]);
 
   // Buscar candidatos de padrino con debounce
@@ -54,18 +62,58 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
     return () => clearTimeout(t);
   }, [usarPadrino, padrinoQuery, businessId]);
 
+  // Reset total al cerrar (incluye estado del padrino)
+  useEffect(() => {
+    if (!open) {
+      setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
+      setError(''); setSuccess(null);
+      setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);
+    }
+  }, [open]);
+
   const rubroFinal = form.rubro === '__nuevo__' ? form.rubroNuevo.trim() : form.rubro;
 
   const onPadrinoSelected = (padrino) => {
     setPadrinoSelected(padrino);
-    if (padrino) {
-      setForm(f => ({
-        ...f,
-        rubro: padrino.rubro || f.rubro,
-        rubroNuevo: '',
-        unidadMed: padrino.unidad_med || f.unidadMed,
-      }));
+    if (!padrino) return;
+
+    // El backend ya devuelve el rubro resuelto a NOMBRE (no código)
+    const rubroPadrino = padrino.rubro || '';
+    // Mapear unidad de MaxiRest a las opciones del select (formatos inconsistentes)
+    const MAPA_UNIDADES = {
+      l: 'lt', lt: 'lt', k: 'kg', kg: 'kg', g: 'gr', gr: 'gr',
+      u: 'u', un: 'u', m: 'ml', ml: 'ml', cc: 'cc', oz: 'oz',
+    };
+    const rawUnidad = (padrino.unidad_med || '').trim().toLowerCase();
+    const unidadPadrino = MAPA_UNIDADES[rawUnidad] || null; // null si no matchea → no tocar el form
+
+    // Resolver el rubro del padrino contra la lista existente para evitar duplicados
+    let rubroParaForm = rubroPadrino;
+    if (rubroPadrino) {
+      const norm = s => String(s || '').trim().toLowerCase();
+      const existente = rubros.find(r => norm(r) === norm(rubroPadrino));
+      if (existente) {
+        rubroParaForm = existente;
+      } else {
+        setRubros(prev => [...prev, rubroPadrino]);
+      }
     }
+    // Si la agrupación del padrino no está en la lista local, la sumamos
+    if (padrino.agrupacion_id && padrino.agrupacion_nombre) {
+      setAgrupaciones(prev => {
+        const exists = prev.some(a => Number(a.id) === Number(padrino.agrupacion_id));
+        return exists ? prev : [...prev, { id: padrino.agrupacion_id, nombre: padrino.agrupacion_nombre }];
+      });
+    }
+
+    setForm(f => ({
+      ...f,
+      rubro: rubroParaForm || f.rubro,
+      rubroNuevo: '',
+      unidadMed: unidadPadrino || f.unidadMed,
+      precioRef: padrino.precio ? String(padrino.precio) : f.precioRef,
+      agrupacionId: padrino.agrupacion_id ?? '',
+    }));
   };
 
   const handleSave = async () => {
@@ -86,6 +134,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
           unidadMed: form.unidadMed || 'u',
           precioRef: form.precioRef ? Number(form.precioRef) : null,
           skuExterno: form.sku?.trim() || null,
+          agrupacionId: form.agrupacionId || null,
           es_elaborado: form.esElaborado, origen: 'manual',
         }),
       });
@@ -96,7 +145,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
       onCreated?.(data.data);
       setTimeout(() => {
         setSuccess(null);
-        setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false });
+        setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
         onClose();
       }, 1500);
     } catch (e) {
@@ -106,8 +155,9 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 
   const handleClose = () => {
     if (saving) return;
-    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '' });
-    setError(''); setSuccess(null); onClose(); setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);;
+    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
+    setError(''); setSuccess(null); onClose();
+    setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);
   };
 
   return (
@@ -122,7 +172,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
             </Alert>
           )}
 
-          {/* Padrino: heredar rubro/unidad de otro insumo */}
+          {/* Padrino: heredar rubro/unidad/precio/agrupación de otro insumo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Checkbox size="small" checked={usarPadrino} disabled={saving || !!success}
               onChange={e => { setUsarPadrino(e.target.checked); if (!e.target.checked) { setPadrinoSelected(null); setPadrinoQuery(''); } }} />
@@ -144,6 +194,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
                     <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{o.nombre}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
+                      {o.agrupacion_nombre ? ` · 📁 ${o.agrupacion_nombre}` : ''}
                     </Typography>
                   </Box>
                 </li>
@@ -159,6 +210,12 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
             disabled={saving || !!success} />
+
+            <TextField label="SKU / Código Maxi" size="small" fullWidth
+            value={form.sku} disabled={saving || !!success}
+            onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
+            placeholder="Opcional — si Maxi trae este código, se fusionan"
+            helperText="Dejalo vacío para generar un SKU provisorio (L-)" />
 
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ flex: 1 }}>
@@ -176,6 +233,16 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
                 onChange={e => setForm(f => ({ ...f, rubroNuevo: e.target.value }))} />
             )}
           </Stack>
+
+          {/* Agrupación (opcional) */}
+          <FormControl size="small" fullWidth>
+            <InputLabel>Agrupación</InputLabel>
+            <Select label="Agrupación" value={form.agrupacionId} disabled={saving || !!success}
+              onChange={e => setForm(f => ({ ...f, agrupacionId: e.target.value }))}>
+              <MenuItem value=""><em>Sin agrupación</em></MenuItem>
+              {agrupaciones.map(a => <MenuItem key={a.id} value={a.id}>{a.nombre}</MenuItem>)}
+            </Select>
+          </FormControl>
 
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ width: 140 }}>
