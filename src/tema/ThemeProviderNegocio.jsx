@@ -229,10 +229,10 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     // primero cache local
     try {
       const cached = JSON.parse(localStorage.getItem(keyFor(nextId)) || 'null');
-      if (cached) { setPaletteForBiz(cached, { persist: false, biz: nextId }); return; }
+      if (cached) setPaletteForBiz(cached, { persist: false, biz: nextId });
     } catch { }
 
-    // luego backend
+    // Siempre revalidar: el cache es solo anti-flash, la DB manda
     refreshFromBackend(nextId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBizId]);
@@ -256,7 +256,7 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
 
       try {
         const cached = JSON.parse(localStorage.getItem(keyFor(id)) || 'null');
-        if (cached) { setPaletteForBiz(cached, { persist: false, biz: id }); return; }
+        if (cached) setPaletteForBiz(cached, { persist: false, biz: id });
       } catch { }
 
       refreshFromBackend(id);

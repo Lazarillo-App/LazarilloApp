@@ -12,6 +12,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
@@ -68,6 +69,7 @@ export default function BusinessCard({
   const [syncingInsumos, setSyncingInsumos] = useState(false);
   const [viewBiz, setViewBiz] = useState(biz);
   const [maxiLoading, setMaxiLoading] = useState(true);
+  const [syncingProv, setSyncingProv] = useState(false);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
   const [editDivisionId, setEditDivisionId] = useState(null);
   const [editDivisionName, setEditDivisionName] = useState("");
@@ -160,7 +162,7 @@ export default function BusinessCard({
 
   const [divPanelOpen, setDivPanelOpen] = useState(false);
   const [showCreateDivModal, setShowCreateDivModal] = useState(false);
-
+const syncingProvRef = useRef(false);
   const syncingArtRef = useRef(false);
   const syncingSalesRef = useRef(false);
   const syncingInsumosRef = useRef(false);
@@ -299,6 +301,20 @@ export default function BusinessCard({
       });
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
     finally { setSyncingInsumos(false); syncingInsumosRef.current = false; }
+  };
+
+  const handleSyncProveedores = async () => {
+    if (syncingProv || syncingProvRef.current) return;
+    setSyncingProv(true); syncingProvRef.current = true;
+    try {
+      const { http } = await import("@/servicios/apiBusinesses");
+      const data = await http('/purchases/sync-suppliers', {
+        method: 'POST',
+        headers: { 'X-Business-Id': String(viewBiz.id) },
+      });
+      showNotice?.(`Proveedores sincronizados: ${data?.suppliers ?? 0}`);
+    } catch (e) { showNotice?.(`Error: ${e.message}`); }
+    finally { setSyncingProv(false); syncingProvRef.current = false; }
   };
 
   const handleApplyAutoGrouping = async (selections) => {
@@ -452,6 +468,14 @@ export default function BusinessCard({
                 disabled={syncingInsumos} title="Sincronizar insumos desde Maxi">
                 {syncingInsumos ? <CircularProgress size={16} /> : <Inventory2Icon fontSize="small" />}
                 {syncingInsumos ? " Insumos…" : " Insumos"}
+              </button>
+            )}
+
+            {!maxiLoading && maxiConfigured && (
+              <button className="bc-btn bc-btn-outline" onClick={handleSyncProveedores}
+                disabled={syncingProv} title="Sincronizar proveedores desde Maxi">
+                {syncingProv ? <CircularProgress size={16} /> : <LocalShippingIcon fontSize="small" />}
+                {syncingProv ? " Proveedores…" : " Proveedores"}
               </button>
             )}
 

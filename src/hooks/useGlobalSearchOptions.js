@@ -9,7 +9,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { insumosList } from '@/servicios/apiInsumos';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 
-export function useGlobalSearchOptions(bizId) {
+export function useGlobalSearchOptions(bizId, insumosBizId = null) {
   const [articulos, setArticulos] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,7 +25,7 @@ export function useGlobalSearchOptions(bizId) {
 
     Promise.allSettled([
       BusinessesAPI.articlesFromDB(bizId).catch(() => ({ items: [] })),
-      insumosList(bizId, { limit: 99999 }).catch(() => ({ data: [] })),
+      insumosList(insumosBizId || bizId, { limit: 99999 }).catch(() => ({ data: [] })),
     ]).then(([artRes, insRes]) => {
       if (!alive) return;
 
@@ -33,9 +33,11 @@ export function useGlobalSearchOptions(bizId) {
         ? (Array.isArray(artRes.value?.items) ? artRes.value.items : [])
         : [];
 
+        console.log('[useGlobalSearchOptions] bizId(art):', bizId, 'insumosBizId:', insumosBizId, 'articulos:', arts.length);
+
       const ins = insRes.status === 'fulfilled'
         ? (Array.isArray(insRes.value?.data) ? insRes.value.data
-            : Array.isArray(insRes.value?.insumos) ? insRes.value.insumos : [])
+          : Array.isArray(insRes.value?.insumos) ? insRes.value.insumos : [])
         : [];
 
       setArticulos(arts);
@@ -44,7 +46,7 @@ export function useGlobalSearchOptions(bizId) {
     });
 
     return () => { alive = false; };
-  }, [bizId]);
+  }, [bizId, insumosBizId]);
 
   const opciones = useMemo(() => {
     const out = [];

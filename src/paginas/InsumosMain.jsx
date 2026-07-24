@@ -225,7 +225,7 @@ export default function InsumosMain() {
   // ── Listas de insumos — usar businessId del negocio activo ──────────────
   const activeBizIdNum = Number(businessId);
   const validBizId = Number.isFinite(activeBizIdNum) && activeBizIdNum > 0 ? activeBizIdNum : null;
-  const { opciones: opcionesGlobales } = useGlobalSearchOptions(businessId);
+  const { opciones: opcionesGlobales } = useGlobalSearchOptions(businessId, resolvedBizId);
   const {
     lists: insumoLists,
     createList: _createInsumoList,
@@ -703,8 +703,6 @@ export default function InsumosMain() {
         });
         safe(() => setRubrosMap(map));
         safe(() => setRubrosIdMap(idMap));
-        console.log('[DEBUG rubrosIdMap] entries:', Array.from(idMap.entries()).slice(0, 20));
-        console.log('[DEBUG rubrosMap] entries:', Array.from(map.entries()).slice(0, 20));
         const list = Array.isArray(resGroups?.data) ? resGroups.data : Array.isArray(resGroups) ? resGroups : [];
         safe(() => setGroups(list));
 
@@ -812,7 +810,6 @@ export default function InsumosMain() {
   }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
 
   const filteredBase = useMemo(() => {
-    console.log('[filteredBase] activeInsumoListId:', activeInsumoListId, '| activeInsumoListItems.size:', activeInsumoListItems?.size);
     const hasActiveList = activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0;
 
     // Si hay lista activa, filtrar desde TODOS los insumos activos, no solo los de la agrupación
@@ -831,16 +828,6 @@ export default function InsumosMain() {
       const sample2 = base.find(i => String(i.rubro_nombre || '').toLowerCase().includes('elaborado'));
       if (sample2) {
         const info = resolveRubroInfo(sample2);
-        console.log('[DEBUG rubro elaborado]', {
-          id: sample2.id,
-          rubro_nombre: sample2.rubro_nombre,
-          rubro: sample2.rubro,
-          rubro_codigo: sample2.rubro_codigo,
-          resolvedInfo: info,
-          rubrosIdMapSize: rubrosIdMap.size,
-          rubrosMapSize: rubrosMap.size,
-          idMapHas731: rubrosIdMap.get('731'),
-        });
       }
     }
 
@@ -852,15 +839,6 @@ export default function InsumosMain() {
         if (ins?.es_elaborado === true) return vista === 'elaborados';
         if (ins?.es_elaborado === false) return vista === 'no-elaborados';
         const info = resolveRubroInfo(ins);
-        console.log('[DEBUG filteredBase]', {
-          id: ins.id,
-          nombre: ins.nombre,
-          rubro: ins.rubro,
-          rubro_codigo: ins.rubro_codigo,
-          rubro_nombre: ins.rubro_nombre,
-          es_elaborado: ins.es_elaborado,
-          resolvedInfo: info,
-        });
         const esElaboradorPorFlag = info?.es_elaborador === true;
         // Fallback por nombre del rubro si no tiene flag
         const nombreRubro = info?.nombre || String(ins?.rubro_nombre || ins?.rubroNombre || '');
@@ -1297,6 +1275,13 @@ export default function InsumosMain() {
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
   }, [businessId, discontinuadosGroupId, loadGroups, forceRefresh, notify, resolvedBizId, forceRefresh]);
+
+  /* ── Refrescar cuando se actualiza un insumo desde otro lado (ej. rename en RecetaModal) ── */
+  useEffect(() => {
+    const handler = () => { console.log('[EV insumos:updated] → forceRefresh'); forceRefresh(); };
+    window.addEventListener('insumos:updated', handler);
+    return () => window.removeEventListener('insumos:updated', handler);
+  }, [forceRefresh]);
 
   const titulo = useMemo(() => {
     const base = businessName ? `Insumos — ${businessName}` : 'Insumos';

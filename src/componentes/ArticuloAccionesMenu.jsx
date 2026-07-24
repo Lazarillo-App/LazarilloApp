@@ -235,6 +235,7 @@ function MoverAModal({
 // ════════════════════════════════════════════════════════════════════════════
 function ArticuloAccionesMenu({
   articulo,
+  onCrearPromo,
   agrupaciones = [],
   agrupacionSeleccionada,
   todoGroupId,
@@ -748,6 +749,10 @@ function ArticuloAccionesMenu({
         <MenuItem onClick={openRename}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Editar nombre</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
+          <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Crear promoción</ListItemText>
         </MenuItem>
         <MenuItem onClick={toggleDiscontinuado}>
           <ListItemIcon>{isInDiscontinuados ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}</ListItemIcon>

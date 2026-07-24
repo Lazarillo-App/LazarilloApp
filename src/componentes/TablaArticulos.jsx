@@ -242,7 +242,6 @@ export default function TablaArticulos({
   linkByArticleId = new Map(),
   nameById = new Map(),
   onRemoveMemberFromLink,
-  onEditPromo,
   onDeleteLink,
   totalBizAmount = 0,
   onRedondeoChange,
@@ -1843,6 +1842,15 @@ export default function TablaArticulos({
                 <div key="acciones" style={{ textAlign: 'center' }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
+                    onCrearPromo={(art) => {
+                      setRecetaArticulo({
+                        __promoNueva: true,
+                        id: null,
+                        nombre: '',
+                        esPromo: true,
+                        componentePrecargado: art,
+                      });
+                    }}
                     agrupaciones={agrupaciones} agrupacionSeleccionada={agrupacionSeleccionada}
                     todoGroupId={todoGroupId} isTodo={isTodo} onRefetch={refetchLocal}
                     onAfterMutation={(ids2) => afterMutation(ids2)}
@@ -1868,8 +1876,10 @@ export default function TablaArticulos({
         <RecetaModal
           open={!!recetaArticulo} onClose={() => setRecetaArticulo(null)}
           articulo={recetaArticulo}
+          modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
           insumosBizId={rootBizId || activeBizId}
+          calcPrecioPorLista={calcPrecioPorLista}
           esElaborado={false}
           esPromo={recetaArticulo.esPromo === true}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}

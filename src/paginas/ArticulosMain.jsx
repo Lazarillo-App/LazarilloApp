@@ -50,7 +50,6 @@ import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
-import CrearPromoModal from '../componentes/CrearPromoModal';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -183,7 +182,6 @@ export default function ArticulosMain(props) {
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
   const [promoModalOpen, setPromoModalOpen] = useState(false);
-  const [promoEditando, setPromoEditando] = useState(null);
   const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
@@ -243,12 +241,6 @@ export default function ArticulosMain(props) {
   }, [activeBizId]);
 
   useEffect(() => {
-    console.log('[DEBUG] activeBranchFilter:', activeBranchFilter);
-    console.log('[DEBUG] branchId a useSalesData:',
-      activeBranchFilter?.mode === 'main' ? 'main'
-        : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
-          : 'main'
-    );
   }, [activeBranchFilter]);
 
   const periodoRef = useRef(periodo);
@@ -458,12 +450,10 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     if (!activeBizId) {
-      console.log('[ArticulosMain] Sin businessId, limpiando agrupaciones');
       setAgrupaciones([]);
       return;
     }
 
-    console.log('[ArticulosMain] Cargando agrupaciones inicial...');
     refetchAgrupaciones();
   }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
 
@@ -537,14 +527,11 @@ export default function ArticulosMain(props) {
 
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
-    console.log('[handlePriceConfigSave] body recibido:', body);
     const bizId = Number(activeBizId);
     const doSave = async () => {
       try {
         const result = await PriceConfigAPI.save(bizId, body);
-        console.log('[handlePriceConfigSave] resultado backend:', result);
         const r = await PriceConfigAPI.getAll(bizId);
-        console.log('[handlePriceConfigSave] nuevo priceConfig:', r);
         setPriceConfig({
           byArticle: r?.byArticle || {},
           byRubro: r?.byRubro || {},
@@ -687,10 +674,6 @@ export default function ArticulosMain(props) {
     window.__DEBUG_VENTAS_MAP = ventasMap;
 
     if (ventasMap && ventasMap.size > 0) {
-      console.log('[ArticulosMain] ventasMap:', {
-        size: ventasMap.size,
-        sample: Array.from(ventasMap.entries()).slice(0, 3)
-      });
     }
   }, [ventasMap]);
 
@@ -705,14 +688,6 @@ export default function ArticulosMain(props) {
   }, [favoriteGroupId, activeBizId]);
 
   const mutateGroups = useCallback(async (action) => {
-    console.log('[mutateGroups]', action.type, {
-      groupId: action.groupId,
-      fromId: action.fromId,
-      toId: action.toId,
-      id: action.id,
-      idsCount: action.ids?.length,
-      articulosCount: action.articulos?.length,
-    });
     setAgrupaciones(prev => {
       switch (action.type) {
         case 'create':
@@ -841,12 +816,6 @@ export default function ArticulosMain(props) {
         }
       }
 
-      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
-      console.log('[downloadVentasCSV] articleIds param:', articleIds);
-      console.log('[downloadVentasCSV] listId param:', listId);
-      console.log('[export] articleIds que llegan al handler:', articleIds);
-      console.log('[export] activeListItems al momento de exportar:', activeListItems);
-      console.log('[export] listId:', listId);
       const blob = await downloadVentasCSV(bid, {
         from,
         to,
@@ -870,8 +839,6 @@ export default function ArticulosMain(props) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      console.log('[downloadVentasCSV] resolvedArticleIds:', resolvedArticleIds);
-      console.log('[downloadVentasCSV] url final:', url);
     } catch (err) {
       console.error('Error al descargar CSV de ventas', err);
       showAlert(`Error al descargar CSV de ventas: ${err.message || err}`, 'error');
@@ -1180,17 +1147,12 @@ export default function ArticulosMain(props) {
 
       if (esGrupoTodo) {
         const ids = todoInfo?.todoIds instanceof Set ? todoInfo.todoIds : new Set();
-        console.log('[SIN AGRUPACION DEBUG]', {
-          idsCount: ids.size,
-          ids: Array.from(ids).slice(0, 20),
-        });
         let total = 0;
         for (const id of ids) {
           const amt = getAmountForId(Number(id));
           if (amt > 0) console.log('  → ID', id, '= $', amt);
           total += amt;
         }
-        console.log('[SIN AGRUPACION TOTAL] $', total);
         return Number(total || 0);
       }
     },
@@ -1519,13 +1481,6 @@ export default function ArticulosMain(props) {
       // Usar el rootBusinessId para las llamadas HTTP del UNDO
       const rootBizId = rootBusiness?.id ? Number(rootBusiness.id) : null;
 
-      console.log('🔄 [UNDO discontinue]', {
-        ids,
-        wasInDiscontinuados,
-        discontinuadosGroupId,
-        fromGroupId,
-      });
-
       if (!ids.length) {
         showMiss('No hay artículos para deshacer');
         return;
@@ -1682,7 +1637,6 @@ export default function ArticulosMain(props) {
       const articleId = Number(detail.articleId);
       const groupId = Number(detail.groupId);
       const bizId = Number(detail.bizId);
-      console.log('[navigate listener] received:', detail, '| activeBusinessId:', activeBusinessId);
       if (!Number.isFinite(articleId) || articleId === 0) return;
       if (!Number.isFinite(groupId) || !Number.isFinite(bizId)) return;
 
@@ -1912,7 +1866,8 @@ export default function ArticulosMain(props) {
   // Pickup de focus pendiente cuando llegamos desde Insumos
   useEffect(() => {
     if (!activeBizId) return;
-    if (!opcionesBuscador?.length) return; // esperar a que la data esté lista
+    if (!opcionesBuscador?.length) return;
+    if (!agrupacionesRich?.length) return;
     try {
       const pendiente = sessionStorage.getItem('pendingFocusArticulo');
       if (pendiente) {
@@ -1920,11 +1875,32 @@ export default function ArticulosMain(props) {
         if (Number.isFinite(id)) focusArticle(id);
         sessionStorage.removeItem('pendingFocusArticulo');
       }
-    } catch { }
-  }, [activeBizId, opcionesBuscador, focusArticle]);
+    } catch (e) { console.warn('[pendingFocusArticulo]', e); }
+  }, [activeBizId, opcionesBuscador, agrupacionesRich, focusArticle]);
 
   // Buscador global: artículos + insumos
-  const { opciones: opcionesGlobales } = useGlobalSearchOptions(activeBizId);
+  const { rootBusiness: rootBizForSearch, organization: orgForSearch } = useOrganization();
+  const activeInOrgForSearch = (orgForSearch?.businesses || []).some(
+    b => String(b.id) === String(activeBizId)
+  );
+
+  const insumosBizIdForSearch = (rootBusiness?.id && (organization?.businesses || []).some(b => String(b.id) === String(activeBizId)))
+    ? String(rootBusiness.id)
+    : activeBizId;
+  const { opciones: opcionesGlobales } = useGlobalSearchOptions(activeBizId, insumosBizIdForSearch);
+
+  // Filtrar opciones del buscador global:
+  //  - Artículos: solo los que están en agrupaciones del negocio activo
+  //    (opcionesBuscador ya sale de agrupacionesRich, filtrado por negocio).
+  //  - Insumos: siempre todos (globales por organización).
+  const opcionesGlobalesFiltradas = useMemo(() => {
+    if (!Array.isArray(opcionesGlobales)) return [];
+    // Ids de artículos del negocio activo (de las agrupaciones ya filtradas)
+    const idsDelNegocio = new Set((opcionesBuscador || []).map(o => Number(o.id ?? o.value ?? o)));
+    return opcionesGlobales.filter(opt =>
+      opt.tipo === 'insumo' ? true : idsDelNegocio.has(Number(opt.id))
+    );
+  }, [opcionesGlobales, opcionesBuscador]);
 
   const labelById = useMemo(() => {
     const m = new Map();
@@ -2249,8 +2225,6 @@ export default function ArticulosMain(props) {
 
   const bizCtx = useBusiness();
   useEffect(() => {
-    console.log('[ArticulosMain] ctx activeBusinessId:', bizCtx?.activeBusinessId);
-    console.log('[ArticulosMain] state activeBizId:', activeBizId);
   }, [bizCtx?.activeBusinessId, activeBizId]);
 
   const handleRedondeoChange = useCallback(async (nuevoValor) => {
@@ -2356,7 +2330,7 @@ export default function ArticulosMain(props) {
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
               placeholder="Buscar artículos, insumos…"
-              opciones={opcionesGlobales}
+              opciones={opcionesGlobalesFiltradas}
               value={searchText}
               onChange={(v) => setSearchText(v || '')}
               clearOnPick={false}
@@ -2476,7 +2450,6 @@ export default function ArticulosMain(props) {
             activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
             assignedAgrupacionIds={assignedAgrupacionIds}
             refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
-            onCreatePromo={() => setPromoModalOpen(true)}
           />
         </div>
 
@@ -2553,7 +2526,6 @@ export default function ArticulosMain(props) {
             currentPriceList={currentPriceList}
             soloConVentas={soloConVentas}
             onToggleSoloConVentas={toggleSoloConVentas}
-            onEditPromo={(promo) => { setPromoEditando(promo); setPromoModalOpen(true); }}
           />
         </div>
       </div>
@@ -2649,17 +2621,6 @@ export default function ArticulosMain(props) {
         onClose={handleSubBizClose}
         onCreated={handleSubBizCreated}
         onNeedOrgName={handleNeedOrgName}
-      />
-
-      <CrearPromoModal
-        open={promoModalOpen}
-        onClose={() => { setPromoModalOpen(false); setPromoEditando(null); }}
-        businessId={activeBizId}
-        promoExistente={promoEditando}
-        onCreated={(promo) => {
-          window.dispatchEvent(new CustomEvent('articulos:updated'));
-          refetchAgrupaciones?.();
-        }}
       />
 
       {/* Modal de configuración de listas de precios */}

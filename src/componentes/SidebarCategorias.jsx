@@ -112,7 +112,6 @@ function SidebarCategorias({
   todoCountOverride = {},
   visibleIds,
   onManualPick,
-  onCreatePromo,
   listMode = 'by-subrubro',
   onChangeListMode,
   priceConfig = { byAgrupacion: {} },
@@ -212,7 +211,7 @@ function SidebarCategorias({
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo);
     // Promociones: siempre visible, arriba de Discontinuados. Si no existe, entrada virtual.
     if (isMainDivision) {
-      ordered.push(promo || { id: '__promo_virtual__', nombre: 'Promociones', articulos: [], _virtual: true });
+      if (promo) ordered.push(promo);
       ordered.push(...discontinuados);
     }
     return ordered;
@@ -421,11 +420,6 @@ function SidebarCategorias({
 
   const handleAgrupacionChange = useCallback((event) => {
     const val = event.target.value;
-    // Promociones virtual: no selecciona agrupación, abre el modal de crear promo
-    if (val === '__promo_virtual__') {
-      onCreatePromo?.();
-      return;
-    }
     const idSel = Number(val);
     const seleccionada = (agrupaciones || []).find((g) => Number(g?.id) === idSel) || null;
     setAgrupacionSeleccionada?.(seleccionada);
@@ -433,7 +427,7 @@ function SidebarCategorias({
     setCategoriaSeleccionada?.(null);
     setBusqueda?.('');
     onManualPick?.();
-  }, [agrupaciones, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick, onCreatePromo]);
+  }, [agrupaciones, setAgrupacionSeleccionada, setFiltroBusqueda, setCategoriaSeleccionada, setBusqueda, onManualPick]);
 
   const handleCategoriaClick = useCallback((subItem) => {
     setCategoriaSeleccionada?.(categoriaSeleccionada?.subrubro === subItem?.subrubro ? null : subItem);
@@ -758,21 +752,6 @@ function SidebarCategorias({
             )}
           </div>
         )}
-
-        {/* ── Botón crear promoción (solo en agrupación Promociones) ── */}
-        {sidebarMode === 'agrupaciones' &&
-          String(agrupacionSeleccionada?.nombre || '').toLowerCase() === 'promociones' && (
-            <div style={{ padding: '2px 0 6px' }}>
-              <Button
-                fullWidth variant="contained" size="small"
-                startIcon={<LocalOfferIcon fontSize="small" />}
-                onClick={() => onCreatePromo?.()}
-                sx={{ bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' } }}
-              >
-                Crear promoción
-              </Button>
-            </div>
-          )}
 
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
         {sidebarMode === 'agrupaciones' && (

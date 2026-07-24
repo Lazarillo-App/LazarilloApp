@@ -6,7 +6,7 @@ import { http } from './apiBusinesses';
    GET /api/me/organization
 ══════════════════════════════════════════════════════════ */
 export async function getMyOrganization() {
-  const res = await http('/me/organization', { withBusinessId: false });
+  const res = await http('/me/organization', { withBusinessId: true });
   return res?.organization ?? null;
 }
 

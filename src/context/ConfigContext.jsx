@@ -15,6 +15,7 @@ import { BASE } from '@/servicios/apiBase';
 const ConfigContext = createContext({
   articulosCostoIdeal:  30,
   insumosCostoIdeal:    30,
+  desperdicioGlobalPct: 5,
   comprasAlertaSemanas: 4,
   ventasAlertaDias:     30,
   precioCosteoInsumos:  'ultima_compra',
@@ -31,6 +32,7 @@ export function ConfigProvider({ children }) {
   const [cfg, setCfg] = useState({
     articulosCostoIdeal:  30,
     insumosCostoIdeal:    30,
+    desperdicioGlobalPct: 5,
     comprasAlertaSemanas: 4,
     ventasAlertaDias:     30,
     precioCosteoInsumos:  'ultima_compra',
@@ -56,6 +58,7 @@ export function ConfigProvider({ children }) {
         setCfg({
           articulosCostoIdeal:  Number(d.config.articulos_costo_ideal  ?? 30),
           insumosCostoIdeal:    Number(d.config.insumos_costo_ideal    ?? 30),
+          desperdicioGlobalPct: Number(d.config.desperdicio_global_pct ?? 5),
           comprasAlertaSemanas: Number(d.config.compras_alerta_semanas ?? 4),
           ventasAlertaDias:     Number(d.config.ventas_alerta_dias     ?? 30),
           precioCosteoInsumos:  d.config.precio_costeo_insumos          || 'ultima_compra',
@@ -80,6 +83,7 @@ export function ConfigProvider({ children }) {
       const MAP = {
         articulos_costo_ideal:  'articulosCostoIdeal',
         insumos_costo_ideal:    'insumosCostoIdeal',
+        desperdicio_global_pct: 'desperdicioGlobalPct',
         compras_alerta_semanas: 'comprasAlertaSemanas',
         ventas_alerta_dias:     'ventasAlertaDias',
         precio_costeo_insumos:  'precioCosteoInsumos',

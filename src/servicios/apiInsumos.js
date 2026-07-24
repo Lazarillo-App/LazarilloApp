@@ -113,12 +113,12 @@ export const insumoCreate = async (payload) => {
  * PUT /api/insumos/:id
  * Actualiza un insumo
  */
-export const insumoUpdate = async (id, payload) => {
+export const insumoUpdate = async (id, payload, bizId) => {
   const url = `${BASE}/insumos/${id}`;
   
   const res = await fetch(url, {
     method: 'PUT',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
     body: JSON.stringify(payload),
   });
   
@@ -135,12 +135,12 @@ export const insumoUpdate = async (id, payload) => {
  * DELETE /api/insumos/:id
  * Discontinúa un insumo (soft delete)
  */
-export const insumoDelete = async (id) => {
+export const insumoDelete = async (id, bizId) => {
   const url = `${BASE}/insumos/${id}`;
   
   const res = await fetch(url, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authHeaders(bizId),
   });
   
   const data = await res.json().catch(() => null);
@@ -767,6 +767,64 @@ export const insumoEquivalenciaDelete = async (insumoId, eqId, bizId) => {
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al eliminar equivalencia');
   }
+  return data;
+};
+
+export const insumoComprasList = async (insumoId, bizId) => {
+  const url = `${BASE}/insumos/${insumoId}/compras`;
+  const res = await fetch(url, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error) || 'Error al listar compras');
+  return data;
+};
+
+// ── Mermas de insumo ──
+export const insumoMermasList = async (insumoId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al listar mermas');
+  return data;
+};
+export const insumoMermaCreate = async (insumoId, payload, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas`, { method: 'POST', headers: authHeaders(bizId), body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al crear merma');
+  return data;
+};
+export const insumoMermaUpdate = async (insumoId, mermaId, payload, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}`, { method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al actualizar merma');
+  return data;
+};
+export const insumoMermaDelete = async (insumoId, mermaId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}`, { method: 'DELETE', headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al eliminar merma');
+  return data;
+};
+
+export const insumoDesperdicioOverride = async (insumoId, pct, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/desperdicio-override`, {
+    method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify({ pct })
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al guardar desperdicio');
+  return data;
+};
+
+export const insumoReemplazarPreview = async (insumoId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/reemplazar-preview`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al calcular preview');
+  return data;
+};
+export const insumoReemplazar = async (insumoId, nuevoInsumoId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/reemplazar`, {
+    method: 'POST', headers: authHeaders(bizId), body: JSON.stringify({ nuevoInsumoId })
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al reemplazar');
   return data;
 };
 

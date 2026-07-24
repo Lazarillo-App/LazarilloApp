@@ -18,7 +18,7 @@ import {
   Alert, CircularProgress, Divider, Chip, Tooltip,
   InputAdornment, Select, MenuItem, FormControl,
   Checkbox, Stack, Dialog, DialogTitle, DialogContent,
-  DialogActions, DialogContentText, Menu
+  DialogActions, DialogContentText, Menu,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -42,7 +42,24 @@ import TuneIcon from '@mui/icons-material/Tune';
 import SortIcon from '@mui/icons-material/Sort';
 import EditIcon from '@mui/icons-material/Edit';
 import { getReceta, saveReceta } from '@/servicios/apiOrganizations';
-import { insumosList, insumoEquivalenciasList, insumoEquivalenciaCreate, insumoEquivalenciaUpdate, insumoEquivalenciaDelete } from '@/servicios/apiInsumos';
+import {
+  insumosList,
+  insumoEquivalenciasList,
+  insumoEquivalenciaCreate,
+  insumoEquivalenciaUpdate,
+  insumoEquivalenciaDelete,
+  insumoMermasList,
+  insumoMermaCreate,
+  insumoMermaUpdate,
+  insumoMermaDelete,
+  insumoDesperdicioOverride,
+  insumoReemplazarPreview,
+  insumoReemplazar,
+  insumoUpdate,
+  insumoComprasList,
+} from '@/servicios/apiInsumos';
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from '@/utils/cropImage';
 import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
@@ -50,7 +67,7 @@ import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 
 /* ── constantes ── */
-const UNIDADES = ['kg', 'gr', 'lt', 'ml', 'oz'];
+const UNIDADES = ['u', 'kg', 'gr', 'lt', 'ml', 'oz'];
 const TIPO_COSTO_OPTS = [
   { value: 'total', label: 'Total' },
   { value: 'nulo', label: 'Nulo' },
@@ -59,6 +76,8 @@ const TIPO_COSTO_OPTS = [
 
 const PRIMARY = 'var(--color-primary, #3b82f6)';
 const ON_PRIMARY = 'var(--on-primary, #fff)';
+const DEFAULT_LIST_COLORS = ['#2492C8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const colorForList = (list, idx) => list?.color || DEFAULT_LIST_COLORS[idx % DEFAULT_LIST_COLORS.length];
 
 const fmt = (v, d = 2) => Number(v || 0).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtDate = (s) => {
@@ -105,20 +124,46 @@ function canonicalUnit(u) {
   return MAXI_UNIT_MAP[n] || n;
 }
 
+// Devuelve las unidades válidas para elegir en la receta según la unidad base del insumo.
+// - peso (kg/gr) → [gr, kg]
+// - volumen (lt/ml/oz) → [ml, lt, oz]
+// - unidad/porción CON envase → [u] + las del tipo del envase; SIN envase → [u]
+function unidadesParaInsumo(insumoData) {
+  const base = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || 'u');
+  const PESO = ['gr', 'kg'];
+  const VOLUM = ['ml', 'lt', 'oz'];
+  if (PESO.includes(base)) return PESO;
+  if (VOLUM.includes(base)) return VOLUM;
+  // base 'u' o 'porcion': ver si tiene envase cargado
+  const contEnvase = Number(insumoData?.contenido_envase) || 0;
+  const uniEnvase = canonicalUnit(insumoData?.unidad_envase || '');
+  if (contEnvase > 0 && uniEnvase) {
+    if (PESO.includes(uniEnvase)) return ['u', ...PESO];
+    if (VOLUM.includes(uniEnvase)) return ['u', ...VOLUM];
+  }
+  return ['u'];
+}
+
 function getConversionFactor(from, to) {
   const PESO = { gr: 1, gramo: 1, gramos: 1, g: 1, k: 1000, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, oz: 28.35, onza: 28.35, lb: 453.59 };
-  const VOLUM = { ml: 1, cc: 1, lt: 1000, l: 1000, litro: 1000, litros: 1000, 'oz fl': 29.57 };
+  const VOLUM = { ml: 1, cc: 1, lt: 1000, l: 1000, litro: 1000, litros: 1000, oz: 30, 'oz fl': 29.57 };
   const f = normUnit(from);
   const t = normUnit(to);
   if (f === t) return 1;
   if (PESO[f] !== undefined && PESO[t] !== undefined) return PESO[f] / PESO[t];
   if (VOLUM[f] !== undefined && VOLUM[t] !== undefined) return VOLUM[f] / VOLUM[t];
+  // Cruce peso↔volumen: asumir densidad 1 (1gr = 1ml) — llevar ambos a su base (gr/ml) y convertir
+  const pesoF = PESO[f], volF = VOLUM[f];
+  const pesoT = PESO[t], volT = VOLUM[t];
+  const baseF = pesoF !== undefined ? pesoF : volF; // valor en gr o ml
+  const baseT = pesoT !== undefined ? pesoT : volT;
+  if (baseF !== undefined && baseT !== undefined) return baseF / baseT;
   return 1;
 }
 
 function isCompatibleUnits(a, b) {
   const PESO = new Set(['gr', 'gramo', 'gramos', 'g', 'k', 'kg', 'kilo', 'kilos', 'kilogramo', 'oz', 'onza', 'lb']);
-  const VOLUM = new Set(['ml', 'cc', 'lt', 'l', 'litro', 'litros']);
+  const VOLUM = new Set(['ml', 'cc', 'lt', 'l', 'litro', 'litros', 'oz']);
   const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena']);
   const na = normUnit(a), nb = normUnit(b);
   if (na === nb) return true;
@@ -186,140 +231,12 @@ function getAlertaColor(ultimaCompra, alertaSemanas, esElaborado = false) {
 }
 
 /* ════════════════════════════════════════
-   MODAL ÚLTIMAS COMPRAS DE UN INSUMO
-════════════════════════════════════════ */
-function UltimasComprasModal({ item, businessId, onClose, insumos = [] }) {
-  const [compras, setCompras] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!item?.supplyId || !businessId) return;
-    setLoading(true);
-    const token = localStorage.getItem('token') || '';
-    fetch(`${BASE}/purchases?insumo_id=${item.supplyId}&limit=50&page=1`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Business-Id': String(businessId),
-        'Content-Type': 'application/json',
-      },
-    })
-      .then(r => r.json()).catch(() => ({}))
-      .then(d => {
-        setCompras(Array.isArray(d?.data) ? d.data : []);
-      })
-      .finally(() => setLoading(false));
-  }, [item?.supplyId, businessId]);
-
-  const insumoData = insumos.find(i => String(i.id) === String(item?.supplyId));
-  const precioRef = Number(item?.precioRefDB)
-    || Number(insumoData?.precio_ref)
-    || Number(insumoData?.precio_promedio_periodo)
-    || Number(insumoData?.precio_promedio)
-    || Number(insumoData?.precio_ultima_compra)
-    || Number(insumoData?.precio)
-    || 0;
-  const unidadDB = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || item?.supplyMedida || 'u');
-  const precioUltCompra = Number(insumoData?.precio_ultima_compra) || 0;
-  const unidadReceta = canonicalUnit(item?.unidad || unidadDB);
-
-  return (
-    <Modal open onClose={onClose}>
-      <Box sx={{
-        position: 'absolute', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: { xs: '95vw', sm: 560 },
-        height: 'auto', maxHeight: '80vh',
-        bgcolor: 'background.paper', borderRadius: 2, boxShadow: 24,
-        outline: 'none', overflow: 'hidden',
-      }}>
-        <Box sx={{ px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <ReceiptLongIcon fontSize="small" />
-            <Box>
-              <Typography variant="subtitle2" fontWeight={700}>Últimas compras</Typography>
-              <Typography variant="caption" sx={{ opacity: 0.85 }}>{item?.supplyNombre}</Typography>
-            </Box>
-          </Stack>
-          <IconButton size="small" onClick={onClose} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
-        </Box>
-
-        <Box sx={{ px: 2.5, py: 1.25, bgcolor: `${PRIMARY}10`, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Precio en DB</Typography>
-            <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY }}>${fmt(precioRef)} / {unidadDB}</Typography>
-          </Box>
-          {precioUltCompra > 0 && precioUltCompra !== precioRef && (
-            <Box>
-              <Typography variant="caption" color="text.secondary">Última compra</Typography>
-              <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a' }}>${fmt(precioUltCompra)} / {unidadDB}</Typography>
-            </Box>
-          )}
-          {unidadReceta !== unidadDB && (
-            <Box>
-              <Typography variant="caption" color="text.secondary">Convertido a {unidadReceta}</Typography>
-              <Typography variant="body2" fontWeight={700} sx={{ color: PRIMARY }}>
-                ${fmt(calcPrecioEnUnidad(precioRef, unidadDB, unidadReceta))} / {unidadReceta}
-              </Typography>
-            </Box>
-          )}
-        </Box>
-
-        <Box sx={{ p: 2, overflow: 'hidden' }}>
-          {loading ? (
-            <Stack alignItems="center" py={3}><CircularProgress size={24} /></Stack>
-          ) : compras.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" textAlign="center" py={2}>
-              Sin compras registradas para este insumo.
-            </Typography>
-          ) : (
-            <Box>
-              {/* Header fijo fuera del scroll */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: '90px 1fr 110px 90px', gap: 1, px: 1, mb: 0.5 }}>
-                {['Fecha', 'Proveedor', 'Cantidad', 'Precio/u'].map(h => (
-                  <Typography key={h} variant="caption" fontWeight={700} color="text.secondary"
-                    sx={{ fontSize: '0.68rem', textAlign: h === 'Cantidad' || h === 'Precio/u' ? 'right' : 'left' }}>{h}</Typography>
-                ))}
-              </Box>
-              {/* Lista con scroll */}
-              <Box sx={{ maxHeight: 380, overflowY: 'auto' }}>
-                {compras.map((c, i) => (
-                  <Box key={i} sx={{
-                    display: 'grid', gridTemplateColumns: '90px 1fr 110px 90px',
-                    gap: 1, px: 1, py: 0.75, borderRadius: 1,
-                    bgcolor: i === 0 ? `${PRIMARY}08` : 'transparent',
-                    border: i === 0 ? `1px solid ${PRIMARY}25` : '1px solid transparent',
-                    '&:hover': { bgcolor: 'action.hover' },
-                  }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>{fmtDate(c.fecha) || '—'}</Typography>
-                    <Typography variant="caption" noWrap sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>{c.proveedor_nombre || '—'}</Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Typography variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>{fmt(c.cantidad, 2)}</Typography>
-                      {unidadDB && <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>{unidadDB}</Typography>}
-                    </Box>
-                    <Typography variant="caption" fontWeight={700} sx={{ fontSize: '0.75rem', textAlign: 'right', color: PRIMARY }}>
-                      ${fmt(c.precio)}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          )}
-        </Box>
-
-        <Box sx={{ px: 2.5, py: 1.25, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end' }}>
-          <Button size="small" onClick={onClose} sx={{ color: PRIMARY, borderColor: PRIMARY }} variant="outlined">Cerrar</Button>
-        </Box>
-      </Box>
-    </Modal>
-  );
-}
-
-/* ════════════════════════════════════════
    MODAL DE NOTAS + FOTO
 ════════════════════════════════════════ */
 function NotasModal({
   notas,
   foto,
+  fotos,
   notasUpdatedAt,
   onSave,
   onClose,
@@ -328,7 +245,12 @@ function NotasModal({
   esElaborado,
 }) {
   const [localNotas, setLocalNotas] = useState(notas || '');
-  const [localFoto, setLocalFoto] = useState(foto || null); // base64 o URL
+  // Array de fotos (hasta 6). Compat: si viene `fotos` la usa, si no cae al `foto` single.
+  const [localFotos, setLocalFotos] = useState(() => {
+    if (Array.isArray(fotos) && fotos.length) return fotos.filter(Boolean).slice(0, 6);
+    return foto ? [foto] : [];
+  });
+  const [fotoActiva, setFotoActiva] = useState(0); // índice de la foto que se está viendo
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   // Fecha de modificación: se actualiza al guardar
@@ -339,14 +261,14 @@ function NotasModal({
   const [hayFotosQR, setHayFotosQR] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const pollingRef = useRef(null);
+  const [fotoParaEditar, setFotoParaEditar] = useState(null); // foto cruda esperando recorte
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => setLocalFoto(ev.target.result);
+    reader.onload = (ev) => setFotoParaEditar(ev.target.result); // abrir editor en vez de guardar directo
     reader.readAsDataURL(file);
-    // reset para permitir seleccionar el mismo archivo de nuevo
     e.target.value = '';
   };
 
@@ -390,10 +312,10 @@ function NotasModal({
         const data = await res.json();
         if (data.fotos?.length > 0) {
           const nueva = data.fotos[0];
-          if (nueva !== localFoto) {
-            setLocalFoto(nueva);
+          if (!localFotos.includes(nueva)) {
+            setFotoParaEditar(nueva); // abrir editor con la foto del celular
             setHayFotosQR(true);
-            setUploadError('📱 Foto recibida del celular — guardá para confirmar');
+            setUploadError('📱 Foto recibida del celular — ajustala y guardá');
           }
         }
       } catch { }
@@ -405,150 +327,341 @@ function NotasModal({
   }, []);
 
   return (
+    <>
+      <Modal open onClose={onClose}>
+        <Box sx={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: { xs: '95vw', sm: 600 },
+          bgcolor: 'background.paper', borderRadius: 2, boxShadow: 24,
+          outline: 'none', overflow: 'hidden',
+          maxHeight: '99vh', display: 'flex', flexDirection: 'column',
+        }}>
+          {/* Header */}
+          <Box sx={{
+            px: 2.5,
+            py: 1.5,
+            bgcolor: PRIMARY,
+            color: ON_PRIMARY,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <NotesIcon fontSize="small" />
+              <Typography variant="subtitle2" fontWeight={700}>Notas e imagen de la receta</Typography>
+            </Stack>
+            <IconButton size="small" onClick={onClose} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
+          </Box>
+
+          <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Área de texto */}
+            <TextField
+              label="Notas / Instrucciones"
+              multiline
+              minRows={6}
+              fullWidth
+              value={localNotas}
+              onChange={e => setLocalNotas(e.target.value)}
+              placeholder={esElaborado
+                ? "Método de Envasado: Ej: envasar al vacío, conservar en frío…"
+                : "Método de Servido: Ej: servir frío, acompañar con salsa…"}
+            />
+
+            {/* Foto */}
+            {localFotos.length > 0 ? (
+              <Box>
+                {/* Foto activa con navegación */}
+                <Box sx={{ position: 'relative', borderRadius: 1.5, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                  <img
+                    src={localFotos[fotoActiva]}
+                    alt={`Foto receta ${fotoActiva + 1}`}
+                    style={{ width: '100%', maxHeight: 280, objectFit: 'cover', display: 'block' }}
+                  />
+                  {/* Quitar la foto activa */}
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setLocalFotos(prev => {
+                        const next = prev.filter((_, i) => i !== fotoActiva);
+                        setFotoActiva(a => Math.max(0, Math.min(a, next.length - 1)));
+                        return next;
+                      });
+                    }}
+                    sx={{
+                      position: 'absolute', top: 6, right: 6,
+                      bgcolor: 'rgba(0,0,0,0.55)', color: '#fff',
+                      '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' },
+                    }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                  {/* Contador */}
+                  {localFotos.length > 1 && (
+                    <Box sx={{
+                      position: 'absolute', bottom: 6, right: 6,
+                      bgcolor: 'rgba(0,0,0,0.6)', color: '#fff',
+                      px: 1, py: 0.25, borderRadius: 1, fontSize: '0.7rem',
+                    }}>
+                      {fotoActiva + 1}/{localFotos.length}
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Miniaturas + botón agregar */}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+                  {localFotos.map((url, i) => (
+                    <Box
+                      key={i}
+                      onClick={() => setFotoActiva(i)}
+                      sx={{
+                        width: 54, height: 42, borderRadius: 1, overflow: 'hidden', cursor: 'pointer',
+                        border: i === fotoActiva ? '2px solid' : '1px solid',
+                        borderColor: i === fotoActiva ? PRIMARY : 'divider',
+                      }}
+                    >
+                      <img src={url} alt={`mini ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </Box>
+                  ))}
+                  {/* Agregar más (hasta 6) */}
+                  {localFotos.length < 6 && (
+                    <Box
+                      onClick={() => fileInputRef.current?.click()}
+                      sx={{
+                        width: 54, height: 42, borderRadius: 1, cursor: 'pointer',
+                        border: '2px dashed', borderColor: 'divider',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'text.disabled',
+                      }}
+                    >
+                      +
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            ) : (
+
+              <Box sx={{
+                border: '2px dashed', borderColor: 'divider', borderRadius: 1.5,
+                py: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
+                bgcolor: 'action.hover',
+              }}>
+                <ImageIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                <Typography variant="body2" color="text.secondary">Adjuntá una foto de la receta</Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small" variant="outlined"
+                    startIcon={<ImageIcon />}
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{ borderColor: PRIMARY, color: PRIMARY }}
+                  >
+                    Desde archivo
+                  </Button>
+                  <Button
+                    size="small" variant="outlined"
+                    startIcon={<PhotoCameraIcon />}
+                    onClick={() => cameraInputRef.current?.click()}
+                    sx={{ borderColor: PRIMARY, color: PRIMARY }}
+                  >
+                    Cámara
+                  </Button>
+                  <Button
+                    size="small" variant="outlined"
+                    onClick={() => { if (!uploadToken) { generarToken(); } else { setShowQR(v => !v); } }}
+                    disabled={tokenLoading}
+                    sx={{ borderColor: '#78350f', color: '#78350f' }}
+                  >
+                    {tokenLoading ? '…' : showQR ? 'Ocultar QR' : '📱 QR'}
+                  </Button>
+                </Stack>
+
+                {uploadError && (
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', color: hayFotosQR ? '#16a34a' : 'warning.main', fontWeight: hayFotosQR ? 600 : 400 }}>
+                    {uploadError}
+                  </Typography>
+                )}
+
+                {showQR && uploadToken && (
+                  <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 1.5, border: '1px solid #e7e5e4', textAlign: 'center' }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(uploadToken.uploadUrl)}`}
+                      alt="QR para subir foto"
+                      style={{ width: 130, height: 130, display: 'block', margin: '0 auto' }}
+                    />
+                    <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.secondary', mt: 0.5, display: 'block' }}>
+                      Escaneá para subir desde el celular
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.disabled', display: 'block' }}>
+                      Vence: {new Date(uploadToken.expiresAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </Typography>
+                  </Box>
+                )}
+
+              </Box>
+            )}
+          </Box>
+          {/* inputs ocultos */}
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
+          <Box sx={{ px: 2.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+            {/* Fecha última modificación */}
+            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
+              {localUpdatedAt
+                ? `Última modificación: ${fmtDate(localUpdatedAt)}`
+                : 'Sin modificaciones previas'
+              }
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
+              <Button size="small" variant="contained"
+                onClick={() => {
+                  const now = new Date().toISOString();
+                  setLocalUpdatedAt(now);
+                  onSave(localNotas, localFotos, now);
+                  onClose();
+                }}
+                sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}>
+                Guardar notas
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+
+      </Modal>
+      {fotoParaEditar && (
+        <EditorFotoModal
+          imagenSrc={fotoParaEditar}
+          onConfirmar={(recortada) => {
+            setLocalFotos(prev => {
+              const next = [...prev, recortada].slice(0, 6); // suma al array, tope 6
+              setFotoActiva(next.length - 1); // mostrar la recién agregada
+              return next;
+            });
+            setFotoParaEditar(null);
+          }}
+          onCancelar={() => setFotoParaEditar(null)}
+        />
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════
+    MODAL DE EDITOR DE FOTO
+════════════════════════════════════════ */
+
+function EditorFotoModal({ imagenSrc, onConfirmar, onCancelar }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [procesando, setProcesando] = useState(false);
+
+  const onCropComplete = useCallback((_, croppedPixels) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const confirmar = async () => {
+    if (!croppedAreaPixels) return;
+    setProcesando(true);
+    try {
+      const recortada = await getCroppedImg(imagenSrc, croppedAreaPixels, rotation);
+      onConfirmar(recortada);
+    } catch (e) {
+      console.error('[EditorFoto] error al recortar:', e);
+      onConfirmar(imagenSrc); // fallback: usar la original si falla
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onCancelar}>
+      <Box sx={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: { xs: '95vw', sm: 480 },
+        bgcolor: 'background.paper', borderRadius: 2, boxShadow: 24,
+        outline: 'none', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="subtitle2" fontWeight={700}>Ajustar foto</Typography>
+          <IconButton size="small" onClick={onCancelar} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
+        </Box>
+
+        {/* Área de crop */}
+        <Box sx={{ position: 'relative', width: '100%', height: 340, bgcolor: '#1c1917' }}>
+          <Cropper
+            image={imagenSrc}
+            crop={crop}
+            zoom={zoom}
+            rotation={rotation}
+            aspect={1}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onRotationChange={setRotation}
+            onCropComplete={onCropComplete}
+          />
+        </Box>
+
+        {/* Controles */}
+        <Box sx={{ px: 2.5, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Typography variant="caption" sx={{ width: 44, color: 'text.secondary' }}>Zoom</Typography>
+            <input type="range" min={1} max={3} step={0.05} value={zoom}
+              onChange={e => setZoom(Number(e.target.value))}
+              style={{ flex: 1, accentColor: PRIMARY }} />
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Button size="small" onClick={() => setRotation(r => (r + 90) % 360)}
+              sx={{ color: PRIMARY }}>
+              ↻ Rotar 90°
+            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button size="small" color="inherit" onClick={onCancelar} disabled={procesando}>Cancelar</Button>
+              <Button size="small" variant="contained" onClick={confirmar} disabled={procesando || !croppedAreaPixels}
+                startIcon={procesando ? <CircularProgress size={14} color="inherit" /> : null}
+                sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
+                {procesando ? 'Procesando…' : 'Usar foto'}
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </Modal>
+  );
+}
+
+// Vista previa de la foto en un modal, con opciones de editar o quitar
+
+function VistaPreviaFotoModal({ foto, onEditar, onQuitar, onClose }) {
+  return (
     <Modal open onClose={onClose}>
       <Box sx={{
         position: 'absolute', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
-        width: { xs: '95vw', sm: 600 },
+        width: { xs: '95vw', sm: 520 },
+        maxHeight: '90vh',
         bgcolor: 'background.paper', borderRadius: 2, boxShadow: 24,
         outline: 'none', overflow: 'hidden',
-        maxHeight: '99vh', display: 'flex', flexDirection: 'column',
+        display: 'flex', flexDirection: 'column',
       }}>
-        {/* Header */}
-        <Box sx={{
-          px: 2.5,
-          py: 1.5,
-          bgcolor: PRIMARY,
-          color: ON_PRIMARY,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <NotesIcon fontSize="small" />
-            <Typography variant="subtitle2" fontWeight={700}>Notas e imagen de la receta</Typography>
-          </Stack>
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="subtitle2" fontWeight={700}>Foto de la receta</Typography>
           <IconButton size="small" onClick={onClose} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
         </Box>
-
-        <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {/* Área de texto */}
-          <TextField
-            label="Notas / Instrucciones"
-            multiline
-            minRows={6}
-            fullWidth
-            value={localNotas}
-            onChange={e => setLocalNotas(e.target.value)}
-            placeholder={esElaborado
-              ? "Método de Envasado: Ej: envasar al vacío, conservar en frío…"
-              : "Método de Servido: Ej: servir frío, acompañar con salsa…"}
-          />
-
-          {/* Foto */}
-          {localFoto ? (
-            <Box sx={{ position: 'relative', borderRadius: 1.5, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
-              <img
-                src={localFoto}
-                alt="Foto receta"
-                style={{ width: '100%', maxHeight: 280, objectFit: 'cover', display: 'block' }}
-              />
-              <IconButton
-                size="small"
-                onClick={() => setLocalFoto(null)}
-                sx={{
-                  position: 'absolute', top: 6, right: 6,
-                  bgcolor: 'rgba(0,0,0,0.55)', color: '#fff',
-                  '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' },
-                }}
-              >
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          ) : (
-            <Box sx={{
-              border: '2px dashed', borderColor: 'divider', borderRadius: 1.5,
-              py: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
-              bgcolor: 'action.hover',
-            }}>
-              <ImageIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-              <Typography variant="body2" color="text.secondary">Adjuntá una foto de la receta</Typography>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  size="small" variant="outlined"
-                  startIcon={<ImageIcon />}
-                  onClick={() => fileInputRef.current?.click()}
-                  sx={{ borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  Desde archivo
-                </Button>
-                <Button
-                  size="small" variant="outlined"
-                  startIcon={<PhotoCameraIcon />}
-                  onClick={() => cameraInputRef.current?.click()}
-                  sx={{ borderColor: PRIMARY, color: PRIMARY }}
-                >
-                  Cámara
-                </Button>
-                <Button
-                  size="small" variant="outlined"
-                  onClick={() => { if (!uploadToken) { generarToken(); } else { setShowQR(v => !v); } }}
-                  disabled={tokenLoading}
-                  sx={{ borderColor: '#78350f', color: '#78350f' }}
-                >
-                  {tokenLoading ? '…' : showQR ? 'Ocultar QR' : '📱 QR'}
-                </Button>
-              </Stack>
-
-              {uploadError && (
-                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: hayFotosQR ? '#16a34a' : 'warning.main', fontWeight: hayFotosQR ? 600 : 400 }}>
-                  {uploadError}
-                </Typography>
-              )}
-
-              {showQR && uploadToken && (
-                <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 1.5, border: '1px solid #e7e5e4', textAlign: 'center' }}>
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(uploadToken.uploadUrl)}`}
-                    alt="QR para subir foto"
-                    style={{ width: 130, height: 130, display: 'block', margin: '0 auto' }}
-                  />
-                  <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.secondary', mt: 0.5, display: 'block' }}>
-                    Escaneá para subir desde el celular
-                  </Typography>
-                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.disabled', display: 'block' }}>
-                    Vence: {new Date(uploadToken.expiresAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                  </Typography>
-                </Box>
-              )}
-              {/* inputs ocultos */}
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
-              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
-            </Box>
-          )}
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'center', bgcolor: '#1c1917', overflow: 'auto' }}>
+          <img src={foto} alt="Foto receta" style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', display: 'block' }} />
         </Box>
-
-        <Box sx={{ px: 2.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-          {/* Fecha última modificación */}
-          <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
-            {localUpdatedAt
-              ? `Última modificación: ${fmtDate(localUpdatedAt)}`
-              : 'Sin modificaciones previas'
-            }
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
-            <Button size="small" variant="contained"
-              onClick={() => {
-                const now = new Date().toISOString();
-                setLocalUpdatedAt(now);
-                onSave(localNotas, localFoto, now);
-                onClose();
-              }}
-              sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}>
-              Guardar notas
-            </Button>
-          </Box>
+        <Box sx={{ px: 2.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={onQuitar}>
+            Quitar foto
+          </Button>
+          <Button size="small" variant="contained" startIcon={<EditIcon />} onClick={onEditar}
+            sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
+            Editar / Recortar
+          </Button>
         </Box>
       </Box>
     </Modal>
@@ -1052,7 +1165,7 @@ function NotasItemModal({
  * Permite que cuando un insumo es un "elaborado", el costo se tome de su receta.
  */
 function ItemRow({
-  item, index, onChange, onRemove, onOpenCompras,
+  item, index, onChange, onRemove,
   insumos, usedSupplyIds, alertaSemanas,
   autoOpenSearch, recetasElaborados = {},
   allArticulos = [],
@@ -1060,11 +1173,16 @@ function ItemRow({
   articuloId,
   businessId,
   onOpenRecetaElaborado,
+  colorSinPromo = '#7c3aed',
   searchOpen,
   onSearchOpen,
   onSearchClose,
+  gridTemplate = '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
+  esPromo = false,
+  getPrecioSinPromo = null,
   soloConCompras = false,
   onToggleSoloConCompras,
+  appConfigDesperdicio = 5,
 }) {
   const [search, setSearch] = useState('');
   const [notasOpen, setNotasOpen] = useState(false);
@@ -1143,17 +1261,28 @@ function ItemRow({
   const filtrados = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    // ── Modo artículo (promo): buscar sobre allArticulos ──
-    if (item.esArticulo) {
-      let arts = q
-        ? allArticulos.filter(a =>
-          a.nombre?.toLowerCase().includes(q) ||
-          String(a.id).includes(q))
-        : [...allArticulos];
-      // Excluir el propio artículo dueño de la receta (no puede contenerse a sí mismo)
-      arts = arts.filter(a => Number(a.id) !== Number(articuloId));
-      arts.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
-      return arts.slice(0, 30);
+    // ── Buscador GENERAL: artículos + insumos juntos, con etiqueta _tipo ──
+    // Artículos (excluyendo el propio dueño de la receta)
+    let arts = !esPromo ? [] : (q
+      ? allArticulos.filter(a =>
+        a.nombre?.toLowerCase().includes(q) ||
+        String(a.id).includes(q))
+      : [...allArticulos])
+      .filter(a => Number(a.id) !== Number(articuloId))
+      .map(a => ({ ...a, _tipo: 'articulo' }));
+    // Búsqueda numérica: priorizar coincidencia exacta de código en artículos
+    if (q.length > 0 && /^\d+$/.test(q)) {
+      arts.sort((a, b) => {
+        const aCod = String(a.codigo ?? a.codigo_maxi ?? a.id ?? '');
+        const bCod = String(b.codigo ?? b.codigo_maxi ?? b.id ?? '');
+        const aExact = aCod === q;
+        const bExact = bCod === q;
+        if (aExact !== bExact) return aExact ? -1 : 1;
+        const aStarts = aCod.startsWith(q);
+        const bStarts = bCod.startsWith(q);
+        if (aStarts !== bStarts) return aStarts ? -1 : 1;
+        return 0;
+      });
     }
 
     let list = q
@@ -1169,7 +1298,20 @@ function ItemRow({
       list = list.filter(i => !!i.fecha_ultima_compra);
     }
 
+    const esBusquedaNumerica = q.length > 0 && /^\d+$/.test(q);
     list.sort((a, b) => {
+      // 0) Búsqueda por código: coincidencia exacta primero
+      if (esBusquedaNumerica) {
+        const aCod = String(a.codigo_maxi ?? a.codigo_mostrar ?? a.id ?? '');
+        const bCod = String(b.codigo_maxi ?? b.codigo_mostrar ?? b.id ?? '');
+        const aExact = aCod === q || String(a.id) === q;
+        const bExact = bCod === q || String(b.id) === q;
+        if (aExact !== bExact) return aExact ? -1 : 1;
+        // Después, los que empiezan con esos dígitos
+        const aStarts = aCod.startsWith(q);
+        const bStarts = bCod.startsWith(q);
+        if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      }
       // 1) Siempre: los que tienen compras van primero (aunque el ojo esté off)
       const aCompra = !!a.fecha_ultima_compra;
       const bCompra = !!b.fecha_ultima_compra;
@@ -1189,13 +1331,15 @@ function ItemRow({
       return (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' });
     });
 
-    return list.slice(0, 30);
-  }, [insumos, search, soloConCompras, item.esArticulo, allArticulos, articuloId]);
+    // Etiquetar insumos y combinar: artículos primero, luego insumos
+    const insumosTag = list.slice(0, 30).map(i => ({ ...i, _tipo: 'insumo' }));
+    return [...arts.slice(0, 30), ...insumosTag];
+  }, [insumos, search, soloConCompras, allArticulos, articuloId, esPromo]);
 
   const selectInsumo = useCallback((ins) => {
     // ── Modo artículo (promo): el "ins" es en realidad un artículo ──
-    if (item.esArticulo) {
-      const costoArt = Number(ins.costo) || Number(ins.costoTotal) || Number(ins.precio) || 0;
+    if (ins._tipo === 'articulo') {
+      const costoArt = Number(ins.costoTotal) || Number(ins.precio) || 0;  // costo de producción: receta si tiene, sino precio
       onChange(index, {
         esArticulo: true,
         articleRefId: Number(ins.id),
@@ -1215,7 +1359,6 @@ function ItemRow({
 
     // Si es elaborado, la unidad de consumo es la de su rendimiento efectivo (peso equiv. o rendimiento medible)
     const elabData = localRecetasElaborados[String(ins.id)];
-    console.log('[SELECT INSUMO]', ins.nombre, 'id:', ins.id, 'elabData:', elabData, 'mapSize:', Object.keys(localRecetasElaborados).length);
     let unidadDB = canonicalUnit(ins.unidad_med || ins.medida || 'u');
     if (elabData) {
       if ((Number(elabData.rendimientoPeso) || 0) > 0) {
@@ -1248,20 +1391,48 @@ function ItemRow({
         const eqs = Array.isArray(r?.data) ? r.data : [];
         if (eqs.length) onChange(index, { equivalencias: eqs });
       })
-      .catch(() => {});
+      .catch(() => { });
+    // Cargar mermas del insumo + preseleccionar la default
+    insumoMermasList(ins.id, businessId)
+      .then(r => {
+        const mermas = Array.isArray(r?.data) ? r.data : [];
+        const def = mermas.find(m => m.es_default);
+        onChange(index, {
+          mermas,
+          mermaId: def ? def.id : null,            // preselecciona la default
+          desperdicioPct: ins.desperdicio_pct_override != null ? Number(ins.desperdicio_pct_override) : null,
+        });
+      })
+      .catch(() => { });
     onSearchClose();
     setSearch('');
     setTimeout(() => cantidadRef.current?.focus(), 50);
   }, [index, onChange, item.esArticulo, localRecetasElaborados, onSearchClose, businessId]);
 
   // ── Detectar si es insumo elaborado (tiene receta propia) ──
-  const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
+  const elaboradoData = item.supplyId ? localRecetasElaborados[String(item.supplyId)] : null;
   const insumoData = item.supplyId
     ? insumos.find(i => String(i.id) === String(item.supplyId))
     : null;
-  const esElaborado = !!elaboradoData || insumoData?.es_elaborado === true || insumoData?.tiene_receta === true;
-  const elaborado = elaboradoData;
+  // Origen de costo efectivo (resuelto por el backend: fecha o override manual)
+  const origenCosto = insumoData?.costo_efectivo_origen;   // 'compra' | 'elaboracion' | undefined
+  const forzarCompra = origenCosto === 'compra';
+  const esElaborado = !forzarCompra && (!!elaboradoData || insumoData?.es_elaborado === true || insumoData?.tiene_receta === true);
+  // Si el origen es compra, ignoramos la receta y usamos el precio de compra (insumo simple)
+  const elaborado = forzarCompra ? null : elaboradoData;
   const tipoCosto = item.tipoCosto || 'total';
+
+  // Factor de merma total = global (siempre) × merma específica elegida (si hay)
+  const factorMerma = useMemo(() => {
+    // Los ítems-artículo (promo) no llevan merma: si tienen receta, ya está aplicada dentro;
+    // si no, es un producto de venta con precio fijo.
+    if (item.esArticulo || item.articleRefId) return 1;
+    const pctGlobal = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
+    const fGlobal = 1 + (pctGlobal / 100);
+    const m = (item.mermas || []).find(x => Number(x.id) === Number(item.mermaId));
+    const fEspecifica = (m && Number(m.peso_final) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+    return fGlobal * fEspecifica;
+  }, [item.desperdicioPct, item.mermas, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId]);
 
   /**
    * Precio por unidad elegida, considerando:
@@ -1276,34 +1447,52 @@ function ItemRow({
       const contenido = Number(eqSel.contenido) || 0;
       if (elaborado) {
         const costoPorUnidadEq = calcCostoUnitarioElaborado(elaborado, item.supplyMedida, eqSel.unidad, tipoCosto);
-        console.log('[EQ ELABORADO] costoPorUnidadEq:', costoPorUnidadEq, 'contenido:', contenido);
         return contenido * costoPorUnidadEq;
       }
-      const precioBase = Number(item.precioRefDB) || 0;
+      const precioParaCosto = forzarCompra
+        ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
+        : (Number(item.precioRefDB) || 0);
+      const precioBase = precioParaCosto * factorMerma;
+      // Insumo unidad CON envase: la equivalencia (ml/gr) se cuesta vía envase, no vía precio_ref directo
+      const insData = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
+      const contEnvase = Number(insData?.contenido_envase) || 0;
+      const uniEnvase = canonicalUnit(insData?.unidad_envase || '');
+      const baseInsumo = canonicalUnit(item.supplyMedida || 'u');
+      if (baseInsumo === 'u' && contEnvase > 0 && uniEnvase) {
+        const costoPorUnidadEnvase = precioBase / contEnvase;                    // ej. $8214,90/750ml = $10,95/ml
+        const factor = getConversionFactor(canonicalUnit(eqSel.unidad), uniEnvase); // unidad de la equiv → unidad del envase
+        return contenido * factor * costoPorUnidadEnvase;                        // ej. 85 × 1 × 10,95 = $931
+      }
+      // Insumo medible normal: contenido convertido a la unidad base × precio_ref
       const factor = getConversionFactor(canonicalUnit(eqSel.unidad), canonicalUnit(item.supplyMedida || eqSel.unidad));
       return (contenido * factor) * precioBase;
     }
     if (elaborado) {
       return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto);
     }
-    let precioRef = Number(item.precioRefDB) || 0;
-    // Item-artículo (promo): resolver según tipoCosto
+    // ── Item-artículo (promo): costo del ARTÍCULO, jerarquía costoTotal receta > costo > precio ──
     if (item.esArticulo || item.articleRefId) {
       const refId = Number(item.articleRefId);
       const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === refId);
       if (tipoCosto === 'sugerido') {
-        // Precio sugerido de la receta del artículo: costoTotal / (objetivo/100)
         const costoArt = Number(art?.costoTotal) || 0;
         const objArt = Number(objetivoReceta) || 30;
-        precioRef = (costoArt > 0 && objArt > 0) ? costoArt / (objArt / 100) : 0;
-      } else if (precioRef === 0) {
-        precioRef = Number(art?.precio) || 0;
+        const precioSug = (costoArt > 0 && objArt > 0) ? costoArt / (objArt / 100) : 0;
+        const unidadDBart = canonicalUnit(item.supplyMedida || 'u');
+        return calcPrecioEnUnidad(precioSug, unidadDBart, canonicalUnit(item.unidad || unidadDBart));
       }
+      // Costo del componente = precio de venta del artículo
+      const costoComp = Number(art?.costoTotal) || Number(art?.precio) || Number(item.precioRefDB) || 0;
+      const unidadDBart = canonicalUnit(item.supplyMedida || 'u');
+      return calcPrecioEnUnidad(costoComp, unidadDBart, canonicalUnit(item.unidad || unidadDBart));
     }
+    let precioRef = forzarCompra
+      ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
+      : (Number(item.precioRefDB) || 0);
     const unidadDB = canonicalUnit(item.supplyMedida || 'u');
     const unidadElegida = canonicalUnit(item.unidad || unidadDB);
-    return calcPrecioEnUnidad(precioRef, unidadDB, unidadElegida);
-  }, [elaborado, tipoCosto, item.precioRefDB, item.supplyMedida, item.unidad, item.esArticulo, item.articleRefId, item.equivalencias, allArticulos]);
+    return calcPrecioEnUnidad(precioRef * factorMerma, unidadDB, unidadElegida);
+  }, [elaborado, tipoCosto, item.precioRefDB, item.supplyMedida, item.unidad, item.esArticulo, item.articleRefId, item.equivalencias, factorMerma, allArticulos, insumos, objetivoReceta]);
 
   // Costo línea (cantidad × $/u efectivo)
   const costoLinea = useMemo(() => {
@@ -1338,7 +1527,7 @@ function ItemRow({
       {/* ── Fila principal ── */}
       <Box sx={{
         display: 'grid',
-        gridTemplateColumns: '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
+        gridTemplateColumns: gridTemplate,
         alignItems: 'center',
         gap: '4px',
         py: 0.5, px: 0.5,
@@ -1372,7 +1561,7 @@ function ItemRow({
                 <Typography
                   variant="caption"
                   noWrap
-                  sx={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                  sx={{ fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', minWidth: 0 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     // Item-artículo (promo): abrir la receta del artículo componente
@@ -1381,27 +1570,52 @@ function ItemRow({
                       return;
                     }
                     if (!item.supplyId) return;
-                    const tieneCompras = !!item.ultimaCompra;
-                    if (tieneCompras) {
-                      onOpenCompras?.(item);
-                    } else {
-                      // Sin compras → abrir receta (elaborado o no)
-                      onOpenRecetaElaborado?.(item);
-                    }
+                    // Buscar el insumo para saber si tiene compras y/o receta
+                    // Siempre abrir el modal completo del insumo (4 pestañas).
+                    // El popup rápido de compras queda en el ícono de la derecha.
+                    onOpenRecetaElaborado?.(item);
                   }}
-                  title={(item.esArticulo || item.articleRefId) ? "Ver receta del artículo" : (item.ultimaCompra ? "Ver últimas compras" : "Ver/crear receta")}
+                  title={(item.esArticulo || item.articleRefId) ? "Ver receta del artículo" : "Abrir insumo (merma, receta, compras, equivalencias)"}
                 >
                   {item.supplyNombre || `#${item.articleRefId || item.supplyId}`}
                 </Typography>
+                {/* Fecha: última compra (insumo) o última modificación de receta (elaborado) */}
+                {!item.articleRefId && (() => {
+                  const insDat = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
+                  const raw = elaborado
+                    ? (insDat?.receta_updated_at || null)
+                    : (item.ultimaCompra?.fecha || item.ultimaCompra || insDat?.fecha_ultima_compra || null);
+                  const f = fmtDate(raw);
+                  if (!f) return null;
+                  return (
+                    <Tooltip title={elaborado ? `Receta modificada: ${f}` : `Última compra: ${f}`}>
+                      <Typography
+                        component="span"
+                        sx={{
+                          fontSize: '0.6rem', flexShrink: 0,
+                          color: alertaBg ? '#ef4444' : 'text.disabled',
+                          fontWeight: alertaBg ? 700 : 400,
+                          ml: -0.25,
+                        }}
+                      >
+                        ({f})
+                      </Typography>
+                    </Tooltip>
+                  );
+                })()}
+                <Box sx={{ flex: 1, minWidth: 0 }} />
 
                 {/* Precio + unidad base — siempre visible cuando hay insumo seleccionado.
                     Si no hay precio cargado (insumo sin compras), muestra solo la unidad
                     en gris para que el contexto de la fila siga siendo claro. */}
                 {(item.supplyId || item.articleRefId) && (() => {
                   const unidadStr = item.supplyMedida || 'u';
-                  // Para item-artículo: precio del artículo desde allArticulos
+                  // Para item-artículo: costo del artículo con jerarquía (costoTotal receta > costo > precio)
                   const precioArt = item.articleRefId
-                    ? (Number(item.precioRefDB) || Number((allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(item.articleRefId))?.precio) || 0)
+                    ? (() => {
+                      const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(item.articleRefId));
+                      return Number(art?.costoTotal) || Number(art?.precio) || Number(item.precioRefDB) || 0;
+                    })()
                     : 0;
                   // Precio base FIJO del elaborado: costo total de su receta
                   // (o precio sugerido si tipoCosto==='sugerido'). No varía con unidad/cantidad.
@@ -1416,7 +1630,11 @@ function ItemRow({
                     ? canonicalUnit(elaborado.rendimientoUnidad || 'porcion')
                     : canonicalUnit(item.supplyMedida || 'u');
 
-                  const precioMostrado = item.articleRefId ? precioArt : Number(item.precioRefDB) || 0;
+                  const precioMostrado = item.articleRefId
+                    ? precioArt
+                    : forzarCompra
+                      ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
+                      : (Number(item.precioRefDB) || 0);
                   const tienePrecio = elaborado
                     ? precioBaseElaborado > 0
                     : precioMostrado > 0;
@@ -1461,18 +1679,6 @@ function ItemRow({
                     />
                   );
                 })()}
-                {/* Botón ver compras (solo insumos no elaborados) */}
-                {!elaborado && (
-                  <Tooltip title="Ver últimas compras">
-                    <IconButton
-                      size="small"
-                      onClick={(e) => { e.stopPropagation(); onOpenCompras && onOpenCompras(item); }}
-                      sx={{ p: '1px', color: `${PRIMARY}70`, '&:hover': { color: PRIMARY }, flexShrink: 0 }}
-                    >
-                      <ReceiptLongIcon sx={{ fontSize: 11 }} />
-                    </IconButton>
-                  </Tooltip>
-                )}
 
                 {/* Chip elaborado */}
                 {elaborado && (
@@ -1550,9 +1756,9 @@ function ItemRow({
                   <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
                 ) : filtrados.map((ins, idx) => {
                   // ── Opción de artículo (promo) ──
-                  if (item.esArticulo) {
+                  if (ins._tipo === 'articulo') {
                     return (
-                      <Box key={ins.id} data-option-index={idx}
+                      <Box key={`art-${ins.id}`} data-option-index={idx}
                         onClick={() => selectInsumo(ins)}
                         sx={{
                           px: 1.5, py: 0.75, cursor: 'pointer',
@@ -1568,14 +1774,17 @@ function ItemRow({
                           <Typography component="span" variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem', display: 'block' }}>
                             {ins.nombre}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            {ins.codigo || ins.codigo_maxi ? `Cód: ${ins.codigo || ins.codigo_maxi}` : (ins.subrubro || ins.categoria || 'Artículo')}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip label="Artículo" size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: '#7c3aed15', color: '#7c3aed', '& .MuiChip-label': { px: 0.75 } }} />
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              {`Cód: ${ins.codigo || ins.codigo_maxi || ins.id}`}{(ins.subrubro || ins.categoria) ? ` · ${ins.subrubro || ins.categoria}` : ''}
+                            </Typography>
+                          </Box>
                         </Box>
                         <Typography variant="body2" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
                           {(() => {
-                            const c = Number(ins.costo) || Number(ins.costoTotal) || Number(ins.precio) || 0;
-                            return c > 0 ? `$${fmt(c)}` : '—';
+                            const p = Number(ins.precio ?? ins.price ?? ins.precio_venta) || 0;
+                            return p > 0 ? `$${fmt(p)}` : '—';
                           })()}
                         </Typography>
                       </Box>
@@ -1602,11 +1811,22 @@ function ItemRow({
                       <Box>
                         <Typography component="span" variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem', display: 'block' }}>
                           {ins.nombre}
+                          {!esElab && <Chip label="Insumo" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: `${PRIMARY}15`, color: PRIMARY }} />}
                           {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
                           {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                           {ins.codigo_maxi || ins.codigo_mostrar ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}` : ins.unidad_med || ins.medida || 'u'}
+                          {(() => {
+                            // Elaborado → fecha de última modificación de su receta; Insumo → última compra
+                            if (esElab) {
+                              const eData = localRecetasElaborados[String(ins.id)];
+                              const f = fmtDate(eData?.updatedAt || ins.receta_updated_at);
+                              return f ? ` · Mod: ${f}` : '';
+                            }
+                            const f = fmtDate(ins.fecha_ultima_compra);
+                            return f ? ` · Compra: ${f}` : ' · Sin compras';
+                          })()}
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, flexShrink: 0, ml: 1 }}>
@@ -1719,10 +1939,36 @@ function ItemRow({
           sx={{ fontSize: '0.75rem', '& .MuiSelect-select': { py: '4px', fontSize: '0.75rem' } }}
         >
           {(() => {
-            const base = item.supplyMedida && !UNIDADES.includes(item.supplyMedida) ? [item.supplyMedida] : [];
+            // Unidades válidas según la unidad base del insumo (+ equivalencias propias)
+            // Unidades válidas según la unidad base del insumo (+ equivalencias propias)
+            const insData = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
+            const elabDataOpc = item.supplyId ? localRecetasElaborados[String(item.supplyId)] : null;
+            let unidadesValidas;
+            if (elabDataOpc) {
+              // Elaborado: las unidades salen de su rendimiento (equivalente medible)
+              const rp = Number(elabDataOpc.rendimientoPeso) || 0;
+              const ru = canonicalUnit(elabDataOpc.rendimientoUnidad || 'porcion');
+              const up = canonicalUnit(elabDataOpc.unidadPeso || '');
+              if (rp > 0 && up) {
+                // Rinde en porción/unidad con peso equivalente → ofrecer u + las del tipo del equivalente
+                unidadesValidas = ['gr', 'kg'].includes(up) ? ['u', 'gr', 'kg']
+                  : ['ml', 'lt', 'oz'].includes(up) ? ['u', 'ml', 'lt', 'oz']
+                    : ['u'];
+              } else if (['gr', 'kg'].includes(ru)) {
+                unidadesValidas = ['gr', 'kg'];
+              } else if (['ml', 'lt', 'oz'].includes(ru)) {
+                unidadesValidas = ['ml', 'lt', 'oz'];
+              } else {
+                unidadesValidas = ['u'];
+              }
+            } else {
+              unidadesValidas = unidadesParaInsumo(insData || { unidad_med: item.supplyMedida });
+            }
+            const base = item.supplyMedida && !unidadesValidas.includes(canonicalUnit(item.supplyMedida))
+              ? [item.supplyMedida] : [];
             const eqs = (item.equivalencias || []).map(e => e.nombre);
-            const opciones = [...UNIDADES, ...base, ...eqs];
-           const unidadActual = item.unidad || item.supplyMedida || 'u';
+            const opciones = [...unidadesValidas, ...base, ...eqs];
+            const unidadActual = item.unidad || item.supplyMedida || 'u';
             return opciones.map(u => {
               const eqData = (item.equivalencias || []).find(e => e.nombre === u);
               const seleccionada = u === unidadActual;
@@ -1748,7 +1994,22 @@ function ItemRow({
             </Typography>
           </Tooltip>
         </Box>
-
+        {/* ── $ sin promo (solo en promo, precio de venta del componente × cantidad) ── */}
+        {esPromo && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: '#faf5ff', overflow: 'hidden' }}>
+            {item.articleRefId ? (() => {
+              const pSin = getPrecioSinPromo ? getPrecioSinPromo(item.articleRefId) : 0;
+              const total = (Number(pSin) || 0) * (Number(item.cantidad) || 0);
+              return (
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: total > 0 ? colorSinPromo : 'text.disabled', whiteSpace: 'nowrap' }}>
+                  {total > 0 ? `$${fmt(total)}` : '—'}
+                </Typography>
+              );
+            })() : (
+              <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled' }}>—</Typography>
+            )}
+          </Box>
+        )}
         {/* ── Botón avanzadas + fecha + eliminar ── */}
         <Tooltip title={showAdvanced ? 'Ocultar avanzadas' : 'Merma · Pedido · Tipo costo'}>
           <IconButton size="small" onClick={() => setShowAdvanced(v => !v)}
@@ -1830,18 +2091,25 @@ function ItemRow({
           border: `1px solid ${PRIMARY}20`,
           display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
         }}>
-          {/* Merma */}
+          {/* Merma — dropdown con "No" + las mermas del insumo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Checkbox
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>Merma:</Typography>
+            <Select
               size="small"
-              checked={item.merma !== false}
-              onChange={e => onChange(index, { merma: e.target.checked })}
-              sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
-            />
-            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
-              onClick={() => onChange(index, { merma: item.merma === false })}>
-              Merma
-            </Typography>
+              value={item.mermaId ?? 'no'}
+              onChange={e => onChange(index, { mermaId: e.target.value === 'no' ? null : Number(e.target.value) })}
+              sx={{ fontSize: '0.75rem', minWidth: 110, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
+            >
+              <MenuItem value="no" sx={{ fontSize: '0.78rem' }}>No</MenuItem>
+              {(item.mermas || []).map(m => {
+                const factor = Number(m.peso_final) > 0 ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+                return (
+                  <MenuItem key={m.id} value={Number(m.id)} sx={{ fontSize: '0.78rem' }}>
+                    {m.nombre} (×{factor.toFixed(2)})
+                  </MenuItem>
+                );
+              })}
+            </Select>
           </Box>
 
           {/* Pedido */}
@@ -1900,18 +2168,508 @@ function ItemRow({
    TABS NUEVAS PARA INSUMOS (andamiaje inicial)
    TODO: reemplazar por implementación real
 ════════════════════════════════════════ */
-function TabPlaceholder({ titulo }) {
+function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [], onClose, onReemplazado }) {
+  const [search, setSearch] = useState('');
+  const [seleccionado, setSeleccionado] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [ejecutando, setEjecutando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Cargar conteo de recetas al abrir
+  useEffect(() => {
+    if (!insumoId || !businessId) return;
+    insumoReemplazarPreview(insumoId, businessId)
+      .then(r => setPreview({ recetas: r.recetas, items: r.items }))
+      .catch(() => setPreview({ recetas: 0, items: 0 }));
+  }, [insumoId, businessId]);
+
+  const filtrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return insumos
+      .filter(i => Number(i.id) !== Number(insumoId))
+      .filter(i => i.nombre?.toLowerCase().includes(q) || String(i.codigo_maxi || '').includes(q))
+      .slice(0, 20);
+  }, [insumos, search, insumoId]);
+
+  const ejecutar = async () => {
+    if (!seleccionado) return;
+    setEjecutando(true); setError('');
+    try {
+      const r = await insumoReemplazar(insumoId, seleccionado.id, businessId);
+      onReemplazado?.(r);
+    } catch (e) {
+      setError(e.message || 'No se pudo reemplazar');
+      setEjecutando(false);
+    }
+  };
+
   return (
-    <Box sx={{ py: 6, textAlign: 'center' }}>
-      <Typography variant="body2" color="text.secondary">{titulo} — en construcción</Typography>
+    <Modal open onClose={onClose}>
+      <Box sx={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: { xs: '95vw', sm: 520 },
+        bgcolor: 'background.paper', borderRadius: 2, boxShadow: 24,
+        outline: 'none', overflow: 'hidden',
+      }}>
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: PRIMARY, color: ON_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Box sx={{ fontSize: 20 }}>🔁</Box>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700}>Reemplazar insumo</Typography>
+              <Typography variant="caption" sx={{ opacity: 0.85 }}>{insumoNombre}</Typography>
+            </Box>
+          </Stack>
+          <IconButton size="small" onClick={onClose} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
+        </Box>
+
+        <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
+
+          {!confirmando ? (
+            <>
+              {/* Buscador de insumo nuevo */}
+              <Box sx={{ position: 'relative' }}>
+                <TextField
+                  autoFocus size="small" fullWidth
+                  label="Reemplazar por"
+                  placeholder="Buscar insumo…"
+                  value={seleccionado ? seleccionado.nombre : search}
+                  onChange={e => { setSeleccionado(null); setSearch(e.target.value); }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                />
+                {!seleccionado && filtrados.length > 0 && (
+                  <Box sx={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 240, overflowY: 'auto' }}>
+                    {filtrados.map(ins => (
+                      <Box key={ins.id}
+                        onClick={() => { setSeleccionado(ins); setSearch(''); }}
+                        sx={{ px: 1.5, py: 0.75, cursor: 'pointer', borderBottom: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'action.hover' } }}>
+                        <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.82rem' }}>{ins.nombre}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {ins.codigo_maxi ? `Cód: ${ins.codigo_maxi} · ` : ''}{ins.unidad_med || 'u'}
+                          {Number(ins.precio_ref) > 0 ? ` · $${fmt(ins.precio_ref)}` : ''}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              {/* Aviso con conteo */}
+              <Box sx={{ bgcolor: '#fff8ec', border: '1px solid #f0c98a', borderRadius: 1.5, px: 2, py: 1.25 }}>
+                <Typography variant="caption" sx={{ fontSize: '0.78rem', color: '#7a5200', lineHeight: 1.5 }}>
+                  {preview == null ? 'Calculando en cuántas recetas se usa…' : preview.recetas === 0 ? (
+                    'Este insumo no se usa en ninguna receta.'
+                  ) : (
+                    <>Este insumo aparece en <b style={{ color: '#b26a00' }}>{preview.recetas} receta{preview.recetas !== 1 ? 's' : ''}</b>{preview.negocios > 1 ? <> de <b style={{ color: '#b26a00' }}>{preview.negocios} negocios</b> de tu organización</> : ''}. El reemplazo se aplica a todas y los costos se recalculan. <b>Esta acción no se puede deshacer.</b></>
+                  )}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
+                <Button size="small" variant="contained"
+                  disabled={!seleccionado || preview == null || preview.recetas === 0}
+                  onClick={() => setConfirmando(true)}
+                  sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
+                  Continuar
+                </Button>
+              </Box>
+            </>
+          ) : (
+            <>
+              {/* Confirmación final */}
+              <Box sx={{ textAlign: 'center', py: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Vas a reemplazar <b>{insumoNombre}</b> por <b>{seleccionado.nombre}</b> en <b>{preview.recetas} receta{preview.recetas !== 1 ? 's' : ''}</b>.
+                </Typography>
+                <Typography variant="caption" color="error" sx={{ fontWeight: 700 }}>
+                  Esta acción no se puede deshacer.
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                <Button size="small" color="inherit" disabled={ejecutando} onClick={() => setConfirmando(false)}>Volver</Button>
+                <Button size="small" variant="contained" color="error"
+                  disabled={ejecutando}
+                  startIcon={ejecutando ? <CircularProgress size={14} color="inherit" /> : null}
+                  onClick={ejecutar}>
+                  {ejecutando ? 'Reemplazando…' : 'Sí, reemplazar en todas'}
+                </Button>
+              </Box>
+            </>
+          )}
+        </Box>
+      </Box>
+    </Modal>
+  );
+}
+
+function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5 }) {
+  const [lista, setLista] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [nuevo, setNuevo] = useState({ nombre: '', peso_inicial: '', peso_final: '' });
+  const [guardando, setGuardando] = useState(false);
+  const [globalPct, setGlobalPct] = useState(
+    insumoData?.desperdicio_pct_override != null ? Number(insumoData.desperdicio_pct_override) : Number(desperdicioGlobalPct)
+  );
+
+  // Precio de compra del insumo (probamos varios campos comunes)
+  const precioCompra = Number(insumoData?.precio_ref)
+    || Number(insumoData?.precio_ultima_compra)
+    || Number(insumoData?.precio_promedio)
+    || Number(insumoData?.precio)
+    || 0;
+  const unidad = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || 'u');
+
+  const cargar = useCallback(() => {
+    if (!insumoId || !businessId) return;
+    setLoading(true);
+    insumoMermasList(insumoId, businessId)
+      .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
+      .catch(() => setError('No se pudieron cargar las mermas'))
+      .finally(() => setLoading(false));
+  }, [insumoId, businessId]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Precio con el global aplicado (base para las mermas específicas — se apilan sobre este)
+  const precioConGlobal = precioCompra * (1 + (Number(globalPct) || 0) / 100);
+
+  // % merma = (bruto - neto) / bruto
+  const pctMerma = (bruto, neto) => (Number(bruto) > 0 ? ((Number(bruto) - Number(neto)) / Number(bruto)) * 100 : 0);
+  // precio con merma = precioConGlobal × (bruto / neto)
+  const precioConMerma = (bruto, neto) => (Number(neto) > 0 ? precioConGlobal * (Number(bruto) / Number(neto)) : 0);
+
+  const guardarGlobal = async (nuevoPct) => {
+    const val = nuevoPct === '' ? null : Number(nuevoPct);
+    try {
+      await insumoDesperdicioOverride(insumoId, val, businessId);
+    } catch (e) {
+      setError('No se pudo guardar el desperdicio global');
+    }
+  };
+
+  const agregar = async () => {
+    if (!nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)) return;
+    setGuardando(true); setError('');
+    try {
+      await insumoMermaCreate(insumoId, {
+        nombre: nuevo.nombre.trim(),
+        peso_inicial: Number(nuevo.peso_inicial),
+        peso_final: Number(nuevo.peso_final),
+        es_default: lista.length === 0, // la primera que se crea es default
+      }, businessId);
+      setNuevo({ nombre: '', peso_inicial: '', peso_final: '' });
+      cargar();
+    } catch (e) { setError(e.message || 'No se pudo agregar'); }
+    finally { setGuardando(false); }
+  };
+
+  const editar = async (m, campo, valor) => {
+    const payload = { [campo]: campo === 'nombre' ? valor : Number(valor) };
+    try {
+      await insumoMermaUpdate(insumoId, m.id, payload, businessId);
+      setLista(prev => prev.map(x => x.id === m.id ? { ...x, ...payload } : x));
+    } catch (e) { setError(e.message || 'No se pudo actualizar'); cargar(); }
+  };
+
+  const marcarDefault = async (m) => {
+    try {
+      await insumoMermaUpdate(insumoId, m.id, { es_default: true }, businessId);
+      setLista(prev => prev.map(x => ({ ...x, es_default: x.id === m.id })));
+    } catch (e) { setError(e.message || 'No se pudo marcar default'); }
+  };
+
+  const borrar = async (mId) => {
+    try {
+      await insumoMermaDelete(insumoId, mId, businessId);
+      setLista(prev => prev.filter(x => x.id !== mId));
+    } catch (e) { setError(e.message || 'No se pudo borrar'); }
+  };
+
+  const G = { rojo: '#c62828', verde: '#4caf50' };
+
+  return (
+    <Box sx={{ py: 1 }}>
+      {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
+
+      {/* Unidad de medida + precio de compra (solo lectura) */}
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
+        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 220, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Unidad de medida del insumo</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{unidad}</Typography>
+        </Box>
+        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 200 }}>
+          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Precio de compra ($/{unidad})</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>${fmt(precioCompra)}</Typography>
+        </Box>
+      </Stack>
+
+      {/* Header columnas */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
+        {['Default', 'Nombre de la merma', 'Peso bruto', 'Peso neto', '% Merma', `Precio c/merma`, ''].map((h, i) => (
+          <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left') }}>{h}</Typography>
+        ))}
+      </Box>
+
+      {/* ── Fila del desperdicio GLOBAL (no eliminable, no default) ── */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, alignItems: 'center', bgcolor: '#fef9c3', borderRadius: 1, mb: 0.5 }}>
+        <Box />
+        <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f' }}>Desperdicio global</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.25 }}>
+          <TextField size="small" type="text" inputMode="decimal"
+            value={String(globalPct).replace('.', ',')}
+            onChange={e => setGlobalPct(sanitizeDecimal(e.target.value))}
+            onBlur={e => guardarGlobal(sanitizeDecimal(e.target.value))}
+            inputProps={{ style: { textAlign: 'right', fontSize: '0.78rem', width: 42 } }} />
+          <Typography variant="caption">%</Typography>
+        </Box>
+        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
+        <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700, color: G.rojo }}>{Number(globalPct).toFixed(1)}%</Typography>
+        <Typography variant="body2" sx={{ textAlign: 'right', fontWeight: 700, color: '#111' }}>${fmt(precioConGlobal)}</Typography>
+        <Box />
+      </Box>
+
+      {loading ? (
+        <Box sx={{ py: 2, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+      ) : (
+        <>
+          {lista.map(m => {
+            const esDef = m.es_default;
+            return (
+              <Box key={m.id} sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.5, alignItems: 'center', borderRadius: 1, bgcolor: esDef ? '#f2fbf2' : 'transparent' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <IconButton size="small" onClick={() => marcarDefault(m)} title="Usar por default"
+                    sx={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${esDef ? G.verde : '#ccc'}`, bgcolor: esDef ? G.verde : '#fff', color: '#fff', '&:hover': { bgcolor: esDef ? G.verde : '#f5f5f5' } }}>
+                    {esDef && <CheckCircleIcon sx={{ fontSize: 15, color: '#fff' }} />}
+                  </IconButton>
+                </Box>
+                <TextField size="small" defaultValue={m.nombre}
+                  onBlur={e => { if (e.target.value.trim() && e.target.value !== m.nombre) editar(m, 'nombre', e.target.value.trim()); }}
+                  inputProps={{ style: { fontSize: '0.8rem' } }} />
+                <TextField size="small" type="text" inputMode="decimal" defaultValue={String(Number(m.peso_inicial)).replace('.', ',')}
+                  onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(m.peso_inicial)) editar(m, 'peso_inicial', v); }}
+                  inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+                <TextField size="small" type="text" inputMode="decimal" defaultValue={String(Number(m.peso_final)).replace('.', ',')}
+                  onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(m.peso_final)) editar(m, 'peso_final', v); }}
+                  inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: G.rojo }}>{pctMerma(m.peso_inicial, m.peso_final).toFixed(1)}%</Typography>
+                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConMerma(m.peso_inicial, m.peso_final))}</Typography>
+                <IconButton size="small" onClick={() => borrar(m.id)} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
+                  <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+            );
+          })}
+
+          {/* Fila nueva */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+            <Box />
+            <TextField size="small" placeholder="Ej: Pelada, Cepillada…" value={nuevo.nombre}
+              onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') agregar(); }}
+              inputProps={{ style: { fontSize: '0.8rem' } }} />
+            <TextField size="small" type="text" inputMode="decimal" placeholder="1000" value={nuevo.peso_inicial}
+              onChange={e => setNuevo(n => ({ ...n, peso_inicial: sanitizeDecimal(e.target.value) }))}
+              inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+            <TextField size="small" type="text" inputMode="decimal" placeholder="930" value={nuevo.peso_final}
+              onChange={e => setNuevo(n => ({ ...n, peso_final: sanitizeDecimal(e.target.value) }))}
+              inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+            <Typography variant="caption" sx={{ textAlign: 'right', color: G.rojo, fontWeight: 700 }}>
+              {Number(nuevo.peso_inicial) > 0 && Number(nuevo.peso_final) > 0 ? `${pctMerma(nuevo.peso_inicial, nuevo.peso_final).toFixed(1)}%` : '—'}
+            </Typography>
+            <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>
+              {Number(nuevo.peso_final) > 0 ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
+            </Typography>
+            <IconButton size="small" onClick={agregar} disabled={guardando || !nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)} sx={{ color: PRIMARY }}>
+              <AddIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+
+          {/* Texto explicativo */}
+          <Box sx={{ mt: 2, bgcolor: '#fdeaea', border: '1px solid #f2b8be', borderRadius: 1, px: 2, py: 1.25 }}>
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: '#7a3034', lineHeight: 1.5 }}>
+              La merma marcada como <b>default</b> ✓ es la que usan las recetas. El <b>precio con merma</b> es el precio de compra (con el desperdicio global aplicado) dividido por el rendimiento (neto/bruto): lo que realmente cuesta cada {unidad} utilizable.
+            </Typography>
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
-function TabMermaInsumo({ insumoId, businessId }) {
-  return <TabPlaceholder titulo="Merma" />;
+
+/* ════════════════════════════════════════
+   SELECTOR DE COSTO PREFERIDO DEL INSUMO
+   costo_preferido: null=auto (gana el más reciente por fecha) | 'compra' | 'elaboracion'
+════════════════════════════════════════ */
+function CostoPreferidoSelector({ insumoId, businessId, costoPreferido, origenEfectivo, variant = 'switch', onChanged }) {
+  const [valor, setValor] = useState(costoPreferido ?? 'auto'); // 'auto' | 'compra' | 'elaboracion'
+  const [abierto, setAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => { setValor(costoPreferido ?? 'auto'); }, [costoPreferido]);
+
+  const guardar = async (nuevo) => {
+    setValor(nuevo);
+    setGuardando(true);
+    try {
+      await insumoUpdate(insumoId, {
+        costoPreferido: nuevo === 'auto' ? null : nuevo,
+      }, businessId);
+      onChanged?.(nuevo === 'auto' ? null : nuevo);
+      // Avisar a otros montajes del selector (popup ↔ cabeceras) para que se sincronicen
+      try {
+        window.dispatchEvent(new CustomEvent('insumo:costo-preferido-changed', {
+          detail: { insumoId, costoPreferido: nuevo === 'auto' ? null : nuevo },
+        }));
+      } catch { }
+      setAbierto(false);
+    } catch (e) {
+      console.error('[CostoPreferidoSelector]', e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // Texto del costo activo (para el aviso)
+  const activoTxt = origenEfectivo === 'compra' ? 'última compra' : 'receta';
+  const esAuto = valor === 'auto';
+
+  const chips = (
+    <Box sx={{ display: 'flex', gap: 0.5 }}>
+      {[
+        { v: 'auto', label: 'Automático' },
+        { v: 'compra', label: 'Compra' },
+        { v: 'elaboracion', label: 'Receta' },
+      ].map(opt => (
+        <Chip
+          key={opt.v}
+          label={opt.label}
+          size="small"
+          disabled={guardando}
+          onClick={() => guardar(opt.v)}
+          color={valor === opt.v ? 'primary' : 'default'}
+          variant={valor === opt.v ? 'filled' : 'outlined'}
+          sx={{ fontSize: '0.72rem', height: 24, cursor: 'pointer' }}
+        />
+      ))}
+    </Box>
+  );
+
+  if (variant === 'switch') {
+    return (
+      <Box sx={{ mt: 1 }}>
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}>
+          ¿Qué costo usar para este insumo en las recetas?
+        </Typography>
+        {chips}
+        {esAuto && (
+          <Typography variant="caption" sx={{ display: 'block', color: 'text.disabled', fontSize: '0.68rem', mt: 0.5 }}>
+            Automático: usa el más reciente entre la receta y la última compra. Ahora activo: {activoTxt}.
+          </Typography>
+        )}
+      </Box>
+    );
+  }
+
+  // variant === 'aviso'
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Chip
+        label={`Costo activo: ${activoTxt}${esAuto ? ' (auto)' : ''}`}
+        size="small"
+        onClick={() => setAbierto(v => !v)}
+        variant="outlined"
+        sx={{ fontSize: '0.72rem', height: 24, cursor: 'pointer', borderColor: PRIMARY, color: PRIMARY }}
+      />
+      {abierto && chips}
+    </Box>
+  );
 }
-function TabComprasInsumo({ insumoId, businessId }) {
-  return <TabPlaceholder titulo="Compras" />;
+
+function TabComprasInsumo({ insumoId, businessId, insumoData }) {
+  const [lista, setLista] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!insumoId || !businessId) return;
+    setLoading(true);
+    insumoComprasList(insumoId, businessId)
+      .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
+      .catch(() => setError('No se pudieron cargar las compras'))
+      .finally(() => setLoading(false));
+  }, [insumoId, businessId]);
+
+  const fmtFecha = (f) => {
+    if (!f) return '—';
+    try { return new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+    catch { return String(f); }
+  };
+  const fmtNum = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <Box sx={{ py: 1 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Historial de compras de este insumo. La compra más reciente define el precio de referencia.
+      </Typography>
+      {insumoData && (
+        <Box sx={{ mb: 1.5 }}>
+          <CostoPreferidoSelector
+            insumoId={insumoId}
+            businessId={businessId}
+            costoPreferido={insumoData.costo_preferido ?? null}
+            origenEfectivo={insumoData.costo_efectivo_origen}
+            variant="aviso"
+          />
+        </Box>
+      )}
+      {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
+      ) : lista.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 4, color: 'text.disabled' }}>
+          <Typography variant="body2">Este insumo no tiene compras registradas.</Typography>
+        </Box>
+      ) : (
+        <Box>
+          {/* Header */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px 110px 110px', gap: 1, px: 1, mb: 0.5 }}>
+            <Typography variant="caption" fontWeight={700}>Fecha</Typography>
+            <Typography variant="caption" fontWeight={700}>Factura</Typography>
+            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Cant.</Typography>
+            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Precio u.</Typography>
+            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Total</Typography>
+          </Box>
+          {lista.map((c, i) => (
+            <Box
+              key={c.id}
+              sx={{
+                display: 'grid', gridTemplateColumns: '90px 1fr 90px 110px 110px', gap: 1,
+                px: 1, py: 0.75, borderRadius: 1,
+                bgcolor: i === 0 ? `${PRIMARY}0d` : 'transparent',
+                borderBottom: '1px solid', borderColor: 'divider',
+                alignItems: 'center',
+              }}
+            >
+              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{fmtFecha(c.fecha)}</Typography>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.factura_key || c.referencia || '—'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right' }}>{fmtNum(c.cantidad)}</Typography>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right', fontWeight: i === 0 ? 700 : 400 }}>
+                ${fmtNum(c.precio)}
+              </Typography>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right' }}>${fmtNum(c.precio_total)}</Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo = null }) {
@@ -1921,8 +2679,23 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
   // Fila nueva en edición
   const [nuevo, setNuevo] = useState({ nombre: '', contenido: '', unidad: 'gr' });
   const [guardando, setGuardando] = useState(false);
+  const [envase, setEnvase] = useState({
+    contenido: insumoData?.contenido_envase != null ? String(insumoData.contenido_envase).replace('.', ',') : '',
+    unidad: insumoData?.unidad_envase || 'ml',
+  });
+  const guardarEnvase = useCallback(async () => {
+    const cont = envase.contenido === '' ? null : Number(String(envase.contenido).replace(',', '.'));
+    try {
+      await insumoUpdate(insumoId, {
+        contenidoEnvase: cont,
+        unidadEnvase: cont == null ? null : envase.unidad,
+      }, businessId);
+    } catch (e) {
+      setError(e.message || 'No se pudo guardar el envase');
+    }
+  }, [envase, insumoId, businessId]);
 
-   const precioRef = Number(insumoData?.precio_ref) || 0;
+  const precioRef = Number(insumoData?.precio_ref) || 0;
   const unidadBase = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || 'u');
 
   // Costo de una equivalencia: distingue elaborado (costo/rendimiento) de insumo simple (precio_ref)
@@ -1935,11 +2708,20 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
       const factor = getConversionFactor(canonicalUnit(unidad), canonicalUnit(recetaInfo.unidadPeso || 'gr'));
       return Number(contenido) * factor * costoPorPeso;
     }
-    // ── Insumo simple: contenido convertido a unidad base × precio_ref ──
+    // ── Insumo unidad CON envase cargado: costo = contenido × (precio_ref / contenido_envase) ──
+    const contEnvase = Number(insumoData?.contenido_envase) || 0;
+    const uniEnvase = canonicalUnit(insumoData?.unidad_envase || '');
+    if (unidadBase === 'u' && contEnvase > 0 && uniEnvase) {
+      if (!precioRef) return 0;
+      const costoPorUnidadEnvase = precioRef / contEnvase;               // ej. $8215/750ml = $10,95/ml
+      const factor = getConversionFactor(canonicalUnit(unidad), uniEnvase); // convertir la unidad de la equiv. a la del envase
+      return Number(contenido) * factor * costoPorUnidadEnvase;
+    }
+    // ── Insumo simple medible: contenido convertido a unidad base × precio_ref ──
     if (!precioRef) return 0;
     const factor = getConversionFactor(canonicalUnit(unidad), unidadBase);
     return Number(contenido) * factor * precioRef;
-  }, [precioRef, unidadBase, recetaInfo]);
+  }, [precioRef, unidadBase, recetaInfo, insumoData]);
 
   const cargar = useCallback(() => {
     if (!insumoId || !businessId) return;
@@ -1999,7 +2781,52 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
         Definí medidas propias de este insumo (ej: "Cucharada sopera = 15 gr"). Luego las usás como unidad en la receta.
       </Typography>
-
+      {/* Contenido del envase: solo para insumos comprados en unidad (no medibles) */}
+      {unidadBase === 'u' && !insumoData?.es_elaborado && (
+        <Box sx={{
+          mb: 2, p: 1.5, borderRadius: 1.5,
+          border: '1px solid', borderColor: 'divider', bgcolor: `${PRIMARY}06`,
+        }}>
+          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.75 }}>
+            Contenido del envase
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontSize: '0.72rem' }}>
+            Cuánto trae 1 unidad de este insumo. Ej: 1 botella = 750 ml. Con esto podés usarlo por ml/gr en las recetas.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', flexShrink: 0 }}>1 unidad =</Typography>
+            <TextField
+              type="text"
+              inputMode="decimal"
+              size="small"
+              value={envase.contenido}
+              onChange={e => setEnvase(v => ({ ...v, contenido: sanitizeDecimal(e.target.value) }))}
+              onBlur={guardarEnvase}
+              placeholder="750"
+              inputProps={{ style: { textAlign: 'right', padding: '6px 8px' } }}
+              sx={{ width: 90 }}
+            />
+            <FormControl size="small" sx={{ width: 80 }}>
+              <Select
+                value={envase.unidad}
+                onChange={e => { setEnvase(v => ({ ...v, unidad: e.target.value })); }}
+                onClose={guardarEnvase}
+                sx={{ '& .MuiSelect-select': { py: '6px' } }}
+              >
+                <MenuItem value="ml">ml</MenuItem>
+                <MenuItem value="lt">lt</MenuItem>
+                <MenuItem value="gr">gr</MenuItem>
+                <MenuItem value="kg">kg</MenuItem>
+              </Select>
+            </FormControl>
+            {precioRef > 0 && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                Costo por unidad: ${precioRef.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+      )}
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
 
       {/* Header */}
@@ -2068,6 +2895,58 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
 }
 
 /* ════════════════════════════════════════
+   SELECTOR PREVIO (4 opciones al abrir un insumo)
+════════════════════════════════════════ */
+function SelectorInsumo({ nombre, insumoId, onElegir }) {
+  const opciones = [
+    {
+      id: 'merma', titulo: 'Merma', icono: '🔻', bg: '#fdeaea',
+      desc: 'Registrá el desperdicio del insumo: peladura, cepillado, limpieza. Ajusta el costo real por unidad utilizable.'
+    },
+    {
+      id: 'receta', titulo: 'Receta / Compras', icono: '📖', bg: '#e8f4e8',
+      desc: 'Costeá el insumo por receta o por sus compras registradas.'
+    },
+    {
+      id: 'equivalencias', titulo: 'Equivalencias', icono: '⚖️', bg: '#eaf1fb',
+      desc: 'Definí medidas propias (cuchara, dip, unidad) para convertir a gramos o ml en las recetas.'
+    },
+    {
+      id: 'reemplazar', titulo: 'Reemplazar', icono: '🔁', bg: '#f3eafb',
+      desc: 'Sustituí este insumo por otro en todas las recetas donde aparece.'
+    },
+  ];
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="subtitle1" fontWeight={800} textAlign="center" sx={{ mb: 2.5 }}>
+        ¿Qué querés configurar de este insumo?
+      </Typography>
+      <Stack spacing={1.5}>
+        {opciones.map(o => (
+          <Box key={o.id}
+            onClick={() => onElegir(o.id)}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 2,
+              border: '1px solid', borderColor: 'divider', borderRadius: 2,
+              px: 2, py: 1.75, cursor: 'pointer', transition: 'all .15s',
+              '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },
+            }}>
+            <Box sx={{ width: 46, height: 46, borderRadius: 2, bgcolor: o.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+              {o.icono}
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle2" fontWeight={800}>{o.titulo}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>{o.desc}</Typography>
+            </Box>
+            <Typography sx={{ color: 'text.disabled', fontSize: 18 }}>›</Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
+/* ════════════════════════════════════════
    MODAL PRINCIPAL
 ════════════════════════════════════════ */
 export default function RecetaModal({
@@ -2076,8 +2955,10 @@ export default function RecetaModal({
   recetasElaborados = {},
   esElaborado = false,
   esPromo = false,
+  modoPromoNueva = false,
   getRecetaUrl = null,
   saveRecetaUrl = null,
+  calcPrecioPorLista = null,
   onPriceConfigSave = null,
   allArticulos = [],
   priceLists = [],
@@ -2086,6 +2967,11 @@ export default function RecetaModal({
 }) {
   const [receta, setReceta] = useState(null);
   const [tab, setTab] = useState('receta'); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
+  // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
+  const [entradaElegida, setEntradaElegida] = useState(!modoInsumo);
+  const [recetaConfirmada, setRecetaConfirmada] = useState(false);
+  const [reemplazarModalOpen, setReemplazarModalOpen] = useState(false);
+  const [reemplazarAviso, setReemplazarAviso] = useState(false);
   const [nombre, setNombre] = useState('');
   const [rendimiento, setRendimiento] = useState(1);
   const [rendimientoUnidad, setRendimientoUnidad] = useState('porcion');
@@ -2109,7 +2995,8 @@ export default function RecetaModal({
   // Notas y foto de la receta
   const [notas, setNotas] = useState('');
   const [notasUpdatedAt, setNotasUpdatedAt] = useState(null); // fecha última edición de notas
-  const [foto, setFoto] = useState(null); // base64 o URL
+  const [foto, setFoto] = useState(null);   // base64 o URL (compat: primera del array)
+  const [fotos, setFotos] = useState([]);   // array de fotos (hasta 6)
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2119,8 +3006,9 @@ export default function RecetaModal({
   const [success, setSuccess] = useState(false);
 
   // Sub-modales
-  const [comprasInsumo, setComprasInsumo] = useState(null);
   const [notasModalOpen, setNotasModalOpen] = useState(false);
+  const [previewFotoOpen, setPreviewFotoOpen] = useState(false);
+  const [editarFotoSrc, setEditarFotoSrc] = useState(null); // foto en edición desde el preview
   const [cocinaModalOpen, setCocinaModalOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -2162,6 +3050,8 @@ export default function RecetaModal({
   const gemelosSearchRef = useRef(null);
   const gemelosPanelRef = useRef(null);
   const [elaboradosStack, setElaboradosStack] = useState([]);
+
+  const skipAutoSaveRef = useRef(false);
 
   const pushElaborado = useCallback((item) => {
     setElaboradosStack(prev => [...prev, item]);
@@ -2205,7 +3095,7 @@ export default function RecetaModal({
 
   /* ── Cargar gemelos al abrir + función reutilizable ── */
   const loadGemelosGroup = useCallback(() => {
-    if (!businessId || !articulo?.id || esElaborado || esPromo) return;
+    if (!businessId || !articulo?.id || esElaborado || esPromoEfectiva) return;
     setGemelosLoading(true);
     const token = localStorage.getItem('token') || '';
     return fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
@@ -2243,6 +3133,12 @@ export default function RecetaModal({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [gemelosOpen]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEntradaElegida(!modoInsumo);
+    setRecetaConfirmada(false);
+  }, [open, modoInsumo]);
 
   const [todosArticulos, setTodosArticulos] = useState([]);
 
@@ -2373,6 +3269,27 @@ export default function RecetaModal({
     } catch (e) { console.error('[actualizarObjetivoGemelo]', e.message); }
   }, [businessId, gemelosGroup, onPriceConfigSave]);
 
+  const handleElegirEntrada = useCallback((opcion) => {
+    if (opcion === 'reemplazar') {
+      setReemplazarModalOpen(true);
+      return;
+    }
+    // Botón compartido "Receta / Compras": dirigir según lo que tenga el insumo
+    if (opcion === 'receta') {
+      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+      const origen = insData?.costo_efectivo_origen;
+      const tieneCompras = Number(insData?.cantidad_compras) > 0;
+      const destino = origen === 'compra' ? 'compras'
+        : origen === 'elaboracion' ? 'receta'
+          : tieneCompras ? 'compras'
+            : 'receta';
+      setTab(destino);
+    } else {
+      setTab(opcion);   // merma, equivalencias
+    }
+    setEntradaElegida(true);
+  }, [insumos, articulo?.id]);
+
   /* ── Cargar insumos ── */
   useEffect(() => {
     if (!open || !businessId) return;
@@ -2386,13 +3303,110 @@ export default function RecetaModal({
       .finally(() => setInsumosLoading(false));
   }, [open, businessId]);
 
+  // Escuchar cambios de costo_preferido (desde el selector en el popup de compras)
+  // y actualizar el insumo en memoria para que el cálculo refresque al instante.
+  useEffect(() => {
+    const handler = (e) => {
+      const { insumoId, costoPreferido } = e.detail || {};
+      if (!insumoId) return;
+      setInsumos(prev => prev.map(i => {
+        if (String(i.id) !== String(insumoId)) return i;
+        let origen;
+        if (costoPreferido) {
+          origen = costoPreferido;
+        } else {
+          const fCompra = i.fecha_ultima_compra ? new Date(i.fecha_ultima_compra).getTime() : 0;
+          const fReceta = i.receta_updated_at ? new Date(i.receta_updated_at).getTime() : 0;
+          const tieneReceta = fReceta > 0;
+          const tieneCompra = fCompra > 0;
+          origen = !tieneReceta ? 'compra'
+            : !tieneCompra ? 'elaboracion'
+              : (fCompra > fReceta ? 'compra' : 'elaboracion');
+        }
+        return { ...i, costo_preferido: costoPreferido, costo_efectivo_origen: origen };
+      }));
+    };
+    window.addEventListener('insumo:costo-preferido-changed', handler);
+    return () => window.removeEventListener('insumo:costo-preferido-changed', handler);
+  }, []);
+
+  // Detección automática de promo: si hay al menos un ítem-artículo, es promo
+  const esPromoDetectada = useMemo(
+    () => items.some(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0),
+    [items]
+  );
+  const esPromoEfectiva = esPromo || esPromoDetectada;
+  const [listaSinPromo, setListaSinPromo] = useState(null); // null = principal/favorita
+
+  // Color de la lista activa para la columna "$ Sin Promo"
+  const colorSinPromo = useMemo(() => {
+    if (!listaSinPromo) return '#7c3aed';  // principal → violeta por defecto
+    const idx = (priceLists || []).findIndex(l => String(l.id) === String(listaSinPromo));
+    return idx >= 0 ? colorForList(priceLists[idx], idx) : '#7c3aed';
+  }, [listaSinPromo, priceLists]);
+
+  // Grid de la tabla de ingredientes: en promo suma la columna "$ sin promo"
+  const gridIngredientes = esPromoEfectiva
+    ? '20px 1.8fr 68px 66px 80px 90px 28px 1fr 28px 28px'   // +90px para $ sin promo
+    : '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px';
+
+  const getPrecioSinPromo = useCallback((articleRefId) => {
+    if (!articleRefId) return null;
+    const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(articleRefId));
+    if (!art) return 0;
+    // Precio base (lista principal): nuevo precio si se definió en la tabla, sino el precio de venta
+    const baseEntry = priceListsByList?._base?.byArticle?.[String(articleRefId)];
+    const nuevoPrecio = Number(baseEntry?.precioManual ?? baseEntry?.precio_manual);
+    const precioBase = nuevoPrecio > 0 ? nuevoPrecio : (Number(art?.precio) || 0);
+    // Si hay otra lista elegida, aplicar su ajuste
+    if (listaSinPromo && calcPrecioPorLista) {
+      const r = calcPrecioPorLista(
+        precioBase,
+        Number(articleRefId),
+        art.subrubro ?? art.categoria ?? null,   // rubroKey
+        null,                                     // agrupacionId (no aplica acá)
+        listaSinPromo
+      );
+      return Number(r?.precio) || precioBase;
+    }
+    return precioBase;
+  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList]);
+
   /* ── Cargar receta ── */
   useEffect(() => {
-    if (!open || !businessId || !articulo?.id) return;
+    if (!open || !businessId) return;
+    // ── Modo promo nueva: no hay receta que cargar; reset + precarga del componente ──
+    if (modoPromoNueva) {
+      setNombre('');
+      setRendimiento(1);
+      setError('');
+      setSuccess(false);
+      setLoading(false);
+      const comp = articulo?.componentePrecargado;
+      if (comp) {
+        const costoArt = Number(comp.costo) || Number(comp.costoTotal) || Number(comp.precio) || 0;
+        setItems([{
+          esArticulo: true,
+          articleRefId: Number(comp.id ?? comp.articulo_id),
+          supplyId: null,
+          supplyNombre: comp.nombre,
+          supplyMedida: 'u',
+          precioRefDB: costoArt,
+          codigoMaxi: comp.codigo || comp.codigo_maxi || '',
+          unidad: 'u',
+          cantidad: 1,
+          tipoCosto: 'total',
+          ultimaCompra: null,
+        }]);
+      } else {
+        setItems([]);
+      }
+      return;
+    }
+    if (!articulo?.id) return;
     setLoading(true);
     setError('');
     setSuccess(false);
-
     const fetchUrl = getRecetaUrl || `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
     const token = localStorage.getItem('token') || '';
     fetch(fetchUrl, {
@@ -2425,6 +3439,9 @@ export default function RecetaModal({
           setNotas(rec.notas || '');
           setNotasUpdatedAt(rec.notas_updated_at || rec.notasUpdatedAt || null);
           setFoto(rec.foto || null);
+          setFotos(Array.isArray(rec.fotos) && rec.fotos.length
+            ? rec.fotos
+            : (rec.foto ? [rec.foto] : [])); // compat: si no hay array, usa la foto single
           setItems((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
@@ -2442,6 +3459,7 @@ export default function RecetaModal({
               unidad,
               ultimaCompra: it.ultima_compra || null,
               merma: it.merma !== false,
+              mermaId: it.merma_id ?? null,
               pedido: it.pedido !== false,
               tipoCosto: it.tipo_costo || 'total',
               observaciones: it.observaciones || '',
@@ -2493,29 +3511,35 @@ export default function RecetaModal({
           }
 
           // Cargar equivalencias de todos los ingredientes (para el dropdown de unidad al reabrir)
+          // Cargar equivalencias y mermas de todos los ingredientes al reabrir la receta
           const supplyIdsConEq = (rec.items || [])
             .map(it => it.supply_id)
             .filter(Boolean);
           if (supplyIdsConEq.length > 0) {
             Promise.all(
               supplyIdsConEq.map(id =>
-                insumoEquivalenciasList(id, businessId)
-                  .then(r => [String(id), Array.isArray(r?.data) ? r.data : []])
-                  .catch(() => [String(id), []])
+                Promise.all([
+                  insumoEquivalenciasList(id, businessId).then(r => Array.isArray(r?.data) ? r.data : []).catch(() => []),
+                  insumoMermasList(id, businessId).then(r => Array.isArray(r?.data) ? r.data : []).catch(() => []),
+                ]).then(([eqs, mermas]) => [String(id), eqs, mermas])
               )
             ).then(results => {
-              const eqMap = {};
-              results.forEach(([id, eqs]) => { if (eqs.length) eqMap[id] = eqs; });
-              if (Object.keys(eqMap).length > 0) {
-                setItems(prev => prev.map(it =>
-                  it.supplyId && eqMap[String(it.supplyId)]
-                    ? { ...it, equivalencias: eqMap[String(it.supplyId)] }
-                    : it
-                ));
+              const eqMap = {}, mermaMap = {};
+              results.forEach(([id, eqs, mermas]) => {
+                if (eqs.length) eqMap[id] = eqs;
+                if (mermas.length) mermaMap[id] = mermas;
+              });
+              if (Object.keys(eqMap).length > 0 || Object.keys(mermaMap).length > 0) {
+                setItems(prev => prev.map(it => {
+                  if (!it.supplyId) return it;
+                  const patch = {};
+                  if (eqMap[String(it.supplyId)]) patch.equivalencias = eqMap[String(it.supplyId)];
+                  if (mermaMap[String(it.supplyId)]) patch.mermas = mermaMap[String(it.supplyId)];
+                  return Object.keys(patch).length ? { ...it, ...patch } : it;
+                }));
               }
             });
           }
-
         } else {
           setNombre(artNombre);
           setRendimiento(1);
@@ -2526,12 +3550,13 @@ export default function RecetaModal({
           setNotas('');
           setNotasUpdatedAt(null);
           setFoto(null);
+          setFotos([]);
           setItems([]);
         }
       })
       .catch(() => setError('No se pudo cargar la receta'))
       .finally(() => setLoading(false));
-  }, [open, businessId, articulo?.id]);
+  }, [open, businessId, articulo?.id, modoPromoNueva]);
 
   /* ── Enriquecer items con data fresca de insumos ── */
   useEffect(() => {
@@ -2561,20 +3586,69 @@ export default function RecetaModal({
     [items]
   );
 
+  //* ── Costo de un ítem: equivalencia > elaborado > artículo > insumo simple ── */
+  const calcCostoItem = useCallback((it) => {
+    if (it.tipoCosto === 'nulo') return 0;
+    const cant = Number(it.cantidad) || 0;
+    const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
+    const insData = it.supplyId ? insumos.find(i => String(i.id) === String(it.supplyId)) : null;
+    const forzarCompra = insData?.costo_efectivo_origen === 'compra';
+
+    // Factor de merma: idéntico al de la fila (ítems-artículo no llevan merma)
+    let factorMerma = 1;
+    if (!it.esArticulo && !it.articleRefId) {
+      const pctGlobal = it.desperdicioPct != null ? Number(it.desperdicioPct) : Number(appConfig.desperdicioGlobalPct || 0);
+      const m = (it.mermas || []).find(x => Number(x.id) === Number(it.mermaId));
+      const fEsp = (m && Number(m.peso_final) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+      factorMerma = (1 + pctGlobal / 100) * fEsp;
+    }
+
+    let precioU;
+    const eqSel = (it.equivalencias || []).find(e => e.nombre === it.unidad);
+    if (eqSel) {
+      const contenido = Number(eqSel.contenido) || 0;
+      if (elaborado && !forzarCompra) {
+        precioU = contenido * calcCostoUnitarioElaborado(elaborado, it.supplyMedida, eqSel.unidad, it.tipoCosto);
+      } else {
+        const precioParaCosto = forzarCompra
+          ? (Number(insData?.precio_ultima_compra) || Number(it.precioRefDB) || 0)
+          : (Number(it.precioRefDB) || 0);
+        const precioBase = precioParaCosto * factorMerma;
+        const contEnvase = Number(insData?.contenido_envase) || 0;
+        const uniEnvase = canonicalUnit(insData?.unidad_envase || '');
+        const baseInsumo = canonicalUnit(it.supplyMedida || 'u');
+        if (baseInsumo === 'u' && contEnvase > 0 && uniEnvase) {
+          const costoPorUnidadEnvase = precioBase / contEnvase;
+          const factor = getConversionFactor(canonicalUnit(eqSel.unidad), uniEnvase);
+          precioU = contenido * factor * costoPorUnidadEnvase;
+        } else {
+          const factor = getConversionFactor(canonicalUnit(eqSel.unidad), canonicalUnit(it.supplyMedida || eqSel.unidad));
+          precioU = (contenido * factor) * precioBase;
+        }
+      }
+    } else if (elaborado && !forzarCompra) {
+      precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
+    } else if (it.esArticulo || it.articleRefId) {
+      const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
+      const costoComp = Number(art?.costoTotal) || Number(art?.precio) || Number(it.precioRefDB) || 0;
+      const unidadDBart = canonicalUnit(it.supplyMedida || 'u');
+      precioU = calcPrecioEnUnidad(costoComp, unidadDBart, canonicalUnit(it.unidad || unidadDBart));
+    } else {
+      const precioRef = forzarCompra
+        ? (Number(insData?.precio_ultima_compra) || Number(it.precioRefDB) || 0)
+        : (Number(it.precioRefDB) || 0);
+      const unidadDB = canonicalUnit(it.supplyMedida || 'u');
+      precioU = calcPrecioEnUnidad(precioRef * factorMerma, unidadDB, canonicalUnit(it.unidad || unidadDB));
+    }
+    return cant * precioU;
+  }, [localRecetasElaborados, allArticulos, insumos, appConfig.desperdicioGlobalPct]);
+
   // Items ordenados por costo descendente (opcional)
   const itemsOrdenados = useMemo(() => {
     if (!sortByCosto) return items;
-    return [...items].sort((a, b) => {
-      const getCosto = (it) => {
-        const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
-        const cant = Number(it.cantidad) || 0;
-        if (elaborado) return calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto) * cant;
-        return calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u') * cant;
-      };
-      return getCosto(b) - getCosto(a);
-    });
-  }, [items, sortByCosto, localRecetasElaborados]);
-
+    return [...items].sort((a, b) => calcCostoItem(b) - calcCostoItem(a));
+  }, [items, sortByCosto, calcCostoItem]);
+  
   const changeItem = useCallback((idx, partial) => {
     setItems(prev => {
       const arr = [...prev];
@@ -2646,44 +3720,13 @@ export default function RecetaModal({
     });
   }, []);
 
-  /* ── Cálculos ── */
+/* ── Cálculos ── */
   const costoTotal = useMemo(() =>
-    items.reduce((acc, it) => {
-      if (it.tipoCosto === 'nulo') return acc;
-      const cant = Number(it.cantidad) || 0;
-      const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
-      let precioU;
-      // ¿La unidad elegida es una equivalencia propia del insumo?
-      const eqSel = (it.equivalencias || []).find(e => e.nombre === it.unidad);
-      if (eqSel) {
-        const contenido = Number(eqSel.contenido) || 0;
-        if (elaborado) {
-          precioU = contenido * calcCostoUnitarioElaborado(elaborado, it.supplyMedida, eqSel.unidad, it.tipoCosto);
-        } else {
-          const factor = getConversionFactor(canonicalUnit(eqSel.unidad), canonicalUnit(it.supplyMedida || eqSel.unidad));
-          precioU = (contenido * factor) * (Number(it.precioRefDB) || 0);
-        }
-      } else if (elaborado) {
-        precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
-      } else {
-        let precioRef = Number(it.precioRefDB) || 0;
-        // Item-artículo (promo): si no tiene precioRefDB, tomar el precio del artículo
-        if (precioRef === 0 && it.articleRefId) {
-          const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
-          precioRef = Number(art?.precio) || 0;
-        }
-        precioU = calcPrecioEnUnidad(
-          precioRef,
-          it.supplyMedida || 'u',
-          it.unidad || it.supplyMedida || 'u'
-        );
-      }
-      return acc + cant * precioU;
-    }, 0),
-    [items, localRecetasElaborados, allArticulos]);
+    items.reduce((acc, it) => acc + calcCostoItem(it), 0),
+    [items, calcCostoItem]);
 
   // Label para el cuadro "Costo / unidad" según el rendimiento del lote
-const labelPorUnidad = useMemo(() => {
+  const labelPorUnidad = useMemo(() => {
     const unidadStr = {
       porcion: 'porción',
       u: 'unidad',
@@ -2704,25 +3747,78 @@ const labelPorUnidad = useMemo(() => {
   const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
   const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
 
+  // Venta sin promo: suma de los precios de venta de los componentes-artículo
+  const ventaSinPromo = useMemo(() => {
+    if (!esPromoEfectiva) return 0;
+    return items.reduce((acc, it) => {
+      if (!it.articleRefId) return acc;
+      const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
+      return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
+    }, 0);
+  }, [items, esPromoEfectiva, getPrecioSinPromo]);
+  const sugeridoExcedeVenta = esPromoEfectiva && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
+
   /* ── Guardar ── */
   const handleSave = async () => {
     setError('');
 
+    // ── Modo promo nueva: crear artículo-promo vía endpoint dedicado ──
+    if (modoPromoNueva) {
+      if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
+      const comps = items
+        .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .map(it => ({
+          articleId: Number(it.articleRefId),
+          cantidad: Number(it.cantidad) || 1,
+          unidad: it.unidad || 'u',
+        }));
+      const insus = items
+        .filter(it => it.supplyId && !it.articleRefId)
+        .map(it => ({
+          insumoId: Number(it.supplyId),
+          cantidad: Number(it.cantidad) || 1,
+          unidad: it.unidad || 'u',
+        }));
+      if (comps.length < 1) { setError('Agregá al menos un artículo a la promoción'); return; }
+      setSaving(true);
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${BASE}/businesses/${businessId}/promociones`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Business-Id': String(businessId),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nombre: nombre.trim(),
+            componentes: comps,
+            insumos: insus,
+            porcentajeVenta: pctCostoIdeal,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d?.error || d?.message || `Error ${res.status}`);
+        }
+        setSuccess(true);
+        try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+        onSaved?.({ __promoCreated: true });
+        setTimeout(() => onClose?.(), 600);
+      } catch (e) {
+        setError(e.message || 'No se pudo crear la promoción');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
     const itemsValidos = items.filter(it => it.supplyId || it.articleRefId);
-    const tieneContenido = itemsValidos.length > 0 || notas || foto || pctCostoIdeal !== 30;
-    if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
+    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
 
-    const itemsOrdenados = [...itemsValidos].sort((a, b) => {
-      const getCosto = (it) => {
-        const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
-        const cant = Number(it.cantidad) || 0;
-        if (elaborado) return calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto) * cant;
-        return calcPrecioEnUnidad(Number(it.precioRefDB) || 0, it.supplyMedida || 'u', it.unidad || it.supplyMedida || 'u') * cant;
-      };
-      return getCosto(b) - getCosto(a);
-    });
+    const itemsOrdenados = [...itemsValidos].sort((a, b) => calcCostoItem(b) - calcCostoItem(a));
     setItems(itemsOrdenados);
 
     const payload = {
@@ -2735,26 +3831,37 @@ const labelPorUnidad = useMemo(() => {
       notas,
       notasUpdatedAt: notasUpdatedAt || null,
       foto,
+      fotos,
       items: itemsOrdenados.map(it => {
-        const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
         let costoUnitario;
-        if (elaborado) {
-          costoUnitario = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
+        let precioRefDbItem = Number(it.precioRefDB) || 0;
+        // ── Item-artículo (promo): costo del ARTÍCULO, nunca de un insumo homónimo ──
+        if (it.articleRefId) {
+          const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
+          // Jerarquía: costo de receta > costo > precio (mismo criterio que el chip en vivo)
+          costoUnitario = Number(art?.costoTotal) || Number(art?.precio) || Number(it.precioRefDB) || 0;
+          precioRefDbItem = costoUnitario;
         } else {
-          costoUnitario = calcPrecioEnUnidad(
-            Number(it.precioRefDB) || 0,
-            it.supplyMedida || 'u',
-            it.unidad || it.supplyMedida || 'u'
-          );
+          const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
+          if (elaborado) {
+            costoUnitario = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
+          } else {
+            costoUnitario = calcPrecioEnUnidad(
+              Number(it.precioRefDB) || 0,
+              it.supplyMedida || 'u',
+              it.unidad || it.supplyMedida || 'u'
+            );
+          }
         }
         return {
           supplyId: it.supplyId,
           articleRefId: it.articleRefId ?? null,
           cantidad: Number(it.cantidad) || 0,
           unidad: it.unidad || 'u',
-          precioRefDb: Number(it.precioRefDB) || 0,
+          precioRefDb: precioRefDbItem,
           costoUnitario,
           merma: it.merma !== false,
+          mermaId: it.mermaId ?? null,
           pedido: it.pedido !== false,
           tipoCosto: it.tipoCosto || 'total',
           observaciones: it.observaciones || '',
@@ -2785,6 +3892,34 @@ const labelPorUnidad = useMemo(() => {
       const saved = json?.receta ?? json;
       setReceta(saved);
       setSuccess(true);
+
+      // ── Si cambió el nombre, renombrar también el artículo/insumo ──
+      const nombreNuevo = (nombre || '').trim();
+      if (nombreNuevo && nombreNuevo !== (artNombre || '').trim() && articulo?.id) {
+        try {
+          if (modoInsumo || esElaborado) {
+            // Insumo (elaborado o no)
+            await insumoUpdate(articulo.id, { nombre: nombreNuevo }, insumosBizId || businessId);
+          } else {
+            // Artículo (incluye promos)
+            await fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Business-Id': String(businessId),
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ nombre: nombreNuevo }),
+            });
+          }
+          try {
+            window.dispatchEvent(new CustomEvent('articulos:updated'));
+            window.dispatchEvent(new CustomEvent('insumos:updated'));
+          } catch { }
+        } catch (e) {
+          console.warn('[rename] no se pudo actualizar el nombre:', e.message);
+        }
+      }
 
       // ── Si es promo (tiene items-artículo), mover componentes + dueño a "Promociones" ──
       const idsArticulosPromo = payload.items
@@ -2849,13 +3984,19 @@ const labelPorUnidad = useMemo(() => {
           const d = await res.json().catch(() => ({}));
           throw new Error(d?.error || d?.message || `Error ${res.status}`);
         }
-        try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+        try {
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+        } catch { }
         onSaved?.({ article_id: articulo.id, deleted: true });
         onClose();
         return;
       }
 
-      const deleteUrl = `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
+      // En modo insumo la receta vive en insumo_id, no en article_id
+      const deleteUrl = modoInsumo
+        ? `${BASE}/businesses/${businessId}/insumos/${articulo.id}/receta`
+        : `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta`;
       const res = await fetch(deleteUrl, {
         method: 'DELETE',
         headers: {
@@ -2866,13 +4007,13 @@ const labelPorUnidad = useMemo(() => {
       // Si tira 404, la receta no existe a nivel article_id (lo más común: este
       // artículo es gemelo y la receta real vive en otro miembro del grupo).
       // Seguimos con la auto-desvinculación: el efecto para el usuario es el mismo.
-      if (!res.ok && res.status !== 404) {
+      if (!res.ok && !(res.status === 404 && !modoInsumo)) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d?.message || `Error ${res.status}`);
       }
       // Sacar el artículo del grupo de gemelos (autodesvinculación).
       // El resto de gemelos mantiene su receta igual — consistente con "quitar de vinculación" en la tabla.
-      if (gemelosGroup?.groupId) {
+      if (!modoInsumo && gemelosGroup?.groupId) {
         try {
           await fetch(
             `${BASE}/businesses/${businessId}/article-links/${gemelosGroup.groupId}/members/${articulo.id}`,
@@ -2902,7 +4043,7 @@ const labelPorUnidad = useMemo(() => {
 
   const handleClose = useCallback(async () => {
     if (saving || deleting) return;
-    // Si hay items cargados, guardar automáticamente antes de cerrar
+    if (skipAutoSaveRef.current) { skipAutoSaveRef.current = false; onClose(); return; }
     const tieneContenido = items.length > 0 || notas || foto;
     if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId)) {
       await handleSave();
@@ -2934,6 +4075,14 @@ const labelPorUnidad = useMemo(() => {
     }
     return n;
   }, [articuloIdNum, priceLists, priceListsByList]);
+
+  // Cuando ocurre un reemplazo de insumo, evitar que el autoguardado al cerrar
+  // pise el cambio hecho en la DB (afecta a todos los RecetaModal abiertos en cascada).
+  useEffect(() => {
+    const handler = () => { skipAutoSaveRef.current = true; };
+    window.addEventListener('insumo:reemplazado', handler);
+    return () => window.removeEventListener('insumo:reemplazado', handler);
+  }, []);
 
   return (
     <>
@@ -3018,7 +4167,10 @@ const labelPorUnidad = useMemo(() => {
 
               {/* Notas + foto */}
               <Tooltip title={notas || foto ? 'Notas e imagen' : 'Agregar notas'}>
-                <IconButton size="small" onClick={() => setNotasModalOpen(true)} sx={{ color: 'inherit' }}>
+                <IconButton
+                  size="small"
+                  onClick={() => setNotasModalOpen(true)}
+                  sx={{ color: 'inherit' }}>
                   <PhotoCameraIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -3036,16 +4188,27 @@ const labelPorUnidad = useMemo(() => {
           </Box>
 
           {/* ── BODY ── */}
-          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5 }}>
-            {loading ? (
+          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: '60vh' }}>
+            {modoInsumo && !entradaElegida ? (
+              <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
+            ) : loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
               </Box>
             ) : modoInsumo && tab === 'merma' ? (
-              <TabMermaInsumo insumoId={articulo?.id} businessId={businessId} />
+              <TabMermaInsumo
+                insumoId={articulo?.id}
+                businessId={businessId}
+                insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
+                desperdicioGlobalPct={appConfig.desperdicioGlobalPct ?? 5}
+              />
             ) : modoInsumo && tab === 'compras' ? (
-              <TabComprasInsumo insumoId={articulo?.id} businessId={businessId} />
-           ) : modoInsumo && tab === 'equivalencias' ? (
+              <TabComprasInsumo
+                insumoId={articulo?.id}
+                businessId={businessId}
+                insumoData={insumos.find(i => String(i.id) === String(articulo?.id))}
+              />
+            ) : modoInsumo && tab === 'equivalencias' ? (
               <TabEquivalenciasInsumo
                 insumoId={articulo?.id}
                 businessId={businessId}
@@ -3059,556 +4222,701 @@ const labelPorUnidad = useMemo(() => {
                   rendimientoUnidad,
                 }}
               />
-            ) : (
-              <>
-                {/* ── Datos generales ── */}
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1.5fr auto 96px' },
-                  gap: 1.5, mb: 2,
-                  alignItems: 'stretch',
-                }}>
-                  <TextField
-                    label="Nombre de la receta"
-                    value={nombre}
-                    onChange={e => setNombre(e.target.value)}
-                    size="small"
-                    placeholder={artNombre}
-                  />
-
-                  {/* ── Bloque rendimiento del lote ── */}
-                  <Box sx={{
-                    border: '1px solid', borderColor: `${PRIMARY}40`,
-                    borderRadius: 1.5, p: 1.25, pt: 0.75,
-                    bgcolor: `${PRIMARY}08`,
-                    minWidth: 360,
-                    display: 'flex', flexDirection: 'column', gap: 0.5,
-                  }}>
-                    <Typography variant="caption" sx={{
-                      color: PRIMARY, fontWeight: 700, fontSize: '0.65rem',
-                      textTransform: 'uppercase', letterSpacing: '0.04em',
-                    }}>
-                      Rendimiento del lote
+            ) : (() => {
+              // Cartel de advertencia: insumo con compras que aún no tiene receta
+              const insDat = insumos.find(i => String(i.id) === String(articulo?.id));
+              const tieneCompras = Number(insDat?.cantidad_compras) > 0;
+              const tieneReceta = items.length > 0;   // ya hay ingredientes cargados
+              const mostrarCartel = modoInsumo && tieneCompras && !tieneReceta && !recetaConfirmada;
+              if (mostrarCartel) {
+                return (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 6, px: 3, textAlign: 'center', gap: 2 }}>
+                    <WarningAmberIcon sx={{ fontSize: 48, color: 'warning.main' }} />
+                    <Typography variant="h6" fontWeight={800}>Este insumo tiene compras registradas</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
+                      Si cargás una receta, su costo pasará a calcularse por elaboración cuando la receta sea más reciente que la última compra. Podés cambiar el criterio en cualquier momento desde el aviso de costo.
                     </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <TextField
-                        label="Cantidad"
-                        type="text"
-                        inputMode="decimal"
-                        value={rendimiento === '' ? '' : String(rendimiento).replace('.', ',')}
-                        onChange={e => {
-                          const raw = e.target.value;
-                          setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
-                        }}
-                        size="small"
-                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '6px 8px' } }}
-                        sx={{ width: 72, flexShrink: 0 }}
-                      />
-
-                      <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
-                        <Select
-                          value={rendimientoUnidad}
-                          onChange={e => {
-                            const nueva = e.target.value;
-                            setRendimientoUnidad(nueva);
-                            // Si pasamos a una unidad sin peso, limpiar peso equiv.
-                            // El equivalente solo aplica a porción/unidad (no medibles por sí solas)
-                            if (!['porcion', 'u'].includes(nueva)) {
-                              setRendimientoPeso(null);
-                              setUnidadPeso(null);
-                            } else if (!unidadPeso) {
-                              setUnidadPeso('gr');
-                            }
-                          }}
-                          sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
-                        >
-                          <MenuItem value="porcion">Porción</MenuItem>
-                          <MenuItem value="u">Unidad</MenuItem>
-                          <MenuItem value="lt">Litro</MenuItem>
-                          <MenuItem value="ml">ml</MenuItem>
-                          <MenuItem value="kg">Kilo</MenuItem>
-                          <MenuItem value="gr">gr</MenuItem>
-                        </Select>
-                      </FormControl>
-
-                      {/* Peso/volumen equivalente — solo para porción / unidad */}
-                      {['porcion', 'u'].includes(rendimientoUnidad) && (
-                        <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
-                          <TextField
-                            label="Peso equiv."
-                            type="text"
-                            inputMode="decimal"
-                            value={rendimientoPeso == null ? '' : String(rendimientoPeso).replace('.', ',')}
-                            onChange={e => {
-                              const raw = e.target.value;
-                              setRendimientoPeso(raw === '' ? null : sanitizeDecimal(raw));
-                            }}
-                            placeholder="—"
-                            size="small"
-                            inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
-                            sx={{ flex: 1, minWidth: 0 }}
-                          />
-                          <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
-                            <Select
-                              value={unidadPeso || 'gr'}
-                              onChange={e => setUnidadPeso(e.target.value)}
-                              sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { py: '6px' } }}
-                            >
-                              <MenuItem value="gr">gr</MenuItem>
-                              <MenuItem value="kg">kg</MenuItem>
-                              <MenuItem value="ml">ml</MenuItem>
-                              <MenuItem value="lt">lt</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      )}
-                    </Box>
+                    <Button
+                      variant="contained"
+                      onClick={() => setRecetaConfirmada(true)}
+                      sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, mt: 1, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}
+                    >
+                      Entendido, continuar
+                    </Button>
                   </Box>
-
-                  <TextField
-                    label="Costo Objetivo"
-                    type="text"
-                    inputMode="decimal"
-                    value={pctCostoIdeal}
-                    onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
-                    onBlur={(e) => {
-                      const val = Number(e.target.value) || 0;
-                      if (!val || !articulo?.id) return;
-                      onPriceConfigSave?.({
-                        scope: 'articulo',
-                        scopeId: String(articulo.id),
-                        objetivo: val,
-                      });
-                    }}
-                    size="small"
-                    inputProps={{ min: 0, max: 150 }}
-                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                  />
-                </Box>
-
-                {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
-                {!esElaborado && !esPromo && (
-                  <Box sx={{ mb: 1.5 }}>
-                    {/* Header colapsable */}
-                    {/* Header colapsable */}
-                    <Box onClick={() => {
-                      setGemelosOpen(v => !v);
-                      if (!gemelosOpen) {
-                        setTimeout(() => gemelosSearchRef.current?.focus(), 50);
-                      }
-                    }}
+                );
+              }
+              return (
+                <>
+                  {/* ── Datos generales con foto ── */}
+                  <Box sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '150px 1fr' },
+                    gap: 2, mb: 2,
+                    alignItems: 'stretch',
+                  }}>
+                    {/* Columna izquierda: FOTO */}
+                    <Box
+                      onClick={() => setNotasModalOpen(true)}
                       sx={{
-                        display: 'flex', alignItems: 'center', gap: 1,
-                        cursor: 'pointer', py: 0.6, px: 1, borderRadius: 1,
-                        bgcolor: gemelosGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
-                        border: '1px solid', borderColor: gemelosGroup ? 'rgba(124,58,237,0.2)' : 'divider',
-                        '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
+                        display: 'flex', flexDirection: 'column', gap: 0.5,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Box sx={{
+                        position: 'relative', width: '100%', aspectRatio: '1 / 1',
+                        borderRadius: 1.5, overflow: 'hidden',
+                        border: '1px solid', borderColor: 'divider',
+                        bgcolor: foto ? 'transparent' : `${PRIMARY}08`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        '&:hover': { borderColor: PRIMARY },
+                        transition: 'border-color 0.15s',
                       }}>
-                      <Box sx={{ fontSize: 13, color: '#7c3aed' }}>🔗</Box>
-                      <Typography variant="caption" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.75rem', flex: 1 }}>
-                        {gemelosGroup
-                          ? (() => {
-                            const otros = (gemelosGroup.members || []).filter(m => Number(m.article_id) !== Number(articulo?.id)).length;
-                            return `Gemelos (${otros} artículo${otros !== 1 ? 's' : ''} comparten esta receta)`;
-                          })()
-                          : 'Vincular receta con otro artículo'}
+                        {foto ? (
+                          <img src={foto} alt="Foto receta" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <Box sx={{ textAlign: 'center', px: 1 }}>
+                            <ImageIcon sx={{ fontSize: 32, color: `${PRIMARY}80` }} />
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mt: 0.5 }}>
+                              Foto del producto
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.disabled', fontSize: '0.62rem' }}>
+                        {foto ? 'Tocá la foto para editar' : 'Tocá para agregar foto'}
                       </Typography>
-                      {gemelosLoading && <CircularProgress size={11} />}
-                      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{gemelosOpen ? '▲' : '▼'}</Typography>
                     </Box>
-                    {gemelosOpen && (
-                      <Box ref={gemelosPanelRef} sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
 
-                        {/* Header columnas */}
+                    {/* Columna derecha: nombre + rendimiento + objetivo */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      {modoInsumo && (() => {
+                        const insDat = insumos.find(i => String(i.id) === String(articulo?.id));
+                        const tieneCompras = Number(insDat?.cantidad_compras) > 0;
+                        if (!tieneCompras) return null;  // sin compras no hay decisión de costo
+                        return (
+                          <CostoPreferidoSelector
+                            insumoId={articulo?.id}
+                            businessId={businessId}
+                            costoPreferido={insDat?.costo_preferido ?? null}
+                            origenEfectivo={insDat?.costo_efectivo_origen}
+                            variant="aviso"
+                          />
+                        );
+                      })()}
+                      <TextField
+                        label="Nombre de la receta"
+                        value={nombre}
+                        onChange={e => setNombre(e.target.value)}
+                        size="small"
+                        placeholder={artNombre}
+                        fullWidth
+                      />
+                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                        {/* ── Bloque rendimiento del lote ── */}
                         <Box sx={{
-                          display: 'grid', gridTemplateColumns: '1fr 90px 28px',
-                          gap: 1, px: 1.25, pt: 0.75, pb: 0.25,
-                          borderBottom: '1px solid rgba(124,58,237,0.08)',
+                          flex: 1, minWidth: 360,
+                          display: 'flex', flexDirection: 'column', gap: 0.5,
                         }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Artículo
+                          <Typography variant="caption" sx={{
+                            color: 'text.secondary', fontWeight: 400, fontSize: '0.75rem',
+                            ml: 0.25,
+                          }}>
+                            Rendimiento del lote
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
-                            Objetivo %
-                          </Typography>
-                          <Box />
-                        </Box>
-
-                        {/* Buscador como primera línea */}
-                        <Box sx={{ px: 0.75, pt: 0.5 }}>
-                          <Box sx={{ position: 'relative' }}>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                             <TextField
-                              inputRef={gemelosSearchRef}
-                              size="small"
-                              fullWidth
-                              placeholder="Buscar artículo para vincular…"
-                              value={gemelosSearch}
+                              label="Cantidad"
+                              type="text"
+                              inputMode="decimal"
+                              value={rendimiento === '' ? '' : String(rendimiento).replace('.', ',')}
                               onChange={e => {
-                                setGemelosSearch(e.target.value);
-                                if (e.target.value.length >= 1) buscarGemelos(e.target.value);
-                                else setGemelosResults([]);
+                                const raw = e.target.value;
+                                setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
                               }}
-                              InputProps={{
-                                startAdornment: <InputAdornment position="start">
-                                  {gemelosSearching ? <CircularProgress size={12} /> : <SearchIcon sx={{ fontSize: 14, color: '#7c3aed' }} />}
-                                </InputAdornment>,
-                              }}
-                              sx={{
-                                '& .MuiOutlinedInput-root': {
-                                  borderRadius: 1,
-                                  fontSize: '0.78rem',
-                                  bgcolor: '#fff',
-                                  minHeight: 32,
-                                  '& fieldset': { borderColor: 'rgba(124,58,237,0.2)' },
-                                },
-                              }}
+                              size="small"
+                              inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '6px 8px' } }}
+                              sx={{ width: 72, flexShrink: 0 }}
                             />
-                            {gemelosResults.length > 0 && (
-                              <Box sx={{
-                                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30,
-                                bgcolor: 'background.paper', border: '1px solid', borderColor: 'rgba(124,58,237,0.2)',
-                                borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 200, overflowY: 'auto',
-                              }}>
-                                {gemelosResults.map(art => {
-                                  const yaGemelo = gemelosGroup?.members?.some(m => Number(m.article_id) === Number(art.id));
-                                  const tieneReceta = !!art.tiene_receta;
-                                  if (Number(art.id) === Number(articulo?.id)) return null;
-                                  return (
-                                    <Box key={art.id}
-                                      onClick={async () => {
-                                        if (yaGemelo || tieneReceta) return;
-                                        await agregarGemelo(art.id);
-                                        // Mantener el término escrito y refrescar resultados
-                                        // (el recién agregado pasa a verse como "✓" gracias a yaGemelo)
-                                        if (gemelosSearch.trim()) {
-                                          buscarGemelos(gemelosSearch);
-                                        }
-                                        gemelosSearchRef.current?.focus();
-                                      }}
-                                      sx={{
-                                        px: 1.5, py: 0.6, cursor: (yaGemelo || tieneReceta) ? 'default' : 'pointer',
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        borderBottom: '1px solid', borderColor: 'divider',
-                                        opacity: tieneReceta ? 0.5 : 1,
-                                        '&:hover': { bgcolor: (yaGemelo || tieneReceta) ? 'transparent' : 'rgba(124,58,237,0.06)' },
-                                      }}>
-                                      <Box sx={{ overflow: 'hidden' }}>
-                                        <Typography variant="body2" noWrap fontWeight={600} sx={{ fontSize: '0.78rem' }}>
-                                          {art.nombre || art.name}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                          #{art.id} {tieneReceta && '· Ya tiene receta propia'}
-                                        </Typography>
-                                      </Box>
-                                      <Chip
-                                        label={yaGemelo ? '✓' : tieneReceta ? 'Con receta' : '+ Vincular'}
-                                        size="small"
-                                        sx={{
-                                          height: 18, fontSize: '0.62rem', ml: 1, flexShrink: 0,
-                                          bgcolor: tieneReceta ? '#fee2e2' : yaGemelo ? 'rgba(124,58,237,0.05)' : 'rgba(124,58,237,0.1)',
-                                          color: tieneReceta ? '#ef4444' : '#7c3aed',
-                                          border: `1px solid ${tieneReceta ? '#fecaca' : 'rgba(124,58,237,0.2)'}`,
-                                        }}
-                                      />
-                                    </Box>
-                                  );
-                                })}
+                            <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
+                              <Select
+                                value={rendimientoUnidad}
+                                onChange={e => {
+                                  const nueva = e.target.value;
+                                  setRendimientoUnidad(nueva);
+                                  if (!['porcion', 'u'].includes(nueva)) {
+                                    setRendimientoPeso(null);
+                                    setUnidadPeso(null);
+                                  } else if (!unidadPeso) {
+                                    setUnidadPeso('gr');
+                                  }
+                                }}
+                                sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
+                              >
+                                <MenuItem value="porcion">Porción</MenuItem>
+                                <MenuItem value="u">Unidad</MenuItem>
+                                <MenuItem value="lt">Litro</MenuItem>
+                                <MenuItem value="ml">ml</MenuItem>
+                                <MenuItem value="kg">Kilo</MenuItem>
+                                <MenuItem value="gr">gr</MenuItem>
+                              </Select>
+                            </FormControl>
+                            {['porcion', 'u'].includes(rendimientoUnidad) && (
+                              <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
+                                <TextField
+                                  label="Equivalente"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={rendimientoPeso == null ? '' : String(rendimientoPeso).replace('.', ',')}
+                                  onChange={e => {
+                                    const raw = e.target.value;
+                                    setRendimientoPeso(raw === '' ? null : sanitizeDecimal(raw));
+                                  }}
+                                  placeholder="—"
+                                  size="small"
+                                  inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
+                                  sx={{ flex: 1, minWidth: 0 }}
+                                />
+                                <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
+                                  <Select
+                                    value={unidadPeso || 'gr'}
+                                    onChange={e => setUnidadPeso(e.target.value)}
+                                    sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { py: '6px' } }}
+                                  >
+                                    <MenuItem value="gr">gr</MenuItem>
+                                    <MenuItem value="kg">kg</MenuItem>
+                                    <MenuItem value="ml">ml</MenuItem>
+                                    <MenuItem value="lt">lt</MenuItem>
+                                  </Select>
+                                </FormControl>
                               </Box>
                             )}
                           </Box>
                         </Box>
-
-                        {/* Gemelos actuales — DEBAJO del buscador */}
-                        <Box sx={{ px: 0.75, pt: 0.5, pb: 0.75 }}>
-                          {gemelosGroup?.members
-                            ?.filter(m => Number(m.article_id) !== Number(articulo?.id))
-                            .map(m => {
-                              const objVal = m.pct_objetivo;
-                              return (
-                                <Box
-                                  key={m.article_id}
-                                  onClick={() => {
-                                    pushElaborado({
-                                      id: m.article_id,
-                                      nombre: m.nombre || `#${m.article_id}`,
-                                      precio: 0,
-                                      esArticulo: true,
-                                      pctObjetivo: m.pct_objetivo,
-                                    });
-                                  }}
-                                  sx={{
-                                    display: 'grid', gridTemplateColumns: '1fr 90px 28px',
-                                    alignItems: 'center', gap: 1,
-                                    py: 0.5, px: 0.5, borderRadius: 1, mb: 0.35,
-                                    bgcolor: '#fff',
-                                    border: '1px solid #eaecf0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s',
-                                    '&:hover': {
-                                      bgcolor: 'rgba(124,58,237,0.04)',
-                                      borderColor: 'rgba(124,58,237,0.3)',
-                                    },
-                                  }}
-                                >
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
-                                    <Typography variant="caption" sx={{
-                                      fontSize: '0.63rem', color: 'text.disabled', flexShrink: 0,
-                                      bgcolor: '#f1f5f9', px: 0.5, py: '1px', borderRadius: 0.5,
-                                    }}>
-                                      #{m.article_id}
-                                    </Typography>
-                                    <Typography
-                                      variant="caption" noWrap
-                                      sx={{
-                                        fontSize: '0.78rem', fontWeight: 500,
-                                        color: 'text.primary', flex: 1, minWidth: 0,
-                                      }}
-                                    >
-                                      {m.nombre || `Artículo #${m.article_id}`}
-                                    </Typography>
-                                  </Box>
-
-                                  <Box
-                                    onClick={(e) => e.stopPropagation()}
-                                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}
-                                  >
-                                    <TextField
-                                      size="small"
-                                      type="text"
-                                      inputMode="decimal"
-                                      defaultValue={objVal != null ? String(objVal).replace('.', ',') : ''}
-                                      placeholder="—"
-                                      onClick={(e) => e.stopPropagation()}
-                                      onBlur={(e) => {
-                                        const raw = e.target.value;
-                                        const nuevo = raw === '' ? null : parseDecimal(raw);
-                                        const anterior = objVal;
-                                        // Solo persistir si cambió realmente
-                                        if (nuevo === anterior) return;
-                                        if (nuevo != null && (!Number.isFinite(nuevo) || nuevo < 0 || nuevo > 150)) return;
-                                        actualizarObjetivoGemelo(m.article_id, nuevo);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          e.target.blur();
-                                        }
-                                        if (e.key === 'Escape') {
-                                          e.target.value = objVal != null ? objVal : '';
-                                          e.target.blur();
-                                        }
-                                      }}
-                                      inputProps={{
-                                        min: 0,
-                                        max: 150,
-                                        style: {
-                                          textAlign: 'center',
-                                          fontSize: '0.78rem',
-                                          fontWeight: 600,
-                                          padding: '2px 4px',
-                                          width: 44,
-                                        },
-                                      }}
-                                      InputProps={{
-                                        endAdornment: (
-                                          <InputAdornment position="end" sx={{ ml: 0, '& .MuiTypography-root': { fontSize: '0.72rem' } }}>
-                                            %
-                                          </InputAdornment>
-                                        ),
-                                        sx: {
-                                          fontSize: '0.78rem',
-                                          bgcolor: '#fff',
-                                          '& fieldset': { borderColor: 'transparent' },
-                                          '&:hover fieldset': { borderColor: 'rgba(124,58,237,0.3) !important' },
-                                          '&.Mui-focused fieldset': { borderColor: 'rgba(124,58,237,0.5) !important' },
-                                        },
-                                      }}
-                                    />
-                                  </Box>
-
-                                  <Tooltip title="Desvincular">
-                                    <IconButton
-                                      size="small"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        quitarGemelo(m.article_id);
-                                      }}
-                                      sx={{ p: '2px', color: 'error.main', opacity: 0.5, '&:hover': { opacity: 1 } }}
-                                    >
-                                      <DeleteOutlineIcon sx={{ fontSize: 14 }} />
-                                    </IconButton>
-                                  </Tooltip>
-                                </Box>
-                              );
-                            })}
-                        </Box>
-
-                      </Box>
-                    )}
-                  </Box>
-                )}
-
-                <Divider sx={{ mb: 1.5 }}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      Ingredientes ({items.length})
-                    </Typography>                    <Tooltip title={sortByCosto ? 'Orden manual' : 'Ordenar por costo'}>
-                      <IconButton size="small" onClick={() => setSortByCosto(v => !v)}
-                        sx={{ p: '2px', color: sortByCosto ? PRIMARY : 'text.disabled' }}>
-                        <SortIcon sx={{ fontSize: 14 }} /> {/* importar SortIcon */}
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Divider>
-
-                {/* ── Header columnas ── */}
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
-                  gap: '4px', px: 0.5, mb: 0.5,
-                }}>
-                  {['', 'Ingrediente', 'Cantidad', 'Unidad', '$ total', '', 'Observaciones', '', ''].map((col, i) => (
-                    <Typography key={i} variant="caption" color="text.secondary"
-                      fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: i >= 4 && i <= 6 ? 'center' : 'left' }}>
-                      {col}
-                    </Typography>
-                  ))}
-                </Box>
-
-                {hasDuplicates && (
-                  <Alert severity="error" sx={{ mb: 1, py: 0.5 }}>Hay ingredientes duplicados</Alert>
-                )}
-
-                {items.length === 0 ? (
-                  <Box sx={{
-                    py: 4, textAlign: 'center',
-                    border: '2px dashed', borderColor: 'divider', borderRadius: 1.5, mb: 1.5,
-                  }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Sin ingredientes. Hacé click en "Agregar ingrediente".
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Box sx={{ mb: 1.5 }}>
-                    {itemsOrdenados.map((item, i) => {
-                      const realIndex = items.indexOf(item); // índice real en el array original
-                      return (
-                        <ItemRow
-                          key={realIndex}
-                          item={item}
-                          index={realIndex} // ←índice real, no i
-                          objetivoReceta={pctCostoIdeal}
-                          onChange={(idx, partial) => {
-                            changeItem(idx, partial);
-                            if (newItemIndex === idx) setNewItemIndex(null);
-                          }}
-                          onRemove={removeItem}
-                          onOpenCompras={(it) => setComprasInsumo(it)}
-                          onOpenRecetaElaborado={(it) => {
-                            // Item-artículo (promo): abrir receta del artículo componente
-                            if (it.esArticulo || it.articleRefId) {
-                              const artId = Number(it.articleRefId);
-                              const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId);
-                              pushElaborado({
-                                id: artId,
-                                nombre: it.supplyNombre || art?.nombre || `#${artId}`,
-                                precio: Number(art?.precio) || 0,
-                                esArticulo: true,
-                              });
-                              return;
-                            }
-                            const ins = insumos.find(i => String(i.id) === String(it.supplyId));
-                            pushElaborado({
-                              id: it.supplyId,
-                              nombre: it.supplyNombre,
-                              precio: ins?.precio_ref || ins?.precio || 0,
+                        {/* Costo objetivo */}
+                        <TextField
+                          label="Costo Objetivo"
+                          type="text"
+                          inputMode="decimal"
+                          value={pctCostoIdeal}
+                          onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
+                          onBlur={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            if (!val || !articulo?.id) return;
+                            onPriceConfigSave?.({
+                              scope: 'articulo',
+                              scopeId: String(articulo.id),
+                              objetivo: val,
                             });
                           }}
-                          insumos={insumos}
-                          usedSupplyIds={usedSupplyIds}
-                          alertaSemanas={alertaSemanas}
-                          autoOpenSearch={newItemIndex === realIndex}
-                          recetasElaborados={localRecetasElaborados}
-                          allArticulos={allArticulos}
-                          articuloId={articulo?.id}
-                          businessId={businessId}
-                          searchOpen={openSearchIdx === realIndex}
-                          onSearchOpen={() => setOpenSearchIdx(realIndex)}
-                          onSearchClose={() => setOpenSearchIdx(null)}
-                          soloConCompras={soloConCompras}
-                          onToggleSoloConCompras={toggleSoloConCompras}
+                          size="small"
+                          inputProps={{ min: 0, max: 150 }}
+                          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                          sx={{ width: 96, flexShrink: 0, alignSelf: 'flex-start', mt: '18px' }}
                         />
-                      );
-                    })}
+                      </Box>
+                    </Box>
                   </Box>
-                )}
 
-                <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
-                  <Button
-                    startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
-                    onClick={addItem}
-                    size="small"
-                    disabled={insumosLoading}
-                    variant="outlined"
-                    sx={{ borderColor: PRIMARY, color: PRIMARY }}
-                  >
-                    Agregar ingrediente
-                  </Button>
+                  {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
+                  {!esElaborado && !esPromoEfectiva && (
+                    <Box sx={{ mb: 1.5 }}>
+                      {/* Header colapsable */}
+                      {/* Header colapsable */}
+                      <Box onClick={() => {
+                        setGemelosOpen(v => !v);
+                        if (!gemelosOpen) {
+                          setTimeout(() => gemelosSearchRef.current?.focus(), 50);
+                        }
+                      }}
+                        sx={{
+                          display: 'flex', alignItems: 'center', gap: 1,
+                          cursor: 'pointer', py: 0.6, px: 1, borderRadius: 1,
+                          bgcolor: gemelosGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
+                          border: '1px solid', borderColor: gemelosGroup ? 'rgba(124,58,237,0.2)' : 'divider',
+                          '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
+                        }}>
+                        <Box sx={{ fontSize: 13, color: '#7c3aed' }}>🔗</Box>
+                        <Typography variant="caption" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.75rem', flex: 1 }}>
+                          {gemelosGroup
+                            ? (() => {
+                              const otros = (gemelosGroup.members || []).filter(m => Number(m.article_id) !== Number(articulo?.id)).length;
+                              return `Gemelos (${otros} artículo${otros !== 1 ? 's' : ''} comparten esta receta)`;
+                            })()
+                            : 'Vincular receta con otro artículo'}
+                        </Typography>
+                        {gemelosLoading && <CircularProgress size={11} />}
+                        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{gemelosOpen ? '▲' : '▼'}</Typography>
+                      </Box>
+                      {gemelosOpen && (
+                        <Box ref={gemelosPanelRef} sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
 
-                </Stack>
+                          {/* Header columnas */}
+                          <Box sx={{
+                            display: 'grid', gridTemplateColumns: '1fr 90px 28px',
+                            gap: 1, px: 1.25, pt: 0.75, pb: 0.25,
+                            borderBottom: '1px solid rgba(124,58,237,0.08)',
+                          }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              Artículo
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
+                              Objetivo %
+                            </Typography>
+                            <Box />
+                          </Box>
 
-                <Divider sx={{ mb: 2 }} />
+                          {/* Buscador como primera línea */}
+                          <Box sx={{ px: 0.75, pt: 0.5 }}>
+                            <Box sx={{ position: 'relative' }}>
+                              <TextField
+                                inputRef={gemelosSearchRef}
+                                size="small"
+                                fullWidth
+                                placeholder="Buscar artículo para vincular…"
+                                value={gemelosSearch}
+                                onChange={e => {
+                                  setGemelosSearch(e.target.value);
+                                  if (e.target.value.length >= 1) buscarGemelos(e.target.value);
+                                  else setGemelosResults([]);
+                                }}
+                                InputProps={{
+                                  startAdornment: <InputAdornment position="start">
+                                    {gemelosSearching ? <CircularProgress size={12} /> : <SearchIcon sx={{ fontSize: 14, color: '#7c3aed' }} />}
+                                  </InputAdornment>,
+                                }}
+                                sx={{
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: 1,
+                                    fontSize: '0.78rem',
+                                    bgcolor: '#fff',
+                                    minHeight: 32,
+                                    '& fieldset': { borderColor: 'rgba(124,58,237,0.2)' },
+                                  },
+                                }}
+                              />
+                              {gemelosResults.length > 0 && (
+                                <Box sx={{
+                                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30,
+                                  bgcolor: 'background.paper', border: '1px solid', borderColor: 'rgba(124,58,237,0.2)',
+                                  borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 200, overflowY: 'auto',
+                                }}>
+                                  {gemelosResults.map(art => {
+                                    const yaGemelo = gemelosGroup?.members?.some(m => Number(m.article_id) === Number(art.id));
+                                    const tieneReceta = !!art.tiene_receta;
+                                    if (Number(art.id) === Number(articulo?.id)) return null;
+                                    return (
+                                      <Box key={art.id}
+                                        onClick={async () => {
+                                          if (yaGemelo || tieneReceta) return;
+                                          await agregarGemelo(art.id);
+                                          // Mantener el término escrito y refrescar resultados
+                                          // (el recién agregado pasa a verse como "✓" gracias a yaGemelo)
+                                          if (gemelosSearch.trim()) {
+                                            buscarGemelos(gemelosSearch);
+                                          }
+                                          gemelosSearchRef.current?.focus();
+                                        }}
+                                        sx={{
+                                          px: 1.5, py: 0.6, cursor: (yaGemelo || tieneReceta) ? 'default' : 'pointer',
+                                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                          borderBottom: '1px solid', borderColor: 'divider',
+                                          opacity: tieneReceta ? 0.5 : 1,
+                                          '&:hover': { bgcolor: (yaGemelo || tieneReceta) ? 'transparent' : 'rgba(124,58,237,0.06)' },
+                                        }}>
+                                        <Box sx={{ overflow: 'hidden' }}>
+                                          <Typography variant="body2" noWrap fontWeight={600} sx={{ fontSize: '0.78rem' }}>
+                                            {art.nombre || art.name}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                            #{art.id} {tieneReceta && '· Ya tiene receta propia'}
+                                          </Typography>
+                                        </Box>
+                                        <Chip
+                                          label={yaGemelo ? '✓' : tieneReceta ? 'Con receta' : '+ Vincular'}
+                                          size="small"
+                                          sx={{
+                                            height: 18, fontSize: '0.62rem', ml: 1, flexShrink: 0,
+                                            bgcolor: tieneReceta ? '#fee2e2' : yaGemelo ? 'rgba(124,58,237,0.05)' : 'rgba(124,58,237,0.1)',
+                                            color: tieneReceta ? '#ef4444' : '#7c3aed',
+                                            border: `1px solid ${tieneReceta ? '#fecaca' : 'rgba(124,58,237,0.2)'}`,
+                                          }}
+                                        />
+                                      </Box>
+                                    );
+                                  })}
+                                </Box>
+                              )}
+                            </Box>
+                          </Box>
 
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: Number(rendimiento) > 1 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
-                  gap: 1.5,
-                  bgcolor: 'action.hover',
-                  borderRadius: 1.5, p: 2,
-                  mb: 2
-                }}>
-                  {Number(rendimiento) > 1 && (
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                      <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
+                          {/* Gemelos actuales — DEBAJO del buscador */}
+                          <Box sx={{ px: 0.75, pt: 0.5, pb: 0.75 }}>
+                            {gemelosGroup?.members
+                              ?.filter(m => Number(m.article_id) !== Number(articulo?.id))
+                              .map(m => {
+                                const objVal = m.pct_objetivo;
+                                return (
+                                  <Box
+                                    key={m.article_id}
+                                    onClick={() => {
+                                      pushElaborado({
+                                        id: m.article_id,
+                                        nombre: m.nombre || `#${m.article_id}`,
+                                        precio: 0,
+                                        esArticulo: true,
+                                        pctObjetivo: m.pct_objetivo,
+                                      });
+                                    }}
+                                    sx={{
+                                      display: 'grid', gridTemplateColumns: '1fr 90px 28px',
+                                      alignItems: 'center', gap: 1,
+                                      py: 0.5, px: 0.5, borderRadius: 1, mb: 0.35,
+                                      bgcolor: '#fff',
+                                      border: '1px solid #eaecf0',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s',
+                                      '&:hover': {
+                                        bgcolor: 'rgba(124,58,237,0.04)',
+                                        borderColor: 'rgba(124,58,237,0.3)',
+                                      },
+                                    }}
+                                  >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
+                                      <Typography variant="caption" sx={{
+                                        fontSize: '0.63rem', color: 'text.disabled', flexShrink: 0,
+                                        bgcolor: '#f1f5f9', px: 0.5, py: '1px', borderRadius: 0.5,
+                                      }}>
+                                        #{m.article_id}
+                                      </Typography>
+                                      <Typography
+                                        variant="caption" noWrap
+                                        sx={{
+                                          fontSize: '0.78rem', fontWeight: 500,
+                                          color: 'text.primary', flex: 1, minWidth: 0,
+                                        }}
+                                      >
+                                        {m.nombre || `Artículo #${m.article_id}`}
+                                      </Typography>
+                                    </Box>
+
+                                    <Box
+                                      onClick={(e) => e.stopPropagation()}
+                                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}
+                                    >
+                                      <TextField
+                                        size="small"
+                                        type="text"
+                                        inputMode="decimal"
+                                        defaultValue={objVal != null ? String(objVal).replace('.', ',') : ''}
+                                        placeholder="—"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onBlur={(e) => {
+                                          const raw = e.target.value;
+                                          const nuevo = raw === '' ? null : parseDecimal(raw);
+                                          const anterior = objVal;
+                                          // Solo persistir si cambió realmente
+                                          if (nuevo === anterior) return;
+                                          if (nuevo != null && (!Number.isFinite(nuevo) || nuevo < 0 || nuevo > 150)) return;
+                                          actualizarObjetivoGemelo(m.article_id, nuevo);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            e.target.blur();
+                                          }
+                                          if (e.key === 'Escape') {
+                                            e.target.value = objVal != null ? objVal : '';
+                                            e.target.blur();
+                                          }
+                                        }}
+                                        inputProps={{
+                                          min: 0,
+                                          max: 150,
+                                          style: {
+                                            textAlign: 'center',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 600,
+                                            padding: '2px 4px',
+                                            width: 44,
+                                          },
+                                        }}
+                                        InputProps={{
+                                          endAdornment: (
+                                            <InputAdornment position="end" sx={{ ml: 0, '& .MuiTypography-root': { fontSize: '0.72rem' } }}>
+                                              %
+                                            </InputAdornment>
+                                          ),
+                                          sx: {
+                                            fontSize: '0.78rem',
+                                            bgcolor: '#fff',
+                                            '& fieldset': { borderColor: 'transparent' },
+                                            '&:hover fieldset': { borderColor: 'rgba(124,58,237,0.3) !important' },
+                                            '&.Mui-focused fieldset': { borderColor: 'rgba(124,58,237,0.5) !important' },
+                                          },
+                                        }}
+                                      />
+                                    </Box>
+
+                                    <Tooltip title="Desvincular">
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          quitarGemelo(m.article_id);
+                                        }}
+                                        sx={{ p: '2px', color: 'error.main', opacity: 0.5, '&:hover': { opacity: 1 } }}
+                                      >
+                                        <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Box>
+                                );
+                              })}
+                          </Box>
+
+                        </Box>
+                      )}
                     </Box>
                   )}
 
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      {Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion'
-                        ? labelPorUnidad
-                        : 'Costo total'}
-                    </Typography>
-                    <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>Precio sugerido ({pctCostoIdeal}% costo)</Typography>
-                    <Typography variant="h6" fontWeight={800} color="success.main">{precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}</Typography>
-                    {precioActual > 0 && (
-                      <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
-                        <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
-                        {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
-                      </Stack>
-                    )}
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
-                    {pctCostoActual !== null ? (
-                      <>
-                        <Typography variant="h6" fontWeight={800} color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>{fmt(pctCostoActual, 1)}%</Typography>
-                        <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>Ideal: {pctCostoIdeal}%</Typography>
-                      </>
-                    ) : (
-                      <Typography variant="h6" color="text.disabled">—</Typography>
-                    )}
-                  </Box>
-                </Box>
+                  <Divider sx={{ mb: 1.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Ingredientes ({items.length})
+                      </Typography>                    <Tooltip title={sortByCosto ? 'Orden manual' : 'Ordenar por costo'}>
+                        <IconButton size="small" onClick={() => setSortByCosto(v => !v)}
+                          sx={{ p: '2px', color: sortByCosto ? PRIMARY : 'text.disabled' }}>
+                          <SortIcon sx={{ fontSize: 14 }} /> {/* importar SortIcon */}
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Divider>
 
-                {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
-                {success && <Alert severity="success" sx={{ mb: 1.5 }}>¡Receta guardada!</Alert>}
-              </>
-            )}
+                  {/* ── Header columnas ── */}
+                  <Box sx={{
+                    display: 'grid',
+                    gridTemplateColumns: gridIngredientes,
+                    gap: '4px', px: 0.5, mb: 0.5,
+                  }}>
+                    {(esPromoEfectiva
+                      ? ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '__SIN_PROMO__', '', 'Observaciones', '', '']
+                      : ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '', 'Observaciones', '', '']
+                    ).map((col, i) => {
+                      if (col === '__SIN_PROMO__') {
+                        const listaActiva = listaSinPromo
+                          ? (priceLists || []).find(l => String(l.id) === String(listaSinPromo))
+                          : (priceLists || []).find(l => l.is_favorite);
+                        return (
+                          <Select
+                            key={i}
+                            size="small"
+                            value={listaSinPromo ?? '_base'}
+                            onChange={e => setListaSinPromo(e.target.value === '_base' ? null : e.target.value)}
+                            variant="standard"
+                            disableUnderline
+                            renderValue={() => (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
+                                <Box component="span" sx={{ fontSize: '0.68rem', fontWeight: 700, color: 'text.secondary' }}>
+                                  $ Sin Promo
+                                </Box>
+                                <Box component="span" sx={{ fontSize: '0.62rem', fontWeight: 700, color: colorSinPromo }}>
+                                  {listaActiva?.name || listaActiva?.nombre || 'Principal'}
+                                </Box>
+                              </Box>
+                            )}
+                            MenuProps={{
+                              anchorOrigin: { vertical: 'bottom', horizontal: 'center' },
+                              transformOrigin: { vertical: 'top', horizontal: 'center' },
+                            }}
+                            sx={{
+                              '& .MuiSelect-select': { py: 0, textAlign: 'center' },
+                              '& .MuiSvgIcon-root': { fontSize: 14, color: colorSinPromo },
+                            }}
+                          >
+                            <MenuItem value="_base" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                              {(priceLists || []).find(l => l.is_favorite)?.name || 'Principal'}
+                            </MenuItem>
+                            {(priceLists || []).filter(l => !l.is_favorite).map((l) => {
+                              const idxReal = (priceLists || []).findIndex(x => String(x.id) === String(l.id));
+                              const c = colorForList(l, idxReal);
+                              return (
+                                <MenuItem key={l.id} value={l.id} sx={{ fontSize: '0.75rem', fontWeight: 700, color: c }}>
+                                  {l.name}
+                                </MenuItem>
+                              );
+                            })}
+                          </Select>
+                        );
+                      }
+                      return (
+                        <Typography key={i} variant="caption" color="text.secondary"
+                          fontWeight={700} sx={{ fontSize: '0.68rem', textAlign: 'center' }}>
+                          {col}
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+
+                  {hasDuplicates && (
+                    <Alert severity="error" sx={{ mb: 1, py: 0.5 }}>Hay ingredientes duplicados</Alert>
+                  )}
+
+                  {items.length === 0 ? (
+                    <Box sx={{
+                      py: 4, textAlign: 'center',
+                      border: '2px dashed', borderColor: 'divider', borderRadius: 1.5, mb: 1.5,
+                    }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Sin ingredientes. Hacé click en "Agregar ingrediente".
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ mb: 1.5 }}>
+                      {itemsOrdenados.map((item, i) => {
+                        const realIndex = items.indexOf(item); // índice real en el array original
+                        return (
+                          <ItemRow
+                            key={realIndex}
+                            item={item}
+                            index={realIndex}
+                            gridTemplate={gridIngredientes}
+                            esPromo={esPromoEfectiva || modoPromoNueva}
+                            getPrecioSinPromo={getPrecioSinPromo}
+                            colorSinPromo={colorSinPromo}
+                            objetivoReceta={pctCostoIdeal}
+                            onChange={(idx, partial) => {
+                              changeItem(idx, partial);
+                              if (newItemIndex === idx) setNewItemIndex(null);
+                            }}
+                            onRemove={removeItem}
+                            onOpenRecetaElaborado={(it) => {
+                              // Item-artículo (promo): abrir receta del artículo componente
+                              if (it.esArticulo || it.articleRefId) {
+                                const artId = Number(it.articleRefId);
+                                const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId);
+                                pushElaborado({
+                                  id: artId,
+                                  nombre: it.supplyNombre || art?.nombre || `#${artId}`,
+                                  precio: Number(art?.precio) || 0,
+                                  esArticulo: true,
+                                });
+                                return;
+                              }
+                              const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+                              pushElaborado({
+                                id: it.supplyId,
+                                nombre: it.supplyNombre,
+                                precio: ins?.precio_ref || ins?.precio || 0,
+                              });
+                            }}
+                            insumos={insumos}
+                            usedSupplyIds={usedSupplyIds}
+                            alertaSemanas={alertaSemanas}
+                            autoOpenSearch={newItemIndex === realIndex}
+                            recetasElaborados={localRecetasElaborados}
+                            allArticulos={allArticulos}
+                            articuloId={articulo?.id}
+                            businessId={businessId}
+                            searchOpen={openSearchIdx === realIndex}
+                            onSearchOpen={() => setOpenSearchIdx(realIndex)}
+                            onSearchClose={() => setOpenSearchIdx(null)}
+                            soloConCompras={soloConCompras}
+                            onToggleSoloConCompras={toggleSoloConCompras}
+                            appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
+                          />
+                        );
+                      })}
+                    </Box>
+                  )}
+
+                  <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
+                    <Button
+                      startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
+                      onClick={addItem}
+                      size="small"
+                      disabled={insumosLoading}
+                      variant="outlined"
+                      sx={{ borderColor: PRIMARY, color: PRIMARY }}
+                    >
+                      Agregar ingrediente
+                    </Button>
+
+                  </Stack>
+
+                  <Divider sx={{ mb: 2 }} />
+
+                  <Box sx={{
+                    display: 'grid',
+                    gridTemplateColumns: Number(rendimiento) > 1 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                    gap: 1.5,
+                    bgcolor: 'action.hover',
+                    borderRadius: 1.5, p: 2,
+                    mb: 2
+                  }}>
+                    {Number(rendimiento) > 1 && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
+                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
+                      </Box>
+                    )}
+
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        {Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion'
+                          ? labelPorUnidad
+                          : 'Costo total'}
+                      </Typography>
+                      <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
+                    </Box>
+                    <Box>
+                      {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
+                      {esPromoEfectiva && ventaSinPromo > 0 && (
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem' }}>
+                          Venta sin promo: ${fmt(ventaSinPromo)}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>Precio sugerido ({pctCostoIdeal}% costo)</Typography>
+                      <Typography
+                        variant="h6"
+                        fontWeight={800}
+                        sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main' }}
+                      >
+                        {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
+                      </Typography>
+                      {sugeridoExcedeVenta && (
+                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
+                          <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#ef4444' }}>
+                            Supera la venta sin promo
+                          </Typography>
+                        </Stack>
+                      )}
+                      {precioActual > 0 && (
+                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
+                          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
+                          {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
+                        </Stack>
+                      )}
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
+                      {pctCostoActual !== null ? (
+                        <>
+                          <Typography variant="h6" fontWeight={800} color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>{fmt(pctCostoActual, 1)}%</Typography>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>Ideal: {pctCostoIdeal}%</Typography>
+                        </>
+                      ) : (
+                        <Typography variant="h6" color="text.disabled">—</Typography>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
+                  {success && <Alert severity="success" sx={{ mb: 1.5 }}>¡Receta guardada!</Alert>}
+                </>
+              );
+            })()}
           </Box>
 
           {/* ── FOOTER ── */}
@@ -3630,7 +4938,7 @@ const labelPorUnidad = useMemo(() => {
                   startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
                   onClick={() => setConfirmDelete(true)}
                 >
-                  {esPromo ? 'Borrar promo' : 'Borrar receta'}
+                  {esPromoEfectiva ? 'Borrar promo' : 'Borrar receta'}
                 </Button>
               )}
               <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
@@ -3644,24 +4952,12 @@ const labelPorUnidad = useMemo(() => {
                 startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
                 sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}
               >
-                {saving ? 'Guardando…' : 'Guardar receta'}
+                {saving ? 'Guardando…' : (modoPromoNueva ? 'Guardar promo' : 'Guardar receta')}
               </Button>
             </Stack>
           </Box>
         </Box >
       </Modal >
-
-      {/* ── Modal últimas compras ── */}
-      {
-        comprasInsumo && (
-          <UltimasComprasModal
-            item={comprasInsumo}
-            businessId={businessId}
-            onClose={() => setComprasInsumo(null)}
-            insumos={insumos}
-          />
-        )
-      }
 
       {/* ── Modal notas + foto ── */}
       {
@@ -3669,15 +4965,37 @@ const labelPorUnidad = useMemo(() => {
           <NotasModal
             notas={notas}
             foto={foto}
+            fotos={fotos}
             notasUpdatedAt={notasUpdatedAt}
             articuloId={articulo?.id}
             businessId={businessId}
             esElaborado={esElaborado}  // ← agregar
-            onSave={(n, f, ts) => { setNotas(n); setFoto(f); if (ts) setNotasUpdatedAt(ts); }}
+            onSave={(n, fArr, ts) => {
+              setNotas(n);
+              setFotos(fArr);                        // array de fotos
+              setFoto(fArr[0] || null);              // compat: `foto` = primera del array
+              if (ts) setNotasUpdatedAt(ts);
+            }}
             onClose={() => setNotasModalOpen(false)}
           />
         )
       }
+
+      {previewFotoOpen && foto && (
+        <VistaPreviaFotoModal
+          foto={foto}
+          onEditar={() => { setEditarFotoSrc(foto); setPreviewFotoOpen(false); }}
+          onQuitar={() => { setFoto(null); setPreviewFotoOpen(false); }}
+          onClose={() => setPreviewFotoOpen(false)}
+        />
+      )}
+      {editarFotoSrc && (
+        <EditorFotoModal
+          imagenSrc={editarFotoSrc}
+          onConfirmar={(recortada) => { setFoto(recortada); setEditarFotoSrc(null); }}
+          onCancelar={() => setEditarFotoSrc(null)}
+        />
+      )}
 
       {/* ── Vista Cocina ── */}
       {
@@ -3692,6 +5010,26 @@ const labelPorUnidad = useMemo(() => {
           />
         )
       }
+
+      {reemplazarModalOpen && (
+        <ModalReemplazarInsumo
+          insumoId={articulo?.id}
+          insumoNombre={artNombre}
+          businessId={businessId}
+          insumos={insumos}
+          onClose={() => setReemplazarModalOpen(false)}
+          onReemplazado={(r) => {
+            setReemplazarModalOpen(false);
+            // Avisar a TODOS los RecetaModal abiertos (cascada) que no autoguarden
+            try { window.dispatchEvent(new CustomEvent('insumo:reemplazado')); } catch { }
+            skipAutoSaveRef.current = true;
+            setElaboradosStack([]);
+            try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+            try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
+            onClose();
+          }}
+        />
+      )}
 
       {/* ── Confirmar borrar ── */}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
@@ -3712,6 +5050,16 @@ const labelPorUnidad = useMemo(() => {
           >
             {deleting ? 'Borrando…' : 'Sí, borrar'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={reemplazarAviso} onClose={() => setReemplazarAviso(false)} maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Reemplazar insumo</DialogTitle>
+        <DialogContent>
+          <DialogContentText>Esta función está en construcción. Pronto vas a poder reemplazar el insumo en todas las recetas.</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReemplazarAviso(false)}>Entendido</Button>
         </DialogActions>
       </Dialog>
 
@@ -3758,7 +5106,6 @@ const labelPorUnidad = useMemo(() => {
                 : `${BASE}/businesses/${businessId}/insumos/${elaborado.id}/receta`
             }
             recetasElaborados={localRecetasElaborados}
-            recetasElaborados={localRecetasElaborados}
             priceLists={priceLists}
             priceListsByList={priceListsByList}
             onSaved={(saved) => {
@@ -3766,6 +5113,26 @@ const labelPorUnidad = useMemo(() => {
               // Refrescar gemelos del modal base si era el último
               if (elaboradosStack.length === 1) {
                 loadGemelosGroup();
+              }
+              // Receta borrada: sacar del mapa para que deje de figurar como elaborado
+              if (saved?.costo_total === 0 && saved?.costo_por_porcion === 0) {
+                setLocalRecetasElaborados(prev => {
+                  const next = { ...prev };
+                  delete next[String(elaborado.id)];
+                  return next;
+                });
+                // Sin receta: vuelve a ser insumo simple, el costo sale de la compra
+                setInsumos(prev => prev.map(i =>
+                  String(i.id) === String(elaborado.id)
+                    ? { ...i, es_elaborado: false, tiene_receta: false, costo_efectivo_origen: 'compra' }
+                    : i
+                ));
+                setItems(prev => prev.map(it =>
+                  String(it.supplyId) === String(elaborado.id)
+                    ? { ...it, _refreshed: Date.now() }
+                    : it
+                ));
+                return;
               }
               if (saved?.costo_total != null || saved?.costo_por_porcion != null) {
                 const costoTotal = saved.costo_total ?? (saved.costo_por_porcion * (saved.porciones || 1));
@@ -3780,6 +5147,12 @@ const labelPorUnidad = useMemo(() => {
                     rendimientoUnidad: saved.rendimiento_unidad || prev[String(elaborado.id)]?.rendimientoUnidad || 'porcion',
                   },
                 }));
+                // La receta recién guardada es lo más nuevo: el origen pasa a elaboración
+                setInsumos(prev => prev.map(i =>
+                  String(i.id) === String(elaborado.id)
+                    ? { ...i, es_elaborado: true, tiene_receta: true, costo_efectivo_origen: 'elaboracion' }
+                    : i
+                ));
                 setItems(prev => prev.map(it =>
                   String(it.supplyId) === String(elaborado.id)
                     ? { ...it, _refreshed: Date.now() }
