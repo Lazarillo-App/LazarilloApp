@@ -51,6 +51,7 @@ import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import VistaCartaMenu from '../componentes/VistaCartaMenu';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -265,6 +266,7 @@ export default function ArticulosMain(props) {
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
 
   const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
+  console.log('rootBusiness:', rootBusiness);
 
   usePersistUiActions(activeBizId);
 
@@ -1051,6 +1053,25 @@ export default function ArticulosMain(props) {
     [agrupacionesRich]
   );
 
+  // Datos del negocio para el encabezado de la carta (branding + contacto)
+  const negocioCarta = useMemo(() => {
+    const b = rootBusiness || {};
+    const props = b.props || {};
+    const branding = props.branding || {};
+    const contact = props.contact || {};
+    const social = props.social || {};
+    return {
+      nombre: b.name || '',
+      logo: branding.logo_url || '',
+      ink: branding.secondary || '#2a2320',
+      telefono: contact.phone || '',
+      web: contact.web || '',
+      instagram: social.instagram || '',
+      wifiNombre: props.wifi?.nombre || props.wifiNombre || '',
+      wifiClave: props.wifi?.clave || props.wifiClave || '',
+    };
+  }, [rootBusiness]);
+
   const discIds = useMemo(() => {
     const s = new Set();
     if (!discGroup) return s;
@@ -1070,6 +1091,46 @@ export default function ArticulosMain(props) {
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
 
+  // ── Estado del switch tabla ↔ carta ──
+  const [vistaCarta, setVistaCarta] = useState(false);
+
+  // Aplana el árbol real de artículos al shape que consume la carta.
+  // Cada artículo lleva su agrupación real (si pertenece a alguna) para el modo "por agrupación".
+  const articulosParaCarta = useMemo(() => {
+    // 1) Mapa articuloId -> nombre de agrupación (de las agrupaciones reales)
+    const agrupDeArticulo = new Map();
+    for (const g of agrupacionesRich || []) {
+      if (esTodoGroup(g) || isDiscontinuadosGroup(g)) continue;
+      for (const a of (g.articulos || [])) {
+        const id = Number(a?.id ?? a?.article_id);
+        if (Number.isFinite(id) && !agrupDeArticulo.has(id)) {
+          agrupDeArticulo.set(id, g.nombre);
+        }
+      }
+    }
+    // 2) Aplanar categorias (árbol) a lista de artículos
+    const out = [];
+    for (const sub of categorias || []) {
+      for (const cat of (sub.categorias || [])) {
+        for (const a of (cat.articulos || [])) {
+          const id = getArtId(a);
+          if (id == null) continue;
+          if (effectiveDiscIds.has(id)) continue; // no mostramos discontinuados en la carta
+          out.push({
+            id,
+            nombre: String(a.nombre ?? a.descripcion ?? '').trim(),
+            precio: Number(a.precio ?? 0),
+            // En la UI, el "rubro" (sección grande) es el subrubro; la sub es la categoria.
+            rubro: String(a.subrubro ?? sub.subrubro ?? '').trim(),
+            sub: String(a.categoria ?? cat.categoria ?? '').trim(),
+            agrupacion: agrupDeArticulo.get(id) || '',
+            descripcion: a.descripcion || '',
+          });
+        }
+      }
+    }
+    return out;
+  }, [categorias, agrupacionesRich, effectiveDiscIds]);
 
   const articuloIds = useMemo(
     () =>
@@ -2236,6 +2297,38 @@ export default function ArticulosMain(props) {
     }
   }, [activeBizId]);
 
+  // ── Vista carta a pantalla completa ──
+  if (vistaCarta) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#faf9f7', padding: '16px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <button
+            onClick={() => setVistaCarta(false)}
+            style={{
+              border: '1px solid #d8d3ca', background: '#fff', borderRadius: 8,
+              padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+            ← Volver a la tabla
+          </button>
+          <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#2a2320' }}>
+            Diseño de carta{activeBranch ? ` — ${activeBranch.name}` : ''}
+          </h2>
+          <div style={{ width: 140 }} />
+        </div>
+        <VistaCartaMenu
+          articulos={articulosParaCarta}
+          negocio={negocioCarta}
+          accent={negocioCarta.ink || '#7a1f3d'}
+          cartaGuardada={rootBusiness?.props?.carta || null}
+          onGuardarCarta={async (carta) => {
+            await BusinessesAPI.update(rootBusiness.id, { carta });
+          }}
+        />
+      </div>
+    );
+  }
+
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -2387,6 +2480,23 @@ export default function ArticulosMain(props) {
               </MenuItem>
             </Menu>
           </div>
+
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setVistaCarta(true)}
+            sx={{
+              borderColor: 'var(--color-primary)',
+              color: 'var(--color-primary)',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              whiteSpace: 'nowrap',
+              px: 2,
+            }}
+          >
+            Diseño
+          </Button>
         </div>
       </div>
 

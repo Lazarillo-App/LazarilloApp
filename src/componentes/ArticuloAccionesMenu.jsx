@@ -236,6 +236,7 @@ function MoverAModal({
 function ArticuloAccionesMenu({
   articulo,
   onCrearPromo,
+  esPromo = false,
   agrupaciones = [],
   agrupacionSeleccionada,
   todoGroupId,
@@ -750,10 +751,12 @@ function ArticuloAccionesMenu({
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Editar nombre</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
-          <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Crear promoción</ListItemText>
-        </MenuItem>
+        {!esPromo && (
+          <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
+            <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Crear promoción</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={toggleDiscontinuado}>
           <ListItemIcon>{isInDiscontinuados ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}</ListItemIcon>
           <ListItemText>{isInDiscontinuados ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>

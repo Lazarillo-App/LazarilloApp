@@ -559,7 +559,11 @@ function SidebarCategorias({
                 return (
                   <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                      <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
+                      <span style={{
+                        fontStyle: (esDiscontinuadosGroup(g) || esTodoGroup(g) || esPromoGroup(g)) ? 'italic' : 'normal',
+                        fontWeight: (esTodoGroup(g) || esPromoGroup(g)) ? 700 : undefined,
+                        color: esDiscontinuadosGroup(g) ? '#555' : 'inherit'
+                      }}>
                         {labelAgrup(g)}
                         {gMonto > 0 && !esDiscontinuadosGroup(g) && (
                           <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600 }}>

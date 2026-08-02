@@ -21,7 +21,7 @@ import { ensureActiveBusiness } from './utils/ensureActiveBusiness';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { BusinessesAPI } from './servicios/apiBusinesses';
 import { obtenerAgrupaciones as apiObtenerAgrupaciones } from './servicios/apiAgrupaciones';
-
+import AsistenteOnboarding from './componentes/asistente/AsistenteOnboarding';
 import Login from './paginas/Login';
 import LazarilloLanding from './paginas/LazarilloLanding';
 import Register from './paginas/Register';
@@ -32,7 +32,7 @@ import Activar from './paginas/Activar';
 import AdminApp from './admin/AdminApp';
 // ── NUEVAS PÁGINAS ──
 import AceptarInvitacion from './paginas/AceptarInvitacion';
-import SelectorNegocio  from './paginas/SelectorNegocio';
+import SelectorNegocio from './paginas/SelectorNegocio';
 
 import './css/global.css';
 import './css/theme-layout.css';
@@ -229,36 +229,36 @@ export default function App() {
               <Route path="/seleccionar-negocio" element={<SelectorNegocio />} />
 
               <Route element={<OnboardingGuard />}>
-              <Route
-                path="/menu"
-                element={
-                  <RequireMaxi onReady={() => { }}>
-                    <ArticulosMain
-                      agrupacionSeleccionada={agrupacionSeleccionada}
-                      setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-                      categoriaSeleccionada={categoriaSeleccionada}
-                      setCategoriaSeleccionada={setCategoriaSeleccionada}
-                      agrupaciones={agrupaciones}
-                      categorias={categorias}
-                      onBusinessSwitched={onBusinessSwitched}
-                      activeBizId={activeBusinessId}
-                    />
-                  </RequireMaxi>
-                }
-              />
-              <Route
-                path="/agrupacioneslist"
-                element={<AgrupacionesList agrupaciones={agrupaciones} />}
-              />
-              <Route
-                path="/insumos"
-                element={
-                  <Insumos />
-                }
-              />
-              <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
-              <Route path="/configuracion" element={<ConfiguracionMain />} />
-            </Route>
+                <Route
+                  path="/menu"
+                  element={
+                    <RequireMaxi onReady={() => { }}>
+                      <ArticulosMain
+                        agrupacionSeleccionada={agrupacionSeleccionada}
+                        setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+                        categoriaSeleccionada={categoriaSeleccionada}
+                        setCategoriaSeleccionada={setCategoriaSeleccionada}
+                        agrupaciones={agrupaciones}
+                        categorias={categorias}
+                        onBusinessSwitched={onBusinessSwitched}
+                        activeBizId={activeBusinessId}
+                      />
+                    </RequireMaxi>
+                  }
+                />
+                <Route
+                  path="/agrupacioneslist"
+                  element={<AgrupacionesList agrupaciones={agrupaciones} />}
+                />
+                <Route
+                  path="/insumos"
+                  element={
+                    <Insumos />
+                  }
+                />
+                <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
+                <Route path="/configuracion" element={<ConfiguracionMain />} />
+              </Route>
             </Route>
           ) : (
             <Route path="/menu" element={<AdminApp />} />
@@ -266,6 +266,7 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<LazarilloLanding />} />
+
       </Routes>
     </ThemeProviderNegocio>
   );

@@ -315,6 +315,7 @@ export default function TablaArticulos({
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
   const [promoIds, setPromoIds] = useState(() => new Set());
+  const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
@@ -358,7 +359,21 @@ export default function TablaArticulos({
     } catch (e) { }
   }, []);
 
-  const visibleCols = useMemo(() => colConfig.filter(c => c.visible), [colConfig]);
+ // ¿Estás viendo la agrupación "Promociones"? Solo ahí se muestra la columna "$ Sin Promo".
+  const estaEnPromociones = useMemo(() => {
+    const n = String(agrupacionSeleccionada?.nombre ?? agrupacionSeleccionada?.name ?? '').trim().toLowerCase();
+    return n === 'promociones';
+  }, [agrupacionSeleccionada]);
+
+  const visibleCols = useMemo(() => {
+    const cols = colConfig.filter(c => c.visible);
+    if (!estaEnPromociones) return cols;
+    // Inyectar "$ Sin Promo" justo después de "costo" (o al inicio si no está)
+    const idx = cols.findIndex(c => c.id === 'costo');
+    const sinPromoCol = { id: 'sinPromo', label: '$ Sin Promo', width: '.35fr', visible: true };
+    if (idx === -1) return [sinPromoCol, ...cols];
+    return [...cols.slice(0, idx + 1), sinPromoCol, ...cols.slice(idx + 1)];
+  }, [colConfig, estaEnPromociones]);
 
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
@@ -391,6 +406,9 @@ export default function TablaArticulos({
   const [bulkObjetivoDlg, setBulkObjetivoDlg] = useState(null);
 
   const [recetaArticulo, setRecetaArticulo] = useState(null);
+  useEffect(() => {
+    if (recetaArticulo === null) console.trace('[CIERRE MODAL] recetaArticulo pasó a null');
+  }, [recetaArticulo]);
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
 
@@ -568,6 +586,16 @@ export default function TablaArticulos({
     return () => { cancel = true; };
   }, [activeBizId, reloadKey, reloadTick]);
 
+  // Venta sin promo por promo (suma precios de venta de componentes, con nuevo precio de lista principal)
+  useEffect(() => {
+    if (!activeBizId) { setVentaSinPromoMap({}); return; }
+    let cancel = false;
+    RecetasAPI.getVentaSinPromo(activeBizId)
+      .then(r => { if (!cancel) setVentaSinPromoMap(r?.ventaSinPromo || {}); })
+      .catch(() => { if (!cancel) setVentaSinPromoMap({}); });
+    return () => { cancel = true; };
+  }, [activeBizId, reloadKey, reloadTick]);
+
   const allArticulos = useMemo(() => {
     const out = [];
     for (const sub of categorias || []) {
@@ -594,6 +622,23 @@ export default function TablaArticulos({
     for (const a of allArticulos) m.set(Number(a.id), a);
     return m;
   }, [allArticulos]);
+
+  // IDs de artículos que VIVEN en la agrupación "Promociones" (fuente de verdad de ubicación).
+  // Se usa para tratar como promo a un artículo que está en esa agrupación aunque su receta
+  // aún no tenga es_promo=TRUE (ej. recién movido, sin componentes todavía).
+  const promoGroupIds = useMemo(() => {
+    const s = new Set();
+    const norm = (x) => String(x ?? '').trim().toLowerCase();
+    const fuente = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
+    for (const g of fuente || []) {
+      if (norm(g?.nombre ?? g?.name) !== 'promociones') continue;
+      for (const x of (g?.articulos || [])) {
+        const id = getId(x);
+        if (Number.isFinite(id)) s.add(id);
+      }
+    }
+    return s;
+  }, [agrupaciones, agrupacionesAll]);
 
   const getCurrentManual = useCallback((artId) => {
     const key = String(artId);
@@ -1594,7 +1639,7 @@ export default function TablaArticulos({
         </div>
 
         <div onClick={() => {
-          const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a)));
+          const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
           const objetivoResuelto = getObjetivoArticulo(a, agrupId);
           setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
         }}
@@ -1636,6 +1681,10 @@ export default function TablaArticulos({
               // La columna "Precio" siempre muestra el precio de la favorita (precio base).
               // La columna que cambia con la lista es "Nuevo precio".
               return <div key="precio" style={cellNum}>{fmtCurrency(num(a.precio))}</div>;
+            case 'sinPromo': {
+              const vsp = ventaSinPromoMap?.[Number(getId(a))] ?? 0;
+              return <div key="sinPromo" style={{ ...cellNum, color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
+            }
 
             case 'costo':
               return (
@@ -1837,11 +1886,13 @@ export default function TablaArticulos({
               );
             }
 
-            case 'acciones':
+            case 'acciones': {
+              const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
               return (
                 <div key="acciones" style={{ textAlign: 'center' }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
+                    esPromo={esPromo}
                     onCrearPromo={(art) => {
                       setRecetaArticulo({
                         __promoNueva: true,
@@ -1859,10 +1910,12 @@ export default function TablaArticulos({
                     allowedIds={filterIds} businessId={activeBizId} rootBizId={rootBizId}
                     priceLists={priceLists}
                     priceListsByList={priceListsByList}
+                    priceConfig={priceConfig}
+                    promoIds={new Set([...promoIds, ...promoGroupIds])}
                   />
                 </div>
               );
-
+            }
             default: return null;
           }
         })}
@@ -1874,7 +1927,7 @@ export default function TablaArticulos({
     <>
       {recetaArticulo && (
         <RecetaModal
-          open={!!recetaArticulo} onClose={() => setRecetaArticulo(null)}
+          open={!!recetaArticulo} onClose={() => { console.trace('[CIERRE MODAL] onClose disparado'); setRecetaArticulo(null); }}
           articulo={recetaArticulo}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
@@ -1886,6 +1939,7 @@ export default function TablaArticulos({
           recetasElaborados={recetasElaborados}
           onPriceConfigSave={onPriceConfigSave}
           allArticulos={allArticulos}
+          promoIds={promoIds}
           priceLists={priceLists}
           priceListsByList={priceListsByList}
           onSaved={(savedReceta) => {
@@ -1970,6 +2024,7 @@ export default function TablaArticulos({
                 switch (col.id) {
                   case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={dragIndicatorStyle}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={dragIndicatorStyle}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700  }}>$ Sin Promo</div>;
                   case 'ganancia': return <div key="ganancia" {...dragProps} onClick={() => toggleSort('ganancia')} className="col-sortable" style={dragIndicatorStyle}>Ganancia{sortBy === 'ganancia' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
@@ -2044,7 +2099,6 @@ export default function TablaArticulos({
                   key={op}
                   label={`$${op}`}
                   onClick={() => {
-                    console.log('[chip redondeo] op:', op, 'onRedondeoChange:', typeof onRedondeoChange);
                     saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
                     setRedondeoConfig(prev => ({ ...prev, valor: op }));
                     onRedondeoChange?.(op);

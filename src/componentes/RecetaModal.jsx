@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable no-undef */
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 // src/componentes/RecetaModal.jsx
@@ -19,10 +21,12 @@ import {
   InputAdornment, Select, MenuItem, FormControl,
   Checkbox, Stack, Dialog, DialogTitle, DialogContent,
   DialogActions, DialogContentText, Menu,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
@@ -36,7 +40,6 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import ImageIcon from '@mui/icons-material/Image';
 import TuneIcon from '@mui/icons-material/Tune';
 import SortIcon from '@mui/icons-material/Sort';
@@ -64,6 +67,7 @@ import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
+import { PromocionesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 
 /* ── constantes ── */
@@ -635,6 +639,24 @@ function EditorFotoModal({ imagenSrc, onConfirmar, onCancelar }) {
 
 // Vista previa de la foto en un modal, con opciones de editar o quitar
 
+// Diálogo de confirmación reutilizable para borrados (receta / equivalencia / merma)
+function ConfirmDialog({ open, tipo = 'elemento', nombre = '', onConfirm, onCancel }) {
+  return (
+    <Dialog open={open} onClose={onCancel} maxWidth="xs">
+      <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>¿Borrar {tipo}?</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          ¿Seguro querés borrar esta {tipo}{nombre ? <> (<strong>{nombre}</strong>)</> : ''}? Esta acción no se puede deshacer.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel} color="inherit" size="small">Cancelar</Button>
+        <Button onClick={onConfirm} color="error" variant="contained" size="small">Sí, borrar</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 function VistaPreviaFotoModal({ foto, onEditar, onQuitar, onClose }) {
   return (
     <Modal open onClose={onClose}>
@@ -1191,20 +1213,12 @@ function ItemRow({
   const searchInputRef = useRef(null);
   const cantidadRef = useRef(null);
   const listRef = useRef(null);
-  const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
-  const recetasElaboradosRef = useRef(recetasElaborados);
+  // Leemos directo del prop (el padre ya mantiene el mapa actualizado). Un estado local
+  // acá desincronizaba: al completarse el fetch de porciones el prop cambia pero la copia
+  // local se quedaba con porciones=1 hasta remontar, mostrando el costo total sin dividir.
+  const localRecetasElaborados = recetasElaborados;
 
   const wasAutoOpened = useRef(autoOpenSearch && !item.supplyId && !item.articleRefId);
-
-  // Sincronizar solo cuando el contenido cambia realmente (evita loop por objeto nuevo)
-  useEffect(() => {
-    const prev = JSON.stringify(recetasElaboradosRef.current);
-    const next = JSON.stringify(recetasElaborados);
-    if (prev !== next) {
-      recetasElaboradosRef.current = recetasElaborados;
-      setLocalRecetasElaborados(recetasElaborados);
-    }
-  }, [recetasElaborados]);
 
   // Si el search se cierra y no hay insumo seleccionado, eliminar la fila
   useEffect(() => {
@@ -1389,7 +1403,7 @@ function ItemRow({
     insumoEquivalenciasList(ins.id, businessId)
       .then(r => {
         const eqs = Array.isArray(r?.data) ? r.data : [];
-        if (eqs.length) onChange(index, { equivalencias: eqs });
+        onChange(index, { equivalencias: eqs });
       })
       .catch(() => { });
     // Cargar mermas del insumo + preseleccionar la default
@@ -2383,6 +2397,7 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
     } catch (e) { setError(e.message || 'No se pudo marcar default'); }
   };
 
+  const [aBorrar, setABorrar] = useState(null); // merma a borrar (confirmación)
   const borrar = async (mId) => {
     try {
       await insumoMermaDelete(insumoId, mId, businessId);
@@ -2458,7 +2473,7 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
                   inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
                 <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: G.rojo }}>{pctMerma(m.peso_inicial, m.peso_final).toFixed(1)}%</Typography>
                 <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConMerma(m.peso_inicial, m.peso_final))}</Typography>
-                <IconButton size="small" onClick={() => borrar(m.id)} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
+                <IconButton size="small" onClick={() => setABorrar({ id: m.id, nombre: m.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               </Box>
@@ -2497,6 +2512,13 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
           </Box>
         </>
       )}
+      <ConfirmDialog
+        open={!!aBorrar}
+        tipo="merma"
+        nombre={aBorrar?.nombre || ''}
+        onCancel={() => setABorrar(null)}
+        onConfirm={async () => { const id = aBorrar?.id; setABorrar(null); if (id != null) await borrar(id); }}
+      />
     </Box>
   );
 }
@@ -2677,8 +2699,9 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   // Fila nueva en edición
-  const [nuevo, setNuevo] = useState({ nombre: '', contenido: '', unidad: 'gr' });
+  const [nuevo, setNuevo] = useState({ nombre: '', contenido: '', unidad: '' });
   const [guardando, setGuardando] = useState(false);
+  const guardandoRef = useRef(false);  // lock síncrono: evita doble disparo (onBlur + Enter/onClose)
   const [envase, setEnvase] = useState({
     contenido: insumoData?.contenido_envase != null ? String(insumoData.contenido_envase).replace('.', ',') : '',
     unidad: insumoData?.unidad_envase || 'ml',
@@ -2698,6 +2721,27 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
   const precioRef = Number(insumoData?.precio_ref) || 0;
   const unidadBase = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || 'u');
 
+  // Unidades válidas según la familia del insumo (igual que en recetas):
+  // peso (gr/kg), volumen (ml/lt), o unidad. No se mezclan familias.
+const UNIDADES_EQ = useMemo(() => {
+    // Caso elaborado con rendimiento en peso: la equivalencia fracciona la receta,
+    // así que la familia la manda la unidad de peso del rendimiento (gr/kg o ml/lt).
+    if (recetaInfo?.esElaborado && Number(recetaInfo.rendimientoPeso) > 0) {
+      const famPeso = canonicalUnit(recetaInfo.unidadPeso || 'gr');
+      if (famPeso === 'kg' || famPeso === 'gr') return ['gr', 'kg'];
+      if (famPeso === 'lt' || famPeso === 'ml') return ['ml', 'lt'];
+    }
+    const fam = canonicalUnit(unidadBase);
+    if (fam === 'kg' || fam === 'gr') return ['gr', 'kg'];
+    if (fam === 'lt' || fam === 'ml') return ['ml', 'lt'];
+    // Insumo en unidad: la familia la hereda del contenido del envase definido arriba.
+    const famEnvase = canonicalUnit(envase?.unidad || insumoData?.unidad_envase || '');
+    if (famEnvase === 'kg' || famEnvase === 'gr') return ['gr', 'kg'];
+    if (famEnvase === 'lt' || famEnvase === 'ml') return ['ml', 'lt'];
+    // Sin envase definido: todas las medibles (el usuario decide la familia al crear la equivalencia)
+    return ['gr', 'kg', 'ml', 'lt'];
+  }, [unidadBase, envase?.unidad, insumoData?.unidad_envase, recetaInfo]);
+
   // Costo de una equivalencia: distingue elaborado (costo/rendimiento) de insumo simple (precio_ref)
   const calcCosto = useCallback((contenido, unidad) => {
     if (!(Number(contenido) > 0)) return 0;
@@ -2709,8 +2753,13 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
       return Number(contenido) * factor * costoPorPeso;
     }
     // ── Insumo unidad CON envase cargado: costo = contenido × (precio_ref / contenido_envase) ──
-    const contEnvase = Number(insumoData?.contenido_envase) || 0;
-    const uniEnvase = canonicalUnit(insumoData?.unidad_envase || '');
+    // Usar el estado local del envase (actualizado en vivo) en vez de la prop insumoData
+    // que puede estar desactualizada hasta que se refresque el modal.
+    const contEnvaseLocal = envase?.contenido !== '' && envase?.contenido != null
+      ? Number(String(envase.contenido).replace(',', '.'))
+      : Number(insumoData?.contenido_envase) || 0;
+    const contEnvase = Number(contEnvaseLocal) || 0;
+    const uniEnvase = canonicalUnit(envase?.unidad || insumoData?.unidad_envase || '');
     if (unidadBase === 'u' && contEnvase > 0 && uniEnvase) {
       if (!precioRef) return 0;
       const costoPorUnidadEnvase = precioRef / contEnvase;               // ej. $8215/750ml = $10,95/ml
@@ -2721,7 +2770,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     if (!precioRef) return 0;
     const factor = getConversionFactor(canonicalUnit(unidad), unidadBase);
     return Number(contenido) * factor * precioRef;
-  }, [precioRef, unidadBase, recetaInfo, insumoData]);
+  }, [precioRef, unidadBase, recetaInfo, insumoData, envase]);
 
   const cargar = useCallback(() => {
     if (!insumoId || !businessId) return;
@@ -2734,24 +2783,38 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const agregar = async () => {
-    if (!nuevo.nombre.trim() || !(Number(nuevo.contenido) > 0)) return;
+  // Si la unidad elegida ya no pertenece a la familia (cambió el insumo/envase), limpiarla.
+  // No forzamos una por defecto: el usuario debe elegir, y eso evita autoguardar antes de tiempo.
+  useEffect(() => {
+    setNuevo(n => (n.unidad === '' || UNIDADES_EQ.includes(n.unidad) ? n : { ...n, unidad: '' }));
+  }, [UNIDADES_EQ]);
+
+  // Autoguardado: se dispara al salir de un campo (onBlur) si la fila está completa.
+  // No hay botón: agregar = escribir nombre + contenido + unidad.
+  const guardarNueva = useCallback(async () => {
+    const nombre = nuevo.nombre.trim();
+    const contenido = Number(String(nuevo.contenido).replace(',', '.'));
+    if (!nombre || !(contenido > 0) || !nuevo.unidad) return;  // fila incompleta: no guardar aún
+    if (guardandoRef.current) return;   // ya hay un guardado en curso (chequeo síncrono)
+    guardandoRef.current = true;
     setGuardando(true);
     setError('');
     try {
       await insumoEquivalenciaCreate(insumoId, {
-        nombre: nuevo.nombre.trim(),
-        contenido: Number(nuevo.contenido),
+        nombre,
+        contenido,
         unidad: nuevo.unidad,
       }, businessId);
-      setNuevo({ nombre: '', contenido: '', unidad: 'gr' });
+      setNuevo({ nombre: '', contenido: '', unidad: '' });
       cargar();
+      try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
     } catch (e) {
       setError(e.message || 'No se pudo agregar');
     } finally {
+      guardandoRef.current = false;
       setGuardando(false);
     }
-  };
+  }, [nuevo, guardando, insumoId, businessId, cargar, UNIDADES_EQ]);
 
   const editar = async (eq, campo, valor) => {
     // Optimistic: actualizar en local, persistir onBlur
@@ -2759,28 +2822,60 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     try {
       await insumoEquivalenciaUpdate(insumoId, eq.id, payload, businessId);
       setLista(prev => prev.map(x => x.id === eq.id ? { ...x, ...payload } : x));
+      try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
     } catch (e) {
       setError(e.message || 'No se pudo actualizar');
       cargar();
     }
   };
 
+  const [aBorrar, setABorrar] = useState(null); // equivalencia a borrar (confirmación)
   const borrar = async (eqId) => {
     try {
       await insumoEquivalenciaDelete(insumoId, eqId, businessId);
       setLista(prev => prev.filter(x => x.id !== eqId));
+      try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
     } catch (e) {
       setError(e.message || 'No se pudo borrar');
     }
   };
-
-  const UNIDADES_EQ = ['gr', 'kg', 'ml', 'lt', 'u'];
 
   return (
     <Box sx={{ py: 1 }}>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
         Definí medidas propias de este insumo (ej: "Cucharada sopera = 15 gr"). Luego las usás como unidad en la receta.
       </Typography>
+      {/* Info del insumo: base de cálculo según el caso (elaborado con peso / simple medible) */}
+      {(() => {
+        const fmtAR = (n) => Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // Caso elaborado con rendimiento en peso: mostrar costo por unidad de rendimiento y por peso
+        if (recetaInfo?.esElaborado && Number(recetaInfo.rendimientoPeso) > 0 && Number(recetaInfo.cantidad) > 0) {
+          const costoPorUnidad = Number(recetaInfo.costoTotal) / Number(recetaInfo.cantidad);
+          const costoPorPeso = costoPorUnidad / Number(recetaInfo.rendimientoPeso);
+          const uPeso = canonicalUnit(recetaInfo.unidadPeso || 'gr');
+          return (
+            <Box sx={{ mb: 1.5, bgcolor: '#eaf1fb', border: '1px solid #c3d7f0', borderRadius: 1, px: 2, py: 1 }}>
+              <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', color: '#2d4a6b' }}>
+                Rinde {recetaInfo.cantidad} {recetaInfo.rendimientoUnidad || 'porción'}(es) de {recetaInfo.rendimientoPeso} {uPeso} c/u · Costo total ${fmtAR(recetaInfo.costoTotal)}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#2d4a6b' }}>
+                Costo por {uPeso} = ${fmtAR(costoPorPeso)}
+              </Typography>
+            </Box>
+          );
+        }
+        // Caso insumo simple medible (kg/gr/lt/ml): mostrar costo por unidad base
+        if (precioRef > 0 && unidadBase !== 'u') {
+          return (
+            <Box sx={{ mb: 1.5, bgcolor: '#eaf1fb', border: '1px solid #c3d7f0', borderRadius: 1, px: 2, py: 1 }}>
+              <Typography variant="caption" sx={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#2d4a6b' }}>
+                Costo por {unidadBase} = ${fmtAR(precioRef)}
+              </Typography>
+            </Box>
+          );
+        }
+        return null;
+      })()}
       {/* Contenido del envase: solo para insumos comprados en unidad (no medibles) */}
       {unidadBase === 'u' && !insumoData?.es_elaborado && (
         <Box sx={{
@@ -2802,7 +2897,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
               value={envase.contenido}
               onChange={e => setEnvase(v => ({ ...v, contenido: sanitizeDecimal(e.target.value) }))}
               onBlur={guardarEnvase}
-              placeholder="750"
+              placeholder="000"
               inputProps={{ style: { textAlign: 'right', padding: '6px 8px' } }}
               sx={{ width: 90 }}
             />
@@ -2819,11 +2914,33 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
                 <MenuItem value="kg">kg</MenuItem>
               </Select>
             </FormControl>
-            {precioRef > 0 && (
-              <Typography variant="caption" sx={{ color: 'text.secondary', ml: 'auto' }}>
-                Costo por unidad: ${precioRef.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Typography>
-            )}
+            {precioRef > 0 && (() => {
+              const cont = Number(String(envase.contenido).replace(',', '.')) || 0;
+              const uCh = canonicalUnit(envase.unidad || 'ml');           // unidad chica (ml/gr)
+              const uGr = (uCh === 'ml' || uCh === 'lt') ? 'lt'
+                : (uCh === 'gr' || uCh === 'kg') ? 'kg' : uCh;     // unidad grande (lt/kg)
+              const fmtAR = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              // Costo por 1 unidad grande = (precio / contenido) convertido a la unidad grande.
+              // getConversionFactor(chica, grande): cuántas unidades grandes hay en 1 chica (ej. ml→lt = 0.001)
+              const factorChicaAGrande = getConversionFactor(uCh, uGr);   // 0.001 para ml→lt
+              const costoPorGrande = (cont > 0 && factorChicaAGrande > 0)
+                ? (precioRef / cont) / factorChicaAGrande
+                : 0;
+              return (
+                <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+                  {cont > 0 && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                      Costo por {String(envase.contenido)} {uCh} = ${fmtAR(precioRef)}
+                    </Typography>
+                  )}
+                  {costoPorGrande > 0 && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontWeight: 600 }}>
+                      Costo por 1 {uGr} = ${fmtAR(costoPorGrande)}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })()}
           </Box>
         </Box>
       )}
@@ -2857,39 +2974,49 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
               <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 700, color: PRIMARY }}>
                 {calcCosto(eq.contenido, eq.unidad) > 0 ? `$${fmt(calcCosto(eq.contenido, eq.unidad))}` : '—'}
               </Typography>
-              <IconButton size="small" onClick={() => borrar(eq.id)} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
+              <IconButton size="small" onClick={() => setABorrar({ id: eq.id, nombre: eq.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                 <DeleteOutlineIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Box>
           ))}
 
           {/* Fila nueva */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+          <Box
+            onBlur={(e) => {
+              // Guardar solo cuando el foco sale de TODA la fila (no al saltar entre sus campos)
+              if (!e.currentTarget.contains(e.relatedTarget)) guardarNueva();
+            }}
+            sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <TextField size="small" placeholder="Ej: Cucharada sopera" value={nuevo.nombre}
               onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter') agregar(); }}
+              onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
               inputProps={{ style: { fontSize: '0.8rem' } }} />
             <TextField size="small" type="text" inputMode="decimal" placeholder="15" value={nuevo.contenido}
               onChange={e => setNuevo(n => ({ ...n, contenido: sanitizeDecimal(e.target.value) }))}
-              onKeyDown={e => { if (e.key === 'Enter') agregar(); }}
+              onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
               inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
-            <Select size="small" value={nuevo.unidad}
+            <Select size="small" value={nuevo.unidad} displayEmpty
               onChange={e => setNuevo(n => ({ ...n, unidad: e.target.value }))}
-              sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' } }}>
+              sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' }, color: nuevo.unidad ? 'inherit' : 'text.disabled' }}>
+              <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>unidad</MenuItem>
               {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
             </Select>
-            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
               {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
-            <Button size="small" variant="contained" onClick={agregar}
-              disabled={guardando || !nuevo.nombre.trim() || !(Number(nuevo.contenido) > 0)}
-              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
-              sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, fontSize: '0.72rem', px: 1, minWidth: 0, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
-              {guardando ? '…' : 'Agregar'}
-            </Button>
+         <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
+              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
+            </Typography>
           </Box>
         </>
       )}
+      <ConfirmDialog
+        open={!!aBorrar}
+        tipo="equivalencia"
+        nombre={aBorrar?.nombre || ''}
+        onCancel={() => setABorrar(null)}
+        onConfirm={async () => { const id = aBorrar?.id; setABorrar(null); if (id != null) await borrar(id); }}
+      />
     </Box>
   );
 }
@@ -2960,7 +3087,9 @@ export default function RecetaModal({
   saveRecetaUrl = null,
   calcPrecioPorLista = null,
   onPriceConfigSave = null,
+  priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   allArticulos = [],
+  promoIds = new Set(),
   priceLists = [],
   priceListsByList = {},
   modoInsumo = false,
@@ -3011,6 +3140,7 @@ export default function RecetaModal({
   const [editarFotoSrc, setEditarFotoSrc] = useState(null); // foto en edición desde el preview
   const [cocinaModalOpen, setCocinaModalOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [verCostosExtra, setVerCostosExtra] = useState(false); // insumos: mostrar sugerido + % costo (solo vista)
 
   const [soloConCompras, setSoloConCompras] = useState(() => {
     try { return localStorage.getItem('receta_solo_con_compras') === '1'; } catch { return false; }
@@ -3095,7 +3225,7 @@ export default function RecetaModal({
 
   /* ── Cargar gemelos al abrir + función reutilizable ── */
   const loadGemelosGroup = useCallback(() => {
-    if (!businessId || !articulo?.id || esElaborado || esPromoEfectiva) return;
+    if (!businessId || !articulo?.id || esElaborado || promoMode) return;
     setGemelosLoading(true);
     const token = localStorage.getItem('token') || '';
     return fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
@@ -3336,6 +3466,21 @@ export default function RecetaModal({
     [items]
   );
   const esPromoEfectiva = esPromo || esPromoDetectada;
+  // Estado editable del switch Producto/Promoción. Inicializa según el estado real.
+  // Solo se PERSISTE al Guardar; el autoSave no convierte tipo.
+  const [promoMode, setPromoMode] = useState(esPromoEfectiva);
+  const [confirmarDesactivar, setConfirmarDesactivar] = useState(false);
+  // Se prende al activar el switch en un artículo COMÚN (no vive en Promociones):
+  // el artículo se auto-agrega como primer componente y al guardar se crea la promo (flujo v1).
+  const [convertirEnPromo, setConvertirEnPromo] = useState(false);
+  // ¿Se puede degradar a Producto? Solo si es promo v1 (ID negativo) o si el artículo
+  // llegó a Promociones por el switch desde otra agrupación (tiene fromGroupName).
+  // Un artículo que nació en Promociones queda fijo en Promoción.
+  const puedeVolverAProducto = Number(articulo?.id) < 0 || !!(articulo?.fromGroupName && String(articulo.fromGroupName).trim());
+  // Resincronizar cuando cambia el artículo o su condición de promo (al abrir otro modal)
+  useEffect(() => { setPromoMode(esPromoEfectiva); }, [esPromoEfectiva]);
+  // Al abrir otro artículo, resetear el flag de conversión a promo
+  useEffect(() => { setConvertirEnPromo(false); }, [articulo?.id, open]);
   const [listaSinPromo, setListaSinPromo] = useState(null); // null = principal/favorita
 
   // Color de la lista activa para la columna "$ Sin Promo"
@@ -3346,7 +3491,7 @@ export default function RecetaModal({
   }, [listaSinPromo, priceLists]);
 
   // Grid de la tabla de ingredientes: en promo suma la columna "$ sin promo"
-  const gridIngredientes = esPromoEfectiva
+  const gridIngredientes = promoMode
     ? '20px 1.8fr 68px 66px 80px 90px 28px 1fr 28px 28px'   // +90px para $ sin promo
     : '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px';
 
@@ -3355,6 +3500,9 @@ export default function RecetaModal({
     const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(articleRefId));
     if (!art) return 0;
     // Precio base (lista principal): nuevo precio si se definió en la tabla, sino el precio de venta
+    // El nuevo precio (precio_manual) vive en priceConfig.byArticle — la misma fuente
+    // que usa la columna "Nuevo precio" de la tabla. priceListsByList._base venía incompleto.
+    // Nuevo precio de la lista principal (precio_manual) si se definió; sino, precio de venta.
     const baseEntry = priceListsByList?._base?.byArticle?.[String(articleRefId)];
     const nuevoPrecio = Number(baseEntry?.precioManual ?? baseEntry?.precio_manual);
     const precioBase = nuevoPrecio > 0 ? nuevoPrecio : (Number(art?.precio) || 0);
@@ -3648,7 +3796,7 @@ export default function RecetaModal({
     if (!sortByCosto) return items;
     return [...items].sort((a, b) => calcCostoItem(b) - calcCostoItem(a));
   }, [items, sortByCosto, calcCostoItem]);
-  
+
   const changeItem = useCallback((idx, partial) => {
     setItems(prev => {
       const arr = [...prev];
@@ -3720,7 +3868,7 @@ export default function RecetaModal({
     });
   }, []);
 
-/* ── Cálculos ── */
+  /* ── Cálculos ── */
   const costoTotal = useMemo(() =>
     items.reduce((acc, it) => acc + calcCostoItem(it), 0),
     [items, calcCostoItem]);
@@ -3749,21 +3897,21 @@ export default function RecetaModal({
 
   // Venta sin promo: suma de los precios de venta de los componentes-artículo
   const ventaSinPromo = useMemo(() => {
-    if (!esPromoEfectiva) return 0;
+    if (!promoMode) return 0;
     return items.reduce((acc, it) => {
       if (!it.articleRefId) return acc;
       const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
       return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
     }, 0);
-  }, [items, esPromoEfectiva, getPrecioSinPromo]);
-  const sugeridoExcedeVenta = esPromoEfectiva && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
+  }, [items, promoMode, getPrecioSinPromo]);
+  const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
 
   /* ── Guardar ── */
-  const handleSave = async () => {
+  const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
     setError('');
 
     // ── Modo promo nueva: crear artículo-promo vía endpoint dedicado ──
-    if (modoPromoNueva) {
+    if (modoPromoNueva || convertirEnPromo) {
       if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
@@ -3804,7 +3952,7 @@ export default function RecetaModal({
         setSuccess(true);
         try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
         onSaved?.({ __promoCreated: true });
-        setTimeout(() => onClose?.(), 600);
+        if (!keepOpen) setTimeout(() => onClose?.(), 600);
       } catch (e) {
         setError(e.message || 'No se pudo crear la promoción');
       } finally {
@@ -3814,7 +3962,8 @@ export default function RecetaModal({
     }
 
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
-    const itemsValidos = items.filter(it => it.supplyId || it.articleRefId);
+    const itemsBase = itemsOverride || items;
+    const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
     const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
 
@@ -3921,17 +4070,19 @@ export default function RecetaModal({
         }
       }
 
-      // ── Si es promo (tiene items-artículo), mover componentes + dueño a "Promociones" ──
-      const idsArticulosPromo = payload.items
-        .filter(it => it.articleRefId != null && Number(it.articleRefId) !== 0)
-        .map(it => Number(it.articleRefId));
-      if (idsArticulosPromo.length > 0) {
-        const idsMover = Array.from(new Set([Number(articulo.id), ...idsArticulosPromo]));
+      // ── Promo: SOLO el dueño va a "Promociones", y solo si no está ya ahí.
+      //    Los componentes (article_ref_id) se referencian en la receta y NUNCA se mueven
+      //    de su agrupación de origen — igual que un insumo dentro de una receta. ──
+      const hayComponentesArticulo = payload.items
+        .some(it => it.articleRefId != null && Number(it.articleRefId) !== 0);
+      const dueñoYaEnPromo = promoIds.has(Number(articulo.id));
+      if (hayComponentesArticulo && !dueñoYaEnPromo) {
         try {
-          await createOrMoveAgrupacion(businessId, { nombre: 'Promociones', ids: idsMover });
+          // Solo el dueño. Ningún componente entra en ids.
+          await createOrMoveAgrupacion(businessId, { nombre: 'Promociones', ids: [Number(articulo.id)] });
           window.dispatchEvent(new CustomEvent('articulos:updated'));
         } catch (e) {
-          console.warn('[promo] no se pudo mover a Promociones:', e.message);
+          console.warn('[promo] no se pudo mover el dueño a Promociones:', e.message);
         }
       }
 
@@ -3950,17 +4101,21 @@ export default function RecetaModal({
         ).catch(e => console.warn('[handleSave] propagate falló:', e.message));
       }
 
-      onSaved?.({
-        ...saved,
-        article_id: articulo.id,
-        costo_total: costoTotal,
-        costo_por_porcion: costoXRendimiento,
-        precio_sugerido: json?.precio_sugerido ?? precioSugerido,
-        porciones: Math.max(1, Number(rendimiento) || 1),
-      });
-      setTimeout(() => onClose(), 1200);
+      // En autoguardado (keepOpen) no propagamos onSaved: el padre refetchea/cierra
+      // y desmonta el modal en medio de la edición. Solo propagamos al guardar de verdad.
+      if (!keepOpen) {
+        onSaved?.({
+          ...saved,
+          article_id: articulo.id,
+          costo_total: costoTotal,
+          costo_por_porcion: costoXRendimiento,
+          precio_sugerido: json?.precio_sugerido ?? precioSugerido,
+          porciones: Math.max(1, Number(rendimiento) || 1),
+        });
+        setTimeout(() => onClose(), 1200);
+      }
     } catch (err) {
-      setError(err.message || 'Error al guardar la receta');
+      setError(err.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -3985,8 +4140,12 @@ export default function RecetaModal({
           throw new Error(d?.error || d?.message || `Error ${res.status}`);
         }
         try {
-          window.dispatchEvent(new CustomEvent('articulos:updated'));
-          window.dispatchEvent(new CustomEvent('insumos:updated'));
+          // En autoguardado (keepOpen) no refrescamos la grilla: el refetch externo
+          // reconstruye agrupaciones y desmonta el modal en medio de la edición.
+          if (!keepOpen) {
+            window.dispatchEvent(new CustomEvent('articulos:updated'));
+            window.dispatchEvent(new CustomEvent('insumos:updated'));
+          }
         } catch { }
         onSaved?.({ article_id: articulo.id, deleted: true });
         onClose();
@@ -4057,6 +4216,61 @@ export default function RecetaModal({
     onClose();
   }, [saving, deleting, onClose]);
 
+  // ── Autoguardado sin cerrar: reusa handleSave con keepOpen, respetando los guards.
+  // Se dispara al cambiar de pestaña (saliendo de "receta") y al abrir una receta hija en cascada.
+  const autoSave = useCallback(async () => {
+    if (saving || deleting) return;
+    if (skipAutoSaveRef.current) return;         // reemplazo de insumo en curso: no pisar la DB
+    if (modoPromoNueva || convertirEnPromo) return;  // promo en creación: aún sin datos válidos
+    if (modoInsumo && tab !== 'receta') return;  // merma/equivalencias/compras guardan por su cuenta
+    const tieneContenido = items.length > 0 || notas || foto;
+    if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId)) {
+      await handleSave({ keepOpen: true });
+    }
+  }, [saving, deleting, modoInsumo, tab, items, notas, foto, hasDuplicates, handleSave, modoPromoNueva]);
+
+  // ── Desactivar promo (switch Promoción → Producto), ya confirmado por el usuario ──
+  const desactivarPromo = useCallback(async () => {
+    const artId = Number(articulo?.id);
+    try {
+      setSaving(true);
+      if (artId < 0) {
+        // v1: promo manual (ID negativo) → eliminar por completo
+        await PromocionesAPI.eliminar(businessId, artId);
+        window.dispatchEvent(new CustomEvent('articulos:updated'));
+        skipAutoSaveRef.current = true;
+        onSaved?.({ __promoDeleted: true, article_id: artId });
+        onClose();
+        return;
+      }
+      // v2: artículo (ID positivo) en Promociones → degradar a producto.
+      // Guardar la receta SIN items-artículo → backend marca es_promo=FALSE.
+      const soloInsumos = items.filter(it => !(it.articleRefId != null && Number(it.articleRefId) !== 0));
+      await handleSave({ keepOpen: true, itemsOverride: soloInsumos });
+      // Devolver el dueño a su agrupación de origen (o Sin Agrupación si no hay origen guardado)
+      // Devolver el dueño a su origen SOLO si llegó a Promociones por el switch (tiene fromGroupName).
+      // Si ya vivía en Promociones de antes (sin fromGroupName), se queda ahí.
+      const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
+      if (origen) {
+        try {
+          await createOrMoveAgrupacion(businessId, { nombre: origen, ids: [artId] });
+        } catch (e) {
+          console.warn('[desactivarPromo] no se pudo devolver a origen:', e.message);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      setPromoMode(false);
+      skipAutoSaveRef.current = true;
+      onSaved?.({ __promoDowngraded: true, article_id: artId });
+      onClose();
+    } catch (err) {
+      console.error('[desactivarPromo]', err);
+      setError(err.message || 'No se pudo deshacer la promoción');
+    } finally {
+      setSaving(false);
+    }
+  }, [articulo, businessId, items, handleSave, onSaved, onClose]);
+
   const articuloIdNum = Number(articulo?.id);
   const hayListasNoFavoritas = useMemo(
     () => !esElaborado && (priceLists || []).some(l => !l.is_favorite),
@@ -4084,6 +4298,33 @@ export default function RecetaModal({
     return () => window.removeEventListener('insumo:reemplazado', handler);
   }, []);
 
+  // Refrescar equivalencias de un item cuando cambian en el modal del insumo (cascada).
+  // Cubre crear/editar/borrar; si se borraron todas, el item queda con equivalencias vacías.
+  useEffect(() => {
+    const handler = (e) => {
+      const insId = e?.detail?.insumoId;
+      if (!insId || !businessId) return;
+      insumoEquivalenciasList(insId, businessId)
+        .then(r => {
+          const eqs = Array.isArray(r?.data) ? r.data : [];
+          setItems(prev => prev.map(it => {
+            if (String(it.supplyId) !== String(insId)) return it;
+            // Si la unidad actual era una equivalencia que ya no existe, volver a la unidad base
+            const unidadSigueValida = eqs.some(x => x.nombre === it.unidad)
+              || ['gr', 'kg', 'ml', 'lt', 'u'].includes(canonicalUnit(it.unidad));
+            return {
+              ...it,
+              equivalencias: eqs,
+              unidad: unidadSigueValida ? it.unidad : canonicalUnit(it.supplyMedida || 'u'),
+            };
+          }));
+        })
+        .catch(() => { });
+    };
+    window.addEventListener('insumo:equivalencias-changed', handler);
+    return () => window.removeEventListener('insumo:equivalencias-changed', handler);
+  }, [businessId]);
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
@@ -4109,7 +4350,7 @@ export default function RecetaModal({
               <MenuBookIcon />
               <Box>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
-                  Receta — {artNombre}
+                  {promoMode ? 'Promoción' : 'Receta'} — {artNombre}
                 </Typography>
                 {articulo?.id && (
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
@@ -4126,7 +4367,7 @@ export default function RecetaModal({
                 ].map(t => (
                   <Box
                     key={t.id}
-                    onClick={() => setTab(t.id)}
+                    onClick={async () => { if (tab === 'receta') await autoSave(); setTab(t.id); }}
                     sx={{
                       px: 1.75, py: 0.9,
                       borderRadius: '8px 8px 0 0',
@@ -4304,14 +4545,75 @@ export default function RecetaModal({
                           />
                         );
                       })()}
-                      <TextField
-                        label="Nombre de la receta"
-                        value={nombre}
-                        onChange={e => setNombre(e.target.value)}
-                        size="small"
-                        placeholder={artNombre}
-                        fullWidth
-                      />
+                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                        <TextField
+                          label={promoMode ? "Nombre" : "Nombre"}
+                          value={nombre}
+                          onChange={e => setNombre(e.target.value)}
+                          placeholder={artNombre}
+                          sx={{ flex: 1 }}
+                        />
+                        {!modoInsumo && (
+                          <ToggleButtonGroup
+                            value={promoMode ? 'promo' : 'producto'}
+                            exclusive
+                            size="small"
+                            onChange={(e, val) => {
+                              if (val == null) return;               // no permitir deseleccionar
+                              const quierePromo = val === 'promo';
+                              if (quierePromo === promoMode) return;  // sin cambio
+                              if (quierePromo) {
+                                setPromoMode(true);                   // activar: sin confirmación
+                                const artId = Number(articulo?.id);
+                                const viveEnPromo = promoIds.has(artId);
+                                // Artículo común → se convierte en promo v1: auto-agregarlo como primer componente.
+                                if (!viveEnPromo && artId > 0) {
+                                  setConvertirEnPromo(true);
+                                  const yaEsta = items.some(it => Number(it.articleRefId) === artId);
+                                  if (!yaEsta) {
+                                    // Costo real del artículo: buscar en allArticulos (trae costoTotal de receta).
+                                    // Jerarquía: costo total de receta > precio (mismo criterio que el backend).
+                                    const artFull = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId) || {};
+                                    const costoArt = Number(artFull.costoTotal) || Number(articulo?.costoTotal) || Number(artFull.precio) || Number(articulo?.precio) || 0;
+                                    // La receta propia del artículo queda representada por su costo como componente;
+                                    // sus insumos NO se arrastran sueltos a la promo. Se reemplaza la lista por el artículo.
+                                    setItems([{
+                                      esArticulo: true,
+                                      articleRefId: artId,
+                                      supplyId: null,
+                                      supplyNombre: artNombre,
+                                      supplyMedida: 'u',
+                                      precioRefDB: costoArt,
+                                      codigoMaxi: articulo?.codigo || articulo?.codigo_maxi || '',
+                                      unidad: 'u',
+                                      cantidad: 1,
+                                      tipoCosto: 'total',
+                                      ultimaCompra: null,
+                                    }]);
+                                  }
+                                  // Nombre por defecto: el del artículo principal
+                                  if (!nombre.trim()) setNombre(artNombre);
+                                }
+                              } else {
+                                setConfirmarDesactivar(true);         // desactivar: pedir confirmación
+                              }
+                            }}
+                            disabled={saving || deleting}
+                            sx={{ flexShrink: 0 }}
+                          >
+                            <ToggleButton
+                              value="producto"
+                              disabled={promoMode && !puedeVolverAProducto}
+                              sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}
+                            >
+                              Producto
+                            </ToggleButton>
+                            <ToggleButton value="promo" sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}>
+                              Promoción
+                            </ToggleButton>
+                          </ToggleButtonGroup>
+                        )}
+                      </Box>
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'stretch', flexWrap: 'wrap' }}>
                         {/* ── Bloque rendimiento del lote ── */}
                         <Box sx={{
@@ -4371,6 +4673,9 @@ export default function RecetaModal({
                                   onChange={e => {
                                     const raw = e.target.value;
                                     setRendimientoPeso(raw === '' ? null : sanitizeDecimal(raw));
+                                    // Si hay peso y aún no se eligió unidad, fijar el default visual (gr) como valor real.
+                                    // El usuario puede cambiarlo a kg/ml/lt en el Select de al lado.
+                                    if (raw !== '' && !unidadPeso) setUnidadPeso('gr');
                                   }}
                                   placeholder="—"
                                   size="small"
@@ -4379,9 +4684,11 @@ export default function RecetaModal({
                                 />
                                 <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
                                   <Select
-                                    value={unidadPeso || 'gr'}
+                                    value={unidadPeso || ''}
                                     onChange={e => setUnidadPeso(e.target.value)}
-                                    sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { py: '6px' } }}
+                                    displayEmpty
+                                    renderValue={(v) => v || 'u.'}
+                                    sx={{ fontSize: '0.8rem', color: unidadPeso ? 'inherit' : 'text.disabled', '& .MuiSelect-select': { py: '6px' } }}
                                   >
                                     <MenuItem value="gr">gr</MenuItem>
                                     <MenuItem value="kg">kg</MenuItem>
@@ -4419,7 +4726,7 @@ export default function RecetaModal({
                   </Box>
 
                   {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
-                  {!esElaborado && !esPromoEfectiva && (
+                  {!esElaborado && !promoMode && (
                     <Box sx={{ mb: 1.5 }}>
                       {/* Header colapsable */}
                       {/* Header colapsable */}
@@ -4699,7 +5006,7 @@ export default function RecetaModal({
                     gridTemplateColumns: gridIngredientes,
                     gap: '4px', px: 0.5, mb: 0.5,
                   }}>
-                    {(esPromoEfectiva
+                    {(promoMode
                       ? ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '__SIN_PROMO__', '', 'Observaciones', '', '']
                       : ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '', 'Observaciones', '', '']
                     ).map((col, i) => {
@@ -4781,7 +5088,7 @@ export default function RecetaModal({
                             item={item}
                             index={realIndex}
                             gridTemplate={gridIngredientes}
-                            esPromo={esPromoEfectiva || modoPromoNueva}
+                            esPromo={promoMode || modoPromoNueva}
                             getPrecioSinPromo={getPrecioSinPromo}
                             colorSinPromo={colorSinPromo}
                             objetivoReceta={pctCostoIdeal}
@@ -4848,12 +5155,27 @@ export default function RecetaModal({
 
                   <Box sx={{
                     display: 'grid',
-                    gridTemplateColumns: Number(rendimiento) > 1 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                    gridTemplateColumns: (() => {
+                      const ocultarExtras = modoInsumo && !verCostosExtra;
+                      const cols = (Number(rendimiento) > 1 ? 2 : 1) + (ocultarExtras ? 0 : 2);
+                      return `repeat(${cols}, 1fr)`;
+                    })(),
                     gap: 1.5,
                     bgcolor: 'action.hover',
                     borderRadius: 1.5, p: 2,
-                    mb: 2
+                    mb: 2,
+                    position: 'relative',
                   }}>
+                    {modoInsumo && (
+                      <IconButton
+                        size="small"
+                        onClick={() => setVerCostosExtra(v => !v)}
+                        sx={{ position: 'absolute', top: 4, right: 4, p: 0.25 }}
+                        title={verCostosExtra ? 'Ocultar sugerido y % costo' : 'Ver sugerido y % costo'}
+                      >
+                        <VisibilityIcon sx={{ fontSize: 16, opacity: 0.6 }} />
+                      </IconButton>
+                    )}
                     {Number(rendimiento) > 1 && (
                       <Box>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
@@ -4869,9 +5191,9 @@ export default function RecetaModal({
                       </Typography>
                       <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
                     </Box>
-                    <Box>
+                    {(!modoInsumo || verCostosExtra) && <Box>
                       {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
-                      {esPromoEfectiva && ventaSinPromo > 0 && (
+                      {promoMode && ventaSinPromo > 0 && (
                         <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem' }}>
                           Venta sin promo: ${fmt(ventaSinPromo)}
                         </Typography>
@@ -4898,8 +5220,8 @@ export default function RecetaModal({
                           {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
                         </Stack>
                       )}
-                    </Box>
-                    <Box>
+                    </Box>}
+                    {(!modoInsumo || verCostosExtra) && <Box>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
                       {pctCostoActual !== null ? (
                         <>
@@ -4909,7 +5231,7 @@ export default function RecetaModal({
                       ) : (
                         <Typography variant="h6" color="text.disabled">—</Typography>
                       )}
-                    </Box>
+                    </Box>}
                   </Box>
 
                   {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
@@ -4927,7 +5249,7 @@ export default function RecetaModal({
           }}>
             <Stack direction="row" spacing={1} alignItems="center">
             </Stack>
-            <Stack direction="row" spacing={1} alignItems="center">
+            {!(modoInsumo && tab !== 'receta') && <Stack direction="row" spacing={1} alignItems="center">
               {/* Borrar receta — solo si ya existe */}
               {receta && (
                 <Button
@@ -4938,23 +5260,23 @@ export default function RecetaModal({
                   startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
                   onClick={() => setConfirmDelete(true)}
                 >
-                  {esPromoEfectiva ? 'Borrar promo' : 'Borrar receta'}
+                  {promoMode ? 'Borrar' : 'Borrar'}
                 </Button>
               )}
               <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
                 Cancelar
               </Button>
               <Button
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 variant="contained"
                 size="small"
                 disabled={saving || deleting || loading || hasDuplicates}
                 startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
                 sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}
               >
-                {saving ? 'Guardando…' : (modoPromoNueva ? 'Guardar promo' : 'Guardar receta')}
+                {saving ? 'Guardando…' : (modoPromoNueva ? 'Guardar' : 'Guardar')}
               </Button>
-            </Stack>
+            </Stack>}
           </Box>
         </Box >
       </Modal >
@@ -5049,6 +5371,36 @@ export default function RecetaModal({
             disabled={deleting}
           >
             {deleting ? 'Borrando…' : 'Sí, borrar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Confirmación al desactivar promo (switch Promoción → Producto) ── */}
+      <Dialog open={confirmarDesactivar} onClose={() => setConfirmarDesactivar(false)} maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>
+          ¿Deshacer la promoción?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {Number(articulo?.id) < 0
+              ? <>Esto eliminará por completo la promoción <strong>{artNombre}</strong>: se borra la promo y sus componentes dejan de estar vinculados. Esta acción no se puede deshacer.</>
+              : <>Esto quitará todos los artículos agregados a <strong>{artNombre}</strong> y la devolverá a producto normal. Sus insumos propios se conservan. ¿Continuar?</>}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmarDesactivar(false)} color="inherit" size="small">
+            Cancelar
+          </Button>
+          <Button
+            onClick={async () => {
+              setConfirmarDesactivar(false);
+              await desactivarPromo();
+            }}
+            color="error"
+            variant="contained"
+            size="small"
+          >
+            Sí, deshacer
           </Button>
         </DialogActions>
       </Dialog>

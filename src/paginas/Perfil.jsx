@@ -33,6 +33,8 @@ import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
   listMembers, resendInvitation, revokeAssignment,
 } from '@/servicios/apiTeam';
+import { useNavigate } from 'react-router-dom';
+import AsistenteOnboarding from '@/componentes/asistente/AsistenteOnboarding';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
@@ -353,7 +355,7 @@ function SecuritySection() {
 /* ═══════════════════════════════════════
    PÁGINA PRINCIPAL
 ═══════════════════════════════════════ */
-export default function Perfil() {
+function PerfilContenido() {
   const { organization } = useOrganization() || {};
   const { items, refetchBusinesses } = useBusiness() || {};
   const { currentRole } = useAccess() || {};
@@ -595,4 +597,29 @@ const { user, setUser } = useAuth();
         </Snackbar>
     </Box>
   );
+}
+
+/* ═══════════════════════════════════════
+   WRAPPER — decide asistente vs. perfil
+═══════════════════════════════════════ */
+export default function Perfil() {
+  const { items, refetchBusinesses } = useBusiness() || {};
+  const navigate = useNavigate();
+  const sinNegocios = !items || items.length === 0;
+
+  // Opción B: usuario sin negocios → asistente de onboarding a pantalla completa.
+  // El asistente crea el negocio y persiste artículos/insumos; al terminar
+  // refrescamos la lista y entramos a la app.
+  if (sinNegocios) {
+    return (
+      <AsistenteOnboarding
+        onDone={async () => {
+          try { await refetchBusinesses?.(); } catch { }
+          navigate('/menu');
+        }}
+      />
+    );
+  }
+
+  return <PerfilContenido />;
 }

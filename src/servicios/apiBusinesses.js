@@ -110,12 +110,7 @@ export async function http(
 
   // 🔍 DEBUG: Ver headers que se envían (temporal)
   if (isFormData) {
-    console.log('🔍 Enviando FormData:', {
-      url,
-      method,
-      headers: Object.keys(hdrs),
-      hasContentType: 'Content-Type' in hdrs,
-    });
+  
   }
 
   // AbortController + timeout + cancel externo
@@ -327,26 +322,12 @@ export const BusinessesAPI = {
     fd.append('file', file, file?.name || 'logo.png');
 
     // 🔍 Verificar que el FormData tenga el archivo
-    console.log('🔍 FormData entries:');
     for (let [key, value] of fd.entries()) {
-      console.log(`  - ${key}:`, value instanceof File ? {
-        name: value.name,
-        type: value.type,
-        size: value.size
-      } : value);
     }
 
     const token = localStorage.getItem('token') || '';
 
     const url = `${BASE}/businesses/${id}/logo`;
-
-    console.log('🚀 Upload directo:', {
-      url,
-      fileName: file?.name,
-      fileType: file?.type,
-      fileSize: file?.size,
-      hasToken: !!token,
-    });
 
     const response = await fetch(url, {
       method: 'POST',
@@ -364,7 +345,6 @@ export const BusinessesAPI = {
     }
 
     const result = await response.json();
-    console.log('✅ Upload exitoso:', result);
     return result;
   },
 
@@ -602,6 +582,9 @@ export const RecetasAPI = {
 
   getPromoIds: (businessId) =>
     http(`/businesses/${businessId}/recetas/promo-ids`, { withBusinessId: false }),
+
+  getVentaSinPromo: (businessId) =>
+    http(`/businesses/${businessId}/recetas/venta-sin-promo`, { withBusinessId: false }),
 };
 
 export const PromocionesAPI = {
