@@ -104,6 +104,18 @@ export function AccessProvider({ children }) {
   const currentRole = currentBusiness?.role || null;     // 'owner' | 'admin' | 'staff' | null
   const currentAlias = currentBusiness?.alias || null;
 
+  // Rol MÁS ALTO entre todos los negocios accesibles (owner > admin > staff).
+  // Se usa para vistas globales como el Perfil, que no deben cambiar según el negocio activo.
+  const highestRole = useMemo(() => {
+    const rank = { owner: 3, admin: 2, staff: 1 };
+    let best = null, bestRank = 0;
+    for (const b of businesses) {
+      const r = b?.role;
+      if (r && rank[r] > bestRank) { best = r; bestRank = rank[r]; }
+    }
+    return best; // 'owner' | 'admin' | 'staff' | null
+  }, [businesses]);
+
   const canDo = useCallback((permission) => {
     const set = PERMISSIONS[currentRole];
     if (!set) return false;
@@ -135,6 +147,7 @@ export function AccessProvider({ children }) {
     needsSelector: !!data?.needs_selector,
     currentBusiness,
     currentRole,
+    highestRole,
     currentAlias,
     canDo,
     isOwner,
@@ -143,7 +156,7 @@ export function AccessProvider({ children }) {
     switchToBusiness,
   }), [
     loading, error, refetch, data,
-    businesses, currentBusiness, currentRole, currentAlias,
+    businesses, currentBusiness, currentRole, highestRole, currentAlias,
     canDo, isOwner, isAdmin, isStaff, switchToBusiness,
   ]);
 

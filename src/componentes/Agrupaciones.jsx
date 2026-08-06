@@ -2,11 +2,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Button, Snackbar, Alert } from "@mui/material";
-import {
-  findAutoGroupSuggestions,
-  groupSuggestionsByTarget,
-  applyAutoGrouping,
-} from '@/servicios/autoGrouping';
 import AgrupacionesList from "./AgrupacionesList";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '@/utils/groupMutations';
@@ -107,12 +102,6 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     setSnackbarTipo(type);
     setSnackbarOpen(true);
   };
-
-  const [autoGroupModal, setAutoGroupModal] = useState({
-    open: false,
-    suggestions: [],
-    loading: false,
-  });
 
   // ✅ Solo consideramos "virtual" al grupo TODO si sigue teniendo el nombre default
   const effectiveTodoGroupId = useMemo(() => {
@@ -369,11 +358,6 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
         // Agrupaciones
         await cargarAgrupaciones();
 
-        // 🆕 VERIFICAR AUTO-AGRUPACIÓN después de cargar todo
-        setTimeout(() => {
-          checkForAutoGrouping();
-        }, 500); // pequeño delay para asegurar que todo está cargado
-
       } catch (error) {
         console.error("Error al cargar los datos:", error);
         setLoading(false);
@@ -382,52 +366,6 @@ export default function Agrupaciones({ actualizarAgrupaciones }) {
     })();
   }, []);
 
-  // 5️⃣ HANDLER PARA APLICAR AUTO-AGRUPACIÓN (línea ~280):
-
-  /**
-   * Aplica las sugerencias de auto-agrupación seleccionadas
-   */
-  const handleApplyAutoGrouping = async (selectedSuggestions) => {
-    setAutoGroupModal((prev) => ({ ...prev, loading: true }));
-
-    try {
-      const { success, failed } = await applyAutoGrouping(selectedSuggestions, httpBiz);
-
-      // Mutaciones optimistas locales
-      selectedSuggestions.forEach((sug) => {
-        onMutateGroups?.({
-          type: 'append',
-          groupId: sug.suggestedGroupId,
-          articulos: [{ id: sug.articleId }],
-        });
-      });
-
-      // Refetch para consolidar
-      await cargarAgrupaciones();
-
-      // Emitir evento global
-      emitGroupsChanged('auto-group', {
-        count: success,
-        failed,
-      });
-
-      // Actualizar padre
-      actualizarAgrupaciones?.();
-
-      // Cerrar modal y mostrar resultado
-      setAutoGroupModal({ open: false, suggestions: [], loading: false });
-
-      if (failed === 0) {
-        showSnack(`✅ ${success} artículo${success !== 1 ? 's' : ''} agrupado${success !== 1 ? 's' : ''} automáticamente`, 'success');
-      } else {
-        showSnack(`✅ ${success} agrupados, ⚠️ ${failed} fallaron`, 'warning');
-      }
-    } catch (error) {
-      console.error('Error al aplicar auto-agrupación:', error);
-      showSnack('Error al agrupar artículos automáticamente', 'error');
-      setAutoGroupModal((prev) => ({ ...prev, loading: false }));
-    }
-  };
 
   return (
     <>

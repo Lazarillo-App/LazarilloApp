@@ -36,6 +36,14 @@ export const TeamAPI = {
   },
 
   /**
+   * Personas que el caller ya asignó (para sugerir al invitar y heredar alias).
+   */
+  async listKnownPeople() {
+    const data = await http('/team/known-people', { withBusinessId: false });
+    return data?.people || [];
+  },
+
+  /**
    * Crea una invitación. Manda mail si está configurado el SMTP.
    */
   async createInvitation({ email, scopeType, scopeId, role, alias }) {
@@ -98,3 +106,4 @@ export const resendInvitation     = TeamAPI.resendInvitation;
 export const updateAssignment     = TeamAPI.updateAssignment;
 export const revokeAssignment     = TeamAPI.revokeAssignment;
 export const acceptInvitation     = TeamAPI.acceptInvitation;
+export const listKnownPeople = TeamAPI.listKnownPeople;

@@ -266,8 +266,6 @@ export default function ArticulosMain(props) {
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
 
   const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
-  console.log('rootBusiness:', rootBusiness);
-
   usePersistUiActions(activeBizId);
 
   const {
@@ -631,7 +629,11 @@ export default function ArticulosMain(props) {
       }
     };
     window.addEventListener('recetas:bulk-deleted', handler);
-    return () => window.removeEventListener('recetas:bulk-deleted', handler);
+    window.addEventListener('recetas:bulk-added', handler);
+    return () => {
+      window.removeEventListener('recetas:bulk-deleted', handler);
+      window.removeEventListener('recetas:bulk-added', handler);
+    };
   }, [activeBizId]);
 
   const [todoInfo, setTodoInfo] = useState({
@@ -1931,13 +1933,19 @@ export default function ArticulosMain(props) {
     if (!agrupacionesRich?.length) return;
     try {
       const pendiente = sessionStorage.getItem('pendingFocusArticulo');
-      if (pendiente) {
-        const id = Number(pendiente);
-        if (Number.isFinite(id)) focusArticle(id);
-        sessionStorage.removeItem('pendingFocusArticulo');
-      }
+      if (!pendiente) return;
+      const id = Number(pendiente);
+      if (!Number.isFinite(id)) { sessionStorage.removeItem('pendingFocusArticulo'); return; }
+      // Consumir el flag SOLO cuando el artículo ya está indexado en agIndex; si no,
+      // focusArticle no encuentra su agrupación y cae en "sin agrupación". Dejar el flag
+      // para el próximo ciclo (cuando agIndex se puble) evita ese salto en falso.
+      const indexado = !!agIndex?.byArticleId && agIndex.byArticleId.has(id);
+      const esOpcion = (opcionesBuscador || []).some(o => Number(o.id ?? o.value ?? o) === id);
+      if (!indexado && !esOpcion) return;
+      focusArticle(id);
+      sessionStorage.removeItem('pendingFocusArticulo');
     } catch (e) { console.warn('[pendingFocusArticulo]', e); }
-  }, [activeBizId, opcionesBuscador, agrupacionesRich, focusArticle]);
+  }, [activeBizId, opcionesBuscador, agrupacionesRich, agIndex, focusArticle]);
 
   // Buscador global: artículos + insumos
   const { rootBusiness: rootBizForSearch, organization: orgForSearch } = useOrganization();

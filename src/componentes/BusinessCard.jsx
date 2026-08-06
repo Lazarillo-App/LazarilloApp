@@ -16,17 +16,12 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import CircularProgress from "@mui/material/CircularProgress";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-import AutoGroupModal from "./AutoGroupModal";
+import SettingsBackupRestoreIcon from '@mui/icons-material/SettingsBackupRestore';
 import { useBusiness } from "@/context/BusinessContext";
 import { useBranch } from "@/hooks/useBranch";
 import { BranchesAPI } from "@/servicios/apiBranches";
 import { syncArticulos, syncInsumos, isMaxiConfigured } from "@/servicios/syncService";
 import { useOrganization } from "@/context/OrganizationContext";
-import {
-  checkNewArticlesAndSuggest,
-  applyAutoGrouping,
-  createNewAgrupacion,
-} from "@/servicios/autoGrouping";
 import {
   getOrgPriceListConfig,
   getBusinessPriceList,
@@ -70,6 +65,7 @@ export default function BusinessCard({
   const [viewBiz, setViewBiz] = useState(biz);
   const [maxiLoading, setMaxiLoading] = useState(true);
   const [syncingProv, setSyncingProv] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [maxiConfigured, setMaxiConfigured] = useState(false);
   const [editDivisionId, setEditDivisionId] = useState(null);
   const [editDivisionName, setEditDivisionName] = useState("");
@@ -154,18 +150,13 @@ export default function BusinessCard({
     }
   }, [newBranchName, newBranchColor, viewBiz?.id, loadBranches, showNotice]);
 
-  const [autoGroupModal, setAutoGroupModal] = useState({
-    open: false,
-    suggestions: [],
-    loading: false,
-  });
-
   const [divPanelOpen, setDivPanelOpen] = useState(false);
   const [showCreateDivModal, setShowCreateDivModal] = useState(false);
 const syncingProvRef = useRef(false);
   const syncingArtRef = useRef(false);
   const syncingSalesRef = useRef(false);
   const syncingInsumosRef = useRef(false);
+  const restoringRef = useRef(false);
 
   useEffect(() => { setViewBiz(biz); }, [biz]);
 
@@ -195,12 +186,6 @@ const syncingProvRef = useRef(false);
     (async () => {
       try {
         await syncArticulos(viewBiz.id, { onProgress: () => { } });
-        setTimeout(async () => {
-          try {
-            const suggestions = await checkNewArticlesAndSuggest(bizId);
-            if (suggestions?.length > 0) setAutoGroupModal({ open: true, suggestions, loading: false });
-          } catch { }
-        }, 1500);
         await syncInsumos(viewBiz.id, { onProgress: () => { } });
       } catch { }
     })();
@@ -280,12 +265,6 @@ const syncingProvRef = useRef(false);
       });
       if (result.ok && !result.cached) {
         window.dispatchEvent(new Event("business:synced"));
-        setTimeout(async () => {
-          try {
-            const suggestions = await checkNewArticlesAndSuggest(viewBiz.id);
-            if (suggestions?.length > 0) setAutoGroupModal({ open: true, suggestions, loading: false });
-          } catch { }
-        }, 1500);
       }
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
     finally { setSyncingArt(false); syncingArtRef.current = false; }
@@ -317,30 +296,24 @@ const syncingProvRef = useRef(false);
     finally { setSyncingProv(false); syncingProvRef.current = false; }
   };
 
-  const handleApplyAutoGrouping = async (selections) => {
-    setAutoGroupModal((prev) => ({ ...prev, loading: true }));
+  const handleRestoreMaxi = async () => {
+    if (restoring || restoringRef.current) return;
+    if (!window.confirm(
+      'Esto va a reemplazar TODOS los nombres, rubros y subrubros que hayas editado en Lazarillo por los valores originales de MaxiRest para este local. Las ediciones manuales se perderán. ¿Seguro?'
+    )) return;
+    setRestoring(true); restoringRef.current = true;
     try {
-      const { httpBiz } = await import("@/servicios/apiBusinesses");
-      const { success, failed } = await applyAutoGrouping(selections, httpBiz);
-      setAutoGroupModal({ open: false, suggestions: [], loading: false });
-      window.dispatchEvent(new Event("agrupaciones:updated"));
-      showNotice?.(failed === 0
-        ? `✅ ${success} artículo${success !== 1 ? "s" : ""} agrupado${success !== 1 ? "s" : ""} correctamente`
-        : `✅ ${success} agrupados, ⚠️ ${failed} fallaron`);
-    } catch {
-      setAutoGroupModal((prev) => ({ ...prev, loading: false }));
-      showNotice?.("❌ Error al agrupar artículos");
-    }
-  };
-
-  const handleCreateGroup = async (nombre) => {
-    try {
-      const newGroupId = await createNewAgrupacion(viewBiz.id, nombre);
-      window.dispatchEvent(new Event("agrupaciones:updated"));
-      return newGroupId;
-    } catch {
-      showNotice?.("❌ Error al crear agrupación");
-      throw new Error();
+      const { http } = await import("@/servicios/apiBusinesses");
+      const data = await http(`/businesses/${viewBiz.id}/restore-maxi`, {
+        method: 'POST',
+        withBusinessId: false,
+      });
+      showNotice?.(`Restaurados ${data?.restored ?? 0} artículos a los valores de MaxiRest`);
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+    } catch (e) {
+      showNotice?.(`Error al restaurar: ${e.message}`);
+    } finally {
+      setRestoring(false); restoringRef.current = false;
     }
   };
 
@@ -379,14 +352,6 @@ const syncingProvRef = useRef(false);
 
   return (
     <>
-      <AutoGroupModal
-        open={autoGroupModal.open}
-        suggestions={autoGroupModal.suggestions}
-        onClose={() => setAutoGroupModal({ open: false, suggestions: [], loading: false })}
-        onApply={handleApplyAutoGrouping}
-        onCreateGroup={handleCreateGroup}
-        loading={autoGroupModal.loading}
-      />
 
       {/* Modal de configuración de lista */}
       {configModalOpen && (
@@ -476,6 +441,14 @@ const syncingProvRef = useRef(false);
                 disabled={syncingProv} title="Sincronizar proveedores desde Maxi">
                 {syncingProv ? <CircularProgress size={16} /> : <LocalShippingIcon fontSize="small" />}
                 {syncingProv ? " Proveedores…" : " Proveedores"}
+              </button>
+            )}
+
+            {!maxiLoading && maxiConfigured && (
+              <button className="bc-btn bc-btn-outline" onClick={handleRestoreMaxi}
+                disabled={restoring} title="Restaurar datos originales de MaxiRest (borra ediciones manuales)">
+                {restoring ? <CircularProgress size={16} /> : <SettingsBackupRestoreIcon fontSize="small" />}
+                {restoring ? " Restaurando…" : " Restaurar Maxi"}
               </button>
             )}
 

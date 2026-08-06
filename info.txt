@@ -17,3 +17,4 @@ Acceso libre para cualquier nuevo usuario con codigo: LAZARILLO-FREE
 
 Desactivar codigo de cuentas libre acceso
 UPDATE access_codes SET active = FALSE WHERE code = 'LAZARILLO-FREE';
+

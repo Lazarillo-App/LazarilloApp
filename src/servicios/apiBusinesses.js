@@ -421,6 +421,13 @@ export const BusinessesAPI = {
       withBusinessId: false,
     }),
 
+  // Restaurar nombres/rubros/subrubros a los valores originales de MaxiRest
+  restoreMaxi: (id) =>
+    http(`/businesses/${id}/restore-maxi`, {
+      method: 'POST',
+      withBusinessId: false,
+    }),
+
   async getViewPrefs(businessId, { divisionId = null, scope = null } = {}) {
     if (!businessId) return { ok: true, byGroup: {} };
 

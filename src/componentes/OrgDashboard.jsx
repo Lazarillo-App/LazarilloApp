@@ -19,7 +19,6 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { syncArticulos, syncInsumos, isMaxiConfigured } from '@/servicios/syncService';
-import { checkNewArticlesAndSuggest, applyAutoGrouping, createNewAgrupacion } from '@/servicios/autoGrouping';
 import { useAccess } from '@/context/AccessContext';
 import BusinessEditModal from './BusinessEditModal';
 import BranchFormModal from './BranchFormModal';
@@ -69,8 +68,6 @@ function OrgBizCard({
   const syncArtRef = useRef(false);
   const syncInsumosRef = useRef(false);
 
-  const [autoGroupModal, setAutoGroupModal] = useState({ open: false, suggestions: [], loading: false });
-
   // ── Sucursales de este negocio específico ──
   const sucursales = useMemo(() =>
     (rawBranches || []).filter(b => !b.props?.is_main && String(b.business_id) === String(biz.id)),
@@ -115,12 +112,6 @@ function OrgBizCard({
       });
       if (result?.ok && !result.cached) {
         window.dispatchEvent(new Event('business:synced'));
-        setTimeout(async () => {
-          try {
-            const suggestions = await checkNewArticlesAndSuggest(biz.id);
-            if (suggestions?.length > 0) setAutoGroupModal({ open: true, suggestions, loading: false });
-          } catch { }
-        }, 1500);
       }
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
     finally { setSyncingArt(false); syncArtRef.current = false; }
@@ -136,27 +127,6 @@ function OrgBizCard({
       });
     } catch (e) { showNotice?.(`Error: ${e.message}`); }
     finally { setSyncingInsumos(false); syncInsumosRef.current = false; }
-  };
-
-  const handleApplyAutoGrouping = async (selections) => {
-    setAutoGroupModal(p => ({ ...p, loading: true }));
-    try {
-      const { httpBiz } = await import('@/servicios/apiBusinesses');
-      const { success, failed } = await applyAutoGrouping(selections, httpBiz);
-      setAutoGroupModal({ open: false, suggestions: [], loading: false });
-      window.dispatchEvent(new Event('agrupaciones:updated'));
-      showNotice?.(failed === 0
-        ? `✅ ${success} artículo${success !== 1 ? 's' : ''} agrupado${success !== 1 ? 's' : ''} correctamente`
-        : `✅ ${success} agrupados, ⚠️ ${failed} fallaron`);
-    } catch { setAutoGroupModal(p => ({ ...p, loading: false })); showNotice?.('❌ Error al agrupar'); }
-  };
-
-  const handleCreateGroup = async (nombre) => {
-    try {
-      const id = await createNewAgrupacion(biz.id, nombre);
-      window.dispatchEvent(new Event('agrupaciones:updated'));
-      return id;
-    } catch { showNotice?.('❌ Error al crear agrupación'); throw new Error(); }
   };
 
   return (

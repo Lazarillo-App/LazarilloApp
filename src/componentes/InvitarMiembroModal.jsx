@@ -4,13 +4,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Stack, MenuItem, Alert, Typography, Box,
-  Radio, RadioGroup, FormControlLabel, FormControl, Chip,
+  Radio, RadioGroup, FormControlLabel, FormControl, Chip, Autocomplete,
 } from '@mui/material';
 import GroupAddOutlinedIcon     from '@mui/icons-material/GroupAddOutlined';
 import BusinessIcon             from '@mui/icons-material/Business';
 import StorefrontOutlinedIcon   from '@mui/icons-material/StorefrontOutlined';
 
-import { createInvitation }   from '@/servicios/apiTeam';
+import { createInvitation, listKnownPeople }   from '@/servicios/apiTeam';
 import { useAccess }          from '@/context/AccessContext';
 import { useBusiness }        from '@/context/BusinessContext';
 import { useOrganization }    from '@/context/OrganizationContext';
@@ -31,11 +31,24 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const [selectedScopeKey, setSelectedScopeKey] = useState('');
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState(null);
+  const [knownPeople, setKnownPeople]         = useState([]);
+  const [aliasHeredado, setAliasHeredado]     = useState(false); // true si el alias vino de una persona existente
+
+  // Cargar personas conocidas del owner al abrir (para sugerir y heredar alias)
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    listKnownPeople()
+      .then(list => { if (alive) setKnownPeople(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setKnownPeople([]); });
+    return () => { alive = false; };
+  }, [open]);
 
   // Reset al abrir/cerrar
   useEffect(() => {
     if (!open) {
       setEmail(''); setAlias('');
+      setAliasHeredado(false);
       setRole(puedeInvitarAdmin ? 'admin' : 'staff');
       setSelectedScopeKey('');
       setError(null); setLoading(false);
@@ -136,16 +149,55 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
 
       <DialogContent dividers>
         <Stack spacing={2.2}>
-          <TextField
-            label="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            fullWidth
-            size="small"
-            autoFocus
+          <Autocomplete
+            freeSolo
+            options={knownPeople}
+            getOptionLabel={(opt) => typeof opt === 'string' ? opt : (opt?.email || '')}
+            filterOptions={(opts, state) => {
+              const q = state.inputValue.trim().toLowerCase();
+              if (!q) return opts;
+              return opts.filter(o =>
+                (o.email || '').toLowerCase().includes(q) ||
+                (o.alias || '').toLowerCase().includes(q)
+              );
+            }}
+            inputValue={email}
+            onInputChange={(_, val, reason) => {
+              if (reason === 'input') {
+                setEmail(val);
+                // Si venía un alias heredado y el usuario cambia el email a mano, liberar el alias
+                if (aliasHeredado) { setAliasHeredado(false); setAlias(''); }
+              }
+            }}
+            onChange={(_, val) => {
+              // Eligió una persona existente de la lista → heredar email + alias
+              if (val && typeof val === 'object') {
+                setEmail(val.email || '');
+                setAlias(val.alias || '');
+                setAliasHeredado(!!val.alias);
+              }
+            }}
+            renderOption={(props, opt) => (
+              <Box component="li" {...props} key={opt.user_id || opt.email}>
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>{opt.alias || opt.email}</Typography>
+                  {opt.alias && (
+                    <Typography variant="caption" color="text.secondary">{opt.email}</Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Email"
+                type="email"
+                size="small"
+                autoFocus
+                helperText="Escribí un email nuevo o elegí a alguien de tu equipo"
+              />
+            )}
           />
-
           <TextField
             label="Alias"
             placeholder="Ej: Juan Cocina, Admin Principal"
@@ -153,7 +205,10 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             onChange={(e) => setAlias(e.target.value)}
             fullWidth
             size="small"
-            helperText="Cómo querés verlo en el historial y en el equipo"
+            disabled={aliasHeredado}
+            helperText={aliasHeredado
+              ? 'Alias heredado: esta persona ya está en tu equipo'
+              : 'Cómo querés verlo en el historial y en el equipo'}
           />
 
           <TextField

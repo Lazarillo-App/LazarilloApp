@@ -21,10 +21,11 @@ import {
   InputAdornment, Select, MenuItem, FormControl,
   Checkbox, Stack, Dialog, DialogTitle, DialogContent,
   DialogActions, DialogContentText, Menu,
-  ToggleButton, ToggleButtonGroup,
+  ToggleButton, ToggleButtonGroup, Slider, Popover,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
@@ -33,7 +34,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import HistoryIcon from '@mui/icons-material/History';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import SaveIcon from '@mui/icons-material/Save';
 import NotesIcon from '@mui/icons-material/Notes';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
@@ -68,6 +68,7 @@ import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI } from '@/servicios/apiBusinesses';
+import { ComprasDetalleContenido } from './ComprasMiniDetalleModal';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 
 /* ── constantes ── */
@@ -254,6 +255,25 @@ function NotasModal({
     if (Array.isArray(fotos) && fotos.length) return fotos.filter(Boolean).slice(0, 6);
     return foto ? [foto] : [];
   });
+
+  // Snapshot inicial para detectar cambios al cerrar
+  const initialNotasRef = useRef(notas || '');
+  const initialFotosRef = useRef(
+    Array.isArray(fotos) && fotos.length ? fotos.filter(Boolean).slice(0, 6) : (foto ? [foto] : [])
+  );
+
+  // Cierre "accidental" (X, click afuera): guarda solo si cambió algo
+  const handleCloseGuardando = () => {
+    const cambio =
+      localNotas !== initialNotasRef.current ||
+      JSON.stringify(localFotos) !== JSON.stringify(initialFotosRef.current);
+    if (cambio) {
+      const now = new Date().toISOString();
+      onSave(localNotas, localFotos, now);
+    }
+    onClose();
+  };
+
   const [fotoActiva, setFotoActiva] = useState(0); // índice de la foto que se está viendo
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -332,7 +352,7 @@ function NotasModal({
 
   return (
     <>
-      <Modal open onClose={onClose}>
+      <Modal open onClose={handleCloseGuardando}>
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
@@ -355,7 +375,7 @@ function NotasModal({
               <NotesIcon fontSize="small" />
               <Typography variant="subtitle2" fontWeight={700}>Notas e imagen de la receta</Typography>
             </Stack>
-            <IconButton size="small" onClick={onClose} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
+            <IconButton size="small" onClick={handleCloseGuardando} sx={{ color: 'inherit' }}><CloseIcon fontSize="small" /></IconButton>
           </Box>
 
           <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -694,7 +714,7 @@ function VistaPreviaFotoModal({ foto, onEditar, onQuitar, onClose }) {
    VISTA COCINA (preview de lectura)
 ════════════════════════════════════════ */
 function VistaCocinaModal({ nombre, rendimiento, items, notas, foto, onClose }) {
-  const ingredientesVisibles = items.filter(it => it.supplyId && it.tipoCosto !== 'nulo');
+  const ingredientesVisibles = items.filter(it => it.supplyId && it.tipoCosto !== 'nulo' && it.secreto !== true);
   const conNotas = ingredientesVisibles.filter(it => it.observaciones);
   const hayNotas = !!notas;
   const hayNotasIngredientes = conNotas.length > 0;
@@ -841,6 +861,25 @@ function NotasItemModal({
     if (typeof fotosIniciales === 'string' && fotosIniciales) return [fotosIniciales];
     return [];
   });
+
+  const initialTextoRef = useRef(observaciones || '');
+  const initialFotosRef = useRef(
+    !fotosIniciales ? []
+      : Array.isArray(fotosIniciales) ? fotosIniciales.filter(Boolean)
+        : (typeof fotosIniciales === 'string' && fotosIniciales) ? [fotosIniciales]
+          : []
+  );
+
+  // Cierre "accidental" (X, click afuera, Escape): guarda solo si cambió algo
+  const handleCloseGuardando = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    const cambio =
+      texto !== initialTextoRef.current ||
+      JSON.stringify(fotos) !== JSON.stringify(initialFotosRef.current);
+    if (cambio) onSave(texto, fotos);
+    onClose();
+  };
+
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [showQR, setShowQR] = useState(false);
@@ -975,7 +1014,7 @@ function NotasItemModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       bgcolor: 'rgba(0,0,0,0.35)',
     }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) handleCloseGuardando(); }}
     >
       <Box sx={{
         bgcolor: 'background.paper', borderRadius: 2, boxShadow: 8,
@@ -992,7 +1031,7 @@ function NotasItemModal({
               Notas — {supplyNombre || 'Ingrediente'}
             </Typography>
           </Stack>
-          <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+          <IconButton size="small" onClick={handleCloseGuardando}><CloseIcon fontSize="small" /></IconButton>
         </Box>
 
         {/* ── Textarea ── */}
@@ -1008,7 +1047,7 @@ function NotasItemModal({
           onChange={e => setTexto(e.target.value)}
           inputProps={{ style: { fontSize: '0.88rem', lineHeight: 1.6 } }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') handleCloseGuardando();
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGuardar();
           }}
         />
@@ -1460,8 +1499,9 @@ function ItemRow({
     if (eqSel) {
       const contenido = Number(eqSel.contenido) || 0;
       if (elaborado) {
+        // Elaborado como insumo: aplicar su merma propia (opción A, coherente con la fila y el total).
         const costoPorUnidadEq = calcCostoUnitarioElaborado(elaborado, item.supplyMedida, eqSel.unidad, tipoCosto);
-        return contenido * costoPorUnidadEq;
+        return contenido * costoPorUnidadEq * factorMerma;
       }
       const precioParaCosto = forzarCompra
         ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
@@ -1482,7 +1522,7 @@ function ItemRow({
       return (contenido * factor) * precioBase;
     }
     if (elaborado) {
-      return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto);
+      return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto) * factorMerma;
     }
     // ── Item-artículo (promo): costo del ARTÍCULO, jerarquía costoTotal receta > costo > precio ──
     if (item.esArticulo || item.articleRefId) {
@@ -1505,6 +1545,19 @@ function ItemRow({
       : (Number(item.precioRefDB) || 0);
     const unidadDB = canonicalUnit(item.supplyMedida || 'u');
     const unidadElegida = canonicalUnit(item.unidad || unidadDB);
+    // ── Insumo unidad "u" CON envase, unidad elegida medible (ml/gr/etc, no equivalencia nombrada) ──
+    //    El envase ES la unidad de compra al 100%: costo/unidadMedible = precioRef / contenido_envase.
+    //    Sin esto caía en calcPrecioEnUnidad con unidadDB='u' → conversión u→ml disparatada.
+    {
+      const insDataEnv = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
+      const contEnvase = Number(insDataEnv?.contenido_envase) || 0;
+      const uniEnvase = canonicalUnit(insDataEnv?.unidad_envase || '');
+      if (unidadDB === 'u' && contEnvase > 0 && uniEnvase && unidadElegida !== 'u') {
+        const costoPorUnidadEnvase = (precioRef * factorMerma) / contEnvase;   // ej. $5.269,98 / 750ml = $7,0266/ml
+        const factor = getConversionFactor(unidadElegida, uniEnvase);          // unidad elegida → unidad del envase
+        return factor * costoPorUnidadEnvase;                                  // costo por 1 unidad elegida
+      }
+    }
     return calcPrecioEnUnidad(precioRef * factorMerma, unidadDB, unidadElegida);
   }, [elaborado, tipoCosto, item.precioRefDB, item.supplyMedida, item.unidad, item.esArticulo, item.articleRefId, item.equivalencias, factorMerma, allArticulos, insumos, objetivoReceta]);
 
@@ -1601,8 +1654,13 @@ function ItemRow({
                     : (item.ultimaCompra?.fecha || item.ultimaCompra || insDat?.fecha_ultima_compra || null);
                   const f = fmtDate(raw);
                   if (!f) return null;
+                  // Insumo: la fecha se muestra SOLO si la compra está desactualizada (alertaBg != null).
+                  //         Si las compras están al día, no se muestra nada. Elaborado: siempre (fecha de receta).
+                  if (!elaborado && !alertaBg) return null;
                   return (
-                    <Tooltip title={elaborado ? `Receta modificada: ${f}` : `Última compra: ${f}`}>
+                    <Tooltip title={elaborado
+                      ? `Receta modificada: ${f}`
+                      : `Este ítem contiene compras desactualizadas desde ${f}`}>
                       <Typography
                         component="span"
                         sx={{
@@ -1638,7 +1696,7 @@ function ItemRow({
                     ? Number(elaborado.rendimientoPeso)
                     : (Number(elaborado?.porciones) || 1);
                   const precioBaseElaborado = elaborado
-                    ? calcCostoUnitarioElaborado(elaborado, item.supplyMedida, elaborado.rendimientoUnidad || 'porcion', tipoCosto)
+                    ? calcCostoUnitarioElaborado(elaborado, item.supplyMedida, elaborado.rendimientoUnidad || 'porcion', tipoCosto) * factorMerma
                     : 0;
                   const unidadBaseStr = elaborado
                     ? canonicalUnit(elaborado.rendimientoUnidad || 'porcion')
@@ -1858,6 +1916,9 @@ function ItemRow({
                           const p = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
                           // Alerta si no hay compra reciente (dentro del período de config)
                           const sinCompraReciente = !!getAlertaColor(ins.fecha_ultima_compra, alertaSemanas, false);
+                          // Tiene compras registradas y al día → verde; desactualizado → rojo; sin compras → base
+                          const tieneCompraAlDia = !!ins.fecha_ultima_compra && !sinCompraReciente;
+                          const colorPrecio = sinCompraReciente ? '#ef4444' : (tieneCompraAlDia ? '#16a34a' : PRIMARY);
                           return (
                             <>
                               {sinCompraReciente && (
@@ -1868,7 +1929,7 @@ function ItemRow({
                                 </Tooltip>
                               )}
                               <Typography variant="body2" fontWeight={700}
-                                sx={{ color: sinCompraReciente ? '#ef4444' : PRIMARY, fontSize: '0.8rem' }}>
+                                sx={{ color: colorPrecio, fontSize: '0.8rem' }}>
                                 {p > 0 ? `$${fmt(p)}` : '—'}
                               </Typography>
                             </>
@@ -2138,6 +2199,22 @@ function ItemRow({
               onClick={() => onChange(index, { pedido: item.pedido === false })}>
               Pedido
             </Typography>
+          </Box>
+
+          {/* Secreto — no se muestra en la vista de cocina (solo control de costos del dueño/admin) */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Checkbox
+              size="small"
+              checked={item.secreto === true}
+              onChange={e => onChange(index, { secreto: e.target.checked })}
+              sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
+            />
+            <Tooltip title="Secreto: no se mostrará en la vista de cocina (solo para control de costos)">
+              <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
+                onClick={() => onChange(index, { secreto: item.secreto !== true })}>
+                Secreto
+              </Typography>
+            </Tooltip>
           </Box>
 
           {/* Tipo costo */}
@@ -2613,31 +2690,39 @@ function CostoPreferidoSelector({ insumoId, businessId, costoPreferido, origenEf
 }
 
 function TabComprasInsumo({ insumoId, businessId, insumoData }) {
-  const [lista, setLista] = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+  // Rango amplio: todo el historial disponible del insumo
+  const rango = useMemo(() => {
+    const hoy = new Date();
+    const to = hoy.toISOString().slice(0, 10);
+    const from = `${hoy.getFullYear() - 5}-01-01`;
+    return { from, to };
+  }, []);
 
   useEffect(() => {
     if (!insumoId || !businessId) return;
     setLoading(true);
-    insumoComprasList(insumoId, businessId)
-      .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
-      .catch(() => setError('No se pudieron cargar las compras'))
-      .finally(() => setLoading(false));
-  }, [insumoId, businessId]);
-
-  const fmtFecha = (f) => {
-    if (!f) return '—';
-    try { return new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
-    catch { return String(f); }
-  };
-  const fmtNum = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    (async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${rango.from}&to=${rango.to}&limit=500`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        });
+        const data = await res.json().catch(() => ({}));
+        setItems(Array.isArray(data?.data) ? data.data : []);
+      } catch {
+        setItems([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [insumoId, businessId, rango]);
 
   return (
     <Box sx={{ py: 1 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-        Historial de compras de este insumo. La compra más reciente define el precio de referencia.
-      </Typography>
       {insumoData && (
         <Box sx={{ mb: 1.5 }}>
           <CostoPreferidoSelector
@@ -2649,47 +2734,17 @@ function TabComprasInsumo({ insumoId, businessId, insumoData }) {
           />
         </Box>
       )}
-      {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
-      ) : lista.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 4, color: 'text.disabled' }}>
-          <Typography variant="body2">Este insumo no tiene compras registradas.</Typography>
-        </Box>
-      ) : (
-        <Box>
-          {/* Header */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px 110px 110px', gap: 1, px: 1, mb: 0.5 }}>
-            <Typography variant="caption" fontWeight={700}>Fecha</Typography>
-            <Typography variant="caption" fontWeight={700}>Factura</Typography>
-            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Cant.</Typography>
-            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Precio u.</Typography>
-            <Typography variant="caption" fontWeight={700} sx={{ textAlign: 'right' }}>Total</Typography>
-          </Box>
-          {lista.map((c, i) => (
-            <Box
-              key={c.id}
-              sx={{
-                display: 'grid', gridTemplateColumns: '90px 1fr 90px 110px 110px', gap: 1,
-                px: 1, py: 0.75, borderRadius: 1,
-                bgcolor: i === 0 ? `${PRIMARY}0d` : 'transparent',
-                borderBottom: '1px solid', borderColor: 'divider',
-                alignItems: 'center',
-              }}
-            >
-              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{fmtFecha(c.fecha)}</Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.factura_key || c.referencia || '—'}
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right' }}>{fmtNum(c.cantidad)}</Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right', fontWeight: i === 0 ? 700 : 400 }}>
-                ${fmtNum(c.precio)}
-              </Typography>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', textAlign: 'right' }}>${fmtNum(c.precio_total)}</Typography>
-            </Box>
-          ))}
-        </Box>
-      )}
+      <ComprasDetalleContenido
+        open={true}
+        insumoId={insumoId}
+        insumoNombre={insumoData?.nombre || ''}
+        insumoUnidad={insumoData?.unidad_med || insumoData?.medida || ''}
+        rango={rango}
+        items={items}
+        loading={loading}
+        businessId={businessId}
+        businesses={[]}
+      />
     </Box>
   );
 }
@@ -2723,7 +2778,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
 
   // Unidades válidas según la familia del insumo (igual que en recetas):
   // peso (gr/kg), volumen (ml/lt), o unidad. No se mezclan familias.
-const UNIDADES_EQ = useMemo(() => {
+  const UNIDADES_EQ = useMemo(() => {
     // Caso elaborado con rendimiento en peso: la equivalencia fracciona la receta,
     // así que la familia la manda la unidad de peso del rendimiento (gr/kg o ml/lt).
     if (recetaInfo?.esElaborado && Number(recetaInfo.rendimientoPeso) > 0) {
@@ -3004,7 +3059,7 @@ const UNIDADES_EQ = useMemo(() => {
             <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
               {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
-         <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
               {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
           </Box>
@@ -3264,6 +3319,49 @@ export default function RecetaModal({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [gemelosOpen]);
 
+  // ── Lupa: buscar artículo/insumo y abrir en cascada ──
+  const [lupaAnchor, setLupaAnchor] = useState(null);
+  const [lupaQuery, setLupaQuery] = useState('');
+  const [lupaResults, setLupaResults] = useState([]);
+  const [lupaLoading, setLupaLoading] = useState(false);
+
+  const buscarLupa = useCallback(async (q) => {
+    if (!q || !q.trim()) { setLupaResults([]); return; }
+    setLupaLoading(true);
+    const term = q.trim().toLowerCase();
+    try {
+      const token = localStorage.getItem('token') || '';
+      // Buscar insumos y artículos en paralelo, juntar ambos
+      const [insumosRes, articlesRes] = await Promise.allSettled([
+        insumosList(insumosBizId || businessId, { limit: 99999 }),
+        fetch(
+          `${BASE}/businesses/${businessId}/articles/search?q=${encodeURIComponent(q)}`,
+          { headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) } }
+        ).then(r => r.json()),
+      ]);
+
+      const insumosItems = insumosRes.status === 'fulfilled' && Array.isArray(insumosRes.value?.data)
+        ? insumosRes.value.data
+            .filter(i => (i.nombre || '').toLowerCase().includes(term) && Number(i.id) !== Number(articulo?.id))
+            .slice(0, 20)
+            .map(i => ({ id: i.id, nombre: i.nombre, esArticulo: false }))
+        : [];
+
+      const articulosItems = articlesRes.status === 'fulfilled' && Array.isArray(articlesRes.value?.items)
+        ? articlesRes.value.items
+            .filter(a => Number(a.id) !== Number(articulo?.id))
+            .slice(0, 20)
+            .map(a => ({ id: a.id, nombre: a.nombre, esArticulo: true }))
+        : [];
+
+      setLupaResults([...insumosItems, ...articulosItems]);
+    } catch {
+      setLupaResults([]);
+    } finally {
+      setLupaLoading(false);
+    }
+  }, [businessId, insumosBizId, articulo?.id]);
+
   useEffect(() => {
     if (!open) return;
     setEntradaElegida(!modoInsumo);
@@ -3409,7 +3507,8 @@ export default function RecetaModal({
       const insData = insumos.find(i => String(i.id) === String(articulo?.id));
       const origen = insData?.costo_efectivo_origen;
       const tieneCompras = Number(insData?.cantidad_compras) > 0;
-      const destino = origen === 'compra' ? 'compras'
+      // 'compra' solo dirige a compras si realmente hay compras; sin compras ni receta → receta
+      const destino = (origen === 'compra' && tieneCompras) ? 'compras'
         : origen === 'elaboracion' ? 'receta'
           : tieneCompras ? 'compras'
             : 'receta';
@@ -3609,6 +3708,7 @@ export default function RecetaModal({
               merma: it.merma !== false,
               mermaId: it.merma_id ?? null,
               pedido: it.pedido !== false,
+              secreto: it.secreto === true,
               tipoCosto: it.tipo_costo || 'total',
               observaciones: it.observaciones || '',
               fotosUrls: (() => {
@@ -3756,7 +3856,9 @@ export default function RecetaModal({
     if (eqSel) {
       const contenido = Number(eqSel.contenido) || 0;
       if (elaborado && !forzarCompra) {
-        precioU = contenido * calcCostoUnitarioElaborado(elaborado, it.supplyMedida, eqSel.unidad, it.tipoCosto);
+        // El elaborado es un insumo: su merma propia (producto terminado) también aplica.
+        // Su costoTotal ya trae la merma de sus componentes internos, no se duplica.
+        precioU = contenido * calcCostoUnitarioElaborado(elaborado, it.supplyMedida, eqSel.unidad, it.tipoCosto) * factorMerma;
       } else {
         const precioParaCosto = forzarCompra
           ? (Number(insData?.precio_ultima_compra) || Number(it.precioRefDB) || 0)
@@ -3775,7 +3877,8 @@ export default function RecetaModal({
         }
       }
     } else if (elaborado && !forzarCompra) {
-      precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
+      // Elaborado como insumo: aplicar su merma propia (ver nota en rama con equivalencia).
+      precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto) * factorMerma;
     } else if (it.esArticulo || it.articleRefId) {
       const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
       const costoComp = Number(art?.costoTotal) || Number(art?.precio) || Number(it.precioRefDB) || 0;
@@ -3786,7 +3889,18 @@ export default function RecetaModal({
         ? (Number(insData?.precio_ultima_compra) || Number(it.precioRefDB) || 0)
         : (Number(it.precioRefDB) || 0);
       const unidadDB = canonicalUnit(it.supplyMedida || 'u');
-      precioU = calcPrecioEnUnidad(precioRef * factorMerma, unidadDB, canonicalUnit(it.unidad || unidadDB));
+      const unidadElegida = canonicalUnit(it.unidad || unidadDB);
+      // ── Insumo "u" CON envase, unidad elegida medible: costo/unidad = precioRef / contenido_envase ──
+      //    (gemelo de la lógica en costoEnUnidadElegida; el envase es la unidad de compra al 100%)
+      const contEnvase = Number(insData?.contenido_envase) || 0;
+      const uniEnvase = canonicalUnit(insData?.unidad_envase || '');
+      if (unidadDB === 'u' && contEnvase > 0 && uniEnvase && unidadElegida !== 'u') {
+        const costoPorUnidadEnvase = (precioRef * factorMerma) / contEnvase;
+        const factor = getConversionFactor(unidadElegida, uniEnvase);
+        precioU = factor * costoPorUnidadEnvase;
+      } else {
+        precioU = calcPrecioEnUnidad(precioRef * factorMerma, unidadDB, unidadElegida);
+      }
     }
     return cant * precioU;
   }, [localRecetasElaborados, allArticulos, insumos, appConfig.desperdicioGlobalPct]);
@@ -3982,25 +4096,16 @@ export default function RecetaModal({
       foto,
       fotos,
       items: itemsOrdenados.map(it => {
-        let costoUnitario;
         let precioRefDbItem = Number(it.precioRefDB) || 0;
-        // ── Item-artículo (promo): costo del ARTÍCULO, nunca de un insumo homónimo ──
+        // ── Costo unitario CON merma: derivado de calcCostoItem (única fuente de verdad
+        //    del costo en vivo). calcCostoItem devuelve cant × precioU, así que dividimos
+        //    por la cantidad para obtener el unitario que se persiste. Antes se recalculaba
+        //    aparte sin factorMerma → recetas.costo_total quedaba sin merma. ──
+        const cantItem = Number(it.cantidad) || 0;
+        const costoItemTotal = calcCostoItem(it);
+        let costoUnitario = cantItem > 0 ? costoItemTotal / cantItem : 0;
         if (it.articleRefId) {
-          const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
-          // Jerarquía: costo de receta > costo > precio (mismo criterio que el chip en vivo)
-          costoUnitario = Number(art?.costoTotal) || Number(art?.precio) || Number(it.precioRefDB) || 0;
           precioRefDbItem = costoUnitario;
-        } else {
-          const elaborado = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
-          if (elaborado) {
-            costoUnitario = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto);
-          } else {
-            costoUnitario = calcPrecioEnUnidad(
-              Number(it.precioRefDB) || 0,
-              it.supplyMedida || 'u',
-              it.unidad || it.supplyMedida || 'u'
-            );
-          }
         }
         return {
           supplyId: it.supplyId,
@@ -4010,9 +4115,10 @@ export default function RecetaModal({
           precioRefDb: precioRefDbItem,
           costoUnitario,
           merma: it.merma !== false,
-          mermaId: it.mermaId ?? null,
+          mermaId: it.merma_id ?? null,
           pedido: it.pedido !== false,
-          tipoCosto: it.tipoCosto || 'total',
+          secreto: it.secreto === true,
+          tipoCosto: it.tipo_costo || 'total',
           observaciones: it.observaciones || '',
           fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : (it.fotoUrl ? [it.fotoUrl] : []),
           updatedAt: it.updatedAt || new Date().toISOString(),
@@ -4229,6 +4335,19 @@ export default function RecetaModal({
     }
   }, [saving, deleting, modoInsumo, tab, items, notas, foto, hasDuplicates, handleSave, modoPromoNueva]);
 
+  const abrirDesdeLupa = useCallback(async (item) => {
+    setLupaAnchor(null);
+    setLupaQuery('');
+    setLupaResults([]);
+    await autoSave(); // guardar el modal actual antes de abrir en cascada
+    pushElaborado({
+      id: item.id,
+      nombre: item.nombre,
+      esArticulo: item.esArticulo,
+      precio: 0,
+    });
+  }, [autoSave, pushElaborado]);
+
   // ── Desactivar promo (switch Promoción → Producto), ya confirmado por el usuario ──
   const desactivarPromo = useCallback(async () => {
     const artId = Number(articulo?.id);
@@ -4350,7 +4469,13 @@ export default function RecetaModal({
               <MenuBookIcon />
               <Box>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
-                  {promoMode ? 'Promoción' : 'Receta'} — {artNombre}
+                  {modoInsumo
+                    ? `${artNombre}${(() => {
+                      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+                      const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
+                      return u ? ` × ${canonicalUnit(u).toUpperCase()}` : '';
+                    })()}`
+                    : `${promoMode ? 'Promoción' : 'Receta'} — ${artNombre}`}
                 </Typography>
                 {articulo?.id && (
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
@@ -4383,6 +4508,16 @@ export default function RecetaModal({
               </Stack>
             )}
             <Stack direction="row" alignItems="center" spacing={0.5}>
+              {/* Lupa: buscar y abrir en cascada (artículo o insumo según contexto) */}
+              <Tooltip title={modoInsumo ? 'Buscar insumo' : 'Buscar artículo'}>
+                <IconButton
+                  size="small"
+                  onClick={(e) => setLupaAnchor(e.currentTarget)}
+                  sx={{ color: 'inherit', opacity: 0.85, '&:hover': { opacity: 1 } }}
+                >
+                  <SearchIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
               {/* Botón exclusión de descuentos */}
               {hayListasNoFavoritas && (
                 <Tooltip title="Excluir de listas de precios">
@@ -4866,7 +5001,8 @@ export default function RecetaModal({
                                 return (
                                   <Box
                                     key={m.article_id}
-                                    onClick={() => {
+                                    onClick={async () => {
+                                      await autoSave(); // guardar la receta padre antes de bajar en cascada
                                       pushElaborado({
                                         id: m.article_id,
                                         nombre: m.nombre || `#${m.article_id}`,
@@ -5097,7 +5233,8 @@ export default function RecetaModal({
                               if (newItemIndex === idx) setNewItemIndex(null);
                             }}
                             onRemove={removeItem}
-                            onOpenRecetaElaborado={(it) => {
+                            onOpenRecetaElaborado={async (it) => {
+                              await autoSave(); // guardar la receta padre antes de bajar en cascada
                               // Item-artículo (promo): abrir receta del artículo componente
                               if (it.esArticulo || it.articleRefId) {
                                 const artId = Number(it.articleRefId);
@@ -5157,7 +5294,8 @@ export default function RecetaModal({
                     display: 'grid',
                     gridTemplateColumns: (() => {
                       const ocultarExtras = modoInsumo && !verCostosExtra;
-                      const cols = (Number(rendimiento) > 1 ? 2 : 1) + (ocultarExtras ? 0 : 2);
+                      const colPeso = Number(rendimientoPeso) > 0 ? 1 : 0;
+                      const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : 2);
                       return `repeat(${cols}, 1fr)`;
                     })(),
                     gap: 1.5,
@@ -5191,6 +5329,16 @@ export default function RecetaModal({
                       </Typography>
                       <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
                     </Box>
+                    {Number(rendimientoPeso) > 0 && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                          Costo / {canonicalUnit(unidadPeso || 'gr')} (÷{fmt(Number(rendimientoPeso))})
+                        </Typography>
+                        <Typography variant="h6" fontWeight={800}>
+                          ${fmt(costoXRendimiento / Number(rendimientoPeso))}
+                        </Typography>
+                      </Box>
+                    )}
                     {(!modoInsumo || verCostosExtra) && <Box>
                       {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
                       {promoMode && ventaSinPromo > 0 && (
@@ -5231,6 +5379,25 @@ export default function RecetaModal({
                       ) : (
                         <Typography variant="h6" color="text.disabled">—</Typography>
                       )}
+                      {/* Slider de ajuste fino del Costo Objetivo — mismo estado que el campo de arriba */}
+                      <Slider
+                        value={Number(pctCostoIdeal) || 0}
+                        min={0}
+                        max={100}
+                        step={1}
+                        size="small"
+                        onChange={(_, val) => setPctCostoIdeal(val)}
+                        onChangeCommitted={(_, val) => {
+                          const num = Number(val) || 0;
+                          if (!num || !articulo?.id) return;
+                          onPriceConfigSave?.({
+                            scope: 'articulo',
+                            scopeId: String(articulo.id),
+                            objetivo: num,
+                          });
+                        }}
+                        sx={{ mt: 0.5, py: 0.5 }}
+                      />
                     </Box>}
                   </Box>
 
@@ -5414,6 +5581,51 @@ export default function RecetaModal({
           <Button onClick={() => setReemplazarAviso(false)}>Entendido</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Popover de búsqueda de la lupa */}
+      <Popover
+        open={Boolean(lupaAnchor)}
+        anchorEl={lupaAnchor}
+        onClose={() => { setLupaAnchor(null); setLupaQuery(''); setLupaResults([]); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{ sx: { width: 340, maxHeight: 420, p: 1.5 } }}
+      >
+        <TextField
+          fullWidth
+          size="small"
+          autoFocus
+          placeholder={modoInsumo ? 'Buscar insumo…' : 'Buscar artículo…'}
+          value={lupaQuery}
+          onChange={(e) => { setLupaQuery(e.target.value); buscarLupa(e.target.value); }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+        />
+        <Box sx={{ mt: 1, maxHeight: 330, overflowY: 'auto' }}>
+          {lupaLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={20} /></Box>
+          ) : lupaResults.length === 0 ? (
+            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'center', py: 2 }}>
+              {lupaQuery.trim() ? 'Sin resultados' : 'Escribí para buscar'}
+            </Typography>
+          ) : (
+            lupaResults.map(item => (
+              <Box
+                key={`${item.esArticulo ? 'a' : 'i'}-${item.id}`}
+                onClick={() => abrirDesdeLupa(item)}
+                sx={{
+                  px: 1, py: 0.75, borderRadius: 1, cursor: 'pointer',
+                  '&:hover': { bgcolor: `${PRIMARY}12` },
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}
+              >
+                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{item.nombre}</Typography>
+                <Chip label={item.esArticulo ? 'Artículo' : 'Insumo'} size="small"
+                  sx={{ height: 18, fontSize: '0.62rem', bgcolor: `${PRIMARY}15`, color: PRIMARY }} />
+              </Box>
+            ))
+          )}
+        </Box>
+      </Popover>
 
       <ExcluirListasModal
         open={excluirOpen}

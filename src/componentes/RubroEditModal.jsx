@@ -1,6 +1,6 @@
 ﻿/* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Typography, Box, Stack, Checkbox,
@@ -45,6 +45,9 @@ export default function RubroEditModal({
   const [addingReceta, setAddingReceta] = useState(false);
   const [insumosUsados, setInsumosUsados] = useState([]); // [{insumo_id, nombre, en_cuantos}]
   const [totalBloque, setTotalBloque] = useState(0);
+  const searchBoxRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [verEnCuales, setVerEnCuales] = useState(false);
 
   // Resetear al abrir
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function RubroEditModal({
     const u = insumosUsados.find(x => Number(x.insumo_id) === Number(insumoId));
     if (!u) return null;
     const enTodos = totalBloque > 0 && u.en_cuantos >= totalBloque;
-    return { en_cuantos: u.en_cuantos, enTodos };
+    return { en_cuantos: u.en_cuantos, enTodos, articulos: Array.isArray(u.articulos) ? u.articulos : [] };
   }, [insumosUsados, totalBloque]);
 
   const toggleExclusionLista = useCallback(async (listNumber) => {
@@ -150,7 +153,7 @@ export default function RubroEditModal({
 
   const listasConDescuento = priceLists.filter(l => !l.isPrincipal && l.discountPct != null);
 
- const insumosFiltrados = React.useMemo(() => {
+  const insumosFiltrados = React.useMemo(() => {
     const q = insumoQuery.trim().toLowerCase();
     // Campo vacío → sugerir los insumos ya usados en recetas del rubro
     if (!q) {
@@ -163,6 +166,19 @@ export default function RubroEditModal({
       .filter(i => String(i.nombre || '').toLowerCase().includes(q))
       .slice(0, 8);
   }, [insumoQuery, insumosCatalogo, insumosUsados]);
+
+  // Al aparecer resultados del buscador, scrollear para que el dropdown quede a la vista
+  useEffect(() => {
+    if (!insumoSel && insumosFiltrados.length > 0 && searchBoxRef.current) {
+      // Esperar a que el dropdown se monte y scrollear tomándolo en cuenta
+      requestAnimationFrame(() => {
+        const box = searchBoxRef.current;
+        if (!box) return;
+        // Scrollear el ancestro scrolleable (DialogContent) para mostrar input + dropdown
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [insumosFiltrados.length, insumoSel]);
 
   const handleAddRecetaBloque = async () => {
     if (!insumoSel || !businessId) return;
@@ -186,7 +202,7 @@ export default function RubroEditModal({
         }));
       } catch { }
       window.dispatchEvent(new CustomEvent('recetas:bulk-added', { detail: r }));
-      window.dispatchEvent(new CustomEvent('articulos:updated'));  
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
       onClose();
     } catch (e) {
       console.error('[bulk-add-insumo]', e);
@@ -196,7 +212,7 @@ export default function RubroEditModal({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography fontWeight={700} sx={{ flex: 1, fontSize: '0.95rem' }}>
           {rubroDisplay}
@@ -239,28 +255,58 @@ export default function RubroEditModal({
             Agrega este insumo a la receta de los {articleIds.length} artículo(s). Los que ya lo tengan se saltean.
           </Typography>
 
-          {insumoSel ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, p: 1, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-              <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>{insumoSel.nombre}</Typography>
-              <IconButton size="small" onClick={() => { setInsumoSel(null); setInsumoQuery(''); }}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
+         {insumoSel ? (
+            <Box sx={{ mb: 1, p: 1, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>{insumoSel.nombre}</Typography>
+                <IconButton size="small" onClick={() => { setInsumoSel(null); setInsumoQuery(''); setVerEnCuales(false); }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              {(() => {
+                const info = usadoInfo(insumoSel.id);
+                const yaUsado = info?.en_cuantos || 0;
+                const seAgrega = totalBloque - yaUsado;
+                const arts = info?.articulos || [];
+                return (
+                  <Box sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" sx={{ display: 'block', color: '#166534', fontWeight: 600 }}>
+                      Se agregará a {seAgrega} artículo{seAgrega !== 1 ? 's' : ''}.
+                    </Typography>
+                    {yaUsado > 0 && (
+                      <Box sx={{ mt: 0.25 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Ya está en {yaUsado}:{' '}
+                          {arts.slice(0, verEnCuales ? arts.length : 3).map(a => a.nombre).join(', ')}
+                          {!verEnCuales && arts.length > 3 && (
+                            <Box component="span"
+                              onClick={() => setVerEnCuales(true)}
+                              sx={{ ml: 0.5, color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}>
+                              +{arts.length - 3} más
+                            </Box>
+                          )}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })()}
             </Box>
           ) : (
-            <Box sx={{ position: 'relative', mb: 1 }}>
+            <Box ref={searchBoxRef} sx={{ position: 'relative', mb: 1 }}>
               <TextField
                 size="small" fullWidth placeholder={insumosUsados.length ? 'Buscar o ver ya usados…' : 'Buscar insumo…'}
                 value={insumoQuery}
                 onChange={e => setInsumoQuery(e.target.value)}
               />
               {insumosFiltrados.length > 0 && (
-                <Box sx={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, bgcolor: '#fff', border: '1px solid #e2e8f0', borderRadius: 1, maxHeight: 200, overflowY: 'auto', boxShadow: 2 }}>
+                <Box ref={dropdownRef} sx={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, bgcolor: '#fff', border: '1px solid #e2e8f0', borderRadius: 1, maxHeight: 260, overflowY: 'auto', boxShadow: 4, mt: 0.5 }}>
                   {insumosFiltrados.map(ins => {
                     const info = usadoInfo(ins.id);
                     return (
                       <Box key={ins.id}
                         onClick={() => {
-                          if (info?.enTodos) return; // ya está en todos → no hacer nada
+                          if (info?.enTodos) return;
                           setInsumoSel(ins);
                           const u = String(ins.unidad_med || 'u').trim().toLowerCase();
                           const permitidas = ['u', 'kg', 'gr', 'l', 'ml'];
@@ -291,7 +337,6 @@ export default function RubroEditModal({
                   })}
                 </Box>
               )}
-              
             </Box>
           )}
 
@@ -330,7 +375,7 @@ export default function RubroEditModal({
               Precio de referencia: ${Number(insumoSel.precio_ref || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/{insumoSel.unidad_med || 'u'}
             </Typography>
           )}
-          
+
         </Box>
         {/* Exclusiones */}
         {listasConDescuento.length > 0 && (

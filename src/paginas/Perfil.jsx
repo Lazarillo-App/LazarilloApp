@@ -5,7 +5,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Box, Stack, Typography, Avatar, Chip, Button, Paper,
   Divider, IconButton, Tooltip, Table, TableHead, Snackbar,
-  TableRow, TableCell, TableBody, CircularProgress, Menu, MenuItem,
+  TableRow, TableCell, TableBody, CircularProgress, Menu, MenuItem, Collapse,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
@@ -19,6 +19,7 @@ import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import EditIcon from '@mui/icons-material/Edit';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { useAuth } from '@/context/AuthContext';
@@ -28,6 +29,7 @@ import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import BusinessCreateModal from '@/componentes/BusinessCreateModal';
 import InvitarMiembroModal from '@/componentes/InvitarMiembroModal';
+import EditarAccesoModal from '@/componentes/EditarAccesoModal';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncservice';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
@@ -80,13 +82,24 @@ function DataRow({ label, value, mono }) {
 /* ─── EQUIPO funcional ─── */
 function TeamSection() {
   const { currentBusiness, currentRole, canDo, isOwner } = useAccess();
+  const { items: allBusinesses } = useBusiness() || {};
+  const { organization } = useOrganization() || {};
   const bizId = currentBusiness?.id || null;
   const bizName = currentBusiness?.name || null;
 
-  const [members, setMembers] = useState([]);
+  // Mapa scope_id → nombre de negocio (para la columna Negocios de la vista consolidada)
+  const bizNameById = useMemo(() => {
+    const m = new Map();
+    (allBusinesses || []).forEach(b => m.set(Number(b.id), b.name || `#${b.id}`));
+    return m;
+  }, [allBusinesses]);
+
+  const [members, setMembers] = useState([]);        // consolidado por persona
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
+const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (detalle de negocios)
+  const [editandoPersona, setEditandoPersona] = useState(null); // persona en el modal de editar acceso
 
   // Menú contextual por fila
   const [menuRow, setMenuRow] = useState(null);
@@ -97,17 +110,56 @@ function TeamSection() {
   const puedeGestionar = canDo('manage_team') && !!bizId;
 
   const fetchMembers = useCallback(async () => {
-    if (!bizId) return;
     setLoading(true); setError(null);
     try {
-      const rows = await listMembers({ scopeType: 'business', scopeId: bizId });
-      setMembers(rows);
+      // Sin scope: trae TODOS los assignments visibles para el caller (todo el equipo,
+      // en todos sus negocios). Consolidamos por email → una fila por persona.
+      const rows = await listMembers();
+      const porEmail = new Map();
+      for (const r of rows) {
+        const email = r.email || `#${r.user_id}`;
+        if (!porEmail.has(email)) {
+          porEmail.set(email, {
+            email,
+            user_id: r.user_id,
+            alias: r.alias || r.name || null,
+            name: r.name || null,
+            account_status: r.account_status,
+            negocios: [],
+          });
+        }
+        const persona = porEmail.get(email);
+        // Preferir el alias no vacío que aparezca
+        if (!persona.alias && (r.alias || r.name)) persona.alias = r.alias || r.name;
+        const scopeIdNum = Number(r.scope_id);
+        const scopeName = r.scope_type === 'organization'
+          ? (organization?.name || `Org #${r.scope_id}`)
+          : (bizNameById.get(scopeIdNum) || `#${r.scope_id}`);
+        persona.negocios.push({
+          assignmentId: r.id,
+          scopeType: r.scope_type,
+          scopeId: scopeIdNum,
+          scopeName,
+          role: r.role,
+          account_status: r.account_status,
+        });
+      }
+      // Rol más alto por persona (para el chip principal)
+      const rank = { owner: 3, admin: 2, staff: 1 };
+      const lista = Array.from(porEmail.values()).map(p => {
+        let rolMasAlto = null, best = 0;
+        for (const n of p.negocios) {
+          if (rank[n.role] > best) { best = rank[n.role]; rolMasAlto = n.role; }
+        }
+        return { ...p, rolMasAlto };
+      });
+      setMembers(lista);
     } catch (e) {
       setError(e?.message || 'Error al cargar equipo');
     } finally {
       setLoading(false);
     }
-  }, [bizId]);
+  }, [bizNameById, organization]);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
 
@@ -144,22 +196,14 @@ function TeamSection() {
     setMenuRow(null); setMenuAnchor(null);
   };
 
-  if (!bizId) {
-    return (
-      <Section icon={<GroupsIcon />} title="Equipo">
-        <Typography variant="body2" color="text.secondary">
-          Elegí un negocio para ver y gestionar su equipo.
-        </Typography>
-      </Section>
-    );
-  }
+  // La vista de equipo es consolidada (todos los negocios), no depende del negocio activo.
 
   return (
     <>
       <Section
         icon={<GroupsIcon />}
         title="Equipo"
-        badge={bizName ? `de ${bizName}` : undefined}
+        badge={members.length ? `${members.length} ${members.length === 1 ? 'persona' : 'personas'}` : undefined}
         action={
           puedeGestionar ? (
             <Tooltip title="Invitar miembro">
@@ -214,68 +258,100 @@ function TeamSection() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                {['Alias', 'Email', 'Rol', 'Estado', ''].map(h => (
+                {['Alias', 'Email', 'Rol', 'Negocios', 'Estado', ''].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem' }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
             <TableBody>
               {members.map(m => {
-                const esYo = false; // luego comparamos con user.id si querés
-                const esOwner = m.role === 'owner';
-                const accStatus = m.account_status;
-                const estaInvitado = accStatus === 'invited';
+                const estaInvitado = m.account_status === 'invited';
+                const unSoloNegocio = m.negocios.length === 1;
+                const expandido = expandedEmail === m.email;
                 return (
-                  <TableRow key={m.id}>
-                    <TableCell>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Avatar sx={{
-                          width: 26, height: 26, fontSize: '0.72rem',
-                          bgcolor: esOwner ? '#16a34a' : tc,
-                        }}>
-                          {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
-                        </Avatar>
-                        <Typography variant="body2" fontWeight={600}>
-                          {m.alias || m.name || '—'}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
-                      {m.email}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={m.role}
-                        size="small"
-                        icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
-                        sx={{
-                          fontSize: '0.7rem',
-                          bgcolor: esOwner ? '#16a34a15' : `${tc}15`,
-                          color: esOwner ? '#16a34a' : tc,
-                          fontWeight: 600,
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={estaInvitado ? 'Invitación pendiente' : 'Activo'}
-                        size="small"
-                        color={estaInvitado ? 'warning' : 'success'}
-                        variant={estaInvitado ? 'outlined' : 'filled'}
-                        sx={{ fontSize: '0.7rem' }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {puedeGestionar && !esOwner && !esYo && (
-                        <IconButton
+                  <React.Fragment key={m.email}>
+                    <TableRow>
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc }}>
+                            {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
+                          </Avatar>
+                          <Typography variant="body2" fontWeight={600}>
+                            {m.alias || m.name || '—'}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
+                        {m.email}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={m.rolMasAlto}
                           size="small"
-                          onClick={(e) => { setMenuRow(m); setMenuAnchor(e.currentTarget); }}
-                        >
-                          <MoreVertIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                          icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
+                          sx={{ fontSize: '0.7rem', bgcolor: `${tc}15`, color: tc, fontWeight: 600 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {unSoloNegocio ? (
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                            {m.negocios[0].scopeName}
+                          </Typography>
+                        ) : (
+                          <Chip
+                            label={`${m.negocios.length} negocios`}
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setExpandedEmail(expandido ? null : m.email)}
+                            sx={{ fontSize: '0.7rem', cursor: 'pointer', borderColor: tc, color: tc }}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={estaInvitado ? 'Invitación pendiente' : 'Activo'}
+                          size="small"
+                          color={estaInvitado ? 'warning' : 'success'}
+                          variant={estaInvitado ? 'outlined' : 'filled'}
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        {puedeGestionar && (
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { setMenuRow(m); setMenuAnchor(e.currentTarget); }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {/* Detalle expandible de negocios cuando hay más de uno */}
+                    {!unSoloNegocio && (
+                      <TableRow>
+                        <TableCell colSpan={6} sx={{ py: 0, borderBottom: expandido ? undefined : 'none' }}>
+                          <Collapse in={expandido} timeout="auto" unmountOnExit>
+                            <Box sx={{ py: 1, pl: 5 }}>
+                              <Stack spacing={0.75}>
+                                {m.negocios.map(n => (
+                                  <Stack key={n.assignmentId ?? `${n.scopeType}-${n.scopeId}`}
+                                    direction="row" alignItems="center" spacing={1}>
+                                    <BusinessIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
+                                    <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                                      {n.scopeName}
+                                    </Typography>
+                                    <Chip label={n.role} size="small"
+                                      sx={{ height: 18, fontSize: '0.62rem', bgcolor: `${tc}12`, color: tc }} />
+                                  </Stack>
+                                ))}
+                              </Stack>
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </TableBody>
@@ -283,23 +359,34 @@ function TeamSection() {
         )}
       </Section>
 
-      {/* Menú contextual */}
+{/* Menú contextual */}
       <Menu
         anchorEl={menuAnchor}
         open={!!menuAnchor}
         onClose={() => { setMenuAnchor(null); setMenuRow(null); }}
       >
-        {menuRow?.account_status === 'invited' && (
-          <MenuItem onClick={() => handleResend(menuRow.id)}>
+        <MenuItem onClick={() => {
+          setEditandoPersona(menuRow);
+          setMenuAnchor(null); setMenuRow(null);
+        }}>
+          <ManageAccountsOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
+          Editar acceso
+        </MenuItem>
+        {menuRow?.account_status === 'invited' && menuRow?.negocios?.[0]?.assignmentId && (
+          <MenuItem onClick={() => handleResend(menuRow.negocios[0].assignmentId)}>
             <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
             Reenviar invitación
           </MenuItem>
         )}
-        <MenuItem onClick={() => handleRevoke(menuRow)} sx={{ color: 'error.main' }}>
-          <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />
-          Revocar acceso
-        </MenuItem>
       </Menu>
+
+      {/* Modal editar acceso */}
+      <EditarAccesoModal
+        open={!!editandoPersona}
+        persona={editandoPersona}
+        onClose={() => setEditandoPersona(null)}
+        onChanged={fetchMembers}
+      />
 
       {/* Modal invitar */}
       <InvitarMiembroModal
@@ -358,11 +445,11 @@ function SecuritySection() {
 function PerfilContenido() {
   const { organization } = useOrganization() || {};
   const { items, refetchBusinesses } = useBusiness() || {};
-  const { currentRole } = useAccess() || {};
+  const { currentRole, highestRole } = useAccess() || {};
   const sinNegocios = !items || items.length === 0;
   const [showCreateBiz, setShowCreateBiz] = React.useState(false);
 
-const { user, setUser } = useAuth();
+  const { user, setUser } = useAuth();
 
   const me = useMemo(() => {
     if (user) return user;
@@ -411,10 +498,12 @@ const { user, setUser } = useAuth();
 
   const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
-  // Rol mostrado en el header viene del negocio actual (AccessContext), no del JWT
-  const roleLabel = currentRole === 'admin' ? 'Administrador'
-    : currentRole === 'owner' ? 'Propietario'
-      : currentRole === 'staff' ? 'Staff'
+  // Rol mostrado en el perfil: el MÁS ALTO entre todos los negocios (estable, no cambia
+  // al switchear de negocio). El perfil es una vista global del usuario, no del negocio activo.
+  const rolPerfil = highestRole || currentRole;
+  const roleLabel = rolPerfil === 'admin' ? 'Administrador'
+    : rolPerfil === 'owner' ? 'Propietario'
+      : rolPerfil === 'staff' ? 'Staff'
         : 'Usuario';
 
   return (
@@ -457,15 +546,15 @@ const { user, setUser } = useAuth();
               {/* Datos */}
               <Stack spacing={0.5} sx={{ flex: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                    <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
-                      {meName}
-                    </Typography>
-                    <Tooltip title="Editar nombre">
-                      <IconButton size="small" onClick={openRename} sx={{ p: 0.5, color: tc }}>
-                        <EditIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Tooltip>
-                    {currentRole && (
+                  <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+                    {meName}
+                  </Typography>
+                  <Tooltip title="Editar nombre">
+                    <IconButton size="small" onClick={openRename} sx={{ p: 0.5, color: tc }}>
+                      <EditIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                  {rolPerfil && (
                     <Chip label={roleLabel} size="small"
                       icon={<BadgeOutlinedIcon sx={{ fontSize: '0.75rem !important' }} />}
                       sx={{ fontSize: '0.68rem', height: 20, bgcolor: `${tc}12`, color: tc, border: `1px solid ${tc}25` }} />
@@ -565,36 +654,36 @@ const { user, setUser } = useAuth();
 
       </Stack>
       {/* Diálogo editar nombre */}
-        <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar tu nombre</DialogTitle>
-          <DialogContent sx={{ pt: '12px !important' }}>
-            <TextField
-              autoFocus fullWidth size="small"
-              label="¿Cómo te llamás?"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
-              helperText="Así aparecerá tu nombre en Lazarillo"
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
-            <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
-              {renaming ? 'Guardando…' : 'Guardar'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar tu nombre</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            autoFocus fullWidth size="small"
+            label="¿Cómo te llamás?"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
+            helperText="Así aparecerá tu nombre en Lazarillo"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
+          <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
+            {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-        <Snackbar
-          open={snack.open}
-          autoHideDuration={3000}
-          onClose={() => setSnack(s => ({ ...s, open: false }))}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <div style={{ background: snack.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem' }}>
-            {snack.msg}
-          </div>
-        </Snackbar>
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={3000}
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <div style={{ background: snack.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem' }}>
+          {snack.msg}
+        </div>
+      </Snackbar>
     </Box>
   );
 }

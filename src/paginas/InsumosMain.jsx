@@ -1045,13 +1045,19 @@ export default function InsumosMain() {
     if (!baseAll?.length) return;
     try {
       const pendiente = sessionStorage.getItem('pendingFocusInsumo');
-      if (pendiente) {
-        const id = Number(pendiente);
-        if (Number.isFinite(id)) focusInsumo(id);
-        sessionStorage.removeItem('pendingFocusInsumo');
-      }
+      if (!pendiente) return;
+      const id = Number(pendiente);
+      if (!Number.isFinite(id)) { sessionStorage.removeItem('pendingFocusInsumo'); return; }
+      // Solo consumir el pendiente cuando el insumo YA existe en la lista Y los índices
+      // están listos; si no, dejar el flag para el próximo ciclo (evita el focus a medias
+      // que dejaba el insumo sin marcar y obligaba a repetir desde la hoja de insumos).
+      const existe = (baseAll || []).some(x => Number(x?.id) === id);
+      const indicesListos = !!insumosGroupIndex?.byInsumoId && (rubrosMap?.size ?? 0) > 0;
+      if (!existe || !indicesListos) return;
+      focusInsumo(id);
+      sessionStorage.removeItem('pendingFocusInsumo');
     } catch { }
-  }, [businessId, baseAll, focusInsumo]);
+  }, [businessId, baseAll, focusInsumo, insumosGroupIndex, rubrosMap]);
 
   const handleSelectGroupId = useCallback((rawId) => {
     const n = Number(rawId);

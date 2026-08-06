@@ -54,6 +54,15 @@ const getUserAvatarUrl = () => {
   const u = getUser();
   return u?.photo_url || u?.avatar_url || u?.picture || '';
 };
+// Iniciales del nombre del usuario logueado (ej. "María Perez" → "MP") para el avatar del navbar
+const getUserInitials = () => {
+  const u = getUser();
+  const nombre = String(u?.name || u?.nombre || u?.email || '').trim();
+  if (!nombre) return '';
+  const partes = nombre.split(/\s+/).filter(Boolean);
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+};
 
 export default function Navbar() {
   const [navEl, setNavEl] = React.useState(null);
@@ -118,6 +127,7 @@ export default function Navbar() {
   }, []);
 
   const [userAvatar, setUserAvatar] = React.useState(getUserAvatarUrl());
+  const [userInitials, setUserInitials] = React.useState(getUserInitials());
 
   const [syncRunning, setSyncRunning] = React.useState(false);
   const [syncTotal, setSyncTotal] = React.useState(0);
@@ -133,12 +143,13 @@ export default function Navbar() {
   React.useEffect(() => {
     recomputeColors();
     setUserAvatar(getUserAvatarUrl());
-
+    setUserInitials(getUserInitials());
     const onThemeUpdated = () => recomputeColors();
     const onPaletteChanged = () => recomputeColors();
-    const onLogin = () => setUserAvatar(getUserAvatarUrl());
+    const onLogin = () => { setUserAvatar(getUserAvatarUrl()); setUserInitials(getUserInitials()); };
     const onLogout = () => {
       setUserAvatar('');
+      setUserInitials('');
       recomputeColors();
     };
 
@@ -284,40 +295,59 @@ export default function Navbar() {
               </Menu>
             </Box>
 
-            {/* Desktop – links */}
+{/* Desktop – links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
-              <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/menu">
-                Menú
-              </Button>
-
-              {!isAppAdmin && (
-                <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/insumos">
-                  Insumos
-                </Button>
-              )}
-
-              {!isAppAdmin && (
-                <Tooltip title="Configuración">
-                  <IconButton
-                    color="inherit"
-                    sx={{ color: 'inherit' }}
-                    aria-label="Configuración"
-                    onClick={() => {
-                      const tab = getConfigTab();
-                      navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
-                    }}
-                  >
-                    <Badge
-                      badgeContent={alertasBadge || null}
-                      color="warning"
-                      max={99}
-                      sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', minWidth: 16, height: 16 } }}
-                    >
-                      <SettingsIcon fontSize="small" />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
-              )}
+              {(() => {
+                const path = location.pathname;
+                const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
+                const enInsumos = path.includes('/insumos');
+                const enConfig = path.includes('/configuracion');
+                // Estilo de subrayado para la sección activa
+                const activeSx = (on) => on ? {
+                  '&::after': {
+                    content: '""', position: 'absolute', left: 8, right: 8, bottom: 2,
+                    height: 2, borderRadius: 2, background: 'var(--on-primary)',
+                  },
+                } : {};
+                return (
+                  <>
+                    <Button color="inherit"
+                      sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
+                      component={NavLink} to="/menu">
+                      Menú
+                    </Button>
+                    {!isAppAdmin && (
+                      <Button color="inherit"
+                        sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}
+                        component={NavLink} to="/insumos">
+                        Insumos
+                      </Button>
+                    )}
+                    {!isAppAdmin && (
+                      <Tooltip title="Configuración">
+                        <IconButton
+                          color="inherit"
+                          sx={{ color: 'inherit', position: 'relative', ...activeSx(enConfig) }}
+                          aria-label="Configuración"
+                          onClick={() => {
+                            const tab = getConfigTab();
+                            navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
+                          }}
+                        >
+                          <Badge
+                            badgeContent={alertasBadge || null}
+                            color="warning"
+                            max={99}
+                            sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', minWidth: 16, height: 16 } }}
+                          >
+                            <SettingsIcon fontSize="small" />
+                          </Badge>
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </>
+                );
+              })()}
 
               {isAppAdmin && (
                 <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/admin">
@@ -347,9 +377,14 @@ export default function Navbar() {
                     sx={{
                       width: 32,
                       height: 32,
-                      bgcolor: 'color-mix(in srgb, var(--on-primary) 12%, transparent)',
+                      bgcolor: 'color-mix(in srgb, var(--on-primary) 18%, transparent)',
+                      color: 'var(--on-primary)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
                     }}
-                  />
+                  >
+                    {!userAvatar && userInitials}
+                  </Avatar>
                 </IconButton>
               </Tooltip>
 
@@ -371,6 +406,18 @@ export default function Navbar() {
                 <MenuList dense sx={{ color: 'inherit' }}>
                   {logged ? (
                     [
+                      <Box key="user-header" sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
+                        <Box sx={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.2 }}>
+                          {getUser()?.name || getUser()?.nombre || 'Usuario'}
+                        </Box>
+                      </Box>,
+                      <Divider
+                        key="div-header"
+                        sx={{
+                          my: 0.5,
+                          borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
+                        }}
+                      />,
                       <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
                         Perfil
                       </MenuItem>,

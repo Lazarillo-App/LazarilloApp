@@ -40,8 +40,15 @@ const getBizColor = (biz) => {
 
 const FALLBACK_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-export default function ComprasMiniDetalleModal({
-  open, onClose,
+/* ══════════════════════════════════════════════════════════
+   CONTENIDO reutilizable (sin Dialog). Se usa:
+   - dentro de ComprasMiniDetalleModal (envuelto en Dialog)
+   - inline en la pestaña de compras del insumo (TabComprasInsumo)
+   El prop `open` sigue existiendo para gatillar los fetch; cuando
+   se usa inline, pasar open={true}.
+══════════════════════════════════════════════════════════ */
+export function ComprasDetalleContenido({
+  open = true,
   insumoId, insumoNombre, insumoUnidad = '',
   rango, items = [], loading = false,
   businessId,
@@ -320,6 +327,328 @@ export default function ComprasMiniDetalleModal({
   }, [selectedBiz, dynamicBranches, businesses]);
 
   return (
+    <Stack spacing={2}>
+
+      {/* Encabezado */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
+        {rango?.from && rango?.to && (
+          <Typography variant="body2" color="text.secondary">
+            📅 Período: {rango.from} — {rango.to}
+          </Typography>
+        )}
+
+        <Stack direction="row" spacing={1} alignItems="center">
+          {/* Selector de negocio */}
+          {bizOptions.length > 1 && (
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Ver compras de</InputLabel>
+              <Select
+                value={selectedBiz}
+                label="Ver compras de"
+                onChange={(e) => setSelectedBiz(e.target.value)}
+              >
+                {bizOptions.map(opt => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      {opt.value !== 'current' && opt.value !== 'all' && (
+                        <span style={{
+                          width: 10, height: 10, borderRadius: '50%',
+                          background: bizColorMap.get(Number(opt.value)) || themeColors.primary,
+                          flexShrink: 0,
+                        }} />
+                      )}
+                      <span>{opt.label}</span>
+                    </Stack>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {/* Selector de sucursal */}
+          {(hasSucursales || dynamicBranches.length > 0) && (
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Sucursal</InputLabel>
+              <Select
+                value={selectedBranch}
+                label="Sucursal"
+                onChange={(e) => setSelectedBranch(e.target.value)}
+              >
+                <MenuItem value="all">Todas</MenuItem>
+                <MenuItem value="main">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />
+                    <span>Principal</span>
+                  </Stack>
+                </MenuItem>
+
+                {/* Modo "todos los negocios": agrupar por negocio con subheaders */}
+                {selectedBiz === 'all' && branchesByBiz
+                  ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
+                    // Subheader del negocio
+                    <MenuItem key={`header-${bizId}`} disabled sx={{ opacity: 1, py: 0.25, minHeight: 'auto' }}>
+                      <Typography variant="caption" fontWeight={700} sx={{
+                        fontSize: '0.65rem', textTransform: 'uppercase',
+                        letterSpacing: '0.07em', color: 'text.disabled',
+                      }}>
+                        {bizName}
+                      </Typography>
+                    </MenuItem>,
+
+                    // Principal de este negocio
+                    <MenuItem key={`main-${bizId}`} value={`main-${bizId}`} sx={{ pl: 3 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
+                        <span>Principal</span>
+                      </Stack>
+                    </MenuItem>,
+
+                    // Sucursales reales de este negocio
+                    ...bizBranches.map(branch => (
+                      <MenuItem key={`${bizId}-${branch.id}`} value={String(branch.id)} sx={{ pl: 3 }}>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: branch.color || '#1976d2', flexShrink: 0 }} />
+                          <span>{branch.name}</span>
+                        </Stack>
+                      </MenuItem>
+                    )),
+                  ])
+                  : dynamicBranches.map(branch => (
+                    <MenuItem key={branch.id} value={String(branch.id)}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: branch.color || '#1976d2', flexShrink: 0 }} />
+                        <span>{branch.name}</span>
+                      </Stack>
+                    </MenuItem>
+                  ))
+                }
+              </Select>
+            </FormControl>
+          )}
+        </Stack>
+      </Stack>
+
+      {/* Chips de totales */}
+      {!isLoading && (
+        <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Chip size="small" label={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`}
+            variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
+          <Chip size="small"
+            label={`${fmtNum(totales.cantidad)} ${insumoUnidad || 'unidades'}`}
+            variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
+          <Chip size="small" label={`Total: ${fmtMoney(totales.importe)}`}
+            sx={{ bgcolor: `${themeColors.primary}15`, color: themeColors.primary, fontWeight: 700 }} />
+        </Stack>
+      )}
+
+      {/* Leyenda de negocios */}
+      {showBizColumn && !isLoading && sortedItems.length > 0 && (
+        <Stack direction="row" spacing={1.5} flexWrap="wrap">
+          {(selectedBiz === 'all'
+            ? [Number(businessId), ...businesses.filter(b => Number(b.id) !== Number(businessId)).map(b => Number(b.id))]
+            : [Number(selectedBiz)]
+          ).filter(id => sortedItems.some(r => Number(r._bizId) === id)).map(id => (
+            <Stack key={id} direction="row" alignItems="center" spacing={0.5}>
+              <span style={{
+                width: 12, height: 12, borderRadius: 3,
+                background: bizColorMap.get(id) || themeColors.primary,
+                flexShrink: 0,
+              }} />
+              <Typography variant="caption" color="text.secondary">
+                {getBizName(id)}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+
+      {/* Leyenda de sucursales */}
+      {showBranchColumn && !isLoading && sortedItems.length > 0 && (
+        <Stack direction="row" spacing={1.5} flexWrap="wrap">
+          {selectedBiz === 'all' && branchesByBiz
+            ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
+              <Stack key={`leg-main-${bizId}`} direction="row" alignItems="center" spacing={0.5}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: bizColor, flexShrink: 0 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Principal <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
+                </Typography>
+              </Stack>,
+              ...bizBranches.map(branch => (
+                <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    {branch.name} <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
+                  </Typography>
+                </Stack>
+              )),
+            ])
+            : <>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: themeColors.primary, flexShrink: 0 }} />
+                <Typography variant="caption" color="text.secondary">Principal</Typography>
+              </Stack>
+              {dynamicBranches.map(branch => (
+                <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
+                  <Typography variant="caption" color="text.secondary">{branch.name}</Typography>
+                </Stack>
+              ))}
+            </>
+          }
+        </Stack>
+      )}
+      {/* Tabla */}
+      {isLoading ? (
+        <Stack alignItems="center" py={4}>
+          <CircularProgress size={32} />
+          <Typography variant="body2" color="text.secondary" mt={1}>Cargando compras...</Typography>
+        </Stack>
+      ) : (
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
+                {showBizColumn && <TableCell sx={{ fontWeight: 700 }}>Negocio</TableCell>}
+                {showBranchColumn && <TableCell sx={{ fontWeight: 700 }}>Sucursal</TableCell>}
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedItems.map((it, i) => {
+                const bizId = Number(it._bizId);
+                const bizColor = bizColorMap.get(bizId) || themeColors.primary;
+                const branchId = it.branch_id ? String(it.branch_id) : 'main';
+
+                const branchColor = showBranchColumn
+                  ? (branchId === 'main'
+                    ? (bizColorMap.get(bizId) || themeColors.primary)
+                    : branchColorMap.get(branchId) || bizColor)
+                  : bizColor;
+
+                const rowBg = (showBizColumn || showBranchColumn) ? `${branchColor}12` : 'transparent';
+                const borderLeft = (showBizColumn || showBranchColumn) ? `3px solid ${branchColor}60` : 'none';
+
+                const branchName = branchId === 'main'
+                  ? 'Principal'
+                  : (dynamicBranches.find(b => String(b.id) === branchId)?.name
+                    || (branches || []).find(b => String(b.id) === branchId)?.name
+                    || `Suc. #${branchId}`);
+
+                return (
+                  <TableRow
+                    key={i}
+                    sx={{
+                      bgcolor: rowBg,
+                      borderLeft,
+                      '&:hover': { bgcolor: `${branchColor}22` },
+                      transition: 'background 0.12s',
+                    }}
+                  >
+                    <TableCell>{fmtFecha(it.fecha)}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      {it.factura ?? it.comprob ?? it.referencia ?? '-'}
+                    </TableCell>
+                    <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
+                      {it.proveedor_nombre ?? it.proveedor ?? '-'}
+                    </TableCell>
+
+                    {showBizColumn && (
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={0.75}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.78rem' }}>
+                            {getBizName(bizId)}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                    )}
+
+                    {showBranchColumn && (
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={0.75}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: branchColor }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.78rem' }}>
+                            {branchName}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                    )}
+
+                    <TableCell align="right">
+                      {fmtNum(it.cantidad)}
+                      {insumoUnidad && (
+                        <Typography component="span" sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}>
+                          {insumoUnidad}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                      {it.precio ? fmtMoney(it.precio) : '-'}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600, color: branchColor }}>
+                      {fmtMoney(it.precio_total ?? it.importe)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+
+              {sortedItems.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={6 + (showBizColumn ? 1 : 0) + (showBranchColumn ? 1 : 0)}
+                    align="center"
+                    sx={{ py: 3, color: 'text.secondary' }}
+                  >
+                    Sin compras registradas en el período seleccionado
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Footer de totales (antes en DialogActions) */}
+      {!isLoading && (
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%', pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="body1" sx={{ flex: 1, fontWeight: 600 }}>
+            Total del período:{' '}
+            <span style={{ color: themeColors.primary, fontSize: '1.05rem' }}>
+              {fmtMoney(totales.importe)}
+            </span>
+            <span style={{ color: '#94a3b8', fontSize: '0.85rem', marginLeft: 8 }}>
+              · {fmtNum(totales.cantidad)} {insumoUnidad || 'unidades'}
+            </span>
+          </Typography>
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   Wrapper MODAL: envuelve el contenido reutilizable en un Dialog.
+   Se sigue usando desde la tabla de insumos (ComprasCell) igual que antes.
+══════════════════════════════════════════════════════════ */
+export default function ComprasMiniDetalleModal({
+  open, onClose,
+  insumoId, insumoNombre, insumoUnidad = '',
+  rango, items = [], loading = false,
+  businessId,
+  businesses = [],
+}) {
+  const themeColors = useMemo(() => {
+    if (typeof window === 'undefined') return { primary: '#0369a1' };
+    const styles = getComputedStyle(document.documentElement);
+    return { primary: styles.getPropertyValue('--color-primary')?.trim() || '#0369a1' };
+  }, []);
+
+  return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -332,310 +661,24 @@ export default function ComprasMiniDetalleModal({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Stack spacing={2}>
-
-          {/* Encabezado */}
-          <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
-            {rango?.from && rango?.to && (
-              <Typography variant="body2" color="text.secondary">
-                📅 Período: {rango.from} — {rango.to}
-              </Typography>
-            )}
-
-            <Stack direction="row" spacing={1} alignItems="center">
-              {/* Selector de negocio */}
-              {bizOptions.length > 1 && (
-                <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>Ver compras de</InputLabel>
-                  <Select
-                    value={selectedBiz}
-                    label="Ver compras de"
-                    onChange={(e) => setSelectedBiz(e.target.value)}
-                  >
-                    {bizOptions.map(opt => (
-                      <MenuItem key={opt.value} value={opt.value}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          {opt.value !== 'current' && opt.value !== 'all' && (
-                            <span style={{
-                              width: 10, height: 10, borderRadius: '50%',
-                              background: bizColorMap.get(Number(opt.value)) || themeColors.primary,
-                              flexShrink: 0,
-                            }} />
-                          )}
-                          <span>{opt.label}</span>
-                        </Stack>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-
-              {/* Selector de sucursal */}
-              {(hasSucursales || dynamicBranches.length > 0) && (
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel>Sucursal</InputLabel>
-                  <Select
-                    value={selectedBranch}
-                    label="Sucursal"
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                  >
-                    <MenuItem value="all">Todas</MenuItem>
-                    <MenuItem value="main">
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />
-                        <span>Principal</span>
-                      </Stack>
-                    </MenuItem>
-
-                    {/* Modo "todos los negocios": agrupar por negocio con subheaders */}
-                    {selectedBiz === 'all' && branchesByBiz
-                      ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
-                        // Subheader del negocio
-                        <MenuItem key={`header-${bizId}`} disabled sx={{ opacity: 1, py: 0.25, minHeight: 'auto' }}>
-                          <Typography variant="caption" fontWeight={700} sx={{
-                            fontSize: '0.65rem', textTransform: 'uppercase',
-                            letterSpacing: '0.07em', color: 'text.disabled',
-                          }}>
-                            {bizName}
-                          </Typography>
-                        </MenuItem>,
-
-                        // Principal de este negocio
-                        <MenuItem key={`main-${bizId}`} value={`main-${bizId}`} sx={{ pl: 3 }}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
-                            <span>Principal</span>
-                          </Stack>
-                        </MenuItem>,
-
-                        // Sucursales reales de este negocio
-                        ...bizBranches.map(branch => (
-                          <MenuItem key={`${bizId}-${branch.id}`} value={String(branch.id)} sx={{ pl: 3 }}>
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: branch.color || '#1976d2', flexShrink: 0 }} />
-                              <span>{branch.name}</span>
-                            </Stack>
-                          </MenuItem>
-                        )),
-                      ])
-                      : dynamicBranches.map(branch => (
-                        <MenuItem key={branch.id} value={String(branch.id)}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: branch.color || '#1976d2', flexShrink: 0 }} />
-                            <span>{branch.name}</span>
-                          </Stack>
-                        </MenuItem>
-                      ))
-                    }
-                  </Select>
-                </FormControl>
-              )}
-            </Stack>
-          </Stack>
-
-          {/* Chips de totales */}
-          {!isLoading && (
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Chip size="small" label={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`}
-                variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
-              <Chip size="small"
-                label={`${fmtNum(totales.cantidad)} ${insumoUnidad || 'unidades'}`}
-                variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
-              <Chip size="small" label={`Total: ${fmtMoney(totales.importe)}`}
-                sx={{ bgcolor: `${themeColors.primary}15`, color: themeColors.primary, fontWeight: 700 }} />
-            </Stack>
-          )}
-
-          {/* Leyenda de negocios */}
-          {showBizColumn && !isLoading && sortedItems.length > 0 && (
-            <Stack direction="row" spacing={1.5} flexWrap="wrap">
-              {(selectedBiz === 'all'
-                ? [Number(businessId), ...businesses.filter(b => Number(b.id) !== Number(businessId)).map(b => Number(b.id))]
-                : [Number(selectedBiz)]
-              ).filter(id => sortedItems.some(r => Number(r._bizId) === id)).map(id => (
-                <Stack key={id} direction="row" alignItems="center" spacing={0.5}>
-                  <span style={{
-                    width: 12, height: 12, borderRadius: 3,
-                    background: bizColorMap.get(id) || themeColors.primary,
-                    flexShrink: 0,
-                  }} />
-                  <Typography variant="caption" color="text.secondary">
-                    {getBizName(id)}
-                  </Typography>
-                </Stack>
-              ))}
-            </Stack>
-          )}
-
-          {/* Leyenda de sucursales */}
-          {showBranchColumn && !isLoading && sortedItems.length > 0 && (
-            <Stack direction="row" spacing={1.5} flexWrap="wrap">
-              {selectedBiz === 'all' && branchesByBiz
-                ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
-                  <Stack key={`leg-main-${bizId}`} direction="row" alignItems="center" spacing={0.5}>
-                    <span style={{ width: 12, height: 12, borderRadius: 3, background: bizColor, flexShrink: 0 }} />
-                    <Typography variant="caption" color="text.secondary">
-                      Principal <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
-                    </Typography>
-                  </Stack>,
-                  ...bizBranches.map(branch => (
-                    <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
-                      <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
-                      <Typography variant="caption" color="text.secondary">
-                        {branch.name} <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
-                      </Typography>
-                    </Stack>
-                  )),
-                ])
-                : <>
-                  <Stack direction="row" alignItems="center" spacing={0.5}>
-                    <span style={{ width: 12, height: 12, borderRadius: 3, background: themeColors.primary, flexShrink: 0 }} />
-                    <Typography variant="caption" color="text.secondary">Principal</Typography>
-                  </Stack>
-                  {dynamicBranches.map(branch => (
-                    <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
-                      <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
-                      <Typography variant="caption" color="text.secondary">{branch.name}</Typography>
-                    </Stack>
-                  ))}
-                </>
-              }
-            </Stack>
-          )}
-          {/* Tabla */}
-          {isLoading ? (
-            <Stack alignItems="center" py={4}>
-              <CircularProgress size={32} />
-              <Typography variant="body2" color="text.secondary" mt={1}>Cargando compras...</Typography>
-            </Stack>
-          ) : (
-            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
-                    {showBizColumn && <TableCell sx={{ fontWeight: 700 }}>Negocio</TableCell>}
-                    {showBranchColumn && <TableCell sx={{ fontWeight: 700 }}>Sucursal</TableCell>}
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sortedItems.map((it, i) => {
-                    const bizId = Number(it._bizId);
-                    const bizColor = bizColorMap.get(bizId) || themeColors.primary;
-                    const branchId = it.branch_id ? String(it.branch_id) : 'main';
-
-                    const branchColor = showBranchColumn
-                      ? (branchId === 'main'
-                        ? (bizColorMap.get(bizId) || themeColors.primary)  
-                        : branchColorMap.get(branchId) || bizColor)
-                      : bizColor;
-
-                    const rowBg = (showBizColumn || showBranchColumn) ? `${branchColor}12` : 'transparent';
-                    const borderLeft = (showBizColumn || showBranchColumn) ? `3px solid ${branchColor}60` : 'none';
-
-                    const branchName = branchId === 'main'
-                      ? 'Principal'
-                      : (dynamicBranches.find(b => String(b.id) === branchId)?.name
-                        || (branches || []).find(b => String(b.id) === branchId)?.name
-                        || `Suc. #${branchId}`);
-
-                    return (
-                      <TableRow
-                        key={i}
-                        sx={{
-                          bgcolor: rowBg,
-                          borderLeft,
-                          '&:hover': { bgcolor: `${branchColor}22` },
-                          transition: 'background 0.12s',
-                        }}
-                      >
-                        <TableCell>{fmtFecha(it.fecha)}</TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                          {it.factura ?? it.comprob ?? it.referencia ?? '-'}
-                        </TableCell>
-                        <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                          {it.proveedor_nombre ?? it.proveedor ?? '-'}
-                        </TableCell>
-
-                        {showBizColumn && (
-                          <TableCell>
-                            <Stack direction="row" alignItems="center" spacing={0.75}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
-                              <Typography variant="caption" sx={{ fontSize: '0.78rem' }}>
-                                {getBizName(bizId)}
-                              </Typography>
-                            </Stack>
-                          </TableCell>
-                        )}
-
-                        {showBranchColumn && (
-                          <TableCell>
-                            <Stack direction="row" alignItems="center" spacing={0.75}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: branchColor }} />
-                              <Typography variant="caption" sx={{ fontSize: '0.78rem' }}>
-                                {branchName}
-                              </Typography>
-                            </Stack>
-                          </TableCell>
-                        )}
-
-                        <TableCell align="right">
-                          {fmtNum(it.cantidad)}
-                          {insumoUnidad && (
-                            <Typography component="span" sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}>
-                              {insumoUnidad}
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: 'text.secondary' }}>
-                          {it.precio ? fmtMoney(it.precio) : '-'}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600, color: branchColor }}>
-                          {fmtMoney(it.precio_total ?? it.importe)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-
-                  {sortedItems.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6 + (showBizColumn ? 1 : 0) + (showBranchColumn ? 1 : 0)}
-                        align="center"
-                        sx={{ py: 3, color: 'text.secondary' }}
-                      >
-                        Sin compras registradas en el período seleccionado
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </Stack>
+        <ComprasDetalleContenido
+          open={open}
+          insumoId={insumoId}
+          insumoNombre={insumoNombre}
+          insumoUnidad={insumoUnidad}
+          rango={rango}
+          items={items}
+          loading={loading}
+          businessId={businessId}
+          businesses={businesses}
+        />
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
-          <Typography variant="body1" sx={{ flex: 1, fontWeight: 600 }}>
-            Total del período:{' '}
-            <span style={{ color: themeColors.primary, fontSize: '1.05rem' }}>
-              {fmtMoney(totales.importe)}
-            </span>
-            <span style={{ color: '#94a3b8', fontSize: '0.85rem', marginLeft: 8 }}>
-              · {fmtNum(totales.cantidad)} {insumoUnidad || 'unidades'}
-            </span>
-          </Typography>
-          <Button onClick={onClose} variant="contained"
-            sx={{ bgcolor: themeColors.primary, '&:hover': { filter: 'brightness(0.9)' } }}>
-            Cerrar
-          </Button>
-        </Stack>
+        <Button onClick={onClose} variant="contained"
+          sx={{ bgcolor: themeColors.primary, '&:hover': { filter: 'brightness(0.9)' } }}>
+          Cerrar
+        </Button>
       </DialogActions>
     </Dialog>
   );
