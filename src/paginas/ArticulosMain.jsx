@@ -192,6 +192,7 @@ export default function ArticulosMain(props) {
     lists, loadingLists, activeListId, activeListItems,
     createList, addToExistingList, deleteList, selectList,
     linkGroups, linkByArticleId, createLink, deleteLink, removeMemberFromLink, addArticlesToLink,
+    editingGroup, startEditLink, saveEditLink,
   } = useArticleSelection({
     bizId: activeBizId,
     notify: showMiss,
@@ -265,7 +266,7 @@ export default function ArticulosMain(props) {
     setVentasMapByBranch({});
   }, [allBranches, activeBizId, periodo.from, periodo.to, syncVersion]);
 
-  const { rootBusiness, allBusinesses, updateOrg, organization } = useOrganization();
+  const { rootBusiness, allBusinesses, updateOrg, organization, refetchOrg } = useOrganization();
   usePersistUiActions(activeBizId);
 
   const {
@@ -2020,18 +2021,11 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada(null);
   }, [mutateGroups]);
 
+  // Editar vinculación (opción A): en vez de abrir el modal de búsqueda, entra al modo
+  // selección con los miembros del grupo pre-marcados. Se agrega/quita sobre la tabla.
   const openAddMembers = useCallback((groupId) => {
-    const grp = linkGroups.find(g => Number(g.id) === Number(groupId));
-    if (!grp) return;
-    const linkType = grp.link_type ?? (grp.sync_precio ? 'precio' : grp.sync_recipe ? 'receta' : 'objetivo');
-    const currentMemberIds = (grp.members || []).map(m => Number(m.article_id));
-    setAddMembersModal({
-      groupId: Number(groupId),
-      groupName: grp.name,
-      linkType,
-      currentMemberIds,
-    });
-  }, [linkGroups]);
+    startEditLink(Number(groupId));
+  }, [startEditLink]);
 
   const handleConfirmAddMembers = useCallback(async (articleIds) => {
     if (!addMembersModal?.groupId || !articleIds?.length) return;
@@ -2331,6 +2325,10 @@ export default function ArticulosMain(props) {
           cartaGuardada={rootBusiness?.props?.carta || null}
           onGuardarCarta={async (carta) => {
             await BusinessesAPI.update(rootBusiness.id, { carta });
+            // Rehidratar la organización para que rootBusiness.props.carta refleje
+            // lo recién guardado; sin esto, al salir/volver el objeto en memoria
+            // sigue con props viejo y la carta arranca de cero.
+            if (typeof refetchOrg === 'function') await refetchOrg();
           }}
         />
       </div>
@@ -2425,6 +2423,8 @@ export default function ArticulosMain(props) {
             onCreateList={createList}
             onAddToList={addToExistingList}
             onCreateLink={createLink}
+            editingGroup={editingGroup}
+            onSaveEditLink={saveEditLink}
             onDeleteList={deleteList}
             onDownloadList={handleDownloadList}
           />
@@ -2635,6 +2635,7 @@ export default function ArticulosMain(props) {
               return result;
             }}
             onAddMembersToLink={openAddMembers}
+            editingGroup={editingGroup}
             onRedondeoChange={handleRedondeoChange}
             priceLists={priceLists}
             priceListsByList={priceListsByList}

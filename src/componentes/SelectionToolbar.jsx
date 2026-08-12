@@ -44,6 +44,8 @@ export default function SelectionToolbar({
   saving = false,
   existingLists = [],
   onAddToList,
+  editingGroup = null,
+  onSaveEditLink,
 }) {
   const [modeAnchor, setModeAnchor] = useState(null);
   const [actionAnchor, setActionAnchor] = useState(null);
@@ -75,7 +77,12 @@ export default function SelectionToolbar({
 
   const handleCreateLink = async () => {
     setActionAnchor(null);
-    await onCreateLink?.();
+    // En edición: guardar el diff sobre el grupo existente. Si no, crear grupo nuevo.
+    if (editingGroup) {
+      await onSaveEditLink?.();
+    } else {
+      await onCreateLink?.();
+    }
   };
 
   // ── Botón principal — cuando no hay modo activo ───────────────────────
@@ -162,7 +169,7 @@ export default function SelectionToolbar({
         fontWeight: 700, fontSize: '0.78rem', color: modeColor,
         textTransform: 'uppercase', letterSpacing: '.04em',
       }}>
-        {selectionMode === 'link' ? 'Vincular' : 'Lista'}
+       {selectionMode === 'link' ? (editingGroup ? 'Editar vínculo' : 'Vincular') : 'Lista'}
       </Typography>
 
       {/* Contador */}
@@ -206,7 +213,7 @@ export default function SelectionToolbar({
               '&:hover': { bgcolor: `${modeColor}08` },
             }}
           >
-            {selectionMode === 'link' ? 'Vincular' : 'Guardar lista'}
+            {selectionMode === 'link' ? (editingGroup ? 'Guardar cambios' : 'Vincular') : 'Guardar lista'}
           </Button>
 
           {/* Menú de acción */}

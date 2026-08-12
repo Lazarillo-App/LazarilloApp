@@ -349,10 +349,12 @@ const InsumosTable = forwardRef(function InsumosTable({
   // Columnas fijas (no se mueven): Código, Nombre, Unidad, Precio, [Branches dinámicas], Acciones
   const REORDERABLE_COLS_NO_ELAB = [
     { id: 'desperdicio', label: '% Desperdicio', width: '.7fr', sortKey: 'desperdicio' },
+    { id: 'enRecetas', label: 'Existe en Recetas', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.7fr', sortKey: 'total' },
     { id: 'compras', label: 'Compras', width: '.65fr', sortKey: 'total_compras' },
   ];
   const REORDERABLE_COLS_ELAB = [
+    { id: 'enRecetas', label: 'Existe en Recetas', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.6fr', sortKey: 'total' },
     { id: 'vencimiento', label: 'Vencimiento', width: '.6fr', sortKey: null },
     { id: 'fecha', label: 'Fecha', width: '.65fr', sortKey: 'fecha' },
@@ -461,7 +463,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     totalMode === "unidades"
       ? "Total unidades (u.)"
       : totalMode === "gastos"
-        ? "Total gastado ($)"
+        ? "Precio con merma default ($)"
         : totalMode === "ratio"
           ? "Ratio ventas"
           : "Total";
@@ -484,8 +486,13 @@ const InsumosTable = forwardRef(function InsumosTable({
     switch (totalMode) {
       case "unidades":
         return r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? null;
-      case "gastos":
-        return r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? null;
+      case "gastos": {
+        // Precio con merma default: precio mostrado × (1 + % desperdicio del insumo).
+        const precio = num(getDisplayedPrice(r));
+        if (!(precio > 0)) return null;
+        const desp = num(r.desperdicio ?? r.pct_desperdicio ?? 0);
+        return precio * (1 + desp / 100);
+      }
       case "ratio":
         return r.ratio_ventas ?? r.ratio ?? r.relacion_ventas ?? null;
       default:
@@ -542,6 +549,7 @@ const InsumosTable = forwardRef(function InsumosTable({
           return num(v) ?? 0;
         }
         case "desperdicio": return num(r.desperdicio ?? r.pct_desperdicio ?? 0) ?? 0;
+        case "enRecetas": return num(r.en_recetas ?? 0);
         case "total": return num(r.total_gastos_periodo ?? r.total_gastos ?? r.importe_total ?? r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? 0) ?? 0;
         case "cant_comprada": { const c = comprasMap.get(Number(r.id)); return num(c?.cantidad ?? 0) ?? 0; }
         case "neto_compras": { const c = comprasMap.get(Number(r.id)); return num(c?.neto ?? 0) ?? 0; }
@@ -924,6 +932,13 @@ const InsumosTable = forwardRef(function InsumosTable({
                   </div>
                 );
               }
+              if (col.id === 'enRecetas') {
+                return (
+                  <div key="enRecetas" {...dragProps} onClick={() => toggleSort("enRecetas")} className="col-sortable" style={dragStyle}>
+                    Existe en Recetas {sortIcon("enRecetas")}
+                  </div>
+                );
+              }
               if (col.id === 'vencimiento') {
                 return (
                   <div key="vencimiento" {...dragProps} style={dragStyle}>
@@ -1262,6 +1277,16 @@ const InsumosTable = forwardRef(function InsumosTable({
                       {visibleCols.map(col => {
                         if (col.id === 'desperdicio') {
                           return <div key="desperdicio">-</div>;
+                        }
+                        if (col.id === 'enRecetas') {
+                          const n = Number(r.en_recetas ?? 0);
+                          return (
+                            <div key="enRecetas" style={{ textAlign: 'center' }}>
+                              {n > 0
+                                ? <span style={{ fontWeight: 600 }}>{n}</span>
+                                : <span style={{ color: '#94a3b8' }}>—</span>}
+                            </div>
+                          );
                         }
                         if (col.id === 'total') {
                           return <div key="total">{renderTotalValue(r)}</div>;

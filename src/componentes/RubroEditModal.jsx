@@ -18,6 +18,7 @@ import {
 import { insumosList } from '@/servicios/apiInsumos';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
+import { BASE } from '@/servicios/apiBase';
 
 export default function RubroEditModal({
   open,
@@ -26,6 +27,8 @@ export default function RubroEditModal({
   rubroDisplay,        // texto para mostrar (rubro - subrubro)
   articleIds = [],     // IDs de artículos del bloque
   initialObjetivo = null,
+  esRubro = null,      // true=rubro UI, false=subrubro UI, null=agrupación (no se renombra acá)
+  rubroNombreActual = '', // nombre actual para el renombre (old)
   globalCostoIdeal = 30,
   priceLists = [],     // listas de la org [{listNumber, alias, isPrincipal, discountPct, tipo}]
   orgId,
@@ -36,6 +39,9 @@ export default function RubroEditModal({
   const [exclusionesRubro, setExclusionesRubro] = useState(new Set()); // listNumbers donde TODOS los artículos están excluidos
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Renombre del rubro/subrubro desde este modal (solo cuando no es agrupación)
+  const [nombreEdit, setNombreEdit] = useState('');
+  const [renombrando, setRenombrando] = useState(false);
   // ── Receta en bloque ──
   const [insumosCatalogo, setInsumosCatalogo] = useState([]);
   const [insumoQuery, setInsumoQuery] = useState('');
@@ -53,7 +59,8 @@ export default function RubroEditModal({
   useEffect(() => {
     if (!open) return;
     setObjetivo(initialObjetivo != null ? String(initialObjetivo) : '');
-  }, [open, initialObjetivo]);
+    setNombreEdit(rubroNombreActual || '');
+  }, [open, initialObjetivo, rubroNombreActual]);
 
   // Cargar exclusiones del bloque
   useEffect(() => {
@@ -143,6 +150,10 @@ export default function RubroEditModal({
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Si el nombre del rubro/subrubro cambió, renombrar también (junto con el objetivo).
+      if (esRubro != null && nombreEdit.trim() && nombreEdit.trim() !== rubroNombreActual) {
+        await ejecutarRenombre();
+      }
       const val = objetivo === '' ? null : Number(objetivo);
       await onSave?.({ objetivo: val, articleIds });
       onClose();
@@ -211,6 +222,32 @@ export default function RubroEditModal({
     }
   };
 
+  // Renombrar rubro/subrubro (mismo endpoint que el menú de acciones)
+  const ejecutarRenombre = async () => {
+    const nuevo = nombreEdit.trim();
+    if (!nuevo || nuevo === rubroNombreActual || esRubro == null) return;
+    setRenombrando(true);
+    try {
+      const endpoint = esRubro ? 'rubros' : 'subrubros';
+      const res = await fetch(`${BASE}/businesses/${businessId}/articles/${endpoint}/rename`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          'X-Business-Id': String(businessId),
+        },
+        body: JSON.stringify({ old: rubroNombreActual, new: nuevo }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      window.dispatchEvent(new CustomEvent('business:synced'));
+    } catch (e) {
+      console.error('[RubroEditModal rename]', e);
+    } finally {
+      setRenombrando(false);
+    }
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -223,6 +260,22 @@ export default function RubroEditModal({
       </DialogTitle>
 
       <DialogContent>
+        {/* Renombrar rubro/subrubro (solo cuando no es agrupación) */}
+        {esRubro != null && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>
+              Nombre del {esRubro ? 'rubro' : 'subrubro'}
+            </Typography>
+           <TextField
+              size="small"
+              fullWidth
+              value={nombreEdit}
+              onChange={e => setNombreEdit(e.target.value)}
+              helperText="Se aplica al guardar"
+            />
+          </Box>
+        )}
+
         {/* Objetivo % */}
         <Box sx={{ mb: 2 }}>
           <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>

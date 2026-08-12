@@ -228,11 +228,14 @@ export function useNotifications({
     }
   }, [businessId, fetchNotifications, fetchUnreadCount]);
 
-  // Fetch inicial
+ // Fetch inicial: solo al cambiar de negocio (no en cada recreación de callbacks,
+  // que disparaba cientos de llamadas a unread-count por render).
   useEffect(() => {
+    if (!businessId) return;
     fetchUnreadCount();
     fetchNotifications();
-  }, [fetchUnreadCount, fetchNotifications]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
 
   // Auto-refresh del puntito (y si querés, también del listado cuando el panel lo llame)
   useEffect(() => {

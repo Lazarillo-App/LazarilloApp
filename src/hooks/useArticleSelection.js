@@ -112,6 +112,9 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   const [selectionMode, setSelectionMode] = useState(null); // null | 'list' | 'link'
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [saving, setSaving] = useState(false);
+  // Grupo que se está EDITANDO (opción A: entrar a modo selección con miembros pre-marcados).
+  // null = creación nueva. { groupId, originalIds:Set } = edición de un grupo existente.
+  const [editingGroup, setEditingGroup] = useState(null);
 
   // ── Listas ──
   const [lists, setLists] = useState([]);
@@ -216,8 +219,18 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
 
   const toggleMode = useCallback((mode) => {
     setSelectionMode(mode);
-    if (!mode) setSelectedIds(new Set());
+    if (!mode) { setSelectedIds(new Set()); setEditingGroup(null); }
   }, []);
+
+  // Iniciar edición de un grupo existente: entra a modo 'link' con los miembros pre-marcados.
+  const startEditLink = useCallback((groupId) => {
+    const grp = linkGroups.find(g => Number(g.id) === Number(groupId));
+    if (!grp) return;
+    const memberIds = new Set((grp.members || []).map(m => Number(m.article_id)));
+    setEditingGroup({ groupId: Number(groupId), originalIds: memberIds });
+    setSelectedIds(new Set(memberIds));
+    setSelectionMode('link');
+  }, [linkGroups]);
 
   // ── CRUD Listas ────────────────────────────────────────────────────────
   const createList = useCallback(async (name) => {
@@ -356,27 +369,34 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   const removeMemberFromLink = useCallback(async (groupId, articleId) => {
     if (!bizId) return;
     try {
+      // Determinar el tipo de vínculo: solo en 'receta' se borra la receta del artículo.
+      // En 'precio' (u 'objetivo') solo se lo saca del grupo y queda suelto, sin tocar su receta.
+      const grp = linkGroups.find(g => Number(g.id) === Number(groupId));
+      const linkType = grp
+        ? (grp.link_type ?? (grp.sync_recipe ? 'receta' : grp.sync_precio ? 'precio' : grp.sync_objetivo ? 'objetivo' : null))
+        : null;
+
       await LinksAPI.removeMember(bizId, groupId, articleId);
 
-      // Borrar la receta del artículo desvinculado (consistente con quitarGemelo del RecetaModal)
-      await deleteReceta(bizId, articleId).catch(e =>
-        console.warn('[removeMemberFromLink] no se pudo borrar receta:', e.message)
-      );
+      if (linkType === 'receta') {
+        // Gemelo de receta: al desvincular se borra la receta prestada (igual que quitarGemelo).
+        await deleteReceta(bizId, articleId).catch(e =>
+          console.warn('[removeMemberFromLink] no se pudo borrar receta:', e.message)
+        );
+      }
 
       setLinkGroups(prev => prev.map(g => {
         if (g.id !== groupId) return g;
         return { ...g, members: (g.members || []).filter(m => Number(m.article_id) !== Number(articleId)) };
       }));
-
       // Avisar a la tabla para que refresque los íconos de vinculación y costos
       try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
-
       notify?.('Artículo desvinculado');
     } catch (e) {
       console.error('[removeMemberFromLink]', e);
       notify?.(`Error: ${e.message}`);
     }
-  }, [bizId, notify]);
+  }, [bizId, notify, linkGroups]);
 
   const addArticlesToLink = useCallback(async (groupId, articleIds) => {
     if (!bizId || !groupId || !articleIds?.length) return;
@@ -412,6 +432,39 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     }
   }, [bizId, notify]);
 
+    // Guardar los cambios de una edición: diff entre lo seleccionado y lo original.
+  // Agrega los nuevos y quita los removidos sobre el MISMO grupo.
+  const saveEditLink = useCallback(async () => {
+    if (!editingGroup) return;
+    const { groupId, originalIds } = editingGroup;
+    const nowSet = selectedIds;
+    const toAdd = Array.from(nowSet).filter(id => !originalIds.has(Number(id)));
+    const toRemove = Array.from(originalIds).filter(id => !nowSet.has(Number(id)));
+
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      notify?.('No hubo cambios en la vinculación');
+      toggleMode(null);
+      return;
+    }
+    setSaving(true);
+    try {
+      if (toAdd.length) {
+        await addArticlesToLink(groupId, toAdd);
+      }
+      for (const id of toRemove) {
+        await removeMemberFromLink(groupId, Number(id));
+      }
+      notify?.(`🔗 Vinculación actualizada (${toAdd.length} agregado${toAdd.length !== 1 ? 's' : ''}, ${toRemove.length} quitado${toRemove.length !== 1 ? 's' : ''})`);
+      try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch {}
+      toggleMode(null);
+    } catch (e) {
+      console.error('[saveEditLink]', e);
+      notify?.(`Error al actualizar la vinculación: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [editingGroup, selectedIds, addArticlesToLink, removeMemberFromLink, notify, toggleMode]);
+
   return {
     // Selección
     selectionMode, selectedIds, saving,
@@ -424,6 +477,8 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     // Vinculaciones
     linkGroups, linkByArticleId,
     createLink, deleteLink, removeMemberFromLink, addArticlesToLink,
+    // Edición de vinculación (opción A: modo selección con diff)
+    editingGroup, startEditLink, saveEditLink,
   };
 }
 

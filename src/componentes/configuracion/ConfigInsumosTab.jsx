@@ -283,6 +283,8 @@ export default function ConfigInsumosTab({
   const [confirmDlg, setConfirmDlg] = React.useState(null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.insumos_costo_ideal ?? '');
   React.useEffect(() => { setSavedCostoIdeal(config?.insumos_costo_ideal ?? ''); }, [config?.insumos_costo_ideal]);
+  const [savedDesperdicio, setSavedDesperdicio] = React.useState(config?.desperdicio_global_pct ?? '');
+  React.useEffect(() => { setSavedDesperdicio(config?.desperdicio_global_pct ?? ''); }, [config?.desperdicio_global_pct]);
   const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
 
   const handleConfirm = () => {
@@ -290,6 +292,9 @@ export default function ConfigInsumosTab({
     if (confirmDlg.type === 'costo_ideal') {
       saveConfig('insumos_costo_ideal');
       setSavedCostoIdeal(config.insumos_costo_ideal);
+    } else if (confirmDlg.type === 'desperdicio_global') {
+      saveConfig('desperdicio_global_pct');
+      setSavedDesperdicio(config.desperdicio_global_pct);
     } else if (confirmDlg.type === 'costeo') {
       saveConfigCosteo();
     }
@@ -353,6 +358,46 @@ export default function ConfigInsumosTab({
                   {Number(config.insumos_costo_ideal) > 0 && (
                     <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
                       Con {config.insumos_costo_ideal}% → precio = Costo ÷ {(Number(config.insumos_costo_ideal) / 100).toFixed(2)}
+                    </Alert>
+                  )}
+                </Stack>
+              </CardBody>
+            </Card>
+          </Grid>
+
+          {/* Desperdicio / merma global */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardHeader icon={<ShoppingCartIcon />} title="Desperdicio global (%)"
+                subtitle="Merma por defecto aplicada a todos los insumos" />
+              <CardBody>
+                <Stack spacing={2}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
+                    Merma general que se aplica a los insumos en las recetas. Se puede sobreescribir por insumo o con mermas específicas.
+                  </Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <TextField size="small" type="number"
+                      value={config.desperdicio_global_pct ?? ''}
+                      onChange={e => setConfig(c => ({ ...c, desperdicio_global_pct: e.target.value }))}
+                      inputProps={{ min: 0, max: 100, step: 0.5 }}
+                      InputProps={{ endAdornment: <InputAdornment position="end"><PercentIcon sx={{ fontSize: 16 }} /></InputAdornment> }}
+                      sx={{ width: 120 }}
+                    />
+                    <Button variant="contained" size="small" disabled={!!saving.desperdicio_global_pct}
+                      startIcon={saving.desperdicio_global_pct ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                      onClick={() => setConfirmDlg({
+                        type: 'desperdicio_global',
+                        title: 'Guardar desperdicio global',
+                        body: `Se establecerá ${config.desperdicio_global_pct || 0}% como merma por defecto para todos los insumos${savedDesperdicio ? ` (actualmente: ${savedDesperdicio}%)` : ''}.`,
+                        detail: 'Este valor se aplica al calcular el costo de los insumos en recetas que no tengan una merma específica o un desperdicio propio.',
+                      })}
+                      sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
+                      {saving.desperdicio_global_pct ? 'Guardando…' : 'Guardar'}
+                    </Button>
+                  </Stack>
+                  {Number(config.desperdicio_global_pct) > 0 && (
+                    <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
+                      Con {config.desperdicio_global_pct}% → factor de merma = ×{(1 + Number(config.desperdicio_global_pct) / 100).toFixed(2)}
                     </Alert>
                   )}
                 </Stack>

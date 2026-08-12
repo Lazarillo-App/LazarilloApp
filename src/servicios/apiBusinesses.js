@@ -60,6 +60,27 @@ export function authHeaders(
 
 // src/servicios/apiBusinesses.js
 
+// ─────────────────────────────────────────────────────────────
+// Cache + deduplicación de GETs (perf: evita pedir el mismo dato N veces).
+// - inFlight: si una GET idéntica ya está en vuelo, se cuelga de la misma promesa.
+// - cache: guarda la última respuesta por URL con TTL corto.
+// - Cualquier mutación (POST/PUT/PATCH/DELETE) limpia todo el cache (simple y seguro).
+// - Eventos de datos (articulos:updated, etc.) también lo limpian.
+// TTL corto: solo colapsa las ráfagas de requests simultáneos/cercanos, no sirve stale viejo.
+// ─────────────────────────────────────────────────────────────
+const __httpCacheTTL = 4000; // ms
+const __httpCache = new Map();
+const __httpInFlight = new Map();
+
+export function invalidateHttpCache() {
+  __httpCache.clear();
+}
+if (typeof window !== 'undefined') {
+  ['articulos:updated', 'insumos:updated', 'business:switched', 'business:synced',
+   'article:links-changed', 'recetas:bulk-added', 'recetas:bulk-deleted', 'team:changed']
+    .forEach(ev => window.addEventListener(ev, invalidateHttpCache));
+}
+
 export async function http(
   path,
   {
@@ -70,6 +91,7 @@ export async function http(
     noAuthRedirect,
     timeoutMs = 20000,
     signal,
+    cache = true, // permite desactivar cache por llamada si hiciera falta
   } = {}
 ) {
   const user = getUser();
@@ -83,6 +105,25 @@ export async function http(
   // app_admin puede operar en rutas /businesses/:id cuando gestiona negocios concretos
 
   const url = `${BASE}${p}`;
+
+  // Solo cacheamos/deduplicamos GETs (las mutaciones invalidan, ver abajo).
+  const isGet = method === 'GET';
+  const cacheKey = isGet ? `${url}|${getActiveBusinessId() || ''}` : null;
+
+  if (isGet && cache) {
+    // 1) Cache fresco
+    const hit = __httpCache.get(cacheKey);
+    if (hit && (Date.now() - hit.ts) < __httpCacheTTL) {
+      return hit.data;
+    }
+    // 2) Request idéntica ya en vuelo → colgarse de la misma
+    const pending = __httpInFlight.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  // Las mutaciones invalidan el cache (los datos cambiaron)
+  if (!isGet) invalidateHttpCache();
+
   // Solo estos son "públicos" (no llevan Authorization)
   const AUTH_PUBLIC_PATHS = new Set([
     '/auth/login',
@@ -108,81 +149,96 @@ export async function http(
       isFormData,
     });
 
-  // 🔍 DEBUG: Ver headers que se envían (temporal)
-  if (isFormData) {
-  
-  }
-
-  // AbortController + timeout + cancel externo
-  const ctrl = new AbortController();
-  if (signal && typeof signal.addEventListener === 'function') {
-    signal.addEventListener('abort', () => {
-      try {
-        ctrl.abort(signal.reason || 'aborted_by_caller');
-      } catch { }
-    });
-  }
-  const t = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
-
-  let res;
-
-  try {
-    res = await fetch(url, {
-      method,
-      headers: hdrs,
-      body: body
-        ? (isFormData ? body : JSON.stringify(body))
-        : undefined,
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(t);
-  }
-
-  // 401 → limpiar sesión y redirigir a /login
-  if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
-    try {
-      console.warn('Auth 401', await res.clone().json());
-    } catch { }
-    localStorage.removeItem('token');
-    window.location.href = '/login';
-    throw new Error('invalid_token');
-  }
-
-  const text = await res.text().catch(() => '');
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch { }
-
-  if (!res.ok) {
-    // 🔍 log de diagnóstico
-    try {
-      console.error('[HTTP FAIL]', {
-        status: res.status,
-        url,
-        bodyText: text,
-        bodyJson: data,
+  // Ejecuta el fetch real y devuelve el JSON parseado (o lanza error).
+  const doFetch = async () => {
+    // AbortController + timeout + cancel externo
+    const ctrl = new AbortController();
+    if (signal && typeof signal.addEventListener === 'function') {
+      signal.addEventListener('abort', () => {
+        try {
+          ctrl.abort(signal.reason || 'aborted_by_caller');
+        } catch { }
       });
+    }
+    const t = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: hdrs,
+        body: body
+          ? (isFormData ? body : JSON.stringify(body))
+          : undefined,
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(t);
+    }
+
+    // 401 → limpiar sesión y redirigir a /login
+    if (res.status === 401 && !(noAuthRedirect || isAuthPublic)) {
+      try {
+        console.warn('Auth 401', await res.clone().json());
+      } catch { }
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      throw new Error('invalid_token');
+    }
+
+    const text = await res.text().catch(() => '');
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
     } catch { }
 
-    const is404 = res.status === 404;
-    const msg =
-      (data &&
-        ((data.error &&
-          data.detail &&
-          `${data.error}: ${data.detail}`) ||
-          data.detail ||
-          data.error ||
-          data.message)) ||
-      (is404
-        ? `not_found: ${path}`
-        : (text || res.statusText || `HTTP ${res.status}`));
+    if (!res.ok) {
+      // 🔍 log de diagnóstico
+      try {
+        console.error('[HTTP FAIL]', {
+          status: res.status,
+          url,
+          bodyText: text,
+          bodyJson: data,
+        });
+      } catch { }
 
-    throw new Error(msg);
+      const is404 = res.status === 404;
+      const msg =
+        (data &&
+          ((data.error &&
+            data.detail &&
+            `${data.error}: ${data.detail}`) ||
+            data.detail ||
+            data.error ||
+            data.message)) ||
+        (is404
+          ? `not_found: ${path}`
+          : (text || res.statusText || `HTTP ${res.status}`));
+
+      throw new Error(msg);
+    }
+
+    return data;
+  };
+
+  // GET con cache: registrar la promesa en vuelo (dedupe) y guardar el resultado.
+  if (isGet && cache) {
+    const promise = (async () => {
+      try {
+        const data = await doFetch();
+        __httpCache.set(cacheKey, { ts: Date.now(), data });
+        return data;
+      } finally {
+        __httpInFlight.delete(cacheKey);
+      }
+    })();
+    __httpInFlight.set(cacheKey, promise);
+    return promise;
   }
 
-  return data;
+  // GET sin cache, o mutación: fetch directo.
+  return doFetch();
 }
 
 const getActiveBusinessIdKey = () => {
@@ -208,7 +264,7 @@ const setActiveBusinessIdLS = (bizId) => {
     localStorage.setItem('activeBusinessId', String(bizId));
   } else {
     localStorage.removeItem(key);
-    removeActiveBusinessIdLS();
+    localStorage.removeItem('activeBusinessId');
   }
 };
 

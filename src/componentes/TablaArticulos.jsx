@@ -255,6 +255,7 @@ export default function TablaArticulos({
   soloConVentas = false,
   onToggleSoloConVentas,
   onAddMembersToLink,
+  editingGroup = null,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -818,20 +819,40 @@ export default function TablaArticulos({
 
   const getSortValue = useCallback((a) => {
     const id = getId(a);
+    // Costo REAL (mismo criterio que getCostoArticulo y las columnas): receta.costoTotal
+    // /porciones si tiene receta, si no a.costo. Antes el sort usaba a.costo crudo, por eso
+    // Costo/Ganancia/Costo %/Sugerido no ordenaban acorde a lo mostrado.
+    const rec = recetasCostos[String(id)] || recetasCostos[Number(id)];
+    const costoReal = (rec && rec.costoTotal > 0)
+      ? (rec.porciones > 1 ? rec.costoTotal / rec.porciones : rec.costoTotal)
+      : num(a?.costo);
+    // Objetivo con la MISMA jerarquía que getObjetivoArticulo: individual > rubro > global.
+    // (Sin agrupación acá: el sort no tiene el contexto de agrupación por fila; article/rubro/global cubren el caso.)
+    const objetivoResuelto = (() => {
+      if (objetivos[id] !== undefined && objetivos[id] !== '') return num(objetivos[id]);
+      const cfgArt = priceConfig.byArticle?.[String(id)];
+      if (cfgArt?.objetivo != null) return num(cfgArt.objetivo);
+      const cfgRubroSub = priceConfig.byRubro?.[String(a.subrubro || '')];
+      if (cfgRubroSub?.objetivo != null) return num(cfgRubroSub.objetivo);
+      const cfgRubroCat = priceConfig.byRubro?.[String(a.categoria || a.rubro || '')];
+      if (cfgRubroCat?.objetivo != null) return num(cfgRubroCat.objetivo);
+      return globalCostoIdeal;
+    })();
     switch (sortBy) {
       case "ventas": { const idNum = Number(id); if (!Number.isFinite(idNum)) return 0; return getVentasAmount(idNum); }
       case "ventasQty": { const idNum = Number(id); if (!Number.isFinite(idNum)) return 0; const venta = getVentaForId(idNum); const precio = toNum(baseById?.get?.(idNum)?.precio ?? 0); return normalizeVenta(venta, precio).qty; }
       case "codigo": return id;
       case "nombre": return a?.nombre ?? "";
       case "precio": return num(a?.precio);
-      case "costo": return num(a?.costo);
-      case "costoPct": { const p = num(a?.precio), c = num(a?.costo); return p > 0 ? (c / p) * 100 : -Infinity; }
-      case "objetivo": return num(objetivos[id]) || 0;
-      case "sugerido": { const obj = num(objetivos[id]) || 0; const c = num(a?.costo); const den = 100 - obj; return den > 0 ? c * (100 / den) : 0; }
+      case "costo": return costoReal;
+      case "ganancia": return costoReal > 0 ? (num(a?.precio) - costoReal) : -Infinity;
+      case "costoPct": { const p = num(a?.precio); return p > 0 && costoReal > 0 ? (costoReal / p) * 100 : -Infinity; }
+      case "objetivo": return objetivoResuelto;
+      case "sugerido": { const den = 100 - objetivoResuelto; return (den > 0 && costoReal > 0) ? costoReal * (100 / den) : 0; }
       case "manual": return num(manuales[id]) || 0;
       default: return null;
     }
-  }, [sortBy, objetivos, manuales, getVentasAmount, getVentaForId, baseById]);
+  }, [sortBy, objetivos, manuales, getVentasAmount, getVentaForId, baseById, recetasCostos, priceConfig, globalCostoIdeal]);
 
   const cmp = useCallback((a, b) => {
     if (!sortBy) return 0;
@@ -1062,6 +1083,15 @@ export default function TablaArticulos({
     return rows;
   }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
 
+  // Habilitación de las flechas (hay anterior / hay siguiente)
+  const navReceta = useMemo(() => {
+    const curId = Number(recetaArticulo?.id);
+    if (!curId) return { prev: false, next: false };
+    const items = flatRows.filter(r => r.kind === "item").map(r => r.art);
+    const idx = items.findIndex(a => Number(getId(a)) === curId);
+    return { prev: idx > 0, next: idx >= 0 && idx < items.length - 1 };
+  }, [recetaArticulo, flatRows]);
+
   const handleScroll = useCallback((e) => {
     const scrollTop = e.currentTarget.scrollTop;
     const firstVisibleIdx = Math.floor(scrollTop / ITEM_H);
@@ -1180,6 +1210,23 @@ export default function TablaArticulos({
     }
     return globalCostoIdeal;
   }, [objetivos, priceConfig, globalCostoIdeal]);
+
+   // Navegación entre recetas (anterior/siguiente) recorriendo la lista ordenada
+  // por rubro. Pasa entre rubros, ignora agrupaciones (usa flatRows de items).
+  const navegarReceta = useCallback((dir) => {
+    const curId = Number(recetaArticulo?.id);
+    if (!curId) return;
+    const items = flatRows.filter(r => r.kind === "item").map(r => r.art);
+    const idx = items.findIndex(a => Number(getId(a)) === curId);
+    if (idx === -1) return;
+    const nextIdx = dir === 'prev' ? idx - 1 : idx + 1;
+    if (nextIdx < 0 || nextIdx >= items.length) return;
+    const a = items[nextIdx];
+    const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
+    const objetivoResuelto = getObjetivoArticulo(a, String(agrupacionSeleccionada?.id || ''));
+    setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
+  }, [recetaArticulo, flatRows, promoIds, promoGroupIds, getObjetivoArticulo, agrupacionSeleccionada]);
+
 
   const getPrecioManualArticulo = useCallback((a) => {
     const id = String(getId(a));
@@ -1438,13 +1485,17 @@ export default function TablaArticulos({
               cursor: 'pointer',
             }}
             onClick={() => {
-              const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+             const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
               setRubroEditModal({
                 rubroKey,
                 rubroDisplay: label,
                 articleIds: row.ids || [],
                 initialObjetivo: cfgRubro.objetivo,
+                // Para el renombre: si el header está en cat-first, el bloque es un RUBRO UI;
+                // si no, un SUBRUBRO UI. rubroNombreActual es el nombre a renombrar (old).
+                esRubro: tableHeaderMode === "cat-first",
+                rubroNombreActual: rubroKey,
               });
             }}
             onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
@@ -1600,7 +1651,8 @@ export default function TablaArticulos({
         {leftBar}
         {selectionMode && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isLinkedByPrecio && selectionMode === 'link' ? (
+            {isLinkedByPrecio && selectionMode === 'link' && !editingGroup ? (
+              // Fuera de edición: los ya vinculados por precio muestran el icono de cadena (no check).
               <LinkChainIcon
                 articleId={id} groupInfo={linkGroupsList.find(g => g.linkType === 'precio')}
                 nameById={nameById}
@@ -1609,6 +1661,8 @@ export default function TablaArticulos({
                 onAddMembers={onAddMembersToLink}
               />
             ) : (
+              // En edición (o no vinculado): checkbox normal. Los miembros del grupo entran
+              // pre-marcados (selectedIds los trae), así se ven marcados y se pueden desmarcar.
               <input type="checkbox" checked={isChecked} onChange={() => onToggleSelected?.(Number(id))}
                 style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }} />
             )}
@@ -1619,7 +1673,7 @@ export default function TablaArticulos({
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
             {(selectionMode === 'list' || !selectionMode) && isLinked && (
               <>
-                {linkGroupsList.map(g => (
+                {linkGroupsList.filter(g => g.linkType === 'precio').map(g => (
                   <LinkChainIcon
                     key={g.groupId ?? g.id}
                     articleId={id} groupInfo={g}
@@ -1934,6 +1988,8 @@ export default function TablaArticulos({
           insumosBizId={rootBizId || activeBizId}
           calcPrecioPorLista={calcPrecioPorLista}
           esElaborado={false}
+          onNavigate={navegarReceta}
+          canNavigate={navReceta}
           esPromo={recetaArticulo.esPromo === true}
           costoObjetivoExterno={recetaArticulo.objetivoResuelto ?? null}
           recetasElaborados={recetasElaborados}
@@ -2278,6 +2334,8 @@ export default function TablaArticulos({
           rubroDisplay={rubroEditModal.rubroDisplay}
           articleIds={rubroEditModal.articleIds}
           initialObjetivo={rubroEditModal.initialObjetivo}
+          esRubro={rubroEditModal.esRubro ?? null}
+          rubroNombreActual={rubroEditModal.rubroNombreActual ?? ''}
           globalCostoIdeal={globalCostoIdeal}
           orgId={organization?.id}
           businessId={activeBizId}

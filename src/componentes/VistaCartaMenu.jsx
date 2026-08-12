@@ -541,8 +541,13 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
+      const origPos = sec.itemIds.indexOf(artId);           // posición actual en la lista COMPLETA
       const itemIds = sec.itemIds.filter((x) => x !== artId);
-      const pos = destPos == null ? itemIds.length : Math.max(0, Math.min(itemIds.length, destPos));
+      // destPos viene en convención "lista original" (índice del item destino con el arrastrado adentro).
+      // Si el origen estaba ANTES del destino, al sacarlo todo se corrió -1: compensar.
+      let pos = destPos == null ? itemIds.length : destPos;
+      if (origPos !== -1 && origPos < pos) pos -= 1;
+      pos = Math.max(0, Math.min(itemIds.length, pos));
       itemIds.splice(pos, 0, artId);
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
     });
