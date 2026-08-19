@@ -256,6 +256,7 @@ function ArticuloAccionesMenu({
   allowedIds,
   priceLists = [],
   priceListsByList = {},
+  rubrosDisponibles = [],
 }) {
   // ── Estado UI ──────────────────────────────────────────────────────────────
   const [anchorEl, setAnchorEl] = useState(null);
@@ -271,6 +272,9 @@ function ArticuloAccionesMenu({
   const [eliminando, setEliminando] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [dlgMoverRubroOpen, setDlgMoverRubroOpen] = useState(false);
+  const [nuevoRubro, setNuevoRubro] = useState('');
+  const [movingRubro, setMovingRubro] = useState(false);
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
@@ -379,6 +383,38 @@ function ArticuloAccionesMenu({
       setRenaming(false);
     }
   }, [renameValue, articuloDisplayName, articuloIdNum, effectiveBusinessId, notify]);
+
+  const rubroActual = useMemo(() => {
+    const raw = articulo?.raw || {};
+    return (articulo?.subrubro ?? raw.subrubro ?? '').trim();
+  }, [articulo]);
+
+  const openMoverRubro = useCallback(() => {
+    setNuevoRubro('');
+    handleClose();
+    setTimeout(() => setDlgMoverRubroOpen(true), 0);
+  }, [handleClose]);
+
+  const ejecutarMoverRubro = useCallback(async () => {
+    const destino = nuevoRubro.trim();
+    if (!destino || destino === rubroActual) { setDlgMoverRubroOpen(false); return; }
+    setMovingRubro(true);
+    try {
+      // rubro (UI) → el backend lo escribe en subrubro (DB). No toca subrubro_maxi → el sync lo respeta.
+      await httpBiz(`/articles/${articuloIdNum}`, {
+        method: 'PATCH', body: { rubro: destino },
+      }, effectiveBusinessId);
+      notify?.(`Movido a "${destino}"`, 'success');
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      onAfterMutation?.([articuloIdNum]);
+      setDlgMoverRubroOpen(false);
+    } catch (e) {
+      console.error('MOVER_RUBRO_ARTICULO_ERROR', e);
+      notify?.('No se pudo mover el rubro', 'error');
+    } finally {
+      setMovingRubro(false);
+    }
+  }, [nuevoRubro, rubroActual, articuloIdNum, effectiveBusinessId, notify, onAfterMutation]);
 
   // ── Negocios filtrados para el modal Mover ─────────────────────────────────
   const negociosFiltrados = useMemo(() => {
@@ -751,6 +787,10 @@ function ArticuloAccionesMenu({
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Editar nombre</ListItemText>
         </MenuItem>
+        <MenuItem onClick={openMoverRubro}>
+          <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Mover a otro rubro…</ListItemText>
+        </MenuItem>
         {!esPromo && (
           <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
@@ -909,6 +949,33 @@ function ArticuloAccionesMenu({
         scopeLabel={articuloDisplayName}
         notify={notify}
       />
+
+      {/* ── Diálogo mover a otro rubro ── */}
+      <Dialog open={dlgMoverRubroOpen} onClose={() => !movingRubro && setDlgMoverRubroOpen(false)} maxWidth="xs" fullWidth keepMounted>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <TextField
+            select fullWidth size="small" autoFocus
+            label="Rubro destino"
+            value={nuevoRubro}
+            onChange={(e) => setNuevoRubro(e.target.value)}
+            SelectProps={{ native: true }}
+            helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
+          >
+            <option value=""></option>
+            {rubrosDisponibles.map((r) => (
+              <option key={r} value={r} disabled={r === rubroActual}>{r}</option>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlgMoverRubroOpen(false)} disabled={movingRubro}>Cancelar</Button>
+          <Button onClick={ejecutarMoverRubro} variant="contained"
+            disabled={movingRubro || !nuevoRubro.trim() || nuevoRubro.trim() === rubroActual}>
+            {movingRubro ? 'Moviendo…' : 'Mover'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Diálogo de renombrar ── */}
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>

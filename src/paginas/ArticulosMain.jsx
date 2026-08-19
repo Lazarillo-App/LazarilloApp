@@ -352,6 +352,35 @@ export default function ArticulosMain(props) {
     [agrupacionSeleccionada, activeBizId]
   );
 
+  // Cambiar el viewMode de UNA agrupación por id (usado desde la carta).
+  // Escribe en la misma fuente que la tabla (business_view_prefs) → ambas vistas en sync.
+  const setViewModeParaAgrupacion = useCallback((agrupacionId, mode) => {
+    const bid = activeBizId;
+    const groupId = Number(agrupacionId);
+    if (!bid || !Number.isFinite(groupId) || groupId <= 0) return;
+    if (mode !== 'by-subrubro' && mode !== 'by-categoria') return;
+    setViewModeByGroup((prev) => ({ ...prev, [groupId]: mode }));
+    BusinessesAPI.saveViewPref(bid, {
+      agrupacionId: groupId,
+      viewMode: mode,
+      scope: 'articulo',
+    }).catch((e) => console.error('saveViewPref (carta) error', e));
+  }, [activeBizId]);
+
+  // Renombrar un artículo desde la carta (nombre real, protegido de MaxiRest).
+  const onRenombrarArticulo = useCallback(async (articleId, nombre) => {
+    const bid = activeBizId;
+    const nom = String(nombre || '').trim();
+    if (!bid || !Number.isFinite(Number(articleId)) || !nom) return;
+    try {
+      await BusinessesAPI.updateArticle(bid, Number(articleId), { nombre: nom });
+      // Refrescar árbol para que carta + tabla muestren el nombre nuevo.
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+    } catch (e) {
+      console.error('[onRenombrarArticulo]', e.message);
+    }
+  }, [activeBizId]);
+
   const getGroupItemsRaw = (g) => {
     if (!g) return [];
     // Combinar articulos JSONB (objetos) + app_articles_ids (array de IDs numericos)
@@ -1134,6 +1163,16 @@ export default function ArticulosMain(props) {
     }
     return out;
   }, [categorias, agrupacionesRich, effectiveDiscIds]);
+
+  // Mapa nombre-agrupación → id, para que la carta resuelva el viewMode de cada
+  // sección (los bloques por rubro/sub leen la misma preferencia que la tabla).
+  const agrupIdByNombre = useMemo(() => {
+    const m = {};
+    for (const g of agrupacionesRich || []) {
+      if (g?.nombre) m[String(g.nombre)] = Number(g.id);
+    }
+    return m;
+  }, [agrupacionesRich]);
 
   const articuloIds = useMemo(
     () =>
@@ -2323,11 +2362,12 @@ export default function ArticulosMain(props) {
           negocio={negocioCarta}
           accent={negocioCarta.ink || '#7a1f3d'}
           cartaGuardada={rootBusiness?.props?.carta || null}
+          viewModeByGroup={viewModeByGroup}
+          agrupIdByNombre={agrupIdByNombre}
+          onChangeViewMode={setViewModeParaAgrupacion}
+          onRenombrarArticulo={onRenombrarArticulo}
           onGuardarCarta={async (carta) => {
             await BusinessesAPI.update(rootBusiness.id, { carta });
-            // Rehidratar la organización para que rootBusiness.props.carta refleje
-            // lo recién guardado; sin esto, al salir/volver el objeto en memoria
-            // sigue con props viejo y la carta arranca de cero.
             if (typeof refetchOrg === 'function') await refetchOrg();
           }}
         />

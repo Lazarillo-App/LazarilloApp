@@ -281,6 +281,14 @@ export function ComprasDetalleContenido({
     [displayItems]
   );
 
+  // ¿Hay compras sin sucursal? Solo entonces tiene sentido la opción "Principal".
+  // Cuando el negocio ya tiene sucursales y todas las compras están asignadas,
+  // "Principal" desaparece del selector (se auto-limpia al mover las huérfanas).
+  const hayComprasSinSucursal = useMemo(() => {
+    const all = [...(items || []), ...(extraItems || [])];
+    return all.some(it => it.branch_id == null);
+  }, [items, extraItems]);
+
   const totales = useMemo(() => {
     let cantidad = 0, importe = 0;
     for (const it of sortedItems) {
@@ -375,12 +383,14 @@ export function ComprasDetalleContenido({
                 onChange={(e) => setSelectedBranch(e.target.value)}
               >
                 <MenuItem value="all">Todas</MenuItem>
-                <MenuItem value="main">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />
-                    <span>Principal</span>
-                  </Stack>
-                </MenuItem>
+                {hayComprasSinSucursal && (
+                  <MenuItem value="main">
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />
+                      <span>Principal</span>
+                    </Stack>
+                  </MenuItem>
+                )}
 
                 {/* Modo "todos los negocios": agrupar por negocio con subheaders */}
                 {selectedBiz === 'all' && branchesByBiz
@@ -395,13 +405,15 @@ export function ComprasDetalleContenido({
                       </Typography>
                     </MenuItem>,
 
-                    // Principal de este negocio
+                    // Principal de este negocio (solo si hay compras sin sucursal)
+                    ...(hayComprasSinSucursal ? [(
                     <MenuItem key={`main-${bizId}`} value={`main-${bizId}`} sx={{ pl: 3 }}>
                       <Stack direction="row" alignItems="center" spacing={1}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
                         <span>Principal</span>
                       </Stack>
-                    </MenuItem>,
+                    </MenuItem>
+                    )] : []),
 
                     // Sucursales reales de este negocio
                     ...bizBranches.map(branch => (
@@ -467,12 +479,14 @@ export function ComprasDetalleContenido({
         <Stack direction="row" spacing={1.5} flexWrap="wrap">
           {selectedBiz === 'all' && branchesByBiz
             ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
+              ...(hayComprasSinSucursal ? [(
               <Stack key={`leg-main-${bizId}`} direction="row" alignItems="center" spacing={0.5}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: bizColor, flexShrink: 0 }} />
                 <Typography variant="caption" color="text.secondary">
                   Principal <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
                 </Typography>
-              </Stack>,
+              </Stack>
+              )] : []),
               ...bizBranches.map(branch => (
                 <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
@@ -483,10 +497,12 @@ export function ComprasDetalleContenido({
               )),
             ])
             : <>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <span style={{ width: 12, height: 12, borderRadius: 3, background: themeColors.primary, flexShrink: 0 }} />
-                <Typography variant="caption" color="text.secondary">Principal</Typography>
-              </Stack>
+              {hayComprasSinSucursal && (
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: themeColors.primary, flexShrink: 0 }} />
+                  <Typography variant="caption" color="text.secondary">Principal</Typography>
+                </Stack>
+              )}
               {dynamicBranches.map(branch => (
                 <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />

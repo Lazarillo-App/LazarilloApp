@@ -564,6 +564,15 @@ export const BusinessesAPI = {
     });
   },
 
+  // Actualiza campos de un artículo (nombre, precio, rubro, subrubro).
+  // El backend protege el nombre de MaxiRest (nombre_maxi mirror queda intacto).
+  async updateArticle(businessId, articleId, patch) {
+    return http(`/businesses/${businessId}/articles/${articleId}`, {
+      method: 'PATCH',
+      body: patch,
+    });
+  },
+
   async saveFavoriteGroup(businessId, agrupacionId, { scope = 'articulo', divisionId = null } = {}) {
     if (!businessId) return;
 

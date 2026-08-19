@@ -980,6 +980,20 @@ export default function TablaArticulos({
     );
   }, [articulosFiltrados, getVentasAmount, branches, ventasMapByBranch]);
 
+    // Rubros-UI existentes (= subrubro DB) para el selector "Mover a otro rubro"
+  const rubrosDisponibles = useMemo(() => {
+    const set = new Set();
+    for (const blq of bloques) {
+      for (const sr of (blq.subrubros || [])) {
+        const r = (sr.subrubro || '').trim();
+        if (r && r !== 'Sin subrubro') set.add(r);
+      }
+    }
+    return Array.from(set).sort((a, b) =>
+      String(a).localeCompare(String(b), 'es', { sensitivity: 'base', numeric: true })
+    );
+  }, [bloques]);
+
   const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
 
   // Total de ventas de todas las agrupaciones reales (excluye Sin Agrupación y Discontinuados)
@@ -1956,12 +1970,19 @@ export default function TablaArticulos({
                         componentePrecargado: art,
                       });
                     }}
-                    agrupaciones={agrupaciones} agrupacionSeleccionada={agrupacionSeleccionada}
-                    todoGroupId={todoGroupId} isTodo={isTodo} onRefetch={refetchLocal}
+                    agrupaciones={agrupaciones} 
+                    agrupacionSeleccionada={agrupacionSeleccionada}
+                    todoGroupId={todoGroupId} 
+                    isTodo={isTodo} onRefetch={refetchLocal}
                     onAfterMutation={(ids2) => afterMutation(ids2)}
-                    notify={(m, t) => openSnack(m, t)} onGroupCreated={onGroupCreated}
-                    onDiscontinuadoChange={onDiscontinuadoChange} treeMode={modalTreeMode}
-                    allowedIds={filterIds} businessId={activeBizId} rootBizId={rootBizId}
+                    notify={(m, t) => openSnack(m, t)} 
+                    onGroupCreated={onGroupCreated}
+                    rubrosDisponibles={rubrosDisponibles}
+                    onDiscontinuadoChange={onDiscontinuadoChange} 
+                    treeMode={modalTreeMode}
+                    allowedIds={filterIds} 
+                    businessId={activeBizId} 
+                    rootBizId={rootBizId}
                     priceLists={priceLists}
                     priceListsByList={priceListsByList}
                     priceConfig={priceConfig}

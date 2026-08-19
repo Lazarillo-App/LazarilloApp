@@ -54,8 +54,8 @@ const DISENO_BASE = {
   // Etapa 2A+: controles finos de estilo
   itemGap: 3,        // interlineado entre ítems (px)
   logoAlign: "center", // posición del logo: left | center | right
-  titleSize: 30,     // tamaño del título de la hoja
   sectionSize: 16,   // tamaño de los títulos de sección (rubro)
+  iconSize: 16,      // tamaño del icono de sección
   itemSize: 14.5,    // tamaño del nombre del artículo
   descSize: 11.5,    // tamaño de la descripción
 };
@@ -165,6 +165,40 @@ function maquetaInicial(articulosPlano, modo) {
   return { hojas, secciones: seccionesObj, pool: { secciones: [], items: [] } };
 }
 
+// Maqueta vacía: una hoja en blanco + TODAS las secciones (rubro/agrupación) en el
+// pool, listas para arrastrar. Es el arranque por defecto cuando no hay carta guardada:
+// el usuario elige vista y arma su carta trayendo secciones.
+function maquetaVacia(articulosPlano, modo) {
+  const activos = articulosPlano.filter((a) => clean(a.nombre));
+  const secciones = new Map();
+  const push = (titulo, id) => {
+    const t = titulo || "Otros";
+    if (!secciones.has(t)) secciones.set(t, []);
+    secciones.get(t).push(String(id));
+  };
+  if (modo === "rubro") {
+    for (const a of activos) push(isSin(a.rubro) ? "Otros" : clean(a.rubro), a.id);
+  } else {
+    for (const a of activos) push((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion), a.id);
+  }
+  const seccionesObj = {};
+  const poolSecciones = [];
+  let n = 0;
+  for (const [titulo, itemIds] of secciones) {
+    const sid = "sec-" + (n++);
+    const ordenados = itemIds.slice().sort((x, y) => {
+      const ax = clean((articulosPlano.find(a => String(a.id) === x) || {}).nombre);
+      const ay = clean((articulosPlano.find(a => String(a.id) === y) || {}).nombre);
+      return ax.localeCompare(ay, "es");
+    });
+    seccionesObj[sid] = { id: sid, titulo, itemIds: ordenados };
+    poolSecciones.push(sid);   // ← al pool, no a una hoja
+  }
+  // Una única hoja vacía para empezar a armar.
+  const hojas = [{ id: "hoja-inicial", nombre: "NUEVA HOJA", cols: 1, columnas: [[]] }];
+  return { hojas, secciones: seccionesObj, pool: { secciones: poolSecciones, items: [] } };
+}
+
 /* ───────────────────────────────────────────────────────────────────────────
    RECONCILIACIÓN (Etapa 2B)
 
@@ -272,8 +306,17 @@ function cartaCss(diseno, negocio, scale) {
 .sepline{border-top:2px ${Dx.line} ${inkH};margin:${r(gap + 4)}px 0}`;
 }
 
+// Dado el viewMode de una agrupación (mismo valor que la tabla: 'by-subrubro' | 'by-categoria'),
+// devuelve el campo del artículo por el que se subdivide en bloques dentro de la carta.
+// Recordar la inversión: en la carta, a.rubro = subrubro DB (UI "Rubro"), a.sub = categoria DB (UI "Subrubro").
+function campoBloqueDeViewMode(viewMode) {
+  if (viewMode === "by-subrubro") return "rubro";   // UI "Rubro"
+  if (viewMode === "by-categoria") return "sub";    // UI "Subrubro"
+  return null;                                       // sin subdivisión
+}
+
 // HTML de una sección (título + ítems)
-function seccionHtml(sec, artById, diseno) {
+function seccionHtml(sec, artById, diseno, iconos) {
   if (!sec) return "";
   const Dx = diseno;
   const items = (sec.itemIds || []).map((id) => {
@@ -284,8 +327,10 @@ function seccionHtml(sec, artById, diseno) {
     const precio = a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : "";
     return `<div class="it"><span class="nm">${esc(a.nombre)}</span><span class="dots"></span><span class="pr">${precio}</span></div>${a.descripcion ? `<div class="ds">${esc(a.descripcion)}</div>` : ""}`;
   }).join("");
+  const icoRaw = iconos && iconos[sec.titulo] !== undefined ? iconos[sec.titulo] : iconFor(sec.titulo);
+  const icoHtml = icoRaw ? `<span style="font-size:${Dx.iconSize || 16}px">${esc(icoRaw)}</span> ` : "";
   const titulo = sec.titulo
-    ? `<div class="rt">${iconFor(sec.titulo) ? esc(iconFor(sec.titulo)) + " " : ""}${Dx.orn ? esc(Dx.orn) + "  " : ""}${esc(sec.titulo)}</div>`
+    ? `<div class="rt">${icoHtml}${Dx.orn ? esc(Dx.orn) + "  " : ""}${esc(sec.titulo)}</div>`
     : "";
   return `<div class="rub">${titulo}${items}</div>`;
 }
@@ -320,10 +365,11 @@ function footerHtml(negocio) {
     filas.push(`<div class="fl">${svgIcon("wifi", c)}<span>WiFi ${partes.join(" · ")}</span></div>`);
   }
   return filas.length ? `<div class="ft">${filas.join("")}</div>` : "";
+
 }
 
 /* ───────────────────────── PDF de una hoja (con columnas reales, paginado) ───────────────────────── */
-async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg) {
+async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg, iconos) {
   const bgH = diseno.bg || "#ffffff";
   // Hoja física (mm) y márgenes
   const sizes = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], Oficio: [216, 330], Carta: [216, 279] };
@@ -341,7 +387,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
   const css = cartaCss(diseno, negocio, 1);
 
   const colsHtml = (hoja.columnas || []).map((colSecIds) => {
-    const inner = (colSecIds || []).map((sid) => seccionHtml(secciones[sid], artById, diseno)).join("");
+    const inner = (colSecIds || []).map((sid) => seccionHtml(secciones[sid], artById, diseno, iconos)).join("");
     return `<div class="pcol" style="width:${colWpx}px">${inner}</div>`;
   }).join("");
 
@@ -395,7 +441,17 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
 }
 
 /* ───────────────────────── Componente principal ───────────────────────── */
-export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = "#7a1f3d", cartaGuardada = null, onGuardarCarta = null }) {
+export default function VistaCartaMenu({
+  articulos = [],
+  negocio = {},
+  accent = "#7a1f3d",
+  cartaGuardada = null,
+  onGuardarCarta = null,
+  viewModeByGroup = {},
+  agrupIdByNombre = {},
+  onChangeViewMode = null,
+  onRenombrarArticulo = null,
+}) {
   // Si hay carta guardada, arrancamos desde ahí.
   const g = cartaGuardada && typeof cartaGuardada === "object" ? cartaGuardada : null;
   const [modo, setModo] = useState(g?.modo === "rubro" ? "rubro" : "agrupacion");
@@ -417,8 +473,12 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
   const saveTimer = useRef(null);
   const primeraRef = useRef(true); // evita autosave en el primer render
   // Descripciones escritas en la carta (por artId). No vienen de datos.
-  const [descripciones, setDescripciones] = useState(g?.descripciones && typeof g.descripciones === "object" ? g.descripciones : {});
   const [editDesc, setEditDesc] = useState(null); // artId cuya descripción se está editando
+  const [descripciones, setDescripciones] = useState(g?.descripciones && typeof g.descripciones === "object" ? g.descripciones : {});
+  // Iconos elegidos manualmente por sección (override del automático). Se guardan en la carta.
+  const [iconosPorTitulo, setIconosPorTitulo] = useState(g?.iconos && typeof g.iconos === "object" ? g.iconos : {});
+  const [iconPickerFor, setIconPickerFor] = useState(null); // título de sección cuyo picker está abierto
+  const [iconPickerPos, setIconPickerPos] = useState({ x: 0, y: 0 });
   // Contacto editable en la carta: arranca con lo guardado, o con lo del negocio.
   const [contacto, setContacto] = useState(() => (
     g?.contacto ? { ...g.contacto } : {
@@ -431,6 +491,17 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
   ));
 
   const neg = useMemo(() => ({ ...negocio, ...contacto, accent }), [negocio, contacto, accent]);
+  // Icono efectivo de una sección: override manual ('' = sin icono) o automático por nombre.
+  const iconoDe = (titulo) => {
+    const ov = iconosPorTitulo[titulo];
+    return ov !== undefined ? ov : iconFor(titulo);
+  };
+  // Set curado de emojis para el picker (los que ya usa ICON_MAP + genéricos).
+  const ICON_PICKER = [
+    "🍔", "🍺", "☕", "🍕", "🥤", "🍷", "🍸", "🥃", "🍰", "🍟", "🥗", "🍗", "🥩", "🍝", "🌮",
+    "🍣", "🥪", "🧃", "💧", "🥐", "🍳", "🧀", "🍓", "🍵", "🍴", "🍦", "🍩", "🥟", "🎉", "🎈",
+    "🔥", "⭐", "✨", "❤️", "•", "◆", "★", "☆", "▪", "➤", "✓", "🌿", "🌸", "🥂", "🍽️", "📋",
+  ];
   const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
   // artById con las descripciones escritas en la carta aplicadas
   const artById = useMemo(() => {
@@ -442,40 +513,67 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
     return m;
   }, [artByIdBase, descripciones]);
 
-  // Maqueta: parte de lo guardado (reconciliado) o se genera desde cero.
-  const [maqueta, setMaqueta] = useState(() => (
-    g?.maqueta ? reconciliar(g.maqueta, articulos, g?.modo === "rubro" ? "rubro" : "agrupacion") : maquetaInicial(articulos, modo)
-  ));
+  // ── Maquetas por modo: cada vista (rubro / agrupacion) guarda su propia
+  //    composición. Cambiar de modo NO destruye la otra.
+  //    Retrocompat: carta v1 tenía una sola `maqueta` guardada bajo `g.modo`.
+  const [maquetasPorModo, setMaquetasPorModo] = useState(() => {
+    const out = {};
+    if (g?.maquetas && typeof g.maquetas === "object") {
+      // Formato nuevo (v2): ya viene por modo
+      if (g.maquetas.rubro) out.rubro = reconciliar(g.maquetas.rubro, articulos, "rubro");
+      if (g.maquetas.agrupacion) out.agrupacion = reconciliar(g.maquetas.agrupacion, articulos, "agrupacion");
+    } else if (g?.maqueta) {
+      // Formato viejo (v1): una sola maqueta bajo el modo con que se guardó
+      const modoGuardado = g?.modo === "rubro" ? "rubro" : "agrupacion";
+      out[modoGuardado] = reconciliar(g.maqueta, articulos, modoGuardado);
+    }
+    // El modo activo debe tener maqueta sí o sí (si no, vacía)
+    if (!out[modo]) out[modo] = maquetaVacia(articulos, modo);
+    return out;
+  });
+
+  // La maqueta activa es la del modo actual.
+  const maqueta = maquetasPorModo[modo] || maquetaVacia(articulos, modo);
+  // Setter que escribe en el modo activo (mantiene la firma setMaqueta(fn|obj)).
+  const setMaqueta = useCallback((updater) => {
+    setMaquetasPorModo((prev) => {
+      const actual = prev[modo] || maquetaVacia(articulos, modo);
+      const siguiente = typeof updater === "function" ? updater(actual) : updater;
+      return { ...prev, [modo]: siguiente };
+    });
+  }, [modo, articulos]);
+
+  // Al cambiar de modo: si el nuevo modo aún no tiene maqueta, generar una vacía
+  // (una sola vez). NO se pisa lo ya armado en ese modo.
   const maqRef = useRef({ modo });
   React.useEffect(() => {
-    // Regenerar SOLO al cambiar el modo (agrupación/rubro). No regeneramos por
-    // cambios en la referencia de `articulos` para no destruir la composición.
-    // Al cambiar de modo se pierde la composición previa (es esperable: es otra
-    // forma de organizar). Para rehacer desde cero está el botón "Regenerar".
     if (maqRef.current.modo !== modo) {
       maqRef.current = { modo };
-      setMaqueta(maquetaInicial(articulos, modo));
+      setMaquetasPorModo((prev) => prev[modo] ? prev : { ...prev, [modo]: maquetaVacia(articulos, modo) });
       setHojaActiva(0);
       setFusionMode(false); setFusionSel([]);
     }
   }, [modo, articulos]);
 
   const regenerar = useCallback(() => {
-    setMaqueta(maquetaInicial(articulos, modo));
+    setMaqueta(maquetaVacia(articulos, modo));
     setHojaActiva(0);
     setFusionMode(false); setFusionSel([]);
   }, [articulos, modo]);
 
   // Arma el objeto que se persiste en props.carta del negocio.
+  // v2: guarda una maqueta por modo (rubro / agrupacion) para no perder lo armado
+  // al cambiar de vista. `modo` es solo el modo activo al momento de guardar.
   const construirCarta = useCallback(() => ({
-    version: 1,
+    version: 2,
     modo,
     showLogo,
-    maqueta,
+    maquetas: maquetasPorModo,
     descripciones,
+    iconos: iconosPorTitulo,
     estilos: diseno,
     contacto,
-  }), [modo, showLogo, maqueta, descripciones, diseno, contacto]);
+  }), [modo, showLogo, maquetasPorModo, descripciones, diseno, contacto]);
 
   // Guardado (usado por autosave y botón manual)
   const guardar = useCallback(async () => {
@@ -499,10 +597,34 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
     saveTimer.current = setTimeout(() => { guardar(); }, 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maqueta, descripciones, diseno, contacto, modo, showLogo]);
+  }, [maquetasPorModo, descripciones, iconosPorTitulo, diseno, contacto, modo, showLogo]);
 
   const hojas = maqueta.hojas;
   const hoja = hojas[Math.min(hojaActiva, Math.max(0, hojas.length - 1))] || hojas[0];
+
+  // Catálogo de secciones disponibles: todos los rubros/agrupaciones que existen
+  // (según el modo), menos los que ya están en la carta. Reemplaza al viejo "Fuera".
+  const catalogoDisponible = useMemo(() => {
+    const activos = articulos.filter((a) => clean(a.nombre));
+    const tituloDe = (a) => modo === "rubro"
+      ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
+      : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion));
+    const conteo = {};
+    for (const a of activos) { const t = tituloDe(a); conteo[t] = (conteo[t] || 0) + 1; }
+    const usados = new Set();
+    for (const h of maqueta.hojas || []) {
+      for (const col of h.columnas || []) {
+        for (const sid of col) {
+          const s = maqueta.secciones[sid];
+          if (s?.titulo) usados.add(s.titulo);
+        }
+      }
+    }
+    return Object.keys(conteo)
+      .filter((t) => !usados.has(t))
+      .sort((a, b) => a.localeCompare(b, "es"))
+      .map((t) => ({ titulo: t, count: conteo[t] }));
+  }, [articulos, modo, maqueta]);
 
   /* ── Operaciones sobre la maqueta ── */
 
@@ -537,52 +659,105 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
   }, [hoja]);
 
   // Mover un ítem dentro de su sección (reordenar)
-  const moverItem = useCallback((secId, artId, destPos) => {
+  const moverItem = useCallback((secId, artId, destArtId) => {
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
-      const origPos = sec.itemIds.indexOf(artId);           // posición actual en la lista COMPLETA
       const itemIds = sec.itemIds.filter((x) => x !== artId);
-      // destPos viene en convención "lista original" (índice del item destino con el arrastrado adentro).
-      // Si el origen estaba ANTES del destino, al sacarlo todo se corrió -1: compensar.
-      let pos = destPos == null ? itemIds.length : destPos;
-      if (origPos !== -1 && origPos < pos) pos -= 1;
-      pos = Math.max(0, Math.min(itemIds.length, pos));
+      // Posición destino = índice del item sobre el que se soltó, en la lista REAL (ya sin el arrastrado).
+      // Resolver por identidad (artId) hace que el drop sea inmune al reordenamiento visual por bloques.
+      let pos = itemIds.indexOf(destArtId);
+      if (pos === -1) pos = itemIds.length; // soltó fuera de un item → al final
       itemIds.splice(pos, 0, artId);
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
     });
   }, []);
 
+  // Mover un bloque de rubro/sub completo dentro de su sección (reordenar bloques).
+  // Saca todos los items cuyo campoBloque === rubroDesde y los reinserta en la
+  // posición donde arranca rubroHasta. artById/campoBloque vienen del render.
+  const moverBloque = useCallback((secId, campoBloque, rubroDesde, rubroHasta, resolver) => {
+    if (!campoBloque || rubroDesde === rubroHasta) return;
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const bloqueDe = (id) => {
+        if (String(id).startsWith("__sep__")) return "";
+        return resolver(id);
+      };
+      // ¿El bloque origen estaba antes o después del destino en la lista original?
+      const idxDesde = sec.itemIds.findIndex((id) => bloqueDe(id) === rubroDesde);
+      const idxHasta = sec.itemIds.findIndex((id) => bloqueDe(id) === rubroHasta);
+      const bajando = idxDesde !== -1 && idxHasta !== -1 && idxDesde < idxHasta;
+
+      // Items del bloque que se mueve (en su orden actual)
+      const movidos = sec.itemIds.filter((id) => bloqueDe(id) === rubroDesde);
+      if (!movidos.length) return m;
+      const resto = sec.itemIds.filter((id) => bloqueDe(id) !== rubroDesde);
+
+      let pos;
+      if (bajando) {
+        // Insertar DESPUÉS del último item del bloque destino
+        let last = -1;
+        resto.forEach((id, i) => { if (bloqueDe(id) === rubroHasta) last = i; });
+        pos = last === -1 ? resto.length : last + 1;
+      } else {
+        // Insertar ANTES del primer item del bloque destino
+        pos = resto.findIndex((id) => bloqueDe(id) === rubroHasta);
+        if (pos === -1) pos = resto.length;
+      }
+      const itemIds = [...resto.slice(0, pos), ...movidos, ...resto.slice(pos)];
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
+    });
+  }, []);
+
   // Quitar un ítem de la carta (de su sección)
+  // Quitar un ítem: solo lo saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarItem = useCallback((secId, artId) => {
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
-      const pool = m.pool || { secciones: [], items: [] };
       return {
         ...m,
         secciones: { ...m.secciones, [secId]: { ...sec, itemIds: sec.itemIds.filter((x) => x !== artId) } },
-        pool: { ...pool, items: pool.items.includes(artId) ? pool.items : [...pool.items, artId] },
       };
     });
   }, []);
 
-  // Quitar una sección completa (rubro/agrupación) de la hoja → va al pool
+  // Quitar una sección: solo la saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarSeccion = useCallback((secId) => {
     setMaqueta((m) => {
       const hojas = m.hojas.map((h) => {
         if (h.id !== hoja.id) return h;
         return { ...h, columnas: h.columnas.map((c) => c.filter((s) => s !== secId)) };
       });
-      const pool = m.pool || { secciones: [], items: [] };
-      return { ...m, hojas, pool: { ...pool, secciones: pool.secciones.includes(secId) ? pool.secciones : [...pool.secciones, secId] } };
+      return { ...m, hojas };
     });
   }, [hoja]);
 
-  // Traer una sección del pool a la hoja activa (a una columna)
-  const traerSeccionDelPool = useCallback((secId, destColIdx) => {
+  // Traer una sección del catálogo (rubro/agrupación) a la hoja activa.
+  // La sección puede no existir aún en m.secciones: se crea con sus artículos.
+  const traerSeccionDelCatalogo = useCallback((titulo, destColIdx) => {
     setMaqueta((m) => {
-      const pool = m.pool || { secciones: [], items: [] };
+      // ¿Ya existe una sección con ese título? (por si estaba fuera de columnas)
+      let secId = Object.keys(m.secciones).find((k) => m.secciones[k]?.titulo === titulo);
+      let secciones = m.secciones;
+      if (!secId) {
+        // Crear la sección desde articulos según el modo actual
+        const activos = articulos.filter((a) => clean(a.nombre));
+        const itemIds = activos
+          .filter((a) => {
+            const t = modo === "rubro"
+              ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
+              : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion));
+            return t === titulo;
+          })
+          .slice()
+          .sort((x, y) => clean(x.nombre).localeCompare(clean(y.nombre), "es"))
+          .map((a) => String(a.id));
+        secId = "sec-" + Date.now();
+        secciones = { ...m.secciones, [secId]: { id: secId, titulo, itemIds } };
+      }
       const hojas = m.hojas.map((h) => {
         if (h.id !== hoja.id) return h;
         const columnas = h.columnas.map((c) => c.slice());
@@ -590,23 +765,9 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
         if (!columnas.flat().includes(secId)) columnas[idx].push(secId);
         return { ...h, columnas };
       });
-      return { ...m, hojas, pool: { ...pool, secciones: pool.secciones.filter((s) => s !== secId) } };
+      return { ...m, secciones, hojas };
     });
-  }, [hoja]);
-
-  // Traer un ítem del pool a una sección
-  const traerItemDelPool = useCallback((artId, secId) => {
-    setMaqueta((m) => {
-      const sec = m.secciones[secId];
-      if (!sec) return m;
-      const pool = m.pool || { secciones: [], items: [] };
-      return {
-        ...m,
-        secciones: { ...m.secciones, [secId]: { ...sec, itemIds: sec.itemIds.includes(artId) ? sec.itemIds : [...sec.itemIds, artId] } },
-        pool: { ...pool, items: pool.items.filter((x) => x !== artId) },
-      };
-    });
-  }, []);
+  }, [hoja, articulos, modo]);
 
   // Fusionar hojas seleccionadas en la primera
   const fusionar = useCallback((ids) => {
@@ -692,11 +853,11 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
     if (!hoja) return;
     try {
       setDlBusy(true);
-      await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg);
+      await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo);
     } catch (e) {
       alert("No pude generar la descarga. Detalle: " + (e?.message || e));
     } finally { setDlBusy(false); setPrintOpen(false); }
-  }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg]);
+  }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo]);
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
@@ -706,14 +867,13 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
     if (!d) return;
     if (d.tipo === "seccion") moverSeccion(d.secId, destColIdx, destPos);
     else if (d.tipo === "hoja") traerHojaAActiva(d.hojaId, destColIdx);
-    else if (d.tipo === "pool-seccion") traerSeccionDelPool(d.secId, destColIdx);
+    else if (d.tipo === "catalogo-seccion") traerSeccionDelCatalogo(d.titulo, destColIdx);
     dragRef.current = null;
   };
-  const onDropItem = (secId, destPos) => {
+  const onDropItem = (secId, destArtId) => {
     const d = dragRef.current;
     if (!d) return;
-    if (d.tipo === "item" && d.secId === secId) { moverItem(secId, d.artId, destPos); dragRef.current = null; }
-    else if (d.tipo === "pool-item") { traerItemDelPool(d.artId, secId); dragRef.current = null; }
+    if (d.tipo === "item" && d.secId === secId) { moverItem(secId, d.artId, destArtId); dragRef.current = null; }
   };
 
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
@@ -801,91 +961,37 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
           }}
           style={{ background: "#faf9f7", border: "1px solid #eae7e0", borderRadius: 12, padding: 12, position: "sticky", top: 8, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 160px)" }}>
 
-          {/* Pestañas */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 10, flexShrink: 0 }}>
-            {[["hojas", "Hojas"], ["pool", `Fuera${((maqueta.pool?.secciones?.length || 0) + (maqueta.pool?.items?.length || 0)) ? " (" + ((maqueta.pool?.secciones?.length || 0) + (maqueta.pool?.items?.length || 0)) + ")" : ""}`]].map(([k, l]) => (
-              <button key={k} onClick={() => setSidebarTab(k)}
-                style={{ flex: 1, border: "none", borderRadius: 7, padding: "6px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: sidebarTab === k ? accent : "#efece7", color: sidebarTab === k ? "#fff" : "#777" }}>{l}</button>
-            ))}
-          </div>
+          <>
 
-          {sidebarTab === "hojas" ? (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", flex: 1, minHeight: 0, paddingRight: 4 }}>
-                {hojas.map((h, i) => {
-                  const sel = fusionMode && fusionSel.includes(h.id);
-                  return (
-                    <div key={h.id}
-                      draggable={!fusionMode}
-                      onDragStart={(e) => { if (!fusionMode) { dragRef.current = { tipo: "hoja", hojaId: h.id }; e.dataTransfer.effectAllowed = "move"; } }}
-                      onClick={() => {
-                        if (fusionMode) setFusionSel((s) => s.includes(h.id) ? s.filter((x) => x !== h.id) : [...s, h.id]);
-                        else setHojaActiva(i);
-                      }}
-                      title={fusionMode ? "" : "Clic para ver · arrastrá a la carta para sumar sus secciones"}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6, cursor: fusionMode ? "pointer" : "grab", flexShrink: 0,
-                        padding: "8px 10px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                        background: sel ? accent : (i === hojaActiva && !fusionMode ? "#fff" : "transparent"),
-                        color: sel ? "#fff" : "#2a2320",
-                        border: `1px solid ${sel ? accent : (i === hojaActiva && !fusionMode ? "#e0dcd3" : "transparent")}`,
-                      }}>
-                      {fusionMode && <span style={{ fontSize: 13 }}>{sel ? "☑" : "☐"}</span>}
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {(iconFor(h.nombre) ? iconFor(h.nombre) + " " : "") + h.nombre}
-                      </span>
-                    </div>
-                  );
-                })}
+            {/* Footer de fusión */}
+            {fusionMode && (
+              <div style={{ borderTop: "1px solid #eae7e0", marginTop: 10, paddingTop: 10, flexShrink: 0, fontSize: 11, color: "#999", lineHeight: 1.4 }}>
+                Elegí 2+ hojas y confirmá arriba. Se combinan en la primera.
               </div>
-              <div style={{ borderTop: "1px solid #eae7e0", marginTop: 10, paddingTop: 10, flexShrink: 0 }}>
-                {fusionMode ? (
-                  <div style={{ fontSize: 11, color: "#999", lineHeight: 1.4 }}>Elegí 2+ hojas y confirmá arriba. Se combinan en la primera.</div>
-                ) : (
-                  <button onClick={agregarHojaVacia}
-                    style={{ width: "100%", border: `1px dashed ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                    ＋ Hoja vacía
-                  </button>
+            )}
+
+            {/* Disponibles: secciones que existen pero no están en la carta */}
+            <div style={{ borderTop: "1px solid #eae7e0", marginTop: 10, paddingTop: 10, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                Disponibles ({catalogoDisponible.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 240, paddingRight: 4 }}>
+                {catalogoDisponible.length === 0 && (
+                  <div style={{ fontSize: 11.5, color: "#bbb", padding: "8px 4px" }}>Todo está en la carta.</div>
                 )}
-              </div>
-            </>
-          ) : (
-            /* Pool: secciones e ítems fuera de la carta */
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", flex: 1, minHeight: 0, paddingRight: 4 }}>
-              {(!maqueta.pool?.secciones?.length && !maqueta.pool?.items?.length) && (
-                <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", padding: "24px 8px", lineHeight: 1.5 }}>
-                  Nada acá todavía.<br />Lo que saques de la carta aparece aquí para volver a usarlo.
-                </div>
-              )}
-              {(maqueta.pool?.secciones || []).map((sid) => {
-                const sec = maqueta.secciones[sid];
-                if (!sec) return null;
-                return (
-                  <div key={sid} draggable
-                    onDragStart={(e) => { dragRef.current = { tipo: "pool-seccion", secId: sid }; e.dataTransfer.effectAllowed = "move"; }}
+                {catalogoDisponible.map(({ titulo, count }) => (
+                  <div key={titulo} draggable
+                    onDragStart={(e) => { dragRef.current = { tipo: "catalogo-seccion", titulo }; e.dataTransfer.effectAllowed = "move"; }}
                     title="Arrastrá a una columna de la carta"
-                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "grab", padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: "#fff", border: "1px solid #e0dcd3", color: "#2a2320" }}>
+                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "grab", padding: "7px 10px", borderRadius: 8, fontSize: 12.5, background: "#fff", border: "1px solid #eae7e0" }}>
                     <span style={{ fontSize: 11 }}>▦</span>
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sec.titulo || "Sección"}</span>
-                    <span style={{ fontSize: 10.5, color: "#aaa" }}>{sec.itemIds?.length || 0}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titulo}</span>
+                    <span style={{ fontSize: 10.5, color: "#aaa" }}>{count}</span>
                   </div>
-                );
-              })}
-              {(maqueta.pool?.items || []).map((artId) => {
-                const a = artById.get(String(artId));
-                if (!a) return null;
-                return (
-                  <div key={artId} draggable
-                    onDragStart={(e) => { dragRef.current = { tipo: "pool-item", artId }; e.dataTransfer.effectAllowed = "move"; }}
-                    title="Arrastrá a una sección de la carta"
-                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "grab", padding: "6px 10px", borderRadius: 8, fontSize: 12.5, background: "#fff", border: "1px solid #eee", color: "#555" }}>
-                    <span style={{ fontSize: 10 }}>•</span>
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.nombre}</span>
-                  </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          )}
+          </>
         </div>
 
         {/* Lienzo de la hoja activa */}
@@ -932,140 +1038,320 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
                 <span style={{ fontSize: 11.5, color: "#aaa" }}>Arrastrá secciones entre columnas · ítems dentro de su sección</span>
               </div>
 
+              {/* Tira horizontal de hojas */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: "2px 0 8px", marginBottom: 4 }}>
+                {hojas.map((h, i) => (
+                  <div key={h.id}
+                    draggable
+                    onDragStart={(e) => { dragRef.current = { tipo: "hoja", hojaId: h.id }; e.dataTransfer.effectAllowed = "move"; }}
+                    onClick={() => setHojaActiva(i)}
+                    onDoubleClick={() => { const n = prompt("Nombre de la hoja:", h.nombre); if (n != null) renombrarHoja(h.id, n.trim() || h.nombre); }}
+                    title="Clic para ver · doble clic para renombrar · arrastrá a la carta para sumar sus secciones"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, cursor: "grab", flexShrink: 0,
+                      padding: "7px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap",
+                      background: i === hojaActiva ? accent : "#fff",
+                      color: i === hojaActiva ? "#fff" : "#2a2320",
+                      border: `1px solid ${i === hojaActiva ? accent : "#d8d3ca"}`,
+                    }}>
+                    {(iconFor(h.nombre) ? iconFor(h.nombre) + " " : "") + h.nombre}
+                  </div>
+                ))}
+                <button onClick={agregarHojaVacia}
+                  title="Agregar una hoja vacía"
+                  style={{ flexShrink: 0, border: `1px dashed ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  ＋ Hoja vacía
+                </button>
+              </div>
+
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
               <div style={{ background: "#f4f2ee", borderRadius: 12, padding: 18, overflowX: "auto" }}>
                 <div style={{
-                  display: "flex", gap: 14, alignItems: "flex-start",
                   background: diseno.bg || "#fff", border: "1px solid #e0dcd3", borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
                   ...(diseno.frame === "box" ? { outline: `2px solid ${neg.accent}`, outlineOffset: -6 } : {}),
                 }}>
-                  {(hoja.columnas || []).map((colSecIds, colIdx) => (
-                    <div key={colIdx}
-                      onDragOver={(e) => { e.preventDefault(); }}
-                      onDrop={(e) => { e.preventDefault(); onDropCol(colIdx, null); }}
-                      style={{ flex: "1 1 0", minWidth: 200, padding: "0 8px", minHeight: 200, borderLeft: colIdx > 0 ? "1px dashed #e0dcd3" : "none" }}>
-                      {colIdx === 0 && (
-                        <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
-                      )}
-                    <div className="cart">
-                      {(colSecIds || []).map((sid) => {
-                        const sec = maqueta.secciones[sid];
-                        if (!sec) return null;
-                        return (
-                          <div key={sid}
-                            draggable
-                            onDragStart={(e) => { dragRef.current = { tipo: "seccion", secId: sid }; e.dataTransfer.effectAllowed = "move"; }}
-                            onDragOver={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); } }}
-                            onDrop={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); const pos = (colSecIds || []).indexOf(sid); onDropCol(colIdx, pos); } }}
-                            style={{ position: "relative", cursor: "grab", borderRadius: 6, padding: 4, marginBottom: 6, border: "1px dashed transparent" }}
-                            onMouseEnter={(e) => e.currentTarget.style.border = "1px dashed #d8d3ca"}
-                            onMouseLeave={(e) => e.currentTarget.style.border = "1px dashed transparent"}>
-                            {/* título de sección */}
-                            <div className="rt" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                              {editSec === sid ? (
-                                <input autoFocus defaultValue={sec.titulo}
-                                  onBlur={(e) => { renombrarSeccion(sid, e.target.value.trim() || sec.titulo); setEditSec(null); }}
-                                  onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{ flex: 1, font: "inherit", color: "inherit", border: "1px solid #d8d3ca", borderRadius: 4, padding: "2px 6px", background: "#fff" }} />
-                              ) : (
-                                <span onDoubleClick={(e) => { e.stopPropagation(); setEditSec(sid); }}
-                                  title="Doble clic para renombrar (por ahora solo en la carta)"
-                                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
-                                  {iconFor(sec.titulo) ? iconFor(sec.titulo) + " " : ""}{diseno.orn ? diseno.orn + "  " : ""}{sec.titulo}
-                                </span>
-                              )}
-                              <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, null); }}
-                                  title="Agregar una línea separadora en esta sección"
-                                  style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, fontWeight: 400 }}
-                                  onMouseEnter={(e) => e.currentTarget.style.color = accent}
-                                  onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>―</button>
-                                <button onClick={(e) => { e.stopPropagation(); quitarSeccion(sid); }}
-                                  title="Quitar esta sección de la carta (va al panel 'Fuera')"
-                                  style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, fontWeight: 400 }}
-                                  onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
-                                  onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
-                                <span style={{ fontSize: 10, color: "#bbb", fontWeight: 400 }}>⠿</span>
-                              </span>
-                            </div>
-                            {/* ítems */}
-                            {(sec.itemIds || []).map((artId, itemPos) => {
-                              // Separador
-                              if (String(artId).startsWith("__sep__")) {
-                                return (
-                                  <div key={artId} style={{ position: "relative", padding: "4px 0" }}>
-                                    <div style={{ borderTop: `2px ${diseno.line} ${diseno.ink}`, margin: "3px 0" }} />
-                                    <button onClick={(e) => { e.stopPropagation(); quitarItem(sid, artId); }}
-                                      title="Quitar separador"
-                                      style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", border: "none", background: "#fff", color: "#ccc", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "0 2px" }}
+                  {/* Header arriba de todas las columnas (igual que el PDF) */}
+                  <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
+                  <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    {(hoja.columnas || []).map((colSecIds, colIdx) => (
+                      <div key={colIdx}
+                        onDragOver={(e) => { e.preventDefault(); }}
+                        onDrop={(e) => { e.preventDefault(); onDropCol(colIdx, null); }}
+                        style={{ flex: "1 1 0", minWidth: 200, padding: "0 8px", minHeight: 200, borderLeft: colIdx > 0 ? "1px dashed #e0dcd3" : "none" }}>
+                        <div className="cart">
+                          {(colSecIds || []).map((sid) => {
+                            const sec = maqueta.secciones[sid];
+                            if (!sec) return null;
+                            return (
+                              <div key={sid}
+                                onDragOver={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); } }}
+                                onDrop={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); const pos = (colSecIds || []).indexOf(sid); onDropCol(colIdx, pos); } }}
+                                style={{ position: "relative", borderRadius: 6, padding: 4, marginBottom: 6, border: "1px dashed transparent" }}
+                                onMouseEnter={(e) => e.currentTarget.style.border = "1px dashed #d8d3ca"}
+                                onMouseLeave={(e) => e.currentTarget.style.border = "1px dashed transparent"}>
+                                {/* título de sección */}
+                                <div className="rt" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                                  {editSec === sid ? (
+                                    <input autoFocus defaultValue={sec.titulo}
+                                      onBlur={(e) => { renombrarSeccion(sid, e.target.value.trim() || sec.titulo); setEditSec(null); }}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ flex: 1, font: "inherit", color: "inherit", border: "1px solid #d8d3ca", borderRadius: 4, padding: "2px 6px", background: "#fff" }} />
+                                  ) : (
+                                    <span onDoubleClick={(e) => { e.stopPropagation(); setEditSec(sid); }}
+                                      title="Doble clic para renombrar (por ahora solo en la carta)"
+                                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
+                                      <span
+                                        onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setIconPickerPos({ x: r.left, y: r.top }); setIconPickerFor(iconPickerFor === sec.titulo ? null : sec.titulo); }}
+                                        title="Cambiar icono"
+                                        style={{ cursor: "pointer", userSelect: "none", fontSize: diseno.iconSize || 16 }}>
+                                        {iconoDe(sec.titulo) ? iconoDe(sec.titulo) + " " : "＋ "}
+                                      </span>
+                                      {diseno.orn ? diseno.orn + "  " : ""}{sec.titulo}
+                                    </span>
+                                  )}
+                                  {iconPickerFor === sec.titulo && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        position: "fixed", bottom: `calc(100vh - ${iconPickerPos.y}px + 6px)`, left: iconPickerPos.x, zIndex: 9999999,
+                                        background: "#fff", border: "1px solid #d8d3ca", borderRadius: 8,
+                                        padding: 8, boxShadow: "0 6px 20px rgba(0,0,0,.15)",
+                                        display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, width: 220,
+                                      }}>
+                                      <button
+                                        onClick={() => { setIconosPorTitulo((p) => ({ ...p, [sec.titulo]: "" })); setIconPickerFor(null); }}
+                                        title="Sin icono"
+                                        style={{ gridColumn: "span 6", border: "1px solid #eee", background: "#faf9f7", borderRadius: 5, padding: "3px 6px", fontSize: 11, cursor: "pointer", color: "#999" }}>
+                                        Sin icono
+                                      </button>
+                                      {ICON_PICKER.map((emo) => (
+                                        <button key={emo}
+                                          onClick={() => { setIconosPorTitulo((p) => ({ ...p, [sec.titulo]: emo })); setIconPickerFor(null); }}
+                                          style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer", padding: 2, borderRadius: 5 }}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = "#f1f0ec"}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                                          {emo}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                    {modo === "agrupacion" && onChangeViewMode && agrupIdByNombre[sec.titulo] != null && (() => {
+                                      const agrupId = agrupIdByNombre[sec.titulo];
+                                      const vmActual = viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro";
+                                      const opt = (mode, label) => (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); onChangeViewMode(agrupId, mode); }}
+                                          title={`Subdividir esta agrupación por ${label.toLowerCase()}`}
+                                          style={{
+                                            border: "none", background: vmActual === mode ? `${accent}22` : "transparent",
+                                            color: vmActual === mode ? accent : "#bbb", cursor: "pointer",
+                                            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 5, lineHeight: 1,
+                                          }}>{label}</button>
+                                      );
+                                      return (
+                                        <span style={{ display: "inline-flex", gap: 2, border: "1px solid #eae7e0", borderRadius: 6, padding: 1 }}
+                                          onClick={(e) => e.stopPropagation()}>
+                                          {opt("by-subrubro", "Rubro")}
+                                          {opt("by-categoria", "Sub")}
+                                        </span>
+                                      );
+                                    })()}
+                                    <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, null); }}
+                                      title="Agregar una línea separadora en esta sección"
+                                      style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, fontWeight: 400 }}
+                                      onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                      onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>―</button>
+                                    <button onClick={(e) => { e.stopPropagation(); quitarSeccion(sid); }}
+                                      title="Quitar esta sección de la carta (va al panel 'Fuera')"
+                                      style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, fontWeight: 400 }}
                                       onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
                                       onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
-                                  </div>
-                                );
-                              }
-                              const a = artById.get(String(artId));
-                              if (!a) return null;
-                              const descActual = descripciones[String(artId)] || "";
-                              const editando = editDesc === String(artId);
-                              return (
-                                <div key={artId}>
-                                  <div
-                                    draggable
-                                    onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
-                                    onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
-                                    onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, itemPos); } }}
-                                    className="it"
-                                    style={{ cursor: "grab", position: "relative", paddingRight: 38 }}
-                                    title="Arrastrá para reordenar">
-                                    <span className="nm">{a.nombre}</span>
-                                    <span className="dots" />
-                                    <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
-                                    <span style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 4 }}>
-                                      <button onClick={(e) => { e.stopPropagation(); setEditDesc(editando ? null : String(artId)); }}
-                                        title={descActual ? "Editar descripción" : "Agregar descripción"}
-                                        style={{ border: "none", background: "none", color: descActual ? accent : "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
-                                        onMouseEnter={(e) => e.currentTarget.style.color = accent}
-                                        onMouseLeave={(e) => e.currentTarget.style.color = descActual ? accent : "#ccc"}>✎</button>
-                                      <button onClick={(e) => { e.stopPropagation(); quitarItem(sid, artId); }}
-                                        title="Quitar de la carta"
-                                        style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
-                                        onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
-                                        onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
-                                    </span>
-                                  </div>
-                                  {/* descripción: editable si está en modo edición, sino se muestra si existe */}
-                                  {editando ? (
-                                    <input
-                                      autoFocus
-                                      value={descActual}
-                                      onChange={(e) => setDescripciones((d) => ({ ...d, [String(artId)]: e.target.value }))}
-                                      onBlur={() => setEditDesc(null)}
-                                      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                                      placeholder="Descripción / ingredientes…"
-                                      style={{ width: "100%", fontSize: 12, fontStyle: "italic", color: "#555", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", margin: "2px 0 6px", boxSizing: "border-box" }}
-                                    />
-                                  ) : (descActual ? (
-                                    <div className="ds" style={{ cursor: "pointer" }} onClick={() => setEditDesc(String(artId))}>{descActual}</div>
-                                  ) : null)}
+                                    <span
+                                      draggable
+                                      onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "seccion", secId: sid }; e.dataTransfer.effectAllowed = "move"; }}
+                                      title="Arrastrá para mover la sección entre columnas"
+                                      style={{ fontSize: 12, color: "#bbb", fontWeight: 400, cursor: "grab" }}>⠿</span>
+                                  </span>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                      {(!colSecIds || colSecIds.length === 0) && (
-                        <div style={{ color: "#ccc", fontSize: 12, textAlign: "center", padding: "20px 0" }}>
-                          Soltá secciones acá
+                                {/* ítems (con posible subdivisión en bloques por rubro/sub,
+                                  leyendo el mismo viewMode que la tabla para esta agrupación) */}
+                                {(() => {
+                                  // Resolver viewMode de esta agrupación (solo en modo agrupación).
+                                  const agrupId = agrupIdByNombre[sec.titulo];
+                                  const vm = (modo === "agrupacion" && agrupId != null)
+                                    ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)])
+                                    : null;
+                                  const campoBloque = campoBloqueDeViewMode(vm);
+                                  // Orden de render: si hay subdivisión, agrupar por bloque (y dentro, alfabético).
+                                  // No se toca sec.itemIds guardado: es solo orden visual.
+                                  let orden = (sec.itemIds || []);
+                                  if (campoBloque) {
+                                    // Agrupar por bloque (rubro/sub) manteniendo el orden manual (sec.itemIds)
+                                    // dentro de cada bloque: el drag reordena visiblemente, y los bloques
+                                    // salen contiguos en el orden en que aparecen sus primeros ítems.
+                                    const bloqueDe = (id) => {
+                                      if (String(id).startsWith("__sep__")) return "";
+                                      const a = artById.get(String(id));
+                                      return ((a?.[campoBloque]) || "Otros").toString();
+                                    };
+                                    const ordenBloques = [];
+                                    const buckets = new Map();
+                                    let ultimoBloque = null; // los __sep__ heredan el bloque del item anterior
+                                    for (const id of orden) {
+                                      let b = bloqueDe(id);
+                                      if (String(id).startsWith("__sep__")) {
+                                        b = ultimoBloque != null ? ultimoBloque : b;
+                                      } else {
+                                        ultimoBloque = b;
+                                      }
+                                      if (!buckets.has(b)) { buckets.set(b, []); ordenBloques.push(b); }
+                                      buckets.get(b).push(id);
+                                    }
+                                    orden = ordenBloques.flatMap((b) => buckets.get(b));
+                                  }
+                                  let bloqueAnterior = null; // para emitir encabezado al cambiar
+                                  return orden.map((artId, itemPos) => {
+                                    // Separador
+                                    if (String(artId).startsWith("__sep__")) {
+                                      return (
+                                        <div key={artId}
+                                          draggable
+                                          onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
+                                          onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
+                                          onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
+                                          title="Arrastrá para mover la línea"
+                                          style={{ position: "relative", padding: "4px 0", cursor: "grab" }}>
+                                          <div style={{ borderTop: `2px ${diseno.line} ${diseno.ink}`, margin: "3px 0" }} />
+                                          <button onClick={(e) => { e.stopPropagation(); quitarItem(sid, artId); }}
+                                            title="Quitar separador"
+                                            style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", border: "none", background: "#fff", color: "#ccc", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "0 2px" }}
+                                            onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
+                                            onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                        </div>
+                                      );
+                                    }
+                                    const a = artById.get(String(artId));
+                                    if (!a) return null;
+                                    const descActual = descripciones[String(artId)] || "";
+                                    const editando = editDesc === String(artId);
+                                    // Encabezado de bloque: emitir cuando cambia el rubro/sub.
+                                    let encabezadoBloque = null;
+                                    if (campoBloque && !String(artId).startsWith("__sep__")) {
+                                      const bloqueActual = ((a?.[campoBloque]) || "Otros").toString();
+                                      if (bloqueActual !== bloqueAnterior) {
+                                        bloqueAnterior = bloqueActual;
+                                        const rubroDeEste = bloqueActual;
+                                        encabezadoBloque = (
+                                          <div
+                                            draggable
+                                            onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "bloque", secId: sid, rubro: rubroDeEste }; e.dataTransfer.effectAllowed = "move"; }}
+                                            onDragOver={(e) => { if (dragRef.current?.tipo === "bloque" && dragRef.current?.secId === sid) { e.preventDefault(); e.stopPropagation(); } }}
+                                            onDrop={(e) => {
+                                              if (dragRef.current?.tipo === "bloque" && dragRef.current?.secId === sid) {
+                                                e.preventDefault(); e.stopPropagation();
+                                                const desde = dragRef.current.rubro;
+                                                moverBloque(sid, campoBloque, desde, rubroDeEste,
+                                                  (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString());
+                                                dragRef.current = null;
+                                              }
+                                            }}
+                                            title="Arrastrá para mover este bloque dentro de la agrupación"
+                                            style={{
+                                              fontFamily: "inherit", fontWeight: 700, fontSize: "0.82em",
+                                              color: neg.accent || accent, textTransform: "uppercase",
+                                              letterSpacing: "0.04em", opacity: 0.85,
+                                              margin: "8px 0 2px", paddingBottom: 2, cursor: "grab",
+                                              borderBottom: `1px dotted ${(neg.accent || accent)}55`,
+                                            }}>{bloqueActual}</div>
+                                        );
+                                      }
+                                    }
+                                    return (
+                                      <React.Fragment key={artId}>
+                                        {encabezadoBloque}
+                                        <div>
+                                          <div
+                                            draggable
+                                            onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
+                                            onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
+                                            onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
+                                            className="it"
+                                            style={{ cursor: "grab", position: "relative", paddingRight: 62 }}
+                                            title="Arrastrá para reordenar">
+                                            <span className="nm">{a.nombre}</span>
+                                            <span className="dots" />
+                                            <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
+                                            <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
+                                              <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, artId); }}
+                                                title="Agregar línea divisoria debajo de este artículo"
+                                                style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>―</button>
+                                              <button onClick={(e) => { e.stopPropagation(); setEditDesc(editando ? null : String(artId)); }}
+                                                title={descActual ? "Editar descripción" : "Agregar descripción"}
+                                                style={{ border: "none", background: "none", color: descActual ? accent : "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = descActual ? accent : "#ccc"}>✎</button>
+                                              <button onClick={(e) => { e.stopPropagation(); quitarItem(sid, artId); }}
+                                                title="Quitar de la carta"
+                                                style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                            </span>
+                                          </div>
+                                          {/* descripción: editable si está en modo edición, sino se muestra si existe */}
+                                          {editando ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "2px 0 6px" }}>
+                                              <input
+                                                autoFocus
+                                                defaultValue={a.nombre}
+                                                onBlur={(e) => {
+                                                  const nuevo = e.target.value.trim();
+                                                  if (nuevo && nuevo !== a.nombre) onRenombrarArticulo?.(a.id, nuevo);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") e.target.blur();
+                                                  if (e.key === "Escape") { e.target.value = a.nombre; }
+                                                }}
+                                                placeholder="Nombre del artículo…"
+                                                title="Renombra el artículo (afecta la tabla; protege el nombre de MaxiRest)"
+                                                style={{ width: "100%", fontSize: 13, fontWeight: 600, color: "#2a2320", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
+                                              />
+                                              <input
+                                                value={descActual}
+                                                onChange={(e) => setDescripciones((d) => ({ ...d, [String(artId)]: e.target.value }))}
+                                                onBlur={() => setEditDesc(null)}
+                                                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                                                placeholder="Descripción / ingredientes…"
+                                                style={{ width: "100%", fontSize: 12, fontStyle: "italic", color: "#555", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
+                                              />
+                                            </div>
+                                          ) : (descActual ? (
+                                            <div className="ds" style={{ cursor: "pointer" }} onClick={() => setEditDesc(String(artId))}>{descActual}</div>
+                                          ) : null)}
+                                        </div>
+                                      </React.Fragment>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            );
+                          })}
+                          {(!colSecIds || colSecIds.length === 0) && (
+                            <div style={{ color: "#ccc", fontSize: 12, textAlign: "center", padding: "20px 0" }}>
+                              Soltá secciones acá
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    {colIdx === (hoja.columnas.length - 1) && (
-                      <div className="cart" dangerouslySetInnerHTML={{ __html: footerHtml(neg) }} />
-                    )}
+                        {colIdx === (hoja.columnas.length - 1) && (
+                          <div className="cart" dangerouslySetInnerHTML={{ __html: footerHtml(neg) }} />
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
                 </div>
               </div>
             </>
@@ -1130,8 +1416,8 @@ export default function VistaCartaMenu({ articulos = [], negocio = {}, accent = 
               <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Tamaños de letra</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {[
-                  ["Título de la hoja", "titleSize", 18, 48, 30],
                   ["Títulos de sección", "sectionSize", 11, 28, 16],
+                  ["Icono de sección", "iconSize", 12, 32, 16],
                   ["Nombre del artículo", "itemSize", 10, 22, 14.5],
                   ["Descripción", "descSize", 8, 16, 11.5],
                 ].map(([label, key, min, max, def]) => (
