@@ -3512,9 +3512,9 @@ export default function RecetaModal({
 
       const insumosItems = insumosRes.status === 'fulfilled' && Array.isArray(insumosRes.value?.data)
         ? ordenarInsumosBusqueda(
-            insumosRes.value.data
-              .filter(i => (i.nombre || '').toLowerCase().includes(term) && Number(i.id) !== Number(articulo?.id))
-          )
+          insumosRes.value.data
+            .filter(i => (i.nombre || '').toLowerCase().includes(term) && Number(i.id) !== Number(articulo?.id))
+        )
           .slice(0, 20)
           .map(i => ({ ...i, esArticulo: false }))   // objeto completo, no pelado
         : [];
@@ -4707,7 +4707,7 @@ export default function RecetaModal({
                   <KeyboardArrowLeftIcon />
                 </IconButton>
               )}
-             
+
               <Box>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
                   {modoInsumo
@@ -4951,7 +4951,7 @@ export default function RecetaModal({
                                 const artId = Number(articulo?.id);
                                 const viveEnPromo = promoIds.has(artId);
                                 // Artículo común → se convierte en promo v1: auto-agregarlo como primer componente.
-                                if (!viveEnPromo && artId > 0) {
+                                if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
                                   setConvertirEnPromo(true);
                                   const yaEsta = items.some(it => Number(it.articleRefId) === artId);
                                   if (!yaEsta) {

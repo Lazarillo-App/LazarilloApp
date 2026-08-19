@@ -711,6 +711,21 @@ export default function VistaCartaMenu({
     });
   }, []);
 
+  // Saca de la sección todos los items cuyo bloque === rubro (los separadores se quedan).
+  const quitarBloque = useCallback((secId, campoBloque, rubro, resolver) => {
+    if (!campoBloque) return;
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const itemIds = sec.itemIds.filter((id) => {
+        if (String(id).startsWith("__sep__")) return true;
+        return resolver(id) !== rubro;
+      });
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
+    });
+  }, []);
+
+
   // Quitar un ítem de la carta (de su sección)
   // Quitar un ítem: solo lo saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarItem = useCallback((secId, artId) => {
@@ -1040,6 +1055,11 @@ export default function VistaCartaMenu({
 
               {/* Tira horizontal de hojas */}
               <div style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: "2px 0 8px", marginBottom: 4 }}>
+                <button onClick={agregarHojaVacia}
+                  title="Agregar una hoja vacía"
+                  style={{ flexShrink: 0, border: `1px dashed ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", position: "sticky", left: 0, zIndex: 2 }}>
+                  ＋ Hoja vacía
+                </button>
                 {hojas.map((h, i) => (
                   <div key={h.id}
                     draggable
@@ -1057,11 +1077,6 @@ export default function VistaCartaMenu({
                     {(iconFor(h.nombre) ? iconFor(h.nombre) + " " : "") + h.nombre}
                   </div>
                 ))}
-                <button onClick={agregarHojaVacia}
-                  title="Agregar una hoja vacía"
-                  style={{ flexShrink: 0, border: `1px dashed ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  ＋ Hoja vacía
-                </button>
               </div>
 
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
@@ -1260,12 +1275,26 @@ export default function VistaCartaMenu({
                                             }}
                                             title="Arrastrá para mover este bloque dentro de la agrupación"
                                             style={{
+                                              display: "flex", alignItems: "center", justifyContent: "space-between",
                                               fontFamily: "inherit", fontWeight: 700, fontSize: "0.82em",
                                               color: neg.accent || accent, textTransform: "uppercase",
                                               letterSpacing: "0.04em", opacity: 0.85,
                                               margin: "8px 0 2px", paddingBottom: 2, cursor: "grab",
                                               borderBottom: `1px dotted ${(neg.accent || accent)}55`,
-                                            }}>{bloqueActual}</div>
+                                            }}>
+                                            <span>{bloqueActual}</span>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                quitarBloque(sid, campoBloque, rubroDeEste,
+                                                  (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString());
+                                              }}
+                                              title={`Quitar todo el rubro "${bloqueActual}" de la carta`}
+                                              onMouseDown={(e) => e.stopPropagation()}
+                                              style={{ marginLeft: 8, border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, verticalAlign: "middle" }}
+                                              onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
+                                              onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                          </div>
                                         );
                                       }
                                     }

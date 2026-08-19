@@ -20,7 +20,7 @@ import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
-import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
+import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgrupaciones';
 import ExcluirListasModal from './ExcluirListasModal';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
@@ -396,14 +396,26 @@ function ArticuloAccionesMenu({
   }, [handleClose]);
 
   const ejecutarMoverRubro = useCallback(async () => {
-    const destino = nuevoRubro.trim();
-    if (!destino || destino === rubroActual) { setDlgMoverRubroOpen(false); return; }
+    // nuevoRubro llega como `${agrupacionIdDestino}|${subrubro}`
+    if (!nuevoRubro) { setDlgMoverRubroOpen(false); return; }
+    const sep = nuevoRubro.indexOf('|');
+    const toId = Number(nuevoRubro.slice(0, sep));
+    const destino = nuevoRubro.slice(sep + 1).trim();
+    if (!destino || !Number.isFinite(toId)) { setDlgMoverRubroOpen(false); return; }
+    if (!Number.isFinite(currentGroupId)) {
+      notify?.('No se pudo determinar la agrupación de origen', 'error');
+      return;
+    }
     setMovingRubro(true);
     try {
-      // rubro (UI) → el backend lo escribe en subrubro (DB). No toca subrubro_maxi → el sync lo respeta.
-      await httpBiz(`/articles/${articuloIdNum}`, {
-        method: 'PATCH', body: { rubro: destino },
-      }, effectiveBusinessId);
+      // moveItemsBetweenGroups mueve el artículo a la agrupación destino (toId) y,
+      // con subrubro, reescribe el rubro (UI) en las 3 capas: maxi_articles (fuente de
+      // verdad, no toca subrubro_maxi → sync respeta), jsonb de la agrupación y agrupacion_articulos.
+      await moveItemsBetweenGroups(effectiveBusinessId, currentGroupId, {
+        toId,
+        ids: [articuloIdNum],
+        subrubro: destino,
+      });
       notify?.(`Movido a "${destino}"`, 'success');
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       onAfterMutation?.([articuloIdNum]);
@@ -414,7 +426,7 @@ function ArticuloAccionesMenu({
     } finally {
       setMovingRubro(false);
     }
-  }, [nuevoRubro, rubroActual, articuloIdNum, effectiveBusinessId, notify, onAfterMutation]);
+  }, [nuevoRubro, articuloIdNum, currentGroupId, effectiveBusinessId, notify, onAfterMutation]);
 
   // ── Negocios filtrados para el modal Mover ─────────────────────────────────
   const negociosFiltrados = useMemo(() => {
@@ -955,23 +967,35 @@ function ArticuloAccionesMenu({
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
           <TextField
-            select fullWidth size="small" autoFocus
-            label="Rubro destino"
-            value={nuevoRubro}
-            onChange={(e) => setNuevoRubro(e.target.value)}
-            SelectProps={{ native: true }}
-            helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
-          >
-            <option value=""></option>
-            {rubrosDisponibles.map((r) => (
-              <option key={r} value={r} disabled={r === rubroActual}>{r}</option>
-            ))}
-          </TextField>
+              select fullWidth size="small" autoFocus
+              label="Rubro destino"
+              value={nuevoRubro}
+              onChange={(e) => setNuevoRubro(e.target.value)}
+              helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
+            >
+              {rubrosDisponibles.map((r) => {
+                const val = `${r.agrupacionId}|${r.subrubro}`;
+                const esActual = r.subrubro === rubroActual
+                  && Number(r.agrupacionId) === Number(currentGroupId);
+                return (
+                  <MenuItem key={val} value={val} disabled={esActual}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                      <span>{r.subrubro}</span>
+                      {r.agrupacionNombre && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {r.agrupacionNombre}
+                        </Typography>
+                      )}
+                    </Box>
+                  </MenuItem>
+                );
+              })}
+            </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDlgMoverRubroOpen(false)} disabled={movingRubro}>Cancelar</Button>
           <Button onClick={ejecutarMoverRubro} variant="contained"
-            disabled={movingRubro || !nuevoRubro.trim() || nuevoRubro.trim() === rubroActual}>
+              disabled={movingRubro || !nuevoRubro}>
             {movingRubro ? 'Moviendo…' : 'Mover'}
           </Button>
         </DialogActions>

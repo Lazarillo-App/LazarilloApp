@@ -17,7 +17,7 @@ import VentasCell from "./VentasCell";
 import VirtualList from "./shared/VirtualList";
 import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
-import { BusinessesAPI, RecetasAPI } from "@/servicios/apiBusinesses";
+import { BusinessesAPI, RecetasAPI, invalidateHttpCache } from "@/servicios/apiBusinesses";
 import LinkChainIcon from "./LinkChainIcon";
 import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
@@ -360,7 +360,7 @@ export default function TablaArticulos({
     } catch (e) { }
   }, []);
 
- // ¿Estás viendo la agrupación "Promociones"? Solo ahí se muestra la columna "$ Sin Promo".
+  // ¿Estás viendo la agrupación "Promociones"? Solo ahí se muestra la columna "$ Sin Promo".
   const estaEnPromociones = useMemo(() => {
     const n = String(agrupacionSeleccionada?.nombre ?? agrupacionSeleccionada?.name ?? '').trim().toLowerCase();
     return n === 'promociones';
@@ -391,6 +391,7 @@ export default function TablaArticulos({
   const [expandedCatByRubro, setExpandedCatByRubro] = useState({});
   const [reloadTick, setReloadTick] = useState(0);
   const refetchLocal = useCallback(async () => {
+    try { invalidateHttpCache(); } catch { }   // asegurar datos frescos, no cache de 4s
     try { await refetchAgrupaciones?.(); } catch { }
     setReloadTick((t) => t + 1);
   }, [refetchAgrupaciones]);
@@ -980,19 +981,27 @@ export default function TablaArticulos({
     );
   }, [articulosFiltrados, getVentasAmount, branches, ventasMapByBranch]);
 
-    // Rubros-UI existentes (= subrubro DB) para el selector "Mover a otro rubro"
+  // Rubros-UI existentes (= subrubro DB) para el selector "Mover a otro rubro".
+  // Se derivan de agrupacionesAll (universo completo del subnegocio) para NO depender
+  // del filtro de agrupación ni del sidebar: el destino debe ofrecer TODOS los rubros,
+  // aunque el rubro viva en otra agrupación (ej. mover de "Cafetería salada" a "Meriendas saladas").
   const rubrosDisponibles = useMemo(() => {
-    const set = new Set();
-    for (const blq of bloques) {
-      for (const sr of (blq.subrubros || [])) {
-        const r = (sr.subrubro || '').trim();
-        if (r && r !== 'Sin subrubro') set.add(r);
+    const map = new Map(); // clave `${agrupId}|${subrubro}` → evita duplicados y separa mismo rubro en distintas agrupaciones
+    const fuente = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
+    for (const g of (fuente || [])) {
+      const agrupacionId = Number(g?.id);
+      const agrupacionNombre = g?.nombre ?? g?.name ?? '';
+      for (const a of (g?.articulos || [])) {
+        const r = (a?.subrubro || '').trim();
+        if (!r || r === 'Sin subrubro') continue;
+        const key = `${agrupacionId}|${r}`;
+        if (!map.has(key)) map.set(key, { subrubro: r, agrupacionId, agrupacionNombre });
       }
     }
-    return Array.from(set).sort((a, b) =>
-      String(a).localeCompare(String(b), 'es', { sensitivity: 'base', numeric: true })
+    return Array.from(map.values()).sort((x, y) =>
+      String(x.subrubro).localeCompare(String(y.subrubro), 'es', { sensitivity: 'base', numeric: true })
     );
-  }, [bloques]);
+  }, [agrupacionesAll, agrupaciones]);
 
   const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
 
@@ -1225,7 +1234,7 @@ export default function TablaArticulos({
     return globalCostoIdeal;
   }, [objetivos, priceConfig, globalCostoIdeal]);
 
-   // Navegación entre recetas (anterior/siguiente) recorriendo la lista ordenada
+  // Navegación entre recetas (anterior/siguiente) recorriendo la lista ordenada
   // por rubro. Pasa entre rubros, ignora agrupaciones (usa flatRows de items).
   const navegarReceta = useCallback((dir) => {
     const curId = Number(recetaArticulo?.id);
@@ -1499,7 +1508,7 @@ export default function TablaArticulos({
               cursor: 'pointer',
             }}
             onClick={() => {
-             const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
+              const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
               setRubroEditModal({
                 rubroKey,
@@ -1970,18 +1979,18 @@ export default function TablaArticulos({
                         componentePrecargado: art,
                       });
                     }}
-                    agrupaciones={agrupaciones} 
+                    agrupaciones={agrupaciones}
                     agrupacionSeleccionada={agrupacionSeleccionada}
-                    todoGroupId={todoGroupId} 
+                    todoGroupId={todoGroupId}
                     isTodo={isTodo} onRefetch={refetchLocal}
                     onAfterMutation={(ids2) => afterMutation(ids2)}
-                    notify={(m, t) => openSnack(m, t)} 
+                    notify={(m, t) => openSnack(m, t)}
                     onGroupCreated={onGroupCreated}
                     rubrosDisponibles={rubrosDisponibles}
-                    onDiscontinuadoChange={onDiscontinuadoChange} 
+                    onDiscontinuadoChange={onDiscontinuadoChange}
                     treeMode={modalTreeMode}
-                    allowedIds={filterIds} 
-                    businessId={activeBizId} 
+                    allowedIds={filterIds}
+                    businessId={activeBizId}
                     rootBizId={rootBizId}
                     priceLists={priceLists}
                     priceListsByList={priceListsByList}
@@ -2101,7 +2110,7 @@ export default function TablaArticulos({
                 switch (col.id) {
                   case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={dragIndicatorStyle}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={dragIndicatorStyle}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700  }}>$ Sin Promo</div>;
+                  case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'ganancia': return <div key="ganancia" {...dragProps} onClick={() => toggleSort('ganancia')} className="col-sortable" style={dragIndicatorStyle}>Ganancia{sortBy === 'ganancia' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
