@@ -250,7 +250,7 @@ function ArticuloAccionesMenu({
   onMutateGroups,
   baseById,
   onDiscontinuadoChange,
-  treeMode = { treeMode },
+    treeMode = false,
   businessId,
   rootBizId: rootBizIdProp = null,
   allowedIds,

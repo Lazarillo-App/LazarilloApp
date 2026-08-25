@@ -69,7 +69,7 @@ import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
 import ExcluirListasModal from './ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
-import { PromocionesAPI } from '@/servicios/apiBusinesses';
+import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { ComprasDetalleContenido } from './ComprasMiniDetalleModal';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 
@@ -2553,9 +2553,9 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
   const [error, setError] = useState('');
   const [nuevo, setNuevo] = useState({ nombre: '', peso_inicial: '', peso_final: '' });
   const [guardando, setGuardando] = useState(false);
-  const [globalPct, setGlobalPct] = useState(
-    insumoData?.desperdicio_pct_override != null ? Number(insumoData.desperdicio_pct_override) : Number(desperdicioGlobalPct)
-  );
+    const [globalPct, setGlobalPct] = useState(Number(desperdicioGlobalPct) || 0);
+  // Reflejar el global del negocio cuando cambia (config u otra edición)
+  useEffect(() => { setGlobalPct(Number(desperdicioGlobalPct) || 0); }, [desperdicioGlobalPct]);
 
   // Precio de compra del insumo (probamos varios campos comunes)
   const precioCompra = Number(insumoData?.precio_ref)
@@ -2586,8 +2586,13 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
 
   const guardarGlobal = async (nuevoPct) => {
     const val = nuevoPct === '' ? null : Number(nuevoPct);
+    if (val == null) return;
     try {
-      await insumoDesperdicioOverride(insumoId, val, businessId);
+      // La merma global es del NEGOCIO (afecta a todos los insumos), no de este insumo.
+      await BusinessesAPI.update(Number(businessId), { props: { desperdicio_global_pct: val } });
+      window.dispatchEvent(new CustomEvent('config:updated', {
+        detail: { key: 'desperdicio_global_pct', value: val }
+      }));
     } catch (e) {
       setError('No se pudo guardar el desperdicio global');
     }
@@ -2652,7 +2657,7 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
 
       {/* Header columnas */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
-        {['Default', 'Nombre de la merma', 'Peso bruto', 'Peso neto', '% Merma', `Precio c/merma`, ''].map((h, i) => (
+                {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', `Precio c/merma`, ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left') }}>{h}</Typography>
         ))}
       </Box>
@@ -2661,16 +2666,18 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, alignItems: 'center', bgcolor: '#fef9c3', borderRadius: 1, mb: 0.5 }}>
         <Box />
         <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f' }}>Desperdicio global</Typography>
+        {/* Peso bruto / neto: no aplican a la global (es un % directo) */}
+        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
+        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
+        {/* % Merma: acá sí, editable (único lugar del %) */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.25 }}>
           <TextField size="small" type="text" inputMode="decimal"
             value={String(globalPct).replace('.', ',')}
             onChange={e => setGlobalPct(sanitizeDecimal(e.target.value))}
             onBlur={e => guardarGlobal(sanitizeDecimal(e.target.value))}
-            inputProps={{ style: { textAlign: 'right', fontSize: '0.78rem', width: 42 } }} />
+            inputProps={{ style: { textAlign: 'right', fontSize: '0.78rem', width: 40 } }} />
           <Typography variant="caption">%</Typography>
         </Box>
-        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
-        <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700, color: G.rojo }}>{Number(globalPct).toFixed(1)}%</Typography>
         <Typography variant="body2" sx={{ textAlign: 'right', fontWeight: 700, color: '#111' }}>${fmt(precioConGlobal)}</Typography>
         <Box />
       </Box>

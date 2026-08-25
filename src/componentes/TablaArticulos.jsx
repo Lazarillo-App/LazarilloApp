@@ -115,6 +115,57 @@ const SECTION_BG = "#f4f6f8";
 const HEADER_BG = "#f1f5f9";
 const HEADER_TEXT = "#1e293b";
 
+/* ── Celda de rentabilidad: número %, barra absoluta 0–100, marca del objetivo ── */
+const RENT_BAR_W = 120;
+const RENT_ESCALA_MAX = 100; // escala absoluta: costo% = precio
+function BarraRentabilidad({ costoPct, objetivo, supera, individual, onFijar }) {
+  const [hover, setHover] = React.useState(false);
+  if (!(costoPct > 0) || !(objetivo > 0)) {
+    return <span style={{ color: TABLE_MUTED, fontSize: '0.82rem' }}>—</span>;
+  }
+  const fillPct = Math.min(costoPct / RENT_ESCALA_MAX, 1) * 100;
+  const markPct = Math.min(objetivo / RENT_ESCALA_MAX, 1) * 100;
+  const verde = '#57BB7F', verdeInk = '#16a34a';
+  const rojo = '#DF6B60', rojoInk = '#dc2626';
+  // Objetivo propuesto: techo del costo% actual, sin decimales (spec §6)
+  const propuesto = Math.ceil(costoPct - 1e-9);
+  const cambia = propuesto !== objetivo && propuesto > 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+      <span style={{ fontWeight: 700, fontSize: '0.82rem', color: supera ? rojoInk : verdeInk, fontVariantNumeric: 'tabular-nums' }}>
+        {fmt(costoPct, 1)}%
+      </span>
+      <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 0 ${RENT_BAR_W}px` }}>
+        <span style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4,
+          width: `${fillPct}%`, background: supera ? rojo : verde, transition: 'width .25s ease, background .25s ease'
+        }} />
+        <span style={{
+          position: 'absolute', top: -3, width: 2, height: 13, background: '#4A555F', borderRadius: 1,
+          left: `${markPct}%`, transition: 'left .25s ease'
+        }} />
+      </span>
+      {/* El objetivo ES el control (spec §6.1 opción D): clic para fijarlo en el costo% actual */}
+      <span
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onClick={(e) => { e.stopPropagation(); if (cambia && onFijar) onFijar(propuesto); }}
+        title={cambia ? `Fijar el objetivo en ${propuesto}% (costo % actual redondeado hacia arriba)` : 'El objetivo ya coincide con el costo % actual'}
+        style={{
+          fontSize: '0.72rem', whiteSpace: 'nowrap', userSelect: 'none',
+          cursor: cambia ? 'pointer' : 'default', borderRadius: 5, transition: 'all .15s ease',
+          ...(hover && cambia
+            ? { background: '#EAF4FB', color: '#2A7DB5', fontWeight: 700, border: '1px solid #C9D9E6', padding: '1px 6px' }
+            : { color: individual ? '#6366f1' : TABLE_MUTED, borderBottom: cambia ? '1px dashed #C4CCD2' : '1px solid transparent', padding: '1px 0' }),
+        }}
+      >
+        obj {fmt(objetivo, 0)}%
+        {hover && cambia && (<><span style={{ color: '#7FB4D8', fontWeight: 700, margin: '0 3px' }}>→</span>{propuesto}%</>)}
+      </span>
+    </div>
+  );
+}
+
 function ColOrderModal({ open, cols, onSave, onClose }) {
   const [local, setLocal] = React.useState(cols);
   const dragIdx = React.useRef(null);
@@ -302,6 +353,7 @@ export default function TablaArticulos({
   }, []);
 
   const [manualesIndividuales, setManualesIndividuales] = useState(new Set());
+  const [usarChipIds, setUsarChipIds] = useState(new Set());   // ids cuyo precio vino del chip USAR (→ SUG.)
   const [snack, setSnack] = useState({ open: false, msg: "", type: "success" });
   const [blockObjetivos, setBlockObjetivos] = useState({});
   const [pendingObjConfirm, setPendingObjConfirm] = useState(null);
@@ -320,12 +372,9 @@ export default function TablaArticulos({
 
   // ── Definición canónica de columnas reordenables ──
   const REORDERABLE_COLS = [
-    { id: 'precio', label: 'Precio', width: '.3fr' },
-    { id: 'costo', label: 'Costo $', width: '.3fr' },
-    { id: 'ganancia', label: 'Ganancia', width: '.3fr' },
-    { id: 'costoPct', label: 'Costo %', width: '.3fr' },
-    { id: 'objetivo', label: 'Objetivo %', width: '.3fr' },
-    { id: 'sugerido', label: 'Sugerido', width: '.3fr' },
+    { id: 'costo', label: 'Costo', width: '.35fr' },
+    { id: 'precio', label: 'Precio', width: '.35fr' },
+    { id: 'rentabilidad', label: 'Rentabilidad', width: '250px' },
     { id: 'manual', label: 'Nuevo precio', width: '.35fr' },
     { id: 'acciones', label: 'Acciones', width: '.2fr' },
   ];
@@ -660,6 +709,18 @@ export default function TablaArticulos({
     if (localObj !== undefined && localObj !== '') return true;
     return priceConfig.byArticle?.[key]?.objetivo != null;
   }, [objetivos, priceConfig]);
+
+  // Fijar el objetivo del artículo en su costo % actual (techo, sin decimales).
+  // Queda con objetivo propio (deja de heredar del rubro). Sin confirmación (spec §6.3).
+  // Reusa el mismo camino de guardado que el resto de objetivos individuales.
+  const fijarObjetivoEnCostoActual = useCallback((artId, costoPctActual) => {
+    const nuevoObj = Math.ceil(costoPctActual - 1e-9);
+    if (!(nuevoObj > 0)) return;
+    // Override optimista para que la barra reaccione al instante
+    setObjetivos(prev => ({ ...prev, [String(artId)]: nuevoObj }));
+    // Persistir por el camino existente
+    onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), objetivo: nuevoObj });
+  }, [onPriceConfigSave]);
 
   const executeBulkPct = useCallback((pct, idsAll, mode) => {
     if (!onBulkManualSave && !onPriceConfigSave) return;
@@ -1106,6 +1167,58 @@ export default function TablaArticulos({
     return rows;
   }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
 
+  // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
+  const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : 42), []);
+
+  // Offset acumulado de cada fila — para saber qué sección está en el tope sin lag
+  const rowOffsets = useMemo(() => {
+    const offs = new Array(flatRows.length);
+    let acc = 0;
+    for (let i = 0; i < flatRows.length; i++) {
+      offs[i] = acc;
+      acc += rowH(flatRows[i]);
+    }
+    return offs;
+  }, [flatRows, rowH]);
+
+  // Sección (rubro + agrupación) que está pegada arriba según el scroll
+  const [seccionSticky, setSeccionSticky] = useState(null);
+
+  const rafRef = useRef(null);
+  const handleScrollTop = useCallback((scrollTop) => {
+    if (rafRef.current) return; // ya hay un frame pendiente
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      // Búsqueda binaria: primera fila cuyo offset supera scrollTop → la anterior está en el tope
+      let lo = 0, hi = flatRows.length - 1, topIdx = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (rowOffsets[mid] <= scrollTop) { topIdx = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      // Buscar hacia atrás el último header de rubro y de agrupación
+      // Buscar hacia atrás el último header de rubro y de agrupación
+      let headerRow = null, agrupRow = null;
+      for (let i = topIdx; i >= 0; i--) {
+        const r = flatRows[i];
+        if (!headerRow && r.kind === 'header') headerRow = r;
+        if (!agrupRow && r.kind === 'agrupacion-header') agrupRow = r;
+        if (headerRow && agrupRow) break;
+      }
+
+      setSeccionSticky(prev => {
+        const nextKey = headerRow?.key || agrupRow?.key || null;
+        const prevKey = prev?.headerRow?.key || prev?.agrupRow?.key || null;
+        if (nextKey === prevKey) return prev; // evita re-render innecesario
+        return { headerRow, agrupRow };
+      });
+      // mantener el comportamiento previo (avisar subrubro al padre)
+      const sub = headerRow?.subrubro || null;
+      setVisibleSubrubro(sub);
+      onVisibleSubrubroChange?.(sub);
+    });
+  }, [flatRows, rowOffsets, onVisibleSubrubroChange]);
+
   // Habilitación de las flechas (hay anterior / hay siguiente)
   const navReceta = useMemo(() => {
     const curId = Number(recetaArticulo?.id);
@@ -1195,11 +1308,11 @@ export default function TablaArticulos({
     const check = selectionMode ? '28px ' : '';
     const branchCols = hasBranches ? branches.map(() => '.28fr').join(' ') + ' ' : '';
     const dynCols = visibleCols.map(c => c.width).join(' ');
-    return `${check}.3fr .7fr .35fr ${branchCols}${dynCols}`;
+    return `${check}minmax(56px, 90px) minmax(0, .5fr) minmax(90px, 130px) ${branchCols}${dynCols}`;
   }, [selectionMode, hasBranches, branches, visibleCols]);
 
   const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
-  const ITEM_H = 44;
+  const ITEM_H = 50;
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
 
   const currentVisibleArticleIds = useMemo(
@@ -1333,6 +1446,7 @@ export default function TablaArticulos({
           background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
           borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
           padding: "0 4px",
+          boxShadow: "inset 4px 0 0 var(--color-primary)",
         }}>
           {selectionMode && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1420,16 +1534,16 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-            if (col.id === 'precio') {
-              return <div key="precio" />;
-            }
-            if (col.id === 'objetivo') {
-              return <div key="objetivo" />;
+            // Columnas de datos: en el header de agrupación no tienen valor.
+            // Devolvemos null para que "manual" pueda estirarse sobre su espacio.
+            if (col.id === 'precio' || col.id === 'costo' || col.id === 'rentabilidad' || col.id === 'objetivo' || col.id === 'sugerido' || col.id === 'ganancia' || col.id === 'costoPct' || col.id === 'sinPromo') {
+              return null;
             }
             if (col.id === 'manual') {
               return (
-                <div key="manual" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div className="input-symbol-wrapper" data-symbol="%">
+                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>AJUSTAR AGRUPACIÓN</span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
                     <input
                       type="number"
                       value={blockManuales[bkManual] ?? ''}
@@ -1441,9 +1555,9 @@ export default function TablaArticulos({
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkManual);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      className="input-with-suffix input-group-level"
-                      style={{ width: 52, fontSize: '0.78rem', textAlign: 'center', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
+                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
+                    <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
                   <ClearBtn
                     onClick={() => {
@@ -1458,7 +1572,10 @@ export default function TablaArticulos({
                 </div>
               );
             }
-            return <div key={col.id} />;
+            if (col.id === 'acciones') {
+              return <div key="acciones" />;
+            }
+            return null;
           })}
         </div>
       );
@@ -1485,7 +1602,7 @@ export default function TablaArticulos({
 
       return (
         <div key={row.key} className="table-section-row"
-          style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate }}>
+          style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, boxShadow: "inset 4px 0 0 var)", }}>
           {selectionMode && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
               <input
@@ -1569,27 +1686,32 @@ export default function TablaArticulos({
           })}
 
           {visibleCols.map(col => {
-            if (col.id === 'objetivo' && esAgrupEspecifica) {
-              return <div key="objetivo" />;
+            // Columnas de datos: sin valor en el header de rubro → null para que "manual" se estire
+            if ((col.id === 'objetivo' || col.id === 'precio' || col.id === 'costo' || col.id === 'rentabilidad' || col.id === 'sugerido' || col.id === 'ganancia' || col.id === 'costoPct' || col.id === 'sinPromo') && esAgrupEspecifica) {
+              return null;
             } if (col.id === 'manual' && esAgrupEspecifica) {
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const bkRubroMan = `rubro-man-${rubroKeyManual}`;
               return (
-                <div key="manual" style={{ ...cellNum, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div className="input-symbol-wrapper" data-symbol="%">
-                    <input type="number"
+                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>
+                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO ' : 'AJUSTAR SUBRUBRO '}
+                  </span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
+                    <input
+                      type="number"
                       value={blockManuales[bkRubroMan] ?? ''}
                       placeholder={lastAppliedPct[bkRubroMan] != null ? String(lastAppliedPct[bkRubroMan]) : ''}
                       onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkRubroMan]: e.target.value }))}
                       onBlur={(e) => {
                         const pct = e.target.value === '' ? null : Number(e.target.value);
                         if (pct == null) return;
-                        triggerBulkPct(pct, ids, { current: e.target }, bkRubroMan);
+                        triggerBulkPct(pct, row.ids, { current: e.target }, bkRubroMan);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      className="input-with-suffix"
-                      style={{ width: 52, fontSize: '0.75rem', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4, color: TABLE_TEXT }}
+                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
+                    <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
@@ -1654,7 +1776,12 @@ export default function TablaArticulos({
     const precioRef = precioManual ?? precioBase;
     const precioParaCosto = precioManual != null && precioManual > 0 ? precioManual : precioBase;
     const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
-    const sugerido = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
+    const pasoRedondeo = Number(redondeoConfig?.valor) || 0;
+    const sugeridoCrudo = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
+    // Sugerido: SIEMPRE hacia arriba (hacia abajo no alcanzaría el objetivo). Spec F1/§5.2
+    const sugerido = sugeridoCrudo > 0
+      ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
+      : 0;
     const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
@@ -1754,10 +1881,22 @@ export default function TablaArticulos({
 
         {visibleCols.map(col => {
           switch (col.id) {
-            case 'precio':
-              // La columna "Precio" siempre muestra el precio de la favorita (precio base).
-              // La columna que cambia con la lista es "Nuevo precio".
-              return <div key="precio" style={cellNum}>{fmtCurrency(num(a.precio))}</div>;
+            case 'precio': {
+              // Precio de la favorita (base) + ganancia individual debajo (Precio − Costo)
+              // Ganancia: redondea al MÁS CERCANO (no hay objetivo que forzar). Sobre costo exacto. Spec F2/§4.2
+              const gananciaCruda = num(a.precio) - costoArticulo;
+              const gananciaAct = pasoRedondeo > 0 ? Math.round(gananciaCruda / pasoRedondeo) * pasoRedondeo : Math.round(gananciaCruda);
+              return (
+                <div key="precio" style={{ ...cellNum, lineHeight: 1.15 }}>
+                  <div>{fmtCurrency(num(a.precio))}</div>
+                  {costoArticulo > 0 && (
+                    <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600 }}>
+                      gan. {fmtCurrency(gananciaAct)}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             case 'sinPromo': {
               const vsp = ventaSinPromoMap?.[Number(getId(a))] ?? 0;
               return <div key="sinPromo" style={{ ...cellNum, color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
@@ -1765,8 +1904,26 @@ export default function TablaArticulos({
 
             case 'costo':
               return (
-                <div key="costo" style={{ ...cellNum, color: hayReceta ? '#6366f1' : TABLE_TEXT }}>
-                  {costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}
+                <div key="costo" style={{ ...cellNum, color: TABLE_TEXT, lineHeight: 1.15 }}>
+                  <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
+                  {sugerido > 0 && (
+                    <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
+                      sug. {fmtCurrency(sugerido)}
+                    </div>
+                  )}
+                </div>
+              );
+
+            case 'rentabilidad':
+              return (
+                <div key="rentabilidad" style={{ ...cellNum }}>
+                  <BarraRentabilidad
+                    costoPct={costoPct}
+                    objetivo={objetivoArticulo}
+                    supera={superaObjetivo}
+                    individual={tieneObjetivoIndividual(id)}
+                    onFijar={(nuevoObj) => fijarObjetivoEnCostoActual(id, costoPct)}
+                  />
                 </div>
               );
 
@@ -1923,44 +2080,129 @@ export default function TablaArticulos({
                 );
               }
 
-              // En la favorita → input editable (comportamiento clásico)
-              return (
-                <div key="manual" style={{ ...cellNum, position: 'relative' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 85 }}>
-                    <span style={{ padding: '0 5px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderRight: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>$</span>
-                    <input
-                      type="text"
-                      value={(() => {
-                        const raw = manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '');
-                        if (raw === '' || raw == null) return '';
-                        const n = Number(String(raw).replace(/\./g, ''));
-                        return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(raw);
-                      })()}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
-                        setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
-                      }}
-                      onBlur={(e) => {
-                        const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
-                        const val = raw === '' ? null : Number(raw);
-                        bulkSetIdsRef.current.delete(Number(id));
-                        if (val === null) {
-                          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), _deleteManual: true });
-                        } else {
-                          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.target.blur();
-                        }
-                      }}
-                      style={{ width: 58, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 6px', color: TABLE_TEXT, background: 'transparent' }}
-                    />
+              // En la favorita → input editable con 4 estados (chip USAR / pasos / segunda línea)
+              {
+                const rawManual = manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '');
+                const tieneValor = rawManual !== '' && rawManual != null;
+                const valorNum = tieneValor ? Number(String(rawManual).replace(/\./g, '')) : null;
+                const paso = Number(redondeoConfig?.valor) || 0;
+                // Sugerido redondeado hacia arriba al paso (spec §5.2)
+                // `sugerido` ya viene redondeado hacia arriba al paso desde el origen (F1)
+                const sugRedondeado = sugerido;
+                // Chip USAR: campo vacío Y sugerido supera el precio de lista (excedido)
+                const mostrarChipUsar = !tieneValor && sugRedondeado > 0 && sugRedondeado > num(a.precio);
+
+                // Guardar un valor (desde chip, pasos o teclado) y persistir
+                const commitValor = (nuevoVal, esChip = false) => {
+                  if (nuevoVal == null || !(nuevoVal > 0)) {
+                    setManuales(s => ({ ...s, [id]: '' }));
+                    setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+                    bulkSetIdsRef.current.delete(Number(id));
+                    onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), _deleteManual: true });
+                    return;
+                  }
+                  setManuales(s => ({ ...s, [id]: nuevoVal }));
+                  setUsarChipIds(prev => {
+                    const n = new Set(prev);
+                    if (esChip) n.add(id); else n.delete(id);
+                    return n;
+                  });
+                  bulkSetIdsRef.current.delete(Number(id));
+                  onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: nuevoVal });
+                };
+
+                // Segunda línea: ganancia + costo% resultante + origen (SUG./MAN.)
+                const gananciaNueva = valorNum != null ? valorNum - costoArticulo : 0;
+                const costoPctNuevo = valorNum > 0 && costoArticulo > 0 ? (costoArticulo / valorNum) * 100 : 0;
+                const excedeNuevo = costoPctNuevo > 0 && objetivoArticulo > 0 && costoPctNuevo > objetivoArticulo;
+                const origen = usarChipIds.has(id) ? 'SUG.' : 'MAN.';
+
+                const stepBtnStyle = {
+                  width: 18, height: 18, borderRadius: 4, cursor: 'pointer', flex: '0 0 auto',
+                  fontSize: 11, fontWeight: 700, lineHeight: 1, padding: 0, transition: 'all .12s ease',
+                };
+
+                return (
+                  <div key="manual" style={{ ...cellNum, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    {/* Contenedor de ancho fijo: input centrado, botones absolutos a los lados.
+                        El layout no cambia entre estados — solo aparece/desaparece contenido. */}
+                    <div style={{ position: 'relative', width: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {/* Paso − (izquierda, absoluto): solo con valor, visible en hover de fila */}
+                      {tieneValor && (
+                        <button className="np-step" style={{ ...stepBtnStyle, position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)' }}
+                          title="Bajar un paso"
+                          onClick={(e) => { e.stopPropagation(); commitValor((valorNum || 0) - (paso || 1), usarChipIds.has(id)); }}>−</button>
+                      )}
+
+                      {/* Chip USAR: campo vacío + excedido. Ocupa el centro (mismo lugar que el input) */}
+                      {mostrarChipUsar ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); commitValor(sugRedondeado, true); }}
+                          title={`Usar el sugerido: ${fmtCurrency(sugRedondeado)}`}
+                          style={{ padding: '3px 9px', borderRadius: 5, border: '1px solid #e8b4ae', background: '#fbe3e0', color: '#c0392b', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: '.02em' }}>
+                          USAR {fmtCurrency(sugRedondeado)}
+                        </button>
+                      ) : (
+                        /* Input (centrado, ancho fijo) */
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${tieneValor ? '#86efac' : '#d1d5db'}`, borderRadius: 6, overflow: 'hidden', background: tieneValor ? '#f0fdf4' : '#fff', width: 160 }}>
+                          <span style={{ padding: '0 6px', fontSize: '0.75rem', color: TABLE_MUTED, background: '#f9fafb', borderRight: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>$</span>
+                          <input
+                            type="text"
+                            value={(() => {
+                              if (rawManual === '' || rawManual == null) return '';
+                              const n = Number(String(rawManual).replace(/\./g, ''));
+                              return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(rawManual);
+                            })()}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+                              setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
+                              setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+                            }}
+                            onBlur={(e) => {
+                              const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                              const val = raw === '' ? null : Number(raw);
+                              bulkSetIdsRef.current.delete(Number(id));
+                              if (val === null) {
+                                setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+                                onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), _deleteManual: true });
+                              } else {
+                                onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: val });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+                              else if (e.key === 'ArrowUp' && tieneValor) { e.preventDefault(); commitValor((valorNum || 0) + (paso || 1), usarChipIds.has(id)); }
+                              else if (e.key === 'ArrowDown' && tieneValor) { e.preventDefault(); commitValor((valorNum || 0) - (paso || 1), usarChipIds.has(id)); }
+                            }}
+                            style={{ width: 74, fontSize: '0.82rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 6px', color: TABLE_TEXT, background: 'transparent' }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Paso + y ✕ (derecha, absolutos): solo con valor, visibles en hover de fila */}
+                      {tieneValor && (
+                        <span style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 3 }}>
+                          <button className="np-step" style={stepBtnStyle} title="Subir un paso"
+                            onClick={(e) => { e.stopPropagation(); commitValor((valorNum || 0) + (paso || 1), usarChipIds.has(id)); }}>+</button>
+                          <button className="np-step" style={stepBtnStyle} title="Vaciar (volver al precio de lista)"
+                            onClick={(e) => { e.stopPropagation(); commitValor(null); }}>✕</button>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Segunda línea: ganancia + costo% + origen */}
+                    {tieneValor && (
+                      <div style={{ fontSize: '0.66rem', display: 'flex', gap: 5, alignItems: 'center', lineHeight: 1 }}>
+                        <span style={{ color: gananciaNueva >= 0 ? '#16a34a' : '#ef4444', fontWeight: 600 }}>gan. {fmtCurrency(gananciaNueva)}</span>
+                        {costoPctNuevo > 0 && (
+                          <span style={{ color: excedeNuevo ? '#dc2626' : '#16a34a', fontWeight: 700 }}>{fmt(costoPctNuevo, 1)}%</span>
+                        )}
+                        <span style={{ color: TABLE_MUTED, fontWeight: 600 }}>{origen}</span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
+                );
+              }
             }
 
             case 'acciones': {
@@ -2037,6 +2279,45 @@ export default function TablaArticulos({
       <div className="tabla-articulos-container">
         <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
           <div className="table-col-header">
+            {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
+            <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'stretch' }}>
+              {selectionMode && <div />}
+              {/* Código + Nombre + Ventas: sin zona (span 3, o 4 con check ya cubierto arriba) */}
+              <div style={{ gridColumn: 'span 3' }} />
+              {hasBranches && branches.map(b => <div key={`z-${b.id}`} />)}
+              {(() => {
+                // Mapear las zonas según las columnas visibles y su orden actual
+                const zonas = [];
+                let i = 0;
+                const cols = visibleCols;
+                while (i < cols.length) {
+                  const col = cols[i];
+                  if (col.id === 'costo' || col.id === 'precio' || col.id === 'sinPromo') {
+                    // Contar cuántas columnas seguidas pertenecen a "SITUACIÓN ACTUAL"
+                    let span = 0;
+                    while (i < cols.length && (cols[i].id === 'costo' || cols[i].id === 'precio' || cols[i].id === 'sinPromo')) { span++; i++; }
+                    zonas.push(
+                      <div key={`z-sit-${i}`} style={{ gridColumn: `span ${span}`, textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#94a3b8', background: 'rgba(148,163,184,0.08)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>SITUACIÓN ACTUAL</div>
+                    );
+                  } else if (col.id === 'rentabilidad') {
+                    zonas.push(
+                      <div key={`z-rent-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#94a3b8', background: 'rgba(148,163,184,0.08)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>RENTABILIDAD vs OBJETIVO</div>
+                    );
+                    i++;
+                  } else if (col.id === 'manual') {
+                    zonas.push(
+                      <div key={`z-aj-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#16a34a', background: 'rgba(87,187,127,0.1)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>TU AJUSTE</div>
+                    );
+                    i++;
+                  } else {
+                    // acciones u otra → celda vacía
+                    zonas.push(<div key={`z-empty-${i}`} />);
+                    i++;
+                  }
+                }
+                return zonas;
+              })()}
+            </div>
             <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate }}>
               {selectionMode && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2057,29 +2338,31 @@ export default function TablaArticulos({
               <div onClick={() => toggleSort("nombre")} className="col-sortable">
                 Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'left' }}>
                 <span onClick={() => toggleSort("ventas")} className="col-sortable" style={{ cursor: 'pointer', userSelect: 'none' }}>
                   Ventas {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                 </span>
-                <span
-                  onClick={() => onToggleSoloConVentas?.()}
-                  title={soloConVentas ? 'Mostrando solo con ventas — click para ver todos' : 'Filtrar: solo artículos con ventas'}
-                  style={{
-                    cursor: 'pointer', fontSize: '0.8rem',
-                    opacity: soloConVentas ? 1 : 0.35,
-                    color: soloConVentas ? 'var(--color-primary)' : 'inherit',
-                    lineHeight: 1, userSelect: 'none',
-                  }}
-                >
-                  👁
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span
+                    onClick={() => onToggleSoloConVentas?.()}
+                    title={soloConVentas ? 'Mostrando solo con ventas — click para ver todos' : 'Filtrar: solo artículos con ventas'}
+                    style={{
+                      cursor: 'pointer', fontSize: '0.8rem',
+                      opacity: soloConVentas ? 1 : 0.35,
+                      color: soloConVentas ? 'var(--color-primary)' : 'inherit',
+                      lineHeight: 1, userSelect: 'none',
+                    }}
+                  >
+                    👁
+                  </span>
+                  <button
+                    onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
+                    title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
+                    style={{ padding: '0px 6px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5, fontSize: '0.64rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
+                    {ventasVista}
+                  </button>
                 </span>
-                <button
-                  onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
-                  title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
-                  style={{ padding: '1px 7px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.4, fontSize: '0.68rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
-                  {ventasVista}
-                </button>
               </div>
 
               {hasBranches && branches.map(branch => (
@@ -2108,13 +2391,21 @@ export default function TablaArticulos({
                 };
 
                 switch (col.id) {
-                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={dragIndicatorStyle}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={dragIndicatorStyle}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'flex-start', background: 'rgba(148,163,184,0.06)' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'flex-start', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
-                  case 'ganancia': return <div key="ganancia" {...dragProps} onClick={() => toggleSort('ganancia')} className="col-sortable" style={dragIndicatorStyle}>Ganancia{sortBy === 'ganancia' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'costoPct': return <div key="costoPct" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable" style={dragIndicatorStyle}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'objetivo': return <div key="objetivo" {...dragProps} onClick={() => toggleSort('objetivo')} className="col-sortable" style={dragIndicatorStyle}>Objetivo{sortBy === 'objetivo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'sugerido': return <div key="sugerido" {...dragProps} onClick={() => toggleSort('sugerido')} className="col-sortable" style={dragIndicatorStyle}>Sugerido{sortBy === 'sugerido' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'rentabilidad': return (
+                    <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
+                      style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'flex-end', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                      <span>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
+                        <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
+                        costo actual
+                        <span style={{ width: 2, height: 10, background: '#4A555F', display: 'inline-block', margin: '0 1px' }} />
+                        objetivo
+                      </span>
+                    </div>
+                  );
                   case 'manual': {
                     const headerLabel = !isPriceListFavorite && currentPriceList?.name
                       ? currentPriceList.name
@@ -2122,7 +2413,7 @@ export default function TablaArticulos({
                     const headerColor = !isPriceListFavorite ? currentListColor : undefined;
                     return (
                       <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
-                        style={{ ...dragIndicatorStyle, color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined }}>
+                        style={{ ...dragIndicatorStyle, color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
                         {headerLabel}{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                       </div>
                     );
@@ -2148,14 +2439,41 @@ export default function TablaArticulos({
           {flatRows.length === 0 ? (
             <p style={{ marginTop: "2rem", fontSize: "1.2rem", color: "#777", padding: "0 8px" }}>No hay artículos.</p>
           ) : (
-            <div onScroll={handleScroll}>
-              <VirtualList
-                ref={listRef} rows={flatRows} rowHeight={ITEM_H}
-                height={typeof window !== "undefined" && window.innerHeight ? Math.max(240, window.innerHeight - 220) : 520}
-                overscan={8} onVisibleItemsIds={handleVisibleIds}
-                getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
-                renderRow={renderRow} extraData={(ventasPorArticulo?.size || 0) + selectedIds.size + (selectionMode ? 1 : 0)}
-              />
+            <div style={{ position: 'relative' }}>
+              {/* Banda sticky del rubro/subrubro actual (spec §9.1) — se pega bajo el header de columnas */}
+              {seccionSticky?.headerRow && (
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
+                  display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
+                  height: 42, pointerEvents: 'none',
+                  background: '#eef1f5',
+                  borderBottom: '1px solid #d5dbe3',
+                  boxShadow: 'inset 3px 0 0 #94a3b8, 0 2px 4px rgba(0,0,0,0.06)',
+                }}>
+                  <div style={{
+                    gridColumn: '1 / 4', paddingLeft: 12,
+                    fontSize: '0.82rem', fontWeight: 600, color: '#334155',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {(() => {
+                      const hr = seccionSticky.headerRow;
+                      const cat = hr.categoria || '';
+                      const sr = hr.subrubro || '';
+                      return isRubroView ? `${sr} - ${cat}` : `${cat} - ${sr}`;
+                    })()}
+                  </div>
+                </div>
+              )}
+              <div onScroll={handleScroll}>
+                <VirtualList
+                  ref={listRef} rows={flatRows} rowHeight={(row) => (row?.kind === 'item' ? 60 : 42)}
+                  onScrollTop={handleScrollTop}
+                  height={typeof window !== "undefined" && window.innerHeight ? Math.max(240, window.innerHeight - 220) : 520}
+                  overscan={8} onVisibleItemsIds={handleVisibleIds}
+                  getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
+                  renderRow={renderRow} extraData={(ventasPorArticulo?.size || 0) + selectedIds.size + (selectionMode ? 1 : 0)}
+                />
+              </div>
             </div>
           )}
         </div>

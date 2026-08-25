@@ -12,7 +12,7 @@
 // sirve para exportar (no se persiste en esta etapa).
 //
 import React, { useMemo, useState, useCallback, useRef } from "react";
-
+import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
 const MENU_FONTS = [
   { label: "Sora + Archivo", d: "'Sora',sans-serif", b: "'Archivo',sans-serif", imp: "Sora:wght@600;700&family=Archivo:wght@400;600" },
@@ -451,6 +451,17 @@ export default function VistaCartaMenu({
   agrupIdByNombre = {},
   onChangeViewMode = null,
   onRenombrarArticulo = null,
+  /* ── Acciones reales sobre el artículo (reusa ArticuloAccionesMenu) ── */
+  agrupaciones = [],
+  agrupacionSeleccionada = null,
+  activeBizId = null,
+  rootBizId = null,
+  onMutateGroups = null,
+  onGroupCreated = null,
+  onDiscontinuadoChange = null,
+  onAccionRefetch = null,
+  onAccionReload = null,
+  onAccionRecargarCategorias = null,
 }) {
   // Si hay carta guardada, arrancamos desde ahí.
   const g = cartaGuardada && typeof cartaGuardada === "object" ? cartaGuardada : null;
@@ -490,6 +501,8 @@ export default function VistaCartaMenu({
     }
   ));
 
+  console.log('[VistaCartaMenu] articulos recibidos:', articulos.length, articulos.find(a => a.nombre?.includes('POLLO'))?.rubro);
+
   const neg = useMemo(() => ({ ...negocio, ...contacto, accent }), [negocio, contacto, accent]);
   // Icono efectivo de una sección: override manual ('' = sin icono) o automático por nombre.
   const iconoDe = (titulo) => {
@@ -512,6 +525,23 @@ export default function VistaCartaMenu({
     }
     return m;
   }, [artByIdBase, descripciones]);
+
+  // Rubros disponibles para "mover a otro rubro" (mismo shape que usa la tabla):
+  // { subrubro, agrupacionId, agrupacionNombre } — derivado de las agrupaciones reales.
+  const rubrosDisponiblesCarta = useMemo(() => {
+    const map = new Map(); // clave `${agrupId}|${subrubro}` — separa mismo rubro en distintas agrupaciones
+    for (const g of (agrupaciones || [])) {
+      const agrupacionId = Number(g?.id);
+      const agrupacionNombre = g?.nombre ?? g?.name ?? '';
+      for (const a of (g?.articulos || [])) {
+        const r = (a?.subrubro || '').trim();
+        if (!r || r === 'Sin subrubro') continue;
+        const key = `${agrupacionId}|${r}`;
+        if (!map.has(key)) map.set(key, { subrubro: r, agrupacionId, agrupacionNombre });
+      }
+    }
+    return Array.from(map.values());
+  }, [agrupaciones]);
 
   // ── Maquetas por modo: cada vista (rubro / agrupacion) guarda su propia
   //    composición. Cambiar de modo NO destruye la otra.
@@ -707,7 +737,30 @@ export default function VistaCartaMenu({
         if (pos === -1) pos = resto.length;
       }
       const itemIds = [...resto.slice(0, pos), ...movidos, ...resto.slice(pos)];
-      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
+      // Mantener ordenRubros en sincronía: mover rubroDesde a la posición de rubroHasta.
+      // Si no existía (carta vieja), lo derivamos del orden actual de bloques.
+      const bloqueDeItem = (id) => (String(id).startsWith("__sep__") ? null : resolver(id));
+      const derivarOrden = (ids) => {
+        const out = [];
+        for (const id of ids) {
+          const b = bloqueDeItem(id);
+          if (b != null && !out.includes(b)) out.push(b);
+        }
+        return out;
+      };
+      const baseOrden = Array.isArray(sec.ordenRubros) && sec.ordenRubros.length
+        ? sec.ordenRubros.slice()
+        : derivarOrden(sec.itemIds);
+      let ordenRubros = baseOrden.filter((b) => b !== rubroDesde);
+      const idxHastaEnOrden = ordenRubros.indexOf(rubroHasta);
+      if (idxHastaEnOrden === -1) {
+        ordenRubros.push(rubroDesde);
+      } else if (bajando) {
+        ordenRubros.splice(idxHastaEnOrden + 1, 0, rubroDesde);
+      } else {
+        ordenRubros.splice(idxHastaEnOrden, 0, rubroDesde);
+      }
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ordenRubros } } };
     });
   }, []);
 
@@ -721,7 +774,11 @@ export default function VistaCartaMenu({
         if (String(id).startsWith("__sep__")) return true;
         return resolver(id) !== rubro;
       });
-      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
+      // Sacar el rubro de ordenRubros para que no reaparezca vacío ni descoloque el resto.
+      const ordenRubros = Array.isArray(sec.ordenRubros)
+        ? sec.ordenRubros.filter((b) => b !== rubro)
+        : sec.ordenRubros;
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ...(ordenRubros ? { ordenRubros } : {}) } } };
     });
   }, []);
 
@@ -1225,7 +1282,17 @@ export default function VistaCartaMenu({
                                       if (!buckets.has(b)) { buckets.set(b, []); ordenBloques.push(b); }
                                       buckets.get(b).push(id);
                                     }
-                                    orden = ordenBloques.flatMap((b) => buckets.get(b));
+                                    // Orden de rubros PERSISTIDO: si la sección tiene ordenRubros guardado,
+                                    // lo respetamos (así sacar un ítem no reorganiza los bloques). Los rubros
+                                    // presentes pero no listados (nuevos) van al final en su orden de aparición.
+                                    const guardado = Array.isArray(sec.ordenRubros) ? sec.ordenRubros : null;
+                                    const bloquesOrdenados = guardado
+                                      ? [
+                                        ...guardado.filter((b) => buckets.has(b)),
+                                        ...ordenBloques.filter((b) => !guardado.includes(b)),
+                                      ]
+                                      : ordenBloques;
+                                    orden = bloquesOrdenados.flatMap((b) => buckets.get(b));
                                   }
                                   let bloqueAnterior = null; // para emitir encabezado al cambiar
                                   return orden.map((artId, itemPos) => {
@@ -1308,7 +1375,7 @@ export default function VistaCartaMenu({
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
                                             className="it"
-                                            style={{ cursor: "grab", position: "relative", paddingRight: 62 }}
+                                            style={{ cursor: "grab", position: "relative", paddingRight: 90 }}
                                             title="Arrastrá para reordenar">
                                             <span className="nm">{a.nombre}</span>
                                             <span className="dots" />
@@ -1325,10 +1392,53 @@ export default function VistaCartaMenu({
                                                 onMouseEnter={(e) => e.currentTarget.style.color = accent}
                                                 onMouseLeave={(e) => e.currentTarget.style.color = descActual ? accent : "#ccc"}>✎</button>
                                               <button onClick={(e) => { e.stopPropagation(); quitarItem(sid, artId); }}
-                                                title="Quitar de la carta"
+                                                title="Quitar de la carta (solo del menú, no afecta gestión)"
                                                 style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
                                                 onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
                                                 onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                              {/* Menú de acciones REALES (mover, discontinuar, vincular): reusa
+                                                  ArticuloAccionesMenu. Resuelve la agrupación real del artículo
+                                                  (en la carta no hay "agrupación seleccionada" global). */}
+                                              {activeBizId && (() => {
+                                                // Agrupación real de ESTE artículo (buscándolo en las agrupaciones)
+                                                const grupoDelArt = (agrupaciones || []).find((g) =>
+                                                  (g?.articulos || []).some((x) => Number(x?.id) === Number(a.id))
+                                                ) || null;
+                                                const agrupSel = grupoDelArt
+                                                  ? { id: Number(grupoDelArt.id), nombre: grupoDelArt.nombre ?? grupoDelArt.name ?? '' }
+                                                  : null;
+                                                return (
+                                                  <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex" }}>
+                                                    <ArticuloAccionesMenu
+                                                      articulo={{
+                                                        id: a.id,
+                                                        nombre: a.nombre,
+                                                        precio: a.precio,
+                                                        // convención invertida: carta.rubro = subrubro real; carta.sub = categoria real
+                                                        subrubro: a.rubro,
+                                                        categoria: a.sub,
+                                                      }}
+                                                      agrupaciones={agrupaciones}
+                                                      agrupacionSeleccionada={agrupSel}
+                                                      rubrosDisponibles={rubrosDisponiblesCarta}
+                                                      businessId={activeBizId}
+                                                      rootBizId={rootBizId}
+                                                      onMutateGroups={onMutateGroups}
+                                                      onGroupCreated={onGroupCreated}
+                                                      onDiscontinuadoChange={onDiscontinuadoChange}
+                                                      onRefetch={onAccionRefetch}
+                                                      onAfterMutation={() => {
+                                                        window.dispatchEvent(new CustomEvent('articulos:updated'));
+                                                        // Refresca agrupaciones (para discontinuar/mover-agrup) Y
+                                                        // categorias (para mover-rubro): la carta deriva el rubro
+                                                        // de categorias, que la tabla no puede refrescar aquí.
+                                                        onAccionRecargarCategorias?.();
+                                                      }}
+                                                      notify={() => { }}
+                                                    />
+                                                  </span>
+                                                );
+                                              })()}
                                             </span>
                                           </div>
                                           {/* descripción: editable si está en modo edición, sino se muestra si existe */}

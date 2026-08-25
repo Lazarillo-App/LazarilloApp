@@ -470,6 +470,31 @@ export default function ArticulosMain(props) {
     }
   }, [activeBizId, activeDivisionId]);
 
+  // Recarga `categorias` directamente desde el árbol de artículos del backend.
+  // En vista carta la tabla (que normalmente arma `categorias` vía onCategoriasLoaded)
+  // NO está montada, así que las acciones de la carta no pueden refrescar el rubro
+  // vía reloadKey. Esta función lo hace sin depender de la tabla, replicando la
+  // normalización de handleCategoriasLoaded.
+  const recargarCategorias = React.useCallback(async () => {
+    if (!activeBizId) return;
+    try {
+      const { tree } = await BusinessesAPI.articlesTree(activeBizId);
+      const normalizadas = (tree || []).map((sub) => ({
+        ...sub,
+        categorias: (sub.categorias || []).map((cat) => ({
+          ...cat,
+          articulos: (cat.articulos || []).map((a) => {
+            const idCanonico = getArtId(a);
+            return { ...a, article_id: idCanonico, id: idCanonico ?? a.id };
+          }),
+        })),
+      }));
+      setCategorias(normalizadas);
+    } catch (e) {
+      console.warn('[recargarCategorias] falló:', e.message);
+    }
+  }, [activeBizId]);
+
   useEffect(() => {
     setAgrupacionSeleccionada(null);
     setCategoriaSeleccionada(null);
@@ -985,6 +1010,7 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     const handler = () => {
+      console.log('[articulos:updated] refetch disparado');  // ← temporal
       refetchAgrupaciones().catch(e =>
         console.warn('[articulos:updated listener] refetch falló:', e.message)
       );
@@ -1718,6 +1744,9 @@ export default function ArticulosMain(props) {
         });
 
         showMiss(`Bloque discontinuado (${ids.length} artículo/s).`);
+        // Sincronizar la carta: refrescar categorias/agrupaciones para que
+        // effectiveDiscIds se actualice y el bloque desaparezca del diseño.
+        window.dispatchEvent(new CustomEvent('articulos:updated'));
       } catch (e) {
         console.error('DISCONTINUAR_BLOQUE_ERROR', e);
         showAlert('No se pudo discontinuar el bloque.', 'error');
@@ -2370,6 +2399,17 @@ export default function ArticulosMain(props) {
             await BusinessesAPI.update(rootBusiness.id, { carta });
             if (typeof refetchOrg === 'function') await refetchOrg();
           }}
+          /* ── Props para el menú de acciones reales (ArticuloAccionesMenu) en la carta ── */
+          agrupaciones={agrupacionesOrdenadas}
+          agrupacionSeleccionada={agrupacionSeleccionada}
+          activeBizId={activeBizId}
+          rootBizId={rootBusiness?.id ? Number(rootBusiness.id) : null}
+          onMutateGroups={mutateGroups}
+          onGroupCreated={handleGroupCreated}
+          onDiscontinuadoChange={handleDiscontinuadoChange}
+          onAccionRefetch={refetchAgrupaciones}
+          onAccionReload={() => setReloadKey(k => k + 1)}
+          onAccionRecargarCategorias={recargarCategorias}
         />
       </div>
     );
@@ -2380,6 +2420,16 @@ export default function ArticulosMain(props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          <Box sx={{ display: 'flex', gap: 2, ml: 'auto', order: 2, alignItems: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
+              Costo poco confiable
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
+              Excedido sobre el objetivo
+            </span>
+          </Box>
           <h2 style={{ margin: 0 }}>
             Gestión de Artículos
             {activeBranch && (

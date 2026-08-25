@@ -65,7 +65,9 @@ export default function ConfiguracionMain() {
     articulos_costo_ideal: '', insumos_costo_ideal: '',
     compras_alerta_semanas: '', ventas_alerta_dias: '',
     divisa: '', precio_costeo_insumos: 'ultima_compra', redondeo_precios: null,
+    desperdicio_global_pct: '',
   });
+
   const [configLoading, setConfigLoading] = useState(true);
   const [saving, setSaving] = useState({});
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
@@ -120,6 +122,7 @@ export default function ConfiguracionMain() {
           ventas_alerta_dias: String(cfg.ventas_alerta_dias ?? ''),
           divisa: String(cfg.divisa ?? ''),
           precio_costeo_insumos: cfg.precio_costeo_insumos || 'ultima_compra',
+          desperdicio_global_pct: String(cfg.desperdicio_global_pct ?? ''),
           // Si DB devuelve null, usar localStorage como fallback
           redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
           redondeo_mostrar_modal: cfg.redondeo_mostrar_modal ?? localRedondeo?.mostrarModal ?? true,

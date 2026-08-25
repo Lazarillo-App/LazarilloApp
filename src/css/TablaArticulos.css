@@ -84,3 +84,18 @@
 .input-group-level:focus {
   border-color: var(--color-primary) !important;
 }
+
+/* Pasos del campo "Nuevo precio": invisibles en reposo, se revelan al pasar el mouse por la fila (spec §7.1) */
+.np-step {
+  border: 1px solid transparent;
+  background: transparent;
+  color: transparent;
+}
+.table-item-row:hover .np-step {
+  border-color: #d1d5db;
+  background: #fff;
+  color: #6b7280;
+}
+.np-step:hover {
+  background: #f3f4f6;
+}

@@ -345,6 +345,9 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
       notify?.(`🔗 ${selectedIds.size} artículos vinculados correctamente`);
       clearSelection();
       toggleMode(null);
+      // Sincronizar ambas vistas (tabla + carta): el listener global en ArticulosMain
+      // refetchea agrupaciones, de donde la carta deriva sus artículos.
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
       return group;
     } catch (e) {
       console.error('[createLink]', e);
@@ -432,7 +435,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     }
   }, [bizId, notify]);
 
-    // Guardar los cambios de una edición: diff entre lo seleccionado y lo original.
+  // Guardar los cambios de una edición: diff entre lo seleccionado y lo original.
   // Agrega los nuevos y quita los removidos sobre el MISMO grupo.
   const saveEditLink = useCallback(async () => {
     if (!editingGroup) return;
@@ -455,7 +458,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
         await removeMemberFromLink(groupId, Number(id));
       }
       notify?.(`🔗 Vinculación actualizada (${toAdd.length} agregado${toAdd.length !== 1 ? 's' : ''}, ${toRemove.length} quitado${toRemove.length !== 1 ? 's' : ''})`);
-      try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
       toggleMode(null);
     } catch (e) {
       console.error('[saveEditLink]', e);

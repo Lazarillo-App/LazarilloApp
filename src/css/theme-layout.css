@@ -807,8 +807,11 @@ input[type="number"]:focus {
  
 /* Filas de sección */
 .table-section-row {
-  background: #f4f6f8 !important;
-  color: #374151 !important;
+  background: #eef1f5 !important;
+  color: #334155 !important;
+  border-top: 1px solid #d5dbe3 !important;
+  border-bottom: 1px solid #d5dbe3 !important;
+  box-shadow: inset 3px 0 0 #94a3b8 !important;
 }
  
 /* Filas de item */

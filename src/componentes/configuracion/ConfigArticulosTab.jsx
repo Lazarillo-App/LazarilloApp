@@ -315,22 +315,15 @@ export default function ConfigArticulosTab({
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card>
               <CardHeader icon={<WarningAmberIcon />} title="Alerta de actualización de ventas" subtitle="Notificación cuando no hay datos recientes" />
               <CardBody>
-                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
-                  <Stack spacing={1.5} sx={{ flex: 1 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                      Si no hay ventas registradas hace más de N días, aparece una alerta en "Gestionar ventas" y en el ícono de configuración.
-                    </Typography>
-                    {Number(config.ventas_alerta_dias) > 0 && (
-                      <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
-                        Alerta activa: sin ventas en los últimos <strong>{config.ventas_alerta_dias} días</strong>.
-                      </Alert>
-                    )}
-                  </Stack>
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
+                    Si no hay ventas registradas hace más de N días, aparece una alerta en "Gestionar ventas" y en el ícono de configuración.
+                  </Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
                     <TextField size="small" type="number" label="Días sin datos"
                       value={config.ventas_alerta_dias}
                       onChange={e => setConfig(c => ({ ...c, ventas_alerta_dias: e.target.value }))}
@@ -342,6 +335,38 @@ export default function ConfigArticulosTab({
                       onClick={() => saveConfig('ventas_alerta_dias')}
                       sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
                       {saving.ventas_alerta_dias ? 'Guardando…' : 'Guardar'}
+                    </Button>
+                  </Stack>
+                  {Number(config.ventas_alerta_dias) > 0 && (
+                    <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
+                      Alerta activa: sin ventas en los últimos <strong>{config.ventas_alerta_dias} días</strong>.
+                    </Alert>
+                  )}
+                </Stack>
+              </CardBody>
+            </Card>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardHeader icon={<PercentIcon />} title="Merma global" subtitle="% de desperdicio aplicado a todas las recetas" />
+              <CardBody>
+                <Stack spacing={1.5}>
+                  <Typography variant="body2" color="text.secondary">
+                    Se aplica sobre el costo de insumos de cada receta. Las mermas individuales por ingrediente se componen encima de esta.
+                  </Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <TextField size="small" type="number"
+                      value={config.desperdicio_global_pct}
+                      onChange={e => setConfig(c => ({ ...c, desperdicio_global_pct: e.target.value }))}
+                      inputProps={{ min: 0, max: 100, step: 0.5 }}
+                      InputProps={{ endAdornment: <InputAdornment position="end"><PercentIcon sx={{ fontSize: 16 }} /></InputAdornment> }}
+                      sx={{ width: 120 }}
+                    />
+                    <Button variant="contained" size="small" disabled={!!saving.desperdicio_global_pct}
+                      startIcon={saving.desperdicio_global_pct ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                      onClick={() => saveConfig('desperdicio_global_pct')}
+                      sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
+                      {saving.desperdicio_global_pct ? 'Guardando…' : 'Guardar'}
                     </Button>
                   </Stack>
                 </Stack>
