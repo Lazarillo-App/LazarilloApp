@@ -100,6 +100,7 @@ export function ComprasDetalleContenido({
   const [bonifBusy, setBonifBusy] = useState(false); // aplicar/descartar en curso
   const [popoverOpen, setPopoverOpen] = useState(false);
   const chipRef = useRef(null);
+  const anchorRectRef = useRef(null); // cachea la posición del chip para que el popover no salte durante el re-render
 
   const [ratioCustom, setRatioCustom] = useState('');
 
@@ -193,7 +194,12 @@ export function ComprasDetalleContenido({
     }
   }, [insumoId, businessId, fetchBonif]);
 
-  const abrirPopover = useCallback(() => setPopoverOpen(o => !o), []);
+  const abrirPopover = useCallback(() => {
+    setPopoverOpen(o => {
+      if (!o && chipRef.current) anchorRectRef.current = chipRef.current.getBoundingClientRect();
+      return !o;
+    });
+  }, []);
   const cerrarPopover = useCallback(() => setPopoverOpen(false), []);
 
   // Cargar sucursales según negocio seleccionado
@@ -539,7 +545,13 @@ export function ComprasDetalleContenido({
     return (
       <Popover
         open={popoverOpen}
-        anchorEl={() => chipRef.current}
+        anchorEl={() => ({
+          nodeType: 1,
+          getBoundingClientRect: () =>
+            anchorRectRef.current || (chipRef.current
+              ? chipRef.current.getBoundingClientRect()
+              : new DOMRect(0, 0, 0, 0)),
+        })}
         keepMounted
         disableScrollLock
         onClose={cerrarPopover}
