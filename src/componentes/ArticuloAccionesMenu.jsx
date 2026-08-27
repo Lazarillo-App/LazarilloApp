@@ -250,7 +250,7 @@ function ArticuloAccionesMenu({
   onMutateGroups,
   baseById,
   onDiscontinuadoChange,
-    treeMode = false,
+  treeMode = false,
   businessId,
   rootBizId: rootBizIdProp = null,
   allowedIds,
@@ -967,35 +967,35 @@ function ArticuloAccionesMenu({
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
           <TextField
-              select fullWidth size="small" autoFocus
-              label="Rubro destino"
-              value={nuevoRubro}
-              onChange={(e) => setNuevoRubro(e.target.value)}
-              helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
-            >
-              {rubrosDisponibles.map((r) => {
-                const val = `${r.agrupacionId}|${r.subrubro}`;
-                const esActual = r.subrubro === rubroActual
-                  && Number(r.agrupacionId) === Number(currentGroupId);
-                return (
-                  <MenuItem key={val} value={val} disabled={esActual}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                      <span>{r.subrubro}</span>
-                      {r.agrupacionNombre && (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          {r.agrupacionNombre}
-                        </Typography>
-                      )}
-                    </Box>
-                  </MenuItem>
-                );
-              })}
-            </TextField>
+            select fullWidth size="small" autoFocus
+            label="Rubro destino"
+            value={nuevoRubro}
+            onChange={(e) => setNuevoRubro(e.target.value)}
+            helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
+          >
+            {rubrosDisponibles.map((r) => {
+              const val = `${r.agrupacionId}|${r.subrubro}`;
+              const esActual = r.subrubro === rubroActual
+                && Number(r.agrupacionId) === Number(currentGroupId);
+              return (
+                <MenuItem key={val} value={val} disabled={esActual}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                    <span>{r.subrubro}</span>
+                    {r.agrupacionNombre && (
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                        {r.agrupacionNombre}
+                      </Typography>
+                    )}
+                  </Box>
+                </MenuItem>
+              );
+            })}
+          </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDlgMoverRubroOpen(false)} disabled={movingRubro}>Cancelar</Button>
           <Button onClick={ejecutarMoverRubro} variant="contained"
-              disabled={movingRubro || !nuevoRubro}>
+            disabled={movingRubro || !nuevoRubro}>
             {movingRubro ? 'Moviendo…' : 'Mover'}
           </Button>
         </DialogActions>
@@ -1010,6 +1010,7 @@ function ArticuloAccionesMenu({
             label="Nombre"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
           />
         </DialogContent>

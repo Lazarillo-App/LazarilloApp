@@ -835,6 +835,7 @@ function SubrubroAccionesMenu({
             label="Nombre"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
             helperText={`Afectará a todos los artículos con este ${treeMode === 'sr-first' ? 'rubro' : 'subrubro'}`}
           />

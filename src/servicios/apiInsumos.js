@@ -785,12 +785,22 @@ export const insumoMermasList = async (insumoId, bizId) => {
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al listar mermas');
   return data;
 };
+
+// ── Uso del insumo (recetas donde aparece) ──
+export const insumoUsoList = async (insumoId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/uso`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+  return data;
+};
+
 export const insumoMermaCreate = async (insumoId, payload, bizId) => {
   const res = await fetch(`${BASE}/insumos/${insumoId}/mermas`, { method: 'POST', headers: authHeaders(bizId), body: JSON.stringify(payload) });
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al crear merma');
   return data;
 };
+
 export const insumoMermaUpdate = async (insumoId, mermaId, payload, bizId) => {
   const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}`, { method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify(payload) });
   const data = await res.json().catch(() => null);

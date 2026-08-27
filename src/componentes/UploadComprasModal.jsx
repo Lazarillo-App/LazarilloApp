@@ -1,3 +1,5 @@
+/* eslint-disable no-empty */
+/* eslint-disable no-constant-binary-expression */
 import React, { useState } from 'react';
 import { useBranch } from '@/hooks/useBranch';
 import { MAIN_BRANCH_ID } from '@/context/BranchContext';
@@ -154,41 +156,24 @@ function InstructionsModal({ open, onClose, themeColors }) {
 
 // ─── Componente principal ───
 export default function UploadComprasModal({ open, onClose, businessId, onSuccess, activeBranchId }) {
-  const { branches, rawBranches } = useBranch() || {};
-
-  // Para compras, TODAS las sucursales físicas son destinos válidos — incluida
-  // la marcada is_main (que en el contexto se muestra como "Principal" virtual,
-  // pero acá es una ubicación real donde se compra). Por eso usamos rawBranches
-  // (ids reales de app_branches), no la lista `branches` que esconde la is_main.
-  const sucursalesReales = React.useMemo(
-    () => (rawBranches || []),
-    [rawBranches]
+  const { branches, hasBranches } = useBranch() || {};
+  const mainBranch = branches?.find(b => b.isMain) || null;
+  // Sucursales secundarias (no principal) que tienen id real en app_branches
+  const secundarias = React.useMemo(
+    () => (branches || []).filter(b => !b.isMain && (b.realId || b.id)),
+    [branches]
   );
-  
-  const tieneSucursales = sucursalesReales.length > 0;
-  // Lista de opciones del selector: solo sucursales reales si las hay; si no, el principal.
-  const opcionesSucursal = tieneSucursales ? sucursalesReales : (branches || []);
-
   const [branchId, setBranchId] = useState(null);
+
   React.useEffect(() => {
     if (!open) return;
-    // Default inteligente:
-    //  - sucursal activa si es una sucursal real válida
-    //  - si no, la primera sucursal real (cuando el negocio tiene sucursales)
-    //  - si no hay sucursales, null (negocio completo)
-    const activaEsReal = activeBranchId != null && activeBranchId !== 'all'
-      && activeBranchId !== MAIN_BRANCH_ID
-      && sucursalesReales.some(b => String(b.id) === String(activeBranchId));
-    if (activaEsReal) {
-      setBranchId(activeBranchId);
-    } else if (tieneSucursales) {
-      // Default: la sucursal principal (is_main) si existe, si no la primera
-      const principal = sucursalesReales.find(b => b.props?.is_main) || sucursalesReales[0];
-      setBranchId(principal.id);
-    } else {
-      setBranchId(null);
-    }
-  }, [open, activeBranchId, sucursalesReales, tieneSucursales]);
+    // Preselección igual que ventas: sucursal activa real si estás parada en una;
+    // si estás en "todas"/principal (activeBranchId 'all'/'main'/null), la principal (value="").
+    const activeRealId =
+      activeBranchId && activeBranchId !== 'main' && activeBranchId !== 'all' && activeBranchId !== null
+        ? Number(activeBranchId) : null;
+    setBranchId(activeRealId !== null ? activeRealId : '');
+  }, [open, activeBranchId]);
 
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -248,6 +233,11 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
         window.dispatchEvent(new CustomEvent('purchases:batch:changed', {
           detail: { businessId, action: 'uploaded' }
         }));
+        // El import recalcula precios y bonificaciones → refrescar insumos y artículos (costos propagados)
+        try {
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+        } catch { }
       } else {
         throw new Error(result.message || result.error || 'Error al importar compras');
       }
@@ -270,7 +260,8 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
 
   // ─── Validación: ¿se puede abrir el selector de archivo? ───
   const handleOpenFilePicker = () => {
-    if (tieneSucursales && !branchId) {
+    // branchId '' = principal (válido). Solo null/undefined = sin selección resuelta.
+    if (hasBranches && (branchId === null || branchId === undefined)) {
       setBranchError(true);
       return;
     }
@@ -334,29 +325,38 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                   <Select
                     value={branchId === null || branchId === undefined ? '' : String(branchId)}
                     label="Sucursal"
+                    displayEmpty
                     onChange={e => {
                       const v = e.target.value;
-                      setBranchId(v === '' ? null : (Number(v) || v));
+                      setBranchId(v === '' ? '' : (Number(v) || v));
                       setBranchError(false);
                     }}
                   >
-                    {!tieneSucursales && (
-                      <MenuItem value=""><em>Negocio completo (sin sucursal)</em></MenuItem>
-                    )}
-                    {opcionesSucursal.map(b => (
-                      <MenuItem key={b.id} value={String(b.id)}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
-                          {b.name}
-                        </Box>
-                      </MenuItem>
-                    ))}
+                    {/* Principal = value="" (compras del negocio completo, sin branch_id) */}
+                    <MenuItem value="">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: mainBranch?.color || 'var(--color-primary)' }} />
+                        {mainBranch?.name || 'Negocio principal'}
+                      </Box>
+                    </MenuItem>
+                    {secundarias.map(b => {
+                      const realId = b.realId || b.id;
+                      return (
+                        <MenuItem key={String(b.id)} value={String(realId)}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: b.color || 'var(--color-primary)' }} />
+                            {b.name}
+                          </Box>
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
-                {branchId && (
-                  <Chip size="small" sx={{ mt: 0.5, fontSize: '0.72rem' }}
-                    label={`Compras para: ${sucursalesReales.find(b => String(b.id) === String(branchId))?.name || branchId}`} />
-                )}
+                <Chip size="small" sx={{ mt: 0.5, fontSize: '0.72rem' }}
+                  label={`Compras para: ${(branchId === '' || branchId === null)
+                    ? (mainBranch?.name || 'Negocio principal')
+                    : (secundarias.find(b => String(b.realId || b.id) === String(branchId))?.name || branchId)
+                    }`} />
                 {/* Mensaje de error cuando intentan subir sin sucursal */}
                 {branchError && (
                   <Alert severity="warning" sx={{ mt: 1 }} onClose={() => setBranchError(false)}>
@@ -381,15 +381,14 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
 
                 <Box
                   sx={{
-                    border: `2px dashed ${tieneSucursales && !branchId ? '#bdbdbd' : themeColors.primary}`,
+                    border: `2px dashed ${themeColors.primary}`,
                     borderRadius: 2,
                     p: 5,
                     textAlign: 'center',
-                    cursor: tieneSucursales && !branchId ? 'not-allowed' : 'pointer',
-                    backgroundColor: tieneSucursales && !branchId ? '#f5f5f5' : `${themeColors.primary}08`,
+                    cursor: 'pointer',
+                    backgroundColor: `${themeColors.primary}08`,
                     transition: 'all 0.3s',
-                    opacity: tieneSucursales && !branchId ? 0.6 : 1,
-                    '&:hover': tieneSucursales && !branchId ? {} : {
+                    '&:hover': {
                       borderColor: themeColors.primary,
                       backgroundColor: `${themeColors.primary}15`,
                       transform: 'scale(1.01)',
@@ -400,24 +399,22 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                   <CloudUploadIcon
                     sx={{
                       fontSize: 64,
-                      color: tieneSucursales && !branchId ? '#bdbdbd' : themeColors.primary,
+                      color: themeColors.primary,
                       mb: 2,
                     }}
                   />
                   <Typography
                     variant="h6"
-                    sx={{ color: tieneSucursales && !branchId ? 'text.disabled' : themeColors.primary }}
+                    sx={{ color: themeColors.primary }}
                     gutterBottom
                     fontWeight="medium"
                   >
-                    {tieneSucursales && !branchId ? 'Primero seleccioná una sucursal' : 'Seleccioná tu archivo'}
+                    Seleccioná tu archivo
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {tieneSucursales && !branchId
-                      ? 'Es necesario indicar la sucursal antes de subir el archivo'
-                      : 'Arrastrá y soltá o hacé clic para seleccionar'}
+                    Arrastrá y soltá o hacé clic para seleccionar
                   </Typography>
-                  {(!tieneSucursales || branchId) && (
+                  {true && (
                     <>
                       <Typography variant="caption" color="text.secondary" display="block">
                         Formatos: CSV, XLS, XLSX
@@ -432,13 +429,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                     type="file"
                     accept=".csv,.xls,.xlsx"
                     style={{ display: 'none' }}
-                    onChange={(e) => {
-                      if (tieneSucursales && !branchId) {
-                        setBranchError(true);
-                        return;
-                      }
-                      handleFileChange(e);
-                    }}
+                    onChange={(e) => { handleFileChange(e); }}
                   />
                 </Box>
               </>
@@ -581,13 +572,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                 Cancelar
               </Button>
               <Button
-                onClick={() => {
-                  if (tieneSucursales && !branchId) {
-                    setBranchError(true);
-                    return;
-                  }
-                  handleUpload();
-                }}
+                onClick={handleUpload}
                 disabled={!file || uploading}
                 variant="contained"
                 startIcon={uploading ? null : <CloudUploadIcon />}

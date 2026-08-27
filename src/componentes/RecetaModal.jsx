@@ -59,6 +59,7 @@ import {
   insumoMermaDelete,
   insumoDesperdicioOverride,
   insumoReemplazarPreview,
+  insumoUsoList,
   insumoReemplazar,
   insumoUpdate,
   insumoComprasList,
@@ -230,7 +231,9 @@ function calcCostoUnitarioElaborado(elaborado, unidadItem, unidadElegida, tipoCo
 function getAlertaColor(ultimaCompra, alertaSemanas, esElaborado = false) {
   // Los insumos elaborados no se compran, tienen receta. No aplica alerta.
   if (esElaborado) return null;
-  if (!ultimaCompra) return alertaSemanas ? '#fef2f2' : null;
+  // Insumo que nunca tuvo compras: no es una alerta útil ("hace mucho que no comprás"
+  // no aplica si nunca se compró). La referencia de precio se maneja aparte.
+  if (!ultimaCompra) return null;
   const d = new Date(ultimaCompra);
   if (isNaN(d)) return alertaSemanas ? '#fef2f2' : null;
   const semanas = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 7);
@@ -2553,7 +2556,7 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
   const [error, setError] = useState('');
   const [nuevo, setNuevo] = useState({ nombre: '', peso_inicial: '', peso_final: '' });
   const [guardando, setGuardando] = useState(false);
-    const [globalPct, setGlobalPct] = useState(Number(desperdicioGlobalPct) || 0);
+  const [globalPct, setGlobalPct] = useState(Number(desperdicioGlobalPct) || 0);
   // Reflejar el global del negocio cuando cambia (config u otra edición)
   useEffect(() => { setGlobalPct(Number(desperdicioGlobalPct) || 0); }, [desperdicioGlobalPct]);
 
@@ -2657,7 +2660,7 @@ function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct
 
       {/* Header columnas */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
-                {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', `Precio c/merma`, ''].map((h, i) => (
+        {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', `Precio c/merma`, ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left') }}>{h}</Typography>
         ))}
       </Box>
@@ -3250,6 +3253,88 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
 }
 
 /* ════════════════════════════════════════
+   TAB USO — recetas donde se usa el insumo (solo lectura)
+════════════════════════════════════════ */
+function TabUsoInsumo({ insumoId, businessId, insumoData }) {
+  const [uso, setUso] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!insumoId || !businessId) return;
+    setLoading(true);
+    insumoUsoList(insumoId, businessId)
+      .then(r => setUso(Array.isArray(r?.uso) ? r.uso : []))
+      .catch(() => setUso([]))
+      .finally(() => setLoading(false));
+  }, [insumoId, businessId]);
+
+  const unidadBase = insumoData?.unidad_med || insumoData?.medida || 'u';
+
+  return (
+    <Box sx={{ py: 1 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        Recetas donde se usa <b>{insumoData?.nombre || 'este insumo'}</b>
+        {uso.length > 0 && ` · ${uso.length} ${uso.length === 1 ? 'receta' : 'recetas'}`}
+      </Typography>
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress size={28} />
+        </Box>
+      ) : uso.length === 0 ? (
+        <Box sx={{ py: 4, textAlign: 'center', color: 'text.disabled' }}>
+          <Typography variant="body2">Este insumo no se usa en ninguna receta todavía.</Typography>
+        </Box>
+      ) : (
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
+          {/* Header */}
+          <Box sx={{
+            display: 'grid', gridTemplateColumns: '90px 1fr 130px 140px', gap: 1,
+            px: 1.5, py: 1, bgcolor: `${PRIMARY}0d`, borderBottom: '1px solid', borderColor: 'divider',
+            fontWeight: 700, fontSize: '0.75rem', color: PRIMARY,
+          }}>
+            <div>Código art.</div>
+            <div>Nombre</div>
+            <div style={{ textAlign: 'right' }}>Cantidad</div>
+            <div>Merma</div>
+          </Box>
+          {/* Filas */}
+          {uso.map((u, i) => (
+            <Box key={u.item_id ?? i} sx={{
+              display: 'grid', gridTemplateColumns: '90px 1fr 130px 140px', gap: 1,
+              px: 1.5, py: 1, alignItems: 'center',
+              borderBottom: i < uso.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
+              fontSize: '0.82rem',
+              '&:hover': { bgcolor: '#f8fafc' },
+            }}>
+              <div style={{ color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                {u.codigo || '—'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                {u.es_elaborado && (
+                  <span title="Insumo elaborado" style={{ color: '#6366f1', fontSize: '0.7rem', flexShrink: 0 }}>●</span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {u.nombre}
+                </span>
+              </div>
+              <div style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                {Number(u.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {u.unidad || unidadBase}
+              </div>
+              <div style={{ color: u.aplica_merma ? '#0891b2' : '#94a3b8', fontSize: '0.78rem' }}>
+                {u.merma_nombre
+                  ? u.merma_nombre
+                  : (u.aplica_merma ? 'Sí (global)' : 'No')}
+              </div>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+/* ════════════════════════════════════════
    SELECTOR PREVIO (4 opciones al abrir un insumo)
 ════════════════════════════════════════ */
 function SelectorInsumo({ nombre, insumoId, onElegir }) {
@@ -3447,13 +3532,16 @@ export default function RecetaModal({
   }, [globalConfigObjetivo, esElaborado]);
 
   // Cuando cambia costoObjetivoExterno desde la tabla, aplicarlo inmediatamente
+  // Inicializa el objetivo mostrado con el externo SOLO al abrir el modal.
+  // Después, los cambios en la receta mandan (no re-pisar con el externo viejo).
   useEffect(() => {
     if (!open) return;
     if (esElaborado) return;
     if (costoObjetivoExterno != null) {
       setPctCostoIdeal(Number(costoObjetivoExterno));
+      costoObjetivoExternoRef.current = Number(costoObjetivoExterno);
     }
-  }, [costoObjetivoExterno, open, esElaborado]);
+  }, [open, esElaborado]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Cargar gemelos al abrir + función reutilizable ── */
   const loadGemelosGroup = useCallback(() => {
@@ -4738,13 +4826,14 @@ export default function RecetaModal({
                 </IconButton>
               )}
             </Stack>
-            {modoInsumo && (
+            {modoInsumo && entradaElegida && (
               <Stack direction="row" spacing={0.5} sx={{ alignSelf: 'flex-end' }}>
                 {[
                   { id: 'merma', label: 'MERMA' },
                   { id: 'receta', label: 'RECETA' },
                   { id: 'compras', label: 'COMPRAS' },
                   { id: 'equivalencias', label: 'EQUIVALENCIAS' },
+                  { id: 'uso', label: 'USO' },
                 ].map(t => (
                   <Box
                     key={t.id}
@@ -4853,6 +4942,12 @@ export default function RecetaModal({
                   unidadPeso: unidadPeso || 'gr',
                   rendimientoUnidad,
                 }}
+              />
+            ) : modoInsumo && tab === 'uso' ? (
+              <TabUsoInsumo
+                insumoId={articulo?.id}
+                businessId={businessId}
+                insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
               />
             ) : (() => {
               // Cartel de advertencia: insumo con compras que aún no tiene receta
@@ -5101,11 +5196,15 @@ export default function RecetaModal({
                           onBlur={(e) => {
                             const val = Number(e.target.value) || 0;
                             if (!val || !articulo?.id) return;
+                            // Sincronizar el ref del externo: el cambio en la receta
+                            // pasa a ser la verdad, así resolveObjetivo no lo pisa con el viejo.
+                            costoObjetivoExternoRef.current = val;
                             onPriceConfigSave?.({
                               scope: 'articulo',
                               scopeId: String(articulo.id),
                               objetivo: val,
                             });
+                            try { window.dispatchEvent(new CustomEvent('objetivo:changed', { detail: { articleId: articulo.id, objetivo: val } })); } catch { }
                           }}
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
@@ -5642,16 +5741,16 @@ export default function RecetaModal({
                         size="small"
                         onChange={(_, val) => setPctCostoIdeal(val)}
                         onChangeCommitted={(_, val) => {
-                          // Mismo comportamiento que el campo "Costo Objetivo" de arriba:
-                          // guarda el objetivo individual. En insumo, además se persiste
-                          // como porcentaje_venta al Guardar la receta.
+                          // Mismo comportamiento que el campo "Costo Objetivo" de arriba.
                           const num = Number(val) || 0;
                           if (!num || !articulo?.id) return;
+                          costoObjetivoExternoRef.current = num;
                           onPriceConfigSave?.({
                             scope: 'articulo',
                             scopeId: String(articulo.id),
                             objetivo: num,
                           });
+                          try { window.dispatchEvent(new CustomEvent('objetivo:changed', { detail: { articleId: articulo.id, objetivo: num } })); } catch { }
                         }}
                         sx={{ mt: 0.5, py: 0.5 }}
                       />

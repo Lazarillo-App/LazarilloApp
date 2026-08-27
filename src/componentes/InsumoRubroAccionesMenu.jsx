@@ -515,6 +515,7 @@ export default function InsumoRubroAccionesMenu({
             label="Nombre"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
             helperText="Afectará a todos los insumos con este rubro"
           />

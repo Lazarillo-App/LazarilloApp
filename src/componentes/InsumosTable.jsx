@@ -348,7 +348,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   // ── Drag-and-drop de columnas reordenables ──
   // Columnas fijas (no se mueven): Código, Nombre, Unidad, Precio, [Branches dinámicas], Acciones
   const REORDERABLE_COLS_NO_ELAB = [
-    { id: 'desperdicio', label: '% Desperdicio', width: '.7fr', sortKey: 'desperdicio' },
+    { id: 'desperdicio', label: '% desperdicio default', width: '.7fr', sortKey: 'desperdicio' },
     { id: 'enRecetas', label: 'Existe en Recetas', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.7fr', sortKey: 'total' },
     { id: 'compras', label: 'Compras', width: '.65fr', sortKey: 'total_compras' },
@@ -487,11 +487,13 @@ const InsumosTable = forwardRef(function InsumosTable({
       case "unidades":
         return r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? null;
       case "gastos": {
-        // Precio con merma default: precio mostrado × (1 + % desperdicio del insumo).
+        // Precio con merma default: precio × (1 + override de desperdicio del insumo).
+        // Solo si el insumo tiene override propio; si no, null → rayita (no repetir el costo).
+        const override = num(r.desperdicio_pct_override ?? 0);
+        if (!(override > 0)) return null;
         const precio = num(getDisplayedPrice(r));
         if (!(precio > 0)) return null;
-        const desp = num(r.desperdicio ?? r.pct_desperdicio ?? 0);
-        return precio * (1 + desp / 100);
+        return precio * (1 + override / 100);
       }
       case "ratio":
         return r.ratio_ventas ?? r.ratio ?? r.relacion_ventas ?? null;
@@ -708,7 +710,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     };
   }, [isAgrupEspecifica, selectedGroupId, groups, rows, comprasMap, comprasMapByBranch, branches]);
 
- const flatRows = useMemo(() => {
+  const flatRows = useMemo(() => {
     const out = [];
 
     // Header de agrupación: solo cuando hay agrupación específica + insumos visibles
@@ -928,7 +930,7 @@ const InsumosTable = forwardRef(function InsumosTable({
               if (col.id === 'desperdicio') {
                 return (
                   <div key="desperdicio" {...dragProps} onClick={() => toggleSort("desperdicio")} className="col-sortable" style={dragStyle}>
-                    % Desperdicio {sortIcon("desperdicio")}
+                    % desperdicio default {sortIcon("desperdicio")}
                   </div>
                 );
               }
@@ -1189,24 +1191,39 @@ const InsumosTable = forwardRef(function InsumosTable({
 
                   {/* Nombre: con indicador si tiene receta cargada */}
                   <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-                    {(r.es_elaborado || r.tiene_receta) && (
-                      <span
-                        title={tieneReceta
-                          ? `Tiene receta — costo $${recetaData.costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
-                          : 'Sin receta cargada'}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
-                          fontSize: '0.65rem', fontWeight: 700,
-                          background: tieneReceta ? 'var(--color-primary, #3b82f6)' : '#e2e8f0',
-                          color: tieneReceta ? '#fff' : '#94a3b8',
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => onOpenRecetaElaborado?.(r)}
-                      >
-                        {tieneReceta ? '●' : '○'}
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 36, flexShrink: 0, justifyContent: 'flex-start' }}>
+                      {(r.es_elaborado || r.tiene_receta) && (
+                        <span
+                          title={tieneReceta
+                            ? `Tiene receta — costo $${recetaData.costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+                            : 'Sin receta cargada'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 14, flexShrink: 0, fontSize: '0.7rem', cursor: 'pointer',
+                            color: tieneReceta ? '#6366f1' : '#cbd5e1',
+                          }}
+                          onClick={() => onOpenRecetaElaborado?.(r)}
+                        >
+                          {tieneReceta ? '●' : '○'}
+                        </span>
+                      )}
+                      {(() => {
+                        const desp = num(r.desperdicio_pct_override ?? r.desperdicio ?? r.pct_desperdicio ?? 0);
+                        if (!desp) return null;
+                        return (
+                          <span
+                            title={`Merma cargada — ${desp.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                              fontSize: '1rem', lineHeight: 1, background: '#fdeaea',
+                            }}
+                          >
+                            🔻
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <span
                       onClick={() => onOpenRecetaElaborado?.(r)}
                       style={{
@@ -1276,7 +1293,14 @@ const InsumosTable = forwardRef(function InsumosTable({
                       {/* Celdas reordenables (siguiendo el orden de visibleCols) */}
                       {visibleCols.map(col => {
                         if (col.id === 'desperdicio') {
-                          return <div key="desperdicio">-</div>;
+                          const ov = num(r.desperdicio_pct_override ?? 0);
+                          return (
+                            <div key="desperdicio" style={{ textAlign: 'center' }}>
+                              {ov > 0
+                                ? <span style={{ fontWeight: 600 }}>{formatNumber(ov, 1)}%</span>
+                                : <span style={{ color: '#94a3b8' }}>—</span>}
+                            </div>
+                          );
                         }
                         if (col.id === 'enRecetas') {
                           const n = Number(r.en_recetas ?? 0);

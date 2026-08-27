@@ -266,11 +266,13 @@ export default function RubroEditModal({
             <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>
               Nombre del {esRubro ? 'rubro' : 'subrubro'}
             </Typography>
-           <TextField
+            <TextField
+              autoFocus
               size="small"
               fullWidth
               value={nombreEdit}
               onChange={e => setNombreEdit(e.target.value)}
+              onFocus={e => e.target.select()}
               helperText="Se aplica al guardar"
             />
           </Box>
@@ -308,7 +310,7 @@ export default function RubroEditModal({
             Agrega este insumo a la receta de los {articleIds.length} artículo(s). Los que ya lo tengan se saltean.
           </Typography>
 
-         {insumoSel ? (
+          {insumoSel ? (
             <Box sx={{ mb: 1, p: 1, borderRadius: 1, bgcolor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>{insumoSel.nombre}</Typography>

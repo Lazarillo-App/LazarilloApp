@@ -482,11 +482,12 @@ function InsumoAccionesMenu({
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del insumo</DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
-          <TextField
+                    <TextField
             autoFocus fullWidth size="small"
             label="Nombre"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
           />
         </DialogContent>

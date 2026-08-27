@@ -127,18 +127,25 @@ function BarraRentabilidad({ costoPct, objetivo, supera, individual, onFijar }) 
   const markPct = Math.min(objetivo / RENT_ESCALA_MAX, 1) * 100;
   const verde = '#57BB7F', verdeInk = '#16a34a';
   const rojo = '#DF6B60', rojoInk = '#dc2626';
+  const naranja = '#f3ad33', naranjaInk = '#f3ad33';
   // Objetivo propuesto: techo del costo% actual, sin decimales (spec §6)
   const propuesto = Math.ceil(costoPct - 1e-9);
   const cambia = propuesto !== objetivo && propuesto > 0;
+  // Cuando el costo% supera el objetivo pero cae en la MISMA decena (ej: objetivo 45,
+  // costo 47 → ambos en los 40s), es un exceso leve → naranja en vez de rojo.
+  const mismaDecena = Math.floor(costoPct / 10) === Math.floor(objetivo / 10);
+  const excesoLeve = supera && mismaDecena;
+  const barColor = supera ? (excesoLeve ? naranja : rojo) : verde;
+  const inkColor = supera ? (excesoLeve ? naranjaInk : rojoInk) : verdeInk;
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      <span style={{ fontWeight: 700, fontSize: '0.82rem', color: supera ? rojoInk : verdeInk, fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontWeight: 700, fontSize: '0.82rem', color: inkColor, fontVariantNumeric: 'tabular-nums' }}>
         {fmt(costoPct, 1)}%
       </span>
       <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 0 ${RENT_BAR_W}px` }}>
         <span style={{
           position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4,
-          width: `${fillPct}%`, background: supera ? rojo : verde, transition: 'width .25s ease, background .25s ease'
+          width: `${fillPct}%`, background: barColor, transition: 'width .25s ease, background .25s ease'
         }} />
         <span style={{
           position: 'absolute', top: -3, width: 2, height: 13, background: '#4A555F', borderRadius: 1,
@@ -350,6 +357,17 @@ export default function TablaArticulos({
     };
     window.addEventListener('articulos:clear-local-objetivos', onClearLocal);
     return () => window.removeEventListener('articulos:clear-local-objetivos', onClearLocal);
+  }, []);
+
+  // Objetivo cambiado desde la receta (u otro lado): reflejarlo en la barra de la tabla
+  useEffect(() => {
+    const onObjetivoChanged = (e) => {
+      const { articleId, objetivo } = e.detail || {};
+      if (articleId == null || objetivo == null) return;
+      setObjetivos(prev => ({ ...prev, [String(articleId)]: Number(objetivo) }));
+    };
+    window.addEventListener('objetivo:changed', onObjetivoChanged);
+    return () => window.removeEventListener('objetivo:changed', onObjetivoChanged);
   }, []);
 
   const [manualesIndividuales, setManualesIndividuales] = useState(new Set());
@@ -901,7 +919,12 @@ export default function TablaArticulos({
       return globalCostoIdeal;
     })();
     switch (sortBy) {
-      case "ventas": { const idNum = Number(id); if (!Number.isFinite(idNum)) return 0; return getVentasAmount(idNum); }
+      case "ventas": {
+        const idNum = Number(id);
+        if (!Number.isFinite(idNum)) return 0;
+        // Ordenar según lo que se está mostrando: unidades (U) o pesos ($)
+        return ventasVista === 'U' ? getVentasQty(idNum) : getVentasAmount(idNum);
+      }
       case "ventasQty": { const idNum = Number(id); if (!Number.isFinite(idNum)) return 0; const venta = getVentaForId(idNum); const precio = toNum(baseById?.get?.(idNum)?.precio ?? 0); return normalizeVenta(venta, precio).qty; }
       case "codigo": return id;
       case "nombre": return a?.nombre ?? "";
@@ -914,7 +937,7 @@ export default function TablaArticulos({
       case "manual": return num(manuales[id]) || 0;
       default: return null;
     }
-  }, [sortBy, objetivos, manuales, getVentasAmount, getVentaForId, baseById, recetasCostos, priceConfig, globalCostoIdeal]);
+  }, [sortBy, objetivos, manuales, getVentasAmount, getVentasQty, ventasVista, getVentaForId, baseById, recetasCostos, priceConfig, globalCostoIdeal]);
 
   const cmp = useCallback((a, b) => {
     if (!sortBy) return 0;
