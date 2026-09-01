@@ -794,6 +794,13 @@ export const insumoUsoList = async (insumoId, bizId) => {
   return data;
 };
 
+export const insumoGet = async (id, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${id}`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+  return data;
+};
+
 export const insumoMermaCreate = async (insumoId, payload, bizId) => {
   const res = await fetch(`${BASE}/insumos/${insumoId}/mermas`, { method: 'POST', headers: authHeaders(bizId), body: JSON.stringify(payload) });
   const data = await res.json().catch(() => null);
@@ -829,9 +836,11 @@ export const insumoReemplazarPreview = async (insumoId, bizId) => {
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al calcular preview');
   return data;
 };
-export const insumoReemplazar = async (insumoId, nuevoInsumoId, bizId) => {
+export const insumoReemplazar = async (insumoId, nuevoInsumoId, bizId, recetaIds = null) => {
   const res = await fetch(`${BASE}/insumos/${insumoId}/reemplazar`, {
-    method: 'POST', headers: authHeaders(bizId), body: JSON.stringify({ nuevoInsumoId })
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify(recetaIds ? { nuevoInsumoId, recetaIds } : { nuevoInsumoId })
   });
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al reemplazar');

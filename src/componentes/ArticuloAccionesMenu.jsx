@@ -257,6 +257,7 @@ function ArticuloAccionesMenu({
   priceLists = [],
   priceListsByList = {},
   rubrosDisponibles = [],
+    accionesOcultas = [],
 }) {
   // ── Estado UI ──────────────────────────────────────────────────────────────
   const [anchorEl, setAnchorEl] = useState(null);
@@ -788,6 +789,10 @@ function ArticuloAccionesMenu({
     [priceLists]
   );
 
+    // Acciones que el contexto de uso decide no mostrar (la carta oculta
+  // "Quitar de esta agrupación" y "Crear promoción").
+  const ocultas = useMemo(() => new Set(accionesOcultas || []), [accionesOcultas]);
+
   return (
     <>
       <IconButton size="small" onClick={handleOpen}>
@@ -803,7 +808,7 @@ function ArticuloAccionesMenu({
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a otro rubro…</ListItemText>
         </MenuItem>
-        {!esPromo && (
+        {!esPromo && !ocultas.has('crearPromo') && (
           <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
             <ListItemText>Crear promoción</ListItemText>
@@ -813,10 +818,12 @@ function ArticuloAccionesMenu({
           <ListItemIcon>{isInDiscontinuados ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}</ListItemIcon>
           <ListItemText>{isInDiscontinuados ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
         </MenuItem>
-        <MenuItem onClick={quitarDeActual} disabled={isTodo}>
-          <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}</ListItemText>
-        </MenuItem>
+        {!ocultas.has('quitarDeAgrupacion') && (
+          <MenuItem onClick={quitarDeActual} disabled={isTodo}>
+            <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>{isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a…</ListItemText>

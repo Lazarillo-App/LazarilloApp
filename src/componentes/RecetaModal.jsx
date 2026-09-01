@@ -50,6 +50,7 @@ import { getReceta, saveReceta } from '@/servicios/apiOrganizations';
 import {
   insumosList,
   insumoEquivalenciasList,
+  insumoGet,
   insumoEquivalenciaCreate,
   insumoEquivalenciaUpdate,
   insumoEquivalenciaDelete,
@@ -126,10 +127,27 @@ function normUnit(u) {
   return String(u || 'u').toLowerCase().trim();
 }
 
-const MAXI_UNIT_MAP = { k: 'kg', g: 'gr', l: 'lt', cc: 'ml' };
+// Mapa de variantes → unidad canónica. Cubre lo que viene de MaxiRest y cargas manuales
+// (mayúsculas, plurales, abreviaturas). Cualquier variante no listada se trata como
+// unidad discreta (se devuelve tal cual, sin romper la familia).
+const UNIT_ALIASES = {
+  // peso → gr
+  g: 'gr', gr: 'gr', grs: 'gr', gramo: 'gr', gramos: 'gr',
+  // peso → kg
+  k: 'kg', kg: 'kg', kgs: 'kg', kilo: 'kg', kilos: 'kg', kilogramo: 'kg', kilogramos: 'kg',
+  // volumen → ml
+  ml: 'ml', mls: 'ml', cc: 'ml', mililitro: 'ml', mililitros: 'ml',
+  // volumen → lt
+  l: 'lt', lt: 'lt', lts: 'lt', litro: 'lt', litros: 'lt',
+  // unidad → u
+  u: 'u', un: 'u', uni: 'u', unid: 'u', unidad: 'u', unidades: 'u', und: 'u',
+  doc: 'u', docena: 'u',
+  // otras de peso
+  oz: 'oz', onza: 'oz', onzas: 'oz', lb: 'lb', libra: 'lb', libras: 'lb',
+};
 function canonicalUnit(u) {
   const n = normUnit(u);
-  return MAXI_UNIT_MAP[n] || n;
+  return UNIT_ALIASES[n] || n;
 }
 
 // Devuelve las unidades válidas para elegir en la receta según la unidad base del insumo.
@@ -1584,7 +1602,7 @@ function ItemRow({
         const def = mermas.find(m => m.es_default);
         onChange(index, {
           mermas,
-          mermaId: def ? def.id : null,            // preselecciona la default
+          mermaIds: def ? [def.id] : [],           // preselecciona la default
           desperdicioPct: ins.desperdicio_pct_override != null ? Number(ins.desperdicio_pct_override) : null,
         });
       })
@@ -1614,10 +1632,17 @@ function ItemRow({
     if (item.esArticulo || item.articleRefId) return 1;
     const pctGlobal = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
     const fGlobal = 1 + (pctGlobal / 100);
-    const m = (item.mermas || []).find(x => Number(x.id) === Number(item.mermaId));
-    const fEspecifica = (m && Number(m.peso_final) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+    // Las mermas específicas se apilan multiplicativamente (pelado × cocción × …)
+    const ids = Array.isArray(item.mermaIds)
+      ? item.mermaIds
+      : (item.mermaId != null ? [item.mermaId] : []);
+    const fEspecifica = ids.reduce((acc, id) => {
+      const m = (item.mermas || []).find(x => Number(x.id) === Number(id));
+      if (!m || !(Number(m.peso_final) > 0)) return acc;
+      return acc * (Number(m.peso_inicial) / Number(m.peso_final));
+    }, 1);
     return fGlobal * fEspecifica;
-  }, [item.desperdicioPct, item.mermas, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId]);
+  }, [item.desperdicioPct, item.mermas, item.mermaIds, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId]);
 
   /**
    * Precio por unidad elegida, considerando:
@@ -2192,7 +2217,10 @@ function ItemRow({
             } else {
               unidadesValidas = unidadesParaInsumo(insData || { unidad_med: item.supplyMedida });
             }
-            const base = item.supplyMedida && !unidadesValidas.includes(canonicalUnit(item.supplyMedida))
+            // Para elaborados, las unidades salen de su rendimiento (ya en unidadesValidas):
+            // NO agregar su unidad_med base cruda, que no aplica a un elaborado por porción.
+            // Para insumos normales sí se agrega su unidad de compra si falta.
+            const base = (!elabDataOpc && item.supplyMedida && !unidadesValidas.includes(canonicalUnit(item.supplyMedida)))
               ? [item.supplyMedida] : [];
             const eqs = (item.equivalencias || []).map(e => e.nombre);
             const opciones = [...unidadesValidas, ...base, ...eqs];
@@ -2324,15 +2352,34 @@ function ItemRow({
             <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>Merma:</Typography>
             <Select
               size="small"
-              value={item.mermaId ?? 'no'}
-              onChange={e => onChange(index, { mermaId: e.target.value === 'no' ? null : Number(e.target.value) })}
-              sx={{ fontSize: '0.75rem', minWidth: 110, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
+              multiple
+              displayEmpty
+              value={Array.isArray(item.mermaIds) ? item.mermaIds : (item.mermaId != null ? [item.mermaId] : [])}
+              onChange={e => {
+                const v = e.target.value;
+                onChange(index, { mermaIds: (typeof v === 'string' ? v.split(',') : v).map(Number) });
+              }}
+              renderValue={(sel) => {
+                if (!sel || sel.length === 0) return 'No';
+                const factor = sel.reduce((acc, id) => {
+                  const m = (item.mermas || []).find(x => Number(x.id) === Number(id));
+                  if (!m || !(Number(m.peso_final) > 0)) return acc;
+                  return acc * (Number(m.peso_inicial) / Number(m.peso_final));
+                }, 1);
+                const nombres = sel
+                  .map(id => (item.mermas || []).find(x => Number(x.id) === Number(id))?.nombre)
+                  .filter(Boolean)
+                  .join(' + ');
+                return `${nombres} (×${factor.toFixed(2)})`;
+              }}
+              sx={{ fontSize: '0.75rem', minWidth: 140, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
             >
-              <MenuItem value="no" sx={{ fontSize: '0.78rem' }}>No</MenuItem>
               {(item.mermas || []).map(m => {
                 const factor = Number(m.peso_final) > 0 ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+                const sel = Array.isArray(item.mermaIds) ? item.mermaIds : [];
                 return (
                   <MenuItem key={m.id} value={Number(m.id)} sx={{ fontSize: '0.78rem' }}>
+                    <Checkbox size="small" checked={sel.some(x => Number(x) === Number(m.id))} sx={{ p: 0.25, mr: 0.5 }} />
                     {m.nombre} (×{factor.toFixed(2)})
                   </MenuItem>
                 );
@@ -2412,36 +2459,58 @@ function ItemRow({
    TABS NUEVAS PARA INSUMOS (andamiaje inicial)
    TODO: reemplazar por implementación real
 ════════════════════════════════════════ */
-function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [], onClose, onReemplazado }) {
+function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [], alertaSemanas, onClose, onReemplazado }) {
   const [search, setSearch] = useState('');
   const [seleccionado, setSeleccionado] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [excluidas, setExcluidas] = useState(() => new Set());   // recetaIds destildadas
   const [confirmando, setConfirmando] = useState(false);
   const [ejecutando, setEjecutando] = useState(false);
   const [error, setError] = useState('');
 
-  // Cargar conteo de recetas al abrir
+  // Cargar recetas afectadas al abrir
   useEffect(() => {
     if (!insumoId || !businessId) return;
     insumoReemplazarPreview(insumoId, businessId)
-      .then(r => setPreview({ recetas: r.recetas, items: r.items }))
-      .catch(() => setPreview({ recetas: 0, items: 0 }));
+      .then(r => setPreview({
+        recetas: r.recetas, items: r.items, negocios: r.negocios,
+        detalle: Array.isArray(r.detalle) ? r.detalle : [],
+      }))
+      .catch(() => setPreview({ recetas: 0, items: 0, negocios: 0, detalle: [] }));
   }, [insumoId, businessId]);
 
   const filtrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    return insumos
-      .filter(i => Number(i.id) !== Number(insumoId))
-      .filter(i => i.nombre?.toLowerCase().includes(q) || String(i.codigo_maxi || '').includes(q))
-      .slice(0, 20);
+    // Mismas reglas que el buscador de ingredientes.
+    return ordenarInsumosBusqueda(
+      insumos
+        .filter(i => Number(i.id) !== Number(insumoId))
+        .filter(i => (i.nombre || '').toLowerCase().includes(q) || String(i.codigo_maxi || '').includes(q))
+    ).slice(0, 20);
   }, [insumos, search, insumoId]);
 
+  const detalle = preview?.detalle || [];
+  const multiNegocio = useMemo(() => new Set(detalle.map(d => d.businessId)).size > 1, [detalle]);
+  const recetaIdsElegidos = useMemo(
+    () => detalle.map(d => d.recetaId).filter(id => !excluidas.has(id)),
+    [detalle, excluidas]
+  );
+  const totalElegidas = recetaIdsElegidos.length;
+
+  const toggleReceta = (rid) => setExcluidas(prev => {
+    const nx = new Set(prev);
+    if (nx.has(rid)) nx.delete(rid); else nx.add(rid);
+    return nx;
+  });
+
   const ejecutar = async () => {
-    if (!seleccionado) return;
+    if (!seleccionado || !totalElegidas) return;
     setEjecutando(true); setError('');
     try {
-      const r = await insumoReemplazar(insumoId, seleccionado.id, businessId);
+      // Si están todas tildadas no mandamos filtro: el back se comporta como antes.
+      const recetaIds = totalElegidas === detalle.length ? null : recetaIdsElegidos;
+      const r = await insumoReemplazar(insumoId, seleccionado.id, businessId, recetaIds);
       onReemplazado?.(r);
     } catch (e) {
       setError(e.message || 'No se pudo reemplazar');
@@ -2487,35 +2556,80 @@ function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [
                 {!seleccionado && filtrados.length > 0 && (
                   <Box sx={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 240, overflowY: 'auto' }}>
                     {filtrados.map(ins => (
-                      <Box key={ins.id}
+                      <FilaResultadoInsumo
+                        key={ins.id}
+                        ins={ins}
+                        alertaSemanas={alertaSemanas}
                         onClick={() => { setSeleccionado(ins); setSearch(''); }}
-                        sx={{ px: 1.5, py: 0.75, cursor: 'pointer', borderBottom: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'action.hover' } }}>
-                        <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.82rem' }}>{ins.nombre}</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          {ins.codigo_maxi ? `Cód: ${ins.codigo_maxi} · ` : ''}{ins.unidad_med || 'u'}
-                          {Number(ins.precio_ref) > 0 ? ` · $${fmt(ins.precio_ref)}` : ''}
-                        </Typography>
-                      </Box>
+                      />
                     ))}
                   </Box>
                 )}
               </Box>
 
-              {/* Aviso con conteo */}
-              <Box sx={{ bgcolor: '#fff8ec', border: '1px solid #f0c98a', borderRadius: 1.5, px: 2, py: 1.25 }}>
-                <Typography variant="caption" sx={{ fontSize: '0.78rem', color: '#7a5200', lineHeight: 1.5 }}>
-                  {preview == null ? 'Calculando en cuántas recetas se usa…' : preview.recetas === 0 ? (
-                    'Este insumo no se usa en ninguna receta.'
-                  ) : (
-                    <>Este insumo aparece en <b style={{ color: '#b26a00' }}>{preview.recetas} receta{preview.recetas !== 1 ? 's' : ''}</b>{preview.negocios > 1 ? <> de <b style={{ color: '#b26a00' }}>{preview.negocios} negocios</b> de tu organización</> : ''}. El reemplazo se aplica a todas y los costos se recalculan. <b>Esta acción no se puede deshacer.</b></>
-                  )}
-                </Typography>
-              </Box>
+              {/* Recetas afectadas — destildá las que no querés tocar */}
+              {preview == null ? (
+                <Typography variant="caption" color="text.secondary">Buscando recetas…</Typography>
+              ) : detalle.length === 0 ? (
+                <Box sx={{ bgcolor: '#fff8ec', border: '1px solid #f0c98a', borderRadius: 1.5, px: 2, py: 1.25 }}>
+                  <Typography variant="caption" sx={{ fontSize: '0.78rem', color: '#7a5200' }}>
+                    Este insumo no se usa en ninguna receta.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                      Recetas afectadas ({totalElegidas} de {detalle.length})
+                    </Typography>
+                    <Box>
+                      <Button size="small" sx={{ minWidth: 0, fontSize: '0.7rem', px: 0.75 }}
+                        onClick={() => setExcluidas(new Set())}>Todas</Button>
+                      <Button size="small" sx={{ minWidth: 0, fontSize: '0.7rem', px: 0.75 }}
+                        onClick={() => setExcluidas(new Set(detalle.map(d => d.recetaId)))}>Ninguna</Button>
+                    </Box>
+                  </Box>
+                  <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, maxHeight: 220, overflowY: 'auto' }}>
+                    {detalle.map(d => {
+                      const incluida = !excluidas.has(d.recetaId);
+                      const cant = d.items.map(it => `${fmt(it.cantidad)} ${it.unidad || ''}`.trim()).join(' + ');
+                      return (
+                        <Box key={d.recetaId}
+                          onClick={() => toggleReceta(d.recetaId)}
+                          sx={{
+                            display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5, cursor: 'pointer',
+                            borderBottom: '1px solid', borderColor: 'divider',
+                            opacity: incluida ? 1 : 0.5,
+                            '&:hover': { bgcolor: 'action.hover' },
+                          }}>
+                          <Checkbox size="small" checked={incluida} sx={{ p: 0.25 }} />
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography variant="body2" noWrap sx={{
+                              fontSize: '0.8rem', fontWeight: 600,
+                              textDecoration: incluida ? 'none' : 'line-through',
+                            }}>
+                              {d.titulo}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                              {cant}
+                              {d.esElaborado ? ' · Elaborado' : ''}
+                              {multiNegocio ? ` · Negocio #${d.businessId}` : ''}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.75, fontSize: '0.72rem', color: '#7a5200' }}>
+                    Los costos se recalculan en las recetas tildadas. <b>Esta acción no se puede deshacer.</b>
+                  </Typography>
+                </Box>
+              )}
 
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
                 <Button size="small" variant="contained"
-                  disabled={!seleccionado || preview == null || preview.recetas === 0}
+                  disabled={!seleccionado || preview == null || totalElegidas === 0}
                   onClick={() => setConfirmando(true)}
                   sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
                   Continuar
@@ -2527,7 +2641,9 @@ function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [
               {/* Confirmación final */}
               <Box sx={{ textAlign: 'center', py: 1 }}>
                 <Typography variant="body2" sx={{ mb: 1 }}>
-                  Vas a reemplazar <b>{insumoNombre}</b> por <b>{seleccionado.nombre}</b> en <b>{preview.recetas} receta{preview.recetas !== 1 ? 's' : ''}</b>.
+                  Vas a reemplazar <b>{insumoNombre}</b> por <b>{seleccionado.nombre}</b> en{' '}
+                  <b>{totalElegidas} receta{totalElegidas !== 1 ? 's' : ''}</b>
+                  {totalElegidas !== detalle.length && <> (de {detalle.length})</>}.
                 </Typography>
                 <Typography variant="caption" color="error" sx={{ fontWeight: 700 }}>
                   Esta acción no se puede deshacer.
@@ -2539,7 +2655,7 @@ function ModalReemplazarInsumo({ insumoId, insumoNombre, businessId, insumos = [
                   disabled={ejecutando}
                   startIcon={ejecutando ? <CircularProgress size={14} color="inherit" /> : null}
                   onClick={ejecutar}>
-                  {ejecutando ? 'Reemplazando…' : 'Sí, reemplazar en todas'}
+                  {ejecutando ? 'Reemplazando…' : `Sí, reemplazar en ${totalElegidas}`}
                 </Button>
               </Box>
             </>
@@ -2917,31 +3033,48 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
   const [nuevo, setNuevo] = useState({ nombre: '', contenido: '', unidad: '' });
   const [guardando, setGuardando] = useState(false);
   const guardandoRef = useRef(false);  // lock síncrono: evita doble disparo (onBlur + Enter/onClose)
+
+  // La prop insumoData puede llegar incompleta (sin contenido_envase) por timing de la
+  // lista del modal. Traemos el insumo fresco del backend para tener el envase real.
+  const [insumoFull, setInsumoFull] = useState(insumoData);
+  useEffect(() => {
+    if (!insumoId || !businessId) return;
+    insumoGet(insumoId, businessId)
+      .then(r => { if (r?.data) setInsumoFull(r.data); })
+      .catch(() => setInsumoFull(insumoData));
+  }, [insumoId, businessId]);
+
   const [envase, setEnvase] = useState({
-    contenido: insumoData?.contenido_envase != null ? String(insumoData.contenido_envase).replace('.', ',') : '',
-    unidad: insumoData?.unidad_envase || 'ml',
+    contenido: insumoFull?.contenido_envase != null ? String(insumoFull.contenido_envase).replace('.', ',') : '',
+    unidad: insumoFull?.unidad_envase || 'ml',
   });
-  // Re-sincronizar el envase cuando llega/cambia insumoData (el useState inicial
-  // solo corre en el primer render; sin esto, al reabrir el tab muestra el default).
+  // Re-sincronizar el envase cuando llega el insumo fresco del backend.
   useEffect(() => {
     setEnvase({
-      contenido: insumoData?.contenido_envase != null ? String(insumoData.contenido_envase).replace('.', ',') : '',
-      unidad: insumoData?.unidad_envase || 'ml',
+      contenido: insumoFull?.contenido_envase != null ? String(insumoFull.contenido_envase).replace('.', ',') : '',
+      unidad: insumoFull?.unidad_envase || 'ml',
     });
-  }, [insumoData?.contenido_envase, insumoData?.unidad_envase]);
-  const guardarEnvase = useCallback(async () => {
-    const cont = envase.contenido === '' ? null : Number(String(envase.contenido).replace(',', '.'));
+  }, [insumoFull?.contenido_envase, insumoFull?.unidad_envase]);
+
+  const guardarEnvase = useCallback(async (override = {}) => {
+    // override permite pasar el valor recién seleccionado antes de que el estado se actualice
+    // (el Select dispara guardado en el mismo ciclo que el setState, que es asíncrono).
+    const unidadFinal = override.unidad ?? envase.unidad;
+    const contenidoRaw = override.contenido ?? envase.contenido;
+    const cont = contenidoRaw === '' ? null : Number(String(contenidoRaw).replace(',', '.'));
     try {
       await insumoUpdate(insumoId, {
         contenidoEnvase: cont,
-        unidadEnvase: cont == null ? null : envase.unidad,
+        unidadEnvase: cont == null ? null : unidadFinal,
       }, businessId);
       // Reflejar el cambio en insumoData (mismo objeto de la lista `insumos` en memoria)
       // para que al remontar el tab no lea el valor viejo.
       if (insumoData) {
         insumoData.contenido_envase = cont;
-        insumoData.unidad_envase = cont == null ? null : envase.unidad;
+        insumoData.unidad_envase = cont == null ? null : unidadFinal;
       }
+      // Reflejar en el estado local para que el tab actualice sin refetch
+      setInsumoFull(prev => ({ ...(prev || {}), contenido_envase: cont, unidad_envase: cont == null ? null : unidadFinal }));
       // Avisar al resto (dropdown de unidades en ingredientes, etc.)
       try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId } })); } catch { }
     } catch (e) {
@@ -2949,8 +3082,8 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     }
   }, [envase, insumoId, businessId, insumoData]);
 
-  const precioRef = Number(insumoData?.precio_ref) || 0;
-  const unidadBase = canonicalUnit(insumoData?.unidad_med || insumoData?.medida || 'u');
+  const precioRef = Number(insumoFull?.precio_ref) || 0;
+  const unidadBase = canonicalUnit(insumoFull?.unidad_med || insumoFull?.medida || 'u');
 
   // Unidades válidas según la familia del insumo (igual que en recetas):
   // peso (gr/kg), volumen (ml/lt), o unidad. No se mezclan familias.
@@ -2966,12 +3099,12 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     if (fam === 'kg' || fam === 'gr') return ['gr', 'kg'];
     if (fam === 'lt' || fam === 'ml') return ['ml', 'lt'];
     // Insumo en unidad: la familia la hereda del contenido del envase definido arriba.
-    const famEnvase = canonicalUnit(envase?.unidad || insumoData?.unidad_envase || '');
+    const famEnvase = canonicalUnit(envase?.unidad || insumoFull?.unidad_envase || '');
     if (famEnvase === 'kg' || famEnvase === 'gr') return ['gr', 'kg'];
     if (famEnvase === 'lt' || famEnvase === 'ml') return ['ml', 'lt'];
     // Sin envase definido: todas las medibles (el usuario decide la familia al crear la equivalencia)
     return ['gr', 'kg', 'ml', 'lt'];
-  }, [unidadBase, envase?.unidad, insumoData?.unidad_envase, recetaInfo]);
+  }, [unidadBase, envase?.unidad, insumoFull?.unidad_envase, recetaInfo]);
 
   // Costo de una equivalencia: distingue elaborado (costo/rendimiento) de insumo simple (precio_ref)
   const calcCosto = useCallback((contenido, unidad) => {
@@ -2988,9 +3121,9 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     // que puede estar desactualizada hasta que se refresque el modal.
     const contEnvaseLocal = envase?.contenido !== '' && envase?.contenido != null
       ? Number(String(envase.contenido).replace(',', '.'))
-      : Number(insumoData?.contenido_envase) || 0;
+      : Number(insumoFull?.contenido_envase) || 0;
     const contEnvase = Number(contEnvaseLocal) || 0;
-    const uniEnvase = canonicalUnit(envase?.unidad || insumoData?.unidad_envase || '');
+    const uniEnvase = canonicalUnit(envase?.unidad || insumoFull?.unidad_envase || '');
     if (unidadBase === 'u' && contEnvase > 0 && uniEnvase) {
       if (!precioRef) return 0;
       const costoPorUnidadEnvase = precioRef / contEnvase;               // ej. $8215/750ml = $10,95/ml
@@ -3001,7 +3134,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
     if (!precioRef) return 0;
     const factor = getConversionFactor(canonicalUnit(unidad), unidadBase);
     return Number(contenido) * factor * precioRef;
-  }, [precioRef, unidadBase, recetaInfo, insumoData, envase]);
+  }, [precioRef, unidadBase, recetaInfo, insumoFull, envase]);
 
   const cargar = useCallback(() => {
     if (!insumoId || !businessId) return;
@@ -3108,7 +3241,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
         return null;
       })()}
       {/* Contenido del envase: solo para insumos comprados en unidad (no medibles) */}
-      {unidadBase === 'u' && !insumoData?.es_elaborado && (
+      {unidadBase === 'u' && !insumoFull?.es_elaborado && (
         <Box sx={{
           mb: 2, p: 1.5, borderRadius: 1.5,
           border: '1px solid', borderColor: 'divider', bgcolor: `${PRIMARY}06`,
@@ -3127,7 +3260,7 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
               size="small"
               value={envase.contenido}
               onChange={e => setEnvase(v => ({ ...v, contenido: sanitizeDecimal(e.target.value) }))}
-              onBlur={guardarEnvase}
+              onBlur={() => guardarEnvase()}
               placeholder="000"
               inputProps={{ style: { textAlign: 'right', padding: '6px 8px' } }}
               sx={{ width: 90 }}
@@ -3135,8 +3268,11 @@ function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo =
             <FormControl size="small" sx={{ width: 80 }}>
               <Select
                 value={envase.unidad}
-                onChange={e => { setEnvase(v => ({ ...v, unidad: e.target.value })); }}
-                onClose={guardarEnvase}
+                onChange={e => {
+                  const nuevaUnidad = e.target.value;
+                  setEnvase(v => ({ ...v, unidad: nuevaUnidad }));
+                  guardarEnvase({ unidad: nuevaUnidad });   // guardar con el valor nuevo, no el del estado stale
+                }}
                 sx={{ '& .MuiSelect-select': { py: '6px' } }}
               >
                 <MenuItem value="ml">ml</MenuItem>
@@ -3997,6 +4133,9 @@ export default function RecetaModal({
               ultimaCompra: it.ultima_compra || null,
               merma: it.merma !== false,
               mermaId: it.merma_id ?? null,
+              mermaIds: Array.isArray(it.merma_ids) && it.merma_ids.length
+                ? it.merma_ids.map(Number)
+                : (it.merma_id != null ? [Number(it.merma_id)] : []),
               pedido: it.pedido !== false,
               secreto: it.secreto === true,
               tipoCosto: it.tipo_costo || 'total',
@@ -4149,12 +4288,19 @@ export default function RecetaModal({
     const forzarCompra = insData?.costo_efectivo_origen === 'compra';
 
     // Factor de merma: idéntico al de la fila (ítems-artículo no llevan merma)
-    let factorMerma = 1;
+     let factorMerma = 1;
     if (!it.esArticulo && !it.articleRefId) {
       const pctGlobal = it.desperdicioPct != null ? Number(it.desperdicioPct) : Number(appConfig.desperdicioGlobalPct || 0);
-      const m = (it.mermas || []).find(x => Number(x.id) === Number(it.mermaId));
-      const fEsp = (m && Number(m.peso_final) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
-      factorMerma = (1 + pctGlobal / 100) * fEsp;
+      // Las mermas específicas se apilan multiplicativamente (pelado × cocción × …)
+      const ids = Array.isArray(it.mermaIds)
+        ? it.mermaIds
+        : (it.mermaId != null ? [it.mermaId] : []);
+      const fEspecifica = ids.reduce((acc, id) => {
+        const m = (it.mermas || []).find(x => Number(x.id) === Number(id));
+        if (!m || !(Number(m.peso_final) > 0)) return acc;
+        return acc * (Number(m.peso_inicial) / Number(m.peso_final));
+      }, 1);
+      factorMerma = (1 + pctGlobal / 100) * fEspecifica;
     }
 
     let precioU;
@@ -4421,10 +4567,15 @@ export default function RecetaModal({
           precioRefDb: precioRefDbItem,
           costoUnitario,
           merma: it.merma !== false,
-          mermaId: it.merma_id ?? null,
+          mermaId: Array.isArray(it.mermaIds) && it.mermaIds.length
+            ? Number(it.mermaIds[0])
+            : (it.mermaId ?? null),
+          mermaIds: Array.isArray(it.mermaIds)
+            ? it.mermaIds.map(Number)
+            : (it.mermaId != null ? [Number(it.mermaId)] : []),
           pedido: it.pedido !== false,
           secreto: it.secreto === true,
-          tipoCosto: it.tipo_costo || 'total',
+          tipoCosto: it.tipoCosto || 'total',
           observaciones: it.observaciones || '',
           fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : (it.fotoUrl ? [it.fotoUrl] : []),
           updatedAt: it.updatedAt || new Date().toISOString(),
@@ -5874,6 +6025,9 @@ export default function RecetaModal({
           businessId={businessId}
           insumos={insumos}
           onClose={() => setReemplazarModalOpen(false)}
+          businessId={businessId}
+          insumos={insumos}
+          alertaSemanas={alertaSemanas}
           onReemplazado={(r) => {
             setReemplazarModalOpen(false);
             // Avisar a TODOS los RecetaModal abiertos (cascada) que no autoguarden
@@ -5882,6 +6036,7 @@ export default function RecetaModal({
             setElaboradosStack([]);
             try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
             try { window.dispatchEvent(new CustomEvent('recetas:bulk-deleted')); } catch { }
+            try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
             onClose();
           }}
         />

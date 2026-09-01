@@ -236,6 +236,7 @@ function SubrubroAccionesMenu({
   allowedIds,
   priceLists = [],
   priceListsByList = {},
+    accionesOcultas = [],
 }) {
   const effectiveBusinessId = businessId ?? localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ?? null;
@@ -659,6 +660,10 @@ function SubrubroAccionesMenu({
     [priceLists]
   );
 
+    // Acciones que el contexto de uso decide no mostrar (la carta oculta algunas
+  // según el modo: ver VistaCartaMenu).
+  const ocultas = useMemo(() => new Set(accionesOcultas || []), [accionesOcultas]);
+
   // Cuenta listas no-favoritas donde TODOS los artículos del bloque están excluidos
   // (por override por-lista o por _base global).
   const exclusionesCount = useMemo(() => {
@@ -691,10 +696,12 @@ function SubrubroAccionesMenu({
           <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{isInDiscontinuadosView ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
         </MenuItem>
-        <MenuItem onClick={quitarDeActual} disabled={isTodo}>
-          <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}</ListItemText>
-        </MenuItem>
+                {!ocultas.has('quitarDeAgrupacion') && (
+          <MenuItem onClick={quitarDeActual} disabled={isTodo}>
+            <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>{isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a…</ListItemText>

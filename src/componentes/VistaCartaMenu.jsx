@@ -13,6 +13,8 @@
 //
 import React, { useMemo, useState, useCallback, useRef } from "react";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
+import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
+
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
 const MENU_FONTS = [
   { label: "Sora + Archivo", d: "'Sora',sans-serif", b: "'Archivo',sans-serif", imp: "Sora:wght@600;700&family=Archivo:wght@400;600" },
@@ -159,7 +161,7 @@ function maquetaInicial(articulosPlano, modo) {
       const ay = clean((articulosPlano.find(a => String(a.id) === y) || {}).nombre);
       return ax.localeCompare(ay, "es");
     });
-    seccionesObj[sid] = { id: sid, titulo, itemIds: ordenados };
+    seccionesObj[sid] = { id: sid, titulo, origen: titulo, itemIds: ordenados };
     hojas.push({ id: "hoja-" + sid, nombre: titulo, cols: 1, columnas: [[sid]] });
   }
   return { hojas, secciones: seccionesObj, pool: { secciones: [], items: [] } };
@@ -191,7 +193,7 @@ function maquetaVacia(articulosPlano, modo) {
       const ay = clean((articulosPlano.find(a => String(a.id) === y) || {}).nombre);
       return ax.localeCompare(ay, "es");
     });
-    seccionesObj[sid] = { id: sid, titulo, itemIds: ordenados };
+    seccionesObj[sid] = { id: sid, titulo, origen: titulo, itemIds: ordenados };
     poolSecciones.push(sid);   // ← al pool, no a una hoja
   }
   // Una única hoja vacía para empezar a armar.
@@ -221,8 +223,14 @@ function reconciliar(guardada, articulosPlano, modo) {
   }));
   const secciones = {};
   for (const [sid, sec] of Object.entries(guardada.secciones || {})) {
-    // filtrar ítems que ya no existen
-    secciones[sid] = { ...sec, itemIds: (sec.itemIds || []).filter((id) => idsReales.has(String(id))) };
+    // filtrar ítems que ya no existen. `origen` = pertenencia real que originó la
+    // sección; el título es solo la etiqueta visible y se puede renombrar aparte.
+    // Cartas v2 no lo traen: se deriva del título.
+    secciones[sid] = {
+      ...sec,
+      origen: sec.origen ?? sec.titulo,
+      itemIds: (sec.itemIds || []).filter((id) => idsReales.has(String(id))),
+    };
   }
 
   // IDs de artículos que YA están ubicados en alguna sección de la maqueta
@@ -240,7 +248,8 @@ function reconciliar(guardada, articulosPlano, modo) {
   // Mapa título -> secId existente (para colgar nuevos en su sección natural)
   const secPorTitulo = new Map();
   for (const [sid, sec] of Object.entries(secciones)) {
-    if (!secPorTitulo.has(sec.titulo)) secPorTitulo.set(sec.titulo, sid);
+    const key = sec.origen ?? sec.titulo;
+    if (!secPorTitulo.has(key)) secPorTitulo.set(key, sid);
   }
 
   // Artículos nuevos (no ubicados): agruparlos por su título natural
@@ -267,7 +276,7 @@ function reconciliar(guardada, articulosPlano, modo) {
     } else {
       // crear sección + hoja nueva para estos artículos nuevos
       const sid = "sec-new-" + (nSec++);
-      secciones[sid] = { id: sid, titulo, itemIds: ordenados };
+      secciones[sid] = { id: sid, titulo, origen: titulo, itemIds: ordenados };
       hojas.push({ id: "hoja-" + sid, nombre: titulo, cols: 1, columnas: [[sid]] });
       secPorTitulo.set(titulo, sid);
       nHoja++;
@@ -462,6 +471,7 @@ export default function VistaCartaMenu({
   onAccionRefetch = null,
   onAccionReload = null,
   onAccionRecargarCategorias = null,
+  todoGroupId = null,
 }) {
   // Si hay carta guardada, arrancamos desde ahí.
   const g = cartaGuardada && typeof cartaGuardada === "object" ? cartaGuardada : null;
@@ -500,8 +510,6 @@ export default function VistaCartaMenu({
       wifiClave: negocio?.wifiClave || "",
     }
   ));
-
-  console.log('[VistaCartaMenu] articulos recibidos:', articulos.length, articulos.find(a => a.nombre?.includes('POLLO'))?.rubro);
 
   const neg = useMemo(() => ({ ...negocio, ...contacto, accent }), [negocio, contacto, accent]);
   // Icono efectivo de una sección: override manual ('' = sin icono) o automático por nombre.
@@ -585,6 +593,90 @@ export default function VistaCartaMenu({
     }
   }, [modo, articulos]);
 
+  // ── Reconciliación en vivo (modelo espejo) ──────────────────────────────────
+  // La maqueta se arma una sola vez (useState inicial). Si después cambia la
+  // pertenencia real de un artículo —se creó una agrupación a partir de él, se lo
+  // movió de rubro— hay que reubicarlo acá mismo. Sale siempre de la sección a la
+  // que ya no pertenece; si su sección nueva está puesta en la carta entra ahí, y
+  // si no, queda disponible en el catálogo.
+  // Se compara contra `origen` (pertenencia que dio vida a la sección), no contra
+  // el título, para no vaciar las secciones renombradas a mano.
+  const pertenenciaRef = useRef("");
+  React.useEffect(() => {
+    const tituloNaturalDe = (a) => (modo === "rubro"
+      ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
+      : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion)));
+
+    const naturalPorId = new Map(
+      (articulos || [])
+        .filter((a) => clean(a.nombre))
+        .map((a) => [String(a.id), tituloNaturalDe(a)])
+    );
+
+    // Reaccionar solo cuando la pertenencia cambia de verdad, no en cada render.
+    const firma = Array.from(naturalPorId, ([id, t]) => `${id}:${t}`).join("|");
+    if (firma === pertenenciaRef.current) return;
+    pertenenciaRef.current = firma;
+
+    setMaquetasPorModo((prev) => {
+      const actual = prev[modo];
+      if (!actual) return prev;
+
+      // Secciones puestas en alguna hoja, indexadas por su origen real.
+      const secIdPorOrigen = new Map();
+      for (const h of actual.hojas || []) {
+        for (const col of h.columnas || []) {
+          for (const sid of col) {
+            const sec = actual.secciones[sid];
+            const o = sec?.origen ?? sec?.titulo;
+            if (o && !secIdPorOrigen.has(o)) secIdPorOrigen.set(o, sid);
+          }
+        }
+      }
+
+      const quitar = new Map();   // secId -> Set(artId)
+      const agregar = new Map();  // secId -> Set(artId)
+
+      for (const [sid, sec] of Object.entries(actual.secciones)) {
+        const origen = sec.origen ?? sec.titulo;
+        for (const id of sec.itemIds || []) {
+          if (String(id).startsWith("__sep__")) continue;
+          const key = String(id);
+          const natural = naturalPorId.get(key);
+          if (natural == null) continue;      // ya no existe: lo limpia reconciliar
+          if (natural === origen) continue;   // sigue perteneciendo acá
+
+          if (!quitar.has(sid)) quitar.set(sid, new Set());
+          quitar.get(sid).add(key);
+
+          const destino = secIdPorOrigen.get(natural);
+          if (destino && destino !== sid) {
+            if (!agregar.has(destino)) agregar.set(destino, new Set());
+            agregar.get(destino).add(key);
+          }
+        }
+      }
+
+      if (!quitar.size && !agregar.size) return prev;
+
+      const secciones = { ...actual.secciones };
+      for (const [sid, ids] of quitar) {
+        const sec = secciones[sid];
+        if (!sec) continue;
+        secciones[sid] = { ...sec, itemIds: (sec.itemIds || []).filter((x) => !ids.has(String(x))) };
+      }
+      for (const [sid, ids] of agregar) {
+        const sec = secciones[sid];
+        if (!sec) continue;
+        const yaEstan = new Set((sec.itemIds || []).map(String));
+        const nuevos = Array.from(ids).filter((x) => !yaEstan.has(x));
+        if (nuevos.length) secciones[sid] = { ...sec, itemIds: [...(sec.itemIds || []), ...nuevos] };
+      }
+
+      return { ...prev, [modo]: { ...actual, secciones } };
+    });
+  }, [articulos, modo]);
+
   const regenerar = useCallback(() => {
     setMaqueta(maquetaVacia(articulos, modo));
     setHojaActiva(0);
@@ -646,7 +738,8 @@ export default function VistaCartaMenu({
       for (const col of h.columnas || []) {
         for (const sid of col) {
           const s = maqueta.secciones[sid];
-          if (s?.titulo) usados.add(s.titulo);
+          const key = s?.origen ?? s?.titulo;
+          if (key) usados.add(key);
         }
       }
     }
@@ -812,7 +905,7 @@ export default function VistaCartaMenu({
   const traerSeccionDelCatalogo = useCallback((titulo, destColIdx) => {
     setMaqueta((m) => {
       // ¿Ya existe una sección con ese título? (por si estaba fuera de columnas)
-      let secId = Object.keys(m.secciones).find((k) => m.secciones[k]?.titulo === titulo);
+      let secId = Object.keys(m.secciones).find((k) => (m.secciones[k]?.origen ?? m.secciones[k]?.titulo) === titulo);
       let secciones = m.secciones;
       if (!secId) {
         // Crear la sección desde articulos según el modo actual
@@ -828,7 +921,7 @@ export default function VistaCartaMenu({
           .sort((x, y) => clean(x.nombre).localeCompare(clean(y.nombre), "es"))
           .map((a) => String(a.id));
         secId = "sec-" + Date.now();
-        secciones = { ...m.secciones, [secId]: { id: secId, titulo, itemIds } };
+        secciones = { ...m.secciones, [secId]: { id: secId, titulo, origen: titulo, itemIds } };
       }
       const hojas = m.hojas.map((h) => {
         if (h.id !== hoja.id) return h;
@@ -1155,6 +1248,11 @@ export default function VistaCartaMenu({
                           {(colSecIds || []).map((sid) => {
                             const sec = maqueta.secciones[sid];
                             if (!sec) return null;
+                            // Artículos reales de esta sección (para el menú de acciones de rubro).
+                            const idsDeSeccion = (sec.itemIds || [])
+                              .filter((x) => !String(x).startsWith("__sep__"))
+                              .map(Number)
+                              .filter(Number.isFinite);
                             return (
                               <div key={sid}
                                 onDragOver={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); } }}
@@ -1231,6 +1329,32 @@ export default function VistaCartaMenu({
                                         </span>
                                       );
                                     })()}
+                                    {modo === "rubro" && activeBizId && (
+                                      <span onClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        style={{ display: "inline-flex", transform: "scale(0.78)", transformOrigin: "center" }}>
+                                        <SubrubroAccionesMenu
+                                          subrubro={sec.origen ?? sec.titulo}
+                                          articuloIds={idsDeSeccion}
+                                          agrupaciones={agrupaciones}
+                                          agrupacionSeleccionada={null}
+                                          todoGroupId={todoGroupId}
+                                          isTodo={!!todoGroupId}
+                                          treeMode="cat-first"
+                                          businessId={activeBizId}
+                                          rootBizId={rootBizId}
+                                          onMutateGroups={onMutateGroups}
+                                          onGroupCreated={onGroupCreated}
+                                          onRefetch={onAccionRefetch}
+                                          onAfterMutation={() => {
+                                            window.dispatchEvent(new CustomEvent('articulos:updated'));
+                                            onAccionRecargarCategorias?.();
+                                          }}
+                                          notify={() => { }}
+                                          accionesOcultas={['quitarDeAgrupacion', 'moverA']}
+                                        />
+                                      </span>
+                                    )}
                                     <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, null); }}
                                       title="Agregar una línea separadora en esta sección"
                                       style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, fontWeight: 400 }}
@@ -1254,7 +1378,7 @@ export default function VistaCartaMenu({
                                   // Resolver viewMode de esta agrupación (solo en modo agrupación).
                                   const agrupId = agrupIdByNombre[sec.titulo];
                                   const vm = (modo === "agrupacion" && agrupId != null)
-                                    ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)])
+                                    ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
                                     : null;
                                   const campoBloque = campoBloqueDeViewMode(vm);
                                   // Orden de render: si hay subdivisión, agrupar por bloque (y dentro, alfabético).
@@ -1326,6 +1450,22 @@ export default function VistaCartaMenu({
                                       if (bloqueActual !== bloqueAnterior) {
                                         bloqueAnterior = bloqueActual;
                                         const rubroDeEste = bloqueActual;
+                                        // Artículos reales que componen este bloque (los que van a recibir la acción).
+                                        const idsDelBloque = (sec.itemIds || [])
+                                          .filter((x) => !String(x).startsWith("__sep__"))
+                                          .filter((x) => ((artById.get(String(x))?.[campoBloque]) || "Otros").toString() === rubroDeEste)
+                                          .map(Number)
+                                          .filter(Number.isFinite);
+                                        // En modo agrupación la sección ES una agrupación real: la resolvemos para
+                                        // que "Mover a…" y "Crear agrupación" sepan de dónde salen los artículos.
+                                        const origenSec = sec.origen ?? sec.titulo;
+                                        const agrupDeSeccion = modo === "agrupacion"
+                                          ? ((agrupaciones || []).find((g) => String(g?.nombre ?? g?.name ?? "") === String(origenSec)) || null)
+                                          : null;
+                                        // Convención invertida de la carta: campoBloque "rubro" = subrubro DB,
+                                        // campoBloque "sub" = categoria DB. Es lo que decide a qué endpoint pega
+                                        // "Editar nombre" (subrubros vs rubros).
+                                        const treeModeBloque = campoBloque === "sub" ? "sr-first" : "cat-first";
                                         encabezadoBloque = (
                                           <div
                                             draggable
@@ -1350,17 +1490,47 @@ export default function VistaCartaMenu({
                                               borderBottom: `1px dotted ${(neg.accent || accent)}55`,
                                             }}>
                                             <span>{bloqueActual}</span>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                quitarBloque(sid, campoBloque, rubroDeEste,
-                                                  (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString());
-                                              }}
-                                              title={`Quitar todo el rubro "${bloqueActual}" de la carta`}
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 }}
+                                              draggable={false}
                                               onMouseDown={(e) => e.stopPropagation()}
-                                              style={{ marginLeft: 8, border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, verticalAlign: "middle" }}
-                                              onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
-                                              onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                              onClick={(e) => e.stopPropagation()}
+                                              onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                              {activeBizId && (
+                                                <SubrubroAccionesMenu
+                                                  subrubro={rubroDeEste}
+                                                  articuloIds={idsDelBloque}
+                                                  agrupaciones={agrupaciones}
+                                                  agrupacionSeleccionada={agrupDeSeccion}
+                                                  todoGroupId={todoGroupId}
+                                                  isTodo={!agrupDeSeccion && !!todoGroupId}
+                                                  treeMode={treeModeBloque}
+                                                  businessId={activeBizId}
+                                                  rootBizId={rootBizId}
+                                                  onMutateGroups={onMutateGroups}
+                                                  onGroupCreated={onGroupCreated}
+                                                  onRefetch={onAccionRefetch}
+                                                  onAfterMutation={() => {
+                                                    window.dispatchEvent(new CustomEvent('articulos:updated'));
+                                                    onAccionRecargarCategorias?.();
+                                                  }}
+                                                  notify={() => { }}
+                                                  accionesOcultas={modo === "agrupacion"
+                                                    ? ['quitarDeAgrupacion']
+                                                    : ['quitarDeAgrupacion', 'moverA', 'crearAgrupacion']}
+                                                />
+                                              )}
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  quitarBloque(sid, campoBloque, rubroDeEste,
+                                                    (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString());
+                                                }}
+                                                title={`Quitar todo el rubro "${bloqueActual}" de la carta`}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                style={{ marginLeft: 4, border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, verticalAlign: "middle" }}
+                                                onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
+                                                onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>✕</button>
+                                            </span>
                                           </div>
                                         );
                                       }
@@ -1404,9 +1574,10 @@ export default function VistaCartaMenu({
                                                 const grupoDelArt = (agrupaciones || []).find((g) =>
                                                   (g?.articulos || []).some((x) => Number(x?.id) === Number(a.id))
                                                 ) || null;
+                                                const estaEnTodo = !grupoDelArt;
                                                 const agrupSel = grupoDelArt
                                                   ? { id: Number(grupoDelArt.id), nombre: grupoDelArt.nombre ?? grupoDelArt.name ?? '' }
-                                                  : null;
+                                                  : (todoGroupId ? { id: Number(todoGroupId), nombre: 'TODO' } : null);
                                                 return (
                                                   <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex" }}>
                                                     <ArticuloAccionesMenu
@@ -1427,6 +1598,9 @@ export default function VistaCartaMenu({
                                                       onGroupCreated={onGroupCreated}
                                                       onDiscontinuadoChange={onDiscontinuadoChange}
                                                       onRefetch={onAccionRefetch}
+                                                      todoGroupId={todoGroupId}
+                                                      isTodo={estaEnTodo}
+                                                      accionesOcultas={['crearPromo', 'quitarDeAgrupacion']}
                                                       onAfterMutation={() => {
                                                         window.dispatchEvent(new CustomEvent('articulos:updated'));
                                                         // Refresca agrupaciones (para discontinuar/mover-agrup) Y

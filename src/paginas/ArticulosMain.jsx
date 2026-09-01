@@ -1014,10 +1014,13 @@ export default function ArticulosMain(props) {
       refetchAgrupaciones().catch(e =>
         console.warn('[articulos:updated listener] refetch falló:', e.message)
       );
+      recargarCategorias().catch(e =>
+        console.warn('[articulos:updated listener] recargarCategorias falló:', e.message)
+      );
     };
     window.addEventListener('articulos:updated', handler);
     return () => window.removeEventListener('articulos:updated', handler);
-  }, [refetchAgrupaciones]);
+  }, [refetchAgrupaciones, recargarCategorias]);
 
   const activeBizRef = useRef(localStorage.getItem('activeBusinessId') || '');
   useEffect(() => {
@@ -2404,6 +2407,7 @@ export default function ArticulosMain(props) {
           agrupacionSeleccionada={agrupacionSeleccionada}
           activeBizId={activeBizId}
           rootBizId={rootBusiness?.id ? Number(rootBusiness.id) : null}
+          todoGroupId={todoInfo?.todoGroupId ?? null}
           onMutateGroups={mutateGroups}
           onGroupCreated={handleGroupCreated}
           onDiscontinuadoChange={handleDiscontinuadoChange}
