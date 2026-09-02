@@ -1678,11 +1678,16 @@ function ItemRow({
       const factor = getConversionFactor(canonicalUnit(eqSel.unidad), canonicalUnit(item.supplyMedida || eqSel.unidad));
       return (contenido * factor) * precioBase;
     }
-        if (elaborado) {
-      // Única fuente de verdad: mismo cálculo que calcCostoItem (fila = total).
-      // calcCostoUnitarioElaborado ya resuelve la conversión según rendimientoUnidad
-      // del elaborado, no según supplyMedida. Evita la divergencia fila vs total.
-      return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto) * factorMerma;
+    if (elaborado) {
+      // DB-puro: precio_ref del elaborado YA es el costo por unidad de RENDIMIENTO
+      // (materializado en backend). La unidad base es rendimiento_unidad, NO supplyMedida
+      // (que puede venir sucia de MaxiRest: 'K'/'L'/'U'). Convertimos desde ahí.
+      const costoBase = (tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0)
+        ? Number(elaborado.precioSugerido)
+        : (Number(item.precioRefDB) || 0);
+      const unidadBase = canonicalUnit(elaborado?.rendimientoUnidad || item.supplyMedida || 'u');
+      const unidadElegida = canonicalUnit(item.unidad || unidadBase);
+      return calcPrecioEnUnidad(costoBase, unidadBase, unidadElegida) * factorMerma;
     }
     // ── Item-artículo (promo): costo del ARTÍCULO, jerarquía costoTotal receta > costo > precio ──
     if (item.esArticulo || item.articleRefId) {
@@ -4280,7 +4285,7 @@ export default function RecetaModal({
     const forzarCompra = insData?.costo_efectivo_origen === 'compra';
 
     // Factor de merma: idéntico al de la fila (ítems-artículo no llevan merma)
-     let factorMerma = 1;
+    let factorMerma = 1;
     if (!it.esArticulo && !it.articleRefId) {
       const pctGlobal = it.desperdicioPct != null ? Number(it.desperdicioPct) : Number(appConfig.desperdicioGlobalPct || 0);
       // Las mermas específicas se apilan multiplicativamente (pelado × cocción × …)
@@ -4321,21 +4326,15 @@ export default function RecetaModal({
         }
       }
     } else if (elaborado && !forzarCompra) {
-            // Elaborado como insumo: aplicar su merma propia (ver nota en rama con equivalencia).
-      console.log('ELAB 4333', {
-        rendUnidad: elaborado?.rendimientoUnidad,
-        porciones: elaborado?.porciones,
-        costoTotal: elaborado?.costoTotal,
-        precioSugerido: elaborado?.precioSugerido,
-        itUnidad: it.unidad,
-        supplyMedida: it.supplyMedida,
-        tipoCosto: it.tipoCosto,
-        precioU: calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto),
-        factorMerma,
-      });
-
-      // Elaborado como insumo: aplicar su merma propia (ver nota en rama con equivalencia).
-      precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto) * factorMerma;
+      // DB-puro: precio_ref del elaborado YA es el costo por unidad de RENDIMIENTO
+      // (materializado en backend). Unidad base = rendimiento_unidad, NO supplyMedida.
+      // Misma lógica que costoEnUnidadElegida → fila y total leen el mismo dato fijo.
+      const costoBaseElab = (it.tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0)
+        ? Number(elaborado.precioSugerido)
+        : (Number(it.precioRefDB) || 0);
+      const uBaseElab = canonicalUnit(elaborado?.rendimientoUnidad || it.supplyMedida || 'u');
+      const uElegElab = canonicalUnit(it.unidad || uBaseElab);
+      precioU = calcPrecioEnUnidad(costoBaseElab, uBaseElab, uElegElab) * factorMerma;
     } else if (it.esArticulo || it.articleRefId) {
       const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(it.articleRefId));
       const costoComp = Number(art?.costoTotal) || Number(art?.precio) || Number(it.precioRefDB) || 0;
