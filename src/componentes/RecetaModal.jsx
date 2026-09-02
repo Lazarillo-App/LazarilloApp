@@ -1678,19 +1678,11 @@ function ItemRow({
       const factor = getConversionFactor(canonicalUnit(eqSel.unidad), canonicalUnit(item.supplyMedida || eqSel.unidad));
       return (contenido * factor) * precioBase;
     }
-    if (elaborado) {
-      // precio_ref del elaborado YA es el costo por unidad de rendimiento (materializado
-      // en backend: ÷porciones o ÷peso según corresponda). Se usa directo, sin recalcular,
-      // igual que un insumo simple. Esto elimina el flicker y la doble conversión.
-      // tipoCosto 'sugerido' usa el precio sugerido del elaborado si está disponible.
-      const costoBase = (tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0)
-        ? Number(elaborado.precioSugerido)
-        : (Number(item.precioRefDB) || 0);
-      const unidadDB = canonicalUnit(item.supplyMedida || 'u');
-      const unidadElegida = canonicalUnit(item.unidad || unidadDB);
-      // Si la unidad elegida difiere de la de rendimiento, convertir (ej: rinde en gr, se carga en kg)
-      const costoConv = calcPrecioEnUnidad(costoBase, unidadDB, unidadElegida);
-      return costoConv * factorMerma;
+        if (elaborado) {
+      // Única fuente de verdad: mismo cálculo que calcCostoItem (fila = total).
+      // calcCostoUnitarioElaborado ya resuelve la conversión según rendimientoUnidad
+      // del elaborado, no según supplyMedida. Evita la divergencia fila vs total.
+      return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto) * factorMerma;
     }
     // ── Item-artículo (promo): costo del ARTÍCULO, jerarquía costoTotal receta > costo > precio ──
     if (item.esArticulo || item.articleRefId) {
@@ -4329,6 +4321,19 @@ export default function RecetaModal({
         }
       }
     } else if (elaborado && !forzarCompra) {
+            // Elaborado como insumo: aplicar su merma propia (ver nota en rama con equivalencia).
+      console.log('ELAB 4333', {
+        rendUnidad: elaborado?.rendimientoUnidad,
+        porciones: elaborado?.porciones,
+        costoTotal: elaborado?.costoTotal,
+        precioSugerido: elaborado?.precioSugerido,
+        itUnidad: it.unidad,
+        supplyMedida: it.supplyMedida,
+        tipoCosto: it.tipoCosto,
+        precioU: calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto),
+        factorMerma,
+      });
+
       // Elaborado como insumo: aplicar su merma propia (ver nota en rama con equivalencia).
       precioU = calcCostoUnitarioElaborado(elaborado, it.supplyMedida, it.unidad, it.tipoCosto) * factorMerma;
     } else if (it.esArticulo || it.articleRefId) {
