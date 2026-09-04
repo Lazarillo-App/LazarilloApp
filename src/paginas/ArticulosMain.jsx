@@ -489,6 +489,11 @@ export default function ArticulosMain(props) {
   const recargarCategorias = React.useCallback(async () => {
     if (!activeBizId) return;
     try {
+      // Invalidar también la query de React Query: esta función solo pisa el
+      // `categorias` local (usado por la vista Carta cuando la tabla no está
+      // montada) — sin esto, `qk.articlesTree` seguía cacheado viejo y al
+      // volver a la vista Tabla se veía el nombre/dato anterior.
+      queryClient.invalidateQueries({ queryKey: qk.articlesTree(Number(activeBizId) || 0) });
       const { tree } = await BusinessesAPI.articlesTree(activeBizId);
       const normalizadas = (tree || []).map((sub) => ({
         ...sub,
@@ -504,7 +509,7 @@ export default function ArticulosMain(props) {
     } catch (e) {
       console.warn('[recargarCategorias] falló:', e.message);
     }
-  }, [activeBizId]);
+  }, [activeBizId, queryClient]);
 
   useEffect(() => {
     setAgrupacionSeleccionada(null);

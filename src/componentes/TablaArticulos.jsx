@@ -1243,17 +1243,42 @@ export default function TablaArticulos({
     return m;
   }, [flatRows]);
 
+  // Leer categorias/idToIndex vía ref (no como dependencia del efecto): cuando se
+  // salta desde otra pantalla (ej. insumos → artículos) el árbol todavía puede no
+  // estar listo en el primer render. Antes, este efecto dependía de `categorias`/
+  // `idToIndex`, así que cuando el árbol terminaba de cargar volvía a dispararse —
+  // pero el guard `lastJumpedIdRef` ya estaba seteado desde el primer intento
+  // (fallido) y cortaba ese segundo intento, bueno de verdad. El resultado: el
+  // scroll rápido inicial usaba el fallback por DOM (`scrollIntoView`, con la
+  // lista todavía a medio armar) y al terminar de cargar el árbol la lista se
+  // reacomodaba entera, perdiendo la posición. Ahora el efecto solo depende de
+  // `jumpToArticleId` y reintenta leyendo refs frescas hasta que el índice real
+  // esté disponible, haciendo un único scroll certero.
+  const categoriasRef = useRef(categorias);
+  useEffect(() => { categoriasRef.current = categorias; }, [categorias]);
+  const idToIndexRef = useRef(idToIndex);
+  useEffect(() => { idToIndexRef.current = idToIndex; }, [idToIndex]);
+
   useEffect(() => {
     const id = Number(jumpToArticleId);
     if (!Number.isFinite(id)) return;
     if (lastJumpedIdRef.current === id) return;
-    lastJumpedIdRef.current = id;
-    const path = findPath(categorias, id);
-    if (!path) return;
-    setExpandedRubro(path.rubroName);
-    setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
-    const idx = idToIndex.get(id);
-    if (idx != null) {
+
+    let cancelled = false;
+    let tries = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const path = findPath(categoriasRef.current, id);
+      const idx = idToIndexRef.current.get(id);
+      if (!path || idx == null) {
+        tries += 1;
+        if (tries > 25) return; // ~2s, damos por perdido
+        setTimeout(tick, 80);
+        return;
+      }
+      lastJumpedIdRef.current = id;
+      setExpandedRubro(path.rubroName);
+      setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
       setTimeout(() => {
         listRef.current?.scrollToIndex(idx);
         setTimeout(() => {
@@ -1261,17 +1286,10 @@ export default function TablaArticulos({
           if (el) { el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); }
         }, 40);
       }, 50);
-    } else {
-      const tryScroll = () => {
-        const el = document.querySelector(`[data-article-id="${id}"]`);
-        if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); return true; }
-        return false;
-      };
-      let tries = 0;
-      const iv = setInterval(() => { if (tryScroll() || tries++ > 12) clearInterval(iv); }, 60);
-      return () => clearInterval(iv);
-    }
-  }, [jumpToArticleId, categorias, findPath, idToIndex]);
+    };
+    const t0 = setTimeout(tick, 40);
+    return () => { cancelled = true; clearTimeout(t0); };
+  }, [jumpToArticleId, findPath]);
 
   useEffect(() => { if (!jumpToArticleId) lastJumpedIdRef.current = null; }, [jumpToArticleId]);
 

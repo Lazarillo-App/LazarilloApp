@@ -853,6 +853,10 @@ export default function RecetaModal({
           ? { precio: ins.precio_ultima_compra, fecha: ins.fecha_ultima_compra }
           : it.ultimaCompra,
         precioRefDB: Number(ins.precio_ref) || it.precioRefDB || 0,
+        // Sin esto, renombrar el insumo no se veía reflejado en una receta que
+        // ya lo tenía cargado como ingrediente y estaba abierta (ItemRow pinta
+        // supplyNombre directo, nunca busca el nombre en `insumos`).
+        supplyNombre: (ins.nombre || '').trim() || it.supplyNombre,
       };
     }));
   }, [insumos]);
@@ -1166,10 +1170,15 @@ export default function RecetaModal({
           }
           try {
             window.dispatchEvent(new CustomEvent('articulos:updated'));
-            window.dispatchEvent(new CustomEvent('insumos:updated'));
+            // Con detail.insumoId: sin esto, el listener compartido de RecetaModal
+            // (mismo handler que insumo:equivalencias-changed) no tiene forma de
+            // saber a qué insumo aplica y no hace nada — quedaba el nombre viejo
+            // en cualquier otra receta que lo usa como ingrediente y ya está abierta.
+            window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: articulo.id } }));
           } catch { }
         } catch (e) {
           console.warn('[rename] no se pudo actualizar el nombre:', e.message);
+          setError('La receta se guardó, pero no se pudo actualizar el nombre del ' + (modoInsumo || esElaborado ? 'insumo' : 'artículo') + '.');
         }
       }
 

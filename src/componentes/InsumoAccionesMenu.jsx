@@ -142,7 +142,11 @@ function InsumoAccionesMenu({
       });
       if (!res.ok) throw new Error(await res.text());
       notify?.(`Insumo renombrado a "${nuevo}"`, 'success');
-      window.dispatchEvent(new CustomEvent('insumos:updated'));
+      // Con detail.insumoId: el listener compartido en RecetaModal (mismo handler
+      // que insumo:equivalencias-changed) lo necesita para saber a qué insumo
+      // aplica — sin esto no refrescaba el nombre en ninguna receta ya abierta
+      // que lo use como ingrediente.
+      window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId } }));
       await onReloadCatalogo?.();
       setRenameOpen(false);
     } catch (e) {
