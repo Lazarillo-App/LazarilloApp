@@ -664,7 +664,14 @@ export default function ConfiguracionMain() {
         open={showNuevoArticulo}
         onClose={() => setShowNuevoArticulo(false)}
         businessId={businessId}
-        onCreated={art => { notify(`Artículo "${art.name}" creado con SKU provisorio`); window.dispatchEvent(new CustomEvent('articulos:updated')); }}
+        onCreated={art => {
+          notify(`Artículo "${art.name}" creado con SKU provisorio`);
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          // También business:synced: es lo único que invalida el árbol/agrupaciones
+          // cacheados con React Query en ArticulosMain — sin esto, un alta hecha desde
+          // acá no aparecía agrupada hasta recargar la página.
+          window.dispatchEvent(new Event('business:synced'));
+        }}
       />
 
       {recetaModalData && (

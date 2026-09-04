@@ -96,7 +96,7 @@ export function useInsumosStats() {
  * Ahora aprovecha los datos enriquecidos del backend
  */
 export function useInsumosList(filters = {}) {
-  const { businessId } = useActiveBusiness();
+  const { businessId: activeBusinessId } = useActiveBusiness();
 
   const {
     page = 1,
@@ -111,7 +111,12 @@ export function useInsumosList(filters = {}) {
     estado = 'activo', // activo/discontinuado/all
     sinAgrupacion = false,
     groupId = null,
+    // Negocio explícito a usar en vez del "activo" del contexto — necesario en
+    // sub-negocios, donde el negocio donde viven los insumos (rootBusiness) difiere
+    // del negocio activo (InsumosMain.jsx calcula esto como `resolvedBizId`).
+    bizIdOverride = null,
   } = filters;
+  const businessId = bizIdOverride ?? activeBusinessId;
 
   return useQuery({
     queryKey: [
@@ -163,8 +168,9 @@ export function useInsumosList(filters = {}) {
 /**
  * Hook para obtener rubros de insumos
  */
-export function useInsumosRubros() {
-  const { businessId } = useActiveBusiness();
+export function useInsumosRubros(bizIdOverride = null) {
+  const { businessId: activeBusinessId } = useActiveBusiness();
+  const businessId = bizIdOverride ?? activeBusinessId;
 
   return useQuery({
     queryKey: ['insumos-rubros', businessId],
@@ -205,8 +211,9 @@ export function useInsumosRubrosMap() {
 /**
  * Hook para listar agrupaciones de insumos
  */
-export function useInsumoGroups() {
-  const { businessId } = useActiveBusiness();
+export function useInsumoGroups(bizIdOverride = null) {
+  const { businessId: activeBusinessId } = useActiveBusiness();
+  const businessId = bizIdOverride ?? activeBusinessId;
 
   return useQuery({
     queryKey: ['insumo-groups', businessId],

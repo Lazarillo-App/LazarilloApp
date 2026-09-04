@@ -18,6 +18,7 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
+import { ArticuloNuevoModal } from './configuracion/ABMModals';
 import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgrupaciones';
@@ -238,6 +239,7 @@ function ArticuloAccionesMenu({
   onCrearPromo,
   esPromo = false,
   agrupaciones = [],
+  idsAsignadosGlobal = null,
   agrupacionSeleccionada,
   todoGroupId,
   isTodo = false,
@@ -268,11 +270,9 @@ function ArticuloAccionesMenu({
   const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
   const [origenReactivar, setOrigenReactivar] = useState(null);
   const [excluirOpen, setExcluirOpen] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
+  const [editArticuloOpen, setEditArticuloOpen] = useState(false);
   const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
   const [eliminando, setEliminando] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [renaming, setRenaming] = useState(false);
   const [dlgMoverRubroOpen, setDlgMoverRubroOpen] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState('');
   const [movingRubro, setMovingRubro] = useState(false);
@@ -348,11 +348,10 @@ function ArticuloAccionesMenu({
   }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
-  const openRename = useCallback(() => {
-    setRenameValue(articuloDisplayName);
+  const abrirEditarArticulo = useCallback(() => {
     handleClose();
-    setTimeout(() => setRenameOpen(true), 0);
-  }, [articuloDisplayName, handleClose]);
+    setTimeout(() => setEditArticuloOpen(true), 0);
+  }, [handleClose]);
 
   const pushUi = useCallback((payload) => {
     try {
@@ -362,28 +361,6 @@ function ArticuloAccionesMenu({
       });
     } catch { }
   }, [effectiveBusinessId]);
-
-  const ejecutarRename = useCallback(async () => {
-    const nuevo = renameValue.trim();
-    if (!nuevo || nuevo === articuloDisplayName) {
-      setRenameOpen(false);
-      return;
-    }
-    setRenaming(true);
-    try {
-      await httpBiz(`/articles/${articuloIdNum}`, {
-        method: 'PATCH', body: { nombre: nuevo },
-      }, effectiveBusinessId);
-      notify?.(`Artículo renombrado a "${nuevo}"`, 'success');
-      window.dispatchEvent(new CustomEvent('articulos:updated'));
-      setRenameOpen(false);
-    } catch (e) {
-      console.error('RENAME_ERROR', e);
-      notify?.('No se pudo renombrar el artículo', 'error');
-    } finally {
-      setRenaming(false);
-    }
-  }, [renameValue, articuloDisplayName, articuloIdNum, effectiveBusinessId, notify]);
 
   const rubroActual = useMemo(() => {
     const raw = articulo?.raw || {};
@@ -745,13 +722,19 @@ function ArticuloAccionesMenu({
   }
 
   // ── Lazy load del árbol para AgrupacionCreateModal ─────────────────────────
+  // Bloqueado si ya está en una agrupación real de ESTE negocio, o en una de
+  // cualquier otro negocio de la org (idsAsignadosGlobal) — sin esto último, un
+  // artículo ya agrupado en un subnegocio aparecía como disponible acá.
   const isArticuloBloqueadoCreate = useMemo(() => {
     const esTodo = (g) => { const n = norm(g?.nombre); return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' || n === 'sin agrupar' || n === 'sin grupo'; };
     const assigned = new Set();
     (agrupaciones || []).filter((g) => !esTodo(g) && !isDiscontinuadosGroup(g))
       .forEach((g) => (g.articulos || []).forEach((a) => { const n = Number(a?.id); if (Number.isFinite(n)) assigned.add(String(n)); }));
+    if (idsAsignadosGlobal) {
+      for (const n of idsAsignadosGlobal) assigned.add(String(n));
+    }
     return (art) => assigned.has(String(art?.id));
-  }, [agrupaciones]);
+  }, [agrupaciones, idsAsignadosGlobal]);
 
   useEffect(() => {
     if (!openCrearAgr || haveExternalTree || loading || loadedRef.current) return;
@@ -800,9 +783,9 @@ function ArticuloAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        <MenuItem onClick={openRename}>
+        <MenuItem onClick={abrirEditarArticulo}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Editar nombre</ListItemText>
+          <ListItemText>Editar artículo</ListItemText>
         </MenuItem>
         <MenuItem onClick={openMoverRubro}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
@@ -1008,27 +991,18 @@ function ArticuloAccionesMenu({
         </DialogActions>
       </Dialog>
 
-      {/* ── Diálogo de renombrar ── */}
-      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del artículo</DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-          <TextField
-            autoFocus fullWidth size="small"
-            label="Nombre"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
-          <Button onClick={ejecutarRename} variant="contained"
-            disabled={renaming || !renameValue.trim()}>
-            {renaming ? 'Guardando…' : 'Guardar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* ── Editar artículo completo (nombre/rubro/subrubro/precio) ── */}
+      <ArticuloNuevoModal
+        open={editArticuloOpen}
+        onClose={() => setEditArticuloOpen(false)}
+        businessId={effectiveBusinessId}
+        articulo={articulo}
+        onCreated={() => {
+          notify?.('Artículo actualizado', 'success');
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          onAfterMutation?.([articuloIdNum]);
+        }}
+      />
 
       {/* ── Diálogo de confirmación de eliminación ── */}
       <Dialog open={dlgEliminarOpen} onClose={() => !eliminando && setDlgEliminarOpen(false)} maxWidth="xs" fullWidth>

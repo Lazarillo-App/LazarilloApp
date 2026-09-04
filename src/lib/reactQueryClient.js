@@ -46,6 +46,8 @@ export const qk = {
   business:        (id)                        => ['biz', Number(id)],
   articlesTree:    (id)                        => ['articlesTree', Number(id)],
   articlesFlat:    (id)                        => ['articlesFlat', Number(id)],
+  articleCostsConfig: (id)                     => ['articleCostsConfig', Number(id)],
+  agrupaciones:    (id, divisionId = null)     => ['agrupaciones', Number(id), divisionId ?? null],
   ventasSummary:   (id, from, to, limit = 1000)=> ['ventasSummary', Number(id), from, to, limit],
   ventasSeries:    (id, artId, from, to, g='day') =>
                                             ['ventasSeries', Number(id), Number(artId), from, to, g],

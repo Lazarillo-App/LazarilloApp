@@ -764,56 +764,35 @@ const InsumosTable = forwardRef(function InsumosTable({
     return m;
   }, [flatRows]);
 
-  const pendingJumpRef = useRef(null);
-  const jumpTriesRef = useRef(0);
+  // idToIndex se recalcula muchas veces mientras cargan los insumos (cada tanda de
+  // datos rearma el mapa). El salto de scroll debe dispararse UNA sola vez por pedido
+  // (cuando cambia jumpToInsumoId), no cada vez que idToIndex cambia — por eso el efecto
+  // depende solo de jumpToInsumoId y lee el mapa más fresco vía ref en cada poll, en vez
+  // de reiniciar el poll entero (y volver a scrollear) cada vez que idToIndex se recalcula.
+  const idToIndexRef = useRef(idToIndex);
+  useEffect(() => { idToIndexRef.current = idToIndex; }, [idToIndex]);
 
   useEffect(() => {
-    if (!jumpToInsumoId) return;
-
-    pendingJumpRef.current = Number(jumpToInsumoId);
-    jumpTriesRef.current = 0;
-
-    const tick = () => {
-      const id = Number(pendingJumpRef.current);
-      if (!Number.isFinite(id) || id <= 0) return;
-
-      const index = idToIndex.get(id);
-
-      if (index == null) {
-        jumpTriesRef.current += 1;
-        if (jumpTriesRef.current > 25) { pendingJumpRef.current = null; return; }
-        setTimeout(tick, 80);
-        return;
-      }
-
-      if (listRef.current?.scrollToIndex) listRef.current.scrollToIndex(index);
-      pendingJumpRef.current = null;
-    };
-
-    const t0 = setTimeout(tick, 40);
-    return () => clearTimeout(t0);
-  }, [jumpToInsumoId, idToIndex]);
-
-  useEffect(() => {
-    const id = Number(pendingJumpRef.current);
+    const id = Number(jumpToInsumoId);
     if (!Number.isFinite(id) || id <= 0) return;
 
+    let cancelled = false;
+    let tries = 0;
     const tick = () => {
-      const idx = idToIndex.get(id);
-      if (idx == null) {
-        jumpTriesRef.current += 1;
-        if (jumpTriesRef.current > 25) { pendingJumpRef.current = null; return; }
+      if (cancelled) return;
+      const index = idToIndexRef.current.get(id);
+      if (index == null) {
+        tries += 1;
+        if (tries > 25) return;
         setTimeout(tick, 80);
         return;
       }
-      listRef.current?.scrollToIndex?.(idx);
-      setTimeout(() => listRef.current?.scrollToIndex?.(idx), 60);
-      pendingJumpRef.current = null;
+      listRef.current?.scrollToIndex?.(index);
     };
 
     const t0 = setTimeout(tick, 40);
-    return () => clearTimeout(t0);
-  }, [idToIndex]);
+    return () => { cancelled = true; clearTimeout(t0); };
+  }, [jumpToInsumoId]);
 
   const lastIndexSigRef = useRef("");
 
@@ -825,16 +804,6 @@ const InsumosTable = forwardRef(function InsumosTable({
     lastIndexSigRef.current = sig;
     onIdToIndexChange(idToIndex);
   }, [idToIndex, onIdToIndexChange]);
-
-  useEffect(() => {
-    if (jumpToInsumoId) {
-      const idx = idToIndex.get(Number(jumpToInsumoId));
-      console.log('📊 [InsumosTable] idToIndex lookup:', {
-        jumpToInsumoId, foundIndex: idx,
-        flatRowsLength: flatRows.length, mapSize: idToIndex.size
-      });
-    }
-  }, [jumpToInsumoId, idToIndex, flatRows.length]);
 
   const grupoSeleccionado = useMemo(() => {
     if (!selectedGroupId) return null;

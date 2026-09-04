@@ -57,6 +57,8 @@ import RecetaModal from '../componentes/RecetaModal';
 import { InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInsumosRubros, useInsumosList, useInsumoGroups } from '@/hooks/useInsumos';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -137,6 +139,7 @@ export default function InsumosMain() {
   const biz = useBusiness() || {};
   const { businessId } = useActiveBusiness();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // ── Listas de insumos + modo selección ────────────────────────────────────
   // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
@@ -492,7 +495,20 @@ export default function InsumosMain() {
 
   /* ── Callbacks ── */
   const notify = useCallback((msg, type = 'success') => setSnack({ open: true, msg, type }), []);
-  const forceRefresh = useCallback(() => setReloadKey((k) => k + 1), []);
+  // Antes reloadKey por sí solo disparaba el refetch completo (estaba en el array de
+  // deps del efecto de carga). Ahora ese efecto lee de hooks cacheados, así que
+  // forceRefresh también tiene que invalidar esas queries explícitamente — reloadKey
+  // sigue existiendo porque el efecto de "ensure grupos especiales" todavía depende de él.
+  const forceRefresh = useCallback(() => {
+    setReloadKey((k) => k + 1);
+    const rBiz = Number(resolvedBizId) || 0;
+    queryClient.invalidateQueries({ queryKey: ['insumos-rubros', rBiz] });
+    queryClient.invalidateQueries({ queryKey: ['insumos-list'] }); // todas las páginas/filtros de este negocio
+    queryClient.invalidateQueries({ queryKey: ['insumo-groups', rBiz] });
+    if (businessId && String(businessId) !== String(resolvedBizId)) {
+      queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(businessId) || 0] });
+    }
+  }, [resolvedBizId, businessId, queryClient]);
   const onMutateGroups = useCallback((action) => setGroups((prev) => applyMutation(prev, action)), []);
   const lastManualPickRef = useRef(0);
   const markManualPick = () => { lastManualPickRef.current = Date.now(); };
@@ -647,94 +663,101 @@ export default function InsumosMain() {
     });
   }, [groups, isSubnegocio, isMainDivision, activeDivisionInsumoGroupIds, assignedInsumoGroupIds]);
 
-  /* ── Recarga principal ── */
-  const hadBusinessOnceRef = useRef(false);
-  const reloadRunRef = useRef(0);
-  const lastCtxRef = useRef({ businessId: null, activeDivisionId: null });
+  /* ── Recarga principal — cacheada (React Query) ──
+     Antes esto era un único useEffect que, en CADA montaje (cada navegación de vuelta a
+     /insumos), volvía a pedir rubros + los 2000+ insumos + grupos desde cero. Ahora las
+     4 lecturas puras van por hooks cacheados (useInsumosRubros/useInsumosList/
+     useInsumoGroups) que llegan instantáneo desde cache en la segunda visita; lo que
+     "asegura" el grupo especial (ensureTodoInsumos/ensureDiscontinuadosInsumos — create-
+     if-missing, no es lectura pura) sigue como efecto aparte más abajo. */
+  const isSubneg = !!(businessId && String(businessId) !== String(resolvedBizId));
+  const resolvedBizIdNum = Number(resolvedBizId) || 0;
+  const businessIdNum = Number(businessId) || 0;
+
+  const { data: rubrosData } = useInsumosRubros(resolvedBizIdNum);
+  const { data: insumosListData } = useInsumosList({
+    page: 1, limit: 999999, search: '', bizIdOverride: resolvedBizIdNum,
+  });
+  const { data: groupsData } = useInsumoGroups(resolvedBizIdNum);
+  const { data: groupsActiveBizData } = useInsumoGroups(isSubneg ? businessIdNum : 0);
 
   useEffect(() => {
     if (!businessId) {
-      if (!hadBusinessOnceRef.current) return;
-      setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map());
-      setSelectedGroupId(null); setRubroSeleccionado(null); setTodoGroupId(null); setExcludedIds(new Set());
+      setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map()); setRubrosIdMap(new Map());
+      setSelectedGroupId(null); setRubroSeleccionado(null);
       return;
     }
-    hadBusinessOnceRef.current = true;
-    const runId = ++reloadRunRef.current;
-    let isCancelled = false;
-    const safe = (fn) => { if (isCancelled || reloadRunRef.current !== runId) return false; fn(); return true; };
-    const prevCtx = lastCtxRef.current;
-    const hardReset = Number(prevCtx.businessId) !== Number(businessId) || Number(prevCtx.activeDivisionId) !== Number(activeDivisionId);
-    lastCtxRef.current = { businessId, activeDivisionId };
-
-    const recargarTodo = async () => {
-      if (hardReset) {
-        safe(() => {
-          setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map()); setRubrosIdMap(new Map());
-          setSelectedGroupId(null); setRubroSeleccionado(null); setTodoGroupId(null); setExcludedIds(new Set());
-        });
-        await new Promise((r) => setTimeout(r, 50));
-        if (isCancelled || reloadRunRef.current !== runId) return;
+    if (rubrosData) {
+      const items = rubrosData?.items || rubrosData?.data || [];
+      const map = new Map();
+      const idMap = new Map(); // id → info (por si insumos usan ID interno)
+      items.forEach((rubro) => {
+        const codigo = String(rubro.codigo);
+        const info = { codigo: rubro.codigo, nombre: rubro.nombre || `Rubro ${codigo}`, es_elaborador: rubro.es_elaborador === true };
+        map.set(codigo, info);
+        if (rubro.id != null) idMap.set(String(rubro.id), info);
+      });
+      setRubrosMap(map);
+      setRubrosIdMap(idMap);
+    }
+    if (groupsData) {
+      const list = Array.isArray(groupsData?.data) ? groupsData.data : Array.isArray(groupsData) ? groupsData : [];
+      setGroups(list);
+      if (selectedGroupId && !list.some((g) => Number(g.id) === Number(selectedGroupId))) {
+        setSelectedGroupId(null); setRubroSeleccionado(null);
       }
+    }
+    if (insumosListData) {
+      const dataAll = Array.isArray(insumosListData?.data) ? insumosListData.data : [];
+      setAllInsumos(dataAll);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, rubrosData, groupsData, insumosListData]);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const list = groupsActiveBizData
+      ? (Array.isArray(groupsActiveBizData?.data) ? groupsActiveBizData.data : Array.isArray(groupsActiveBizData) ? groupsActiveBizData : [])
+      : (Array.isArray(groupsData?.data) ? groupsData.data : Array.isArray(groupsData) ? groupsData : []);
+    setGroupsActiveBiz(list);
+  }, [businessId, groupsActiveBizData, groupsData]);
+
+  /* ── Asegurar grupos especiales (Todo / Discontinuados) + exclusiones ──
+     Create-if-missing con side-effects — no es lectura pura, se mantiene como efecto
+     imperativo aparte, con su propio guard de carrera para cambios rápidos de negocio. */
+  const ensureRunRef = useRef(0);
+  useEffect(() => {
+    if (!businessId) { setTodoGroupId(null); setExcludedIds(new Set()); return; }
+    const runId = ++ensureRunRef.current;
+    let isCancelled = false;
+    const safe = (fn) => { if (isCancelled || ensureRunRef.current !== runId) return; fn(); };
+
+    (async () => {
       try {
         try { await ensureDiscontinuadosInsumos(resolvedBizId); } catch { }
-        if (businessId && String(businessId) !== String(resolvedBizId)) {
+        if (isSubneg) {
           try { await ensureDiscontinuadosInsumos(businessId); } catch { }
         }
-
-        const isSubneg = businessId && String(businessId) !== String(resolvedBizId);
-        const [resRubros, resInsumos, todoGroup, resGroups, resGroupsActiveBiz] = await Promise.all([
-          insumosRubrosList(resolvedBizId),
-          insumosList(resolvedBizId, { page: 1, limit: 999999, search: '' }),
-          ensureTodoInsumos(resolvedBizId),
-          insumoGroupsList(resolvedBizId),
-          isSubneg ? insumoGroupsList(businessId) : Promise.resolve(null),
-        ]);
-        if (isCancelled || reloadRunRef.current !== runId) return;
-
-        const items = resRubros?.items || resRubros?.data || [];
-        const map = new Map();
-        const idMap = new Map(); // id → info (por si insumos usan ID interno)
-        items.forEach((rubro) => {
-          const codigo = String(rubro.codigo);
-          const info = { codigo: rubro.codigo, nombre: rubro.nombre || `Rubro ${codigo}`, es_elaborador: rubro.es_elaborador === true };
-          map.set(codigo, info);
-          if (rubro.id != null) idMap.set(String(rubro.id), info);
-        });
-        safe(() => setRubrosMap(map));
-        safe(() => setRubrosIdMap(idMap));
-        const list = Array.isArray(resGroups?.data) ? resGroups.data : Array.isArray(resGroups) ? resGroups : [];
-        safe(() => setGroups(list));
-
-        const listActiveBiz = resGroupsActiveBiz
-          ? (Array.isArray(resGroupsActiveBiz?.data) ? resGroupsActiveBiz.data : Array.isArray(resGroupsActiveBiz) ? resGroupsActiveBiz : [])
-          : list;
-        safe(() => setGroupsActiveBiz(listActiveBiz));
-
-        const dataAll = Array.isArray(resInsumos?.data) ? resInsumos.data : [];
-        safe(() => setAllInsumos(dataAll));
+        const todoGroup = await ensureTodoInsumos(resolvedBizId);
+        if (isCancelled || ensureRunRef.current !== runId) return;
         safe(() => setTodoGroupId(todoGroup?.id || null));
-
+        // Por si ensureTodoInsumos/ensureDiscontinuadosInsumos crearon un grupo nuevo:
+        // invalidar para que useInsumoGroups lo traiga sin depender de un reload completo.
+        queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(resolvedBizId) || 0] });
+        if (isSubneg) queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(businessId) || 0] });
         if (todoGroup?.id) {
           const exclusiones = await getExclusionesInsumos(resolvedBizId, todoGroup.id);
-          if (isCancelled || reloadRunRef.current !== runId) return;
+          if (isCancelled || ensureRunRef.current !== runId) return;
           const ids = (exclusiones || []).filter((e) => e.scope === 'insumo').map((e) => Number(e.ref_id)).filter(Boolean);
           safe(() => setExcludedIds(new Set(ids)));
         }
-
-        safe(() => {
-          if (selectedGroupId && !list.some((g) => Number(g.id) === Number(selectedGroupId))) {
-            setSelectedGroupId(null); setRubroSeleccionado(null);
-          }
-        });
       } catch (e) {
-        if (isCancelled || reloadRunRef.current !== runId) return;
-        console.error('[recargarTodo] Error:', e);
+        if (isCancelled || ensureRunRef.current !== runId) return;
+        console.error('[ensure grupos especiales] Error:', e);
       }
-    };
-    recargarTodo();
+    })();
     return () => { isCancelled = true; };
-  }, [businessId, reloadKey, activeDivisionId, selectedGroupId]);
+  }, [businessId, resolvedBizId, isSubneg, reloadKey, queryClient]);
 
   /* ── IDs sin agrupación ── */
   const activeIdSet = useMemo(() => new Set(baseActivos.map((i) => Number(i.id)).filter(Number.isFinite)), [baseActivos]);
@@ -1284,7 +1307,7 @@ export default function InsumosMain() {
 
   /* ── Refrescar cuando se actualiza un insumo desde otro lado (ej. rename en RecetaModal) ── */
   useEffect(() => {
-    const handler = () => { console.log('[EV insumos:updated] → forceRefresh'); forceRefresh(); };
+    const handler = () => forceRefresh();
     window.addEventListener('insumos:updated', handler);
     return () => window.removeEventListener('insumos:updated', handler);
   }, [forceRefresh]);
@@ -1436,7 +1459,7 @@ export default function InsumosMain() {
             notify={notify}
             visibleIds={visibleIds}
             rubrosMap={rubrosMap}
-            onReloadCatalogo={() => setReloadKey((k) => k + 1)}
+            onReloadCatalogo={forceRefresh}
             forceRefresh={forceRefresh}
             onCreateGroupFromRubro={handleOpenGroupModalForRubro}
             discontinuadosGroupId={discontinuadosGroupId}
@@ -1480,7 +1503,7 @@ export default function InsumosMain() {
             notify={notify}
             todoGroupId={todoGroupId}
             idsSinAgrup={Array.from(idsSinAgrupActivos)}
-            onReloadCatalogo={() => setReloadKey((k) => k + 1)}
+            onReloadCatalogo={forceRefresh}
             forceRefresh={forceRefresh}
             jumpToInsumoId={jumpToInsumoId}
             selectedInsumoId={selectedInsumoId}

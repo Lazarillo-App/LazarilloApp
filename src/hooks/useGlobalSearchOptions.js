@@ -13,6 +13,22 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
   const [articulos, setArticulos] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [loading, setLoading] = useState(false);
+  // No usa React Query — es estado propio, así que sin esto solo se refrescaba si
+  // cambiaba bizId (crear/editar un artículo o insumo no lo hacía, quedando el
+  // buscador global con la lista vieja hasta recargar toda la página).
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setRefreshTick(t => t + 1);
+    window.addEventListener('business:synced', bump);
+    window.addEventListener('articulos:updated', bump);
+    window.addEventListener('insumos:updated', bump);
+    return () => {
+      window.removeEventListener('business:synced', bump);
+      window.removeEventListener('articulos:updated', bump);
+      window.removeEventListener('insumos:updated', bump);
+    };
+  }, []);
 
   useEffect(() => {
     if (!bizId) {
@@ -33,8 +49,6 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
         ? (Array.isArray(artRes.value?.items) ? artRes.value.items : [])
         : [];
 
-        console.log('[useGlobalSearchOptions] bizId(art):', bizId, 'insumosBizId:', insumosBizId, 'articulos:', arts.length);
-
       const ins = insRes.status === 'fulfilled'
         ? (Array.isArray(insRes.value?.data) ? insRes.value.data
           : Array.isArray(insRes.value?.insumos) ? insRes.value.insumos : [])
@@ -46,7 +60,7 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
     });
 
     return () => { alive = false; };
-  }, [bizId, insumosBizId]);
+  }, [bizId, insumosBizId, refreshTick]);
 
   const opciones = useMemo(() => {
     const out = [];

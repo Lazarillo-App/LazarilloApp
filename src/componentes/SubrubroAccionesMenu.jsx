@@ -221,6 +221,7 @@ function SubrubroAccionesMenu({
   agrupacionSeleccionada,
   isTodo = false,
   agrupaciones = [],
+  idsAsignadosGlobal = null,
   todoGroupId,
   articuloIds = [],
   onRefetch,
@@ -631,13 +632,19 @@ function SubrubroAccionesMenu({
     } finally { setDlgReactivarOpen(false); }
   }
 
+  // Bloqueado si ya está en una agrupación real de ESTE negocio, o en una de
+  // cualquier otro negocio de la org (idsAsignadosGlobal) — sin esto último, un
+  // artículo ya agrupado en un subnegocio aparecía como disponible acá.
   const isArticuloBloqueadoCreate = useMemo(() => {
     const esTodo = (g) => { const n = norm(g?.nombre); return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' || n === 'sin agrupar' || n === 'sin grupo'; };
     const assigned = new Set();
     (agrupaciones || []).filter((g) => !esTodo(g) && !isDiscontinuadosGroup(g)).filter((g) => Number(g.id) !== currentGroupId)
       .forEach((g) => (g.articulos || []).forEach((a) => { const n = Number(a?.id); if (Number.isFinite(n)) assigned.add(String(n)); }));
+    if (idsAsignadosGlobal) {
+      for (const n of idsAsignadosGlobal) assigned.add(String(n));
+    }
     return (art) => assigned.has(String(art?.id));
-  }, [agrupaciones, currentGroupId]);
+  }, [agrupaciones, currentGroupId, idsAsignadosGlobal]);
 
   useEffect(() => {
     if (!openCrearAgr || haveExternalTree || loading || loadedRef.current) return;

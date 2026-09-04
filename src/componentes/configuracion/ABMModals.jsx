@@ -277,9 +277,14 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 }
 
 /* ─── Alta de Artículo ─── */
-export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
+export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, articulo = null }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
+  const isEdit = !!articulo;
+  // Artículo manual (id < 0): la edición de SKU/código externo tiene sentido (aún no
+  // sincronizó con Maxi). Artículo ya sincronizado (id > 0): el backend ni siquiera
+  // procesa ese campo en el PATCH, así que no se muestra.
+  const isManualArticulo = isEdit && Number(articulo?.id) < 0;
   const [form, setForm] = useState(EMPTY_FORM);
   const [rubroNuevo, setRubroNuevo] = useState('');
   const [subrubroNuevo, setSubrubroNuevo] = useState('');
@@ -330,6 +335,22 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
       setPadrinoCandidates([]);
     }
   }, [open]);
+
+  // Precarga del form en modo edición. En maxi_articles (y en el objeto `articulo` que
+  // ya trae ArticuloAccionesMenu) la columna `subrubro` es el "Rubro" que ve el usuario
+  // y `categoria` es el "Subrubro" — nomenclatura invertida histórica, ver rubroActual
+  // en ArticuloAccionesMenu.jsx.
+  useEffect(() => {
+    if (!open || !articulo) return;
+    setForm({
+      nombre: articulo.nombre || '',
+      rubro: articulo.subrubro || '',
+      subrubro: articulo.categoria || '',
+      precio: articulo.precio != null ? String(articulo.precio) : '',
+      agrupacionId: '',
+      skuExterno: '',
+    });
+  }, [open, articulo]);
 
   // Buscar candidatos de padrino con debounce
   useEffect(() => {
@@ -414,28 +435,40 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
     setSaving(true); setError('');
     try {
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${BASE}/businesses/${businessId}/articles/manual`, {
-        method: 'POST',
+      const url = isEdit
+        ? `${BASE}/businesses/${businessId}/articles/${articulo.id}`
+        : `${BASE}/businesses/${businessId}/articles/manual`;
+      const body = isEdit
+        ? {
+            nombre: form.nombre.trim(),
+            rubro: rubroEfectivo,
+            subrubro: subrubroEfectivo || null,
+            precio: form.precio ? Number(form.precio) : 0,
+            ...(isManualArticulo ? { codigoExterno: form.skuExterno?.trim() || null } : {}),
+          }
+        : {
+            nombre: form.nombre.trim(),
+            rubro: rubroEfectivo,
+            subrubro: subrubroEfectivo || null,
+            precio: form.precio ? Number(form.precio) : 0,
+            agrupacionId: form.agrupacionId ? Number(form.agrupacionId) : null,
+            skuExterno: form.skuExterno?.trim() || null,
+          };
+      const res = await fetch(url, {
+        method: isEdit ? 'PATCH' : 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Business-Id': String(businessId),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          nombre: form.nombre.trim(),
-          rubro: rubroEfectivo,
-          subrubro: subrubroEfectivo || null,
-          precio: form.precio ? Number(form.precio) : 0,
-          agrupacionId: form.agrupacionId ? Number(form.agrupacionId) : null,
-          skuExterno: form.skuExterno?.trim() || null,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
       onCreated?.(data.articulo);
       onClose();
     } catch (e) {
-      setError(e.message || 'Error al crear el artículo');
+      setError(e.message || (isEdit ? 'Error al guardar los cambios' : 'Error al crear el artículo'));
     } finally { setSaving(false); }
   };
 
@@ -443,12 +476,15 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Nuevo artículo</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+        {isEdit ? 'Editar artículo' : 'Nuevo artículo'}
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={2} pt={0.5}>
           {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
 
-          {/* Toggle padrino + autocomplete */}
+          {/* Toggle padrino + autocomplete — no aplica al editar un artículo existente */}
+          {!isEdit && (
           <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: -1 }}>
               <Checkbox size="small" checked={usarPadrino}
@@ -506,11 +542,14 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
               />
             )}
           </Box>
+          )}
 
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
 
-          {/* SKU externo */}
+          {/* SKU externo — solo aplica a creación, o edición de un artículo manual
+              (uno ya sincronizado con Maxi no procesa este campo en el PATCH) */}
+          {(!isEdit || isManualArticulo) && (
           <TextField
             label="SKU / Código de Maxi"
             size="small" fullWidth
@@ -524,6 +563,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
               sx: { color: sinSku ? '#d97706' : 'text.secondary', fontWeight: sinSku ? 600 : 400 },
             }}
           />
+          )}
 
           {/* Rubro */}
           <Stack direction="row" spacing={1.5}>
@@ -582,9 +622,11 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
           </Stack>
 
           <Stack direction="row" spacing={1.5}>
-            <TextField label="Precio inicial" size="small" type="number" fullWidth
+            <TextField label={isEdit ? 'Precio' : 'Precio inicial'} size="small" type="number" fullWidth
               value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))}
               InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
+            {/* Agrupación: solo al crear — moverla ya es una acción aparte en el menú */}
+            {!isEdit && (
             <FormControl size="small" fullWidth>
               <InputLabel>Agrupación</InputLabel>
               <Select label="Agrupación" value={form.agrupacionId}
@@ -596,6 +638,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
                 }
               </Select>
             </FormControl>
+            )}
           </Stack>
         </Stack>
       </DialogContent>
@@ -604,7 +647,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated }) {
         <Button size="small" variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
           sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
-          {saving ? 'Creando…' : 'Crear artículo'}
+          {saving ? (isEdit ? 'Guardando…' : 'Creando…') : (isEdit ? 'Guardar cambios' : 'Crear artículo')}
         </Button>
       </DialogActions>
     </Dialog>

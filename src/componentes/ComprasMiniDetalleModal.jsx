@@ -386,10 +386,16 @@ export function ComprasDetalleContenido({
     return extraItems;
   }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId]);
 
-  const sortedItems = useMemo(() =>
-    [...displayItems].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? ''))),
-    [displayItems]
-  );
+  // Si el negocio ya tiene sucursales definidas, "sin sucursal" no es una categoría real:
+  // en la práctica son compras duplicadas del mismo dato ya asignado a su sucursal real
+  // (mismo comprobante, misma fecha, mismo importe). Se descartan para no inflar el
+  // total ni mostrar un "Principal" que no corresponde.
+  const sortedItems = useMemo(() => {
+    const base = (hasSucursales || dynamicBranches.length > 0)
+      ? displayItems.filter(it => it.branch_id != null)
+      : displayItems;
+    return [...base].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+  }, [displayItems, hasSucursales, dynamicBranches]);
 
   // ── Detección de comprobantes con bonificación (líneas en $0) para pintar la tabla ──
   // Agrupa las filas por comprobante (factura + purchase_id) y calcula facturadas/
@@ -422,12 +428,6 @@ export function ComprasDetalleContenido({
   const keyDeItem = useCallback((it) =>
     `${it.factura ?? it.comprob ?? it.referencia ?? ''}__${it.purchase_id ?? ''}__${it._bizId ?? ''}`,
     []);
-
-  // ¿Hay compras sin sucursal? Solo entonces tiene sentido la opción "Principal".
-  const hayComprasSinSucursal = useMemo(() => {
-    const all = [...(items || []), ...(extraItems || [])];
-    return all.some(it => it.branch_id == null);
-  }, [items, extraItems]);
 
   const totales = useMemo(() => {
     let cantidad = 0, importe = 0;
@@ -775,14 +775,6 @@ export function ComprasDetalleContenido({
                 onChange={(e) => setSelectedBranch(e.target.value)}
               >
                 <MenuItem value="all">Todas</MenuItem>
-                {hayComprasSinSucursal && (
-                  <MenuItem value="main">
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)', flexShrink: 0 }} />
-                      <span>Principal</span>
-                    </Stack>
-                  </MenuItem>
-                )}
 
                 {/* Modo "todos los negocios": agrupar por negocio con subheaders */}
                 {selectedBiz === 'all' && branchesByBiz
@@ -795,15 +787,6 @@ export function ComprasDetalleContenido({
                         {bizName}
                       </Typography>
                     </MenuItem>,
-
-                    ...(hayComprasSinSucursal ? [(
-                      <MenuItem key={`main-${bizId}`} value={`main-${bizId}`} sx={{ pl: 3 }}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: bizColor, flexShrink: 0 }} />
-                          <span>Principal</span>
-                        </Stack>
-                      </MenuItem>
-                    )] : []),
 
                     ...bizBranches.map(branch => (
                       <MenuItem key={`${bizId}-${branch.id}`} value={String(branch.id)} sx={{ pl: 3 }}>
@@ -877,14 +860,6 @@ export function ComprasDetalleContenido({
         <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
           {selectedBiz === 'all' && branchesByBiz
             ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
-              ...(hayComprasSinSucursal ? [(
-                <Stack key={`leg-main-${bizId}`} direction="row" alignItems="center" spacing={0.5}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: bizColor, flexShrink: 0 }} />
-                  <Typography variant="caption" color="text.secondary">
-                    Principal <span style={{ opacity: 0.55, fontSize: '0.68rem' }}>({bizName})</span>
-                  </Typography>
-                </Stack>
-              )] : []),
               ...bizBranches.map(branch => (
                 <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />
@@ -895,12 +870,6 @@ export function ComprasDetalleContenido({
               )),
             ])
             : <>
-              {hayComprasSinSucursal && (
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: themeColors.primary, flexShrink: 0 }} />
-                  <Typography variant="caption" color="text.secondary">Principal</Typography>
-                </Stack>
-              )}
               {dynamicBranches.map(branch => (
                 <Stack key={`leg-${branch.id}`} direction="row" alignItems="center" spacing={0.5}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: branch.color || '#1976d2', flexShrink: 0 }} />

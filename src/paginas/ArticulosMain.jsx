@@ -50,6 +50,10 @@ import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk } from '@/lib/reactQueryClient';
+import { useArticleCostsAndConfig } from '@/hooks/useArticleCostsAndConfig';
+import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import VistaCartaMenu from '../componentes/VistaCartaMenu';
 import '../css/global.css';
@@ -122,6 +126,7 @@ export default function ArticulosMain(props) {
   } = props;
 
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const {
     activeDivisionId,
     activeDivisionAgrupacionIds,
@@ -453,6 +458,12 @@ export default function ArticulosMain(props) {
 
       if (Array.isArray(filtered)) setAgrupaciones(filtered);
       setOrgAssignedIds(assigned);
+      // Mantener la cache de React Query sincronizada con este refresco explícito,
+      // para que una futura navegación de vuelta a /menu no la pise con el snapshot viejo.
+      queryClient.setQueryData(
+        qk.agrupaciones(Number(activeBizId) || 0, activeDivisionId ?? null),
+        { filtered, orgAssignedIds: assigned }
+      );
 
       // Restaurar scroll después de que React aplique los cambios al DOM
       if (scrollEl && savedScroll > 0) {
@@ -468,7 +479,7 @@ export default function ArticulosMain(props) {
       setOrgAssignedIds(null);
       return [];
     }
-  }, [activeBizId, activeDivisionId]);
+  }, [activeBizId, activeDivisionId, queryClient]);
 
   // Recarga `categorias` directamente desde el árbol de artículos del backend.
   // En vista carta la tabla (que normalmente arma `categorias` vía onCategoriasLoaded)
@@ -500,61 +511,64 @@ export default function ArticulosMain(props) {
     setCategoriaSeleccionada(null);
     setFiltroBusqueda('');
     setSearchText('');
-    setCategorias([]); // limpiar artículos del negocio anterior del buscador
+    // Ya NO se limpia `categorias` acá: ahora llega cacheada (React Query) por
+    // negocio — la propia key del caché aísla los datos de cada negocio, así que
+    // limpiarla a mano en cada montaje solo lograba pisar (con una carrera) el dato
+    // recién poblado por el efecto de TablaArticulos cuando la cache ya estaba tibia.
   }, [activeBizId]);
 
+  // Agrupaciones cacheadas (React Query) — antes este efecto llamaba a
+  // refetchAgrupaciones() sin caché en CADA montaje (cada navegación de vuelta a
+  // /menu volvía a pedir todo). refetchAgrupaciones sigue existiendo tal cual para
+  // refrescos explícitos (crear/borrar/mover grupo, etc.) y además sincroniza esta
+  // misma cache al final, así una futura navegación ve el dato actualizado.
+  const activeBizIdNum = Number(activeBizId) || 0;
+  const { data: agrupacionesData } = useAgrupacionesQuery(activeBizIdNum, activeDivisionId ?? null);
   useEffect(() => {
-    if (!activeBizId) {
-      setAgrupaciones([]);
-      return;
-    }
+    if (!activeBizId) { setAgrupaciones([]); setOrgAssignedIds(null); return; }
+    if (!agrupacionesData) return;
+    setAgrupaciones(agrupacionesData.filtered || []);
+    setOrgAssignedIds(agrupacionesData.orgAssignedIds);
+  }, [activeBizId, agrupacionesData]);
 
-    refetchAgrupaciones();
-  }, [activeBizId, activeDivisionId, reloadKey, refetchAgrupaciones]);
-
-  // ── Fetch recetas-costos y article-price-config al cambiar de negocio ──
-  // Cada negocio (principal o sub) tiene sus propias recetas y price_config.
+  // ── Costos de receta y article-price-config, cacheados (React Query) ──
+  // Cada negocio (principal o sub) tiene sus propias recetas y price_config. Antes
+  // este efecto se re-ejecutaba sin caché en cada montaje; ahora llega instantáneo
+  // desde cache en la segunda visita a /menu.
+  const { data: costsConfigData } = useArticleCostsAndConfig(activeBizIdNum);
   useEffect(() => {
-    if (!activeBizId) return;
-    let alive = true;
-    const recetasBizId = Number(activeBizId);
-    const configBizId = Number(activeBizId);
-
-    Promise.all([
-      RecetasAPI.getCostos(recetasBizId).catch(() => ({ costos: {} })),
-      PriceConfigAPI.getAll(configBizId).catch(() => ({ byArticle: {}, byRubro: {}, byAgrupacion: {} })),
-      fetch(`${BASE}/businesses/${configBizId}/config`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-          'X-Business-Id': String(configBizId),
-        },
-      }).then(r => r.json()).catch(() => ({})),
-      fetch(`${BASE}/businesses/${configBizId}/articles-alertas-ventas`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-          'X-Business-Id': String(configBizId),
-        },
-      }).then(r => r.json()).catch(() => ({ hayAlerta: false })),
-    ]).then(([costosRes, configRes, elaboradosRes, configNegocio, alertaVentasRes]) => {  // ← agregar elaboradosRes acá
-      if (!alive) return;
-      setRecetasCostos(costosRes?.costos || {});
-      setRecetasElaborados(elaboradosRes?.data || {});
-      setPriceConfig({
-        byArticle: configRes?.byArticle || {},
-        byRubro: configRes?.byRubro || {},
-        byAgrupacion: configRes?.byAgrupacion || {},
-      });
-      if (configNegocio?.config?.articulos_costo_ideal) {
-        setGlobalCostoIdeal(Number(configNegocio.config.articulos_costo_ideal));
-      }
-      if (configNegocio?.config?.redondeo_precios !== undefined) {
-        saveRedondeoConfig(configBizId, configNegocio.config.redondeo_precios, true);
-      }
-      setAlertaVentas(alertaVentasRes || null);
+    if (!activeBizId || !costsConfigData) return;
+    const { costosRes, configRes, elaboradosRes, configNegocio, alertaVentasRes } = costsConfigData;
+    setRecetasCostos(costosRes?.costos || {});
+    setRecetasElaborados(elaboradosRes?.data || {});
+    setPriceConfig({
+      byArticle: configRes?.byArticle || {},
+      byRubro: configRes?.byRubro || {},
+      byAgrupacion: configRes?.byAgrupacion || {},
     });
+    if (configNegocio?.config?.articulos_costo_ideal) {
+      setGlobalCostoIdeal(Number(configNegocio.config.articulos_costo_ideal));
+    }
+    if (configNegocio?.config?.redondeo_precios !== undefined) {
+      saveRedondeoConfig(activeBizIdNum, configNegocio.config.redondeo_precios, true);
+    }
+    setAlertaVentas(alertaVentasRes || null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBizId, costsConfigData]);
 
-    return () => { alive = false; };
-  }, [activeBizId]);
+  // `reloadKey` es la señal genérica de "algo cambió afuera, refrescar todo" (sync de
+  // MaxiRest terminada, botón Actualizar, etc.) — antes forzaba el refetch porque estaba
+  // en el array de deps de los efectos de fetch; ahora que esos fetches están cacheados,
+  // el bump de reloadKey pasa a invalidar las queries en vez de dispararlas directo.
+  const isFirstReloadKeyRef = useRef(true);
+  useEffect(() => {
+    if (isFirstReloadKeyRef.current) { isFirstReloadKeyRef.current = false; return; }
+    if (!activeBizIdNum) return;
+    queryClient.invalidateQueries({ queryKey: qk.agrupaciones(activeBizIdNum, activeDivisionId ?? null) });
+    queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(activeBizIdNum) });
+    queryClient.invalidateQueries({ queryKey: qk.articlesTree(activeBizIdNum) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   const handleRecetaSaved = useCallback(async (savedReceta) => {
     if (!savedReceta?.article_id) return;
@@ -578,7 +592,10 @@ export default function ArticulosMain(props) {
     } catch (e) {
       console.warn('[handleRecetaSaved] refetch costos falló:', e.message);
     }
-  }, [activeBizId]);
+    // El estado local ya quedó actualizado arriba; invalidar la cache para que una
+    // futura navegación de vuelta a /menu no la pise con el snapshot viejo.
+    queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(Number(activeBizId)) });
+  }, [activeBizId, queryClient]);
 
   // ── Handler centralizado de guardado de price config ──
   const handlePriceConfigSave = React.useCallback((body) => {
@@ -592,13 +609,14 @@ export default function ArticulosMain(props) {
           byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         });
+        queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
       } catch (e) {
         console.error('[handlePriceConfigSave]', e);
       }
     };
 
     doSave();
-  }, [activeBizId, setPriceConfig]);
+  }, [activeBizId, setPriceConfig, queryClient]);
 
   const handleBulkManualSave = React.useCallback(async (updates) => {
     const bizId = Number(activeBizId);
@@ -631,10 +649,11 @@ export default function ArticulosMain(props) {
         byRubro: r?.byRubro || {},
         byAgrupacion: r?.byAgrupacion || {},
       });
+      queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
     } catch (e) {
       console.error('[handleBulkManualSave]', e);
     }
-  }, [activeBizId, setPriceConfig]);
+  }, [activeBizId, setPriceConfig, queryClient]);
 
   // Escuchar ui:undo para restaurar el objetivo previo
   React.useEffect(() => {
@@ -662,13 +681,14 @@ export default function ArticulosMain(props) {
           byRubro: r?.byRubro || {},
           byAgrupacion: r?.byAgrupacion || {},
         });
+        queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
       } catch (err) {
         console.error('[undo objetivo_update]', err);
       }
     };
     window.addEventListener('ui:undo', onUndo);
     return () => window.removeEventListener('ui:undo', onUndo);
-  }, [activeBizId, setPriceConfig]);
+  }, [activeBizId, setPriceConfig, queryClient]);
 
   // Listener: refrescar costos de receta cuando se borren recetas masivamente
   // (por bulk delete o por desvinculación de gemelos de receta)
@@ -679,6 +699,7 @@ export default function ArticulosMain(props) {
         const bizId = Number(activeBizId);
         const res = await RecetasAPI.getCostos(bizId);
         if (res?.costos) setRecetasCostos(res.costos);
+        queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
       } catch (e) {
         console.warn('[recetas:bulk-deleted listener] refetch falló:', e.message);
       }
@@ -689,7 +710,7 @@ export default function ArticulosMain(props) {
       window.removeEventListener('recetas:bulk-deleted', handler);
       window.removeEventListener('recetas:bulk-added', handler);
     };
-  }, [activeBizId]);
+  }, [activeBizId, queryClient]);
 
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
@@ -959,6 +980,11 @@ export default function ArticulosMain(props) {
   useEffect(() => {
     const onBizSynced = () => setReloadKey((k) => k + 1);
 
+    // Borrar un subnegocio reasigna sus artículos a "Sin Agrupación" del principal en
+    // toda la org — sin esto, agrupaciones/árbol/costos quedan cacheados con datos de
+    // antes del borrado hasta que se recargue la página a mano.
+    const onBizDeleted = () => setReloadKey((k) => k + 1);
+
     const onVentasUpdated = () => {
       setSyncVersion((v) => v + 1);
     };
@@ -994,6 +1020,7 @@ export default function ArticulosMain(props) {
     } catch { }
 
     window.addEventListener('business:synced', onBizSynced);
+    window.addEventListener('business:deleted', onBizDeleted);
     window.addEventListener('ventas:updated', onVentasUpdated);
     window.addEventListener('sync:start', onSyncStart);
     window.addEventListener('sync:progress', onSyncProgress);
@@ -1001,6 +1028,7 @@ export default function ArticulosMain(props) {
 
     return () => {
       window.removeEventListener('business:synced', onBizSynced);
+      window.removeEventListener('business:deleted', onBizDeleted);
       window.removeEventListener('ventas:updated', onVentasUpdated);
       window.removeEventListener('sync:start', onSyncStart);
       window.removeEventListener('sync:progress', onSyncProgress);

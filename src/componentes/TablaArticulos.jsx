@@ -26,6 +26,9 @@ import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
 import { useOrganization } from '@/context/OrganizationContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { useArticlesTree } from '@/hooks/useArticlesTree';
+import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
 
 /* ---------------- utils ---------------- */
@@ -447,8 +450,6 @@ export default function TablaArticulos({
     (msg, type = "success") => setSnack({ open: true, msg, type }),
     []
   );
-  const loadReqId = useRef(0);
-
   const filterIds = useMemo(() => {
     if (!visibleIds) return null;
     return new Set(Array.from(visibleIds).map(Number));
@@ -457,11 +458,13 @@ export default function TablaArticulos({
   const [expandedRubro, setExpandedRubro] = useState(null);
   const [expandedCatByRubro, setExpandedCatByRubro] = useState({});
   const [reloadTick, setReloadTick] = useState(0);
+  const queryClient = useQueryClient();
   const refetchLocal = useCallback(async () => {
     try { invalidateHttpCache(); } catch { }   // asegurar datos frescos, no cache de 4s
     try { await refetchAgrupaciones?.(); } catch { }
+    try { queryClient.invalidateQueries({ queryKey: qk.articlesTree(Number(activeBizId) || 0) }); } catch { }
     setReloadTick((t) => t + 1);
-  }, [refetchAgrupaciones]);
+  }, [refetchAgrupaciones, queryClient, activeBizId]);
 
   const { organization } = useOrganization() || {};
 
@@ -476,7 +479,7 @@ export default function TablaArticulos({
 
   const [recetaArticulo, setRecetaArticulo] = useState(null);
   useEffect(() => {
-    if (recetaArticulo === null) console.trace('[CIERRE MODAL] recetaArticulo pasó a null');
+    if (recetaArticulo === null);
   }, [recetaArticulo]);
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
@@ -510,34 +513,6 @@ export default function TablaArticulos({
       setSortBy(k);
       setSortDir('asc');
     }
-  }, []);
-
-  const buildTreeFromFlat = useCallback((items = []) => {
-    const flat = items.map((row) => {
-      const raw = row?.raw || {};
-      const id = Number(row?.id ?? raw?.id ?? raw?.articulo_id ?? raw?.codigo ?? raw?.codigoArticulo);
-      return {
-        id,
-        nombre: String(row?.nombre ?? raw?.nombre ?? raw?.descripcion ?? `#${id}`),
-        categoria: String(row?.categoria ?? raw?.categoria ?? raw?.rubro ?? "Sin categoría"),
-        subrubro: String(row?.subrubro ?? raw?.subrubro ?? raw?.subRubro ?? "Sin subrubro"),
-        precio: Number(row?.precio ?? raw?.precio ?? raw?.precioVenta ?? raw?.importe ?? 0),
-        costo: Number(row?.costo ?? raw?.costo ?? 0),
-        origen: row?.origen ?? raw?.origen ?? null,
-      };
-    }).filter((a) => Number.isFinite(a.id));
-
-    const bySub = new Map();
-    for (const a of flat) {
-      if (!bySub.has(a.subrubro)) bySub.set(a.subrubro, new Map());
-      const byCat = bySub.get(a.subrubro);
-      if (!byCat.has(a.categoria)) byCat.set(a.categoria, []);
-      byCat.get(a.categoria).push(a);
-    }
-    return Array.from(bySub, ([subrubro, byCat]) => ({
-      subrubro,
-      categorias: Array.from(byCat, ([categoria, articulos]) => ({ categoria, articulos })),
-    }));
   }, []);
 
   // ── Cargar redondeo config ──
@@ -577,62 +552,55 @@ export default function TablaArticulos({
     };
   }, [activeBizId]);
 
-  useEffect(() => {
-    setCategorias([]);
-    setTodoGroupId(null);
-    setExcludedIds(new Set());
-    let cancel = false;
-    loadReqId.current += 1;
-    const myId = loadReqId.current;
+  // Árbol de artículos vía React Query: cacheado (1h) por negocio y sobrevive la
+  // navegación entre pantallas (antes se re-pedía completo en cada montaje). El fetch
+  // real + fallback vive en useArticlesTree/fetchArticlesTree; acá solo se propaga el
+  // resultado a los mismos setCategorias/onCategoriasLoaded que ya consumía el resto
+  // del componente, sin tocar downstream.
+  const activeBizIdNum = Number(activeBizId) || 0;
+  const {
+    data: articlesTreeData,
+    isError: articlesTreeError,
+  } = useArticlesTree(activeBizIdNum);
 
+  useEffect(() => {
+    if (!activeBizId) {
+      setCategorias([]);
+      onCategoriasLoaded?.([]);
+      openSnack("No hay negocio activo", "warning");
+      return;
+    }
+    const tree = articlesTreeData || [];
+    setCategorias(tree);
+    onCategoriasLoaded?.(tree);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBizId, articlesTreeData]);
+
+  useEffect(() => {
+    if (articlesTreeError) openSnack("No se pudieron cargar los artículos desde la base", "error");
+  }, [articlesTreeError, openSnack]);
+
+  // Grupo "Todo" y exclusiones de artículos: llamadas chicas y aparte del árbol
+  // (no son el costo real de la recarga, se dejan con el mismo patrón manual de antes).
+  useEffect(() => {
+    if (!activeBizId) { setTodoGroupId(null); setExcludedIds(new Set()); return; }
+    let cancel = false;
     (async () => {
       try {
-        const bizId = activeBizId;
-        if (!bizId) {
-          if (!cancel && myId === loadReqId.current) { setCategorias([]); onCategoriasLoaded?.([]); }
-          openSnack("No hay negocio activo", "warning");
-          return;
+        const todoBizId = rootBizId ?? activeBizId;
+        const todo = await ensureTodo(todoBizId);
+        if (todo?.id && !cancel) {
+          setTodoGroupId(todo.id);
+          const ex = await getExclusiones(todo.id, todoBizId);
+          const ids = (ex || []).filter((e) => e.scope === "articulo").map((e) => Number(e.ref_id)).filter(Boolean);
+          setExcludedIds(new Set(ids));
         }
-        try {
-          const resp = await BusinessesAPI.articlesTree(bizId);
-          const tree = Array.isArray(resp?.tree) ? resp.tree : [];
-          if (tree.length > 0) {
-            if (!cancel && myId === loadReqId.current) { setCategorias(tree); onCategoriasLoaded?.(tree); }
-          } else {
-            const resp2 = await BusinessesAPI.articlesFromDB(bizId);
-            const items = Array.isArray(resp2?.items) ? resp2.items : [];
-            const tree2 = buildTreeFromFlat(items);
-            if (!cancel && myId === loadReqId.current) { setCategorias(tree2); onCategoriasLoaded?.(tree2); }
-          }
-        } catch (e) {
-          const resp2 = await BusinessesAPI.articlesFromDB(bizId);
-          const items = Array.isArray(resp2?.items) ? resp2.items : [];
-          const tree2 = buildTreeFromFlat(items);
-          if (!cancel && myId === loadReqId.current) { setCategorias(tree2); onCategoriasLoaded?.(tree2); }
-        }
-        try {
-          const todoBizId = rootBizId ?? activeBizId;
-          const todo = await ensureTodo(todoBizId);
-          if (todo?.id && !cancel && myId === loadReqId.current) {
-            setTodoGroupId(todo.id);
-            const ex = await getExclusiones(todo.id, todoBizId);
-            const ids = (ex || []).filter((e) => e.scope === "articulo").map((e) => Number(e.ref_id)).filter(Boolean);
-            setExcludedIds(new Set(ids));
-          }
-        } catch {
-          if (!cancel && myId === loadReqId.current) setExcludedIds(new Set());
-        }
-      } catch (e) {
-        console.error("TablaArticulos: cargar BD", e);
-        if (!cancel && myId === loadReqId.current) {
-          openSnack("No se pudieron cargar los artículos desde la base", "error");
-          setCategorias([]);
-          onCategoriasLoaded?.([]);
-        }
+      } catch {
+        if (!cancel) setExcludedIds(new Set());
       }
     })();
     return () => { cancel = true; };
-  }, [activeBizId, rootBizId, reloadKey, reloadTick, onCategoriasLoaded, buildTreeFromFlat, openSnack]);
+  }, [activeBizId, rootBizId, reloadKey, reloadTick]);
 
   useEffect(() => {
     if (!activeBizId) { setPromoComponentIds(new Set()); return; }
@@ -1758,6 +1726,7 @@ export default function TablaArticulos({
                   baseById={baseById}
                   isTodo={isTodo}
                   agrupaciones={agrupaciones}
+                  idsAsignadosGlobal={idsAsignadosGlobal}
                   agrupacionSeleccionada={agrupacionSeleccionada}
                   todoGroupId={todoGroupId}
                   articuloIds={row.ids}
@@ -1797,9 +1766,17 @@ export default function TablaArticulos({
     const precioManual = getPrecioManualArticulo(a);
     const precioBase = num(a.precio);
     const precioRef = precioManual ?? precioBase;
-    const precioParaCosto = precioManual != null && precioManual > 0 ? precioManual : precioBase;
-    const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
     const pasoRedondeo = Number(redondeoConfig?.valor) || 0;
+    // % de costo: si hay una lista de precios no-favorita activa (y el artículo no está
+    // excluido de ella), se calcula con el precio de ESA lista — antes siempre usaba el
+    // precio de la favorita, por eso Costo %/Rentabilidad no cambiaban al cambiar de lista.
+    const precioListaParaCosto = getPrecioListaActiva(a, agrupId);
+    const precioParaCosto = (precioListaParaCosto && !precioListaParaCosto.excluido)
+      ? (pasoRedondeo > 0
+          ? Math.round(precioListaParaCosto.precio / pasoRedondeo) * pasoRedondeo
+          : Math.round(precioListaParaCosto.precio))
+      : (precioManual != null && precioManual > 0 ? precioManual : precioBase);
+    const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
     const sugeridoCrudo = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
     // Sugerido: SIEMPRE hacia arriba (hacia abajo no alcanzaría el objetivo). Spec F1/§5.2
     const sugerido = sugeridoCrudo > 0
@@ -2245,6 +2222,7 @@ export default function TablaArticulos({
                       });
                     }}
                     agrupaciones={agrupaciones}
+                    idsAsignadosGlobal={idsAsignadosGlobal}
                     agrupacionSeleccionada={agrupacionSeleccionada}
                     todoGroupId={todoGroupId}
                     isTodo={isTodo} onRefetch={refetchLocal}
@@ -2276,7 +2254,7 @@ export default function TablaArticulos({
     <>
       {recetaArticulo && (
         <RecetaModal
-          open={!!recetaArticulo} onClose={() => { console.trace('[CIERRE MODAL] onClose disparado'); setRecetaArticulo(null); }}
+          open={!!recetaArticulo} onClose={() => {setRecetaArticulo(null); }}
           articulo={recetaArticulo}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}

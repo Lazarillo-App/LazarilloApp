@@ -847,6 +847,23 @@ export const insumoReemplazar = async (insumoId, nuevoInsumoId, bizId, recetaIds
   return data;
 };
 
+export const insumoMermaAplicarPreview = async (insumoId, mermaId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}/aplicar-preview`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al calcular preview');
+  return data;
+};
+export const insumoMermaAplicar = async (insumoId, mermaId, bizId, recetaIds = null) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}/aplicar`, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify(recetaIds ? { recetaIds } : {})
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al aplicar merma');
+  return data;
+};
+
 // ==================== EXPORTS ====================
 
 export default {

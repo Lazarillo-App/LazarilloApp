@@ -299,7 +299,7 @@ const syncingProvRef = useRef(false);
   const handleRestoreMaxi = async () => {
     if (restoring || restoringRef.current) return;
     if (!window.confirm(
-      'Esto va a reemplazar TODOS los nombres, rubros y subrubros que hayas editado en Lazarillo por los valores originales de MaxiRest para este local. Las ediciones manuales se perderán. ¿Seguro?'
+      'Esto va a reemplazar TODOS los nombres, rubros, subrubros y precios que hayas editado en Lazarillo por los valores originales de MaxiRest para este local. Las ediciones manuales se perderán. ¿Seguro?'
     )) return;
     setRestoring(true); restoringRef.current = true;
     try {

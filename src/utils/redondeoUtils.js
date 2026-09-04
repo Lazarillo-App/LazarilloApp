@@ -19,3 +19,15 @@ export function saveRedondeoConfig(bizId, valor, mostrarModal = true) {
     return data;
   } catch { return null; }
 }
+
+/**
+ * Redondea un precio al múltiplo elegido por el usuario en Configuración (ej. al múltiplo
+ * de $50 más cercano). Mismo criterio que ya se usa en TablaArticulos para precios manuales
+ * y aumentos masivos — centralizado acá para no repetirlo en cada lugar que muestra un precio.
+ * `redondeo` nulo/0/negativo → sin redondeo (solo entero).
+ */
+export function aplicarRedondeo(precio, redondeo) {
+  const p = Number(precio) || 0;
+  const r = Number(redondeo) || 0;
+  return r > 0 ? Math.round(p / r) * r : Math.round(p);
+}
