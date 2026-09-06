@@ -2197,12 +2197,20 @@ export default function TablaArticulos({
                         </div>
                       )}
 
-                      {/* Paso + y ✕ (derecha, absolutos): solo con valor, visibles en hover de fila */}
+                      {/* Paso + y ✕ (derecha, absolutos): solo con valor, visibles en hover de fila.
+                          onMouseDown con preventDefault: sin esto, clickear acá le saca el foco al
+                          input de al lado ANTES del click (blur-antes-que-click), y el onBlur del
+                          input reguarda el valor viejo justo antes de que commitValor lo borre —
+                          quedaba una carrera de red donde el primer click "no hacía nada" hasta
+                          reintentar. Con preventDefault el input nunca pierde el foco, así que ese
+                          onBlur no llega a dispararse. */}
                       {tieneValor && (
                         <span style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 3 }}>
                           <button className="np-step" style={stepBtnStyle} title="Subir un paso"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={(e) => { e.stopPropagation(); commitValor((valorNum || 0) + (paso || 1), usarChipIds.has(id)); }}>+</button>
                           <button className="np-step" style={stepBtnStyle} title="Vaciar (volver al precio de lista)"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={(e) => { e.stopPropagation(); commitValor(null); }}>✕</button>
                         </span>
                       )}

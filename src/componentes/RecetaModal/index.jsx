@@ -324,7 +324,11 @@ export default function RecetaModal({
   // Recuerda para qué artículo ya resolvimos el tab inicial en esta apertura, para no
   // volver a navegar cada vez que `insumos` se refresca por otro motivo (ej. cambiar una
   // merma) mientras el usuario ya está navegando manualmente entre tabs.
+  // `tabResuelto` (estado, no ref) además gatea el render: mientras se resuelve el tab
+  // en el caso cascada (modoInsumo+saltarSelector), no se pinta contenido de ningún tab
+  // — antes se veía primero "receta" (vacío) y recién después saltaba a "compras".
   const tabResueltoParaRef = useRef(null);
+  const [tabResuelto, setTabResuelto] = useState(true);
   useEffect(() => {
     if (!open) { tabResueltoParaRef.current = null; return; }
     if (tabResueltoParaRef.current === articulo?.id) return; // ya resuelto para este artículo
@@ -351,9 +355,13 @@ export default function RecetaModal({
         }
         setTab(destino);
         tabResueltoParaRef.current = articulo?.id;
+        setTabResuelto(true);
+      } else {
+        setTabResuelto(false); // todavía no sabemos a qué tab ir — no pintar nada
       }
     } else {
       tabResueltoParaRef.current = articulo?.id;
+      setTabResuelto(true);
     }
     setRecetaConfirmada(false);
   }, [open, modoInsumo, saltarSelector, insumos, articulo?.id]);
@@ -444,10 +452,11 @@ export default function RecetaModal({
     if (!businessId || !gemelosGroup) return;
     const token = localStorage.getItem('token') || '';
     try {
-      await fetch(`${BASE}/businesses/${businessId}/article-links/${gemelosGroup.groupId}/members/${targetArticleId}`, {
+      const res = await fetch(`${BASE}/businesses/${businessId}/article-links/${gemelosGroup.groupId}/members/${targetArticleId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
       });
+      const data = await res.json().catch(() => null);
 
       // Borrar la receta del artículo desvinculado
       await fetch(`${BASE}/businesses/${businessId}/articles/${targetArticleId}/receta`, {
@@ -455,10 +464,19 @@ export default function RecetaModal({
         headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
       }).catch(e => console.warn('[quitarGemelo] no se pudo borrar receta:', e.message));
 
-      setGemelosGroup(prev => prev ? {
-        ...prev,
-        members: prev.members.filter(m => Number(m.article_id) !== Number(targetArticleId)),
-      } : null);
+      // Con 2 miembros, sacar a uno borra el grupo entero en el backend (queda un
+      // solo miembro = ya no hay vínculo). Sin chequear `groupDeleted`, el otro
+      // miembro seguía mostrado localmente como "vinculado" a un grupo que ya no
+      // existe en la base — quedaba "a medias" (visible acá, invisible para
+      // cualquier sincronización real, que lee siempre de la base).
+      if (data?.groupDeleted) {
+        setGemelosGroup(null);
+      } else {
+        setGemelosGroup(prev => prev ? {
+          ...prev,
+          members: prev.members.filter(m => Number(m.article_id) !== Number(targetArticleId)),
+        } : null);
+      }
       try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
     } catch (e) { console.error('[quitarGemelo]', e.message); }
   }, [businessId, gemelosGroup]);
@@ -1632,7 +1650,10 @@ export default function RecetaModal({
           <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: '60vh' }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
-            ) : loading ? (
+            ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
+              // Mientras no sabemos a qué tab ir (cascada modoInsumo+saltarSelector),
+              // no pintar ningún contenido — antes se veía primero "Receta" (vacío)
+              // y recién después saltaba a "Compras" (parpadeo visible).
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
               </Box>

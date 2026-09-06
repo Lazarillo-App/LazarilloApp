@@ -213,6 +213,7 @@ export default function ArticulosMain(props) {
     setCurrentList: setCurrentPriceList,
     isFavoriteActive: isPriceListFavorite,
     calcPrecio: calcPrecioPorLista,
+    reload: reloadPriceLists,
   } = useArticleLists(activeBizId);
 
   const { activeBranchId, activeBranch, activeBranchFilter, branches: allBranches, rawBranches } = useBranch() || {};
@@ -615,13 +616,18 @@ export default function ArticulosMain(props) {
           byAgrupacion: r?.byAgrupacion || {},
         });
         queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
+        // priceListsByList (useArticleLists) es una fuente de datos APARTE de priceConfig
+        // — antes solo se refrescaba al cerrar el modal de config de listas de precios.
+        // Sin esto, RecetaModal (que lee de ahí para "Venta sin promo") seguía mostrando
+        // un precio manual ya borrado/editado en la tabla.
+        reloadPriceLists?.();
       } catch (e) {
         console.error('[handlePriceConfigSave]', e);
       }
     };
 
     doSave();
-  }, [activeBizId, setPriceConfig, queryClient]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
 
   const handleBulkManualSave = React.useCallback(async (updates) => {
     const bizId = Number(activeBizId);
@@ -655,10 +661,11 @@ export default function ArticulosMain(props) {
         byAgrupacion: r?.byAgrupacion || {},
       });
       queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
+      reloadPriceLists?.();
     } catch (e) {
       console.error('[handleBulkManualSave]', e);
     }
-  }, [activeBizId, setPriceConfig, queryClient]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
 
   // Escuchar ui:undo para restaurar el objetivo previo
   React.useEffect(() => {

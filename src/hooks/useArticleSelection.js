@@ -86,6 +86,7 @@ const LinksAPI = {
       method: 'DELETE', headers: authHeaders(bizId),
     });
     if (!r.ok) throw new Error(await r.text());
+    return r.json().catch(() => null);
   },
   addMember: async (bizId, groupId, articleId) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-links/${groupId}/members`, {
@@ -379,7 +380,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
         ? (grp.link_type ?? (grp.sync_recipe ? 'receta' : grp.sync_precio ? 'precio' : grp.sync_objetivo ? 'objetivo' : null))
         : null;
 
-      await LinksAPI.removeMember(bizId, groupId, articleId);
+      const result = await LinksAPI.removeMember(bizId, groupId, articleId);
 
       if (linkType === 'receta') {
         // Gemelo de receta: al desvincular se borra la receta prestada (igual que quitarGemelo).
@@ -388,10 +389,17 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
         );
       }
 
-      setLinkGroups(prev => prev.map(g => {
-        if (g.id !== groupId) return g;
-        return { ...g, members: (g.members || []).filter(m => Number(m.article_id) !== Number(articleId)) };
-      }));
+      // Con 2 miembros, sacar a uno borra el grupo entero en el backend (queda un solo
+      // miembro = ya no hay vínculo). Sin chequear `groupDeleted`, el otro miembro
+      // seguía figurando localmente como vinculado a un grupo que ya no existe.
+      if (result?.groupDeleted) {
+        setLinkGroups(prev => prev.filter(g => g.id !== groupId));
+      } else {
+        setLinkGroups(prev => prev.map(g => {
+          if (g.id !== groupId) return g;
+          return { ...g, members: (g.members || []).filter(m => Number(m.article_id) !== Number(articleId)) };
+        }));
+      }
       // Avisar a la tabla para que refresque los íconos de vinculación y costos
       try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
       notify?.('Artículo desvinculado');

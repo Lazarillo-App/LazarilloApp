@@ -20,9 +20,16 @@ const eqNombreMatch = (nombre, unidad) => String(nombre || '').trim().toLowerCas
 /**
  * Factor de merma total de un ítem = merma global (salvo ítems-artículo, que no llevan
  * merma) × mermas específicas elegidas (se apilan multiplicativamente: pelado × cocción × …).
+ *
+ * `isElaborado` (costeado por SU PROPIA receta, no forzado a precio de compra): un
+ * elaborado ya es un preparado terminado — su costo (precio_ref) ya refleja la merma de
+ * CADA UNO de sus propios ingredientes al calcularse. Aplicarle otra merma encima (la que
+ * eventualmente haya quedado seleccionada en este ítem, ej. heredada de cuando era un
+ * insumo simple) duplica el descuento y lo infla — mismo motivo por el que un ítem-
+ * artículo tampoco lleva merma.
  */
-export function calcFactorMerma(item, appConfigDesperdicio = 0) {
-  if (item.esArticulo || item.articleRefId) return 1;
+export function calcFactorMerma(item, appConfigDesperdicio = 0, isElaborado = false) {
+  if (item.esArticulo || item.articleRefId || isElaborado) return 1;
   const pctGlobal = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
   const fGlobal = 1 + (pctGlobal / 100);
   const ids = Array.isArray(item.mermaIds)
@@ -56,7 +63,7 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
   const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
   const forzarCompra = insumoData?.costo_efectivo_origen === 'compra';
   const elaborado = forzarCompra ? null : elaboradoData;
-  const factorMerma = calcFactorMerma(item, appConfigDesperdicio);
+  const factorMerma = calcFactorMerma(item, appConfigDesperdicio, !!elaborado);
 
   // ── Si la unidad elegida es una equivalencia propia del insumo (prioridad) ──
   const eqSel = (item.equivalencias || []).find(e => eqNombreMatch(e.nombre, item.unidad));
@@ -108,8 +115,11 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
       const unidadDBart = canonicalUnit(item.supplyMedida || 'u');
       return calcPrecioEnUnidad(precioSug, unidadDBart, canonicalUnit(item.unidad || unidadDBart));
     }
-    // Costo del componente = precio de venta del artículo
-    const costoComp = Number(art?.costoTotal) || Number(art?.precio) || Number(item.precioRefDB) || 0;
+    // Costo del componente = costo REAL de su propia receta. Si no tiene receta
+    // cargada, el costo es 0 — antes caía a precio de venta (art?.precio) o al
+    // precioRefDB pre-cargado al agregar el componente (que también mezclaba costo
+    // y precio), inflando el costo de la promo con precios de venta disfrazados.
+    const costoComp = Number(art?.costoTotal) || 0;
     const unidadDBart = canonicalUnit(item.supplyMedida || 'u');
     return calcPrecioEnUnidad(costoComp, unidadDBart, canonicalUnit(item.unidad || unidadDBart));
   }

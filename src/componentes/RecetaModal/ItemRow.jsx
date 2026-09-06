@@ -311,8 +311,8 @@ export default function ItemRow({
 
   // Factor de merma total = global (siempre) × merma específica elegida (si hay)
   const factorMerma = useMemo(
-    () => calcFactorMerma(item, appConfigDesperdicio),
-    [item.desperdicioPct, item.mermas, item.mermaIds, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId]
+    () => calcFactorMerma(item, appConfigDesperdicio, !!elaborado),
+    [item.desperdicioPct, item.mermas, item.mermaIds, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId, elaborado]
   );
 
   /**
