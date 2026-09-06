@@ -1253,6 +1253,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           onAfterMutation={handleAfterAction}
                           onAfterToggleElaborado={onAfterToggleElaborado}
                           onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                          onOpenRecetaElaborado={onOpenRecetaElaborado}
                           businessId={originalBusinessId || businessId}
                         />
                       </div>
@@ -1330,6 +1331,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           onAfterMutation={handleAfterAction}
                           onAfterToggleElaborado={onAfterToggleElaborado}
                           onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                          onOpenRecetaElaborado={onOpenRecetaElaborado}
                           businessId={originalBusinessId || businessId}
                         />
                       </div>

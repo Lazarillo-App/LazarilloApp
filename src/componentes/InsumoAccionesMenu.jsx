@@ -45,6 +45,7 @@ function InsumoAccionesMenu({
   onAfterMutation,
   onAfterToggleElaborado,
   onCreateGroupFromInsumo,
+  onOpenRecetaElaborado,
   businessId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -99,25 +100,17 @@ function InsumoAccionesMenu({
 
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
-  /* ========== MARCAR / DESMARCAR COMO ELABORADO ========== */
-  async function handleToggleElaborado() {
+  /* ========== MARCAR COMO ELABORADO (abre la receta) ==========
+     Un insumo solo debe ser "elaborado" cuando tiene una receta propia cargada —
+     antes este botón prendía el flag directo, sin ninguna receta detrás (ej. "azúcar"
+     marcado elaborado sin nada cargado). Ahora abre el editor de receta: al guardarla
+     con al menos un ingrediente, el backend (saveRecetaElaborado) ya pone es_elaborado
+     en true solo. Para desmarcarlo, hay que borrar la receta desde ese mismo editor
+     (deleteRecetaElaborado ya revierte el flag) — por eso ya no hay una acción de
+     "desmarcar" directa acá. */
+  function handleToggleElaborado() {
     handleClose();
-    try {
-      await toggleInsumoElaborado(insumoId, !isElaborado, businessId);
-      notify?.(
-        isElaborado
-          ? `"${insumoNombre}" desmarcado como elaborado`
-          : `"${insumoNombre}" marcado como elaborado`,
-        'success'
-      );
-      // Notificar al padre para que quite el insumo de la vista actual de forma optimista
-      // y luego recargar catálogo completo (rubros + insumos)
-      onAfterToggleElaborado?.(insumoId, !isElaborado);
-      await onReloadCatalogo?.();
-    } catch (e) {
-      console.error('TOGGLE_ELABORADO_ERROR', e);
-      notify?.('Error al cambiar estado elaborado', 'error');
-    }
+    onOpenRecetaElaborado?.(insumo);
   }
 
   /* ========== RENOMBRAR ========== */
@@ -400,17 +393,13 @@ function InsumoAccionesMenu({
           </ListItemText>
         </MenuItem>
 
-        {/* 4. Marcar / desmarcar como elaborado */}
+        {/* 4. Marcar como elaborado (abre la receta) / ver receta si ya lo es */}
         <MenuItem onClick={handleToggleElaborado}>
           <ListItemIcon>
-            {isElaborado ? (
-              <RemoveCircleOutlineIcon fontSize="small" />
-            ) : (
-              <BuildCircleIcon fontSize="small" />
-            )}
+            <BuildCircleIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>
-            {isElaborado ? 'Desmarcar como elaborado' : 'Marcar como elaborado'}
+            {isElaborado ? 'Ver / editar receta' : 'Marcar como elaborado (cargar receta)'}
           </ListItemText>
         </MenuItem>
 

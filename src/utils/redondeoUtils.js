@@ -31,3 +31,16 @@ export function aplicarRedondeo(precio, redondeo) {
   const r = Number(redondeo) || 0;
   return r > 0 ? Math.round(p / r) * r : Math.round(p);
 }
+
+/**
+ * Redondea un COSTO hacia ARRIBA al múltiplo elegido en Configuración (nunca hacia
+ * abajo, a diferencia de aplicarRedondeo que redondea al más cercano) — usado en los
+ * totales de una receta (Costo Total / Costo por porción), no en costos por unidad de
+ * cada ingrediente (esos quedan exactos, son de referencia interna, no un precio).
+ * `redondeo` nulo/0/negativo → sin redondeo (solo entero hacia arriba).
+ */
+export function redondearCostoArriba(costo, redondeo) {
+  const c = Number(costo) || 0;
+  const r = Number(redondeo) || 0;
+  return r > 0 ? Math.ceil(c / r) * r : Math.ceil(c);
+}

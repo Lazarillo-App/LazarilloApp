@@ -49,7 +49,7 @@ import ExcluirListasModal from '../ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
-import { aplicarRedondeo } from '@/utils/redondeoUtils';
+import { aplicarRedondeo, redondearCostoArriba } from '@/utils/redondeoUtils';
 
 import { PRIMARY, ON_PRIMARY, canonicalUnit, normalizarUnidadGuardada, resolverUnidadConEquivalencia, ordenarInsumosBusqueda, fmt, colorForList } from './helpers';
 import { calcCostoUnitarioItem } from './calcCosto';
@@ -1035,8 +1035,61 @@ export default function RecetaModal({
   const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
 
   /* ── Guardar ── */
+  // ── Detección de cambios reales antes de guardar ──
+  // Antes, autoSave (al cambiar de tab o navegar con las flechas ←/→ entre recetas)
+  // guardaba SIEMPRE que hubiera contenido, aunque no se hubiera tocado nada — el
+  // "Guardando…" tardaba y la mayoría de las veces no había ningún cambio real.
+  // Esta es una "firma" liviana de los campos que el usuario puede editar a mano
+  // (no el costoUnitario calculado, que puede moverse solo por precios externos sin
+  // que el usuario haya cambiado nada de la receta en sí).
+  const buildDirtySnapshot = useCallback(() => JSON.stringify({
+    nombre: nombre || '',
+    rendimiento: Number(rendimiento) || 1,
+    rendimientoUnidad,
+    rendimientoPeso: rendimientoPeso ?? null,
+    unidadPeso: unidadPeso ?? null,
+    notas: notas || '',
+    foto: foto || null,
+    fotos: fotos || [],
+    pctCostoIdeal,
+    items: items
+      .filter(it => it.supplyId || it.articleRefId)
+      .map(it => ({
+        supplyId: it.supplyId ?? null,
+        articleRefId: it.articleRefId ?? null,
+        cantidad: Number(it.cantidad) || 0,
+        unidad: it.unidad || 'u',
+        tipoCosto: it.tipoCosto || 'total',
+        merma: it.merma !== false,
+        pedido: it.pedido !== false,
+        secreto: it.secreto === true,
+        mermaIds: Array.isArray(it.mermaIds) ? it.mermaIds.map(Number) : (it.mermaId != null ? [Number(it.mermaId)] : []),
+        observaciones: it.observaciones || '',
+        fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : [],
+      })),
+  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, foto, fotos, pctCostoIdeal, items]);
+
+  const pristineSnapshotRef = useRef(null);
+  // Se recalcula cada vez que `receta` cambia (recién cargada/recargada) — en ese
+  // punto items/nombre/etc. ya están actualizados en el mismo render.
+  useEffect(() => {
+    if (!receta) { pristineSnapshotRef.current = null; return; }
+    pristineSnapshotRef.current = buildDirtySnapshot();
+  }, [receta]);
+
   const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
     setError('');
+
+    // Sin cambios reales desde la última carga/guardado: no hay nada que mandar al
+    // backend. keepOpen (autoSave/flechas) → no-op total. Si no, cerrar como si
+    // hubiera guardado (no hay nada pendiente).
+    if (!modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null) {
+      const snapshotActual = buildDirtySnapshot();
+      if (snapshotActual === pristineSnapshotRef.current) {
+        if (!keepOpen) onClose?.();
+        return;
+      }
+    }
 
     // ── Modo promo nueva: crear artículo-promo vía endpoint dedicado ──
     if (modoPromoNueva || convertirEnPromo) {
@@ -1492,7 +1545,7 @@ export default function RecetaModal({
   // Solo si el foco NO está en un input/textarea/select (para no interferir al escribir).
   useEffect(() => {
     if (!open || !onNavigate || modoInsumo) return;
-    const handler = (e) => {
+    const handler = async (e) => {
       // No navegar si se está escribiendo en un campo
       const t = e.target;
       const tag = (t?.tagName || '').toLowerCase();
@@ -1500,15 +1553,17 @@ export default function RecetaModal({
       if (editable) return;
       if (e.key === 'ArrowLeft' && canNavigate.prev) {
         e.preventDefault();
+        await autoSave();
         onNavigate('prev');
       } else if (e.key === 'ArrowRight' && canNavigate.next) {
         e.preventDefault();
+        await autoSave();
         onNavigate('next');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onNavigate, modoInsumo, canNavigate]);
+  }, [open, onNavigate, modoInsumo, canNavigate, autoSave]);
 
   return (
     <>
@@ -1536,7 +1591,7 @@ export default function RecetaModal({
               {onNavigate && !modoInsumo && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
-                  onClick={() => onNavigate('prev')}>
+                  onClick={async () => { await autoSave(); onNavigate('prev'); }}>
                   <KeyboardArrowLeftIcon />
                 </IconButton>
               )}
@@ -1559,7 +1614,7 @@ export default function RecetaModal({
               {onNavigate && !modoInsumo && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
-                  onClick={() => onNavigate('next')}>
+                  onClick={async () => { await autoSave(); onNavigate('next'); }}>
                   <KeyboardArrowRightIcon />
                 </IconButton>
               )}
@@ -2429,7 +2484,7 @@ export default function RecetaModal({
                     {Number(rendimiento) > 1 && (
                       <Box>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
+                        <Typography variant="h6" fontWeight={800}>${fmt(redondearCostoArriba(costoTotal, appConfig.redondeoPrecios))}</Typography>
                       </Box>
                     )}
 
@@ -2439,7 +2494,7 @@ export default function RecetaModal({
                           ? labelPorUnidad
                           : 'Costo total'}
                       </Typography>
-                      <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
+                      <Typography variant="h6" fontWeight={800}>${fmt(redondearCostoArriba(costoXRendimiento, appConfig.redondeoPrecios))}</Typography>
                     </Box>
                     {Number(rendimientoPeso) > 0 && (() => {
                       // Mostrar el costo por unidad GRANDE: gr→kg, ml→L (× 1000).
