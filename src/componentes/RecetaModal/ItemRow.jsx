@@ -51,6 +51,7 @@ export default function ItemRow({
   onToggleSoloConCompras,
   appConfigDesperdicio = 5,
   precioVenta = 0,
+  rendimiento = 1,
 }) {
   const [search, setSearch] = useState('');
   const [notasOpen, setNotasOpen] = useState(false);
@@ -337,11 +338,21 @@ export default function ItemRow({
   const costoEfectivoLinea = tipoCosto === 'nulo' ? 0 : costoLinea;
 
   // Alerta dura: el costo de ESTE ingrediente no puede superar el precio de venta del
-  // artículo — si pasa, algo está mal (cantidad/unidad/rendimiento), aunque la receta
-  // "esté bien" en el sentido de que los datos individuales sean correctos. Se resalta
-  // en rojo lo que normalmente se ve en verde (chip $/unidad y "$ Costo Total" del
-  // elaborado, badge "Elab.") para que salte a la vista de inmediato.
-  const superaPrecioVenta = Number(precioVenta) > 0 && costoEfectivoLinea > Number(precioVenta);
+  // artículo (o, en un elaborado, su propio precio_ref actual) — si pasa, algo está mal
+  // (cantidad/unidad/rendimiento), aunque la receta "esté bien" en el sentido de que los
+  // datos individuales sean correctos. Se resalta en rojo lo que normalmente se ve en
+  // verde (chip $/unidad y "$ Costo Total" del elaborado, badge "Elab.") para que salte
+  // a la vista de inmediato.
+  // `precioVenta` es SIEMPRE una referencia POR UNIDAD de rendimiento (precio de venta
+  // de 1 unidad vendida, o precio_ref de 1 porción/unidad del elaborado), mientras que
+  // `costoEfectivoLinea` es el costo de este ingrediente para TODO el lote (las
+  // `rendimiento` porciones juntas) — sin dividir por rendimiento, la alerta comparaba
+  // magnitudes distintas y disparaba siempre que rendimiento > 1 (o nunca disparaba
+  // realmente para lo que importa, según el caso).
+  const costoEfectivoLineaPorRendimiento = Number(rendimiento) > 0
+    ? costoEfectivoLinea / Number(rendimiento)
+    : costoEfectivoLinea;
+  const superaPrecioVenta = Number(precioVenta) > 0 && costoEfectivoLineaPorRendimiento > Number(precioVenta);
 
   const alertaBg = useMemo(
     () => getAlertaColor(item.ultimaCompra?.fecha || item.ultimaCompra, alertaSemanas, esElaborado),

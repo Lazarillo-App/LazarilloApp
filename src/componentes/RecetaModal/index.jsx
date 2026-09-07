@@ -2435,6 +2435,7 @@ export default function RecetaModal({
                             onToggleSoloConCompras={toggleSoloConCompras}
                             appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
                             precioVenta={precioActual}
+                            rendimiento={rendimiento}
                           />
                         );
                       })}
