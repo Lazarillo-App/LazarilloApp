@@ -49,7 +49,7 @@ import ExcluirListasModal from '../ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
-import { aplicarRedondeo, redondearCostoArriba } from '@/utils/redondeoUtils';
+import { aplicarRedondeo } from '@/utils/redondeoUtils';
 
 import { PRIMARY, ON_PRIMARY, canonicalUnit, normalizarUnidadGuardada, resolverUnidadConEquivalencia, ordenarInsumosBusqueda, fmt, colorForList } from './helpers';
 import { calcCostoUnitarioItem } from './calcCosto';
@@ -2485,7 +2485,7 @@ export default function RecetaModal({
                     {Number(rendimiento) > 1 && (
                       <Box>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                        <Typography variant="h6" fontWeight={800}>${fmt(redondearCostoArriba(costoTotal, appConfig.redondeoPrecios))}</Typography>
+                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
                       </Box>
                     )}
 
@@ -2495,7 +2495,7 @@ export default function RecetaModal({
                           ? labelPorUnidad
                           : 'Costo total'}
                       </Typography>
-                      <Typography variant="h6" fontWeight={800}>${fmt(redondearCostoArriba(costoXRendimiento, appConfig.redondeoPrecios))}</Typography>
+                      <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
                     </Box>
                     {Number(rendimientoPeso) > 0 && (() => {
                       // Mostrar el costo por unidad GRANDE: gr→kg, ml→L (× 1000).
