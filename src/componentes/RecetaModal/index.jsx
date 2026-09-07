@@ -837,7 +837,7 @@ export default function RecetaModal({
         setInsumos(prev => prev.map(i => String(i.id) === String(insumoId) ? { ...i, ...fresh } : i));
       }
     } catch { /* refresco best-effort: si falla, el usuario puede reabrir el modal */ }
-  }, [businessId, insumosBizId]);
+  }, [businessId, insumoBizId]);
 
   // Refresh en cascada: si un insumo (o insumo elaborado) usado como ingrediente cambió
   // algo en un modal anidado — receta, merma, equivalencia, envase, compra/bonificación —
@@ -2847,7 +2847,19 @@ export default function RecetaModal({
                 popElaborado();
                 // Red de seguridad: refrescar el insumo aunque el cambio hecho adentro
                 // (merma/equivalencia/compra) no haya disparado su evento correspondiente.
-                if (!elaborado.esArticulo) refrescarInsumoPuntual(elaborado.id);
+                if (!elaborado.esArticulo) {
+                  refrescarInsumoPuntual(elaborado.id);
+                  // Mismo evento que dispara onSaved: este onClose es la única vía de
+                  // salida cuando el nivel anidado se cierra sin pasar por onSaved (ej.
+                  // con la "X" en vez del botón Guardar, tras haber guardado adentro) —
+                  // sin esto, el padre quedaba con el costo viejo del ítem hasta cerrar y
+                  // reabrir TODO el modal.
+                  try {
+                    window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', {
+                      detail: { insumoId: elaborado.id }
+                    }));
+                  } catch { }
+                }
                 // Si estamos cerrando el último del stack, refrescar gemelos del modal base
                 // para reflejar cambios de objetivo individuales
                 if (elaboradosStack.length === 1) {
