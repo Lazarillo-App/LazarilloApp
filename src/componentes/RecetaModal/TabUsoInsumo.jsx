@@ -1,23 +1,37 @@
+/* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
-import { useState, useEffect } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
-import { insumoUsoList } from '@/servicios/apiInsumos';
+import { useState, useEffect, useCallback } from 'react';
+import { Box, Typography, CircularProgress, Select, MenuItem, Button } from '@mui/material';
+import { insumoUsoList, insumoMermasList } from '@/servicios/apiInsumos';
 import { PRIMARY } from './helpers';
+import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 
 /* ════════════════════════════════════════
-   TAB USO — recetas donde se usa el insumo (solo lectura)
+   TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
 export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [mermas, setMermas] = useState([]);
+  const [mermaElegidaId, setMermaElegidaId] = useState('');
+  const [mermaParaAplicar, setMermaParaAplicar] = useState(null);
 
-  useEffect(() => {
+  const cargarUso = useCallback(() => {
     if (!insumoId || !businessId) return;
     setLoading(true);
     insumoUsoList(insumoId, businessId)
       .then(r => setUso(Array.isArray(r?.uso) ? r.uso : []))
       .catch(() => setUso([]))
       .finally(() => setLoading(false));
+  }, [insumoId, businessId]);
+
+  useEffect(() => { cargarUso(); }, [cargarUso]);
+
+  useEffect(() => {
+    if (!insumoId || !businessId) return;
+    insumoMermasList(insumoId, businessId)
+      .then(r => setMermas(Array.isArray(r?.data) ? r.data : []))
+      .catch(() => setMermas([]));
   }, [insumoId, businessId]);
 
   const unidadBase = insumoData?.unidad_med || insumoData?.medida || 'u';
@@ -28,6 +42,38 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
         Recetas donde se usa <b>{insumoData?.nombre || 'este insumo'}</b>
         {uso.length > 0 && ` · ${uso.length} ${uso.length === 1 ? 'receta' : 'recetas'}`}
       </Typography>
+
+      {/* Modificar la merma de uno o varios productos/elaborados a la vez, desde acá
+          mismo — sin tener que ir insumo por insumo hasta la pestaña Merma. */}
+      {mermas.length > 0 && uso.length > 0 && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+            Aplicar merma en estas recetas:
+          </Typography>
+          <Select
+            size="small"
+            displayEmpty
+            value={mermaElegidaId}
+            onChange={e => setMermaElegidaId(e.target.value)}
+            sx={{ fontSize: '0.8rem', minWidth: 160, '& .MuiSelect-select': { py: 0.4 } }}
+          >
+            <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>Elegir merma…</MenuItem>
+            {mermas.map(m => (
+              <MenuItem key={m.id} value={m.id} sx={{ fontSize: '0.8rem' }}>{m.nombre}</MenuItem>
+            ))}
+          </Select>
+          <Button
+            size="small" variant="outlined"
+            disabled={!mermaElegidaId}
+            onClick={() => {
+              const m = mermas.find(x => String(x.id) === String(mermaElegidaId));
+              if (m) setMermaParaAplicar(m);
+            }}
+          >
+            Aplicar…
+          </Button>
+        </Box>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -81,6 +127,33 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
             </Box>
           ))}
         </Box>
+      )}
+
+      {mermaParaAplicar && (
+        <ModalAplicarMermaDefault
+          insumoId={insumoId}
+          insumoNombre={insumoData?.nombre || ''}
+          mermaId={mermaParaAplicar.id}
+          mermaNombre={mermaParaAplicar.nombre}
+          businessId={businessId}
+          introText={
+            <>
+              Elegí a qué recetas de <b>{insumoData?.nombre || 'este insumo'}</b> aplicarle la
+              merma <b>{mermaParaAplicar.nombre}</b>. A las que ya tenían otra asignada, se les
+              reemplaza.
+            </>
+          }
+          onClose={() => setMermaParaAplicar(null)}
+          onAplicado={() => {
+            setMermaParaAplicar(null);
+            setMermaElegidaId('');
+            cargarUso();
+            try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId } })); } catch { }
+            try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId } })); } catch { }
+            try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+            try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
+          }}
+        />
       )}
     </Box>
   );

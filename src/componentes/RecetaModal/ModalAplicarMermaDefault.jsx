@@ -13,7 +13,7 @@ import { PRIMARY, ON_PRIMARY, fmt } from './helpers';
 // merma debe aplicarse a las recetas que usan el insumo — tengan otra merma asignada o
 // ninguna — con opción de destildar cuáles no (a las tildadas se les reemplaza la merma
 // actual, si tenían, por la nueva).
-export default function ModalAplicarMermaDefault({ insumoId, insumoNombre, mermaId, mermaNombre, businessId, onClose, onAplicado }) {
+export default function ModalAplicarMermaDefault({ insumoId, insumoNombre, mermaId, mermaNombre, businessId, onClose, onAplicado, introText = null }) {
   const [preview, setPreview] = useState(null);
   const [excluidas, setExcluidas] = useState(() => new Set());   // recetaIds destildadas
   const [confirmando, setConfirmando] = useState(false);
@@ -82,9 +82,13 @@ export default function ModalAplicarMermaDefault({ insumoId, insumoNombre, merma
           {!confirmando ? (
             <>
               <Typography variant="body2">
-                <b>{mermaNombre}</b> quedó como merma default de <b>{insumoNombre}</b>. Hay
-                recetas que usan este insumo — ¿querés aplicarle esta merma también a ellas?
-                A las que ya tenían otra asignada, se les reemplaza.
+                {introText || (
+                  <>
+                    <b>{mermaNombre}</b> quedó como merma default de <b>{insumoNombre}</b>. Hay
+                    recetas que usan este insumo — ¿querés aplicarle esta merma también a ellas?
+                    A las que ya tenían otra asignada, se les reemplaza.
+                  </>
+                )}
               </Typography>
 
               {preview == null ? (

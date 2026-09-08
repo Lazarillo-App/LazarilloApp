@@ -89,6 +89,7 @@ export default function RecetaModal({
   priceListsByList = {},
   modoInsumo = false,
   saltarSelector = false,   // cascada / tabla artículos: abrir directo sin la vista de 4 opciones
+  initialTab = null,        // buscador (lupa) del header: preservar la pestaña desde la que se buscó
 }) {
   // Negocio donde REALMENTE viven los insumos. En setups de agrupaciones/franquicias,
   // TablaArticulos pasa `insumosBizId` (negocio raíz) distinto de `businessId` (la
@@ -292,26 +293,30 @@ export default function RecetaModal({
     const term = q.trim().toLowerCase();
     try {
       const token = localStorage.getItem('token') || '';
-      // Buscar insumos y artículos en paralelo, juntar ambos
-      const [insumosRes, articlesRes] = await Promise.allSettled([
-        insumosList(insumosBizId || businessId, { limit: 99999 }),
-        fetch(
-          `${BASE}/businesses/${businessId}/articles/search?q=${encodeURIComponent(q)}`,
-          { headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) } }
-        ).then(r => r.json()),
-      ]);
-
-      const insumosItems = insumosRes.status === 'fulfilled' && Array.isArray(insumosRes.value?.data)
-        ? ordenarInsumosBusqueda(
-          insumosRes.value.data
-            .filter(i => (i.nombre || '').toLowerCase().includes(term) && Number(i.id) !== Number(articulo?.id))
+      // Insumos: filtrar en memoria sobre `insumos` (ya cargado completo al abrir el
+      // modal — línea ~549). Antes volvía a pedir la lista COMPLETA de insumos al
+      // backend en cada letra tipeada, lo que hacía que los resultados de esta misma
+      // búsqueda "cargaran lento por etapas" en vez de aparecer al instante.
+      const insumosItems = ordenarInsumosBusqueda(
+        insumos.filter(i =>
+          Number(i.id) !== Number(articulo?.id) && (
+            (i.nombre || '').toLowerCase().includes(term) ||
+            String(i.id).includes(term) ||
+            String(i.codigo_maxi || i.codigo_mostrar || '').toLowerCase().includes(term)
+          )
         )
-          .slice(0, 20)
-          .map(i => ({ ...i, esArticulo: false }))   // objeto completo, no pelado
-        : [];
+      )
+        .slice(0, 20)
+        .map(i => ({ ...i, esArticulo: false }));   // objeto completo, no pelado
 
-      const articulosItems = articlesRes.status === 'fulfilled' && Array.isArray(articlesRes.value?.items)
-        ? articlesRes.value.items
+      // Artículos: búsqueda server-side (ya incluye código de artículo)
+      const articlesRes = await fetch(
+        `${BASE}/businesses/${businessId}/articles/search?q=${encodeURIComponent(q)}`,
+        { headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) } }
+      ).then(r => r.json()).catch(() => null);
+
+      const articulosItems = Array.isArray(articlesRes?.items)
+        ? articlesRes.items
           .filter(a => Number(a.id) !== Number(articulo?.id))
           .slice(0, 20)
           .map(a => ({ id: a.id, nombre: a.nombre, esArticulo: true }))
@@ -323,7 +328,7 @@ export default function RecetaModal({
     } finally {
       setLupaLoading(false);
     }
-  }, [businessId, insumosBizId, articulo?.id]);
+  }, [businessId, insumos, articulo?.id]);
 
   // Recuerda para qué artículo ya resolvimos el tab inicial en esta apertura, para no
   // volver a navegar cada vez que `insumos` se refresca por otro motivo (ej. cambiar una
@@ -337,6 +342,16 @@ export default function RecetaModal({
     if (!open) { tabResueltoParaRef.current = null; return; }
     if (tabResueltoParaRef.current === articulo?.id) return; // ya resuelto para este artículo
     setEntradaElegida(!modoInsumo || saltarSelector);
+    // Buscador (lupa) del header: se abrió desde una pestaña puntual (ej. Merma) → se
+    // mantiene esa misma pestaña en el insumo destino, en vez de re-adivinar Receta/Compras.
+    const TABS_VALIDOS = ['receta', 'merma', 'compras', 'equivalencias', 'uso'];
+    if (modoInsumo && saltarSelector && TABS_VALIDOS.includes(initialTab)) {
+      setTab(initialTab);
+      tabResueltoParaRef.current = articulo?.id;
+      setTabResuelto(true);
+      setRecetaConfirmada(false);
+      return;
+    }
     // Si se salta el selector en modo insumo (cascada), resolver el tab igual que "Receta / Compras"
     if (modoInsumo && saltarSelector) {
       const insData = insumos.find(i => String(i.id) === String(articulo?.id));
@@ -368,7 +383,7 @@ export default function RecetaModal({
       setTabResuelto(true);
     }
     setRecetaConfirmada(false);
-  }, [open, modoInsumo, saltarSelector, insumos, articulo?.id]);
+  }, [open, modoInsumo, saltarSelector, insumos, articulo?.id, initialTab]);
 
   const [todosArticulos, setTodosArticulos] = useState([]);
 
@@ -1422,8 +1437,11 @@ export default function RecetaModal({
       nombre: item.nombre,
       esArticulo: item.esArticulo,
       precio: 0,
+      // Buscar desde una pestaña puntual (ej. Merma) y saltar a otro insumo debería
+      // mantenerte en esa misma sección, no siempre reabrir en Receta/Compras.
+      initialTab: (modoInsumo && !item.esArticulo) ? tab : null,
     });
-  }, [autoSave, pushElaborado]);
+  }, [autoSave, pushElaborado, modoInsumo, tab]);
 
   // ── Desactivar promo (switch Promoción → Producto), ya confirmado por el usuario ──
   const desactivarPromo = useCallback(async () => {
@@ -2834,6 +2852,7 @@ export default function RecetaModal({
             open={true}
             esElaborado={!elaborado.esArticulo}  // ← false si es artículo gemelo
             modoInsumo={!elaborado.esArticulo}
+            initialTab={elaborado.initialTab || null}
             saltarSelector
             costoObjetivoExterno={elaborado.pctObjetivo != null ? Number(elaborado.pctObjetivo) : globalConfigObjetivo}
             onClose={() => {
