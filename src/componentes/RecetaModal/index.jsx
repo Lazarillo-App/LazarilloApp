@@ -265,6 +265,11 @@ export default function RecetaModal({
 
   useEffect(() => {
     if (!gemelosOpen) return;
+    // gemelosPanelRef está en el wrapper que incluye el HEADER colapsable, no solo el
+    // panel expandido — si solo envolviera el panel, clickear el propio header (para
+    // cerrarlo) contaba como "afuera": este handler lo cerraba por mousedown, y el
+    // onClick del header lo volvía a abrir un instante después (toggle sobre el estado
+    // ya cerrado) — el resultado neto era que nunca se cerraba clickeando la flecha.
     const handleClickOutside = (e) => {
       if (gemelosPanelRef.current && !gemelosPanelRef.current.contains(e.target)) {
         setGemelosOpen(false);
@@ -2027,8 +2032,7 @@ export default function RecetaModal({
 
                   {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
                   {!esElaborado && !promoMode && (
-                    <Box sx={{ mb: 1.5 }}>
-                      {/* Header colapsable */}
+                    <Box ref={gemelosPanelRef} sx={{ mb: 1.5 }}>
                       {/* Header colapsable */}
                       <Box onClick={() => {
                         setGemelosOpen(v => !v);
@@ -2056,7 +2060,7 @@ export default function RecetaModal({
                         <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{gemelosOpen ? '▲' : '▼'}</Typography>
                       </Box>
                       {gemelosOpen && (
-                        <Box ref={gemelosPanelRef} sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
+                        <Box sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
 
                           {/* Header columnas */}
                           <Box sx={{
