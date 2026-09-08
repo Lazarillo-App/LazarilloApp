@@ -31,7 +31,6 @@ import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import CloseIcon from '@mui/icons-material/Close';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SaveIcon from '@mui/icons-material/Save';
-import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ImageIcon from '@mui/icons-material/Image';
@@ -1684,15 +1683,6 @@ export default function RecetaModal({
                 </Tooltip>
               )}
 
-              {/* Notas + foto */}
-              <Tooltip title={notas || foto ? 'Notas e imagen' : 'Agregar notas'}>
-                <IconButton
-                  size="small"
-                  onClick={() => setNotasModalOpen(true)}
-                  sx={{ color: 'inherit' }}>
-                  <PhotoCameraIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
               {/* Vista Cocina */}
               <Tooltip title="Vista Cocina">
                 <IconButton size="small" onClick={() => setCocinaModalOpen(true)}
