@@ -1731,6 +1731,7 @@ export default function RecetaModal({
                 businessId={insumoBizId}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
                 desperdicioGlobalPct={appConfig.desperdicioGlobalPct ?? 5}
+                todosInsumos={insumos}
               />
             ) : modoInsumo && tab === 'compras' ? (
               <TabComprasInsumo

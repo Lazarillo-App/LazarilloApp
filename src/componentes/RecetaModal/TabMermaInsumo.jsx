@@ -1,8 +1,8 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabMermaInsumo.jsx
-import { useState, useEffect, useCallback } from 'react';
-import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack } from '@mui/material';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -13,11 +13,22 @@ import { canonicalUnit, fmt, PRIMARY } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 
-export default function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5 }) {
+export default function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5, todosInsumos = [] }) {
   const [lista, setLista] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [nuevo, setNuevo] = useState({ nombre: '', peso_inicial: '', peso_final: '' });
+  // ── Aplicar la merma nueva a OTROS insumos de una (misma nombre/pesos) ──
+  const [otrosOpen, setOtrosOpen] = useState(false);
+  const [otrosQuery, setOtrosQuery] = useState('');
+  const [otrosSeleccionados, setOtrosSeleccionados] = useState(() => new Set());
+  const otrosFiltrados = useMemo(() => {
+    const q = otrosQuery.trim().toLowerCase();
+    return todosInsumos
+      .filter(i => String(i.id) !== String(insumoId) && (!q || (i.nombre || '').toLowerCase().includes(q)))
+      .slice(0, 50);
+  }, [todosInsumos, otrosQuery, insumoId]);
   const [guardando, setGuardando] = useState(false);
   const [globalPct, setGlobalPct] = useState(Number(desperdicioGlobalPct) || 0);
   // Reflejar el global del negocio cuando cambia (config u otra edición)
@@ -66,15 +77,40 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
 
   const agregar = async () => {
     if (!nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)) return;
-    setGuardando(true); setError('');
+    setGuardando(true); setError(''); setInfo('');
+    const payload = {
+      nombre: nuevo.nombre.trim(),
+      peso_inicial: Number(nuevo.peso_inicial),
+      peso_final: Number(nuevo.peso_final),
+    };
     try {
       await insumoMermaCreate(insumoId, {
-        nombre: nuevo.nombre.trim(),
-        peso_inicial: Number(nuevo.peso_inicial),
-        peso_final: Number(nuevo.peso_final),
+        ...payload,
         es_default: lista.length === 0, // la primera que se crea es default
       }, businessId);
+
+      // ── Copiarla también a otros insumos tildados (misma nombre/pesos) ──
+      // No forzamos es_default acá: cada insumo mantiene su propia default tal como
+      // estaba; el usuario la marca aparte si quiere que esta sea la nueva default ahí.
+      const otrosIds = [...otrosSeleccionados];
+      if (otrosIds.length) {
+        const resultados = await Promise.allSettled(
+          otrosIds.map(id => insumoMermaCreate(id, { ...payload, es_default: false }, businessId))
+        );
+        const ok = resultados.filter(r => r.status === 'fulfilled').length;
+        const fallidos = resultados.length - ok;
+        setInfo(
+          `Merma creada en este insumo${ok ? ` y en ${ok} más` : ''}.` +
+          (fallidos ? ` ${fallidos} no se pudieron crear (¿ya tenían una merma con ese nombre?).` : '')
+        );
+        otrosIds.forEach(id => {
+          try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId: id } })); } catch { }
+        });
+      }
+
       setNuevo({ nombre: '', peso_inicial: '', peso_final: '' });
+      setOtrosSeleccionados(new Set());
+      setOtrosOpen(false);
       cargar();
       avisarCambio();
     } catch (e) { setError(e.message || 'No se pudo agregar'); }
@@ -122,6 +158,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
   return (
     <Box sx={{ py: 1 }}>
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
+      {info && <Alert severity="success" sx={{ mb: 1.5, py: 0.5 }} onClose={() => setInfo('')}>{info}</Alert>}
 
       {/* Unidad de medida + precio de compra (solo lectura) */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
@@ -217,6 +254,53 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
               <AddIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Box>
+
+          {/* Aplicar la merma que se está por crear a otros insumos también (misma
+              nombre/pesos) — evita cargarla insumo por insumo cuando varios comparten
+              el mismo % de merma (ej. varias gaseosas con la misma pérdida por tapa). */}
+          {todosInsumos.length > 0 && (
+            <Box sx={{ mt: 0.5, px: 0.5 }}>
+              <Typography
+                variant="caption"
+                onClick={() => setOtrosOpen(v => !v)}
+                sx={{ color: PRIMARY, cursor: 'pointer', fontWeight: 600, fontSize: '0.72rem', userSelect: 'none' }}
+              >
+                {otrosOpen ? '▾' : '▸'} Aplicar esta merma nueva también a otros insumos
+                {otrosSeleccionados.size > 0 ? ` (${otrosSeleccionados.size} elegidos)` : ''}
+              </Typography>
+              {otrosOpen && (
+                <Box sx={{ mt: 0.75, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+                  <TextField
+                    size="small" fullWidth placeholder="Buscar insumo…"
+                    value={otrosQuery}
+                    onChange={e => setOtrosQuery(e.target.value)}
+                    inputProps={{ style: { fontSize: '0.78rem' } }}
+                    sx={{ mb: 0.75 }}
+                  />
+                  <Box sx={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {otrosFiltrados.length === 0 ? (
+                      <Typography variant="caption" color="text.secondary">Sin resultados</Typography>
+                    ) : otrosFiltrados.map(i => {
+                      const checked = otrosSeleccionados.has(i.id);
+                      return (
+                        <Box key={i.id}
+                          onClick={() => setOtrosSeleccionados(prev => {
+                            const nx = new Set(prev);
+                            checked ? nx.delete(i.id) : nx.add(i.id);
+                            return nx;
+                          })}
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                        >
+                          <Checkbox size="small" checked={checked} sx={{ p: 0.25 }} />
+                          <Typography variant="body2" sx={{ fontSize: '0.78rem' }}>{i.nombre}</Typography>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
 
           {/* Texto explicativo */}
           <Box sx={{ mt: 2, bgcolor: '#fdeaea', border: '1px solid #f2b8be', borderRadius: 1, px: 2, py: 1.25 }}>

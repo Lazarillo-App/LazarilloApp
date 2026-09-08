@@ -2,7 +2,7 @@
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
 import { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, CircularProgress, Select, MenuItem, Button } from '@mui/material';
-import { insumoUsoList, insumoMermasList } from '@/servicios/apiInsumos';
+import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma } from '@/servicios/apiInsumos';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 
@@ -15,6 +15,32 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
   const [mermas, setMermas] = useState([]);
   const [mermaElegidaId, setMermaElegidaId] = useState('');
   const [mermaParaAplicar, setMermaParaAplicar] = useState(null);
+  const [cambiandoItemId, setCambiandoItemId] = useState(null);
+
+  const avisarCambio = () => {
+    try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId } })); } catch { }
+    try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId } })); } catch { }
+    try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+    try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
+  };
+
+  const cambiarMermaFila = async (u, nuevoMermaId) => {
+    const anterior = { merma_id: u.merma_id, merma_nombre: u.merma_nombre };
+    const merma = nuevoMermaId != null ? mermas.find(m => Number(m.id) === Number(nuevoMermaId)) : null;
+    setUso(prev => prev.map(x => x.item_id === u.item_id
+      ? { ...x, merma_id: nuevoMermaId, merma_nombre: merma?.nombre || null }
+      : x));
+    setCambiandoItemId(u.item_id);
+    try {
+      await insumoUsoCambiarMerma(insumoId, u.item_id, nuevoMermaId, businessId);
+      avisarCambio();
+    } catch {
+      // Revertir en la fila si falló
+      setUso(prev => prev.map(x => x.item_id === u.item_id ? { ...x, ...anterior } : x));
+    } finally {
+      setCambiandoItemId(null);
+    }
+  };
 
   const cargarUso = useCallback(() => {
     if (!insumoId || !businessId) return;
@@ -87,7 +113,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
           {/* Header */}
           <Box sx={{
-            display: 'grid', gridTemplateColumns: '90px 1fr 130px 140px', gap: 1,
+            display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
             px: 1.5, py: 1, bgcolor: `${PRIMARY}0d`, borderBottom: '1px solid', borderColor: 'divider',
             fontWeight: 700, fontSize: '0.75rem', color: PRIMARY,
           }}>
@@ -99,7 +125,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
           {/* Filas */}
           {uso.map((u, i) => (
             <Box key={u.item_id ?? i} sx={{
-              display: 'grid', gridTemplateColumns: '90px 1fr 130px 140px', gap: 1,
+              display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
               px: 1.5, py: 1, alignItems: 'center',
               borderBottom: i < uso.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
               fontSize: '0.82rem',
@@ -119,11 +145,28 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
               <div style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                 {Number(u.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {u.unidad || unidadBase}
               </div>
-              <div style={{ color: u.aplica_merma ? '#0891b2' : '#94a3b8', fontSize: '0.78rem' }}>
-                {u.merma_nombre
-                  ? u.merma_nombre
-                  : (u.aplica_merma ? 'Sí (global)' : 'No')}
-              </div>
+              {mermas.length > 0 ? (
+                <Select
+                  size="small"
+                  value={u.merma_id != null ? String(u.merma_id) : ''}
+                  onChange={e => cambiarMermaFila(u, e.target.value === '' ? null : Number(e.target.value))}
+                  disabled={cambiandoItemId === u.item_id}
+                  sx={{ fontSize: '0.76rem', '& .MuiSelect-select': { py: 0.25 } }}
+                >
+                  <MenuItem value="" sx={{ fontSize: '0.76rem' }}>
+                    {u.aplica_merma ? 'Global (sin merma específica)' : 'No'}
+                  </MenuItem>
+                  {mermas.map(m => (
+                    <MenuItem key={m.id} value={String(m.id)} sx={{ fontSize: '0.76rem' }}>{m.nombre}</MenuItem>
+                  ))}
+                </Select>
+              ) : (
+                <div style={{ color: u.aplica_merma ? '#0891b2' : '#94a3b8', fontSize: '0.78rem' }}>
+                  {u.merma_nombre
+                    ? u.merma_nombre
+                    : (u.aplica_merma ? 'Sí (global)' : 'No')}
+                </div>
+              )}
             </Box>
           ))}
         </Box>
@@ -148,10 +191,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
             setMermaParaAplicar(null);
             setMermaElegidaId('');
             cargarUso();
-            try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId } })); } catch { }
-            try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId } })); } catch { }
-            try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
-            try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
+            avisarCambio();
           }}
         />
       )}
