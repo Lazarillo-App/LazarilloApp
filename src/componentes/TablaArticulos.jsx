@@ -23,6 +23,7 @@ import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya 
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
+import { useConfig } from '@/context/ConfigContext';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
 import { useOrganization } from '@/context/OrganizationContext';
@@ -467,6 +468,7 @@ export default function TablaArticulos({
   }, [refetchAgrupaciones, queryClient, activeBizId]);
 
   const { organization } = useOrganization() || {};
+  const appConfig = useConfig();
 
   // Refetch cuando se crea un artículo manual desde Configuración
   useEffect(() => {
@@ -1784,7 +1786,16 @@ export default function TablaArticulos({
     const precioManual = getPrecioManualArticulo(a);
     const precioBase = num(a.precio);
     const precioRef = precioManual ?? precioBase;
-    const pasoRedondeo = Number(redondeoConfig?.valor) || 0;
+    // Fuente de verdad: el config del negocio (server-side, ConfigContext) — antes se
+    // leía de redondeoConfig (localStorage por navegador/dispositivo, sincronizado solo
+    // "hacia adelante" vía eventos), así que un negocio nunca abierto desde Configuración
+    // en ESTE navegador quedaba con redondeo desactivado acá aunque el servidor tuviera
+    // un valor real, mostrando sugerido/ganancia sin redondear de forma inconsistente
+    // entre dispositivos. Mientras el config todavía está cargando, se usa el valor local
+    // como mejor estimación provisoria.
+    const pasoRedondeo = appConfig.loading
+      ? (Number(redondeoConfig?.valor) || 0)
+      : (Number(appConfig?.redondeoPrecios) || 0);
     // % de costo: si hay una lista de precios no-favorita activa (y el artículo no está
     // excluido de ella), se calcula con el precio de ESA lista — antes siempre usaba el
     // precio de la favorita, por eso Costo %/Rentabilidad no cambiaban al cambiar de lista.
@@ -1865,14 +1876,19 @@ export default function TablaArticulos({
           const objetivoResuelto = getObjetivoArticulo(a, agrupId);
           setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
         }}
-          style={{ cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', gap: 4 }}
           title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
-          <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem' }}>
+          <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem', marginTop: 2 }}>
             {hayAlertaInsumo ? <span style={{ color: '#f59e0b' }}>⚠</span>
               : hayReceta ? <span style={{ color: '#6366f1' }}>●</span>
                 : null}
           </span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.nombre}</span>
+          {/* Hasta 2 líneas antes de truncar — en resoluciones angostas la columna se
+              achica y con una sola línea el nombre quedaba cortado demasiado pronto. */}
+          <span style={{
+            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0,
+          }}>{a.nombre}</span>
         </div>
 
         <div style={cellNum}>
@@ -1920,10 +1936,17 @@ export default function TablaArticulos({
               return <div key="sinPromo" style={{ ...cellNum, color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
             }
 
-            case 'costo':
+            case 'costo': {
+              // Redondeado igual que sugerido/ganancia en esta misma tabla (al múltiplo
+              // más cercano) — solo para mostrar; costoArticulo sigue exacto para % de
+              // costo/rentabilidad y demás cálculos. A diferencia de RecetaModal, donde
+              // el costo se deja sin redondear a propósito.
+              const costoMostrado = pasoRedondeo > 0
+                ? Math.round(costoArticulo / pasoRedondeo) * pasoRedondeo
+                : Math.round(costoArticulo);
               return (
                 <div key="costo" style={{ ...cellNum, color: TABLE_TEXT, lineHeight: 1.15 }}>
-                  <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
+                  <div>{costoArticulo > 0 ? fmtCurrency(costoMostrado) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
                   {sugerido > 0 && (
                     <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
                       sug. {fmtCurrency(sugerido)}
@@ -1931,6 +1954,7 @@ export default function TablaArticulos({
                   )}
                 </div>
               );
+            }
 
             case 'rentabilidad':
               return (
