@@ -15,10 +15,11 @@ import {
   addDiscountException,
   removeDiscountException,
 } from '@/servicios/apiMaxiPriceLists';
-import { insumosList } from '@/servicios/apiInsumos';
+import { insumosList, insumoEquivalenciasList } from '@/servicios/apiInsumos';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import { BASE } from '@/servicios/apiBase';
+import { unidadesParaInsumo, canonicalUnit } from '@/componentes/RecetaModal/helpers';
 
 export default function RubroEditModal({
   open,
@@ -48,6 +49,7 @@ export default function RubroEditModal({
   const [insumoSel, setInsumoSel] = useState(null);
   const [recCantidad, setRecCantidad] = useState('1');
   const [recUnidad, setRecUnidad] = useState('u');
+  const [recEquivalencias, setRecEquivalencias] = useState([]);
   const [addingReceta, setAddingReceta] = useState(false);
   const [insumosUsados, setInsumosUsados] = useState([]); // [{insumo_id, nombre, en_cuantos}]
   const [totalBloque, setTotalBloque] = useState(0);
@@ -207,7 +209,7 @@ export default function RubroEditModal({
           detail: {
             kind: 'receta_bulk_add', scope: 'articulo',
             title: `Insumo agregado en bloque`,
-            message: `${r.insumo}: ${r.agregados} agregado(s), ${r.salteados} ya lo tenían${r.recetasCreadas ? `, ${r.recetasCreadas} receta(s) nueva(s)` : ''}.`,
+            message: `${r.insumo}: ${r.agregados} agregado(s), ${r.actualizados} actualizado(s)${r.recetasCreadas ? `, ${r.recetasCreadas} receta(s) nueva(s)` : ''}.`,
             createdAt: new Date().toISOString(),
           },
         }));
@@ -307,7 +309,7 @@ export default function RubroEditModal({
             </Typography>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Agrega este insumo a la receta de los {articleIds.length} artículo(s). Los que ya lo tengan se saltean.
+            Agrega este insumo a la receta de los {articleIds.length} artículo(s). Los que ya lo tengan se actualizan con la cantidad/unidad indicada.
           </Typography>
 
           {insumoSel ? (
@@ -325,9 +327,16 @@ export default function RubroEditModal({
                 const arts = info?.articulos || [];
                 return (
                   <Box sx={{ mt: 0.5 }}>
-                    <Typography variant="caption" sx={{ display: 'block', color: '#166534', fontWeight: 600 }}>
-                      Se agregará a {seAgrega} artículo{seAgrega !== 1 ? 's' : ''}.
-                    </Typography>
+                    {seAgrega > 0 && (
+                      <Typography variant="caption" sx={{ display: 'block', color: '#166534', fontWeight: 600 }}>
+                        Se agregará a {seAgrega} artículo{seAgrega !== 1 ? 's' : ''}.
+                      </Typography>
+                    )}
+                    {yaUsado > 0 && (
+                      <Typography variant="caption" sx={{ display: 'block', color: '#166534', fontWeight: 600 }}>
+                        Se actualizará cantidad/unidad en {yaUsado} que ya lo tienen.
+                      </Typography>
+                    )}
                     {yaUsado > 0 && (
                       <Box sx={{ mt: 0.25 }}>
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -361,20 +370,20 @@ export default function RubroEditModal({
                     return (
                       <Box key={ins.id}
                         onClick={() => {
-                          if (info?.enTodos) return;
                           setInsumoSel(ins);
-                          const u = String(ins.unidad_med || 'u').trim().toLowerCase();
-                          const permitidas = ['u', 'kg', 'gr', 'l', 'ml'];
-                          setRecUnidad(permitidas.includes(u) ? u : 'u');
+                          setRecUnidad(canonicalUnit(ins.unidad_med || 'u'));
                           setRecCantidad('1');
+                          setRecEquivalencias([]);
+                          insumoEquivalenciasList(ins.id, businessId)
+                            .then(r => setRecEquivalencias(Array.isArray(r?.data) ? r.data : []))
+                            .catch(() => setRecEquivalencias([]));
                         }}
                         sx={{
                           px: 1.5, py: 0.75,
-                          cursor: info?.enTodos ? 'default' : 'pointer',
-                          opacity: info?.enTodos ? 0.5 : 1,
+                          cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1,
                           fontSize: '0.85rem',
-                          '&:hover': { bgcolor: info?.enTodos ? 'transparent' : 'action.hover' },
+                          '&:hover': { bgcolor: 'action.hover' },
                         }}>
                         <span>{ins.nombre}</span>
                         {info && (
@@ -384,7 +393,7 @@ export default function RubroEditModal({
                             bgcolor: info.enTodos ? '#f1f5f9' : '#fef9c3',
                             color: info.enTodos ? '#64748b' : '#78350f',
                           }}>
-                            {info.enTodos ? 'En todos' : `Ya usado (${info.en_cuantos}/${totalBloque})`}
+                            {info.enTodos ? 'En todos (editar)' : `Ya usado (${info.en_cuantos}/${totalBloque}) · editable`}
                           </Typography>
                         )}
                       </Box>
@@ -404,16 +413,26 @@ export default function RubroEditModal({
                 value={recCantidad} onChange={e => setRecCantidad(e.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
               />
-              <FormControl size="small" sx={{ width: 90 }}>
+              <FormControl size="small" sx={{ width: 110 }}>
                 <Select
                   value={recUnidad}
                   onChange={e => setRecUnidad(e.target.value)}
                 >
-                  <MenuItem value="u">u</MenuItem>
-                  <MenuItem value="kg">kg</MenuItem>
-                  <MenuItem value="gr">gr</MenuItem>
-                  <MenuItem value="l">L</MenuItem>
-                  <MenuItem value="ml">ml</MenuItem>
+                  {(() => {
+                    // Mismas unidades válidas que en el modal de recetas: la unidad base del
+                    // insumo (+ su tipo, kg/gr o ml/lt/oz) más sus equivalencias propias.
+                    const base = unidadesParaInsumo(insumoSel);
+                    const eqNames = recEquivalencias.map(e => e.nombre);
+                    const opciones = [...new Set([...base, ...eqNames])];
+                    return opciones.map(u => {
+                      const eqData = recEquivalencias.find(e => e.nombre === u);
+                      return (
+                        <MenuItem key={u} value={u}>
+                          {eqData ? `${u} (${Number(eqData.contenido)}${eqData.unidad})` : u}
+                        </MenuItem>
+                      );
+                    });
+                  })()}
                 </Select>
               </FormControl>
               <Button
