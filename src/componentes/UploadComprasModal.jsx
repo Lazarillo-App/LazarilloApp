@@ -317,7 +317,11 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
             {!success && branches && branches.length > 0 && (
               <Box sx={{ mb: 2 }}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>
+                  {/* `displayEmpty` hace que el Select siempre muestre contenido (el value
+                      seleccionado, nunca "vacío" a ojos de MUI) — sin `shrink` acá, el label
+                      nunca se achica a la muesca de arriba y queda superpuesto con el valor
+                      elegido (se veía como texto pisado, ej. "Sucursal" sobre "FC RAMOS"). */}
+                  <InputLabel shrink>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
                     </Box>
@@ -325,6 +329,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                   <Select
                     value={branchId === null || branchId === undefined ? '' : String(branchId)}
                     label="Sucursal"
+                    notched
                     displayEmpty
                     onChange={e => {
                       const v = e.target.value;
