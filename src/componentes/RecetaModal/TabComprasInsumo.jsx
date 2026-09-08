@@ -5,9 +5,17 @@ import { BASE } from '@/servicios/apiBase';
 import { ComprasDetalleContenido } from '../ComprasMiniDetalleModal';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
 
-export default function TabComprasInsumo({ insumoId, businessId, insumoData }) {
+export default function TabComprasInsumo({ insumoId, businessId, insumoData, activeBizId = null, businesses = [] }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Las compras son transacciones por SUCURSAL, a diferencia de `businessId` acá (que es
+  // el negocio raíz donde vive el catálogo del insumo, usado para CostoPreferidoSelector
+  // más abajo). Sin esto, en un subnegocio esta pestaña consultaba siempre las compras
+  // del negocio raíz y nunca las de la sucursal realmente activa (ej. nunca se veían las
+  // de "Ramos", solo las del negocio raíz) — y sin `businesses` tampoco había forma de
+  // elegir otra sucursal/negocio a mano, a diferencia del ícono de compras junto al precio.
+  const comprasBizId = activeBizId || businessId;
 
   // Rango amplio: todo el historial disponible del insumo
   const rango = useMemo(() => {
@@ -18,14 +26,14 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData }) {
   }, []);
 
   useEffect(() => {
-    if (!insumoId || !businessId) return;
+    if (!insumoId || !comprasBizId) return;
     setLoading(true);
     (async () => {
       try {
         const token = localStorage.getItem('token');
         const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${rango.from}&to=${rango.to}&limit=500`;
         const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(comprasBizId) },
         });
         const data = await res.json().catch(() => ({}));
         setItems(Array.isArray(data?.data) ? data.data : []);
@@ -35,7 +43,7 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData }) {
         setLoading(false);
       }
     })();
-  }, [insumoId, businessId, rango]);
+  }, [insumoId, comprasBizId, rango]);
 
   return (
     <Box sx={{ py: 1 }}>
@@ -58,8 +66,8 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData }) {
         rango={rango}
         items={items}
         loading={loading}
-        businessId={businessId}
-        businesses={[]}
+        businessId={comprasBizId}
+        businesses={businesses}
       />
     </Box>
   );

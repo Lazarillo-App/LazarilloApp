@@ -2309,6 +2309,7 @@ export default function TablaArticulos({
           articulo={recetaArticulo}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
+          activeBizId={activeBizId}
           insumosBizId={rootBizId || activeBizId}
           calcPrecioPorLista={calcPrecioPorLista}
           esElaborado={false}

@@ -680,6 +680,7 @@ export default function ConfiguracionMain() {
           onClose={() => setRecetaModalData(null)}
           articulo={recetaModalData}
           businessId={businessId}
+          activeBizId={businessId}
           recetasElaborados={{}}
           onSaved={() => setRecetaModalData(null)}
         />

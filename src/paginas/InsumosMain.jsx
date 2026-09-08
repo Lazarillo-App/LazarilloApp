@@ -1591,6 +1591,7 @@ export default function InsumosMain() {
             precio: recetaInsumoModal.precio_ref || recetaInsumoModal.precio || 0,
           }}
           businessId={resolvedBizId}
+          activeBizId={businessId}
           getRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
           saveRecetaUrl={`${BASE}/businesses/${resolvedBizId}/insumos/${recetaInsumoModal.id}/receta`}
           // ✅ Reemplazar el onSaved del RecetaModal en InsumosMain:

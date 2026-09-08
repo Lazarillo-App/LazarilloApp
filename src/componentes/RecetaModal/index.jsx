@@ -44,6 +44,7 @@ import {
 } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
+import { useOrganization } from '@/context/OrganizationContext';
 import ExcluirListasModal from '../ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
@@ -90,6 +91,8 @@ export default function RecetaModal({
   modoInsumo = false,
   saltarSelector = false,   // cascada / tabla artículos: abrir directo sin la vista de 4 opciones
   initialTab = null,        // buscador (lupa) del header: preservar la pestaña desde la que se buscó
+  activeBizId = null,       // sucursal REALMENTE activa (para Compras: businessId acá puede ser
+                             // el negocio raíz cuando modoInsumo, que no es donde se registró la compra)
 }) {
   // Negocio donde REALMENTE viven los insumos. En setups de agrupaciones/franquicias,
   // TablaArticulos pasa `insumosBizId` (negocio raíz) distinto de `businessId` (la
@@ -98,6 +101,11 @@ export default function RecetaModal({
   // esas llamadas las scopea mal: el fetch vuelve vacío sin error (no hay excepción que
   // avisar) y el ítem "pierde" silenciosamente su equivalencia/merma en cada carga.
   const insumoBizId = insumosBizId || businessId;
+  // Sucursal donde mostrar/filtrar COMPRAS por default: las compras son transacciones
+  // por sucursal, no catálogo de insumo — a diferencia de insumoBizId (que SÍ debe ser
+  // el negocio raíz), acá corresponde la sucursal realmente activa cuando se conoce.
+  const comprasBizId = activeBizId || businessId;
+  const { allBusinesses } = useOrganization() || {};
   const [receta, setReceta] = useState(null);
   const [tab, setTab] = useState('receta'); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
   // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
@@ -1737,6 +1745,8 @@ export default function RecetaModal({
               <TabComprasInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
+                activeBizId={comprasBizId}
+                businesses={allBusinesses || []}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id))}
               />
             ) : modoInsumo && tab === 'equivalencias' ? (
@@ -2854,6 +2864,7 @@ export default function RecetaModal({
             esElaborado={!elaborado.esArticulo}  // ← false si es artículo gemelo
             modoInsumo={!elaborado.esArticulo}
             initialTab={elaborado.initialTab || null}
+            activeBizId={comprasBizId}
             saltarSelector
             costoObjetivoExterno={elaborado.pctObjetivo != null ? Number(elaborado.pctObjetivo) : globalConfigObjetivo}
             onClose={() => {
