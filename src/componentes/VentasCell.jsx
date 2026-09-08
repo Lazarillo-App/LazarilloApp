@@ -19,6 +19,7 @@ function VentasCell({
   totalOverride,
   onTotalResolved,
    businessId,
+  showChart = true,
 }) {
   const [groupBy, setGroupBy] = useState(defaultGroupBy);
   const [openModal, setOpenModal] = useState(false);
@@ -155,7 +156,7 @@ function VentasCell({
   };
 
   return (
-    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120 }}>
+    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: showChart ? 120 : 28 }}>
       <Typography
         variant="body2"
         sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
@@ -164,33 +165,37 @@ function VentasCell({
         {totalToShow}
       </Typography>
 
-      <Tooltip title="Ver gráfico">
-        <IconButton
-          size="small"
-          onClick={handleOpenModal}
-          aria-label="Ver gráfico de ventas"
-        >
-          {isLoading && openModal ? (
-            <CircularProgress size={16} />
-          ) : (
-            <InsertChartOutlinedIcon fontSize="small" />
-          )}
-        </IconButton>
-      </Tooltip>
+      {showChart && (
+        <>
+          <Tooltip title="Ver gráfico">
+            <IconButton
+              size="small"
+              onClick={handleOpenModal}
+              aria-label="Ver gráfico de ventas"
+            >
+              {isLoading && openModal ? (
+                <CircularProgress size={16} />
+              ) : (
+                <InsertChartOutlinedIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
 
-      <VentasMiniGraficoModal
-        open={openModal}
-        onClose={handleCloseModal}
-        articuloNombre={articuloNombre}
-        rango={{ from, to }}
-        data={data || { total: totalToShow, items: [] }}
-        loading={isLoading}
-        groupBy={groupBy}
-        onChangeGroupBy={(gb) => {
-          if (!gb || gb === groupBy) return;
-          setGroupBy(gb);
-        }}
-      />
+          <VentasMiniGraficoModal
+            open={openModal}
+            onClose={handleCloseModal}
+            articuloNombre={articuloNombre}
+            rango={{ from, to }}
+            data={data || { total: totalToShow, items: [] }}
+            loading={isLoading}
+            groupBy={groupBy}
+            onChangeGroupBy={(gb) => {
+              if (!gb || gb === groupBy) return;
+              setGroupBy(gb);
+            }}
+          />
+        </>
+      )}
     </Stack>
   );
 }

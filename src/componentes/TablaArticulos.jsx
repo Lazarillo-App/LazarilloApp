@@ -1895,7 +1895,8 @@ export default function TablaArticulos({
           {ventasVista === '$'
             ? fmtCurrency(overrideAmount)
             : <VentasCell articuloId={id} articuloNombre={a.nombre} from={fechaDesde} to={fechaHasta}
-              defaultGroupBy="day" totalOverride={overrideQty} onTotalResolved={onTotalResolved} businessId={activeBizId} />
+              defaultGroupBy="day" totalOverride={overrideQty} onTotalResolved={onTotalResolved} businessId={activeBizId}
+              showChart={false} />
           }
         </div>
 
