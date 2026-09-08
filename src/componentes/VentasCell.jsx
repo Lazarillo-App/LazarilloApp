@@ -156,7 +156,7 @@ function VentasCell({
   };
 
   return (
-    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: showChart ? 120 : 28 }}>
+    <Stack direction="row" alignItems="center" justifyContent={showChart ? 'flex-start' : 'center'} spacing={1} sx={{ minWidth: showChart ? 120 : 28 }}>
       <Typography
         variant="body2"
         sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}

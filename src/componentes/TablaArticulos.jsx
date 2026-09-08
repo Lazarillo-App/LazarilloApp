@@ -1509,7 +1509,7 @@ export default function TablaArticulos({
             })()}
           </div>
 
-          <div style={{ ...cellNum, color: TABLE_TEXT, fontWeight: 700 }}>
+          <div style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, fontWeight: 700 }}>
             {row.totalVentas > 0 && ventasVista === '$' && (
               <>
                 {fmtCurrency(row.totalVentas)}
@@ -1664,7 +1664,7 @@ export default function TablaArticulos({
             })()}
           </div>
 
-          <div style={cellNum}>
+          <div style={{ ...cellNum, textAlign: 'center' }}>
             {ventasVista === '$' ? (
               <>
                 {fmtCurrency(totalAmount)}
@@ -1891,7 +1891,7 @@ export default function TablaArticulos({
           }}>{a.nombre}</span>
         </div>
 
-        <div style={cellNum}>
+        <div style={{ ...cellNum, textAlign: 'center' }}>
           {ventasVista === '$'
             ? fmtCurrency(overrideAmount)
             : <VentasCell articuloId={id} articuloNombre={a.nombre} from={fechaDesde} to={fechaHasta}
@@ -2390,7 +2390,7 @@ export default function TablaArticulos({
               <div onClick={() => toggleSort("nombre")} className="col-sortable">
                 Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'left' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
                 <span onClick={() => toggleSort("ventas")} className="col-sortable" style={{ cursor: 'pointer', userSelect: 'none' }}>
                   Ventas {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
