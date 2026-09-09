@@ -338,6 +338,27 @@ export default function RecetaModal({
     }
   }, [businessId, insumos, articulo?.id]);
 
+  // Botón compartido "Receta / Compras" (selector de entrada) y resolución automática
+  // en cascada: MISMO criterio en los dos lugares — antes el selector usaba
+  // costo_efectivo_origen (pensado para saber qué costo confiar, no si HAY receta; un
+  // insumo sin receta pero con costo_preferido='elaboracion' seteado de una época en
+  // que sí la tuvo quedaba mandando a "Receta" mostrando "no tiene receta" a pesar de
+  // tener compras) mientras que la cascada ya usaba tiene_receta/es_elaborado
+  // directamente. Se unifica acá para que ambos caminos naveguen igual.
+  const resolverTabRecetaCompras = useCallback((insData) => {
+    if (!insData) return 'receta';
+    const tieneCompras = Number(insData.cantidad_compras) > 0;
+    const tieneReceta = insData.tiene_receta === true || insData.es_elaborado === true;
+    if (tieneCompras && tieneReceta) {
+      // Ambos: el modificado más reciente gana.
+      const fCompra = insData.fecha_ultima_compra ? new Date(insData.fecha_ultima_compra).getTime() : 0;
+      const fReceta = insData.receta_updated_at ? new Date(insData.receta_updated_at).getTime() : 0;
+      return fReceta >= fCompra ? 'receta' : 'compras';
+    }
+    if (tieneCompras) return 'compras';
+    return 'receta';   // solo receta, o nada
+  }, []);
+
   // Recuerda para qué artículo ya resolvimos el tab inicial en esta apertura, para no
   // volver a navegar cada vez que `insumos` se refresca por otro motivo (ej. cambiar una
   // merma) mientras el usuario ya está navegando manualmente entre tabs.
@@ -367,20 +388,7 @@ export default function RecetaModal({
       // Sin esto, la 1ra pasada corre con `insumos` vacío y cae en 'receta',
       // luego llega la lista y salta a 'compras' (parpadeo visible).
       if (insData) {
-        const tieneCompras = Number(insData.cantidad_compras) > 0;
-        const tieneReceta = insData.tiene_receta === true || insData.es_elaborado === true;
-        let destino;
-        if (tieneCompras && tieneReceta) {
-          // Ambos: el modificado más reciente gana (mismo patrón que línea ~3731).
-          const fCompra = insData.fecha_ultima_compra ? new Date(insData.fecha_ultima_compra).getTime() : 0;
-          const fReceta = insData.receta_updated_at ? new Date(insData.receta_updated_at).getTime() : 0;
-          destino = fReceta >= fCompra ? 'receta' : 'compras';
-        } else if (tieneCompras) {
-          destino = 'compras';
-        } else {
-          destino = 'receta';   // solo receta, o nada
-        }
-        setTab(destino);
+        setTab(resolverTabRecetaCompras(insData));
         tabResueltoParaRef.current = articulo?.id;
         setTabResuelto(true);
       } else {
@@ -391,7 +399,7 @@ export default function RecetaModal({
       setTabResuelto(true);
     }
     setRecetaConfirmada(false);
-  }, [open, modoInsumo, saltarSelector, insumos, articulo?.id, initialTab]);
+  }, [open, modoInsumo, saltarSelector, insumos, articulo?.id, initialTab, resolverTabRecetaCompras]);
 
   const [todosArticulos, setTodosArticulos] = useState([]);
 
@@ -538,21 +546,15 @@ export default function RecetaModal({
       return;
     }
     // Botón compartido "Receta / Compras": dirigir según lo que tenga el insumo
+    // (mismo criterio que la resolución automática en cascada — ver resolverTabRecetaCompras)
     if (opcion === 'receta') {
       const insData = insumos.find(i => String(i.id) === String(articulo?.id));
-      const origen = insData?.costo_efectivo_origen;
-      const tieneCompras = Number(insData?.cantidad_compras) > 0;
-      // 'compra' solo dirige a compras si realmente hay compras; sin compras ni receta → receta
-      const destino = (origen === 'compra' && tieneCompras) ? 'compras'
-        : origen === 'elaboracion' ? 'receta'
-          : tieneCompras ? 'compras'
-            : 'receta';
-      setTab(destino);
+      setTab(resolverTabRecetaCompras(insData));
     } else {
       setTab(opcion);   // merma, equivalencias
     }
     setEntradaElegida(true);
-  }, [insumos, articulo?.id]);
+  }, [insumos, articulo?.id, resolverTabRecetaCompras]);
 
   /* ── Cargar insumos ── */
   useEffect(() => {
