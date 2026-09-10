@@ -18,6 +18,7 @@ import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PublicIcon from '@mui/icons-material/Public';
 import BusinessIcon from '@mui/icons-material/Business';
+import HistoryIcon from '@mui/icons-material/History';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
@@ -39,6 +40,7 @@ import { useAccess } from '@/context/AccessContext';
 // Sub-tabs extraídos
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
+import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
@@ -60,7 +62,7 @@ export default function ConfiguracionMain() {
   // ── Tabs ──
   const [tab, setTab] = useState(() => {
     const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 3 ? t : 0;
+    return Number.isFinite(t) && t >= 0 && t <= 4 ? t : 0;
   });
   const [subTabArt, setSubTabArt] = useState(0);
   const [subTabIns, setSubTabIns] = useState(0);
@@ -406,6 +408,9 @@ export default function ConfiguracionMain() {
             <Tab icon={<ShoppingCartIcon fontSize="small" />} iconPosition="start" label="Insumos y compras" />
             <Tab icon={<PublicIcon fontSize="small" />} iconPosition="start" label="General" />
             <Tab icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
+            {puedeGestionarNegocio && (
+              <Tab icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
+            )}
           </Tabs>
 
           {/* TAB 0 — ARTÍCULOS Y VENTAS */}
@@ -617,6 +622,13 @@ export default function ConfiguracionMain() {
               );
             })()}
           </TabPanel>
+
+          {/* TAB 4 — HISTORIAL DE ACTIVIDAD (owner/admin) */}
+          {puedeGestionarNegocio && (
+            <TabPanel value={tab} index={4}>
+              <ConfigHistorialTab businessId={businessId} />
+            </TabPanel>
+          )}
         </>
       )}
 

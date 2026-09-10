@@ -701,6 +701,22 @@ export const PriceConfigAPI = {
     }),
 };
 
+export const AuditLogAPI = {
+  // GET /businesses/:id/audit-log?entityType=&userId=&before=&limit=
+  list: (businessId, { entityType, userId, before, limit } = {}) => {
+    const qs = new URLSearchParams();
+    if (entityType) qs.set('entityType', entityType);
+    if (userId) qs.set('userId', userId);
+    if (before) qs.set('before', before);
+    if (limit) qs.set('limit', limit);
+    const query = qs.toString();
+    return http(`/businesses/${businessId}/audit-log${query ? `?${query}` : ''}`, {
+      withBusinessId: false,
+      cache: false,
+    });
+  },
+};
+
 /* ======================= API Admin (sin X-Business-Id) ======================= */
 export const AdminAPI = {
   overview: () => http('/admin/overview', { withBusinessId: false }),
