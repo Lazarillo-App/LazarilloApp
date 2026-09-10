@@ -125,6 +125,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             alias: r.alias || r.name || null,
             name: r.name || null,
             account_status: r.account_status,
+            invitation_expires_at: r.invitation_expires_at || null,
             negocios: [],
           });
         }
@@ -172,9 +173,16 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
   const handleResend = async (assignmentId) => {
     try {
       const res = await resendInvitation(assignmentId);
-      alert(res?.delivered
-        ? 'Invitación reenviada.'
-        : 'Invitación regenerada (el mail no se pudo enviar).');
+      if (res?.delivered) {
+        alert('Invitación reenviada.');
+      } else if (res?.link) {
+        // El mail no salió (SMTP no configurado, o rebotó) — mostrar el link en un
+        // prompt para que se pueda seleccionar y copiar a mano (un alert no deja copiar).
+        window.prompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
+      } else {
+        alert('Invitación regenerada (el mail no se pudo enviar).');
+      }
+      fetchMembers();
     } catch (e) {
       alert(`Error: ${e?.message || 'no_se_pudo_reenviar'}`);
     }
@@ -266,6 +274,9 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             <TableBody>
               {members.map(m => {
                 const estaInvitado = m.account_status === 'invited';
+                const invitacionVencida = estaInvitado
+                  && !!m.invitation_expires_at
+                  && new Date(m.invitation_expires_at) < new Date();
                 const unSoloNegocio = m.negocios.length === 1;
                 const expandido = expandedEmail === m.email;
                 return (
@@ -309,11 +320,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={estaInvitado ? 'Invitación pendiente' : 'Activo'}
+                          label={invitacionVencida ? 'Invitación vencida' : estaInvitado ? 'Invitación pendiente' : 'Activo'}
                           size="small"
-                          color={estaInvitado ? 'warning' : 'success'}
+                          color={invitacionVencida ? 'error' : estaInvitado ? 'warning' : 'success'}
                           variant={estaInvitado ? 'outlined' : 'filled'}
                           sx={{ fontSize: '0.7rem' }}
+                          title={invitacionVencida ? 'El link venció — hay que reenviarla' : undefined}
                         />
                       </TableCell>
                       <TableCell align="right">
@@ -398,6 +410,11 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         onCreated={(res) => {
           fetchMembers();
           if (res?.successMessage) setSnack(res.successMessage);
+          if (!res?.delivered && res?.link) {
+            // Mismo criterio que el reenvío: sin esto el mensaje "copiá el link desde
+            // el listado" no tenía ningún listado real donde encontrarlo.
+            window.prompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
+          }
         }}
       />
 
