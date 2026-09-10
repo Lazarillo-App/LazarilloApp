@@ -48,7 +48,12 @@ export { getRedondeoConfig, saveRedondeoConfig };
 
 export default function ConfiguracionMain() {
   const { businessId } = useActiveBusiness();
-  const { isOwner } = useAccess() || {};
+  const { isOwner, isAdmin } = useAccess() || {};
+  // El admin gestiona el negocio igual que el owner (editar, sucursales, crear
+  // sub-negocio/organización) — la única excepción es invitar a otro admin, que
+  // se controla aparte en teamController. Borrar un negocio queda exclusivo del
+  // owner (irreversible, confirmado explícitamente).
+  const puedeGestionarNegocio = isOwner || isAdmin;
   const [searchParams, setSearchParams] = useSearchParams();
   const themeColor = 'var(--color-primary, #3b82f6)';
 
@@ -576,9 +581,9 @@ export default function ConfiguracionMain() {
                             {outsideOrg.map(biz => (
                               <BusinessCard key={biz.id} biz={biz} activeId={activeId}
                                 onSetActive={async (id) => { await selectBusiness?.(id); }}
-                                onEdit={isOwner ? setEditing : null}
+                                onEdit={puedeGestionarNegocio ? setEditing : null}
                                 onDelete={isOwner ? handleDeleteBusiness : null}
-                                canEdit={isOwner}
+                                canEdit={puedeGestionarNegocio}
                                 showNotice={(msg) => showNotice('Aviso', msg)} />
                             ))}
                           </Box>
@@ -588,7 +593,7 @@ export default function ConfiguracionMain() {
                   )}
 
                   {/* ── Sucursales ── */}
-                  {activeId && isOwner && (
+                  {activeId && puedeGestionarNegocio && (
                     <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
                       <Stack direction="row" alignItems="center" spacing={1}
                         sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>

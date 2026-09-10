@@ -367,7 +367,11 @@ function OrgBizCard({
 export default function OrgDashboard({ compact = false, onSelectBusiness }) {
   const { organization, allBusinesses, rootBusiness } = useOrganization();
   const { activeBusinessId, selectBusiness, refetchBusinesses } = useBusiness();
-  const { isOwner } = useAccess() || {};
+  const { isOwner, isAdmin } = useAccess() || {};
+  // Editar (nombre, sucursal, etc.) es un derecho que el admin comparte con el owner —
+  // el backend (businessController.update) ya no exige owner. Borrar el negocio entero
+  // sigue siendo exclusivo del owner (acción irreversible, confirmado explícitamente).
+  const puedeEditar = isOwner || isAdmin;
   const { rawBranches } = useBranch() || {};
   const [showCreate, setShowCreate] = useState(false);
   const [editingBiz, setEditingBiz] = useState(null);
@@ -446,12 +450,12 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
             <OrgBizCard
               key={biz.id}
               biz={biz}
-              canEdit={!!isOwner}
+              canEdit={puedeEditar}
               isPrincipal={String(biz.id) === String(principalId)}
               activeId={activeBusinessId}
               onSetActive={handleSetActive}
-              onEdit={isOwner ? setEditingBiz : null}
-              onEditSucursal={isOwner ? (biz) => {
+              onEdit={puedeEditar ? setEditingBiz : null}
+              onEditSucursal={puedeEditar ? (biz) => {
                 const mainStored = (rawBranches || []).find(b => b.props?.is_main === true);
                 setEditingMainBranch({
                   name: mainStored?.name ?? biz.name ?? '',
