@@ -44,12 +44,14 @@ export const TeamAPI = {
   },
 
   /**
-   * Crea una invitación. Manda mail si está configurado el SMTP.
+   * Crea una invitación en uno o varios scopes a la vez. Manda un solo mail
+   * si está configurado el SMTP, con acceso a todos los scopes elegidos.
+   * `scopes`: [{ scopeType, scopeId }, ...]. Compat: también acepta scopeType/scopeId sueltos.
    */
-  async createInvitation({ email, scopeType, scopeId, role, alias }) {
+  async createInvitation({ email, scopes, scopeType, scopeId, role, alias }) {
     return http('/team/invitations', {
       method: 'POST',
-      body: { email, scopeType, scopeId, role, alias },
+      body: scopes ? { email, scopes, role, alias } : { email, scopeType, scopeId, role, alias },
       withBusinessId: false,
     });
   },

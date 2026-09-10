@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Stack, MenuItem, Alert, Typography, Box,
-  Radio, RadioGroup, FormControlLabel, FormControl, Chip, Autocomplete,
+  Checkbox, FormControlLabel, FormControl, Chip, Autocomplete,
 } from '@mui/material';
 import GroupAddOutlinedIcon     from '@mui/icons-material/GroupAddOutlined';
 import BusinessIcon             from '@mui/icons-material/Business';
@@ -28,7 +28,8 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const [email, setEmail]                     = useState('');
   const [alias, setAlias]                     = useState('');
   const [role, setRole]                       = useState(puedeInvitarAdmin ? 'admin' : 'staff');
-  const [selectedScopeKey, setSelectedScopeKey] = useState('');
+  // Selección múltiple: uno o varios negocios/sub-negocios, o la organización entera.
+  const [selectedScopeKeys, setSelectedScopeKeys] = useState(() => new Set());
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState(null);
   const [knownPeople, setKnownPeople]         = useState([]);
@@ -50,13 +51,21 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
       setEmail(''); setAlias('');
       setAliasHeredado(false);
       setRole(puedeInvitarAdmin ? 'admin' : 'staff');
-      setSelectedScopeKey('');
+      setSelectedScopeKeys(new Set());
       setError(null); setLoading(false);
     } else {
       // Por default queda preseleccionado el scope del negocio donde se abrió el modal
-      setSelectedScopeKey(`${scopeType}:${scopeId}`);
+      setSelectedScopeKeys(new Set([`${scopeType}:${scopeId}`]));
     }
   }, [open, puedeInvitarAdmin, scopeType, scopeId]);
+
+  const toggleScope = (key) => {
+    setSelectedScopeKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // IDs de los negocios que pertenecen a la organización actual (si hay)
   const orgBusinessIds = useMemo(() => {
@@ -79,9 +88,9 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   }, [allBusinesses, orgBusinessIds]);
 
-  // True cuando el radio activo es "toda la organización"
+  // True cuando está tildada "toda la organización" (cubre todos los sub-negocios)
   const isOrgSelected = !!organization
-    && selectedScopeKey === `organization:${organization.id}`;
+    && selectedScopeKeys.has(`organization:${organization.id}`);
 
   // El selector solo tiene sentido si el rol es admin y hay más de una opción posible
   const mostrarSelector = role === 'admin'
@@ -95,27 +104,30 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
       return;
     }
 
-    // Resolver scope final: si hay selector, usar la elección del radio; si no, los props
-    let finalScopeType = scopeType;
-    let finalScopeId   = scopeId;
-
-    if (mostrarSelector && selectedScopeKey) {
-      const [t, id] = selectedScopeKey.split(':');
-      finalScopeType = t;
-      finalScopeId   = Number(id);
-    }
-
-    if (!finalScopeType || !finalScopeId) {
-      setError('Elegí un alcance válido');
-      return;
+    // Resolver scopes finales: si hay selector, uno o varios tildados; si no, el prop fijo.
+    // "Organización" cubre todos sus sub-negocios — si está tildada, no hace falta (ni
+    // corresponde) mandar también cada sub-negocio suelto.
+    let scopes;
+    if (mostrarSelector) {
+      if (selectedScopeKeys.size === 0) {
+        setError('Elegí al menos un alcance');
+        return;
+      }
+      scopes = isOrgSelected
+        ? [{ scopeType: 'organization', scopeId: organization.id }]
+        : Array.from(selectedScopeKeys).map(k => {
+          const [t, id] = k.split(':');
+          return { scopeType: t, scopeId: Number(id) };
+        });
+    } else {
+      scopes = [{ scopeType, scopeId }];
     }
 
     setLoading(true);
     try {
       const res = await createInvitation({
         email: email.trim(),
-        scopeType: finalScopeType,
-        scopeId: finalScopeId,
+        scopes,
         role,
         alias: alias.trim(),
       });
@@ -233,47 +245,60 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                 ALCANCE DEL ACCESO
               </Typography>
 
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Podés tildar varios negocios/sub-negocios a la vez — se manda una sola invitación con acceso a todos los elegidos.
+              </Typography>
               <FormControl component="fieldset" fullWidth>
-                <RadioGroup
-                  value={selectedScopeKey}
-                  onChange={(e) => setSelectedScopeKey(e.target.value)}
-                >
-                  {/* ── Organización completa + sub-negocios indentados ── */}
-                  {organization && (
-                    <Box sx={{
-                      border: '1px solid', borderColor: 'divider',
-                      borderRadius: 1.5, p: 1.5, mb: 1.5,
-                      bgcolor: 'background.paper',
-                    }}>
-                      <FormControlLabel
-                        value={`organization:${organization.id}`}
-                        control={<Radio size="small" />}
-                        label={
-                          <Box>
-                            <Stack direction="row" alignItems="center" spacing={0.75}>
-                              <BusinessIcon sx={{ fontSize: 16, color: tc }} />
-                              <Typography variant="body2" fontWeight={700}>
-                                {organization.name}
-                              </Typography>
-                            </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                              Incluye todos los sub-negocios actuales y futuros
+                {/* ── Organización completa + sub-negocios indentados ── */}
+                {organization && (
+                  <Box sx={{
+                    border: '1px solid', borderColor: 'divider',
+                    borderRadius: 1.5, p: 1.5, mb: 1.5,
+                    bgcolor: 'background.paper',
+                  }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={isOrgSelected}
+                          onChange={() => toggleScope(`organization:${organization.id}`)}
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <BusinessIcon sx={{ fontSize: 16, color: tc }} />
+                            <Typography variant="body2" fontWeight={700}>
+                              {organization.name}
                             </Typography>
-                          </Box>
-                        }
-                        sx={{ alignItems: 'flex-start', m: 0 }}
-                      />
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            Incluye todos los sub-negocios actuales y futuros
+                          </Typography>
+                        </Box>
+                      }
+                      sx={{ alignItems: 'flex-start', m: 0 }}
+                    />
 
-                      {subNegociosOrg.length > 0 && (
-                        <Box sx={{
-                          ml: 3.5, mt: 1, pl: 1.5,
-                          borderLeft: '1px dashed', borderColor: 'divider',
-                        }}>
-                         {subNegociosOrg.map((biz) => (
+                    {subNegociosOrg.length > 0 && (
+                      <Box sx={{
+                        ml: 3.5, mt: 1, pl: 1.5,
+                        borderLeft: '1px dashed', borderColor: 'divider',
+                      }}>
+                       {subNegociosOrg.map((biz) => {
+                          const key = `business:${biz.id}`;
+                          const checked = isOrgSelected || selectedScopeKeys.has(key);
+                          return (
                             <FormControlLabel
                               key={biz.id}
-                              value={`business:${biz.id}`}
-                              control={<Radio size="small" />}
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={checked}
+                                  disabled={isOrgSelected}
+                                  onChange={() => toggleScope(key)}
+                                />
+                              }
                               label={
                                 <Box>
                                   <Stack direction="row" alignItems="center" spacing={0.75}>
@@ -311,14 +336,17 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                                 }),
                               }}
                             />
-                          ))}
-                        </Box>
-                      )}
-                    </Box>
-                  )}
+                          );
+                        })}
+                      </Box>
+                    )}
+                  </Box>
+                )}
 
-                  {/* ── Negocios independientes / de otras orgs ── */}
-                  {negociosSueltos.map((biz) => (
+                {/* ── Negocios independientes / de otras orgs ── */}
+                {negociosSueltos.map((biz) => {
+                  const key = `business:${biz.id}`;
+                  return (
                     <Box
                       key={biz.id}
                       sx={{
@@ -328,8 +356,13 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                       }}
                     >
                       <FormControlLabel
-                        value={`business:${biz.id}`}
-                        control={<Radio size="small" />}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={selectedScopeKeys.has(key)}
+                            onChange={() => toggleScope(key)}
+                          />
+                        }
                         label={
                           <Box>
                             <Stack direction="row" alignItems="center" spacing={0.75}>
@@ -344,8 +377,8 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                         sx={{ alignItems: 'flex-start', m: 0 }}
                       />
                     </Box>
-                  ))}
-                </RadioGroup>
+                  );
+                })}
               </FormControl>
             </Box>
           ) : (
