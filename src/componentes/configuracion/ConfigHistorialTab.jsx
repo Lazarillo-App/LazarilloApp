@@ -16,6 +16,7 @@ const ENTITY_LABELS = {
   merma: 'Merma',
   receta_item_merma: 'Merma de ingrediente',
   precio_config: 'Precio',
+  team_member: 'Miembro del equipo',
 };
 
 const ACTION_LABELS = {
@@ -160,6 +161,7 @@ export default function ConfigHistorialTab({ businessId }) {
             <MenuItem value="merma">Mermas</MenuItem>
             <MenuItem value="receta_item_merma">Merma de ingredientes</MenuItem>
             <MenuItem value="precio_config">Precios</MenuItem>
+            <MenuItem value="team_member">Equipo</MenuItem>
           </Select>
         </FormControl>
       </Stack>
