@@ -87,6 +87,10 @@ function TeamSection() {
   const { organization } = useOrganization() || {};
   const bizId = currentBusiness?.id || null;
   const bizName = currentBusiness?.name || null;
+  const propioEmail = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null')?.email || null; }
+    catch { return null; }
+  }, []);
 
   // Mapa scope_id → nombre de negocio (para la columna Negocios de la vista consolidada)
   const bizNameById = useMemo(() => {
@@ -190,19 +194,37 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
     setMenuRow(null); setMenuAnchor(null);
   };
 
-  const handleRevoke = async (m) => {
-    if (!window.confirm(`¿Revocar acceso de "${m.alias || m.email}" a este negocio?`)) {
+  // Elimina a la persona del equipo por completo: revoca TODOS sus accesos
+  // (uno por negocio/org donde tenga assignment), no solo uno a la vez como
+  // "Editar acceso" → "Quitar acceso". El backend igual protege al owner y
+  // evita que un admin borre asignaciones que no otorgó él mismo — si alguna
+  // falla, se avisa cuáles.
+  const handleEliminarIntegrante = async (m) => {
+    const nombre = m?.alias || m?.email || 'esta persona';
+    const asignaciones = (m?.negocios || []).filter(n => n.assignmentId);
+    if (!asignaciones.length) { setMenuRow(null); setMenuAnchor(null); return; }
+    if (!window.confirm(`¿Eliminar a "${nombre}" del equipo? Perderá acceso a los ${asignaciones.length} negocio(s)/organización que tenía asignados.`)) {
       setMenuRow(null); setMenuAnchor(null);
       return;
     }
-    try {
-      await revokeAssignment(m.id);
-      try { window.dispatchEvent(new CustomEvent('team:changed')); } catch { }
-      fetchMembers();
-    } catch (e) {
-      alert(`Error: ${e?.message || 'no_se_pudo_revocar'}`);
-    }
     setMenuRow(null); setMenuAnchor(null);
+    let fallas = 0;
+    for (const n of asignaciones) {
+      try {
+        await revokeAssignment(n.assignmentId);
+      } catch {
+        fallas++;
+      }
+    }
+    try { window.dispatchEvent(new CustomEvent('team:changed')); } catch { }
+    fetchMembers();
+    if (fallas === 0) {
+      setSnack(`${nombre} fue eliminado del equipo.`);
+    } else if (fallas < asignaciones.length) {
+      setSnack(`Se quitó parte del acceso de ${nombre}, pero ${fallas} no se pudo revocar.`);
+    } else {
+      setSnack(`No se pudo eliminar a ${nombre} del equipo.`);
+    }
   };
 
   // La vista de equipo es consolidada (todos los negocios), no depende del negocio activo.
@@ -264,11 +286,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             )}
           </Stack>
         ) : (
-          <Table size="small">
+          <Box sx={{ overflowX: 'auto' }}>
+          <Table size="small" sx={{ minWidth: 640 }}>
             <TableHead>
               <TableRow>
                 {['Alias', 'Email', 'Rol', 'Negocios', 'Estado', ''].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem' }}>{h}</TableCell>
+                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -283,17 +306,17 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                 return (
                   <React.Fragment key={m.email}>
                     <TableRow>
-                      <TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <Stack direction="row" alignItems="center" spacing={1}>
-                          <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc }}>
+                          <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc, flexShrink: 0 }}>
                             {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
                           </Avatar>
-                          <Typography variant="body2" fontWeight={600}>
+                          <Typography variant="body2" fontWeight={600} noWrap>
                             {m.alias || m.name || '—'}
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
+                      <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                         {m.email}
                       </TableCell>
                       <TableCell>
@@ -369,6 +392,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
               })}
             </TableBody>
           </Table>
+          </Box>
         )}
       </Section>
 
@@ -389,6 +413,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           <MenuItem onClick={() => handleResend(menuRow.negocios[0].assignmentId)}>
             <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
             Reenviar invitación
+          </MenuItem>
+        )}
+        {menuRow?.rolMasAlto !== 'owner' && menuRow?.email !== propioEmail && (
+          <MenuItem onClick={() => handleEliminarIntegrante(menuRow)} sx={{ color: 'error.main' }}>
+            <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />
+            Eliminar integrante
           </MenuItem>
         )}
       </Menu>
@@ -609,7 +639,7 @@ function PerfilContenido() {
         : 'Usuario';
 
   return (
-    <Box sx={{ maxWidth: 720, mx: 'auto', p: { xs: 2, md: 3 } }}>
+    <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
       {/* ── Header ── */}
       <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
