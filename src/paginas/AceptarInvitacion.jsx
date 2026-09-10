@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 // src/paginas/AceptarInvitacion.jsx
 //
 // Página PÚBLICA: el invitado entra con un link tipo
@@ -11,14 +12,13 @@ import {
 } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { acceptInvitation } from '@/servicios/apiTeam';
-import { useAuth } from '@/context/AuthContext';
+import { saveSession } from '@/servicios/apiAuth';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
 export default function AceptarInvitacion() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth();
 
   const token = params.get('token') || '';
   const email = params.get('email') || '';
@@ -43,12 +43,16 @@ export default function AceptarInvitacion() {
     setLoading(true);
     setError(null);
     try {
-      // 1) Activar cuenta
+      // 1) Activar cuenta — el backend ya devuelve token + user (mismo shape que
+      //    /auth/login) en la misma respuesta.
       const res = await acceptInvitation({ token, email, password, displayName: displayName.trim() });
       if (!res?.ok) throw new Error(res?.error || 'invalid_token');
 
-      // 2) Loguear automáticamente con la nueva contraseña
-      await login(email, password);
+      // 2) Loguear directo con eso — antes se hacía una SEGUNDA llamada a
+      //    /auth/login con las credenciales recién creadas, que a veces no
+      //    terminaba de loguear y dejaba a la persona en una pantalla de login aparte.
+      saveSession(res);
+      try { window.dispatchEvent(new CustomEvent('auth:login', { detail: res.user })); } catch {}
 
       // 3) A la home — AccessContext decidirá si va al selector o a la app
       navigate('/', { replace: true });

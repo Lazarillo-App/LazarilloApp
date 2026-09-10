@@ -24,6 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { useAuth } from '@/context/AuthContext';
 import { MeAPI } from '@/servicios/apiMe';
+import { AuthAPI } from '@/servicios/apiAuth';
 import { useOrganization } from '@/context/OrganizationContext';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
@@ -431,16 +432,56 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
 
 /* ─── Seguridad placeholder ─── */
 function SecuritySection() {
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSnack, setPwdSnack] = useState('');
+
+  const closePwdDialog = () => {
+    setPwdOpen(false);
+    setCurrentPwd(''); setNewPwd(''); setConfirmPwd(''); setPwdError('');
+  };
+
+  const ejecutarCambioPassword = async () => {
+    setPwdError('');
+    if (newPwd.length < 6) { setPwdError('La contraseña nueva debe tener al menos 6 caracteres'); return; }
+    if (newPwd !== confirmPwd) { setPwdError('Las contraseñas no coinciden'); return; }
+    setPwdSaving(true);
+    try {
+      const res = await AuthAPI.changePassword({ currentPassword: currentPwd, newPassword: newPwd });
+      if (!res?.ok) throw new Error(res?.error || 'error');
+      setPwdSnack('Contraseña actualizada');
+      closePwdDialog();
+    } catch (e) {
+      const code = e?.data?.error || e?.message;
+      setPwdError(code === 'wrong_current_password' ? 'La contraseña actual no es correcta' : 'No se pudo cambiar la contraseña');
+    } finally {
+      setPwdSaving(false);
+    }
+  };
+
   return (
-    <Section icon={<LockOutlinedIcon />} title="Seguridad" badge="Próximamente">
+    <Section icon={<LockOutlinedIcon />} title="Seguridad">
       <Stack spacing={1.5}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 1 }}>
+          <Box>
+            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.82rem' }}>Contraseña</Typography>
+            <Typography variant="caption" color="text.secondary">Cambiá tu contraseña de acceso</Typography>
+          </Box>
+          <Button size="small" variant="outlined" onClick={() => setPwdOpen(true)}
+            sx={{ fontSize: '0.75rem', borderRadius: 1.5, minWidth: 80 }}>
+            Cambiar
+          </Button>
+        </Stack>
         {[
-          { label: 'Contraseña', desc: 'Cambiá tu contraseña de acceso' },
           { label: 'Autenticación de dos factores', desc: 'Protegé tu cuenta con un segundo factor' },
           { label: 'Sesiones activas', desc: 'Cerrá sesiones en otros dispositivos' },
         ].map(({ label, desc }) => (
           <Stack key={label} direction="row" alignItems="center" justifyContent="space-between"
-            sx={{ py: 1, '& + &': { borderTop: '1px solid #f3f4f6' } }}>
+            sx={{ py: 1, borderTop: '1px solid #f3f4f6' }}>
             <Box>
               <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.82rem' }}>{label}</Typography>
               <Typography variant="caption" color="text.secondary">{desc}</Typography>
@@ -452,6 +493,50 @@ function SecuritySection() {
           </Stack>
         ))}
       </Stack>
+
+      <Dialog open={pwdOpen} onClose={closePwdDialog} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Cambiar contraseña</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <Stack spacing={2}>
+            <TextField
+              autoFocus fullWidth size="small" type="password"
+              label="Contraseña actual"
+              value={currentPwd}
+              onChange={(e) => setCurrentPwd(e.target.value)}
+            />
+            <TextField
+              fullWidth size="small" type="password"
+              label="Contraseña nueva"
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              helperText="Mínimo 6 caracteres"
+            />
+            <TextField
+              fullWidth size="small" type="password"
+              label="Repetir contraseña nueva"
+              value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') ejecutarCambioPassword(); }}
+            />
+            {pwdError && <Typography variant="caption" color="error">{pwdError}</Typography>}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePwdDialog} disabled={pwdSaving}>Cancelar</Button>
+          <Button onClick={ejecutarCambioPassword} variant="contained"
+            disabled={pwdSaving || !currentPwd || !newPwd || !confirmPwd}>
+            {pwdSaving ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!pwdSnack}
+        autoHideDuration={3000}
+        onClose={() => setPwdSnack('')}
+        message={pwdSnack}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Section>
   );
 }
@@ -561,9 +646,12 @@ function PerfilContenido() {
               </Box>
 
               {/* Datos */}
-              <Stack spacing={0.5} sx={{ flex: 1 }}>
-                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                  <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+              {/* minWidth:0 en los dos Stack: sin esto, un nombre largo no se achica dentro
+                  del flex row (avatar + datos) y el Paper (overflow:hidden, para las esquinas
+                  redondeadas) termina cortándolo en vez de dejarlo hacer wrap. */}
+              <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ minWidth: 0 }}>
+                  <Typography variant="h6" fontWeight={800} lineHeight={1.2} sx={{ minWidth: 0, overflowWrap: 'break-word' }}>
                     {meName}
                   </Typography>
                   <Tooltip title="Editar nombre">

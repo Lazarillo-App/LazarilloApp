@@ -2,7 +2,7 @@
 // src/servicios/apiAuth.js
 import { http } from './apiBusinesses';
 
-function saveSession(data) {
+export function saveSession(data) {
   try {
     if (data?.token) localStorage.setItem('token', data.token);
     if (data?.user)  localStorage.setItem('user', JSON.stringify(data.user));
@@ -104,6 +104,16 @@ export const AuthAPI = {
       body: { token, password },
       withBusinessId: false,
       noAuthRedirect: true,
+    });
+  },
+
+  // Cambiar contraseña estando logueado (sabiendo la actual) — distinto del flujo
+  // de "olvidé mi contraseña" (requestPasswordReset/resetPassword).
+  async changePassword({ currentPassword, newPassword }) {
+    return await http('/auth/change-password', {
+      method: 'PUT',
+      body: { currentPassword, newPassword },
+      withBusinessId: false,
     });
   },
 
