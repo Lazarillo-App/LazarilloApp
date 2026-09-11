@@ -1102,8 +1102,7 @@ export default function VistaCartaMenu({
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {diseno.fontImp ? <style>{`@import url('https://fonts.googleapis.com/css2?family=${diseno.fontImp}&display=swap');`}</style> : null}
       <style>{css}</style>
-      <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}
-        .vcm-item-actions{opacity:0;transition:opacity .12s}.vcm-item-row:hover .vcm-item-actions{opacity:1}`}</style>
+      <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}`}</style>
 
       {/* Barra de controles */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "6px 4px" }}>
@@ -1638,17 +1637,16 @@ export default function VistaCartaMenu({
                                             onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
-                                            className="it vcm-item-row"
+                                            className="it"
                                             style={{ cursor: "grab", position: "relative", paddingRight: 130 }}
                                             title="Arrastrá para reordenar">
                                             <span className="nm">{a.nombre}</span>
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
-                                            {/* Solo visible al pasar el mouse por la fila (vcm-item-row:hover) — antes
-                                                quedaba siempre encima con fondo sólido, y como el espacio reservado
-                                                (90px) era más chico que lo que en verdad ocupa, tapaba el último
-                                                dígito del precio en todas las filas. */}
-                                            <span className="vcm-item-actions" style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
+                                            {/* Siempre visibles (como antes) — el corte del precio no era por
+                                                mostrarse siempre sino porque el espacio reservado (90px) era más
+                                                chico que lo que en verdad ocupan estos botones. Ya con 130px alcanza. */}
+                                            <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
                                               <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, artId); }}
                                                 title="Agregar línea divisoria debajo de este artículo"
                                                 style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
