@@ -1181,10 +1181,22 @@ export default function VistaCartaMenu({
             <>
               {/* Controles de la hoja */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 12 }}>
-                <input ref={nombreHojaInputRef} value={hoja.nombre} onChange={(e) => renombrarHoja(hoja.id, e.target.value)}
+                {/* No controlado (defaultValue + key por hoja): antes cada tecla escrita
+                    llamaba a renombrarHoja → reescribía la maqueta completa y disparaba
+                    autosave + re-render de toda la hoja en cada letra — con hojas grandes
+                    se sentía lento y llegaba a colgarse. Ahora solo se guarda al salir. */}
+                <input key={hoja.id} ref={nombreHojaInputRef} defaultValue={hoja.nombre}
+                  onChange={(e) => { e.target.dataset.dirty = "1"; }}
                   style={{ fontSize: 15, fontWeight: 700, border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "#2a2320", background: "transparent", minWidth: 160 }}
                   onFocus={(e) => e.target.style.border = "1px solid #d8d3ca"}
-                  onBlur={(e) => e.target.style.border = "1px solid transparent"} />
+                  onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") { e.target.value = hoja.nombre; e.target.blur(); } }}
+                  onBlur={(e) => {
+                    e.target.style.border = "1px solid transparent";
+                    const nuevo = e.target.value.trim();
+                    if (e.target.dataset.dirty && nuevo && nuevo !== hoja.nombre) renombrarHoja(hoja.id, nuevo);
+                    else e.target.value = hoja.nombre;
+                    e.target.dataset.dirty = "";
+                  }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 12.5, color: "#666" }}>Columnas:</span>
                   {[1, 2, 3, 4].map((n) => (
@@ -1658,8 +1670,18 @@ export default function VistaCartaMenu({
                                           </div>
                                           {/* descripción: editable si está en modo edición, sino se muestra si existe */}
                                           {editando ? (
-                                            <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "2px 0 6px" }}>
+                                            <div
+                                              style={{ display: "flex", flexDirection: "column", gap: 4, margin: "2px 0 6px" }}
+                                              onBlur={(e) => {
+                                                // Cierra el bloque SOLO si el foco se va afuera de los 2 inputs
+                                                // (Tab/click entre nombre y descripción no debe cerrarlo — antes
+                                                // solo el blur de descripción cerraba, así que si el foco se iba
+                                                // directo desde nombre hacia afuera, el bloque quedaba abierto).
+                                                if (!e.currentTarget.contains(e.relatedTarget)) setEditDesc(null);
+                                              }}
+                                            >
                                               <input
+                                                key={`nombre-${artId}`}
                                                 autoFocus
                                                 defaultValue={a.nombre}
                                                 onBlur={(e) => {
@@ -1668,16 +1690,20 @@ export default function VistaCartaMenu({
                                                 }}
                                                 onKeyDown={(e) => {
                                                   if (e.key === "Enter") e.target.blur();
-                                                  if (e.key === "Escape") { e.target.value = a.nombre; }
+                                                  if (e.key === "Escape") { e.target.value = a.nombre; e.target.blur(); }
                                                 }}
                                                 placeholder="Nombre del artículo…"
                                                 title="Renombra el artículo (afecta la tabla; protege el nombre de MaxiRest)"
                                                 style={{ width: "100%", fontSize: 13, fontWeight: 600, color: "#2a2320", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
                                               />
                                               <input
-                                                value={descActual}
-                                                onChange={(e) => setDescripciones((d) => ({ ...d, [String(artId)]: e.target.value }))}
-                                                onBlur={() => setEditDesc(null)}
+                                                key={`desc-${artId}`}
+                                                // No controlado: antes cada tecla guardaba en `descripciones` (estado
+                                                // pesado que dispara el autosave + re-render de toda la hoja) — con
+                                                // menús/hojas grandes eso se sentía lento y a veces se colgaba.
+                                                // Ahora se guarda solo al salir del campo.
+                                                defaultValue={descActual}
+                                                onBlur={(e) => setDescripciones((d) => ({ ...d, [String(artId)]: e.target.value }))}
                                                 onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
                                                 placeholder="Descripción / ingredientes…"
                                                 style={{ width: "100%", fontSize: 12, fontStyle: "italic", color: "#555", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
