@@ -70,16 +70,23 @@ export function BranchProvider({ children }) {
       const list = res?.branches || [];
       setRawBranches(list);
 
-      // Restaurar selección guardada — si no hay, usar Todas (null)
+      // Restaurar selección guardada — si no hay ninguna guardada, el default
+      // depende de cuántas sucursales reales (aparte de la principal) existen:
+      // con 1 sola sucursal (la principal, sin ramas) no tiene sentido arrancar
+      // en "Todas" — se preselecciona directamente esa única sucursal. Con 2 o
+      // más, "Todas" sigue siendo el default más útil.
+      const sinMainCount = list.filter(b => !b.props?.is_main).length;
+      const defaultBranchId = sinMainCount === 0 ? MAIN_BRANCH_ID : null;
+
       const stored = localStorage.getItem(branchKey(id));
       if (!stored || stored === 'null') {
-        setActiveBranchId(null); // Todas
+        setActiveBranchId(defaultBranchId);
       } else if (stored === MAIN_BRANCH_ID) {
         setActiveBranchId(MAIN_BRANCH_ID);
       } else {
         const storedNum = Number(stored);
         const exists    = storedNum && list.some(b => b.id === storedNum);
-        setActiveBranchId(exists ? storedNum : null); // fallback → Todas
+        setActiveBranchId(exists ? storedNum : defaultBranchId); // fallback si la sucursal guardada ya no existe
       }
     } catch (e) {
       console.error('[BranchContext] loadBranches:', e);

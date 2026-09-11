@@ -1464,8 +1464,8 @@ export default function TablaArticulos({
           padding: "0 4px",
           boxShadow: "inset 4px 0 0 var(--color-primary)",
         }}>
-          {selectionMode && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {selectionMode && (
               <input
                 type="checkbox"
                 checked={ids.every(id => selectedIds.has(id)) && ids.length > 0}
@@ -1478,11 +1478,11 @@ export default function TablaArticulos({
                 }}
                 style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#0369a1" }}
               />
-            </div>
-          )}
+            )}
+          </div>
           <div
             style={{
-              gridColumn: selectionMode ? "2 / 4" : "1 / 3",
+              gridColumn: "2 / 4",
               color: "#1e1e2e",
               paddingLeft: 4,
               overflow: 'hidden',
@@ -1619,8 +1619,8 @@ export default function TablaArticulos({
       return (
         <div key={row.key} className="table-section-row"
           style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, boxShadow: "inset 4px 0 0 var)", }}>
-          {selectionMode && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {selectionMode && (
               <input
                 type="checkbox"
                 checked={ids.every(id => selectedIds.has(id)) && ids.length > 0}
@@ -1633,11 +1633,11 @@ export default function TablaArticulos({
                 }}
                 style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#0369a1" }}
               />
-            </div>
-          )}
+            )}
+          </div>
           <div
             style={{
-              gridColumn: selectionMode ? "2 / 4" : "1 / 3",
+              gridColumn: "2 / 4",
               cursor: 'pointer',
             }}
             onClick={() => {
