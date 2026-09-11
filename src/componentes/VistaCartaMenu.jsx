@@ -64,7 +64,7 @@ const DISENO_BASE = {
 function nuevoDisenoCfg(accent) {
   const f = pickRnd(MENU_FONTS), ink = pickRnd(MENU_INKS);
   return {
-    dFont: f.d, bFont: f.b, fontImp: f.imp, bg: "#ffffff", ink,
+    dFont: f.d, bFont: f.b, fontImp: f.imp, ink,
     title: pickRnd([accent, ink, ink, pickRnd(MENU_INKS)]),
     leader: "#cfc7ba", line: pickRnd(MENU_LINES),
     align: pickRnd(["left", "left", "center"]), upper: Math.random() < 0.5,
@@ -92,20 +92,8 @@ const iconFor = (name) => { const s = String(name || ""); for (const [re, ic] of
 /* ───────────────────────── Geometría de papel ───────────────────────── */
 const PAPER_SIZES = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], Oficio: [216, 330], Carta: [216, 279] };
 const PX_PER_MM = 96 / 25.4;
-function printGeom(size, orient, colsReq) {
-  let [w, h] = PAPER_SIZES[size] || PAPER_SIZES.A4;
-  if (orient === "h") { const t = w; w = h; h = t; }
-  const margin = 11, gap = 7;
-  const contentWmm = w - 2 * margin, contentHmm = h - 2 * margin;
-  const contentWpx = contentWmm * PX_PER_MM, contentHpx = contentHmm * PX_PER_MM;
-  const gapPx = gap * PX_PER_MM;
-  const cols = colsReq && colsReq > 0 ? colsReq : Math.max(1, Math.min(4, Math.round(contentWpx / 340)));
-  const colWpx = (contentWpx - (cols - 1) * gapPx) / cols;
-  const scale = Math.max(0.9, Math.min(1.45, colWpx / 250));
-  return { w, h, margin, gap, cols, contentWpx, contentHpx, gapPx, colWpx, scale, pageWpx: w * PX_PER_MM, pageHpx: h * PX_PER_MM };
-}
 
-const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const clean = (s) => String(s ?? "").trim();
 const isSin = (s) => { const v = clean(s).toLowerCase(); return v === "" || v === "sin categoría" || v === "sin categoria" || v === "sin subrubro" || v === "sin rubro" || v === "sin agrupación" || v === "sin agrupacion"; };
 
@@ -130,41 +118,6 @@ function indexarArticulos(articulosPlano) {
     byId.set(String(a.id), a);
   }
   return byId;
-}
-
-// Construye la maqueta inicial: una hoja por rubro/agrupación (según modo).
-function maquetaInicial(articulosPlano, modo) {
-  const activos = articulosPlano.filter((a) => clean(a.nombre));
-
-  // Agrupar en secciones según el modo.
-  const secciones = new Map(); // titulo -> [artIds]
-  const push = (titulo, id) => {
-    const t = titulo || "Otros";
-    if (!secciones.has(t)) secciones.set(t, []);
-    secciones.get(t).push(String(id));
-  };
-
-  if (modo === "rubro") {
-    for (const a of activos) push(isSin(a.rubro) ? "Otros" : clean(a.rubro), a.id);
-  } else {
-    for (const a of activos) push((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion), a.id);
-  }
-
-  const seccionesObj = {};
-  const hojas = [];
-  let n = 0;
-  for (const [titulo, itemIds] of secciones) {
-    const sid = "sec-" + (n++);
-    // ordenar ítems alfabéticamente al inicio
-    const ordenados = itemIds.slice().sort((x, y) => {
-      const ax = clean((articulosPlano.find(a => String(a.id) === x) || {}).nombre);
-      const ay = clean((articulosPlano.find(a => String(a.id) === y) || {}).nombre);
-      return ax.localeCompare(ay, "es");
-    });
-    seccionesObj[sid] = { id: sid, titulo, origen: titulo, itemIds: ordenados };
-    hojas.push({ id: "hoja-" + sid, nombre: titulo, cols: 1, columnas: [[sid]] });
-  }
-  return { hojas, secciones: seccionesObj, pool: { secciones: [], items: [] } };
 }
 
 // Maqueta vacía: una hoja en blanco + TODAS las secciones (rubro/agrupación) en el
@@ -198,7 +151,7 @@ function maquetaVacia(articulosPlano, modo) {
   }
   // Una única hoja vacía para empezar a armar.
   const hojas = [{ id: "hoja-inicial", nombre: "NUEVA HOJA", cols: 1, columnas: [[]] }];
-  return { hojas, secciones: seccionesObj, pool: { secciones: poolSecciones, items: [] } };
+  return { hojas, secciones: seccionesObj, pool: { secciones: poolSecciones, items: [] }, removidos: [] };
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -215,6 +168,9 @@ function maquetaVacia(articulosPlano, modo) {
 function reconciliar(guardada, articulosPlano, modo) {
   const activos = articulosPlano.filter((a) => clean(a.nombre));
   const idsReales = new Set(activos.map((a) => String(a.id)));
+  // Artículos que el usuario sacó a mano de la carta (quitarItem/quitarBloque):
+  // no deben resucitar como "nuevos" cada vez que se reconcilia (ej: al recargar la página).
+  const removidos = new Set((guardada.removidos || []).map(String));
 
   // Clonar la maqueta guardada (profundo simple)
   const hojas = (guardada.hojas || []).map((h) => ({
@@ -256,6 +212,7 @@ function reconciliar(guardada, articulosPlano, modo) {
   const nuevosPorTitulo = new Map();
   for (const a of activos) {
     if (yaUbicados.has(String(a.id))) continue;
+    if (removidos.has(String(a.id))) continue;
     const t = tituloNatural(a);
     if (!nuevosPorTitulo.has(t)) nuevosPorTitulo.set(t, []);
     nuevosPorTitulo.get(t).push(String(a.id));
@@ -284,7 +241,7 @@ function reconciliar(guardada, articulosPlano, modo) {
   }
 
   // Limpiar referencias a secciones vacías que quedaron en columnas (opcional: dejarlas)
-  return { hojas, secciones, pool: guardada.pool || { secciones: [], items: [] } };
+  return { hojas, secciones, pool: guardada.pool || { secciones: [], items: [] }, removidos: Array.from(removidos) };
 }
 
 /* ───────────────────────── CSS de la carta (compartido preview/PDF) ───────────────────────── */
@@ -356,9 +313,10 @@ function svgIcon(net, c) {
 // Header/footer de la hoja
 function headerHtml(hoja, diseno, negocio, showLogo) {
   const Dx = diseno;
-  const labelTxt = Dx.orn ? `${Dx.orn}  LA CARTA  ${Dx.orn}` : "LA CARTA";
   const logoHtml = (showLogo && negocio && negocio.logo) ? `<div class="logo"><img src="${esc(negocio.logo)}" crossorigin="anonymous" /></div>` : "";
-  return `${logoHtml}`;
+  const nombre = clean(negocio?.nombre);
+  const tituloHtml = nombre ? `<div class="title">${esc(nombre)}</div>` : "";
+  return `${logoHtml}<div class="lab">${esc(hoja.label)}</div>${tituloHtml}`;
 }
 function footerHtml(negocio) {
   const c = negocio?.accent || "#7a1f3d";
@@ -512,6 +470,11 @@ export default function VistaCartaMenu({
   ));
 
   const neg = useMemo(() => ({ ...negocio, ...contacto, accent }), [negocio, contacto, accent]);
+  // Restablece colores/tamaños/espaciado a los de base, manteniendo la tipografía elegida
+  // (usado tanto por el botón ↺ de la barra como por "Restablecer" del modal de Estilos).
+  const resetDiseno = useCallback(() => {
+    setDiseno((d) => ({ ...DISENO_BASE, dFont: d.dFont, bFont: d.bFont, fontImp: d.fontImp, ink: negocio?.ink || DISENO_BASE.ink, title: negocio?.ink || DISENO_BASE.title }));
+  }, [negocio]);
   // Icono efectivo de una sección: override manual ('' = sin icono) o automático por nombre.
   const iconoDe = (titulo) => {
     const ov = iconosPorTitulo[titulo];
@@ -572,14 +535,32 @@ export default function VistaCartaMenu({
 
   // La maqueta activa es la del modo actual.
   const maqueta = maquetasPorModo[modo] || maquetaVacia(articulos, modo);
-  // Setter que escribe en el modo activo (mantiene la firma setMaqueta(fn|obj)).
+
+  // `setMaqueta` se llama desde ~15 callbacks (renombrarHoja, eliminarHoja,
+  // moverItem, quitarBloque, etc.) que NO la tienen en su propio array de
+  // dependencias de useCallback (bug real, ya arreglado con este cambio en vez
+  // de tocar los 15 uno por uno). Antes, `setMaqueta` cambiaba de identidad cada
+  // vez que `modo`/`articulos` cambiaban — y esos otros callbacks, al no tener
+  // esa dependencia, quedaban con una versión VIEJA de `setMaqueta` que todavía
+  // recordaba el `modo` de cuando se crearon. Resultado: apenas cambiabas entre
+  // "por rubro"/"por agrupación" una vez, esas acciones escribían en silencio
+  // sobre la maqueta del modo VIEJO — invisible en la vista actual (exactamente
+  // "no cambia nada" / "no se puede eliminar" / etc.).
+  // Solución: `setMaqueta` ahora es 100% estable (deps `[]`) y lee modo/artículos
+  // SIEMPRE actuales vía ref — así no importa qué dependencias tengan los que la usan.
+  const modoRef = useRef(modo);
+  React.useEffect(() => { modoRef.current = modo; }, [modo]);
+  const articulosRef = useRef(articulos);
+  React.useEffect(() => { articulosRef.current = articulos; }, [articulos]);
+
   const setMaqueta = useCallback((updater) => {
     setMaquetasPorModo((prev) => {
-      const actual = prev[modo] || maquetaVacia(articulos, modo);
+      const modoActual = modoRef.current;
+      const actual = prev[modoActual] || maquetaVacia(articulosRef.current, modoActual);
       const siguiente = typeof updater === "function" ? updater(actual) : updater;
-      return { ...prev, [modo]: siguiente };
+      return { ...prev, [modoActual]: siguiente };
     });
-  }, [modo, articulos]);
+  }, []);
 
   // Al cambiar de modo: si el nuevo modo aún no tiene maqueta, generar una vacía
   // (una sola vez). NO se pisa lo ya armado en ese modo.
@@ -681,7 +662,7 @@ export default function VistaCartaMenu({
     setMaqueta(maquetaVacia(articulos, modo));
     setHojaActiva(0);
     setFusionMode(false); setFusionSel([]);
-  }, [articulos, modo]);
+  }, [articulos, modo, setMaqueta]);
 
   // Arma el objeto que se persiste en props.carta del negocio.
   // v2: guarda una maqueta por modo (rubro / agrupacion) para no perder lo armado
@@ -705,8 +686,12 @@ export default function VistaCartaMenu({
       await onGuardarCarta(construirCarta());
       setSaveState("saved");
       setTimeout(() => setSaveState((s) => s === "saved" ? "idle" : s), 2500);
-    } catch {
-      setSaveState("idle");
+    } catch (e) {
+      setSaveState("error");
+      // No usamos alert() porque esto también dispara desde el autosave silencioso;
+      // un alert repetido cada 1.5s sería insoportable. Se avisa en la barra de estado.
+      console.error("No se pudo guardar la carta:", e);
+      setTimeout(() => setSaveState((s) => s === "error" ? "idle" : s), 5000);
     }
   }, [onGuardarCarta, construirCarta]);
 
@@ -764,7 +749,7 @@ export default function VistaCartaMenu({
       });
       return { ...m, hojas };
     });
-  }, [hoja]);
+  }, [hoja, setMaqueta]);
 
   // Mover una sección a otra columna/posición
   const moverSeccion = useCallback((secId, destColIdx, destPos) => {
@@ -779,7 +764,7 @@ export default function VistaCartaMenu({
       });
       return { ...m, hojas };
     });
-  }, [hoja]);
+  }, [hoja, setMaqueta]);
 
   // Mover un ítem dentro de su sección (reordenar)
   const moverItem = useCallback((secId, artId, destArtId) => {
@@ -794,7 +779,7 @@ export default function VistaCartaMenu({
       itemIds.splice(pos, 0, artId);
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
     });
-  }, []);
+  }, [setMaqueta]);
 
   // Mover un bloque de rubro/sub completo dentro de su sección (reordenar bloques).
   // Saca todos los items cuyo campoBloque === rubroDesde y los reinserta en la
@@ -855,7 +840,7 @@ export default function VistaCartaMenu({
       }
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ordenRubros } } };
     });
-  }, []);
+  }, [setMaqueta]);
 
   // Saca de la sección todos los items cuyo bloque === rubro (los separadores se quedan).
   const quitarBloque = useCallback((secId, campoBloque, rubro, resolver) => {
@@ -863,6 +848,7 @@ export default function VistaCartaMenu({
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
+      const aQuitar = sec.itemIds.filter((id) => !String(id).startsWith("__sep__") && resolver(id) === rubro);
       const itemIds = sec.itemIds.filter((id) => {
         if (String(id).startsWith("__sep__")) return true;
         return resolver(id) !== rubro;
@@ -871,23 +857,28 @@ export default function VistaCartaMenu({
       const ordenRubros = Array.isArray(sec.ordenRubros)
         ? sec.ordenRubros.filter((b) => b !== rubro)
         : sec.ordenRubros;
-      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ...(ordenRubros ? { ordenRubros } : {}) } } };
+      // Recordar lo quitado para que reconciliar() no lo reinserte como "nuevo" al recargar.
+      const removidos = Array.from(new Set([...(m.removidos || []), ...aQuitar]));
+      return { ...m, removidos, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ...(ordenRubros ? { ordenRubros } : {}) } } };
     });
-  }, []);
+  }, [setMaqueta]);
 
 
   // Quitar un ítem de la carta (de su sección)
-  // Quitar un ítem: solo lo saca de la carta. Vuelve a estar disponible en el catálogo.
+  // Quitar un ítem: solo lo saca de la carta (no afecta la gestión real). Queda recordado en
+  // `removidos` para que reconciliar() no lo vuelva a insertar como "artículo nuevo".
   const quitarItem = useCallback((secId, artId) => {
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
+      const removidos = m.removidos && m.removidos.includes(artId) ? m.removidos : [...(m.removidos || []), artId];
       return {
         ...m,
+        removidos,
         secciones: { ...m.secciones, [secId]: { ...sec, itemIds: sec.itemIds.filter((x) => x !== artId) } },
       };
     });
-  }, []);
+  }, [setMaqueta]);
 
   // Quitar una sección: solo la saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarSeccion = useCallback((secId) => {
@@ -898,7 +889,7 @@ export default function VistaCartaMenu({
       });
       return { ...m, hojas };
     });
-  }, [hoja]);
+  }, [hoja, setMaqueta]);
 
   // Traer una sección del catálogo (rubro/agrupación) a la hoja activa.
   // La sección puede no existir aún en m.secciones: se crea con sus artículos.
@@ -908,8 +899,9 @@ export default function VistaCartaMenu({
       let secId = Object.keys(m.secciones).find((k) => (m.secciones[k]?.origen ?? m.secciones[k]?.titulo) === titulo);
       let secciones = m.secciones;
       if (!secId) {
-        // Crear la sección desde articulos según el modo actual
-        const activos = articulos.filter((a) => clean(a.nombre));
+        // Crear la sección desde articulos según el modo actual (respetando lo removido a mano)
+        const removidos = new Set((m.removidos || []).map(String));
+        const activos = articulos.filter((a) => clean(a.nombre) && !removidos.has(String(a.id)));
         const itemIds = activos
           .filter((a) => {
             const t = modo === "rubro"
@@ -932,7 +924,7 @@ export default function VistaCartaMenu({
       });
       return { ...m, secciones, hojas };
     });
-  }, [hoja, articulos, modo]);
+  }, [hoja, articulos, modo, setMaqueta]);
 
   // Fusionar hojas seleccionadas en la primera
   const fusionar = useCallback((ids) => {
@@ -956,11 +948,29 @@ export default function VistaCartaMenu({
     });
     setFusionMode(false); setFusionSel([]);
     setHojaActiva(0);
-  }, []);
+  }, [setMaqueta]);
 
   const renombrarHoja = useCallback((hojaId, nombre) => {
     setMaqueta((m) => ({ ...m, hojas: m.hojas.map((h) => h.id === hojaId ? { ...h, nombre } : h) }));
-  }, []);
+  }, [setMaqueta]);
+
+  // Eliminar una hoja. No pide confirmación: no es destructivo, sus secciones no se
+  // pierden (vuelven a "Disponibles" para traerlas a otra hoja). Nunca deja la carta
+  // sin ninguna hoja. Ojo: nada de window.confirm/alert/prompt acá — en algunos
+  // entornos embebidos (preview dentro del editor) un diálogo nativo bloqueante
+  // cuelga toda la vista porque el hilo de JS queda esperando un modal que no se resuelve.
+  const eliminarHoja = useCallback((hojaId) => {
+    if (hojas.length <= 1) return;
+    const idx = hojas.findIndex((h) => h.id === hojaId);
+    if (idx === -1) return;
+    setMaqueta((m) => ({ ...m, hojas: m.hojas.filter((h) => h.id !== hojaId) }));
+    setHojaActiva((i) => {
+      if (idx < i) return i - 1;
+      if (idx === i) return Math.min(i, hojas.length - 2);
+      return i;
+    });
+    setFusionSel((sel) => sel.filter((x) => x !== hojaId));
+  }, [hojas, setMaqueta]);
 
   // Crear una hoja vacía (para armar desde cero arrastrando)
   const agregarHojaVacia = useCallback(() => {
@@ -970,7 +980,7 @@ export default function VistaCartaMenu({
     });
     setHojaActiva((n) => n); // se ajusta abajo
     setTimeout(() => setHojaActiva(hojas.length), 0);
-  }, [hojas.length]);
+  }, [hojas.length, setMaqueta]);
 
   // Renombrar el título de una sección (SOLO en la carta por ahora; en la semana
   // se conecta a renameRubro real para que afecte la tabla).
@@ -980,7 +990,7 @@ export default function VistaCartaMenu({
       if (!sec) return m;
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, titulo } } };
     });
-  }, []);
+  }, [setMaqueta]);
 
   // Insertar un separador (línea divisoria) en una sección, tras cierto ítem.
   const insertarSeparador = useCallback((secId, trasArtId) => {
@@ -993,7 +1003,7 @@ export default function VistaCartaMenu({
       itemIds.splice(idx, 0, sepId);
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
     });
-  }, []);
+  }, [setMaqueta]);
 
   // Traer las secciones de una hoja (del sidebar) a una columna de la hoja activa.
   // La hoja origen se elimina (sus secciones migran). No hace nada si es la misma.
@@ -1012,7 +1022,7 @@ export default function VistaCartaMenu({
         .map((h) => h.id === destino.id ? { ...h, columnas } : h);
       return { ...m, hojas };
     });
-  }, [hoja]);
+  }, [hoja, setMaqueta]);
 
   const descargar = useCallback(async () => {
     if (!hoja) return;
@@ -1026,6 +1036,7 @@ export default function VistaCartaMenu({
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
+  const nombreHojaInputRef = useRef(null); // para enfocar el campo de nombre al doble-clic en una hoja
 
   const onDropCol = (destColIdx, destPos) => {
     const d = dragRef.current;
@@ -1063,6 +1074,7 @@ export default function VistaCartaMenu({
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {diseno.fontImp ? <style>{`@import url('https://fonts.googleapis.com/css2?family=${diseno.fontImp}&display=swap');`}</style> : null}
       <style>{css}</style>
+      <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}`}</style>
 
       {/* Barra de controles */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "6px 4px" }}>
@@ -1076,9 +1088,9 @@ export default function VistaCartaMenu({
         <div style={{ width: 1, height: 22, background: "#e0dcd3" }} />
 
         {negocio?.logo && pill(showLogo, () => setShowLogo((v) => !v), "🖼️ Logo")}
-        <button onClick={() => setDiseno(nuevoDisenoCfg(accent))} title="Diseño nuevo (tipografías, colores)"
+        <button onClick={() => setDiseno((d) => ({ ...d, ...nuevoDisenoCfg(accent) }))} title="Diseño nuevo (tipografías, colores) — conserva tamaños y espaciado ya ajustados"
           style={{ padding: "5px 14px", borderRadius: 20, border: "none", background: accent, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✨ Nuevo diseño</button>
-        <button onClick={() => setDiseno({ ...DISENO_BASE, ink: negocio?.ink || DISENO_BASE.ink, title: negocio?.ink || DISENO_BASE.title })}
+        <button onClick={resetDiseno} title="Restablecer colores y tamaños (mantiene la tipografía elegida)"
           style={{ padding: "5px 10px", borderRadius: 20, border: "1px solid #d8d3ca", background: "#fff", color: "#777", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>↺</button>
 
         <select value={diseno.dFont}
@@ -1096,8 +1108,9 @@ export default function VistaCartaMenu({
 
         {onGuardarCarta && (
           <>
-            <span style={{ fontSize: 12, color: saveState === "saved" ? "#16a34a" : "#999", minWidth: 76, textAlign: "right" }}>
-              {saveState === "saving" ? "Guardando…" : saveState === "saved" ? "Guardado ✓" : ""}
+            <span title={saveState === "error" ? "No se pudo guardar. Probá de nuevo con 'Guardar'." : ""}
+              style={{ fontSize: 12, color: saveState === "saved" ? "#16a34a" : saveState === "error" ? "#ef4444" : "#999", minWidth: 76, textAlign: "right", whiteSpace: "nowrap" }}>
+              {saveState === "saving" ? "Guardando…" : saveState === "saved" ? "Guardado ✓" : saveState === "error" ? "⚠ Error al guardar" : ""}
             </span>
             <button onClick={guardar} disabled={saveState === "saving"}
               title="Guardar la carta en el negocio"
@@ -1160,12 +1173,15 @@ export default function VistaCartaMenu({
         </div>
 
         {/* Lienzo de la hoja activa */}
-        <div>
+        {/* minWidth:0 es necesario: sin esto, la tira de hojas (que no achica sus tabs)
+            fuerza el ancho mínimo de esta columna del grid, y termina agrandando toda
+            la hoja/página en vez de sólo scrollear su propia tira horizontal. */}
+        <div style={{ minWidth: 0 }}>
           {hoja && (
             <>
               {/* Controles de la hoja */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 12 }}>
-                <input value={hoja.nombre} onChange={(e) => renombrarHoja(hoja.id, e.target.value)}
+                <input ref={nombreHojaInputRef} value={hoja.nombre} onChange={(e) => renombrarHoja(hoja.id, e.target.value)}
                   style={{ fontSize: 15, fontWeight: 700, border: "1px solid transparent", borderRadius: 6, padding: "4px 8px", color: "#2a2320", background: "transparent", minWidth: 160 }}
                   onFocus={(e) => e.target.style.border = "1px solid #d8d3ca"}
                   onBlur={(e) => e.target.style.border = "1px solid transparent"} />
@@ -1191,7 +1207,7 @@ export default function VistaCartaMenu({
                     </button>
                     <button onClick={() => { setFusionMode(false); setFusionSel([]); }}
                       style={{ border: "1px solid #d8d3ca", background: "#fff", color: "#999", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
-                    <span style={{ fontSize: 11.5, color: "#999" }}>Elegí hojas en el panel ←</span>
+                    <span style={{ fontSize: 11.5, color: "#999" }}>Elegí 2+ hojas en la tira de abajo ↓</span>
                   </div>
                 )}
 
@@ -1210,23 +1226,47 @@ export default function VistaCartaMenu({
                   style={{ flexShrink: 0, border: `1px dashed ${accent}`, background: "#fff", color: accent, borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", position: "sticky", left: 0, zIndex: 2 }}>
                   ＋ Hoja vacía
                 </button>
-                {hojas.map((h, i) => (
-                  <div key={h.id}
-                    draggable
-                    onDragStart={(e) => { dragRef.current = { tipo: "hoja", hojaId: h.id }; e.dataTransfer.effectAllowed = "move"; }}
-                    onClick={() => setHojaActiva(i)}
-                    onDoubleClick={() => { const n = prompt("Nombre de la hoja:", h.nombre); if (n != null) renombrarHoja(h.id, n.trim() || h.nombre); }}
-                    title="Clic para ver · doble clic para renombrar · arrastrá a la carta para sumar sus secciones"
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6, cursor: "grab", flexShrink: 0,
-                      padding: "7px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap",
-                      background: i === hojaActiva ? accent : "#fff",
-                      color: i === hojaActiva ? "#fff" : "#2a2320",
-                      border: `1px solid ${i === hojaActiva ? accent : "#d8d3ca"}`,
-                    }}>
-                    {(iconFor(h.nombre) ? iconFor(h.nombre) + " " : "") + h.nombre}
-                  </div>
-                ))}
+                {hojas.map((h, i) => {
+                  const seleccionada = fusionSel.includes(h.id);
+                  const activa = !fusionMode && i === hojaActiva;
+                  const resaltada = fusionMode ? seleccionada : activa;
+                  return (
+                    <div key={h.id}
+                      className="vcm-hoja-tab"
+                      draggable={!fusionMode}
+                      onDragStart={(e) => { dragRef.current = { tipo: "hoja", hojaId: h.id }; e.dataTransfer.effectAllowed = "move"; }}
+                      onClick={() => {
+                        if (fusionMode) setFusionSel((sel) => sel.includes(h.id) ? sel.filter((x) => x !== h.id) : [...sel, h.id]);
+                        else setHojaActiva(i);
+                      }}
+                      onDoubleClick={() => {
+                        if (fusionMode) return;
+                        setHojaActiva(i);
+                        setTimeout(() => { nombreHojaInputRef.current?.focus(); nombreHojaInputRef.current?.select(); }, 0);
+                      }}
+                      title={fusionMode ? "Clic para elegir esta hoja para fusionar" : "Clic para ver · doble clic para renombrar (arriba) · arrastrá a la carta para sumar sus secciones"}
+                      style={{
+                        position: "relative", display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+                        cursor: fusionMode ? "pointer" : "grab",
+                        padding: "7px 12px", paddingRight: (!fusionMode && hojas.length > 1) ? 24 : 12,
+                        borderRadius: 8, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap",
+                        background: resaltada ? accent : "#fff",
+                        color: resaltada ? "#fff" : "#2a2320",
+                        border: `1px solid ${resaltada ? accent : "#d8d3ca"}`,
+                      }}>
+                      {fusionMode && <span>{seleccionada ? "☑" : "☐"}</span>}
+                      {(iconFor(h.nombre) ? iconFor(h.nombre) + " " : "") + h.nombre}
+                      {!fusionMode && hojas.length > 1 && (
+                        <span className="vcm-hoja-x"
+                          onClick={(e) => { e.stopPropagation(); eliminarHoja(h.id); }}
+                          title="Eliminar esta hoja"
+                          style={{ position: "absolute", top: 3, right: 5, fontSize: 11, lineHeight: 1, color: activa ? "#fff" : "#bbb", cursor: "pointer" }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = activa ? "#fff" : "#ef4444"}
+                          onMouseLeave={(e) => e.currentTarget.style.color = activa ? "#fff" : "#bbb"}>✕</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
@@ -1238,6 +1278,7 @@ export default function VistaCartaMenu({
                 }}>
                   {/* Header arriba de todas las columnas (igual que el PDF) */}
                   <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                     {(hoja.columnas || []).map((colSecIds, colIdx) => (
                       <div key={colIdx}
@@ -1659,11 +1700,13 @@ export default function VistaCartaMenu({
                             </div>
                           )}
                         </div>
-                        {colIdx === (hoja.columnas.length - 1) && (
-                          <div className="cart" dangerouslySetInnerHTML={{ __html: footerHtml(neg) }} />
-                        )}
                       </div>
                     ))}
+                  </div>
+                  {/* Pie de página: hermano de la fila de columnas, no adentro de la
+                      última — así queda centrado respecto de TODA la hoja (igual que
+                      en el PDF exportado), no solo del ancho de la última columna. */}
+                  <div className="cart" dangerouslySetInnerHTML={{ __html: footerHtml(neg) }} />
                   </div>
                 </div>
               </div>
@@ -1795,7 +1838,7 @@ export default function VistaCartaMenu({
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, borderTop: "1px solid #eee", paddingTop: 14 }}>
-              <button onClick={() => setDiseno((d) => ({ ...DISENO_BASE, dFont: d.dFont, bFont: d.bFont, fontImp: d.fontImp, ink: negocio?.ink || DISENO_BASE.ink, title: negocio?.ink || DISENO_BASE.title }))}
+              <button onClick={resetDiseno}
                 style={{ border: "1px solid #d8d3ca", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: "#777" }}>
                 ↺ Restablecer
               </button>
