@@ -279,7 +279,7 @@ function cartaCss(diseno, negocio, scale) {
 .title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 4px}
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
 .rub{margin-bottom:${r(14)}px;break-inside:avoid}
-.rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
+.rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;line-height:1.25;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
 .it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px}
 .nm{font-family:${Dx.dFont};font-weight:600;font-size:${r(Dx.itemSize || 14.5)}px;color:${inkH}}
 .dots{flex:1;border-bottom:${lineWidth(Dx.line, 1)}px ${Dx.line} ${ldH};transform:translateY(-4px)}
@@ -313,7 +313,11 @@ function seccionHtml(sec, artById, diseno, iconos) {
     return `<div class="it"><span class="nm">${esc(a.nombre)}</span><span class="dots"></span><span class="pr">${precio}</span></div>${a.descripcion ? `<div class="ds">${esc(a.descripcion)}</div>` : ""}`;
   }).join("");
   const icoRaw = iconos && iconos[sec.titulo] !== undefined ? iconos[sec.titulo] : iconFor(sec.titulo);
-  const icoHtml = icoRaw ? `<span style="font-size:${Dx.iconSize || 16}px">${esc(icoRaw)}</span> ` : "";
+  // line-height:1 + vertical-align:middle: sin esto, el emoji del ícono tiene
+  // una caja de línea más alta que el texto, y el título de la sección CON
+  // ícono queda más abajo que uno SIN ícono al lado (misma fila, otra columna)
+  // — se ve como si los 2 títulos de arriba no estuvieran alineados entre sí.
+  const icoHtml = icoRaw ? `<span style="font-size:${Dx.iconSize || 16}px;line-height:1;vertical-align:middle;display:inline-block">${esc(icoRaw)}</span> ` : "";
   const titulo = sec.titulo
     ? `<div class="rt">${icoHtml}${Dx.orn ? esc(Dx.orn) + "  " : ""}${esc(sec.titulo)}</div>`
     : "";
@@ -354,6 +358,48 @@ function footerHtml(negocio) {
 
 }
 
+// Marco dibujado sobre un canvas 2D (usado en el PNG) — aparte del contenido
+// capturado, para controlar el padding real entre el marco y el texto (antes
+// el borde vivía pegado al borde del propio canvas capturado, sin aire).
+function dibujarMarcoCanvas(ctx, frame, color, w, h) {
+  if (!frame || frame === "none") return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  if (frame === "double") {
+    const lw = 4;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
+    const gap = 8;
+    ctx.strokeRect(lw + gap, lw + gap, w - (lw + gap) * 2, h - (lw + gap) * 2);
+  } else {
+    const lw = frame === "box" ? 4 : 2;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
+  }
+  ctx.restore();
+}
+
+function hexToRgb(hex) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
+  return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : { r: 0, g: 0, b: 0 };
+}
+
+// Marco dibujado vectorial en el PDF (uno por página) — mismo criterio que
+// dibujarMarcoCanvas, para que se repita igual en las 5/10/lo que sean hojas.
+function dibujarMarcoPdf(pdf, frame, color, x, y, w, h) {
+  if (!frame || frame === "none") return;
+  const { r, g, b } = hexToRgb(color);
+  pdf.setDrawColor(r, g, b);
+  if (frame === "double") {
+    pdf.setLineWidth(0.4);
+    pdf.rect(x, y, w, h);
+    pdf.rect(x + 1.5, y + 1.5, w - 3, h - 3);
+  } else {
+    pdf.setLineWidth(frame === "box" ? 0.5 : 0.25);
+    pdf.rect(x, y, w, h);
+  }
+}
+
 /* ───────────────────────── PDF de una hoja (con columnas reales, paginado) ───────────────────────── */
 async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg, iconos) {
   const bgH = diseno.bg || "#ffffff";
@@ -369,18 +415,30 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
   const renderWpx = Math.round(contentWmm * PX_PER_MM);
   const nCols = Math.max(1, (hoja.columnas || [[]]).length);
   const gapPx = Math.round(7 * PX_PER_MM);
-  const colWpx = Math.floor((renderWpx - (nCols - 1) * gapPx) / nCols);
-  const css = cartaCss(diseno, negocio, 1);
+  // El marco se dibuja aparte (vectorial/canvas, no en el HTML capturado) —
+  // así queda igual en cada hoja/página exportada, sin depender de que
+  // html2canvas capture bien un border CSS. framePad es el aire real entre
+  // el marco y el contenido (antes era 0: el marco quedaba pegado al texto).
+  const framePad = Math.round(6 * PX_PER_MM);
+  const colWpx = Math.floor((renderWpx - framePad * 2 - (nCols - 1) * gapPx) / nCols);
+  const css = cartaCss({ ...diseno, frame: "none" }, negocio, 1);
 
   const colsHtml = (hoja.columnas || []).map((colSecIds) => {
     const inner = (colSecIds || []).map((sid) => seccionHtml(secciones[sid], artById, diseno, iconos)).join("");
     return `<div class="pcol" style="width:${colWpx}px">${inner}</div>`;
   }).join("");
 
+  const footerText = footerHtml(negocio);
+
   const wrap = document.createElement("div");
   wrap.style.cssText = `position:fixed;left:-10000px;top:0;width:${renderWpx}px;background:${bgH}`;
-  wrap.innerHTML = `<style>${css}.pgc{width:${renderWpx}px;background:${bgH}}.pcols{display:flex;gap:${gapPx}px;align-items:flex-start}</style>`
-    + `<div class="cart pgc"><div>${headerHtml(hoja, diseno, negocio, showLogo)}</div><div class="pcols">${colsHtml}</div>${footerHtml(negocio)}</div>`;
+  wrap.innerHTML = `<style>${css}.pgc{width:${renderWpx}px;background:${bgH};padding:0 ${framePad}px}.pcols{display:flex;gap:${gapPx}px;align-items:flex-start}</style>`
+    // Cuerpo (header+columnas) y pie separados: el pie se captura aparte para
+    // poder repetirlo igual en CADA hoja exportada — antes quedaba pegado al
+    // final de todo el contenido apilado, así que en una carta de varias
+    // páginas solo aparecía en la última.
+    + `<div class="cart pgc" id="vcm-export-body" style="padding-top:${framePad}px"><div>${headerHtml(hoja, diseno, negocio, showLogo)}</div><div class="pcols">${colsHtml}</div></div>`
+    + (footerText ? `<div class="cart pgc" id="vcm-export-footer" style="padding-bottom:${framePad}px">${footerText}</div>` : "");
   document.body.appendChild(wrap);
 
   try {
@@ -391,12 +449,26 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
     await Promise.all(imgs.map((img) => img.complete ? Promise.resolve() : new Promise((res) => { img.onload = res; img.onerror = res; setTimeout(res, 3000); })));
     await new Promise((r) => setTimeout(r, 400));
 
-    const cv = await window.html2canvas(wrap.querySelector(".pgc"), { scale: 2, backgroundColor: bgH, useCORS: true, logging: false });
+    const bodyEl = wrap.querySelector("#vcm-export-body");
+    const footerEl = wrap.querySelector("#vcm-export-footer");
+    const cv = await window.html2canvas(bodyEl, { scale: 2, backgroundColor: bgH, useCORS: true, logging: false });
+    const footerCv = footerEl
+      ? await window.html2canvas(footerEl, { scale: 2, backgroundColor: bgH, useCORS: true, logging: false })
+      : null;
     const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
     const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
 
     if (cfg.fmt === "png") {
-      await new Promise((res) => cv.toBlob((b) => { dl(b, fname + ".png"); res(); }, "image/png"));
+      // PNG: una sola imagen, cuerpo + pie apilados (sin paginaci\u00f3n).
+      const combined = document.createElement("canvas");
+      combined.width = cv.width;
+      combined.height = cv.height + (footerCv ? footerCv.height : 0);
+      const cctx = combined.getContext("2d");
+      cctx.fillStyle = bgH; cctx.fillRect(0, 0, combined.width, combined.height);
+      cctx.drawImage(cv, 0, 0);
+      if (footerCv) cctx.drawImage(footerCv, 0, cv.height);
+      dibujarMarcoCanvas(cctx, diseno.frame, negocio?.accent || "#7a1f3d", combined.width, combined.height);
+      await new Promise((res) => combined.toBlob((b) => { dl(b, fname + ".png"); res(); }, "image/png"));
       return;
     }
 
@@ -404,9 +476,12 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
     if (!JSPDF) throw new Error("jsPDF no disponible");
     const pdf = new JSPDF({ orientation: wmm > hmm ? "landscape" : "portrait", unit: "mm", format: [wmm, hmm] });
 
-    // El canvas mide contentWmm de ancho. Paginamos por alto de contenido.
+    // El canvas mide contentWmm de ancho. Paginamos por alto de contenido,
+    // reservando siempre el alto del pie de p\u00e1gina en CADA hoja.
     const pxPerMm = cv.width / contentWmm;
-    const pageHpx = Math.floor(contentHmm * pxPerMm);
+    const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
+    const pageContentHmm = Math.max(20, contentHmm - footerHmm);
+    const pageHpx = Math.floor(pageContentHmm * pxPerMm);
     const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
 
     for (let p = 0; p < totalPages; p++) {
@@ -421,6 +496,12 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
       if (p > 0) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
       if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
       pdf.addImage(tmp.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, contentWmm, imgHmm);
+      // Pie de p\u00e1gina igual en TODAS las hojas (antes solo aparec\u00eda en la
+      // \u00faltima, porque quedaba pegado al final de todo el contenido apilado).
+      if (footerCv) {
+        pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert + contentHmm - footerHmm, contentWmm, footerHmm);
+      }
+      dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
     }
     dl(pdf.output("blob"), fname + ".pdf");
   } finally { try { document.body.removeChild(wrap); } catch { } }
