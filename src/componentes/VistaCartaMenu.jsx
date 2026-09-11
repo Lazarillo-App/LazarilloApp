@@ -265,7 +265,7 @@ function cartaCss(diseno, negocio, scale) {
 .it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px}
 .nm{font-family:${Dx.dFont};font-weight:600;font-size:${r(Dx.itemSize || 14.5)}px;color:${inkH}}
 .dots{flex:1;border-bottom:1px ${Dx.line} ${ldH};transform:translateY(-4px)}
-.pr{font-weight:700;font-size:${r(Dx.itemSize || 14.5)}px;color:${priceH};font-variant-numeric:tabular-nums;white-space:nowrap}
+.pr{font-weight:700;font-size:${r(Dx.itemSize || 14.5)}px;color:${priceH};font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
 .ds{font-size:${r(Dx.descSize || 11.5)}px;color:${inkH}99;font-style:italic;margin:0 0 ${r(Math.max(gap, 4))}px}
 .ft{margin-top:16px;padding-top:12px;border-top:1px solid ${accH}66;text-align:center;font-size:${r(12.5)}px;color:${inkH}aa}
 .ft .fl{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:4px}.ft b{color:${inkH}}
@@ -447,6 +447,9 @@ export default function VistaCartaMenu({
   const [fusionSel, setFusionSel] = useState([]);
   const [sidebarTab, setSidebarTab] = useState("hojas"); // "hojas" | "pool"
   const [editSec, setEditSec] = useState(null); // secId cuyo título se edita
+  // Última dirección usada para "ordenar por precio" por sección — solo para
+  // mostrar la flecha correcta en el botón (asc/desc), no se persiste.
+  const [ordenPrecioDir, setOrdenPrecioDir] = useState({});
   // Estado de guardado: "idle" | "saving" | "saved"
   const [saveState, setSaveState] = useState("idle");
   const saveTimer = useRef(null);
@@ -992,6 +995,31 @@ export default function VistaCartaMenu({
     });
   }, [setMaqueta]);
 
+  // Ordenar los ítems de una sección por precio (asc/desc). Los separadores no
+  // tienen precio: quedan al final, sin romper el resto del orden.
+  const ordenarPorPrecio = useCallback((secId, dir) => {
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const precioDe = (id) => {
+        const a = artByIdBase.get(String(id));
+        return a && a.precio != null && a.precio !== "" ? Number(a.precio) : null;
+      };
+      const seps = sec.itemIds.filter((id) => String(id).startsWith("__sep__"));
+      const items = sec.itemIds
+        .filter((id) => !String(id).startsWith("__sep__"))
+        .slice()
+        .sort((x, y) => {
+          const px = precioDe(x), py = precioDe(y);
+          if (px == null && py == null) return 0;
+          if (px == null) return 1;
+          if (py == null) return -1;
+          return dir === "desc" ? py - px : px - py;
+        });
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: [...items, ...seps] } } };
+    });
+  }, [setMaqueta, artByIdBase]);
+
   // Insertar un separador (línea divisoria) en una sección, tras cierto ítem.
   const insertarSeparador = useCallback((secId, trasArtId) => {
     setMaqueta((m) => {
@@ -1074,7 +1102,8 @@ export default function VistaCartaMenu({
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {diseno.fontImp ? <style>{`@import url('https://fonts.googleapis.com/css2?family=${diseno.fontImp}&display=swap');`}</style> : null}
       <style>{css}</style>
-      <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}`}</style>
+      <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}
+        .vcm-item-actions{opacity:0;transition:opacity .12s}.vcm-item-row:hover .vcm-item-actions{opacity:1}`}</style>
 
       {/* Barra de controles */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "6px 4px" }}>
@@ -1408,6 +1437,18 @@ export default function VistaCartaMenu({
                                         />
                                       </span>
                                     )}
+                                    <button onClick={(e) => {
+                                      e.stopPropagation();
+                                      const dir = ordenPrecioDir[sid] === "asc" ? "desc" : "asc";
+                                      setOrdenPrecioDir((p) => ({ ...p, [sid]: dir }));
+                                      ordenarPorPrecio(sid, dir);
+                                    }}
+                                      title={`Ordenar por precio (próximo clic: ${ordenPrecioDir[sid] === "asc" ? "descendente" : "ascendente"}) — no se ve al exportar`}
+                                      style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 11.5, lineHeight: 1, padding: 0, fontWeight: 700 }}
+                                      onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                      onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>
+                                      {ordenPrecioDir[sid] === "asc" ? "$↓" : "$↑"}
+                                    </button>
                                     <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, null); }}
                                       title="Agregar una línea separadora en esta sección"
                                       style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, fontWeight: 400 }}
@@ -1597,13 +1638,17 @@ export default function VistaCartaMenu({
                                             onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
-                                            className="it"
-                                            style={{ cursor: "grab", position: "relative", paddingRight: 90 }}
+                                            className="it vcm-item-row"
+                                            style={{ cursor: "grab", position: "relative", paddingRight: 130 }}
                                             title="Arrastrá para reordenar">
                                             <span className="nm">{a.nombre}</span>
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
-                                            <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
+                                            {/* Solo visible al pasar el mouse por la fila (vcm-item-row:hover) — antes
+                                                quedaba siempre encima con fondo sólido, y como el espacio reservado
+                                                (90px) era más chico que lo que en verdad ocupa, tapaba el último
+                                                dígito del precio en todas las filas. */}
+                                            <span className="vcm-item-actions" style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
                                               <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, artId); }}
                                                 title="Agregar línea divisoria debajo de este artículo"
                                                 style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
