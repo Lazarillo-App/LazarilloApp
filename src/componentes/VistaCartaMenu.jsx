@@ -1638,7 +1638,7 @@ export default function VistaCartaMenu({
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
                                             className="it"
-                                            style={{ cursor: "grab", position: "relative", paddingRight: 130 }}
+                                            style={{ cursor: "grab", position: "relative", paddingRight: 108 }}
                                             title="Arrastrá para reordenar">
                                             <span className="nm">{a.nombre}</span>
                                             <span className="dots" />
