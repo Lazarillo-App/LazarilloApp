@@ -24,7 +24,7 @@ import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
-import { BusinessesAPI, RecetasAPI, PriceConfigAPI } from '../servicios/apiBusinesses';
+import { BusinessesAPI, RecetasAPI, PriceConfigAPI, http } from '../servicios/apiBusinesses';
 import { BASE } from '../servicios/apiBase';
 import { getRedondeoConfig, saveRedondeoConfig } from '../utils/redondeoUtils';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
@@ -79,6 +79,10 @@ export default function ConfiguracionMain() {
   const [saving, setSaving] = useState({});
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
 
+  // ── Normalizar nombres (artículos + insumos, todo el negocio) ──
+  const [normalizarFormato, setNormalizarFormato] = useState('titulo');
+  const [normalizando, setNormalizando] = useState(false);
+
   // ── Modales ABM ──
   const [showNuevoArticulo, setShowNuevoArticulo] = useState(false);
   const [showNuevoInsumo, setShowNuevoInsumo] = useState(false);
@@ -108,6 +112,35 @@ export default function ConfiguracionMain() {
     setSnack({ open: true, msg, sev });
     setTimeout(() => setSnack(s => ({ ...s, open: false })), 3500);
   }, []);
+
+  // Cambia el nombre real de TODOS los artículos e insumos del negocio al
+  // formato elegido — no es reversible con un click, así que pide confirmación
+  // explícita. En artículos de MaxiRest queda protegido de la próxima sync
+  // (mismo criterio que renombrar uno a mano); en insumos no hace falta ese
+  // truco porque la sync de insumos nunca vuelve a tocar el nombre.
+  const normalizarNombres = useCallback(async () => {
+    if (!businessId) return;
+    const etiqueta = normalizarFormato === 'mayuscula' ? 'MAYÚSCULA' : 'Título (Primera mayúscula, resto minúscula)';
+    if (!window.confirm(
+      `Esto va a cambiar el nombre de TODOS los artículos e insumos de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`
+    )) return;
+    setNormalizando(true);
+    try {
+      const [rArt, rIns] = await Promise.all([
+        http(`/businesses/${businessId}/articles/normalizar-nombres`, { method: 'POST', body: { formato: normalizarFormato }, withBusinessId: false }),
+        http(`/insumos/normalizar-nombres`, { method: 'POST', body: { formato: normalizarFormato } }),
+      ]);
+      try {
+        window.dispatchEvent(new CustomEvent('articulos:updated'));
+        window.dispatchEvent(new CustomEvent('insumos:updated'));
+      } catch { }
+      notify(`Listo — ${rArt?.cambiados || 0} artículo(s) y ${rIns?.cambiados || 0} insumo(s) actualizados`);
+    } catch (e) {
+      notify('Error al normalizar: ' + (e.message || e), 'error');
+    } finally {
+      setNormalizando(false);
+    }
+  }, [businessId, normalizarFormato, notify]);
 
   // ── Cargar configuración ──
   useEffect(() => {
@@ -506,6 +539,35 @@ export default function ConfiguracionMain() {
                         }}
                         sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
                         {saving.divisa ? 'Guardando…' : 'Guardar'}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </SectionCard>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <SectionCard icon={<TuneIcon />} title="Normalizar nombres">
+                  <Stack spacing={2}>
+                    <Typography variant="body2" color="text.secondary">
+                      Pasa el nombre de <b>todos</b> los artículos e insumos de este negocio al formato elegido
+                      (por ejemplo, si tenés algunos en MAYÚSCULA y otros mezclados). En los artículos que vienen
+                      de MaxiRest, el cambio queda protegido: la próxima sincronización no lo va a pisar.
+                    </Typography>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <FormControl size="small" sx={{ width: 240 }}>
+                        <InputLabel>Formato</InputLabel>
+                        <Select value={normalizarFormato} label="Formato"
+                          onChange={e => setNormalizarFormato(e.target.value)}>
+                          <MenuItem value="titulo">Título (Primera mayúscula)</MenuItem>
+                          <MenuItem value="mayuscula">MAYÚSCULA</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <Button variant="contained" size="small"
+                        startIcon={normalizando ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+                        disabled={normalizando}
+                        onClick={normalizarNombres}
+                        sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
+                        {normalizando ? 'Normalizando…' : 'Normalizar ahora'}
                       </Button>
                     </Stack>
                   </Stack>
