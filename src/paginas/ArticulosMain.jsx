@@ -2756,6 +2756,7 @@ export default function ArticulosMain(props) {
             selectedIds={selectedIds}
             onToggleSelected={toggleSelected}
             onSelectAll={selectAll}
+            onToggleMode={toggleMode}
             linkByArticleId={linkByArticleId}
             nameById={nameById}
             onRemoveMemberFromLink={async (...args) => {

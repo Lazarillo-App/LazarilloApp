@@ -47,7 +47,6 @@ export default function SelectionToolbar({
   editingGroup = null,
   onSaveEditLink,
 }) {
-  const [modeAnchor, setModeAnchor] = useState(null);
   const [actionAnchor, setActionAnchor] = useState(null);
   const [listNameInput, setListNameInput] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
@@ -61,9 +60,12 @@ export default function SelectionToolbar({
   const modeColor = selectionMode === 'link' ? '#7c3aed' : '#0369a1';
   const modeBg = selectionMode === 'link' ? 'rgba(124,58,237,0.08)' : 'rgba(3,105,161,0.08)';
 
-  const handleSelectMode = (mode) => {
-    setModeAnchor(null);
-    onToggleMode?.(mode === selectionMode ? null : mode);
+  // Al elegir la acción (una vez ya hay artículos tildados en modo 'picking'):
+  // "Vincular artículos" dispara la vinculación directo con lo ya tildado.
+  // "Crear lista" pasa a modo 'list', que muestra el campo para nombrarla.
+  const handleChooseAction = (mode) => {
+    onToggleMode?.(mode);
+    if (mode === 'link') onCreateLink?.();
   };
 
   const handleCreateList = async () => {
@@ -85,67 +87,73 @@ export default function SelectionToolbar({
     }
   };
 
-  // ── Botón principal — cuando no hay modo activo ───────────────────────
+  // ── Sin modo activo: la selección ahora arranca desde el checkbox del
+  //    header de la tabla (estilo Gmail) — este botón/menú ya no existe. ──
   if (!isActive) {
+    return null;
+  }
+
+  // ── Modo 'picking': tildando artículos, todavía sin elegir qué hacer con
+  //    ellos. Recién al tildar al menos uno aparecen las 2 acciones como
+  //    botones (no como menú desplegable). ──
+  if (selectionMode === 'picking') {
     return (
-      <>
-        <Tooltip title="Seleccionar artículos para crear lista o vinculación">
-          <Button
-            onClick={(e) => setModeAnchor(e.currentTarget)}
-            endIcon={<ArrowDropDownIcon sx={{ fontSize: '16px !important' }} />}
-            sx={{
-              textTransform: 'none', fontWeight: 600, fontSize: '0.82rem',
-              border: '1px solid', borderColor: 'divider', color: 'text.secondary',
-              bgcolor: 'background.paper', px: 1.25, height: 36, gap: 0.5, minWidth: 0,
-              '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-            }}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', gap: 1,
+        bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider',
+        borderRadius: 2, px: 1.5, py: 0.5,
+      }}>
+        <CheckBoxOutlineBlankIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+        {hasSelection ? (
+          <>
+            <Chip
+              label={`${count} artículo${count !== 1 ? 's' : ''}`}
+              size="small"
+              sx={{ height: 20, fontSize: '0.72rem', fontWeight: 700, bgcolor: 'text.secondary', color: '#fff', '& .MuiChip-label': { px: 1 } }}
+            />
+            <Tooltip title="Agrupá artículos para exportar o gestionar">
+              <Button
+                size="small" onClick={() => handleChooseAction('list')}
+                startIcon={<PlaylistAddIcon sx={{ fontSize: '16px !important' }} />}
+                sx={{
+                  textTransform: 'none', fontWeight: 700, fontSize: '0.8rem',
+                  color: '#0369a1', border: '1px solid #0369a150', bgcolor: '#fff', px: 1.25, height: 28, minWidth: 0,
+                  '&:hover': { bgcolor: '#0369a108' },
+                }}
+              >
+                Crear lista
+              </Button>
+            </Tooltip>
+            <Tooltip title="Los productos vinculados tendrán el mismo precio">
+              <Button
+                size="small" onClick={() => handleChooseAction('link')}
+                startIcon={<LinkIcon sx={{ fontSize: '16px !important' }} />}
+                sx={{
+                  textTransform: 'none', fontWeight: 700, fontSize: '0.8rem',
+                  color: '#7c3aed', border: '1px solid #7c3aed50', bgcolor: '#fff', px: 1.25, height: 28, minWidth: 0,
+                  '&:hover': { bgcolor: '#7c3aed08' },
+                }}
+              >
+                Vincular artículos
+              </Button>
+            </Tooltip>
+          </>
+        ) : (
+          <Typography variant="caption" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>
+            Tildá artículos para crear una lista o vincularlos
+          </Typography>
+        )}
+
+        <Tooltip title="Cancelar selección">
+          <IconButton
+            size="small"
+            onClick={() => { onClearSelection?.(); onToggleMode?.(null); }}
+            sx={{ ml: 0.5, color: 'text.secondary', opacity: 0.7, '&:hover': { opacity: 1 } }}
           >
-            <CheckBoxOutlineBlankIcon sx={{ fontSize: 16 }} />
-            <span style={{ marginLeft: 4 }}>Seleccionar</span>
-          </Button>
+            <CloseIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         </Tooltip>
-
-        {/* Menú de modo */}
-        <Menu
-          anchorEl={modeAnchor} open={Boolean(modeAnchor)}
-          onClose={() => setModeAnchor(null)}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-          sx={{ '& .MuiPaper-root': { minWidth: 240, mt: 0.5 } }}
-        >
-          <MenuItem disableRipple sx={{ cursor: 'default', '&:hover': { background: 'transparent' } }}>
-            <Typography variant="caption" sx={{
-              fontWeight: 800, fontSize: '.7rem', opacity: .6,
-              textTransform: 'uppercase', letterSpacing: '.07em', color: 'text.secondary',
-            }}>
-              ¿Qué querés hacer?
-            </Typography>
-          </MenuItem>
-          <Divider sx={{ my: 0 }} />
-
-          <MenuItem onClick={() => handleSelectMode('list')} sx={{ py: 1.25 }}>
-            <ListItemIcon>
-              <PlaylistAddIcon sx={{ color: '#0369a1' }} />
-            </ListItemIcon>
-            <ListItemText
-              primary={<span style={{ fontWeight: 600, fontSize: '0.88rem' }}>Crear lista</span>}
-              secondary="Agrupá artículos para exportar o gestionar"
-              secondaryTypographyProps={{ sx: { fontSize: '0.75rem' } }}
-            />
-          </MenuItem>
-
-          <MenuItem onClick={() => handleSelectMode('link')} sx={{ py: 1.25 }}>
-            <ListItemIcon>
-              <LinkIcon sx={{ color: '#7c3aed' }} />
-            </ListItemIcon>
-            <ListItemText
-              primary={<span style={{ fontWeight: 600, fontSize: '0.88rem' }}>Vincular artículos</span>}
-              secondary="Los productos vinculados tendrán el mismo precio"
-              secondaryTypographyProps={{ sx: { fontSize: '0.75rem' } }}
-            />
-          </MenuItem>
-        </Menu>
-      </>
+      </Box>
     );
   }
 

@@ -301,6 +301,7 @@ export default function TablaArticulos({
   selectedIds = new Set(),
   onToggleSelected,
   onSelectAll,
+  onToggleMode,
   linkByArticleId = new Map(),
   nameById = new Map(),
   onRemoveMemberFromLink,
@@ -1313,14 +1314,18 @@ export default function TablaArticulos({
   const handleVisibleIds = useCallback((ids) => { onIdsVisibleChange?.(new Set(ids)); }, [onIdsVisibleChange]);
 
   const hasBranches = branches && branches.length > 0;
-  const checkCol = selectionMode ? "28px " : "";
+  // La columna de checkbox queda SIEMPRE reservada (no solo en modo selección):
+  // el checkbox del header funciona como "master toggle" al estilo Gmail — clickearlo
+  // sin estar en modo selección arranca la selección; ya en modo selección, selecciona/
+  // deselecciona todos los visibles.
+  const checkCol = "28px ";
   const branchCols = hasBranches ? branches.map(() => ".28fr").join(" ") : "";
   const gridTemplate = useMemo(() => {
-    const check = selectionMode ? '28px ' : '';
+    const check = '28px ';
     const branchCols = hasBranches ? branches.map(() => '.28fr').join(' ') + ' ' : '';
     const dynCols = visibleCols.map(c => c.width).join(' ');
     return `${check}minmax(56px, 90px) minmax(0, .5fr) minmax(90px, 130px) ${branchCols}${dynCols}`;
-  }, [selectionMode, hasBranches, branches, visibleCols]);
+  }, [hasBranches, branches, visibleCols]);
 
   const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
   const ITEM_H = 50;
@@ -1850,7 +1855,7 @@ export default function TablaArticulos({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
-            {(selectionMode === 'list' || !selectionMode) && isLinked && (
+            {selectionMode !== 'link' && isLinked && (
               <>
                 {linkGroupsList.filter(g => g.linkType === 'precio').map(g => (
                   <LinkChainIcon
@@ -2334,7 +2339,7 @@ export default function TablaArticulos({
           <div className="table-col-header">
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
             <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'stretch' }}>
-              {selectionMode && <div />}
+              <div />
               {/* Código + Nombre + Ventas: sin zona (span 3, o 4 con check ya cubierto arriba) */}
               <div style={{ gridColumn: 'span 3' }} />
               {hasBranches && branches.map(b => <div key={`z-${b.id}`} />)}
@@ -2372,18 +2377,18 @@ export default function TablaArticulos({
               })()}
             </div>
             <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate }}>
-              {selectionMode && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <input type="checkbox" checked={isAllSelected}
-                    onChange={() => {
-                      if (isAllSelected) currentVisibleArticleIds.forEach(id => selectedIds.has(id) && onToggleSelected?.(id));
-                      else onSelectAll?.(currentVisibleArticleIds);
-                    }}
-                    title={isAllSelected ? "Deseleccionar todos" : "Seleccionar todos"}
-                    style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }}
-                  />
-                </div>
-              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <input type="checkbox"
+                  checked={selectionMode ? isAllSelected : false}
+                  onChange={() => {
+                    if (!selectionMode) { onToggleMode?.('picking'); return; }
+                    if (isAllSelected) currentVisibleArticleIds.forEach(id => selectedIds.has(id) && onToggleSelected?.(id));
+                    else onSelectAll?.(currentVisibleArticleIds);
+                  }}
+                  title={!selectionMode ? "Seleccionar artículos" : isAllSelected ? "Deseleccionar todos" : "Seleccionar todos"}
+                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }}
+                />
+              </div>
 
               <div onClick={() => toggleSort("codigo")} className="col-sortable">
                 Código {sortBy === "codigo" ? (sortDir === "asc" ? "▲" : "▼") : ""}
