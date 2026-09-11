@@ -546,10 +546,58 @@ export default function InsumosMain() {
     } finally { setDownloading(false); }
   }, [businessId, rangoCompras, notify]);
 
+  // Reporte de costo/precio sugerido/margen para listas de insumos ELABORADOS
+  // (tienen receta propia, nunca se compran → el CSV de compras siempre les da
+  // vacío). Mismos 3 datos que muestra el pie del modal de receta del
+  // elaborado: costo por porción (o total si no tiene rendimiento en lotes de
+  // más de 1), precio sugerido, y el % objetivo con el que se calculó.
+  const generarReporteElaborados = useCallback((ids, listName) => {
+    const porId = new Map((allInsumos || []).map(i => [Number(i.id), i]));
+    const esc = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(';') || s.includes('"') || s.includes('\n')
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const fmtNum = (n) => Number(n || 0).toFixed(2).replace('.', ',');
+
+    const headers = ['Código', 'Nombre', 'Unidad', 'Costo', 'Precio sugerido', 'Margen objetivo (%)'];
+    const lines = [headers.join(';')];
+    for (const id of ids) {
+      const ins = porId.get(Number(id));
+      const rec = recetasElaborados[String(id)];
+      if (!ins || !rec) continue;
+      const porciones = Number(rec.porciones) || 1;
+      const costo = porciones > 0 ? Number(rec.costoTotal) / porciones : Number(rec.costoTotal);
+      const codigo = ins.codigo_maxi || ins.codigo_mostrar || `INS-${id}`;
+      lines.push([
+        esc(codigo),
+        esc(ins.nombre),
+        esc(ins.unidad_med || ''),
+        fmtNum(costo),
+        fmtNum(rec.precioSugerido),
+        fmtNum(rec.porcentajeVenta),
+      ].join(';'));
+    }
+
+    const bom = '﻿';
+    const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const safeName = (listName || 'lista').replace(/[^a-zA-Z0-9_\-áéíóúüñÁÉÍÓÚÜÑ ]/g, '').trim();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `costos_${safeName}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    showAlert(`✓ Reporte de costos de "${listName}" descargado`, 'success');
+  }, [allInsumos, recetasElaborados]);
+
   // ── Descarga de compras por lista de insumos ──────────────────────────────
   const handleDownloadList = useCallback(async (listId, listName) => {
-    if (!businessId || !rangoCompras?.from || !rangoCompras?.to) {
-      showAlert('No hay periodo activo para descargar.', 'warning');
+    if (!businessId) {
+      showAlert('No hay negocio activo para descargar.', 'warning');
       return;
     }
     try {
@@ -560,6 +608,19 @@ export default function InsumosMain() {
 
       if (ids.length === 0) {
         showAlert(`La lista "${listName}" no tiene insumos.`, 'warning');
+        return;
+      }
+
+      // Lista de insumos ELABORADOS (tienen receta propia): no se compran, el
+      // CSV de compras siempre daría vacío. Reporte de costo/margen en su lugar.
+      const todosElaborados = ids.every(id => recetasElaborados[String(id)]);
+      if (todosElaborados) {
+        generarReporteElaborados(ids, listName);
+        return;
+      }
+
+      if (!rangoCompras?.from || !rangoCompras?.to) {
+        showAlert('No hay periodo activo para descargar.', 'warning');
         return;
       }
 
@@ -593,7 +654,7 @@ export default function InsumosMain() {
       console.error('handleDownloadList insumos error:', err);
       showAlert(`Error al descargar: ${err.message || err}`, 'error');
     }
-  }, [businessId, rangoCompras, activeBranchFilter]);
+  }, [businessId, rangoCompras, activeBranchFilter, recetasElaborados, generarReporteElaborados]);
 
   /* ── Favorita ── */
   useEffect(() => {
