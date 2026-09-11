@@ -1225,8 +1225,141 @@ export default function VistaCartaMenu({
             if (d?.tipo === "seccion") { e.preventDefault(); quitarSeccion(d.secId); dragRef.current = null; }
             else if (d?.tipo === "item") { e.preventDefault(); quitarItem(d.secId, d.artId); dragRef.current = null; }
           }}
-          style={{ background: "#faf9f7", border: "1px solid #eae7e0", borderRadius: 12, padding: 12, position: "sticky", top: 8, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 160px)" }}>
+          style={{ background: "#faf9f7", border: "1px solid #eae7e0", borderRadius: 12, padding: 12, position: "sticky", top: 8, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 160px)", overflowY: "auto" }}>
 
+          {estilosOpen ? (
+            /* Estilos ACÁ, en el lugar del sidebar, en vez de un modal flotante
+               que tapaba la carta — así se ve "en vivo" cada cambio, sin tener
+               que cerrar nada para chequear cómo quedó. */
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ margin: 0, fontSize: "0.92rem", fontWeight: 800 }}>Estilos de la carta</h3>
+                <button onClick={() => setEstilosOpen(false)} style={{ border: "none", background: "none", fontSize: 18, color: "#999", cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+
+              {/* Colores */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Colores</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    ["Títulos", "title", "#2a2320"],
+                    ["Artículos", "ink", "#2a2320"],
+                    ["Precios", "price", accent],
+                    ["Líneas / puntos", "leader", "#cfc7ba"],
+                    ["Fondo", "bg", "#ffffff"],
+                  ].map(([label, key, def]) => {
+                    const val = diseno[key] && String(diseno[key]).startsWith("#") ? diseno[key] : def;
+                    return (
+                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 12, color: "#2a2320" }}>{label}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input type="color" value={val}
+                            onChange={(e) => setDiseno((d) => ({ ...d, [key]: e.target.value }))}
+                            style={{ width: 30, height: 24, border: "1px solid #d8d3ca", borderRadius: 6, cursor: "pointer", padding: 0, background: "#fff" }} />
+                          <span style={{ fontSize: 10, color: "#999", fontFamily: "monospace", width: 48 }}>{val}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Interlineado */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Espaciado</div>
+                <div>
+                  <span style={{ fontSize: 12, color: "#2a2320" }}>Interlineado entre artículos</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <input type="range" min={0} max={16} step={1} value={diseno.itemGap ?? 3}
+                      onChange={(e) => setDiseno((d) => ({ ...d, itemGap: Number(e.target.value) }))}
+                      style={{ flex: 1, accentColor: accent }} />
+                    <span style={{ fontSize: 11, color: "#999", width: 28, flexShrink: 0 }}>{diseno.itemGap ?? 3}px</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tamaños de letra */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Tamaños de letra</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {[
+                    ["Títulos de sección", "sectionSize", 11, 28, 16],
+                    ["Icono de sección", "iconSize", 12, 32, 16],
+                    ["Nombre del artículo", "itemSize", 10, 22, 14.5],
+                    ["Descripción", "descSize", 8, 16, 11.5],
+                  ].map(([label, key, min, max, def]) => (
+                    <div key={key}>
+                      <span style={{ fontSize: 12, color: "#2a2320" }}>{label}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <input type="range" min={min} max={max} step={0.5} value={diseno[key] ?? def}
+                          onChange={(e) => setDiseno((d) => ({ ...d, [key]: Number(e.target.value) }))}
+                          style={{ flex: 1, accentColor: accent }} />
+                        <span style={{ fontSize: 11, color: "#999", width: 28, flexShrink: 0 }}>{diseno[key] ?? def}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Extras: mayúsculas, línea, marco */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Detalles</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  {negocio?.logo && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#666" }}>Logo:</span>
+                      {[["left", "Izq"], ["center", "Centro"], ["right", "Der"]].map(([k, l]) => (
+                        <button key={k} onClick={() => setDiseno((d) => ({ ...d, logoAlign: k }))}
+                          style={{ padding: "4px 8px", borderRadius: 7, border: `1px solid ${diseno.logoAlign === k ? accent : "#d8d3ca"}`, background: diseno.logoAlign === k ? accent : "#fff", color: diseno.logoAlign === k ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                      ))}
+                    </div>
+                  )}
+                  {pill(diseno.upper, () => setDiseno((d) => ({ ...d, upper: !d.upper })), "MAYÚSCULAS", "Títulos de sección en mayúsculas")}
+                  <select value={diseno.line} onChange={(e) => setDiseno((d) => ({ ...d, line: e.target.value }))}
+                    style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
+                    {MENU_LINES.map((l) => <option key={l} value={l}>Línea: {l}</option>)}
+                  </select>
+                  <select value={diseno.frame} onChange={(e) => setDiseno((d) => ({ ...d, frame: e.target.value }))}
+                    style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
+                    {MENU_FRAMES.map((f) => <option key={f} value={f}>Marco: {f === "none" ? "sin marco" : f}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Pie de página / contacto */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Pie de página</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    ["Instagram", "instagram", "@tunegocio"],
+                    ["Página web", "web", "www.tunegocio.com"],
+                    ["Teléfono", "telefono", "11 5555 5555"],
+                    ["WiFi (red)", "wifiNombre", "Nombre de la red"],
+                    ["WiFi (clave)", "wifiClave", "Contraseña"],
+                  ].map(([label, key, ph]) => (
+                    <div key={key}>
+                      <span style={{ fontSize: 11, color: "#666" }}>{label}</span>
+                      <input value={contacto[key] || ""} placeholder={ph}
+                        onChange={(e) => setContacto((c) => ({ ...c, [key]: e.target.value }))}
+                        style={{ width: "100%", fontSize: 12, border: "1px solid #d8d3ca", borderRadius: 6, padding: "5px 8px", color: "#2a2320", boxSizing: "border-box", marginTop: 2 }} />
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 10.5, color: "#aaa", lineHeight: 1.4 }}>Lo que cargues acá aparece en el pie de la carta. Se precarga con los datos del negocio si están.</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #eee", paddingTop: 12 }}>
+                <button onClick={resetDiseno}
+                  style={{ border: "1px solid #d8d3ca", background: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#777" }}>
+                  ↺ Restablecer
+                </button>
+                <button onClick={() => setEstilosOpen(false)}
+                  style={{ border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: accent, color: "#fff" }}>
+                  Listo
+                </button>
+              </div>
+            </div>
+          ) : (
           <>
 
             {/* Footer de fusión */}
@@ -1283,6 +1416,7 @@ export default function VistaCartaMenu({
               </div>
             )}
           </>
+          )}
         </div>
 
         {/* Lienzo de la hoja activa */}
@@ -1869,141 +2003,6 @@ export default function VistaCartaMenu({
         </div>
       </div>
 
-      {/* Modal de Estilos */}
-      {estilosOpen && (
-        <div onClick={() => setEstilosOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 1000 }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "#fff", borderRadius: 14, padding: 24, width: "min(460px, 94vw)", maxHeight: "88vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800 }}>Estilos de la carta</h3>
-              <button onClick={() => setEstilosOpen(false)} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer", lineHeight: 1 }}>✕</button>
-            </div>
-
-            {/* Colores */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 10 }}>Colores</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  ["Títulos", "title", "#2a2320"],
-                  ["Artículos", "ink", "#2a2320"],
-                  ["Precios", "price", accent],
-                  ["Líneas / puntos", "leader", "#cfc7ba"],
-                  ["Fondo", "bg", "#ffffff"],
-                ].map(([label, key, def]) => {
-                  const val = diseno[key] && String(diseno[key]).startsWith("#") ? diseno[key] : def;
-                  return (
-                    <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ fontSize: 13.5, color: "#2a2320" }}>{label}</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <input type="color" value={val}
-                          onChange={(e) => setDiseno((d) => ({ ...d, [key]: e.target.value }))}
-                          style={{ width: 34, height: 28, border: "1px solid #d8d3ca", borderRadius: 6, cursor: "pointer", padding: 0, background: "#fff" }} />
-                        <span style={{ fontSize: 11.5, color: "#999", fontFamily: "monospace", width: 60 }}>{val}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Interlineado */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Espaciado</div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13.5, color: "#2a2320" }}>Interlineado entre artículos</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="range" min={0} max={16} step={1} value={diseno.itemGap ?? 3}
-                    onChange={(e) => setDiseno((d) => ({ ...d, itemGap: Number(e.target.value) }))}
-                    style={{ width: 130, accentColor: accent }} />
-                  <span style={{ fontSize: 12, color: "#999", width: 34 }}>{diseno.itemGap ?? 3}px</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Tamaños de letra */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Tamaños de letra</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  ["Títulos de sección", "sectionSize", 11, 28, 16],
-                  ["Icono de sección", "iconSize", 12, 32, 16],
-                  ["Nombre del artículo", "itemSize", 10, 22, 14.5],
-                  ["Descripción", "descSize", 8, 16, 11.5],
-                ].map(([label, key, min, max, def]) => (
-                  <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <span style={{ fontSize: 13.5, color: "#2a2320" }}>{label}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <input type="range" min={min} max={max} step={0.5} value={diseno[key] ?? def}
-                        onChange={(e) => setDiseno((d) => ({ ...d, [key]: Number(e.target.value) }))}
-                        style={{ width: 130, accentColor: accent }} />
-                      <span style={{ fontSize: 12, color: "#999", width: 34 }}>{diseno[key] ?? def}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Extras: mayúsculas, línea, marco */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Detalles</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                {negocio?.logo && (
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 12.5, color: "#666" }}>Logo:</span>
-                    {[["left", "Izq"], ["center", "Centro"], ["right", "Der"]].map(([k, l]) => (
-                      <button key={k} onClick={() => setDiseno((d) => ({ ...d, logoAlign: k }))}
-                        style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${diseno.logoAlign === k ? accent : "#d8d3ca"}`, background: diseno.logoAlign === k ? accent : "#fff", color: diseno.logoAlign === k ? "#fff" : "#2a2320", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{l}</button>
-                    ))}
-                  </div>
-                )}
-                {pill(diseno.upper, () => setDiseno((d) => ({ ...d, upper: !d.upper })), "MAYÚSCULAS", "Títulos de sección en mayúsculas")}
-                <select value={diseno.line} onChange={(e) => setDiseno((d) => ({ ...d, line: e.target.value }))}
-                  style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 12.5, cursor: "pointer", background: "#fff" }}>
-                  {MENU_LINES.map((l) => <option key={l} value={l}>Línea: {l}</option>)}
-                </select>
-                <select value={diseno.frame} onChange={(e) => setDiseno((d) => ({ ...d, frame: e.target.value }))}
-                  style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 12.5, cursor: "pointer", background: "#fff" }}>
-                  {MENU_FRAMES.map((f) => <option key={f} value={f}>Marco: {f === "none" ? "sin marco" : f}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Pie de página / contacto */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Pie de página</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {[
-                  ["Instagram", "instagram", "@tunegocio"],
-                  ["Página web", "web", "www.tunegocio.com"],
-                  ["Teléfono", "telefono", "11 5555 5555"],
-                  ["WiFi (red)", "wifiNombre", "Nombre de la red"],
-                  ["WiFi (clave)", "wifiClave", "Contraseña"],
-                ].map(([label, key, ph]) => (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 12.5, color: "#666", width: 96, flexShrink: 0 }}>{label}</span>
-                    <input value={contacto[key] || ""} placeholder={ph}
-                      onChange={(e) => setContacto((c) => ({ ...c, [key]: e.target.value }))}
-                      style={{ flex: 1, fontSize: 12.5, border: "1px solid #d8d3ca", borderRadius: 6, padding: "5px 8px", color: "#2a2320" }} />
-                  </div>
-                ))}
-                <div style={{ fontSize: 11, color: "#aaa", lineHeight: 1.4 }}>Lo que cargues acá aparece en el pie de la carta. Se precarga con los datos del negocio si están.</div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, borderTop: "1px solid #eee", paddingTop: 14 }}>
-              <button onClick={resetDiseno}
-                style={{ border: "1px solid #d8d3ca", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: "#777" }}>
-                ↺ Restablecer
-              </button>
-              <button onClick={() => setEstilosOpen(false)}
-                style={{ border: "none", borderRadius: 8, padding: "9px 22px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: accent, color: "#fff" }}>
-                Listo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal exportar */}
       {printOpen && (
