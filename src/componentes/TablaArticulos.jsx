@@ -1326,6 +1326,11 @@ export default function TablaArticulos({
     const dynCols = visibleCols.map(c => c.width).join(' ');
     return `${check}minmax(56px, 90px) minmax(0, .5fr) minmax(90px, 130px) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols]);
+  // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
+  // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
+  // las 6 filas que comparten `gridTemplate` (zonas, header, secciones, ítems, sticky)
+  // para que las columnas sean idénticas entre todas y no se desalineen.
+  const GRID_COL_GAP = 8;
 
   const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
   const ITEM_H = 50;
@@ -1457,7 +1462,7 @@ export default function TablaArticulos({
       return (
         <div key={row.key} style={{
           ...style, display: "grid", alignItems: "center",
-          gridTemplateColumns: gridTemplate,
+          gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP,
           fontSize: "0.82rem", fontWeight: 600,
           background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
           borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
@@ -1618,7 +1623,7 @@ export default function TablaArticulos({
 
       return (
         <div key={row.key} className="table-section-row"
-          style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, boxShadow: "inset 4px 0 0 var)", }}>
+          style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, boxShadow: "inset 4px 0 0 var)", }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             {selectionMode && (
               <input
@@ -1831,7 +1836,7 @@ export default function TablaArticulos({
     return (
       <div key={row.key} data-article-id={id}
         className={`table-item-row${isSelected ? " is-selected" : ""}`}
-        style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, fontWeight: 500, fontSize: "0.85rem", background: rowBg, ...(selectedStyle || {}) }}>
+        style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, fontWeight: 500, fontSize: "0.85rem", background: rowBg, ...(selectedStyle || {}) }}>
         {leftBar}
         {selectionMode && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2338,7 +2343,7 @@ export default function TablaArticulos({
         <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
           <div className="table-col-header">
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
-            <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'stretch' }}>
+            <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'stretch' }}>
               <div />
               {/* Código + Nombre + Ventas: sin zona (span 3, o 4 con check ya cubierto arriba) */}
               <div style={{ gridColumn: 'span 3' }} />
@@ -2376,7 +2381,7 @@ export default function TablaArticulos({
                 return zonas;
               })()}
             </div>
-            <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate }}>
+            <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <input type="checkbox"
                   checked={selectionMode ? isAllSelected : false}
@@ -2502,7 +2507,7 @@ export default function TablaArticulos({
               {seccionSticky?.headerRow && (
                 <div style={{
                   position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
-                  display: 'grid', gridTemplateColumns: gridTemplate, alignItems: 'center',
+                  display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'center',
                   height: 42, pointerEvents: 'none',
                   background: '#eef1f5',
                   borderBottom: '1px solid #d5dbe3',
