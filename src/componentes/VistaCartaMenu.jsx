@@ -244,6 +244,24 @@ function reconciliar(guardada, articulosPlano, modo) {
   return { hojas, secciones, pool: guardada.pool || { secciones: [], items: [] }, removidos: Array.from(removidos) };
 }
 
+// Ancho mínimo para que "double" se vea como 2 líneas — con menos de 3px el
+// navegador lo dibuja como una línea simple (regla de CSS, no config nuestra).
+function lineWidth(line, base) {
+  return line === "double" ? Math.max(3, base) : base;
+}
+
+// Borde del marco de la hoja. Antes solo "box" hacía algo (un outline fijo);
+// "line"/"double"/"none" quedaban todos iguales al borde base del mockup.
+function frameCssValue(frame, color) {
+  switch (frame) {
+    case "none": return "none";
+    case "line": return `1px solid ${color}`;
+    case "double": return `4px double ${color}`;
+    case "box":
+    default: return `2px solid ${color}`;
+  }
+}
+
 /* ───────────────────────── CSS de la carta (compartido preview/PDF) ───────────────────────── */
 function cartaCss(diseno, negocio, scale) {
   const Dx = diseno;
@@ -259,17 +277,18 @@ function cartaCss(diseno, negocio, scale) {
 .logo{text-align:${Dx.logoAlign || "center"};margin-bottom:8px}.logo img{display:inline-block;max-height:${r(72)}px;max-width:55%;object-fit:contain}
 .lab{text-align:center;font-size:${r(11)}px;letter-spacing:2px;color:${accH};font-weight:700}
 .title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 4px}
-.sep{width:46px;height:0;border-top:2px ${Dx.line === "double" ? "double" : Dx.line} ${accH};margin:0 auto 6px}
+.sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
 .rub{margin-bottom:${r(14)}px;break-inside:avoid}
-.rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;color:${titleH};border-bottom:2px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
+.rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
 .it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px}
 .nm{font-family:${Dx.dFont};font-weight:600;font-size:${r(Dx.itemSize || 14.5)}px;color:${inkH}}
-.dots{flex:1;border-bottom:1px ${Dx.line} ${ldH};transform:translateY(-4px)}
+.dots{flex:1;border-bottom:${lineWidth(Dx.line, 1)}px ${Dx.line} ${ldH};transform:translateY(-4px)}
 .pr{font-weight:700;font-size:${r(Dx.itemSize || 14.5)}px;color:${priceH};font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
 .ds{font-size:${r(Dx.descSize || 11.5)}px;color:${inkH}99;font-style:italic;margin:0 0 ${r(Math.max(gap, 4))}px}
 .ft{margin-top:16px;padding-top:12px;border-top:1px solid ${accH}66;text-align:center;font-size:${r(12.5)}px;color:${inkH}aa}
 .ft .fl{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:4px}.ft b{color:${inkH}}
-.sepline{border-top:2px ${Dx.line} ${inkH};margin:${r(gap + 4)}px 0}`;
+.sepline{border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${inkH};margin:${r(gap + 4)}px 0}
+.pgc{border:${frameCssValue(Dx.frame, accH)}}`;
 }
 
 // Dado el viewMode de una agrupación (mismo valor que la tabla: 'by-subrubro' | 'by-categoria'),
@@ -1531,9 +1550,8 @@ export default function VistaCartaMenu({
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
               <div style={{ background: "#f4f2ee", borderRadius: 12, padding: 18, overflowX: "auto" }}>
                 <div style={{
-                  background: diseno.bg || "#fff", border: "1px solid #e0dcd3", borderRadius: 8,
+                  background: diseno.bg || "#fff", border: frameCssValue(diseno.frame, neg.accent), borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
-                  ...(diseno.frame === "box" ? { outline: `2px solid ${neg.accent}`, outlineOffset: -6 } : {}),
                 }}>
                   {/* Header arriba de todas las columnas (igual que el PDF) */}
                   <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
