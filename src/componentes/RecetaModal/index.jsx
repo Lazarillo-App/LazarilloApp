@@ -144,6 +144,19 @@ export default function RecetaModal({
   const [foto, setFoto] = useState(null);   // base64 o URL (compat: primera del array)
   const [fotos, setFotos] = useState([]);   // array de fotos (hasta 6)
 
+  // Preparación: método de cocción/servicio, temperatura, tiempo y pasos reordenables.
+  // Reemplaza al viejo textarea único de "notas" en el modal de notas (NotasModal).
+  const [metodoCoccion, setMetodoCoccion] = useState('');
+  const [temperatura, setTemperatura] = useState('');
+  const [tiempoMin, setTiempoMin] = useState('');
+  const [pasos, setPasos] = useState([]);
+
+  // Base de la receta (articles/:id/receta o insumos/:id/receta, según el modo) —
+  // misma resolución que ya usa handleSave para postUrl. Se reutiliza para
+  // construir la URL de /observaciones sin duplicar la lógica de modoInsumo.
+  const recetaBaseUrl = saveRecetaUrl || getRecetaUrl
+    || (articulo?.id ? `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta` : null);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -727,6 +740,10 @@ export default function RecetaModal({
           setFotos(Array.isArray(rec.fotos) && rec.fotos.length
             ? rec.fotos
             : (rec.foto ? [rec.foto] : [])); // compat: si no hay array, usa la foto single
+          setMetodoCoccion(rec.metodo_coccion || '');
+          setTemperatura(rec.temperatura != null ? String(rec.temperatura) : '');
+          setTiempoMin(rec.tiempo_min != null ? String(rec.tiempo_min) : '');
+          setPasos(Array.isArray(rec.pasos) ? rec.pasos : []);
           setItems((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
@@ -858,6 +875,10 @@ export default function RecetaModal({
           setNotasUpdatedAt(null);
           setFoto(null);
           setFotos([]);
+          setMetodoCoccion('');
+          setTemperatura('');
+          setTiempoMin('');
+          setPasos([]);
           setItems([]);
         }
       })
@@ -1203,6 +1224,10 @@ export default function RecetaModal({
       notasUpdatedAt: notasUpdatedAt || null,
       foto,
       fotos,
+      metodoCoccion,
+      temperatura: temperatura !== '' ? Number(temperatura) : null,
+      tiempoMin: tiempoMin !== '' ? Number(tiempoMin) : null,
+      pasos,
       items: itemsOrdenados.map(it => {
         let precioRefDbItem = Number(it.precioRefDB) || 0;
         // ── Costo unitario CON merma: derivado de calcCostoItem (única fuente de verdad
@@ -2684,11 +2709,23 @@ export default function RecetaModal({
             articuloId={articulo?.id}
             businessId={businessId}
             esElaborado={esElaborado}  // ← agregar
-            onSave={(n, fArr, ts) => {
+            metodoCoccion={metodoCoccion}
+            temperatura={temperatura}
+            tiempoMin={tiempoMin}
+            pasos={pasos}
+            observacionesUrl={recetaBaseUrl ? `${recetaBaseUrl}/observaciones` : null}
+            recetaExiste={!!receta?.id}
+            onSave={(n, fArr, ts, prep) => {
               setNotas(n);
               setFotos(fArr);                        // array de fotos
               setFoto(fArr[0] || null);              // compat: `foto` = primera del array
               if (ts) setNotasUpdatedAt(ts);
+              if (prep) {
+                setMetodoCoccion(prep.metodoCoccion ?? '');
+                setTemperatura(prep.temperatura ?? '');
+                setTiempoMin(prep.tiempoMin ?? '');
+                setPasos(Array.isArray(prep.pasos) ? prep.pasos : []);
+              }
             }}
             onClose={() => setNotasModalOpen(false)}
           />
