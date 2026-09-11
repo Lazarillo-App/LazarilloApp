@@ -976,7 +976,7 @@ export default function ItemRow({
                 if (!sel || sel.length === 0) return 'No';
                 const factor = sel.reduce((acc, id) => {
                   const m = (item.mermas || []).find(x => Number(x.id) === Number(id));
-                  if (!m || !(Number(m.peso_final) > 0)) return acc;
+                  if (!m || !(Number(m.peso_final) > 0) || !(Number(m.peso_inicial) > 0)) return acc;
                   return acc * (Number(m.peso_inicial) / Number(m.peso_final));
                 }, 1);
                 const nombres = sel
@@ -988,7 +988,7 @@ export default function ItemRow({
               sx={{ fontSize: '0.75rem', minWidth: 140, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
             >
               {(item.mermas || []).map(m => {
-                const factor = Number(m.peso_final) > 0 ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
+                const factor = (Number(m.peso_final) > 0 && Number(m.peso_inicial) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
                 const sel = Array.isArray(item.mermaIds) ? item.mermaIds : [];
                 return (
                   <MenuItem key={m.id} value={Number(m.id)} sx={{ fontSize: '0.78rem' }}>

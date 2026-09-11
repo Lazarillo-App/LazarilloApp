@@ -30,17 +30,23 @@ const eqNombreMatch = (nombre, unidad) => String(nombre || '').trim().toLowerCas
  */
 export function calcFactorMerma(item, appConfigDesperdicio = 0, isElaborado = false) {
   if (item.esArticulo || item.articleRefId || isElaborado) return 1;
-  const pctGlobal = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
+  const pctGlobalRaw = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
+  const pctGlobal = Number.isFinite(pctGlobalRaw) ? pctGlobalRaw : 0;
   const fGlobal = 1 + (pctGlobal / 100);
   const ids = Array.isArray(item.mermaIds)
     ? item.mermaIds
     : (item.mermaId != null ? [item.mermaId] : []);
   const fEspecifica = ids.reduce((acc, id) => {
     const m = (item.mermas || []).find(x => Number(x.id) === Number(id));
-    if (!m || !(Number(m.peso_final) > 0)) return acc;
+    // OJO: validar peso_inicial TAMBIÉN, no solo peso_final — si faltaba (ej. una merma
+    // recién creada/editada cuya fila todavía no trajo ambos campos numéricos), la
+    // división daba NaN, que se propagaba multiplicando toda la cadena y terminaba
+    // colapsando el costo de línea a "—" (blank) en vez de mostrar un número real.
+    if (!m || !(Number(m.peso_final) > 0) || !(Number(m.peso_inicial) > 0)) return acc;
     return acc * (Number(m.peso_inicial) / Number(m.peso_final));
   }, 1);
-  return fGlobal * fEspecifica;
+  const resultado = fGlobal * fEspecifica;
+  return Number.isFinite(resultado) ? resultado : 1;
 }
 
 /**

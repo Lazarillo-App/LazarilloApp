@@ -730,7 +730,8 @@ export default function RecetaModal({
           setItems((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
-            const unidad = normalizarUnidadGuardada(it.unidad || supplyMedidaRaw);
+            const unidadOriginal = it.unidad || supplyMedidaRaw;
+            const unidad = normalizarUnidadGuardada(unidadOriginal);
             const esArt = it.article_ref_id != null && Number(it.article_ref_id) !== 0;
             return {
               esArticulo: esArt,
@@ -742,6 +743,13 @@ export default function RecetaModal({
               codigoMaxi: it.codigo_maxi_insumo || it.codigo_maxi || '',
               cantidad: Number(it.cantidad || 0),
               unidad,
+              // Guardamos el valor CRUDO tal cual vino de la DB, antes de canonicalUnit —
+              // si el insumo tiene una equivalencia definida literalmente "unidad" (o
+              // "docena", etc.), normalizarUnidadGuardada ya la colapsó a "u" (por el alias
+              // físico) sin saber todavía que existía esa equivalencia. La pasada de "healing"
+              // de más abajo (cuando llegan las equivalencias reales) necesita este valor
+              // original para poder recuperar el match, no el ya mangleado.
+              unidadOriginal,
               ultimaCompra: it.ultima_compra || null,
               merma: it.merma !== false,
               mermaId: it.merma_id ?? null,
@@ -827,7 +835,11 @@ export default function RecetaModal({
                   const eqsFrescas = eqMap[String(it.supplyId)];
                   if (eqsFrescas) {
                     patch.equivalencias = eqsFrescas;
-                    patch.unidad = resolverUnidadConEquivalencia(it.unidad, eqsFrescas, it.supplyMedida);
+                    // Usar unidadOriginal (cruda, tal cual la DB) y no it.unidad — este
+                    // último ya pasó por normalizarUnidadGuardada al cargar la receta y,
+                    // si la equivalencia se llama igual que un alias físico ("unidad" → "u"),
+                    // llegaría acá ya colapsado a "u" y nunca volvería a matchear.
+                    patch.unidad = resolverUnidadConEquivalencia(it.unidadOriginal ?? it.unidad, eqsFrescas, it.supplyMedida);
                   }
                   if (mermaMap[String(it.supplyId)]) patch.mermas = mermaMap[String(it.supplyId)];
                   return Object.keys(patch).length ? { ...it, ...patch } : it;
