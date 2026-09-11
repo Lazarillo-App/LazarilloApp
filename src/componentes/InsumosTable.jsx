@@ -898,14 +898,14 @@ const InsumosTable = forwardRef(function InsumosTable({
               }
               if (col.id === 'desperdicio') {
                 return (
-                  <div key="desperdicio" {...dragProps} onClick={() => toggleSort("desperdicio")} className="col-sortable" style={dragStyle}>
+                  <div key="desperdicio" {...dragProps} onClick={() => toggleSort("desperdicio")} className="col-sortable" style={{ ...dragStyle, justifyContent: 'center' }}>
                     % desperdicio default {sortIcon("desperdicio")}
                   </div>
                 );
               }
               if (col.id === 'enRecetas') {
                 return (
-                  <div key="enRecetas" {...dragProps} onClick={() => toggleSort("enRecetas")} className="col-sortable" style={dragStyle}>
+                  <div key="enRecetas" {...dragProps} onClick={() => toggleSort("enRecetas")} className="col-sortable" style={{ ...dragStyle, justifyContent: 'center' }}>
                     Existe en Recetas {sortIcon("enRecetas")}
                   </div>
                 );

@@ -1249,6 +1249,14 @@ export default function RecetaModal({
       setReceta(saved);
       setSuccess(true);
 
+      // Avisar SIEMPRE que se guardó la receta de un insumo/elaborado (cambie o no
+      // el nombre) — sin esto, la tabla de Insumos (InsumosMain.jsx) solo refrescaba
+      // cuando además se renombraba, así que el costo y el estado "elaborado" quedaban
+      // desactualizados en la tabla hasta recargar la página entera.
+      if (modoInsumo || esElaborado) {
+        try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: articulo.id } })); } catch { }
+      }
+
       // ── Si cambió el nombre, renombrar también el artículo/insumo ──
       const nombreNuevo = (nombre || '').trim();
       if (nombreNuevo && nombreNuevo !== (artNombre || '').trim() && articulo?.id) {
