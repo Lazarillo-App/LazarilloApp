@@ -737,6 +737,29 @@ export default function VistaCartaMenu({
       .map((t) => ({ titulo: t, count: conteo[t] }));
   }, [articulos, modo, maqueta]);
 
+  // Artículos sacados a mano (con la "✕" de un ítem, o al sacar un rubro/bloque
+  // entero de una sección) — agrupados por su rubro/agrupación natural, para que
+  // el sidebar los ofrezca de vuelta ("por si los necesito luego"). Sin esto,
+  // `removidos` solo servía para que reconciliar() no los resucitara solo; no
+  // había forma de traerlos de vuelta.
+  const removidosPorTitulo = useMemo(() => {
+    const removidosSet = new Set((maqueta.removidos || []).map(String));
+    if (!removidosSet.size) return [];
+    const tituloDe = (a) => modo === "rubro"
+      ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
+      : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion));
+    const porTitulo = new Map();
+    for (const a of articulos) {
+      if (!clean(a.nombre)) continue;
+      if (!removidosSet.has(String(a.id))) continue;
+      const t = tituloDe(a);
+      if (!porTitulo.has(t)) porTitulo.set(t, []);
+      porTitulo.get(t).push(a.id);
+    }
+    return Array.from(porTitulo, ([titulo, ids]) => ({ titulo, ids }))
+      .sort((x, y) => x.titulo.localeCompare(y.titulo, "es"));
+  }, [maqueta.removidos, articulos, modo]);
+
   /* ── Operaciones sobre la maqueta ── */
 
   const setCols = useCallback((n) => {
@@ -928,6 +951,43 @@ export default function VistaCartaMenu({
       return { ...m, secciones, hojas };
     });
   }, [hoja, articulos, modo, setMaqueta]);
+
+  // Devuelve a la carta artículos sacados a mano (con la "✕") que pertenecían a
+  // `titulo`. Si su sección sigue puesta en alguna hoja, se agregan ahí (donde
+  // ya estaban). Si esa sección ya no está en ninguna hoja (se sacó el rubro
+  // entero), se crea de nuevo y se cuelga en la hoja activa — mismo criterio
+  // que traer del catálogo.
+  const restaurarRemovidos = useCallback((titulo, ids) => {
+    setMaqueta((m) => {
+      const idsStr = new Set(ids.map(String));
+      const removidos = (m.removidos || []).filter((x) => !idsStr.has(String(x)));
+
+      let secId = Object.keys(m.secciones).find((k) => (m.secciones[k]?.origen ?? m.secciones[k]?.titulo) === titulo);
+      let secciones = m.secciones;
+      let hojas = m.hojas;
+      if (secId) {
+        const sec = secciones[secId];
+        const yaEstan = new Set((sec.itemIds || []).map(String));
+        const nuevos = Array.from(idsStr).filter((id) => !yaEstan.has(id));
+        secciones = { ...secciones, [secId]: { ...sec, itemIds: [...sec.itemIds, ...nuevos] } };
+      } else {
+        const ordenados = ids.slice().sort((x, y) => {
+          const ax = clean((articulos.find((a) => String(a.id) === String(x)) || {}).nombre);
+          const ay = clean((articulos.find((a) => String(a.id) === String(y)) || {}).nombre);
+          return ax.localeCompare(ay, "es");
+        }).map(String);
+        secId = "sec-" + Date.now();
+        secciones = { ...secciones, [secId]: { id: secId, titulo, origen: titulo, itemIds: ordenados } };
+        hojas = m.hojas.map((h) => {
+          if (h.id !== hoja.id) return h;
+          const columnas = h.columnas.map((c) => c.slice());
+          columnas[0].push(secId);
+          return { ...h, columnas };
+        });
+      }
+      return { ...m, secciones, hojas, removidos };
+    });
+  }, [hoja, articulos, setMaqueta]);
 
   // Fusionar hojas seleccionadas en la primera
   const fusionar = useCallback((ids) => {
@@ -1197,6 +1257,31 @@ export default function VistaCartaMenu({
                 ))}
               </div>
             </div>
+
+            {/* Sacados: artículos quitados a mano con la "✕" (de a uno, o un rubro
+                entero) — por si hacen falta de vuelta más adelante. */}
+            {removidosPorTitulo.length > 0 && (
+              <div style={{ borderTop: "1px solid #eae7e0", marginTop: 10, paddingTop: 10, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Sacados ({removidosPorTitulo.reduce((n, r) => n + r.ids.length, 0)})
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 200, paddingRight: 4 }}>
+                  {removidosPorTitulo.map(({ titulo, ids }) => (
+                    <div key={titulo}
+                      title="Volver a poner estos artículos en la carta"
+                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 12.5, background: "#fff", border: "1px dashed #d8d3ca" }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#777" }}>{titulo}</span>
+                      <span style={{ fontSize: 10.5, color: "#aaa" }}>{ids.length}</span>
+                      <button onClick={() => restaurarRemovidos(titulo, ids)}
+                        title="Devolver a la carta"
+                        style={{ border: "none", background: "none", color: accent, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, fontWeight: 700 }}>
+                        ↩
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         </div>
 
