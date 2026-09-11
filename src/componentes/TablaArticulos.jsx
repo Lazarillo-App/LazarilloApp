@@ -1838,9 +1838,13 @@ export default function TablaArticulos({
         className={`table-item-row${isSelected ? " is-selected" : ""}`}
         style={{ ...style, display: "grid", alignItems: "center", gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, fontWeight: 500, fontSize: "0.85rem", background: rowBg, ...(selectedStyle || {}) }}>
         {leftBar}
-        {selectionMode && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isLinkedByPrecio && selectionMode === 'link' && !editingGroup ? (
+        {/* Esta celda queda SIEMPRE presente en la grilla (aunque no se esté
+            seleccionando) — si se omitiera del todo, el auto-placement del grid
+            corre una columna a la izquierda a todo el resto de la fila, contra
+            el checkbox del header (que sí queda siempre). */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {selectionMode && (
+            isLinkedByPrecio && selectionMode === 'link' && !editingGroup ? (
               // Fuera de edición: los ya vinculados por precio muestran el icono de cadena (no check).
               <LinkChainIcon
                 articleId={id} groupInfo={linkGroupsList.find(g => g.linkType === 'precio')}
@@ -1854,9 +1858,9 @@ export default function TablaArticulos({
               // pre-marcados (selectedIds los trae), así se ven marcados y se pueden desmarcar.
               <input type="checkbox" checked={isChecked} onChange={() => onToggleSelected?.(Number(id))}
                 style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }} />
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
