@@ -999,13 +999,44 @@ export default function VistaCartaMenu({
       const sec = m.secciones[secId];
       if (!sec) return m;
       const removidos = m.removidos && m.removidos.includes(artId) ? m.removidos : [...(m.removidos || []), artId];
+      // Si la sección se subdivide en bloques (rubro/sub en modo agrupación) y
+      // todavía no tiene un orden de rubros persistido, lo congelamos ANTES de
+      // sacar el ítem: si no, el bloque del ítem sacado puede perder su posición
+      // de "primera aparición" y los bloques visibles se reordenan solos.
+      let ordenRubros = sec.ordenRubros;
+      if (!(Array.isArray(ordenRubros) && ordenRubros.length)) {
+        const agrupId = agrupIdByNombre[sec.titulo];
+        const vm = (modo === "agrupacion" && agrupId != null)
+          ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
+          : null;
+        const campoBloque = campoBloqueDeViewMode(vm);
+        if (campoBloque) {
+          const bloqueDe = (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString();
+          const out = [];
+          let ultimoBloque = null;
+          for (const id of sec.itemIds) {
+            let b;
+            if (String(id).startsWith("__sep__")) b = ultimoBloque;
+            else { b = bloqueDe(id); ultimoBloque = b; }
+            if (b != null && !out.includes(b)) out.push(b);
+          }
+          if (out.length) ordenRubros = out;
+        }
+      }
       return {
         ...m,
         removidos,
-        secciones: { ...m.secciones, [secId]: { ...sec, itemIds: sec.itemIds.filter((x) => x !== artId) } },
+        secciones: {
+          ...m.secciones,
+          [secId]: {
+            ...sec,
+            itemIds: sec.itemIds.filter((x) => x !== artId),
+            ...(ordenRubros !== sec.ordenRubros ? { ordenRubros } : {}),
+          },
+        },
       };
     });
-  }, [setMaqueta]);
+  }, [setMaqueta, agrupIdByNombre, viewModeByGroup, modo, artById]);
 
   // Quitar una sección: solo la saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarSeccion = useCallback((secId) => {
@@ -1260,7 +1291,15 @@ export default function VistaCartaMenu({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
+      // Si quedó una selección de texto activa en la página (por ej. de un
+      // doble clic previo) y arrancás un drag, el navegador arma el "fantasma"
+      // del drag a partir de esa selección en vez del ítem — se ve como si
+      // arrastraras 2 (o más) cosas aunque la lógica solo mueva una. Limpiarla
+      // apenas empieza cualquier drag evita el efecto visual.
+      onDragStartCapture={() => { try { window.getSelection()?.removeAllRanges(); } catch { } }}
+    >
       {diseno.fontImp ? <style>{`@import url('https://fonts.googleapis.com/css2?family=${diseno.fontImp}&display=swap');`}</style> : null}
       <style>{css}</style>
       <style>{`.vcm-hoja-x{opacity:0;transition:opacity .12s}.vcm-hoja-tab:hover .vcm-hoja-x{opacity:1}`}</style>
