@@ -1264,6 +1264,7 @@ export default function VistaCartaMenu({
     if (d.tipo === "seccion") moverSeccion(d.secId, destColIdx, destPos);
     else if (d.tipo === "hoja") traerHojaAActiva(d.hojaId, destColIdx);
     else if (d.tipo === "catalogo-seccion") traerSeccionDelCatalogo(d.titulo, destColIdx);
+    else if (d.tipo === "item") onDropItemAHojaDestino(d.secId, d.artId, destColIdx);
     dragRef.current = null;
   };
 
@@ -1296,13 +1297,12 @@ export default function VistaCartaMenu({
     });
   }, [setMaqueta]);
 
-  // Cambia el rubro/agrupación REAL del artículo para que coincida con la sección destino
-  // (impacto real: se ve también en la tabla). Si ya era del mismo rubro/agrupación, el
-  // backend no tiene nada que cambiar.
-  const moverArticuloRubroReal = useCallback(async (artId, destSecId) => {
-    const destSec = maqueta.secciones[destSecId];
-    if (!destSec || !activeBizId) return;
-    const destTitulo = destSec.origen ?? destSec.titulo;
+  // Cambia el rubro/agrupación REAL del artículo para que coincida con destTitulo (impacto
+  // real: se ve también en la tabla). Si ya era del mismo rubro/agrupación, el backend no
+  // tiene nada que cambiar. Recibe el título directo (no el secId) porque a veces la sección
+  // destino recién se acaba de crear y todavía no está reflejada en el estado leído acá.
+  const moverArticuloRubroReal = useCallback(async (artId, destTitulo) => {
+    if (!destTitulo || !activeBizId) return;
     try {
       if (modo === "rubro") {
         const { http } = await import("@/servicios/apiBusinesses");
@@ -1320,7 +1320,7 @@ export default function VistaCartaMenu({
     } catch (e) {
       showAlert("No se pudo actualizar el rubro real del producto. " + (e?.message || ""), "error");
     }
-  }, [modo, activeBizId, maqueta, agrupaciones, agrupIdByNombre, onAccionRecargarCategorias]);
+  }, [modo, activeBizId, agrupaciones, agrupIdByNombre, onAccionRecargarCategorias]);
 
   const [pendingMoveDrop, setPendingMoveDrop] = useState(null); // { origSecId, destSecId, artId, destArtId }
 
@@ -1336,11 +1336,57 @@ export default function VistaCartaMenu({
     const hojaDestino = hojaIdDeSeccion(secId);
     if (hojaOrigen != null && hojaOrigen === hojaDestino) {
       moverItemEntreSecciones(d.secId, secId, d.artId, destArtId, false);
-      moverArticuloRubroReal(d.artId, secId);
+      const destSec = maqueta.secciones[secId];
+      moverArticuloRubroReal(d.artId, destSec?.origen ?? destSec?.titulo);
     } else {
       setPendingMoveDrop({ origSecId: d.secId, destSecId: secId, artId: d.artId, destArtId });
     }
   };
+
+  // Soltar un producto sobre una columna de la hoja activa que todavía no tiene ninguna
+  // sección de su rubro/agrupación (por ej. una hoja recién creada y vacía) — hasta ahora
+  // esto no hacía nada porque no había ninguna sección ahí para recibir el drop. Se crea
+  // (o reusa, si ya existe en esta misma hoja) la sección correspondiente y se completa el
+  // movimiento igual que un drop normal.
+  const onDropItemAHojaDestino = useCallback((origSecId, artId, destColIdx) => {
+    if (!hoja) return;
+    const a = artById.get(String(artId));
+    if (!a) return;
+    const tituloNatural = modo === "rubro"
+      ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
+      : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion));
+
+    let destSecId = null;
+    for (const col of hoja.columnas || []) {
+      for (const sid of col) {
+        const s = maqueta.secciones[sid];
+        if ((s?.origen ?? s?.titulo) === tituloNatural) { destSecId = sid; break; }
+      }
+      if (destSecId) break;
+    }
+    const esNueva = !destSecId;
+    if (esNueva) destSecId = "sec-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+
+    if (esNueva) {
+      const nuevoSecId = destSecId;
+      setMaqueta((m) => ({
+        ...m,
+        secciones: { ...m.secciones, [nuevoSecId]: { titulo: tituloNatural, origen: tituloNatural, itemIds: [] } },
+        hojas: m.hojas.map((h) => h.id !== hoja.id ? h : {
+          ...h,
+          columnas: h.columnas.map((c, idx) => idx === destColIdx ? [...c, nuevoSecId] : c),
+        }),
+      }));
+    }
+
+    const hojaOrigen = hojaIdDeSeccion(origSecId);
+    if (hojaOrigen != null && hojaOrigen === hoja.id) {
+      moverItemEntreSecciones(origSecId, destSecId, artId, null, false);
+      moverArticuloRubroReal(artId, tituloNatural);
+    } else {
+      setPendingMoveDrop({ origSecId, destSecId, artId, destArtId: null });
+    }
+  }, [hoja, artById, modo, maqueta, hojaIdDeSeccion, moverItemEntreSecciones, moverArticuloRubroReal, setMaqueta]);
 
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
 
@@ -1704,6 +1750,16 @@ export default function VistaCartaMenu({
                       className="vcm-hoja-tab"
                       draggable={!fusionMode}
                       onDragStart={(e) => { dragRef.current = { tipo: "hoja", hojaId: h.id }; e.dataTransfer.effectAllowed = "move"; }}
+                      onDragOver={(e) => {
+                        // Arrastrando un producto sobre el tab de OTRA hoja: cambiar a esa hoja
+                        // para que sus secciones se vean y se pueda soltar ahí (si no, no hay
+                        // ninguna sección de esa hoja en pantalla para recibir el drop).
+                        if (!fusionMode && dragRef.current?.tipo === "item") {
+                          e.preventDefault();
+                          if (i !== hojaActiva) setHojaActiva(i);
+                        }
+                      }}
+                      onDrop={(e) => { if (dragRef.current?.tipo === "item") e.preventDefault(); }}
                       onClick={() => {
                         if (fusionMode) setFusionSel((sel) => sel.includes(h.id) ? sel.filter((x) => x !== h.id) : [...sel, h.id]);
                         else setHojaActiva(i);
@@ -2245,7 +2301,8 @@ export default function VistaCartaMenu({
                 <button onClick={() => {
                   const { origSecId, destSecId, artId, destArtId } = pendingMoveDrop;
                   moverItemEntreSecciones(origSecId, destSecId, artId, destArtId, false);
-                  moverArticuloRubroReal(artId, destSecId);
+                  const destSec = maqueta.secciones[destSecId];
+                  moverArticuloRubroReal(artId, destSec?.origen ?? destSec?.titulo);
                   setPendingMoveDrop(null);
                 }}
                   style={{ border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: accent, color: "#fff" }}>
