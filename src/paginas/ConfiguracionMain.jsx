@@ -123,7 +123,7 @@ export default function ConfiguracionMain() {
     if (!businessId) return;
     const etiqueta = normalizarFormato === 'mayuscula' ? 'MAYÚSCULA' : 'Título (Primera mayúscula, resto minúscula)';
     const ok = await showConfirm(
-      `Esto va a cambiar el nombre de TODOS los artículos e insumos de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`,
+      `Esto va a cambiar el nombre de TODOS los artículos, insumos, rubros y subrubros de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`,
       { danger: true }
     );
     if (!ok) return;
@@ -552,9 +552,9 @@ export default function ConfiguracionMain() {
                 <SectionCard icon={<TuneIcon />} title="Normalizar nombres">
                   <Stack spacing={2}>
                     <Typography variant="body2" color="text.secondary">
-                      Pasa el nombre de <b>todos</b> los artículos e insumos de este negocio al formato elegido
-                      (por ejemplo, si tenés algunos en MAYÚSCULA y otros mezclados). En los artículos que vienen
-                      de MaxiRest, el cambio queda protegido: la próxima sincronización no lo va a pisar.
+                      Pasa el nombre de <b>todos</b> los artículos, insumos, rubros y subrubros de este negocio
+                      al formato elegido (por ejemplo, si tenés algunos en MAYÚSCULA y otros mezclados). En lo
+                      que viene de MaxiRest, el cambio queda protegido: la próxima sincronización no lo va a pisar.
                     </Typography>
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <FormControl size="small" sx={{ width: 240 }}>
