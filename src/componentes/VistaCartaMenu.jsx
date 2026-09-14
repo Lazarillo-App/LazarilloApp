@@ -1266,10 +1266,80 @@ export default function VistaCartaMenu({
     else if (d.tipo === "catalogo-seccion") traerSeccionDelCatalogo(d.titulo, destColIdx);
     dragRef.current = null;
   };
+
+  // Sección → hoja que la contiene (para distinguir "misma hoja" de "otra hoja" al mover un ítem entre secciones).
+  const hojaIdDeSeccion = useCallback((secId) => {
+    for (const h of hojas) {
+      for (const col of h.columnas || []) {
+        if (col.includes(secId)) return h.id;
+      }
+    }
+    return null;
+  }, [hojas]);
+
+  // Mueve (o duplica) un ítem de una sección a otra, solo en la maqueta local (layout/impresión).
+  const moverItemEntreSecciones = useCallback((origSecId, destSecId, artId, destArtId, duplicar) => {
+    setMaqueta((m) => {
+      const origSec = m.secciones[origSecId];
+      const destSec = m.secciones[destSecId];
+      if (!origSec || !destSec) return m;
+      const secciones = { ...m.secciones };
+      if (!duplicar) {
+        secciones[origSecId] = { ...origSec, itemIds: origSec.itemIds.filter((x) => x !== artId) };
+      }
+      const destItemIds = destSec.itemIds.filter((x) => x !== artId); // por si ya estaba, no duplicar la key
+      let pos = destArtId != null ? destItemIds.indexOf(destArtId) : -1;
+      if (pos === -1) pos = destItemIds.length;
+      destItemIds.splice(pos, 0, artId);
+      secciones[destSecId] = { ...destSec, itemIds: destItemIds };
+      return { ...m, secciones };
+    });
+  }, [setMaqueta]);
+
+  // Cambia el rubro/agrupación REAL del artículo para que coincida con la sección destino
+  // (impacto real: se ve también en la tabla). Si ya era del mismo rubro/agrupación, el
+  // backend no tiene nada que cambiar.
+  const moverArticuloRubroReal = useCallback(async (artId, destSecId) => {
+    const destSec = maqueta.secciones[destSecId];
+    if (!destSec || !activeBizId) return;
+    const destTitulo = destSec.origen ?? destSec.titulo;
+    try {
+      if (modo === "rubro") {
+        const { http } = await import("@/servicios/apiBusinesses");
+        await http(`/businesses/${activeBizId}/articles/${artId}`, { method: "PATCH", body: { rubro: destTitulo } });
+      } else {
+        const grupoOrigen = (agrupaciones || []).find((g) => (g?.articulos || []).some((x) => Number(x?.id) === Number(artId)));
+        const destAgrupId = agrupIdByNombre[destTitulo];
+        if (grupoOrigen && destAgrupId != null && Number(grupoOrigen.id) !== Number(destAgrupId)) {
+          const { moveItemsBetweenGroups } = await import("@/servicios/apiAgrupaciones");
+          await moveItemsBetweenGroups(activeBizId, Number(grupoOrigen.id), { toId: Number(destAgrupId), ids: [Number(artId)] });
+        }
+      }
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      onAccionRecargarCategorias?.();
+    } catch (e) {
+      showAlert("No se pudo actualizar el rubro real del producto. " + (e?.message || ""), "error");
+    }
+  }, [modo, activeBizId, maqueta, agrupaciones, agrupIdByNombre, onAccionRecargarCategorias]);
+
+  const [pendingMoveDrop, setPendingMoveDrop] = useState(null); // { origSecId, destSecId, artId, destArtId }
+
   const onDropItem = (secId, destArtId) => {
     const d = dragRef.current;
-    if (!d) return;
-    if (d.tipo === "item" && d.secId === secId) { moverItem(secId, d.artId, destArtId); dragRef.current = null; }
+    if (!d || d.tipo !== "item") return;
+    dragRef.current = null;
+    if (d.secId === secId) { moverItem(secId, d.artId, destArtId); return; }
+    // Cruza a otra sección (otro rubro/agrupación): dentro de la misma hoja se mueve
+    // directo (con impacto real); a otra hoja se pregunta, porque a veces se quiere
+    // repetir el mismo producto en más de una hoja en vez de sacarlo de la primera.
+    const hojaOrigen = hojaIdDeSeccion(d.secId);
+    const hojaDestino = hojaIdDeSeccion(secId);
+    if (hojaOrigen != null && hojaOrigen === hojaDestino) {
+      moverItemEntreSecciones(d.secId, secId, d.artId, destArtId, false);
+      moverArticuloRubroReal(d.artId, secId);
+    } else {
+      setPendingMoveDrop({ origSecId: d.secId, destSecId: secId, artId: d.artId, destArtId });
+    }
   };
 
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
@@ -1694,8 +1764,12 @@ export default function VistaCartaMenu({
                               .filter(Number.isFinite);
                             return (
                               <div key={sid}
-                                onDragOver={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); } }}
-                                onDrop={(e) => { if (dragRef.current?.tipo === "seccion") { e.preventDefault(); e.stopPropagation(); const pos = (colSecIds || []).indexOf(sid); onDropCol(colIdx, pos); } }}
+                                onDragOver={(e) => { if (dragRef.current?.tipo === "seccion" || dragRef.current?.tipo === "item") { e.preventDefault(); e.stopPropagation(); } }}
+                                onDrop={(e) => {
+                                  const t = dragRef.current?.tipo;
+                                  if (t === "seccion") { e.preventDefault(); e.stopPropagation(); const pos = (colSecIds || []).indexOf(sid); onDropCol(colIdx, pos); }
+                                  else if (t === "item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, null); }
+                                }}
                                 style={{ position: "relative", borderRadius: 6, padding: 4, marginBottom: 6, border: "1px dashed transparent" }}
                                 onMouseEnter={(e) => e.currentTarget.style.border = "1px dashed #d8d3ca"}
                                 onMouseLeave={(e) => e.currentTarget.style.border = "1px dashed transparent"}>
@@ -2142,6 +2216,46 @@ export default function VistaCartaMenu({
         </div>
       </div>
 
+
+      {/* Popup: mover o duplicar un ítem arrastrado a otra hoja */}
+      {pendingMoveDrop && (() => {
+        const artNombre = artById.get(String(pendingMoveDrop.artId))?.nombre || "este producto";
+        const destSec = maqueta.secciones[pendingMoveDrop.destSecId];
+        const destNombre = destSec?.titulo || "la otra hoja";
+        return (
+          <div onClick={() => setPendingMoveDrop(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 1000 }}>
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: 14, padding: 24, width: "min(380px, 92vw)", display: "flex", flexDirection: "column", gap: 14 }}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800 }}>¿Mover o duplicar?</h3>
+              <div style={{ fontSize: 13, color: "#555", lineHeight: 1.5 }}>
+                Estás llevando <b>{artNombre}</b> a otra hoja, en <b>{destNombre}</b>. ¿Lo movés (sale de donde estaba) o lo duplicás (queda en las dos)?
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                <button onClick={() => setPendingMoveDrop(null)}
+                  style={{ border: "none", background: "none", color: "#999", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 12px" }}>Cancelar</button>
+                <button onClick={() => {
+                  const { origSecId, destSecId, artId, destArtId } = pendingMoveDrop;
+                  moverItemEntreSecciones(origSecId, destSecId, artId, destArtId, true);
+                  setPendingMoveDrop(null);
+                }}
+                  style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", background: "#fff", color: accent }}>
+                  Duplicar
+                </button>
+                <button onClick={() => {
+                  const { origSecId, destSecId, artId, destArtId } = pendingMoveDrop;
+                  moverItemEntreSecciones(origSecId, destSecId, artId, destArtId, false);
+                  moverArticuloRubroReal(artId, destSecId);
+                  setPendingMoveDrop(null);
+                }}
+                  style={{ border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: accent, color: "#fff" }}>
+                  Mover
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal exportar */}
       {printOpen && (
