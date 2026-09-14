@@ -22,6 +22,7 @@ import { useBranch } from "@/hooks/useBranch";
 import { BranchesAPI } from "@/servicios/apiBranches";
 import { syncArticulos, syncInsumos, isMaxiConfigured } from "@/servicios/syncService";
 import { useOrganization } from "@/context/OrganizationContext";
+import { showConfirm } from "@/servicios/appConfirm";
 import {
   getOrgPriceListConfig,
   getBusinessPriceList,
@@ -298,9 +299,10 @@ const syncingProvRef = useRef(false);
 
   const handleRestoreMaxi = async () => {
     if (restoring || restoringRef.current) return;
-    if (!window.confirm(
-      'Esto va a reemplazar TODOS los nombres, rubros, subrubros y precios que hayas editado en Lazarillo por los valores originales de MaxiRest para este local. Las ediciones manuales se perderán. ¿Seguro?'
-    )) return;
+    if (!(await showConfirm(
+      'Esto va a reemplazar TODOS los nombres, rubros, subrubros y precios que hayas editado en Lazarillo por los valores originales de MaxiRest para este local. Las ediciones manuales se perderán. ¿Seguro?',
+      { danger: true }
+    ))) return;
     setRestoring(true); restoringRef.current = true;
     try {
       const { http } = await import("@/servicios/apiBusinesses");
@@ -338,7 +340,7 @@ const syncingProvRef = useRef(false);
   };
 
   const deleteDivision = async (divisionId) => {
-    const ok = window.confirm("¿Eliminar este subnegocio? Esta acción no se puede deshacer.");
+    const ok = await showConfirm("¿Eliminar este subnegocio? Esta acción no se puede deshacer.", { danger: true });
     if (!ok) return;
     try {
       setDivisionBusyId(String(divisionId));

@@ -22,6 +22,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { createInvitation, revokeAssignment } from '@/servicios/apiTeam';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
+import { showConfirm } from '@/servicios/appConfirm';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
@@ -54,7 +55,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
 
   const quitarAcceso = async (n) => {
     if (!n?.assignmentId) return;
-    if (!window.confirm(`¿Quitar el acceso de "${persona.alias || persona.email}" a ${n.scopeName}?`)) return;
+    if (!(await showConfirm(`¿Quitar el acceso de "${persona.alias || persona.email}" a ${n.scopeName}?`, { danger: true }))) return;
     setBusy(true); setError(null);
     try {
       await revokeAssignment(n.assignmentId);

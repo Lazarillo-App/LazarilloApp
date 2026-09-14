@@ -21,6 +21,7 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ExcluirListasModal from './ExcluirListasModal';
 import { PriceListsAPI } from '@/servicios/apiPriceLists';
+import { showConfirm } from '@/servicios/appConfirm';
 
 const PRIMARY = 'var(--color-primary, #2492C8)';
 
@@ -132,7 +133,7 @@ export default function PriceListConfigModal({
   /* ── Eliminar lista ── */
   const handleDelete = async (list) => {
     if (list.is_favorite) return; // safety
-    if (!confirm(`¿Eliminar la lista "${list.name}"? Esta acción no se puede deshacer.`)) return;
+    if (!(await showConfirm(`¿Eliminar la lista "${list.name}"? Esta acción no se puede deshacer.`, { danger: true }))) return;
 
     markSaving(list.id, true);
     try {

@@ -5,6 +5,9 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { BASE } from "../../servicios/apiBase";
 import { BusinessesAPI, http } from "../../servicios/apiBusinesses";
+import { showAlert } from "../../servicios/appAlert";
+import { showConfirm } from "../../servicios/appConfirm";
+import { showPrompt } from "../../servicios/appPrompt";
 
 // Base del backend (mismo origen que el resto de la app).
 const API_BASE = BASE;
@@ -2047,7 +2050,7 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
               canvases.forEach((cv, i) => { if (i > 0) pdf.addPage([geom.w, geom.h], geom.w > geom.h ? "landscape" : "portrait"); pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, geom.w, geom.h); });
               dl(pdf.output("blob"), fname + ".pdf");
             }
-          } catch (e) { alert("No pude generar la descarga acá (puede ser el sandbox de la vista previa). En la app publicada funciona."); }
+          } catch (e) { showAlert("No pude generar la descarga acá (puede ser el sandbox de la vista previa). En la app publicada funciona.", "error"); }
           finally { setDlBusy(false); setPrintOpen(null); }
         };
         const estimarPaginas = (col, cfg) => { try { const geom = printGeom(cfg.size, cfg.orient, cfg.cols); const parts = cartaParts(col, geom.scale); return { pags: layoutPages(parts, geom).length, cols: geom.cols, w: geom.w, h: geom.h }; } catch (_) { return { pags: 1, cols: 1, w: 210, h: 297 }; } };
@@ -2226,7 +2229,7 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
                       <div style={{ textAlign: "center", marginBottom: 18 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
                           <input value={col.nombre} onChange={(e) => renameCol(col.id, e.target.value)} style={{ width: `${Math.max(6, col.nombre.length + 1)}ch`, maxWidth: 320, border: "none", background: "transparent", textAlign: "center", fontFamily: Dz.dFont, fontSize: 24, fontWeight: 700, color: pal.title, outline: "none" }} />
-                          <button onClick={() => { if (window.confirm("¿Seguro que querés reiniciar el orden?")) resetOrden(); }} title="Reiniciar el orden de rubros y productos" style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 14 }}>↺</button>
+                          <button onClick={async () => { if (await showConfirm("¿Seguro que querés reiniciar el orden?", { danger: true })) resetOrden(); }} title="Reiniciar el orden de rubros y productos" style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 14 }}>↺</button>
                           <button onClick={() => setPendingDel(col.id)} title="Quitar esta hoja" style={{ border: `1px solid ${C.border}`, background: C.card, color: C.muted, cursor: "pointer", fontSize: 13, borderRadius: 6, padding: "1px 8px", fontFamily: "inherit" }}>✕</button>
                         </div>
                         {pendingDel === col.id && (
@@ -2266,7 +2269,7 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
                           <button onClick={() => { sepDebajo(menuIds[0]); setMenuOpen(null); }} style={miStyle}>― Agregar línea separadora</button>
                           <div style={{ padding: "6px 9px 2px" }}>
                             <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>Mover a hoja › {agruparPor === "rubro" ? "rubro" : "sub-rubro"}</div>
-                            <select value="" onChange={(e) => { const v = e.target.value; if (!v) return; if (v === "__new__") { const nn = window.prompt(agruparPor === "rubro" ? "Nombre del nuevo rubro:" : "Nombre del nuevo sub-rubro:", ""); if (nn && nn.trim()) { setGrupoArts(menuIds, mayus(nn.trim())); setMenuOpen(null); } return; } const sep = v.indexOf("::"); const hid = v.slice(0, sep); const rb = v.slice(sep + 2); moverAHojaRubro(menuIds, hid === "null" ? null : hid, rb); setMenuOpen(null); }} style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.card, fontFamily: "inherit", cursor: "pointer" }}>
+                            <select value="" onChange={async (e) => { const v = e.target.value; if (!v) return; if (v === "__new__") { const nn = await showPrompt(agruparPor === "rubro" ? "Nombre del nuevo rubro:" : "Nombre del nuevo sub-rubro:", ""); if (nn && nn.trim()) { setGrupoArts(menuIds, mayus(nn.trim())); setMenuOpen(null); } return; } const sep = v.indexOf("::"); const hid = v.slice(0, sep); const rb = v.slice(sep + 2); moverAHojaRubro(menuIds, hid === "null" ? null : hid, rb); setMenuOpen(null); }} style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.card, fontFamily: "inherit", cursor: "pointer" }}>
                               <option value="">Elegí destino…</option>
                               {[{ id: "null", nombre: "Sin agrupar" }, ...agrupaciones].map((h) => {
                                 const rubros = [...new Set(articulos.filter((a) => !a.esSep && (a.agrupacion || null) === (h.id === "null" ? null : h.id)).map((a) => agruparPor === "rubro" ? (a.rubro || "Sin rubro") : (a.subRubro || "Sin sub-rubro")))].sort();

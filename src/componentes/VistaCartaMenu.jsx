@@ -13,6 +13,7 @@
 //
 import React, { useMemo, useState, useCallback, useRef } from "react";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
+import { showAlert } from "../servicios/appAlert";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
@@ -1218,7 +1219,7 @@ export default function VistaCartaMenu({
       setDlBusy(true);
       await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo);
     } catch (e) {
-      alert("No pude generar la descarga. Detalle: " + (e?.message || e));
+      showAlert("No pude generar la descarga. Detalle: " + (e?.message || e), "error");
     } finally { setDlBusy(false); setPrintOpen(false); }
   }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo]);
 

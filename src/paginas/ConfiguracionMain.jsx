@@ -25,6 +25,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { BusinessesAPI, RecetasAPI, PriceConfigAPI, http } from '../servicios/apiBusinesses';
+import { showConfirm } from '../servicios/appConfirm';
 import { BASE } from '../servicios/apiBase';
 import { getRedondeoConfig, saveRedondeoConfig } from '../utils/redondeoUtils';
 import BusinessCreateModal from '../componentes/BusinessCreateModal';
@@ -121,9 +122,11 @@ export default function ConfiguracionMain() {
   const normalizarNombres = useCallback(async () => {
     if (!businessId) return;
     const etiqueta = normalizarFormato === 'mayuscula' ? 'MAYÚSCULA' : 'Título (Primera mayúscula, resto minúscula)';
-    if (!window.confirm(
-      `Esto va a cambiar el nombre de TODOS los artículos e insumos de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`
-    )) return;
+    const ok = await showConfirm(
+      `Esto va a cambiar el nombre de TODOS los artículos e insumos de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`,
+      { danger: true }
+    );
+    if (!ok) return;
     setNormalizando(true);
     try {
       const [rArt, rIns] = await Promise.all([
@@ -380,7 +383,7 @@ export default function ConfiguracionMain() {
     const id = biz?.id;
     if (!id) return;
     const name = biz?.name || `#${id}`;
-    if (!window.confirm(`¿Eliminar el local "${name}"?\nEsta acción no se puede deshacer.`)) return;
+    if (!(await showConfirm(`¿Eliminar el local "${name}"? Esta acción no se puede deshacer.`, { danger: true }))) return;
     try {
       const isActive = Number(activeId) === Number(id);
       await BusinessesAPI.remove(id);

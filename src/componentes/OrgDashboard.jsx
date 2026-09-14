@@ -10,6 +10,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import { showConfirm } from '@/servicios/appConfirm';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
@@ -276,7 +277,7 @@ function OrgBizCard({
                       <button className="bc-icon bc-icon-danger" title="Eliminar sucursal"
                         disabled={deletingSucId === suc.id}
                         onClick={async () => {
-                          if (!window.confirm(`¿Eliminar la sucursal "${suc.name}"?`)) return;
+                          if (!(await showConfirm(`¿Eliminar la sucursal "${suc.name}"?`, { danger: true }))) return;
                           setDeletingSucId(suc.id);
                           try {
                             const { BranchesAPI } = await import('@/servicios/apiBranches');
@@ -410,7 +411,7 @@ export default function OrgDashboard({ compact = false, onSelectBusiness }) {
   };
 
   const handleDelete = async (biz) => {
-    const ok = window.confirm(`¿Eliminar el local "${biz.name}"?\nEsta acción no se puede deshacer.`);
+    const ok = await showConfirm(`¿Eliminar el local "${biz.name}"? Esta acción no se puede deshacer.`, { danger: true });
     if (!ok) return;
     try {
       const { BusinessesAPI } = await import('@/servicios/apiBusinesses');

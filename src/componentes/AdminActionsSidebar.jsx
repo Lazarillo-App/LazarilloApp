@@ -1,6 +1,7 @@
 /* eslint-disable no-empty */
 /* eslint-disable no-unused-vars */
 import { showAlert } from '../servicios/appAlert';
+import { showConfirm } from '../servicios/appConfirm';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Paper, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
@@ -223,19 +224,19 @@ export default function AdminActionsSidebar({ onSynced }) {
   const handleSyncArticlesClick = async () => {
     if (!selectedId || syncingArticles) return;
     if (mx.hasCreds === false) { showAlert('Este local no tiene credenciales de Maxi.', 'warning'); return; }
-    if (!window.confirm('¿Sincronizar artículos/categorías para este local?')) return;
+    if (!(await showConfirm('¿Sincronizar artículos/categorías para este local?'))) return;
     await doSyncArticles(selectedId);
   };
 
   const handleSyncSales7dClick = async () => {
     if (!selectedId || syncingSales) return;
-    if (!window.confirm('¿Sincronizar ventas de los últimos 7 días para este local?')) return;
+    if (!(await showConfirm('¿Sincronizar ventas de los últimos 7 días para este local?'))) return;
     await doSyncSales7d(selectedId);
   };
 
   const handleBackfill30dClick = async () => {
     if (!selectedId || syncingSales) return;
-    if (!window.confirm('¿Ejecutar backfill de ventas de 30 días? Puede tardar.')) return;
+    if (!(await showConfirm('¿Ejecutar backfill de ventas de 30 días? Puede tardar.'))) return;
     await doBackfill30d(selectedId);
   };
 

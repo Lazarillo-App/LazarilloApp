@@ -20,6 +20,7 @@ import AssignGroupToDivisionModal from './AssignGroupToDivisionModal';
 import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
 
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
+import { showConfirm } from '@/servicios/appConfirm';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -618,9 +619,9 @@ function InsumosSidebar({
                         <Tooltip title="Eliminar lista">
                           <IconButton
                             size="small"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm(`¿Eliminar "${list.name}"?`)) onDeleteList(list.id);
+                              if (await showConfirm(`¿Eliminar "${list.name}"?`, { danger: true })) onDeleteList(list.id);
                             }}
                             sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
                           >

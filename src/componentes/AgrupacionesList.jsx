@@ -3,6 +3,7 @@
 // src/componentes/AgrupacionesList.jsx
 import React, { useMemo, useState, useCallback } from "react";
 import { showAlert } from '../servicios/appAlert';
+import { showConfirm } from '../servicios/appConfirm';
 import {
   Box, Card, CardContent, CardActions, Accordion, AccordionSummary, AccordionDetails,
   Typography, IconButton, TextField, Button, Checkbox, FormControl, InputLabel,
@@ -279,7 +280,7 @@ const AgrupacionesList = ({
     // NO borrar TODO ni Discontinuados
     if (isRealTodoGroup(g, todoGroupId) || isDiscontinuadosGroup(g)) return;
 
-    if (!window.confirm(`Eliminar la agrupación "${g.nombre}"?`)) return;
+    if (!(await showConfirm(`¿Eliminar la agrupación "${g.nombre}"?`, { danger: true }))) return;
 
     try {
       // ✅ antes funcionaba así: eliminarAgrupacion(group)

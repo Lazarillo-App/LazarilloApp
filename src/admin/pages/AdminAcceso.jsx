@@ -1,6 +1,7 @@
 /* eslint-disable no-empty */
 import React, { useState, useEffect, useCallback } from 'react';
 import { AccessAPI } from '../../servicios/apiAccess';
+import { showConfirm } from '../../servicios/appConfirm';
 import {
   Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, Chip, IconButton, Tooltip,
@@ -56,7 +57,7 @@ function CodesPanel() {
   };
 
   const handleDeactivate = async (id) => {
-    if (!window.confirm('¿Desactivar este cupón?')) return;
+    if (!(await showConfirm('¿Desactivar este cupón?', { danger: true }))) return;
     try { await AccessAPI.deactivateCode(id); await load(); showNotify('✅ Cupón desactivado'); } catch { showNotify('❌ Error'); }
   };
 

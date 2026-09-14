@@ -10,6 +10,7 @@ import {
   eliminarAgrupacionInsumos
 } from "../servicios/apiAgrupacionesInsumos";
 import { insumosList } from "../servicios/apiInsumos";
+import { showConfirm } from "../servicios/appConfirm";
 
 export default function AgrupacionesInsumos() {
   const [open, setOpen] = useState(false);
@@ -71,7 +72,7 @@ export default function AgrupacionesInsumos() {
   };
 
   const borrar = async (id) => {
-    if (!confirm('¿Eliminar esta agrupación de insumos?')) return;
+    if (!(await showConfirm('¿Eliminar esta agrupación de insumos?', { danger: true }))) return;
     await eliminarAgrupacionInsumos(id);
     setSnack({ open: true, msg: 'Agrupación eliminada', type: 'success' });
     loadGrupos();

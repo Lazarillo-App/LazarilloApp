@@ -25,6 +25,9 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@m
 import { useAuth } from '@/context/AuthContext';
 import { MeAPI } from '@/servicios/apiMe';
 import { AuthAPI } from '@/servicios/apiAuth';
+import { showAlert } from '@/servicios/appAlert';
+import { showPrompt } from '@/servicios/appPrompt';
+import { showConfirm } from '@/servicios/appConfirm';
 import { useOrganization } from '@/context/OrganizationContext';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
@@ -179,17 +182,17 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
     try {
       const res = await resendInvitation(assignmentId);
       if (res?.delivered) {
-        alert('Invitación reenviada.');
+        showAlert('Invitación reenviada.', 'success');
       } else if (res?.link) {
         // El mail no salió (SMTP no configurado, o rebotó) — mostrar el link en un
         // prompt para que se pueda seleccionar y copiar a mano (un alert no deja copiar).
-        window.prompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
+        await showPrompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
       } else {
-        alert('Invitación regenerada (el mail no se pudo enviar).');
+        showAlert('Invitación regenerada (el mail no se pudo enviar).', 'info');
       }
       fetchMembers();
     } catch (e) {
-      alert(`Error: ${e?.message || 'no_se_pudo_reenviar'}`);
+      showAlert(`Error: ${e?.message || 'no_se_pudo_reenviar'}`, 'error');
     }
     setMenuRow(null); setMenuAnchor(null);
   };
@@ -203,7 +206,8 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
     const nombre = m?.alias || m?.email || 'esta persona';
     const asignaciones = (m?.negocios || []).filter(n => n.assignmentId);
     if (!asignaciones.length) { setMenuRow(null); setMenuAnchor(null); return; }
-    if (!window.confirm(`¿Eliminar a "${nombre}" del equipo? Perderá acceso a los ${asignaciones.length} negocio(s)/organización que tenía asignados.`)) {
+    const ok = await showConfirm(`¿Eliminar a "${nombre}" del equipo? Perderá acceso a los ${asignaciones.length} negocio(s)/organización que tenía asignados.`, { danger: true });
+    if (!ok) {
       setMenuRow(null); setMenuAnchor(null);
       return;
     }
@@ -444,7 +448,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           if (!res?.delivered && res?.link) {
             // Mismo criterio que el reenvío: sin esto el mensaje "copiá el link desde
             // el listado" no tenía ningún listado real donde encontrarlo.
-            window.prompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
+            showPrompt('El mail no se pudo enviar. Copiá y compartí este link a mano:', res.link);
           }
         }}
       />

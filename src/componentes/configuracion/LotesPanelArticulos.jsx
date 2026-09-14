@@ -11,6 +11,7 @@ import ReceiptLongIcon   from '@mui/icons-material/ReceiptLong';
 import WarningAmberIcon  from '@mui/icons-material/WarningAmber';
 import { BASE } from '@/servicios/apiBase';
 import { SectionCard } from './configHelpers';
+import { showConfirm } from '@/servicios/appConfirm';
 
 function fmtDate(v) {
   if (!v) return '—';
@@ -122,7 +123,7 @@ export default function LotesPanelArticulos({ businessId }) {
   };
 
   const deleteArticleFromBatch = async (articleId, articleName) => {
-    if (!window.confirm(`¿Eliminar "${articleName}" del lote?`)) return;
+    if (!(await showConfirm(`¿Eliminar "${articleName}" del lote?`, { danger: true }))) return;
     try {
       const res = await fetch(
         `${BASE}/businesses/${businessId}/articles/${articleId}`,

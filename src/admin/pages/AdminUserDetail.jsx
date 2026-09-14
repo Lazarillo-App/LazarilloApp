@@ -1,5 +1,6 @@
 /* eslint-disable no-empty */
 import { showAlert } from '../../servicios/appAlert';
+import { showConfirm } from '../../servicios/appConfirm';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AdminAPI } from '../../servicios/apiAdmin';
@@ -160,7 +161,7 @@ export default function AdminUserDetail() {
             disabled={busy || isAppAdmin}
             title={isAppAdmin ? 'No se puede eliminar un administrador general' : 'Eliminar'}
             onClick={async () => {
-              if (!confirm('¿Eliminar este usuario?')) return;
+              if (!(await showConfirm('¿Eliminar este usuario?', { danger: true }))) return;
               setBusy(true);
               try { await AdminAPI.deleteUser(user.id); nav('/admin/usuarios', { replace: true }); }
               finally { setBusy(false); }
