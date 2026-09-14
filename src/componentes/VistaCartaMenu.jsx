@@ -14,6 +14,7 @@
 import React, { useMemo, useState, useCallback, useRef } from "react";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 import { showAlert } from "../servicios/appAlert";
+import { showPrompt } from "../servicios/appPrompt";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
@@ -152,7 +153,7 @@ function maquetaVacia(articulosPlano, modo) {
   }
   // Una única hoja vacía para empezar a armar.
   const hojas = [{ id: "hoja-inicial", nombre: "NUEVA HOJA", cols: 1, columnas: [[]] }];
-  return { hojas, secciones: seccionesObj, pool: { secciones: poolSecciones, items: [] }, removidos: [] };
+  return { hojas, secciones: seccionesObj, pool: { secciones: poolSecciones, items: [] }, removidos: [], gruposVinculados: {} };
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -186,7 +187,12 @@ function reconciliar(guardada, articulosPlano, modo) {
     secciones[sid] = {
       ...sec,
       origen: sec.origen ?? sec.titulo,
-      itemIds: (sec.itemIds || []).filter((id) => idsReales.has(String(id))),
+      // Los separadores y las filas de "vinculación" son pseudo-ids: no son artículos
+      // reales, así que no deben filtrarse contra idsReales (si no, desaparecen solos
+      // apenas se recarga la página).
+      itemIds: (sec.itemIds || []).filter((id) =>
+        idsReales.has(String(id)) || String(id).startsWith("__sep__") || String(id).startsWith("__grupo__")
+      ),
     };
   }
 
@@ -242,7 +248,11 @@ function reconciliar(guardada, articulosPlano, modo) {
   }
 
   // Limpiar referencias a secciones vacías que quedaron en columnas (opcional: dejarlas)
-  return { hojas, secciones, pool: guardada.pool || { secciones: [], items: [] }, removidos: Array.from(removidos) };
+  return {
+    hojas, secciones, pool: guardada.pool || { secciones: [], items: [] },
+    removidos: Array.from(removidos),
+    gruposVinculados: guardada.gruposVinculados || {},
+  };
 }
 
 // Ancho mínimo para que "double" se vea como 2 líneas — con menos de 3px el
@@ -546,6 +556,9 @@ export default function VistaCartaMenu({
   const [hojaActiva, setHojaActiva] = useState(0);
   const [fusionMode, setFusionMode] = useState(false);
   const [fusionSel, setFusionSel] = useState([]);
+  const [vincularMode, setVincularMode] = useState(false);
+  const [vincularSel, setVincularSel] = useState([]); // [{ secId, artId }]
+  const [vinculando, setVinculando] = useState(false);
   const [sidebarTab, setSidebarTab] = useState("hojas"); // "hojas" | "pool"
   const [editSec, setEditSec] = useState(null); // secId cuyo título se edita
   // Última dirección usada para "ordenar por precio" por sección — solo para
@@ -590,17 +603,6 @@ export default function VistaCartaMenu({
     "🍣", "🥪", "🧃", "💧", "🥐", "🍳", "🧀", "🍓", "🍵", "🍴", "🍦", "🍩", "🥟", "🎉", "🎈",
     "🔥", "⭐", "✨", "❤️", "•", "◆", "★", "☆", "▪", "➤", "✓", "🌿", "🌸", "🥂", "🍽️", "📋",
   ];
-  const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
-  // artById con las descripciones escritas en la carta aplicadas
-  const artById = useMemo(() => {
-    const m = new Map();
-    for (const [id, a] of artByIdBase) {
-      const desc = descripciones[id];
-      m.set(id, desc != null && desc !== "" ? { ...a, descripcion: desc } : a);
-    }
-    return m;
-  }, [artByIdBase, descripciones]);
-
   // Rubros disponibles para "mover a otro rubro" (mismo shape que usa la tabla):
   // { subrubro, agrupacionId, agrupacionNombre } — derivado de las agrupaciones reales.
   const rubrosDisponiblesCarta = useMemo(() => {
@@ -639,6 +641,40 @@ export default function VistaCartaMenu({
 
   // La maqueta activa es la del modo actual.
   const maqueta = maquetasPorModo[modo] || maquetaVacia(articulos, modo);
+
+  const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
+  // artById con las descripciones escritas en la carta aplicadas, más una fila "virtual"
+  // por cada vinculación de productos (grupo de precio con nombre propio): nombre =
+  // nombre de la vinculación, precio = el del primer miembro (ya viene sincronizado
+  // entre todos por la propagación de precio existente), descripción = nombres de los
+  // productos vinculados (o la que el usuario haya editado a mano). Sintetizarla acá
+  // permite que el resto del código (exportar, ordenar por precio, quitar, mover,
+  // editar descripción) la trate como un artículo más, sin casos especiales.
+  const artById = useMemo(() => {
+    const m = new Map();
+    for (const [id, a] of artByIdBase) {
+      const desc = descripciones[id];
+      m.set(id, desc != null && desc !== "" ? { ...a, descripcion: desc } : a);
+    }
+    const gruposVinculados = maqueta.gruposVinculados || {};
+    for (const [gid, grupo] of Object.entries(gruposVinculados)) {
+      const pseudoId = "__grupo__" + gid;
+      const miembros = (grupo.memberIds || []).map((mid) => artByIdBase.get(String(mid))).filter(Boolean);
+      if (!miembros.length) continue;
+      const desc = descripciones[pseudoId];
+      m.set(pseudoId, {
+        id: pseudoId,
+        nombre: grupo.name || "Vinculación sin nombre",
+        precio: miembros[0].precio,
+        descripcion: desc != null && desc !== "" ? desc : miembros.map((x) => x.nombre).join(", "),
+        rubro: miembros[0].rubro,
+        agrupacion: miembros[0].agrupacion,
+        esGrupoVinculado: true,
+        miembroIds: miembros.map((x) => x.id),
+      });
+    }
+    return m;
+  }, [artByIdBase, descripciones, maqueta.gruposVinculados]);
 
   // `setMaqueta` se llama desde ~15 callbacks (renombrarHoja, eliminarHoja,
   // moverItem, quitarBloque, etc.) que NO la tienen en su propio array de
@@ -1194,7 +1230,7 @@ export default function VistaCartaMenu({
       const sec = m.secciones[secId];
       if (!sec) return m;
       const precioDe = (id) => {
-        const a = artByIdBase.get(String(id));
+        const a = artById.get(String(id));
         return a && a.precio != null && a.precio !== "" ? Number(a.precio) : null;
       };
       const seps = sec.itemIds.filter((id) => String(id).startsWith("__sep__"));
@@ -1210,7 +1246,7 @@ export default function VistaCartaMenu({
         });
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: [...items, ...seps] } } };
     });
-  }, [setMaqueta, artByIdBase]);
+  }, [setMaqueta, artById]);
 
   // Insertar un separador (línea divisoria) en una sección, tras cierto ítem.
   const insertarSeparador = useCallback((secId, trasArtId) => {
@@ -1302,7 +1338,9 @@ export default function VistaCartaMenu({
   // tiene nada que cambiar. Recibe el título directo (no el secId) porque a veces la sección
   // destino recién se acaba de crear y todavía no está reflejada en el estado leído acá.
   const moverArticuloRubroReal = useCallback(async (artId, destTitulo) => {
-    if (!destTitulo || !activeBizId) return;
+    // Una fila de "vinculación" no es un artículo real (representa varios a la vez):
+    // moverla entre rubros solo reacomoda el layout, no tiene un rubro real que cambiar.
+    if (!destTitulo || !activeBizId || String(artId).startsWith("__grupo__")) return;
     try {
       if (modo === "rubro") {
         const { http } = await import("@/servicios/apiBusinesses");
@@ -1387,6 +1425,79 @@ export default function VistaCartaMenu({
       setPendingMoveDrop({ origSecId, destSecId, artId, destArtId: null });
     }
   }, [hoja, artById, modo, maqueta, hojaIdDeSeccion, moverItemEntreSecciones, moverArticuloRubroReal, setMaqueta]);
+
+  // Tildar/destildar un ítem en modo "vincular productos".
+  const toggleVincularSel = useCallback((secId, artId) => {
+    setVincularSel((sel) => {
+      const ya = sel.some((s) => s.artId === artId);
+      if (ya) return sel.filter((s) => s.artId !== artId);
+      return [...sel, { secId, artId }];
+    });
+  }, []);
+
+  // Crea la vinculación de precio (reusa article_link_groups del backend, agregándole
+  // el nombre que hoy no se le pone desde ningún lado) y reemplaza, en la maqueta local,
+  // los N ítems seleccionados por UNA sola fila que los representa a todos.
+  const crearVinculacion = useCallback(async () => {
+    if (vincularSel.length < 2) return;
+    const secIds = new Set(vincularSel.map((s) => s.secId));
+    if (secIds.size > 1) {
+      showAlert("Por ahora solo se pueden vincular productos de la misma sección/rubro. Moveló primero a la misma sección.", "error");
+      return;
+    }
+    if (!activeBizId) return;
+    const secId = vincularSel[0].secId;
+    const nombreSugerido = "";
+    const nombre = await showPrompt("¿Cómo se llama esta vinculación? (ej: Gaseosas)", nombreSugerido);
+    if (nombre == null) return; // canceló
+    const nombreFinal = nombre.trim();
+    if (!nombreFinal) { showAlert("Necesitás ponerle un nombre a la vinculación.", "error"); return; }
+
+    setVinculando(true);
+    try {
+      const { LinksAPI } = await import("@/hooks/useArticleSelection");
+      const articleIds = vincularSel.map((s) => Number(s.artId));
+      const res = await LinksAPI.create(activeBizId, { articleIds, name: nombreFinal });
+      const groupId = res?.group?.id;
+      if (!groupId) throw new Error("El servidor no devolvió el grupo creado");
+
+      // Descripción por defecto = nombres de los productos vinculados (editable después,
+      // igual que la descripción de cualquier otro ítem de la carta).
+      const nombresMiembros = articleIds
+        .map((id) => artByIdBase.get(String(id))?.nombre)
+        .filter(Boolean)
+        .join(", ");
+      if (nombresMiembros) {
+        setDescripciones((d) => ({ ...d, ["__grupo__" + groupId]: nombresMiembros }));
+      }
+
+      setMaqueta((m) => {
+        const sec = m.secciones[secId];
+        if (!sec) return m;
+        const pseudoId = "__grupo__" + groupId;
+        const idsAQuitar = new Set(articleIds.map(String));
+        const itemIds = sec.itemIds.filter((id) => !idsAQuitar.has(String(id)));
+        // Insertar la fila fusionada en la posición del primer miembro (para no
+        // desordenar el resto de la sección).
+        let pos = sec.itemIds.findIndex((id) => idsAQuitar.has(String(id)));
+        if (pos === -1) pos = itemIds.length;
+        itemIds.splice(pos, 0, pseudoId);
+        return {
+          ...m,
+          secciones: { ...m.secciones, [secId]: { ...sec, itemIds } },
+          gruposVinculados: { ...(m.gruposVinculados || {}), [groupId]: { name: nombreFinal, memberIds: articleIds } },
+        };
+      });
+      setVincularMode(false);
+      setVincularSel([]);
+    } catch (e) {
+      let msg = e?.message || "No se pudo vincular";
+      try { const parsed = JSON.parse(msg); msg = parsed?.error || msg; } catch { }
+      showAlert("No se pudo vincular: " + msg, "error");
+    } finally {
+      setVinculando(false);
+    }
+  }, [vincularSel, activeBizId, setMaqueta, artByIdBase]);
 
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
 
@@ -1723,6 +1834,26 @@ export default function VistaCartaMenu({
                     <button onClick={() => { setFusionMode(false); setFusionSel([]); }}
                       style={{ border: "1px solid #d8d3ca", background: "#fff", color: "#999", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
                     <span style={{ fontSize: 11.5, color: "#999" }}>Elegí 2+ hojas en la tira de abajo ↓</span>
+                  </div>
+                )}
+
+                {/* Vincular productos: N ítems tildados de la misma sección pasan a ser
+                    UNA sola fila con nombre propio (ej "Gaseosas") y los nombres
+                    originales como descripción — reusa la vinculación de precio real. */}
+                {!vincularMode ? (
+                  <button onClick={() => { setVincularMode(true); setVincularSel([]); }}
+                    style={{ border: "1px solid #d8d3ca", background: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: "#2a2320" }}>
+                    🔗 Vincular productos
+                  </button>
+                ) : (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <button onClick={crearVinculacion} disabled={vincularSel.length < 2 || vinculando}
+                      style={{ border: "none", background: (vincularSel.length < 2 || vinculando) ? "#d8d3ca" : accent, color: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: (vincularSel.length < 2 || vinculando) ? "default" : "pointer" }}>
+                      {vinculando ? "Vinculando…" : `Vincular (${vincularSel.length})`}
+                    </button>
+                    <button onClick={() => { setVincularMode(false); setVincularSel([]); }} disabled={vinculando}
+                      style={{ border: "1px solid #d8d3ca", background: "#fff", color: "#999", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Cancelar</button>
+                    <span style={{ fontSize: 11.5, color: "#999" }}>Tildá 2+ productos de la misma sección ↓</span>
                   </div>
                 )}
 
@@ -2121,14 +2252,19 @@ export default function VistaCartaMenu({
                                         {encabezadoBloque}
                                         <div>
                                           <div
-                                            draggable
+                                            draggable={!vincularMode}
                                             onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "item", secId: sid, artId }; e.dataTransfer.effectAllowed = "move"; }}
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "item" || dragRef.current?.tipo === "pool-item") { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => { const t = dragRef.current?.tipo; if (t === "item" || t === "pool-item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, artId); } }}
+                                            onClick={() => { if (vincularMode && !String(artId).startsWith("__grupo__")) toggleVincularSel(sid, artId); }}
                                             className="it"
-                                            style={{ cursor: "grab", position: "relative", paddingRight: 108 }}
-                                            title="Arrastrá para reordenar">
-                                            <span className="nm">{a.nombre}</span>
+                                            style={{ cursor: vincularMode ? "pointer" : "grab", position: "relative", paddingRight: 108 }}
+                                            title={vincularMode ? "Clic para tildar/destildar" : "Arrastrá para reordenar"}>
+                                            {vincularMode && !String(artId).startsWith("__grupo__") && (
+                                              <input type="checkbox" readOnly checked={vincularSel.some((s) => s.artId === artId)}
+                                                style={{ marginRight: 8, cursor: "pointer" }} />
+                                            )}
+                                            <span className="nm">{a.esGrupoVinculado ? "🔗 " : ""}{a.nombre}</span>
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
                                             {/* Siempre visibles (como antes) — el corte del precio no era por
@@ -2153,7 +2289,7 @@ export default function VistaCartaMenu({
                                               {/* Menú de acciones REALES (mover, discontinuar, vincular): reusa
                                                   ArticuloAccionesMenu. Resuelve la agrupación real del artículo
                                                   (en la carta no hay "agrupación seleccionada" global). */}
-                                              {activeBizId && (() => {
+                                              {activeBizId && !String(artId).startsWith("__grupo__") && (() => {
                                                 // Agrupación real de ESTE artículo (buscándolo en las agrupaciones)
                                                 const grupoDelArt = (agrupaciones || []).find((g) =>
                                                   (g?.articulos || []).some((x) => Number(x?.id) === Number(a.id))
