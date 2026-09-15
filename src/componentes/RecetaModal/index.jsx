@@ -137,7 +137,6 @@ export default function RecetaModal({
   const [items, setItems] = useState([]);
   const [reloadTick, setReloadTick] = useState(0);
   const bodyRef = useRef(null);
-  const itemsListRef = useRef(null); // contenedor con scroll propio de la lista de ingredientes
   const [newItemIndex, setNewItemIndex] = useState(null);
   const [insumos, setInsumos] = useState([]);
   const alertaSemanas = appConfig.comprasAlertaSemanas ?? 4;
@@ -1029,9 +1028,9 @@ export default function RecetaModal({
 
     // Scroll al final para que el dropdown del search recién abierto sea visible
     requestAnimationFrame(() => {
-      if (itemsListRef.current) {
-        itemsListRef.current.scrollTo({
-          top: itemsListRef.current.scrollHeight,
+      if (bodyRef.current) {
+        bodyRef.current.scrollTo({
+          top: bodyRef.current.scrollHeight,
           behavior: 'smooth',
         });
       }
@@ -1061,8 +1060,8 @@ export default function RecetaModal({
       return next;
     });
     requestAnimationFrame(() => {
-      if (itemsListRef.current) {
-        itemsListRef.current.scrollTo({ top: itemsListRef.current.scrollHeight, behavior: 'smooth' });
+      if (bodyRef.current) {
+        bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
       }
     });
   }, []);
@@ -1695,11 +1694,7 @@ export default function RecetaModal({
           transform: 'translate(-50%, -50%)',
           width: { xs: '99vw', sm: '98vw', md: '1060px' },
           maxWidth: '1140px',
-          // Altura FIJA (no maxHeight): antes el modal se achicaba/agrandaba según la
-          // cantidad de ingredientes de cada receta, lo que se sentía inconsistente al
-          // navegar entre artículos. Con altura fija, el header y el footer quedan
-          // siempre en el mismo lugar y el que crece/scrollea es el contenido interno.
-          height: '94vh',
+          maxHeight: '94vh',
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
           display: 'flex', flexDirection: 'column', outline: 'none', overflow: 'hidden',
@@ -1819,7 +1814,7 @@ export default function RecetaModal({
           </Box>
 
           {/* ── BODY ── */}
-          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
+          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: '60vh' }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -1890,13 +1885,7 @@ export default function RecetaModal({
                 );
               }
               return (
-                // Altura completa dividida en 3: arriba fijo (datos generales, gemelos),
-                // la lista de ingredientes con SU PROPIO scroll acotado al espacio
-                // restante, y abajo fijo (agregar/resumen) — así el body de afuera
-                // (bodyRef) nunca necesita scrollear: todo entra siempre en el modal
-                // de altura fija, y lo único que se desplaza es la lista.
-                <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-                <Box sx={{ flexShrink: 0 }}>
+                <>
                   {/* ── Datos generales con foto ── */}
                   <Box sx={{
                     display: 'grid',
@@ -2024,10 +2013,8 @@ export default function RecetaModal({
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
-                            gemelos, más abajo). Solo aplica a insumos elaborados: un
-                            artículo/promo casi nunca lo usa (rendimiento=1 por defecto)
-                            y ocultarlo libera espacio arriba para la lista de abajo. ── */}
-                        {modoInsumo && <Box sx={{ flex: 1, minWidth: 260 }}>
+                            gemelos, más abajo) ── */}
+                        <Box sx={{ flex: 1, minWidth: 260 }}>
                           <Box
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
@@ -2122,7 +2109,7 @@ export default function RecetaModal({
                               )}
                             </Box>
                           )}
-                        </Box>}
+                        </Box>
                         {/* Costo objetivo */}
                         <TextField
                           label="Costo Objetivo"
@@ -2495,9 +2482,7 @@ export default function RecetaModal({
                   {hasDuplicates && (
                     <Alert severity="error" sx={{ mb: 1, py: 0.5 }}>Hay ingredientes duplicados</Alert>
                   )}
-                </Box>
 
-                <Box ref={itemsListRef} sx={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', px: 0.5 }}>
                   {items.length === 0 ? (
                     <Box sx={{
                       py: 4, textAlign: 'center',
@@ -2569,9 +2554,7 @@ export default function RecetaModal({
                       })}
                     </Box>
                   )}
-                </Box>
 
-                <Box sx={{ flexShrink: 0, px: 0.5 }}>
                   <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
                     <Button
                       startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
@@ -2713,8 +2696,7 @@ export default function RecetaModal({
 
                   {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
                   {success && <Alert severity="success" sx={{ mb: 1.5 }}>¡Receta guardada!</Alert>}
-                </Box>
-                </Box>
+                </>
               );
             })()}
           </Box>
