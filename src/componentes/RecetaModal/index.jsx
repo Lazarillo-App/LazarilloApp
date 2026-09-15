@@ -93,6 +93,10 @@ export default function RecetaModal({
   initialTab = null,        // buscador (lupa) del header: preservar la pestaña desde la que se buscó
   activeBizId = null,       // sucursal REALMENTE activa (para Compras: businessId acá puede ser
                              // el negocio raíz cuando modoInsumo, que no es donde se registró la compra)
+  // Presente solo en instancias anidadas (abiertas en cascada desde otro RecetaModal):
+  // reemplaza el hijo del PADRE en vez de apilar uno propio, así la cascada nunca pasa
+  // de 2 niveles (base + el insumo que estás viendo) en lugar de acumularse sin límite.
+  onSustituirElaboradoAnidado = null,
 }) {
   // Negocio donde REALMENTE viven los insumos. En setups de agrupaciones/franquicias,
   // TablaArticulos pasa `insumosBizId` (negocio raíz) distinto de `businessId` (la
@@ -213,9 +217,15 @@ export default function RecetaModal({
 
   const skipAutoSaveRef = useRef(false);
 
+  // En una instancia anidada (recibió onSustituirElaboradoAnidado del padre), abrir OTRO
+  // insumo no apila un tercer nivel acá: le pide al padre que reemplace ESTE hijo por el
+  // nuevo, así la cascada se "sustituye" en vez de crecer sin límite. autoSave() ya corre
+  // antes de cada llamada a pushElaborado (ver cada onClick/onOpenRecetaElaborado), así que
+  // lo que estaba editado en este nivel queda guardado antes de que se lo reemplace.
   const pushElaborado = useCallback((item) => {
-    setElaboradosStack(prev => [...prev, item]);
-  }, []);
+    if (onSustituirElaboradoAnidado) onSustituirElaboradoAnidado(item);
+    else setElaboradosStack(prev => [...prev, item]);
+  }, [onSustituirElaboradoAnidado]);
 
   const popElaborado = useCallback(() => {
     setElaboradosStack(prev => prev.slice(0, -1));
@@ -2926,6 +2936,7 @@ export default function RecetaModal({
             activeBizId={comprasBizId}
             saltarSelector
             costoObjetivoExterno={elaborado.pctObjetivo != null ? Number(elaborado.pctObjetivo) : globalConfigObjetivo}
+            onSustituirElaboradoAnidado={(nuevoItem) => setElaboradosStack([nuevoItem])}
             onClose={() => {
               if (stackIdx === elaboradosStack.length - 1) {
                 popElaborado();
