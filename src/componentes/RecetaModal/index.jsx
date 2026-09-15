@@ -1694,7 +1694,11 @@ export default function RecetaModal({
           transform: 'translate(-50%, -50%)',
           width: { xs: '99vw', sm: '98vw', md: '1060px' },
           maxWidth: '1140px',
-          maxHeight: '94vh',
+          // Altura FIJA (no maxHeight): antes el modal se achicaba/agrandaba según la
+          // cantidad de ingredientes de cada receta, lo que se sentía inconsistente al
+          // navegar entre artículos. Con altura fija, el header y el footer quedan
+          // siempre en el mismo lugar y el que crece/scrollea es el contenido interno.
+          height: '94vh',
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
           display: 'flex', flexDirection: 'column', outline: 'none', overflow: 'hidden',
@@ -2493,7 +2497,10 @@ export default function RecetaModal({
                       </Typography>
                     </Box>
                   ) : (
-                    <Box sx={{ mb: 1.5 }}>
+                    <Box sx={{
+                      mb: 1.5, maxHeight: '32vh', overflowY: 'auto',
+                      border: '1px solid', borderColor: 'divider', borderRadius: 1.5, p: 0.5,
+                    }}>
                       {itemsOrdenados.map((item, i) => {
                         const realIndex = items.indexOf(item); // índice real en el array original
                         return (
