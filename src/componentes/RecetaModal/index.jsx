@@ -1121,8 +1121,13 @@ export default function RecetaModal({
     rendimientoPeso: rendimientoPeso ?? null,
     unidadPeso: unidadPeso ?? null,
     notas: notas || '',
+    notasUpdatedAt: notasUpdatedAt || null,
     foto: foto || null,
     fotos: fotos || [],
+    metodoCoccion: metodoCoccion || '',
+    temperatura: temperatura !== '' ? Number(temperatura) : null,
+    tiempoMin: tiempoMin !== '' ? Number(tiempoMin) : null,
+    pasos: pasos || [],
     pctCostoIdeal,
     items: items
       .filter(it => it.supplyId || it.articleRefId)
@@ -1139,7 +1144,7 @@ export default function RecetaModal({
         observaciones: it.observaciones || '',
         fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : [],
       })),
-  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, foto, fotos, pctCostoIdeal, items]);
+  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, pctCostoIdeal, items]);
 
   const pristineSnapshotRef = useRef(null);
   // Se recalcula cada vez que `receta` cambia (recién cargada/recargada) — en ese
@@ -1465,9 +1470,19 @@ export default function RecetaModal({
 
   const handleClose = useCallback(async () => {
     if (saving || deleting) return;
-    if (skipAutoSaveRef.current) { skipAutoSaveRef.current = false; onClose(); return; }
+    // La bandera solo protege el autoguardado PUNTUAL disparado justo después de un
+    // reemplazo de insumo (para no pisar con estado viejo lo que el reemplazo ya
+    // escribió). Antes, al cerrar con la bandera prendida se salteaba el guardado
+    // para siempre en el resto de la sesión — cualquier edición hecha después del
+    // reemplazo se perdía sin aviso al cerrar. Ahora solo se consume acá y se sigue
+    // el flujo normal (que ya sabe no hacer nada si de verdad no hay cambios).
+    if (skipAutoSaveRef.current) skipAutoSaveRef.current = false;
     const tieneContenido = items.length > 0 || notas || foto;
-    if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId)) {
+    // Un ítem "incompleto" es el que no tiene NI supplyId NI articleRefId (fila sin
+    // terminar de elegir insumo/artículo) — antes esto exigía supplyId siempre, así
+    // que en cualquier promo (sus componentes-artículo usan articleRefId, con
+    // supplyId null a propósito) esta condición daba falso y nunca guardaba al cerrar.
+    if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId && !it.articleRefId)) {
       await handleSave();
     } else {
       onClose();
@@ -1483,11 +1498,14 @@ export default function RecetaModal({
   // Se dispara al cambiar de pestaña (saliendo de "receta") y al abrir una receta hija en cascada.
   const autoSave = useCallback(async () => {
     if (saving || deleting) return;
-    if (skipAutoSaveRef.current) return;         // reemplazo de insumo en curso: no pisar la DB
+    // Se consume acá (una sola vez): protege únicamente el autoguardado disparado
+    // justo después de un reemplazo de insumo, no todos los que vengan después.
+    if (skipAutoSaveRef.current) { skipAutoSaveRef.current = false; return; }
     if (modoPromoNueva || convertirEnPromo) return;  // promo en creación: aún sin datos válidos
     if (modoInsumo && tab !== 'receta') return;  // merma/equivalencias/compras guardan por su cuenta
     const tieneContenido = items.length > 0 || notas || foto;
-    if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId)) {
+    // Mismo criterio que handleClose: incompleto = sin supplyId NI articleRefId.
+    if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId && !it.articleRefId)) {
       await handleSave({ keepOpen: true });
     }
   }, [saving, deleting, modoInsumo, tab, items, notas, foto, hasDuplicates, handleSave, modoPromoNueva]);
