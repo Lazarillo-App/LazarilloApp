@@ -632,12 +632,14 @@ export default function RecetaModal({
   // Se prende al activar el switch en un artículo COMÚN (no vive en Promociones):
   // el artículo se auto-agrega como primer componente y al guardar se crea la promo (flujo v1).
   const [convertirEnPromo, setConvertirEnPromo] = useState(false);
-  // ¿Se puede degradar a Producto? Solo si es promo v1 (ID negativo) o si el artículo
-  // llegó a Promociones por el switch desde otra agrupación (tiene fromGroupName).
-  // Un artículo que nació en Promociones queda fijo en Promoción.
-  const puedeVolverAProducto = Number(articulo?.id) < 0 || !!(articulo?.fromGroupName && String(articulo.fromGroupName).trim());
-  // Resincronizar cuando cambia el artículo o su condición de promo (al abrir otro modal)
-  useEffect(() => { setPromoMode(esPromoEfectiva); }, [esPromoEfectiva]);
+  // Resincronizar cuando cambia el artículo o su condición de promo (al abrir otro modal).
+  // Mientras el usuario está armando una promo a mano (convertirEnPromo), esPromoDetectada
+  // puede pasar por `false` momentáneamente (ej. borró el componente auto-agregado para
+  // poner otro) — no hay que pisarle el switch a "Producto" en ese instante intermedio.
+  useEffect(() => {
+    if (convertirEnPromo) return;
+    setPromoMode(esPromoEfectiva);
+  }, [esPromoEfectiva, convertirEnPromo]);
   // Al abrir otro artículo, resetear el flag de conversión a promo
   useEffect(() => { setConvertirEnPromo(false); }, [articulo?.id, open]);
   const [listaSinPromo, setListaSinPromo] = useState(null); // null = principal/favorita
@@ -712,6 +714,11 @@ export default function RecetaModal({
       return;
     }
     if (!articulo?.id) return;
+    // Si el usuario navega rápido (flechas ◀▶) a otro artículo antes de que esta carga
+    // termine, `cancelled` evita que la respuesta VIEJA (que puede resolver después de
+    // la nueva) pise el estado con la receta de un artículo que ya no es el que se
+    // está mostrando — mezclando ingredientes/notas de dos artículos distintos.
+    let cancelled = false;
     setLoading(true);
     setError('');
     setSuccess(false);
@@ -736,6 +743,7 @@ export default function RecetaModal({
         return rec;
       })
       .then(rec => {
+        if (cancelled) return;
         setReceta(rec);
         if (rec) {
           setNombre(rec.nombre || artNombre);
@@ -826,6 +834,7 @@ export default function RecetaModal({
                   .catch(() => null)
               )
             ).then(results => {
+              if (cancelled) return;
               const mapa = {};
               results.filter(Boolean).forEach(([id, data]) => { mapa[id] = data; });
               if (Object.keys(mapa).length > 0) {
@@ -850,6 +859,7 @@ export default function RecetaModal({
                 ]).then(([eqs, mermas]) => [String(id), eqs, mermas])
               )
             ).then(results => {
+              if (cancelled) return;
               const eqMap = {}, mermaMap = {};
               results.forEach(([id, eqs, mermas]) => {
                 if (eqs.length) eqMap[id] = eqs;
@@ -892,8 +902,9 @@ export default function RecetaModal({
           setItems([]);
         }
       })
-      .catch(() => setError('No se pudo cargar la receta'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setError('No se pudo cargar la receta'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [open, businessId, articulo?.id, modoPromoNueva, reloadTick]);
 
   // Refresca un insumo puntual (mermas, equivalencias, envase, costo, fecha de compra,
@@ -1544,16 +1555,14 @@ export default function RecetaModal({
       // Guardar la receta SIN items-artículo → backend marca es_promo=FALSE.
       const soloInsumos = items.filter(it => !(it.articleRefId != null && Number(it.articleRefId) !== 0));
       await handleSave({ keepOpen: true, itemsOverride: soloInsumos });
-      // Devolver el dueño a su agrupación de origen (o Sin Agrupación si no hay origen guardado)
-      // Devolver el dueño a su origen SOLO si llegó a Promociones por el switch (tiene fromGroupName).
-      // Si ya vivía en Promociones de antes (sin fromGroupName), se queda ahí.
+      // Devolver el dueño a su agrupación de origen si llegó a Promociones por el switch
+      // (tiene fromGroupName); si ya vivía en Promociones desde siempre (sin origen), pasa
+      // a "Sin Agrupación" como un artículo común — nunca se queda pegado en Promociones.
       const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
-      if (origen) {
-        try {
-          await createOrMoveAgrupacion(businessId, { nombre: origen, ids: [artId] });
-        } catch (e) {
-          console.warn('[desactivarPromo] no se pudo devolver a origen:', e.message);
-        }
+      try {
+        await createOrMoveAgrupacion(businessId, { nombre: origen || 'Sin Agrupación', ids: [artId] });
+      } catch (e) {
+        console.warn('[desactivarPromo] no se pudo mover a destino:', e.message);
       }
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       setPromoMode(false);
@@ -1648,8 +1657,15 @@ export default function RecetaModal({
 
   // Navegación por teclado: ← anterior, → siguiente.
   // Solo si el foco NO está en un input/textarea/select (para no interferir al escribir).
+  // Tampoco si hay algo abierto ENCIMA de este modal (un insumo en cascada, notas, vista
+  // cocina, reemplazar insumo, preview/editor de foto): el listener vive en `window` y no
+  // lo bloquea ningún backdrop, así que sin este guard las flechas saltaban de artículo
+  // en el modal de FONDO mientras el de encima seguía abierto — mezclando qué receta
+  // corresponde a qué modal.
+  const hayOverlayEncima = elaboradosStack.length > 0 || notasModalOpen || cocinaModalOpen
+    || reemplazarModalOpen || previewFotoOpen || !!editarFotoSrc || excluirOpen;
   useEffect(() => {
-    if (!open || !onNavigate || modoInsumo) return;
+    if (!open || !onNavigate || modoInsumo || hayOverlayEncima) return;
     const handler = async (e) => {
       // No navegar si se está escribiendo en un campo
       const t = e.target;
@@ -1668,7 +1684,7 @@ export default function RecetaModal({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onNavigate, modoInsumo, canNavigate, autoSave]);
+  }, [open, onNavigate, modoInsumo, canNavigate, autoSave, hayOverlayEncima]);
 
   return (
     <>
@@ -1984,7 +2000,6 @@ export default function RecetaModal({
                           >
                             <ToggleButton
                               value="producto"
-                              disabled={promoMode && !puedeVolverAProducto}
                               sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}
                             >
                               Producto
