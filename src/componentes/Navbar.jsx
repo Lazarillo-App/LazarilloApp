@@ -197,7 +197,9 @@ export default function Navbar() {
     navigate('/login', { replace: true });
   };
 
-  const homeTo = isAppAdmin ? '/admin' : '/';
+  // Nunca a "/" (landing de marketing): este navbar solo se muestra logueada,
+  // así que el logo tiene que llevar siempre adentro de la app.
+  const homeTo = isAppAdmin ? '/admin' : '/menu';
 
   return (
     <>

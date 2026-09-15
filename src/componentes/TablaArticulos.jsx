@@ -1952,16 +1952,12 @@ export default function TablaArticulos({
             }
 
             case 'costo': {
-              // Redondeado igual que sugerido/ganancia en esta misma tabla (al múltiplo
-              // más cercano) — solo para mostrar; costoArticulo sigue exacto para % de
-              // costo/rentabilidad y demás cálculos. A diferencia de RecetaModal, donde
-              // el costo se deja sin redondear a propósito.
-              const costoMostrado = pasoRedondeo > 0
-                ? Math.round(costoArticulo / pasoRedondeo) * pasoRedondeo
-                : Math.round(costoArticulo);
+              // Sin redondear al paso de redondeo de precios (eso es para sugerido/precio
+              // de venta): el cliente lo probó y prefiere ver el costo real, sin importar
+              // cuánto "afee" el número. Mismo criterio que ya usa RecetaModal.
               return (
                 <div key="costo" style={{ ...cellNum, color: TABLE_TEXT, lineHeight: 1.15 }}>
-                  <div>{costoArticulo > 0 ? fmtCurrency(costoMostrado) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
+                  <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
                   {sugerido > 0 && (
                     <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
                       sug. {fmtCurrency(sugerido)}
