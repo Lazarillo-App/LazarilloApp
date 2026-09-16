@@ -43,6 +43,13 @@ export const AdminAPI = {
   updateBusiness: (id, body) => http(`/admin/businesses/${id}`, { method:'PATCH', body }),
   pauseBusiness: (id, reason) => http(`/admin/businesses/${id}/pause`, { method:'POST', body: { reason } }),
   resumeBusiness: (id) => http(`/admin/businesses/${id}/resume`, { method:'POST' }),
+  reassignOwner: (id, newOwnerUserId) => http(`/admin/businesses/${id}/reassign-owner`, { method:'POST', body: { newOwnerUserId } }),
+
+  revokeAssignment: (id) => http(`/admin/assignments/${id}`, { method:'DELETE' }),
+  updateAssignmentRole: (id, role) => http(`/admin/assignments/${id}`, { method:'PATCH', body: { role } }),
+
+  peekMaxiStatus: (id) => http(`/admin/businesses/${id}/maxi-status`),
+  peekVentasSummary: (id) => http(`/admin/businesses/${id}/ventas/summary`),
 
   listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
