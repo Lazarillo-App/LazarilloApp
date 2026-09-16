@@ -15,6 +15,7 @@ import React, { useMemo, useState, useCallback, useRef } from "react";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 import { showAlert } from "../servicios/appAlert";
 import { showPrompt } from "../servicios/appPrompt";
+import { BASE } from "../servicios/apiBase";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
@@ -352,6 +353,18 @@ function headerHtml(hoja, diseno, negocio, showLogo) {
   const tituloHtml = nombre ? `<div class="title">${esc(nombre)}</div>` : "";
   return `${logoHtml}<div class="lab">${esc(hoja.label)}</div>${tituloHtml}`;
 }
+// Imagen decorativa de la hoja (fondo/banner/esquina), para el HTML exportado a PDF/PNG.
+// Misma lógica de zonas que la vista previa en pantalla.
+function imagenHojaHtml(hoja) {
+  const img = hoja?.imagen;
+  if (!img?.url) return "";
+  const style = img.zona === "fondo"
+    ? "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.14;z-index:0"
+    : img.zona === "header"
+      ? "position:absolute;top:0;left:0;right:0;height:16%;object-fit:cover;z-index:0"
+      : "position:absolute;top:10px;right:10px;width:72px;height:72px;object-fit:contain;z-index:2;border-radius:6px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:4px";
+  return `<img src="${esc(img.url)}" crossorigin="anonymous" style="${style}" />`;
+}
 function footerHtml(negocio) {
   const c = negocio?.accent || "#7a1f3d";
   const filas = [];
@@ -448,7 +461,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
     // poder repetirlo igual en CADA hoja exportada — antes quedaba pegado al
     // final de todo el contenido apilado, así que en una carta de varias
     // páginas solo aparecía en la última.
-    + `<div class="cart pgc" id="vcm-export-body" style="padding-top:${framePad}px"><div>${headerHtml(hoja, diseno, negocio, showLogo)}</div><div class="pcols">${colsHtml}</div></div>`
+    + `<div class="cart pgc" id="vcm-export-body" style="padding-top:${framePad}px;position:relative">${imagenHojaHtml(hoja)}<div>${headerHtml(hoja, diseno, negocio, showLogo)}</div><div class="pcols">${colsHtml}</div></div>`
     + (footerText ? `<div class="cart pgc" id="vcm-export-footer" style="padding-bottom:${framePad}px">${footerText}</div>` : "");
   document.body.appendChild(wrap);
 
@@ -559,6 +572,12 @@ export default function VistaCartaMenu({
   const [vincularMode, setVincularMode] = useState(false);
   const [vincularSel, setVincularSel] = useState([]); // [{ secId, artId }]
   const [vinculando, setVinculando] = useState(false);
+  // Imagen decorativa por hoja (fondo/banner/esquina) — se sube una vez y se arrastra
+  // a la zona elegida; se puede volver a arrastrar después para cambiarla de zona.
+  const [imagenPendiente, setImagenPendiente] = useState(null); // url recién subida, sin zona aún
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [arrastrandoImagen, setArrastrandoImagen] = useState(false);
+  const imagenInputRef = useRef(null);
   const [sidebarTab, setSidebarTab] = useState("hojas"); // "hojas" | "pool"
   const [editSec, setEditSec] = useState(null); // secId cuyo título se edita
   // Última dirección usada para "ordenar por precio" por sección — solo para
@@ -1499,6 +1518,47 @@ export default function VistaCartaMenu({
     }
   }, [vincularSel, activeBizId, setMaqueta, artByIdBase]);
 
+  // Subir una imagen decorativa (mismo endpoint que usa Recetas, a Cloudinary — no hace
+  // falta un endpoint nuevo). Queda "pendiente" hasta que se arrastra a una zona.
+  const subirImagenCarta = useCallback(async (file) => {
+    if (!file) return;
+    setSubiendoImagen(true);
+    try {
+      const token = localStorage.getItem("token") || "";
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${BASE}/recetas/carta-${activeBizId || "general"}/fotos`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "X-Business-Id": String(activeBizId || "") },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (!data?.url) throw new Error("Sin URL en la respuesta");
+      setImagenPendiente(data.url);
+    } catch (e) {
+      showAlert("No se pudo subir la imagen. " + (e?.message || ""), "error");
+    } finally {
+      setSubiendoImagen(false);
+    }
+  }, [activeBizId]);
+
+  const colocarImagenEnHoja = useCallback((hojaId, url, zona) => {
+    setMaqueta((m) => ({
+      ...m,
+      hojas: m.hojas.map((h) => h.id !== hojaId ? h : { ...h, imagen: { url, zona } }),
+    }));
+    setImagenPendiente(null);
+    setArrastrandoImagen(false);
+  }, [setMaqueta]);
+
+  const quitarImagenDeHoja = useCallback((hojaId) => {
+    setMaqueta((m) => ({
+      ...m,
+      hojas: m.hojas.map((h) => h.id !== hojaId ? h : { ...h, imagen: null }),
+    }));
+  }, [setMaqueta]);
+
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
 
   const pill = (on, onClick, txt, title) => (
@@ -1543,6 +1603,28 @@ export default function VistaCartaMenu({
         <div style={{ width: 1, height: 22, background: "#e0dcd3" }} />
 
         {negocio?.logo && pill(showLogo, () => setShowLogo((v) => !v), "🖼️ Logo")}
+
+        {/* Imagen decorativa de la hoja: subir → queda pendiente → arrastrarla a una
+            zona (fondo/banner/esquina) sobre la hoja activa. */}
+        <input ref={imagenInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) subirImagenCarta(f); }} />
+        <button onClick={() => imagenInputRef.current?.click()} disabled={subiendoImagen}
+          title="Subir una foto/logo para decorar esta hoja"
+          style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid #d8d3ca", background: "#fff", color: "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: subiendoImagen ? "default" : "pointer" }}>
+          {subiendoImagen ? "Subiendo…" : "📷 Imagen"}
+        </button>
+        {imagenPendiente && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <img src={imagenPendiente} alt="" draggable
+              onDragStart={() => { dragRef.current = { tipo: "imagen-hoja", url: imagenPendiente }; setArrastrandoImagen(true); }}
+              onDragEnd={() => setArrastrandoImagen(false)}
+              style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: `2px solid ${accent}`, cursor: "grab" }} />
+            <span style={{ fontSize: 11.5, color: "#999" }}>Arrastrala a una zona de la hoja ↓</span>
+            <button onClick={() => setImagenPendiente(null)} title="Descartar"
+              style={{ border: "none", background: "none", color: "#999", cursor: "pointer", fontSize: 12 }}>✕</button>
+          </div>
+        )}
+
         <button onClick={() => setDiseno((d) => ({ ...d, ...nuevoDisenoCfg(accent) }))} title="Diseño nuevo (tipografías, colores) — conserva tamaños y espaciado ya ajustados"
           style={{ padding: "5px 14px", borderRadius: 20, border: "none", background: accent, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✨ Nuevo diseño</button>
         <button onClick={resetDiseno} title="Restablecer colores y tamaños (mantiene la tipografía elegida)"
@@ -1928,9 +2010,49 @@ export default function VistaCartaMenu({
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
               <div style={{ background: "#f4f2ee", borderRadius: 12, padding: 18, overflowX: "auto" }}>
                 <div style={{
+                  position: "relative",
                   background: diseno.bg || "#fff", border: frameCssValue(diseno.frame, neg.accent), borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
                 }}>
+                  {/* Imagen decorativa ya colocada en esta hoja */}
+                  {hoja.imagen && (() => {
+                    const zonaStyle = hoja.imagen.zona === "fondo"
+                      ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.14, zIndex: 0, pointerEvents: "none" }
+                      : hoja.imagen.zona === "header"
+                        ? { position: "absolute", top: 0, left: 0, right: 0, height: "16%", objectFit: "cover", zIndex: 0, borderRadius: "8px 8px 0 0" }
+                        : { position: "absolute", top: 10, right: 10, width: 72, height: 72, objectFit: "contain", zIndex: 2, borderRadius: 6, background: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,.15)", padding: 4 };
+                    return (
+                      <>
+                        <img src={hoja.imagen.url} alt="" draggable
+                          onDragStart={() => { dragRef.current = { tipo: "imagen-hoja", url: hoja.imagen.url }; setArrastrandoImagen(true); }}
+                          onDragEnd={() => setArrastrandoImagen(false)}
+                          style={{ ...zonaStyle, cursor: "grab" }}
+                          title="Arrastrala a otra zona para moverla" />
+                        <button onClick={() => quitarImagenDeHoja(hoja.id)} title="Quitar imagen"
+                          style={{ position: "absolute", top: 4, left: 4, zIndex: 3, border: "none", background: "rgba(0,0,0,.55)", color: "#fff", borderRadius: 12, width: 20, height: 20, fontSize: 12, lineHeight: 1, cursor: "pointer" }}>✕</button>
+                      </>
+                    );
+                  })()}
+                  {/* Zonas de drop, solo visibles mientras se arrastra una imagen */}
+                  {arrastrandoImagen && (
+                    <>
+                      <div onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "fondo"); dragRef.current = null; }}
+                        style={{ position: "absolute", inset: 0, zIndex: 5, background: "rgba(124,58,237,.08)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "3px 10px", borderRadius: 20 }}>Soltar como fondo</span>
+                      </div>
+                      <div onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "header"); dragRef.current = null; }}
+                        style={{ position: "absolute", top: 0, left: 0, right: 0, height: "16%", zIndex: 6, background: "rgba(124,58,237,.18)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "3px 10px", borderRadius: 20 }}>Soltar como banner superior</span>
+                      </div>
+                      <div onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "esquina"); dragRef.current = null; }}
+                        style={{ position: "absolute", top: 8, right: 8, width: 90, height: 90, zIndex: 6, background: "rgba(124,58,237,.25)", border: "2px dashed #7c3aed", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "2px 6px", borderRadius: 20 }}>Esquina</span>
+                      </div>
+                    </>
+                  )}
                   {/* Header arriba de todas las columnas (igual que el PDF) */}
                   <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
