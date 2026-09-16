@@ -490,12 +490,16 @@ export default function ArticulosMain(props) {
   const recargarCategorias = React.useCallback(async () => {
     if (!activeBizId) return;
     try {
-      // Invalidar también la query de React Query: esta función solo pisa el
-      // `categorias` local (usado por la vista Carta cuando la tabla no está
-      // montada) — sin esto, `qk.articlesTree` seguía cacheado viejo y al
-      // volver a la vista Tabla se veía el nombre/dato anterior.
-      queryClient.invalidateQueries({ queryKey: qk.articlesTree(Number(activeBizId) || 0) });
       const { tree } = await BusinessesAPI.articlesTree(activeBizId);
+      // invalidateQueries por sí solo NO alcanza acá: la Tabla no está montada
+      // mientras estás en Vista Diseño (refetchOnMount está en false globalmente,
+      // ver reactQueryClient.js, a propósito para no re-pedir todo en cada cambio
+      // de pestaña), así que invalidar sin un observer activo solo marca la query
+      // como "vieja" pero no la vuelve a pedir — y al volver a la Tabla, como no
+      // refetchea al montar, seguía sirviendo el snapshot cacheado de antes. Por
+      // eso hay que escribir el dato fresco DIRECTO en la caché (mismo patrón que
+      // ya usa refetchAgrupaciones con qk.agrupaciones más abajo).
+      queryClient.setQueryData(qk.articlesTree(Number(activeBizId) || 0), tree || []);
       const normalizadas = (tree || []).map((sub) => ({
         ...sub,
         categorias: (sub.categorias || []).map((cat) => ({
