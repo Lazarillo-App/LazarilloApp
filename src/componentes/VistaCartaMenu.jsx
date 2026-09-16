@@ -18,6 +18,11 @@ import { showPrompt } from "../servicios/appPrompt";
 import { BASE } from "../servicios/apiBase";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 
+// Feature flag: imagen decorativa por hoja (fondo/banner/esquina). Implementada y
+// funcionando, pero oculta del botón de la toolbar a pedido de la usuaria (2026-09)
+// hasta repensar la experiencia con calma. Ver el comentario junto al botón "📷 Imagen".
+const IMAGEN_HOJA_HABILITADA = false;
+
 /* ───────────────────────── Tipografías (Google Fonts) ───────────────────────── */
 const MENU_FONTS = [
   { label: "Sora + Archivo", d: "'Sora',sans-serif", b: "'Archivo',sans-serif", imp: "Sora:wght@600;700&family=Archivo:wght@400;600" },
@@ -432,25 +437,12 @@ function dibujarMarcoPdf(pdf, frame, color, x, y, w, h) {
 }
 
 /* ───────────────────────── PDF de una hoja (con columnas reales, paginado) ───────────────────────── */
-async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg, iconos) {
-  const bgH = diseno.bg || "#ffffff";
-  // Hoja física (mm) y márgenes
-  const sizes = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], Oficio: [216, 330], Carta: [216, 279] };
-  let [wmm, hmm] = sizes[cfg.size] || sizes.A4;
-  if (cfg.orient === "h") { const t = wmm; wmm = hmm; hmm = t; }
-  const margLat = 10, margVert = 10;
-  const contentWmm = wmm - 2 * margLat;
-  const contentHmm = hmm - 2 * margVert;
 
-  // Render al ancho de CONTENIDO (para que el canvas mapee 1:1 al área del PDF).
-  const renderWpx = Math.round(contentWmm * PX_PER_MM);
+// Arma el HTML de UNA hoja fuera de pantalla y la captura a canvas (cuerpo + pie
+// aparte, igual que antes). Extraído para poder reusarlo también al exportar TODAS
+// las hojas juntas (un PDF combinado o un ZIP de PNGs).
+async function capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH) {
   const nCols = Math.max(1, (hoja.columnas || [[]]).length);
-  const gapPx = Math.round(7 * PX_PER_MM);
-  // El marco se dibuja aparte (vectorial/canvas, no en el HTML capturado) —
-  // así queda igual en cada hoja/página exportada, sin depender de que
-  // html2canvas capture bien un border CSS. framePad es el aire real entre
-  // el marco y el contenido (antes era 0: el marco quedaba pegado al texto).
-  const framePad = Math.round(6 * PX_PER_MM);
   const colWpx = Math.floor((renderWpx - framePad * 2 - (nCols - 1) * gapPx) / nCols);
   const css = cartaCss({ ...diseno, frame: "none" }, negocio, 1);
 
@@ -473,9 +465,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
   document.body.appendChild(wrap);
 
   try {
-    await ensureLibs();
-    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
-    // Esperar que las imágenes (logo) carguen antes de capturar
+    // Esperar que las imagenes (logo/imagen de hoja) carguen antes de capturar
     const imgs = [...wrap.querySelectorAll("img")];
     await Promise.all(imgs.map((img) => img.complete ? Promise.resolve() : new Promise((res) => { img.onload = res; img.onerror = res; setTimeout(res, 3000); })));
     await new Promise((r) => setTimeout(r, 400));
@@ -486,57 +476,149 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
     const footerCv = footerEl
       ? await window.html2canvas(footerEl, { scale: 2, backgroundColor: bgH, useCORS: true, logging: false })
       : null;
-    const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
-    const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
-
-    if (cfg.fmt === "png") {
-      // PNG: una sola imagen, cuerpo + pie apilados (sin paginaci\u00f3n).
-      const combined = document.createElement("canvas");
-      combined.width = cv.width;
-      combined.height = cv.height + (footerCv ? footerCv.height : 0);
-      const cctx = combined.getContext("2d");
-      cctx.fillStyle = bgH; cctx.fillRect(0, 0, combined.width, combined.height);
-      cctx.drawImage(cv, 0, 0);
-      if (footerCv) cctx.drawImage(footerCv, 0, cv.height);
-      dibujarMarcoCanvas(cctx, diseno.frame, negocio?.accent || "#7a1f3d", combined.width, combined.height);
-      await new Promise((res) => combined.toBlob((b) => { dl(b, fname + ".png"); res(); }, "image/png"));
-      return;
-    }
-
-    const JSPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    if (!JSPDF) throw new Error("jsPDF no disponible");
-    const pdf = new JSPDF({ orientation: wmm > hmm ? "landscape" : "portrait", unit: "mm", format: [wmm, hmm] });
-
-    // El canvas mide contentWmm de ancho. Paginamos por alto de contenido,
-    // reservando siempre el alto del pie de p\u00e1gina en CADA hoja.
-    const pxPerMm = cv.width / contentWmm;
-    const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
-    const pageContentHmm = Math.max(20, contentHmm - footerHmm);
-    const pageHpx = Math.floor(pageContentHmm * pxPerMm);
-    const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
-
-    for (let p = 0; p < totalPages; p++) {
-      const sliceTop = p * pageHpx;
-      const sliceH = Math.min(pageHpx, cv.height - sliceTop);
-      const tmp = document.createElement("canvas");
-      tmp.width = cv.width; tmp.height = sliceH;
-      const ctx = tmp.getContext("2d");
-      ctx.fillStyle = bgH; ctx.fillRect(0, 0, tmp.width, tmp.height);
-      ctx.drawImage(cv, 0, sliceTop, cv.width, sliceH, 0, 0, cv.width, sliceH);
-      const imgHmm = sliceH / pxPerMm;
-      if (p > 0) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
-      if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
-      pdf.addImage(tmp.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, contentWmm, imgHmm);
-      // Pie de p\u00e1gina igual en TODAS las hojas (antes solo aparec\u00eda en la
-      // \u00faltima, porque quedaba pegado al final de todo el contenido apilado).
-      if (footerCv) {
-        pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert + contentHmm - footerHmm, contentWmm, footerHmm);
-      }
-      dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
-    }
-    dl(pdf.output("blob"), fname + ".pdf");
-  } finally { try { document.body.removeChild(wrap); } catch { } }
+    return { cv, footerCv };
+  } finally {
+    try { document.body.removeChild(wrap); } catch { }
+  }
 }
+
+// Combina cuerpo + pie de UNA hoja ya capturada en un solo canvas (para PNG), con marco.
+function combinarCanvasPng(cv, footerCv, diseno, negocio) {
+  const bgH = diseno.bg || "#ffffff";
+  const combined = document.createElement("canvas");
+  combined.width = cv.width;
+  combined.height = cv.height + (footerCv ? footerCv.height : 0);
+  const cctx = combined.getContext("2d");
+  cctx.fillStyle = bgH; cctx.fillRect(0, 0, combined.width, combined.height);
+  cctx.drawImage(cv, 0, 0);
+  if (footerCv) cctx.drawImage(footerCv, 0, cv.height);
+  dibujarMarcoCanvas(cctx, diseno.frame, negocio?.accent || "#7a1f3d", combined.width, combined.height);
+  return combined;
+}
+
+// Agrega las paginas de UNA hoja ya capturada a un jsPDF existente (mutacion in-place).
+// `esPrimerHojaGlobal`: true solo para la primerisima pagina del documento entero -
+// esa pagina ya existe al crear el jsPDF, asi que ahi NO hay que pedir pdf.addPage().
+function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, esPrimerHojaGlobal) {
+  const bgH = diseno.bg || "#ffffff";
+  const pxPerMm = cv.width / contentWmm;
+  const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
+  const pageContentHmm = Math.max(20, contentHmm - footerHmm);
+  const pageHpx = Math.floor(pageContentHmm * pxPerMm);
+  const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
+
+  for (let p = 0; p < totalPages; p++) {
+    const sliceTop = p * pageHpx;
+    const sliceH = Math.min(pageHpx, cv.height - sliceTop);
+    const tmp = document.createElement("canvas");
+    tmp.width = cv.width; tmp.height = sliceH;
+    const ctx = tmp.getContext("2d");
+    ctx.fillStyle = bgH; ctx.fillRect(0, 0, tmp.width, tmp.height);
+    ctx.drawImage(cv, 0, sliceTop, cv.width, sliceH, 0, 0, cv.width, sliceH);
+    const imgHmm = sliceH / pxPerMm;
+    if (!(esPrimerHojaGlobal && p === 0)) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
+    if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
+    pdf.addImage(tmp.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, contentWmm, imgHmm);
+    // Pie de pagina igual en TODAS las hojas/paginas.
+    if (footerCv) {
+      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert + contentHmm - footerHmm, contentWmm, footerHmm);
+    }
+    dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
+  }
+}
+
+// Medidas fisicas (mm) derivadas de cfg.size/orient - compartidas por exportarHoja
+// y exportarTodasLasHojas (todas las hojas de una carta combinada usan el mismo tamano).
+function medidasExport(cfg) {
+  const sizes = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], Oficio: [216, 330], Carta: [216, 279] };
+  let [wmm, hmm] = sizes[cfg.size] || sizes.A4;
+  if (cfg.orient === "h") { const t = wmm; wmm = hmm; hmm = t; }
+  const margLat = 10, margVert = 10;
+  const contentWmm = wmm - 2 * margLat;
+  const contentHmm = hmm - 2 * margVert;
+  const renderWpx = Math.round(contentWmm * PX_PER_MM);
+  const gapPx = Math.round(7 * PX_PER_MM);
+  const framePad = Math.round(6 * PX_PER_MM);
+  return { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad };
+}
+
+async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg, iconos) {
+  const bgH = diseno.bg || "#ffffff";
+  const { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(cfg);
+
+  await ensureLibs();
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
+
+  const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+
+  const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
+  const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
+
+  if (cfg.fmt === "png") {
+    // PNG: una sola imagen, cuerpo + pie apilados (sin paginacion).
+    const combined = combinarCanvasPng(cv, footerCv, diseno, negocio);
+    await new Promise((res) => combined.toBlob((b) => { dl(b, fname + ".png"); res(); }, "image/png"));
+    return;
+  }
+
+  const JSPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!JSPDF) throw new Error("jsPDF no disponible");
+  const pdf = new JSPDF({ orientation: wmm > hmm ? "landscape" : "portrait", unit: "mm", format: [wmm, hmm] });
+  agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, true);
+  dl(pdf.output("blob"), fname + ".pdf");
+}
+
+// Exporta TODAS las hojas de la carta juntas: un unico PDF multipagina, o un ZIP con
+// un PNG por hoja. `onProgress(i, total)` opcional, para mostrar avance en la UI.
+async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio, showLogo, cfg, iconos, nombreCarta, onProgress) {
+  const bgH = diseno.bg || "#ffffff";
+  const { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(cfg);
+  const lista = (hojas || []).filter(Boolean);
+  if (!lista.length) return;
+
+  await ensureLibs();
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
+
+  const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
+  const nombreBase = clean(nombreCarta) || "carta";
+
+  if (cfg.fmt === "png") {
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    const JSZip = window.JSZip;
+    if (!JSZip) throw new Error("JSZip no disponible");
+    const zip = new JSZip();
+    const nombresUsados = new Set();
+    for (let i = 0; i < lista.length; i++) {
+      onProgress?.(i, lista.length);
+      const hoja = lista[i];
+      const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+      const combined = combinarCanvasPng(cv, footerCv, diseno, negocio);
+      const blob = await new Promise((res) => combined.toBlob(res, "image/png"));
+      let base = clean(hoja.nombre) || `hoja-${i + 1}`;
+      let nombreArchivo = base, n = 2;
+      while (nombresUsados.has(nombreArchivo)) { nombreArchivo = `${base} (${n++})`; }
+      nombresUsados.add(nombreArchivo);
+      zip.file(`${nombreArchivo}.png`, blob);
+    }
+    onProgress?.(lista.length, lista.length);
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    dl(zipBlob, `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""}).zip`);
+    return;
+  }
+
+  const JSPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!JSPDF) throw new Error("jsPDF no disponible");
+  const pdf = new JSPDF({ orientation: wmm > hmm ? "landscape" : "portrait", unit: "mm", format: [wmm, hmm] });
+  for (let i = 0; i < lista.length; i++) {
+    onProgress?.(i, lista.length);
+    const hoja = lista[i];
+    const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+    agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0);
+  }
+  onProgress?.(lista.length, lista.length);
+  dl(pdf.output("blob"), `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""}).pdf`);
+}
+
 
 /* ───────────────────────── Componente principal ───────────────────────── */
 export default function VistaCartaMenu({
@@ -571,6 +653,8 @@ export default function VistaCartaMenu({
   const [showLogo, setShowLogo] = useState(g?.showLogo != null ? g.showLogo : true);
   const [printCfg, setPrintCfg] = useState({ size: "A4", orient: "v", fmt: "pdf" });
   const [printOpen, setPrintOpen] = useState(false);
+  const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
+  const [exportProgress, setExportProgress] = useState(null); // { i, total } mientras exporta "todas"
   const [estilosOpen, setEstilosOpen] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
   const [hojaActiva, setHojaActiva] = useState(0);
@@ -1311,11 +1395,15 @@ export default function VistaCartaMenu({
     if (!hoja) return;
     try {
       setDlBusy(true);
-      await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo);
+      if (exportarAlcance === "todas" && hojas.length > 1) {
+        await exportarTodasLasHojas(hojas, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo, neg?.nombre, (i, total) => setExportProgress({ i, total }));
+      } else {
+        await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo);
+      }
     } catch (e) {
       showAlert("No pude generar la descarga. Detalle: " + (e?.message || e), "error");
-    } finally { setDlBusy(false); setPrintOpen(false); }
-  }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo]);
+    } finally { setDlBusy(false); setExportProgress(null); setPrintOpen(false); }
+  }, [hoja, hojas, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo, exportarAlcance]);
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
@@ -1622,24 +1710,33 @@ export default function VistaCartaMenu({
         {negocio?.logo && pill(showLogo, () => setShowLogo((v) => !v), "🖼️ Logo")}
 
         {/* Imagen decorativa de la hoja: subir → queda pendiente → arrastrarla a una
-            zona (fondo/banner/esquina) sobre la hoja activa. */}
-        <input ref={imagenInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) subirImagenCarta(f); }} />
-        <button onClick={() => imagenInputRef.current?.click()} disabled={subiendoImagen}
-          title="Subir una foto/logo para decorar esta hoja"
-          style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid #d8d3ca", background: "#fff", color: "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: subiendoImagen ? "default" : "pointer" }}>
-          {subiendoImagen ? "Subiendo…" : "📷 Imagen"}
-        </button>
-        {imagenPendiente && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <img src={imagenPendiente} alt="" draggable
-              onDragStart={() => { dragRef.current = { tipo: "imagen-hoja", url: imagenPendiente }; setArrastrandoImagen(true); }}
-              onDragEnd={() => setArrastrandoImagen(false)}
-              style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: `2px solid ${accent}`, cursor: "grab" }} />
-            <span style={{ fontSize: 11.5, color: "#999" }}>Arrastrala a una zona de la hoja ↓</span>
-            <button onClick={() => setImagenPendiente(null)} title="Descartar"
-              style={{ border: "none", background: "none", color: "#999", cursor: "pointer", fontSize: 12 }}>✕</button>
-          </div>
+            zona (fondo/banner/esquina) sobre la hoja activa.
+            Oculto a pedido de la usuaria (2026-09) tras probarlo: la experiencia todavía
+            no cierra del todo, lo quiere repensar con calma. Todo el trabajo (subida,
+            drop en zonas, ajuste de fondo/tamaño, export a PDF/PNG) sigue andando por
+            debajo — un hoja con imagen ya puesta se sigue viendo y exportando bien.
+            Para reactivar: pasar IMAGEN_HOJA_HABILITADA a true más arriba en el archivo. */}
+        {IMAGEN_HOJA_HABILITADA && (
+          <>
+            <input ref={imagenInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) subirImagenCarta(f); }} />
+            <button onClick={() => imagenInputRef.current?.click()} disabled={subiendoImagen}
+              title="Subir una foto/logo para decorar esta hoja"
+              style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid #d8d3ca", background: "#fff", color: "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: subiendoImagen ? "default" : "pointer" }}>
+              {subiendoImagen ? "Subiendo…" : "📷 Imagen"}
+            </button>
+            {imagenPendiente && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <img src={imagenPendiente} alt="" draggable
+                  onDragStart={() => { dragRef.current = { tipo: "imagen-hoja", url: imagenPendiente }; setArrastrandoImagen(true); }}
+                  onDragEnd={() => setArrastrandoImagen(false)}
+                  style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: `2px solid ${accent}`, cursor: "grab" }} />
+                <span style={{ fontSize: 11.5, color: "#999" }}>Arrastrala a una zona de la hoja ↓</span>
+                <button onClick={() => setImagenPendiente(null)} title="Descartar"
+                  style={{ border: "none", background: "none", color: "#999", cursor: "pointer", fontSize: 12 }}>✕</button>
+              </div>
+            )}
+          </>
         )}
 
         <button onClick={() => setDiseno((d) => ({ ...d, ...nuevoDisenoCfg(accent) }))} title="Diseño nuevo (tipografías, colores) — conserva tamaños y espaciado ya ajustados"
@@ -2677,9 +2774,33 @@ export default function VistaCartaMenu({
                 ))}
               </div>
             </div>
+            {hojas.length > 1 && (
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Alcance</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setExportarAlcance("hoja")}
+                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${exportarAlcance === "hoja" ? accent : "#d8d3ca"}`, background: exportarAlcance === "hoja" ? accent : "#fff", color: exportarAlcance === "hoja" ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    Esta hoja
+                  </button>
+                  <button onClick={() => setExportarAlcance("todas")}
+                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${exportarAlcance === "todas" ? accent : "#d8d3ca"}`, background: exportarAlcance === "todas" ? accent : "#fff", color: exportarAlcance === "todas" ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    Todas las hojas ({hojas.length})
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ fontSize: 11.5, color: "#888" }}>
-              Se exporta la hoja <b>{hoja?.nombre}</b> con sus {hoja?.cols} columna{hoja?.cols !== 1 ? "s" : ""}, tal como la ves.
+              {exportarAlcance === "todas" && hojas.length > 1
+                ? (printCfg.fmt === "png"
+                  ? <>Se exportan las {hojas.length} hojas, una por archivo, en un ZIP.</>
+                  : <>Se exportan las {hojas.length} hojas juntas, una atrás de otra, en un solo PDF.</>)
+                : <>Se exporta la hoja <b>{hoja?.nombre}</b> con sus {hoja?.cols} columna{hoja?.cols !== 1 ? "s" : ""}, tal como la ves.</>}
             </div>
+            {exportProgress && (
+              <div style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>
+                Generando {exportProgress.i + 1} de {exportProgress.total}…
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button onClick={() => setPrintOpen(false)} style={{ border: "none", background: "none", color: "#999", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 12px" }}>Cancelar</button>
               <button onClick={descargar} disabled={dlBusy}
