@@ -30,4 +30,13 @@ export const AdminAPI = {
   restoreUser: (id) => http(`/admin/users/${id}/restore`, { method:'POST' }),
   userBusinesses: (id) => http(`/admin/users/${id}/businesses`).then(r => r?.businesses || []),
   userActivity: (id) => http(`/admin/users/${id}/activity`).then(r => r?.activity || []),
+
+  listBusinesses: ({ q='', page=1, pageSize=20 } = {}) =>
+    http(`/admin/businesses?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
+  getBusiness: (id) => http(`/admin/businesses/${id}`),
+  updateBusiness: (id, body) => http(`/admin/businesses/${id}`, { method:'PATCH', body }),
+
+  listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
+    http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
+  getOrganization: (id) => http(`/admin/organizations/${id}`),
 };

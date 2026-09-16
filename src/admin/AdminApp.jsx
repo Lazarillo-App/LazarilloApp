@@ -7,6 +7,10 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminUserDetail from './pages/AdminUserDetail';
 import AdminAcceso     from './pages/AdminAcceso';
+import AdminBusinesses from './pages/AdminBusinesses';
+import AdminBusinessDetail from './pages/AdminBusinessDetail';
+import AdminOrganizations from './pages/AdminOrganizations';
+import AdminOrganizationDetail from './pages/AdminOrganizationDetail';
 
 // Lee el rol desde localStorage (y opcionalmente desde el JWT)
 const isAdmin = () => {
@@ -34,6 +38,10 @@ export default function AdminApp() {
         <Route index element={<AdminDashboard />} />
         <Route path="usuarios" element={<AdminUsers />} />
         <Route path="usuarios/:id" element={<AdminUserDetail />} />
+        <Route path="negocios" element={<AdminBusinesses />} />
+        <Route path="negocios/:id" element={<AdminBusinessDetail />} />
+        <Route path="organizaciones" element={<AdminOrganizations />} />
+        <Route path="organizaciones/:id" element={<AdminOrganizationDetail />} />
         <Route path="acceso" element={<AdminAcceso />} />
       </Routes>
     </AdminLayout>

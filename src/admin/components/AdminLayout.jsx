@@ -6,6 +6,8 @@ import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 
 import logoLight from '@/assets/brand/logo-light.png';
@@ -14,6 +16,8 @@ import anthony from '@/assets/brand/anthony.png';
 const NAV_ITEMS = [
   { to: '/admin',          label: 'Dashboard',        icon: DashboardIcon, exact: true },
   { to: '/admin/usuarios', label: 'Usuarios',         icon: PeopleIcon },
+  { to: '/admin/negocios', label: 'Negocios',         icon: StorefrontIcon },
+  { to: '/admin/organizaciones', label: 'Organizaciones', icon: ApartmentIcon },
   { to: '/admin/acceso',   label: 'Acceso y cupones', icon: ConfirmationNumberIcon },
 ];
 
