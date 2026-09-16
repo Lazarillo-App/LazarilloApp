@@ -8,6 +8,8 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 
+const ACTION_LABEL = { create: 'Creación', update: 'Actualización', delete: 'Eliminación', restore: 'Restauración', reassign: 'Reasignación' };
+
 export default function AdminUserDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -35,16 +37,16 @@ export default function AdminUserDetail() {
         if (!alive) return;
         setUser(u);
 
-        // KPIs (cantidad de locales del usuario). Intenta endpoint específico, sino 0.
+        // KPIs (cantidad de locales del usuario).
         try {
           const bs = await AdminAPI.userBusinesses?.(id);
-          if (alive && bs) setStats({ businesses: Array.isArray(bs) ? bs.length : (bs.total || 0) });
+          if (alive) setStats({ businesses: Array.isArray(bs) ? bs.length : 0 });
         } catch { setStats(s => ({ ...s, businesses: 0 })); }
 
-        // Actividad (si no hay endpoint, queda vacío)
+        // Actividad
         try {
           const acts = await AdminAPI.userActivity?.(id);
-          if (alive && acts) setActivity(acts || []);
+          if (alive) setActivity(Array.isArray(acts) ? acts : []);
         } catch { setActivity([]); }
       } finally {
         if (alive) setLoading(false);
@@ -110,12 +112,15 @@ export default function AdminUserDetail() {
       <section className="card">
         <div className="card-title">Historial de actividad</div>
         <div className="act-list">
-          {activity.length ? activity.map((a, i) => (
-            <div key={i} className="act-item">
+          {activity.length ? activity.map((a) => (
+            <div key={a.id} className="act-item">
               <div className="dot" />
               <div className="a-col">
-                <div className="a-title">{a.title || a.type || 'Evento'}</div>
-                <div className="a-sub">{a.when || a.date || ''} {a.meta ? `· ${a.meta}` : ''}</div>
+                <div className="a-title">{ACTION_LABEL[a.action] || a.action} · {a.entity_type}</div>
+                <div className="a-sub">
+                  {a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : ''}
+                  {a.user_alias_snapshot ? ` · por ${a.user_alias_snapshot}` : ''}
+                </div>
               </div>
             </div>
           )) : (
@@ -134,7 +139,11 @@ export default function AdminUserDetail() {
             setBusy(true);
             try {
               const r = await AdminAPI.resetPassword(user.id);
-              showAlert(`Token temporal: ${r.token_preview}`, 'info', { copyText: r.token_preview });
+              showAlert(
+                r.delivered ? 'Mail de restablecimiento enviado.' : 'No se pudo enviar el mail — copiá el enlace.',
+                r.delivered ? 'success' : 'info',
+                { copyText: r.link }
+              );
             } finally { setBusy(false); }
           }}
           title="Restablecer contraseña"

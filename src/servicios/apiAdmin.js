@@ -22,8 +22,12 @@ export const AdminAPI = {
   overview: () => http('/admin/overview'),
   listUsers: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
+  getUser: (id) => http(`/admin/users/${id}`),
   updateUser: (id, body) => http(`/admin/users/${id}`, { method:'PATCH', body }),
   deleteUser: (id) => http(`/admin/users/${id}`, { method:'DELETE' }),
+  createUser: (body) => http('/admin/users', { method:'POST', body }),
   resetPassword: (id) => http(`/admin/users/${id}/reset-password`, { method:'POST' }),
-  restoreUser: (id) => http(`/admin/users/${id}/restore`, { method:'POST' }), // ✅ nuevo
+  restoreUser: (id) => http(`/admin/users/${id}/restore`, { method:'POST' }),
+  userBusinesses: (id) => http(`/admin/users/${id}/businesses`).then(r => r?.businesses || []),
+  userActivity: (id) => http(`/admin/users/${id}/activity`).then(r => r?.activity || []),
 };

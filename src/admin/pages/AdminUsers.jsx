@@ -60,12 +60,34 @@ export default function AdminUsers() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [actDlg, setActDlg]   = useState(null);
   const [suspDlg, setSuspDlg] = useState(null);
+  const [newDlg, setNewDlg] = useState(false);
+  const [newForm, setNewForm] = useState({ email: '', name: '', role: 'owner' });
   const [form, setForm] = useState({ type: 'trial', duration_days: 30, notes: '' });
   const [saving, setSaving] = useState(false);
   const [notify, setNotify] = useState('');
   const nav = useNavigate();
 
   const showNotify = (msg) => { setNotify(msg); setTimeout(() => setNotify(''), 3000); };
+
+  const handleCreateUser = async () => {
+    if (!newForm.email.trim()) return;
+    setSaving(true);
+    try {
+      const r = await AdminAPI.createUser({
+        email: newForm.email.trim(), name: newForm.name.trim() || undefined, role: newForm.role,
+      });
+      setNewDlg(false);
+      setNewForm({ email: '', name: '', role: 'owner' });
+      showAlert(
+        r.delivered ? 'Cuenta creada — mail de activación enviado.' : 'Cuenta creada — no se pudo enviar el mail, copiá el enlace.',
+        r.delivered ? 'success' : 'info',
+        { copyText: r.link }
+      );
+      refetch({});
+    } catch (e) {
+      showNotify(`❌ ${e.message === 'EMAIL_IN_USE' ? 'Ese email ya tiene una cuenta activa' : 'Error al crear el usuario'}`);
+    } finally { setSaving(false); }
+  };
 
   const handleActivate = async () => {
     if (!actDlg) return;
@@ -101,13 +123,22 @@ export default function AdminUsers() {
     <div style={{ fontFamily: "'Archivo', system-ui, sans-serif" }}>
 
       {/* Header */}
-      <div style={{ background: '#fff', padding: '20px 28px', borderBottom: '0.5px solid #e2e8f0' }}>
-        <h1 style={{ margin: 0, fontFamily: "'Sora', system-ui, sans-serif", fontSize: 20, fontWeight: 700, color: BRAND.tinta }}>
-          Usuarios
-        </h1>
-        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94a3b8' }}>
-          {state.total} usuarios registrados
-        </p>
+      <div style={{ background: '#fff', padding: '20px 28px', borderBottom: '0.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ margin: 0, fontFamily: "'Sora', system-ui, sans-serif", fontSize: 20, fontWeight: 700, color: BRAND.tinta }}>
+            Usuarios
+          </h1>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94a3b8' }}>
+            {state.total} usuarios registrados
+          </p>
+        </div>
+        <Button
+          variant="contained"
+          onClick={() => setNewDlg(true)}
+          style={{ background: BRAND.celesteProfundo, textTransform: 'none', fontWeight: 700 }}
+        >
+          + Crear usuario
+        </Button>
       </div>
 
       <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -215,7 +246,11 @@ export default function AdminUsers() {
                   <Tooltip title="Reset contraseña">
                     <IconButton size="small" onClick={async () => {
                       const r = await AdminAPI.resetPassword(u.id);
-                      showAlert(`Token: ${r.token_preview}`, 'info', { copyText: r.token_preview });
+                      showAlert(
+                        r.delivered ? 'Mail de restablecimiento enviado.' : 'No se pudo enviar el mail — copiá el enlace.',
+                        r.delivered ? 'success' : 'info',
+                        { copyText: r.link }
+                      );
                     }}>
                       <RestartAltIcon style={{ fontSize: 16, color: '#64748b' }} />
                     </IconButton>
@@ -263,6 +298,33 @@ export default function AdminUsers() {
           >Siguiente →</button>
         </div>
       </div>
+
+      {/* Dialog crear usuario */}
+      <Dialog open={newDlg} onClose={() => setNewDlg(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontFamily: "'Sora', system-ui, sans-serif" }}>
+          Crear usuario
+        </DialogTitle>
+        <DialogContent>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
+            <TextField label="Email" size="small" fullWidth type="email" value={newForm.email}
+              onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))} autoFocus />
+            <TextField label="Nombre (opcional)" size="small" fullWidth value={newForm.name}
+              onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} />
+            <TextField select label="Rol" size="small" fullWidth value={newForm.role}
+              onChange={e => setNewForm(f => ({ ...f, role: e.target.value }))}>
+              <MenuItem value="owner">Dueño de negocio</MenuItem>
+              <MenuItem value="staff">Staff</MenuItem>
+              <MenuItem value="viewer">Solo lectura</MenuItem>
+            </TextField>
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setNewDlg(false)} color="inherit">Cancelar</Button>
+          <Button onClick={handleCreateUser} variant="contained" disabled={saving || !newForm.email.trim()}>
+            {saving ? 'Creando…' : 'Crear'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Dialog activar */}
       <Dialog open={!!actDlg} onClose={() => setActDlg(null)} maxWidth="xs" fullWidth>
