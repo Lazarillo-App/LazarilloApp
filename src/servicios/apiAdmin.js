@@ -47,4 +47,7 @@ export const AdminAPI = {
   listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
   getOrganization: (id) => http(`/admin/organizations/${id}`),
+
+  getMaintenance: () => http('/admin/maintenance'),
+  setMaintenance: (enabled, message) => http('/admin/maintenance', { method:'POST', body: { enabled, message } }),
 };

@@ -104,6 +104,15 @@ export async function api(
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text || null; }
 
+  // Modo mantenimiento global: mismo criterio que apiBusinesses.js::http().
+  if (res.status === 503 && data?.error === 'maintenance') {
+    try { sessionStorage.setItem('mantenimiento_info', JSON.stringify({ message: data.message || null })); } catch {}
+    if (!window.location.pathname.startsWith('/en-mantenimiento')) {
+      window.location.href = '/en-mantenimiento';
+    }
+    throw new Error('maintenance');
+  }
+
   // Negocio pausado desde el admin: mismo criterio que apiBusinesses.js::http().
   if (res.status === 403 && data?.error === 'business_paused') {
     try {
