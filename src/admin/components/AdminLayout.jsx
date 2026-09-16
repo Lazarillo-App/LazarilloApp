@@ -10,6 +10,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import BuildIcon from '@mui/icons-material/Build';
+import HistoryIcon from '@mui/icons-material/History';
 
 import logoLight from '@/assets/brand/logo-light.png';
 import anthony from '@/assets/brand/anthony.png';
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { to: '/admin/organizaciones', label: 'Organizaciones', icon: ApartmentIcon },
   { to: '/admin/acceso',   label: 'Acceso y cupones', icon: ConfirmationNumberIcon },
   { to: '/admin/mantenimiento', label: 'Mantenimiento', icon: BuildIcon },
+  { to: '/admin/auditoria', label: 'Auditoría', icon: HistoryIcon },
 ];
 
 const BRAND = {

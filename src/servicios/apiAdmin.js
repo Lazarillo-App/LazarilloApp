@@ -57,4 +57,13 @@ export const AdminAPI = {
 
   getMaintenance: () => http('/admin/maintenance'),
   setMaintenance: (enabled, message) => http('/admin/maintenance', { method:'POST', body: { enabled, message } }),
+
+  listAudit: ({ entityType='', userId='', businessId='', page=1, pageSize=30 } = {}) => {
+    const p = new URLSearchParams();
+    if (entityType) p.set('entityType', entityType);
+    if (userId) p.set('userId', userId);
+    if (businessId) p.set('businessId', businessId);
+    p.set('page', page); p.set('pageSize', pageSize);
+    return http(`/admin/audit?${p.toString()}`);
+  },
 };
