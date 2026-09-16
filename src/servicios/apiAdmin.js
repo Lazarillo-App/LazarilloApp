@@ -52,6 +52,7 @@ export const AdminAPI = {
   peekVentasSummary: (id) => http(`/admin/businesses/${id}/ventas/summary`),
 
   dashboardProblemas: () => http('/admin/dashboard/problemas'),
+  globalSearch: (q) => http(`/admin/search?q=${encodeURIComponent(q)}`),
 
   listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),

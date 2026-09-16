@@ -1,6 +1,8 @@
-/* eslint-disable no-unused-vars */
-import React, { useState } from 'react';
+/* eslint-disable no-unused-vars, no-empty */
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import SearchIcon from '@mui/icons-material/Search';
+import { AdminAPI } from '../../servicios/apiAdmin';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
@@ -58,6 +60,105 @@ function NavItem({ to, label, icon: Icon, exact }) {
         </span>
       </div>
     </Link>
+  );
+}
+
+function GlobalSearchBox() {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState(null);
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const nav = useNavigate();
+
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setResults(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await AdminAPI.globalSearch(term);
+        setResults(r);
+        setOpen(true);
+      } catch {}
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    const onClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  const go = (path) => { setOpen(false); setQ(''); nav(path); };
+
+  const hasResults = results && (results.users?.length || results.businesses?.length || results.organizations?.length);
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, background: '#fff',
+        border: '0.5px solid #e2e8f0', borderRadius: 8, padding: '8px 12px',
+      }}>
+        <SearchIcon style={{ fontSize: 18, color: '#94a3b8' }} />
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onFocus={() => q.trim() && setOpen(true)}
+          placeholder="Buscar usuarios, negocios, organizaciones…"
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent' }}
+        />
+      </div>
+      {open && results && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+          background: '#fff', border: '0.5px solid #e2e8f0', borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.08)', zIndex: 20, maxHeight: 360, overflow: 'auto',
+        }}>
+          {!hasResults && (
+            <div style={{ padding: 14, fontSize: 13, color: '#94a3b8' }}>Sin resultados.</div>
+          )}
+          {results.users?.length > 0 && (
+            <div>
+              <div style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Usuarios</div>
+              {results.users.map(u => (
+                <div key={u.id} onClick={() => go(`/admin/usuarios/${u.id}`)}
+                  style={{ padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {u.name || u.email} <span style={{ color: '#94a3b8' }}>· {u.email}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {results.businesses?.length > 0 && (
+            <div>
+              <div style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Negocios</div>
+              {results.businesses.map(b => (
+                <div key={b.id} onClick={() => go(`/admin/negocios/${b.id}`)}
+                  style={{ padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {b.name}
+                </div>
+              ))}
+            </div>
+          )}
+          {results.organizations?.length > 0 && (
+            <div>
+              <div style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Organizaciones</div>
+              {results.organizations.map(o => (
+                <div key={o.id} onClick={() => go(`/admin/organizaciones/${o.id}`)}
+                  style={{ padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {o.display_name || o.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -198,6 +299,11 @@ export default function AdminLayout({ children }) {
             {mobileOpen ? <CloseIcon /> : <MenuIcon />}
           </button>
           <img src={logoLight} alt="Lazarillo" style={{ height: 24 }} />
+        </div>
+
+        {/* Buscador global */}
+        <div style={{ padding: '12px 24px 0' }}>
+          <GlobalSearchBox />
         </div>
 
         {/* Área scrolleable */}
