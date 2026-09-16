@@ -358,11 +358,18 @@ function headerHtml(hoja, diseno, negocio, showLogo) {
 function imagenHojaHtml(hoja) {
   const img = hoja?.imagen;
   if (!img?.url) return "";
-  const style = img.zona === "fondo"
-    ? "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.14;z-index:0"
-    : img.zona === "header"
-      ? "position:absolute;top:0;left:0;right:0;height:16%;object-fit:cover;z-index:0"
-      : "position:absolute;top:10px;right:10px;width:72px;height:72px;object-fit:contain;z-index:2;border-radius:6px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:4px";
+  if (img.zona === "fondo") {
+    const ajuste = img.ajuste || "cubrir";
+    const bgSizeMap = { cubrir: "cover", estirar: "100% 100%", real: "auto", mosaico: "auto" };
+    const repeat = ajuste === "mosaico" ? "repeat" : "no-repeat";
+    // El <img oculto> es solo para que la espera de "imágenes cargadas" de exportarHoja
+    // (que busca <img>, no background-image) también cubra este fondo antes de capturar.
+    return `<div style="position:absolute;inset:0;z-index:0;opacity:.14;background-image:url('${esc(img.url)}');background-size:${bgSizeMap[ajuste]};background-repeat:${repeat};background-position:center"></div>`
+      + `<img src="${esc(img.url)}" crossorigin="anonymous" style="display:none" />`;
+  }
+  const style = img.zona === "header"
+    ? `position:absolute;top:0;left:0;right:0;height:${img.tamano || 16}%;object-fit:cover;z-index:0`
+    : `position:absolute;top:10px;right:10px;width:${img.tamano || 72}px;height:${img.tamano || 72}px;object-fit:contain;z-index:2;border-radius:6px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:4px`;
   return `<img src="${esc(img.url)}" crossorigin="anonymous" style="${style}" />`;
 }
 function footerHtml(negocio) {
@@ -577,6 +584,7 @@ export default function VistaCartaMenu({
   const [imagenPendiente, setImagenPendiente] = useState(null); // url recién subida, sin zona aún
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [arrastrandoImagen, setArrastrandoImagen] = useState(false);
+  const [imagenAjustesOpen, setImagenAjustesOpen] = useState(false);
   const imagenInputRef = useRef(null);
   const [sidebarTab, setSidebarTab] = useState("hojas"); // "hojas" | "pool"
   const [editSec, setEditSec] = useState(null); // secId cuyo título se edita
@@ -1559,6 +1567,15 @@ export default function VistaCartaMenu({
     }));
   }, [setMaqueta]);
 
+  // Ajustes de la imagen ya colocada: modo de fondo (cubrir/estirar/real/mosaico) o
+  // tamaño (esquina en px, banner en % de alto).
+  const actualizarImagenHoja = useCallback((hojaId, patch) => {
+    setMaqueta((m) => ({
+      ...m,
+      hojas: m.hojas.map((h) => h.id !== hojaId || !h.imagen ? h : { ...h, imagen: { ...h.imagen, ...patch } }),
+    }));
+  }, [setMaqueta]);
+
   const css = useMemo(() => cartaCss(diseno, neg, 1), [diseno, neg]);
 
   const pill = (on, onClick, txt, title) => (
@@ -2016,20 +2033,74 @@ export default function VistaCartaMenu({
                 }}>
                   {/* Imagen decorativa ya colocada en esta hoja */}
                   {hoja.imagen && (() => {
-                    const zonaStyle = hoja.imagen.zona === "fondo"
-                      ? { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.14, zIndex: 0, pointerEvents: "none" }
-                      : hoja.imagen.zona === "header"
-                        ? { position: "absolute", top: 0, left: 0, right: 0, height: "16%", objectFit: "cover", zIndex: 0, borderRadius: "8px 8px 0 0" }
-                        : { position: "absolute", top: 10, right: 10, width: 72, height: 72, objectFit: "contain", zIndex: 2, borderRadius: 6, background: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,.15)", padding: 4 };
+                    const img = hoja.imagen;
+                    const ajuste = img.ajuste || "cubrir";
+                    const tamanoEsquina = img.tamano || 72;
+                    const tamanoHeader = img.tamano || 16;
+                    const bgSizeMap = { cubrir: "cover", estirar: "100% 100%", real: "auto", mosaico: "auto" };
+                    const iniciarDrag = () => { dragRef.current = { tipo: "imagen-hoja", url: img.url }; setArrastrandoImagen(true); };
                     return (
                       <>
-                        <img src={hoja.imagen.url} alt="" draggable
-                          onDragStart={() => { dragRef.current = { tipo: "imagen-hoja", url: hoja.imagen.url }; setArrastrandoImagen(true); }}
-                          onDragEnd={() => setArrastrandoImagen(false)}
-                          style={{ ...zonaStyle, cursor: "grab" }}
-                          title="Arrastrala a otra zona para moverla" />
-                        <button onClick={() => quitarImagenDeHoja(hoja.id)} title="Quitar imagen"
-                          style={{ position: "absolute", top: 4, left: 4, zIndex: 3, border: "none", background: "rgba(0,0,0,.55)", color: "#fff", borderRadius: 12, width: 20, height: 20, fontSize: 12, lineHeight: 1, cursor: "pointer" }}>✕</button>
+                        {img.zona === "fondo" ? (
+                          // Fondo: div con background-image (no <img>) para poder soportar
+                          // mosaico/estirado, y pointerEvents:none para no bloquear los clics
+                          // del contenido real de arriba — por eso se mueve con el handle 🖼️,
+                          // no arrastrando la imagen en sí (que no recibiría el mousedown).
+                          <div style={{
+                            position: "absolute", inset: 0, zIndex: 0, opacity: 0.14, pointerEvents: "none",
+                            backgroundImage: `url(${img.url})`, backgroundSize: bgSizeMap[ajuste],
+                            backgroundRepeat: ajuste === "mosaico" ? "repeat" : "no-repeat", backgroundPosition: "center",
+                          }} />
+                        ) : (
+                          <img src={img.url} alt="" draggable
+                            onDragStart={iniciarDrag}
+                            onDragEnd={() => setArrastrandoImagen(false)}
+                            title="Arrastrala a otra zona para moverla"
+                            style={img.zona === "header"
+                              ? { position: "absolute", top: 0, left: 0, right: 0, height: `${tamanoHeader}%`, objectFit: "cover", zIndex: 20, borderRadius: "8px 8px 0 0", cursor: "grab" }
+                              : { position: "absolute", top: 10, right: 10, width: tamanoEsquina, height: tamanoEsquina, objectFit: "contain", zIndex: 20, borderRadius: 6, background: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,.15)", padding: 4, cursor: "grab" }} />
+                        )}
+                        {img.zona === "fondo" && (
+                          <div draggable onDragStart={iniciarDrag} onDragEnd={() => setArrastrandoImagen(false)}
+                            title="Arrastrar el fondo a otra zona"
+                            style={{ position: "absolute", bottom: 8, left: 8, zIndex: 21, width: 26, height: 26, borderRadius: 6, background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, cursor: "grab" }}>
+                            🖼️
+                          </div>
+                        )}
+                        <div style={{ position: "absolute", top: 4, left: 4, zIndex: 22, display: "flex", gap: 4 }}>
+                          <button onClick={() => setImagenAjustesOpen((v) => !v)} title="Ajustar imagen"
+                            style={{ border: "none", background: "rgba(0,0,0,.55)", color: "#fff", borderRadius: 12, width: 20, height: 20, fontSize: 11, lineHeight: 1, cursor: "pointer" }}>⚙</button>
+                          <button onClick={() => { quitarImagenDeHoja(hoja.id); setImagenAjustesOpen(false); }} title="Quitar imagen"
+                            style={{ border: "none", background: "rgba(0,0,0,.55)", color: "#fff", borderRadius: 12, width: 20, height: 20, fontSize: 12, lineHeight: 1, cursor: "pointer" }}>✕</button>
+                        </div>
+                        {imagenAjustesOpen && (
+                          <div onClick={(e) => e.stopPropagation()}
+                            style={{ position: "absolute", top: 30, left: 4, zIndex: 22, background: "#fff", border: "1px solid #d8d3ca", borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,.15)", padding: 10, minWidth: 175 }}>
+                            {img.zona === "fondo" ? (
+                              <>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>Ajuste del fondo</div>
+                                {[["cubrir", "Cubrir todo"], ["estirar", "Estirar"], ["real", "Tamaño real"], ["mosaico", "Mosaico"]].map(([val, label]) => (
+                                  <label key={val} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}>
+                                    <input type="radio" name="ajusteFondo" checked={ajuste === val}
+                                      onChange={() => actualizarImagenHoja(hoja.id, { ajuste: val })} />
+                                    {label}
+                                  </label>
+                                ))}
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>
+                                  Tamaño {img.zona === "header" ? "(alto, % de la hoja)" : "(px)"}
+                                </div>
+                                <input type="range"
+                                  min={img.zona === "header" ? 8 : 40} max={img.zona === "header" ? 35 : 160}
+                                  value={img.zona === "header" ? tamanoHeader : tamanoEsquina}
+                                  onChange={(e) => actualizarImagenHoja(hoja.id, { tamano: Number(e.target.value) })}
+                                  style={{ width: "100%" }} />
+                              </>
+                            )}
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -2038,17 +2109,17 @@ export default function VistaCartaMenu({
                     <>
                       <div onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => { e.preventDefault(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "fondo"); dragRef.current = null; }}
-                        style={{ position: "absolute", inset: 0, zIndex: 5, background: "rgba(124,58,237,.08)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        style={{ position: "absolute", inset: 0, zIndex: 30, background: "rgba(124,58,237,.08)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "3px 10px", borderRadius: 20 }}>Soltar como fondo</span>
                       </div>
                       <div onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "header"); dragRef.current = null; }}
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, height: "16%", zIndex: 6, background: "rgba(124,58,237,.18)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        style={{ position: "absolute", top: 0, left: 0, right: 0, height: "16%", zIndex: 31, background: "rgba(124,58,237,.18)", border: "2px dashed #7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "3px 10px", borderRadius: 20 }}>Soltar como banner superior</span>
                       </div>
                       <div onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragRef.current?.tipo === "imagen-hoja") colocarImagenEnHoja(hoja.id, dragRef.current.url, "esquina"); dragRef.current = null; }}
-                        style={{ position: "absolute", top: 8, right: 8, width: 90, height: 90, zIndex: 6, background: "rgba(124,58,237,.25)", border: "2px dashed #7c3aed", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                        style={{ position: "absolute", top: 8, right: 8, width: 90, height: 90, zIndex: 32, background: "rgba(124,58,237,.25)", border: "2px dashed #7c3aed", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: "#7c3aed", background: "#fff", padding: "2px 6px", borderRadius: 20 }}>Esquina</span>
                       </div>
                     </>
