@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AdminAPI } from '../../servicios/apiAdmin';
 
 const BRAND = {
@@ -65,14 +66,26 @@ function StatusBadge({ status }) {
   );
 }
 
+const PROBLEM_SECTIONS = [
+  { key: 'paused', label: 'Negocios pausados', color: '#475569' },
+  { key: 'owner_expired_or_suspended', label: 'Dueño vencido o suspendido', color: '#b91c1c' },
+  { key: 'trial_ending_soon', label: 'Trial por vencer (≤7 días)', color: '#d97706' },
+  { key: 'orphaned', label: 'Huérfanos (dueño eliminado)', color: '#7c3aed' },
+];
+
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(false);
+  const [problemas, setProblemas] = useState(null);
+  const nav = useNavigate();
 
   useEffect(() => {
     AdminAPI.overview()
       .then(setData)
       .catch(() => setErr(true));
+    AdminAPI.dashboardProblemas()
+      .then(setProblemas)
+      .catch(() => {});
   }, []);
 
   return (
@@ -185,6 +198,45 @@ export default function AdminDashboard() {
                 );
               })}
             </div>
+
+            {/* Negocios con problemas */}
+            {problemas && (
+              <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #f1f5f9' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: BRAND.tinta, fontFamily: "'Sora', system-ui, sans-serif" }}>
+                    Negocios con problemas
+                  </span>
+                </div>
+                {PROBLEM_SECTIONS.every(s => !(problemas[s.key]?.length)) && (
+                  <p style={{ padding: '20px 18px', margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                    Sin problemas detectados.
+                  </p>
+                )}
+                {PROBLEM_SECTIONS.map(s => (
+                  (problemas[s.key]?.length > 0) && (
+                    <div key={s.key} style={{ padding: '12px 18px', borderTop: '0.5px solid #f8fafc' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: s.color, marginBottom: 6 }}>
+                        {s.label} ({problemas[s.key].length})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {problemas[s.key].map(b => (
+                          <span
+                            key={b.id}
+                            onClick={() => nav(`/admin/negocios/${b.id}`)}
+                            style={{
+                              fontSize: 12, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                              background: BRAND.paper, color: BRAND.tinta,
+                            }}
+                          >
+                            {b.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

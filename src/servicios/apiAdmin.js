@@ -51,6 +51,8 @@ export const AdminAPI = {
   peekMaxiStatus: (id) => http(`/admin/businesses/${id}/maxi-status`),
   peekVentasSummary: (id) => http(`/admin/businesses/${id}/ventas/summary`),
 
+  dashboardProblemas: () => http('/admin/dashboard/problemas'),
+
   listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
   getOrganization: (id) => http(`/admin/organizations/${id}`),
