@@ -7,6 +7,9 @@ import {
 } from '@mui/material';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import EditIcon from '@mui/icons-material/Edit';
+import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import { showConfirm } from '../../servicios/appConfirm';
 
 const BRAND = { tinta: '#15213E', celeste: '#5BC2EA', paper: '#F2F4F7', celesteProfundo: '#2492C8' };
 
@@ -54,6 +57,24 @@ export default function AdminBusinessDetail() {
     } finally { setSaving(false); }
   };
 
+  const handleTogglePause = async () => {
+    if (business.paused_at) {
+      if (!(await showConfirm(`¿Reactivar "${business.name}"?`))) return;
+      try {
+        await AdminAPI.resumeBusiness(id);
+        await load();
+        showAlert('Negocio reactivado.', 'success');
+      } catch { showAlert('No se pudo reactivar.', 'error'); }
+    } else {
+      if (!(await showConfirm(`¿Pausar "${business.name}"? No se pierde nada, pero deja de usarse hasta reactivarlo.`, { danger: true }))) return;
+      try {
+        await AdminAPI.pauseBusiness(id);
+        await load();
+        showAlert('Negocio pausado.', 'success');
+      } catch { showAlert('No se pudo pausar.', 'error'); }
+    }
+  };
+
   if (loading) return <div style={{ padding: 24 }}>Cargando…</div>;
   if (!business) return <div style={{ padding: 24 }}>Negocio no encontrado.</div>;
 
@@ -64,11 +85,27 @@ export default function AdminBusinessDetail() {
           <ArrowBackIosNewIcon fontSize="small" style={{ color: BRAND.tinta }} />
         </button>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: 0, fontFamily: "'Sora', system-ui, sans-serif", fontSize: 18, fontWeight: 700, color: BRAND.tinta }}>
-            {business.name}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h1 style={{ margin: 0, fontFamily: "'Sora', system-ui, sans-serif", fontSize: 18, fontWeight: 700, color: BRAND.tinta }}>
+              {business.name}
+            </h1>
+            {business.paused_at && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#f1f5f9', color: '#475569' }}>
+                Pausado{business.paused_by_cascade ? ' (por suspensión del dueño)' : ''}
+              </span>
+            )}
+          </div>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94a3b8' }}>ID: {business.id}</p>
         </div>
+        <Button
+          size="small"
+          startIcon={business.paused_at ? <PlayCircleIcon /> : <PauseCircleIcon />}
+          onClick={handleTogglePause}
+          color={business.paused_at ? 'primary' : 'error'}
+          style={{ textTransform: 'none' }}
+        >
+          {business.paused_at ? 'Reactivar' : 'Pausar'}
+        </Button>
         <Button size="small" startIcon={<EditIcon />} onClick={openEdit} style={{ textTransform: 'none' }}>
           Editar
         </Button>

@@ -14,7 +14,12 @@ async function http(path, { method='GET', body } = {}) {
   });
   const txt = await res.text().catch(()=> '');
   let data = null; try { data = txt ? JSON.parse(txt) : null; } catch {}
-  if (!res.ok) throw new Error((data && (data.error||data.message)) || txt || res.statusText);
+  if (!res.ok) {
+    const err = new Error((data && (data.error||data.message)) || txt || res.statusText);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
@@ -24,7 +29,8 @@ export const AdminAPI = {
     http(`/admin/users?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
   getUser: (id) => http(`/admin/users/${id}`),
   updateUser: (id, body) => http(`/admin/users/${id}`, { method:'PATCH', body }),
-  deleteUser: (id) => http(`/admin/users/${id}`, { method:'DELETE' }),
+  deleteUser: (id, { confirm = false } = {}) =>
+    http(`/admin/users/${id}${confirm ? '?confirm=1' : ''}`, { method:'DELETE' }),
   createUser: (body) => http('/admin/users', { method:'POST', body }),
   resetPassword: (id) => http(`/admin/users/${id}/reset-password`, { method:'POST' }),
   restoreUser: (id) => http(`/admin/users/${id}/restore`, { method:'POST' }),
@@ -35,6 +41,8 @@ export const AdminAPI = {
     http(`/admin/businesses?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
   getBusiness: (id) => http(`/admin/businesses/${id}`),
   updateBusiness: (id, body) => http(`/admin/businesses/${id}`, { method:'PATCH', body }),
+  pauseBusiness: (id, reason) => http(`/admin/businesses/${id}/pause`, { method:'POST', body: { reason } }),
+  resumeBusiness: (id) => http(`/admin/businesses/${id}/resume`, { method:'POST' }),
 
   listOrganizations: ({ q='', page=1, pageSize=20 } = {}) =>
     http(`/admin/organizations?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),

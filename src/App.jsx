@@ -13,6 +13,7 @@ import ConfiguracionMain from './paginas/ConfiguracionMain';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
 import UploadFoto from './paginas/UploadFoto';
+import NegocioPausado from './paginas/NegocioPausado';
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import AppAlertModal from './componentes/AppAlertModal';
 import AppPromptModal from './componentes/AppPromptModal';
@@ -212,6 +213,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/upload-foto" element={<UploadFoto />} />
+        <Route path="/negocio-pausado" element={<NegocioPausado />} />
 
         {/* ── Pública: aceptar invitación ── */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacion />} />

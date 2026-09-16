@@ -172,8 +172,24 @@ export default function AdminUserDetail() {
             onClick={async () => {
               if (!(await showConfirm('¿Eliminar este usuario?', { danger: true }))) return;
               setBusy(true);
-              try { await AdminAPI.deleteUser(user.id); nav('/admin/usuarios', { replace: true }); }
-              finally { setBusy(false); }
+              try {
+                try {
+                  await AdminAPI.deleteUser(user.id);
+                } catch (e) {
+                  if (e?.data?.error === 'HAS_ACTIVE_BUSINESSES') {
+                    const names = (e.data.businesses || []).map(b => b.name).join(', ');
+                    const ok = await showConfirm(
+                      `Todavía es dueño de: ${names}. Se van a pausar (no se pierde nada). ¿Continuar?`,
+                      { danger: true }
+                    );
+                    if (!ok) return;
+                    await AdminAPI.deleteUser(user.id, { confirm: true });
+                  } else {
+                    throw e;
+                  }
+                }
+                nav('/admin/usuarios', { replace: true });
+              } finally { setBusy(false); }
             }}
           >
             <DeleteOutlineIcon fontSize="small" />

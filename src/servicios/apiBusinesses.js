@@ -192,6 +192,21 @@ export async function http(
       data = text ? JSON.parse(text) : null;
     } catch { }
 
+    // Negocio pausado desde el admin: redirigir a una pantalla dedicada en vez
+    // de dejar que cada pantalla de la app maneje este 403 por su cuenta.
+    if (res.status === 403 && data?.error === 'business_paused') {
+      try {
+        sessionStorage.setItem('negocio_pausado_info', JSON.stringify({
+          paused_at: data.paused_at || null,
+          paused_reason: data.paused_reason || null,
+        }));
+      } catch { }
+      if (!window.location.pathname.startsWith('/negocio-pausado')) {
+        window.location.href = '/negocio-pausado';
+      }
+      throw new Error('business_paused');
+    }
+
     if (!res.ok) {
       // 🔍 log de diagnóstico
       try {

@@ -104,6 +104,20 @@ export async function api(
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text || null; }
 
+  // Negocio pausado desde el admin: mismo criterio que apiBusinesses.js::http().
+  if (res.status === 403 && data?.error === 'business_paused') {
+    try {
+      sessionStorage.setItem('negocio_pausado_info', JSON.stringify({
+        paused_at: data.paused_at || null,
+        paused_reason: data.paused_reason || null,
+      }));
+    } catch {}
+    if (!window.location.pathname.startsWith('/negocio-pausado')) {
+      window.location.href = '/negocio-pausado';
+    }
+    throw new Error('business_paused');
+  }
+
   if (!res.ok) {
     const msg = (data && (data.error || data.message || data.detail)) ||
                 res.statusText || `HTTP ${res.status}`;

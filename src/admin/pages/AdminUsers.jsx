@@ -58,6 +58,7 @@ function useUsers() {
 export default function AdminUsers() {
   const { state, setState, refetch } = useUsers();
   const [confirmDel, setConfirmDel] = useState(null);
+  const [confirmDelBiz, setConfirmDelBiz] = useState(null);
   const [actDlg, setActDlg]   = useState(null);
   const [suspDlg, setSuspDlg] = useState(null);
   const [newDlg, setNewDlg] = useState(false);
@@ -109,8 +110,9 @@ export default function AdminUsers() {
     if (!suspDlg) return;
     setSaving(true);
     try {
-      await AccessAPI.suspendUser(suspDlg.id, { notes: form.notes });
-      showNotify(`✅ ${suspDlg.name || suspDlg.email} suspendido`);
+      const r = await AccessAPI.suspendUser(suspDlg.id, { notes: form.notes });
+      const pausedCount = r?.paused_businesses?.length || 0;
+      showNotify(`✅ ${suspDlg.name || suspDlg.email} suspendido` + (pausedCount ? ` — ${pausedCount} negocio(s) pausado(s)` : ''));
       setSuspDlg(null);
       refetch({});
     } catch { showNotify('❌ Error al suspender'); }
@@ -370,32 +372,52 @@ export default function AdminUsers() {
       </Dialog>
 
       {/* Dialog eliminar */}
-      <Dialog open={!!confirmDel} onClose={() => setConfirmDel(null)}>
+      <Dialog open={!!confirmDel} onClose={() => { setConfirmDel(null); setConfirmDelBiz(null); }}>
         <DialogTitle sx={{ fontWeight: 700 }}>
           {confirmDel?.status === 'deleted' ? 'Restaurar usuario' : 'Eliminar usuario'}
         </DialogTitle>
         <DialogContent>
-          {confirmDel?.status === 'deleted'
-            ? `¿Restaurar el acceso de ${confirmDel?.name || confirmDel?.email}?`
-            : `¿Eliminar a ${confirmDel?.name || confirmDel?.email}? Esta acción se puede revertir.`
-          }
+          {confirmDel?.status === 'deleted' ? (
+            `¿Restaurar el acceso de ${confirmDel?.name || confirmDel?.email}?`
+          ) : confirmDelBiz ? (
+            <>
+              <p style={{ marginTop: 0 }}>
+                {confirmDel?.name || confirmDel?.email} todavía es dueño de {confirmDelBiz.length} negocio(s) activo(s).
+                Se van a <strong>pausar</strong> (no se pierde nada) al eliminarlo:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {confirmDelBiz.map(b => <li key={b.id}>{b.name}</li>)}
+              </ul>
+            </>
+          ) : (
+            `¿Eliminar a ${confirmDel?.name || confirmDel?.email}? Esta acción se puede revertir.`
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDel(null)}>Cancelar</Button>
+          <Button onClick={() => { setConfirmDel(null); setConfirmDelBiz(null); }}>Cancelar</Button>
           <Button
             color={confirmDel?.status === 'deleted' ? 'primary' : 'error'}
             variant="contained"
             onClick={async () => {
-              if (confirmDel?.status === 'deleted') {
-                await AdminAPI.restoreUser(confirmDel.id);
-              } else {
-                await AdminAPI.deleteUser(confirmDel.id);
+              try {
+                if (confirmDel?.status === 'deleted') {
+                  await AdminAPI.restoreUser(confirmDel.id);
+                } else {
+                  await AdminAPI.deleteUser(confirmDel.id, { confirm: !!confirmDelBiz });
+                }
+                setConfirmDel(null);
+                setConfirmDelBiz(null);
+                refetch({});
+              } catch (e) {
+                if (e?.data?.error === 'HAS_ACTIVE_BUSINESSES') {
+                  setConfirmDelBiz(e.data.businesses || []);
+                } else {
+                  showNotify('❌ Error al procesar la solicitud');
+                }
               }
-              setConfirmDel(null);
-              refetch({});
             }}
           >
-            {confirmDel?.status === 'deleted' ? 'Restaurar' : 'Eliminar'}
+            {confirmDel?.status === 'deleted' ? 'Restaurar' : (confirmDelBiz ? 'Sí, pausar y eliminar' : 'Eliminar')}
           </Button>
         </DialogActions>
       </Dialog>
