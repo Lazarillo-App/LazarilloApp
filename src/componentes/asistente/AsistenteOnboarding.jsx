@@ -1079,63 +1079,39 @@ function extractJSON(txt) {
   }
   return null;
 }
+// Búsqueda real vía Google Places (backend proxy en /api/places/search — la
+// key de Google vive solo ahí). Reemplaza la búsqueda por IA: más precisa,
+// más rápida, y sin gastar tokens de Anthropic en algo que Places resuelve mejor.
 async function buscarNegocio(query, loc, zona) {
   try {
     const token = localStorage.getItem("token");
-    const res = await fetch(`${API_BASE}/ai/assist`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({
-        websearch: true,
-        system: "Buscás negocios gastronómicos reales en la web (Google, Maps, redes, su sitio). Son datos PÚBLICOS: si el lugar existe, incluilo (no hace falta certeza absoluta, devolvé las mejores coincidencias). CORREGÍ errores de tipeo obvios en el nombre ANTES de buscar (ej: \"contianer\"->\"container\", \"rstaurante\"->\"restaurante\", \"pizzeria mariu\"->\"pizzería mariú\") y buscá por el nombre corregido; si dudás, probá variantes fonéticas. UBICACIÓN: si te paso coordenadas del usuario, PRIORIZÁ los locales más cercanos a esas coordenadas y ORDENÁ la lista de más cerca a más lejos; recién si no hay ninguno razonablemente cerca, ampliá a otras zonas o ciudades. Poné siempre la ciudad/barrio real de cada local. Devolvé entre 5 y 8 negocios CANDIDATOS ordenados por RELEVANCIA al nombre buscado (el más parecido primero). Incluí: (a) todas las sucursales del negocio si tiene varias, y (b) otros negocios gastronómicos con nombre igual o muy parecido. Si hay coordenadas/zona, a igualdad de relevancia priorizá lo más cercano. No inventes locales: si de verdad existe uno solo, devolvé ese (no rellenes con falsos). Mantené las descripciones cortas (máx ~12 palabras) y logos hasta 2, para que entren todas las opciones. Tu respuesta DEBE terminar con SOLO un objeto JSON {\"opciones\":[...]}, sin texto extra ni markdown. Cada opción: {nombre, ciudad, calle, numero, telefono, descripcion, web, instagram, facebook, tiktok, logos}. 'web' es el sitio del negocio; 'instagram'/'facebook'/'tiktok' los perfiles si existen. 'logos' = array (hasta 2) de URLs directas a imágenes del logo; [] si no hay. Hasta 8 opciones. String vacío en los datos que no encuentres. No inventes datos falsos, pero no devuelvas vacío si el lugar existe.",
-        user: `Buscá este negocio gastronómico e incluí TODAS sus sucursales/locales (distintas direcciones) que encuentres, con redes sociales. Corregí errores de tipeo obvios en el nombre.${loc ? ` El usuario está cerca de estas coordenadas: lat ${loc.lat}, lng ${loc.lng}; a igualdad de relevancia, priorizá lo más cercano.` : ""}${zona ? ` Zona/ciudad de referencia del usuario: ${zona}.` : ""} Devolvé 5 a 8 opciones ordenadas por relevancia en JSON: ${query}`,
-      }),
+    const q = zona ? `${query} ${zona}` : query;
+    const params = new URLSearchParams({ q });
+    if (loc?.lat != null && loc?.lng != null) { params.set("lat", String(loc.lat)); params.set("lng", String(loc.lng)); }
+    const res = await fetch(`${API_BASE}/places/search?${params.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) return [];
     const data = await res.json();
-    const obj = extractJSON(data?.text || "");
-    if (!obj) return [];
-    const arr = Array.isArray(obj) ? obj : (obj.opciones || (obj.nombre ? [obj] : []));
+    const arr = data?.opciones;
     return Array.isArray(arr) ? arr.filter((o) => o && (o.nombre || o.ciudad || o.calle)) : [];
   } catch { return []; }
 }
-// "Geocodifica" una zona/ciudad a coordenadas usando la IA (en producción: Google Places Autocomplete con tu key).
+// Geocodifica una zona/ciudad a coordenadas vía Google Geocoding (backend
+// proxy en /api/places/geocode), para sesgar la búsqueda de arriba cuando no
+// hay GPS disponible.
 async function geocodeZona(texto) {
   if (!texto || !texto.trim()) return null;
   try {
     const token = localStorage.getItem("token");
-    const res = await fetch(`${API_BASE}/ai/assist`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({
-        system: "Devolvés SOLO un JSON {\"lat\":number,\"lng\":number,\"zona\":\"nombre normalizado\"} con las coordenadas aproximadas del barrio/ciudad/lugar indicado. Sin texto extra ni markdown.",
-        user: `Coordenadas aproximadas de: ${texto}`,
-      }),
+    const res = await fetch(`${API_BASE}/places/geocode?text=${encodeURIComponent(texto.trim())}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const j = extractJSON(data?.text || "");
-    if (j && typeof j.lat === "number" && typeof j.lng === "number") return { lat: +j.lat.toFixed(4), lng: +j.lng.toFixed(4), zona: j.zona || texto };
+    if (typeof data?.lat === "number" && typeof data?.lng === "number") return { lat: data.lat, lng: data.lng, zona: data.zona || texto };
   } catch { /* nada */ }
   return null;
-}
-async function buscarLogos(q) {
-  try {
-    const token = localStorage.getItem("token");
-    const res = await fetch(`${API_BASE}/ai/assist`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({
-        websearch: true,
-        system: "Buscás el LOGO de un negocio gastronómico para mostrarlo. Entrá a su sitio web oficial y a sus redes, y devolvé URLs DIRECTAS a imágenes que se puedan mostrar desde otro dominio. Priorizá, en este orden: (1) la etiqueta og:image del sitio, (2) el apple-touch-icon o el favicon grande del sitio, (3) la imagen del logo (<img>) en el encabezado de la home, (4) cualquier imagen del logo en redes. Devolvé SOLO un array JSON de hasta 8 URLs directas (terminan en .png/.jpg/.jpeg/.webp/.svg o son og:image). Nada de páginas HTML ni texto. Si no encontrás, array vacío.",
-        user: `URLs de imágenes del logo (og:image, apple-touch-icon, logo del header del sitio) de: ${q}`,
-      }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const arr = extractJSON(data?.text || "");
-    return Array.isArray(arr) ? arr.filter((u) => typeof u === "string" && u.startsWith("http")) : [];
-  } catch { return []; }
 }
 function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [ws, setWs] = useState(0);
@@ -1211,14 +1187,20 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
     let dominio = ""; try { dominio = new URL(o.web).hostname.replace(/^www\./, ""); } catch { /* sin web */ }
     if (dominio) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
     setLogoFail([]); setLogoOpts([]); setOpciones([]); setLogoTried(true);
+    if (!cands.length) return;
     setBuscandoLogos(true);
     try {
-      const imgs = await buscarLogos([o.nombre, o.ciudad].filter(Boolean).join(" "));
-      const fuentes = [...new Set([...cands, ...imgs])].slice(0, 10);
-      // Traemos los bytes (vía proxy CORS) y los volvemos data: URL para que el sandbox los muestre.
+      // Ya no buscamos el logo con IA: el dominio confirmado por Places alcanza
+      // (Clearbit/favicon/duckduckgo). Precargamos directo el primero que
+      // resuelva — si no es el correcto, se puede elegir otro de la lista o
+      // subir uno propio.
+      const fuentes = [...new Set(cands)].slice(0, 10);
       const resueltos = await Promise.all(fuentes.map((u) => fetchAsDataUrl(u)));
       const dataUrls = [...new Set(resueltos.filter(Boolean))].slice(0, 6);
-      if (tok === searchRef.current) setLogoOpts(dataUrls);
+      if (tok === searchRef.current) {
+        setLogoOpts(dataUrls);
+        if (dataUrls.length) await elegirLogo(dataUrls[0]);
+      }
     } catch { /* nada */ }
     finally { if (tok === searchRef.current) setBuscandoLogos(false); }
   };
@@ -1255,7 +1237,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
     <div className="rise">
       <Steps items={["Datos Principales", "Estilos", "Redes Sociales"]} active={ws} accent={brand.primary} />
       <AnthonyDice pose={buscando ? "investiga" : ws === 0 ? "saluda" : ws === 1 ? "presenta" : "senala"} size={84} accent={brand.primary}>
-        {buscando ? "Dame un segundo que busco tu negocio en la web…"
+        {buscando ? "Dame un segundo que busco tu negocio en Google…"
           : ws === 0 ? "Buscá tu local arriba y completo los datos por vos. Después subí el logo y te armo los colores."
           : ws === 1 ? "Estos son los colores que saqué de tu logo. Si no te cierran, cambialos acá."
           : "Por último, sumá tus redes sociales para tenerlas a mano."}
