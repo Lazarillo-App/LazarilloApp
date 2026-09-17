@@ -14,6 +14,7 @@ import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
 import UploadFoto from './paginas/UploadFoto';
 import NegocioPausado from './paginas/NegocioPausado';
+import UpdateBanner from './componentes/UpdateBanner';
 import EnMantenimiento from './paginas/EnMantenimiento';
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import AppAlertModal from './componentes/AppAlertModal';
@@ -204,6 +205,7 @@ export default function App() {
       <AppAlertModal />
       <AppPromptModal />
       <AppConfirmModal />
+      <UpdateBanner />
       {isLogged && role !== 'app_admin' && <Navbar />}
 
       <Routes>
