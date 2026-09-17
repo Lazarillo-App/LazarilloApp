@@ -1605,10 +1605,6 @@ export default function VistaCartaMenu({
       });
       setVincularMode(false);
       setVincularSel([]);
-      // Avisa a la Tabla (useArticleSelection escucha este evento y refetchea
-      // linkGroups solo) — sin esto, el vínculo quedaba invisible en Tabla
-      // hasta recargar la página, aunque el dato ya estaba bien guardado.
-      window.dispatchEvent(new CustomEvent("article:links-changed"));
     } catch (e) {
       let msg = e?.message || "No se pudo vincular";
       try { const parsed = JSON.parse(msg); msg = parsed?.error || msg; } catch { }
