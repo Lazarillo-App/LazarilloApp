@@ -1167,7 +1167,7 @@ export default function VistaCartaMenu({
       // de "primera aparición" y los bloques visibles se reordenan solos.
       let ordenRubros = sec.ordenRubros;
       if (!(Array.isArray(ordenRubros) && ordenRubros.length)) {
-        const agrupId = agrupIdByNombre[sec.titulo];
+        const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
         const vm = (modo === "agrupacion" && agrupId != null)
           ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
           : null;
@@ -2313,8 +2313,8 @@ export default function VistaCartaMenu({
                                     </div>
                                   )}
                                   <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                    {modo === "agrupacion" && onChangeViewMode && agrupIdByNombre[sec.titulo] != null && (() => {
-                                      const agrupId = agrupIdByNombre[sec.titulo];
+                                    {modo === "agrupacion" && onChangeViewMode && agrupIdByNombre[sec.origen ?? sec.titulo] != null && (() => {
+                                      const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
                                       const vmActual = viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro";
                                       const opt = (mode, label) => (
                                         <button
@@ -2393,7 +2393,7 @@ export default function VistaCartaMenu({
                                   leyendo el mismo viewMode que la tabla para esta agrupación) */}
                                 {(() => {
                                   // Resolver viewMode de esta agrupación (solo en modo agrupación).
-                                  const agrupId = agrupIdByNombre[sec.titulo];
+                                  const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
                                   const vm = (modo === "agrupacion" && agrupId != null)
                                     ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
                                     : null;
