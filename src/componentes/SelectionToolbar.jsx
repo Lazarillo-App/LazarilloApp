@@ -232,62 +232,58 @@ export default function SelectionToolbar({
             transformOrigin={{ vertical: 'top', horizontal: 'left' }}
             sx={{ '& .MuiPaper-root': { minWidth: 280, mt: 0.5 } }}
           >
-            {selectionMode === 'list' && (
-              <>
-                {/* Crear lista nueva */}
-                {!showNameInput ? (
-                  <MenuItem onClick={() => {
-                    setShowNameInput(true);
-                    setTimeout(() => inputRef.current?.focus(), 50);
-                  }} sx={{ py: 1 }}>
-                    <ListItemIcon><SaveIcon sx={{ color: '#0369a1', fontSize: 18 }} /></ListItemIcon>
-                    <ListItemText primary="Crear lista nueva" primaryTypographyProps={{ sx: { fontWeight: 600, fontSize: '0.85rem' } }} />
-                  </MenuItem>
-                ) : (
-                  <Box sx={{ px: 2, py: 1.5, display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <input
-                      ref={inputRef}
-                      value={listNameInput}
-                      onChange={e => setListNameInput(e.target.value)}
-                      onKeyDown={e => {
-                        e.stopPropagation(); // ← evita que el Menu capture las letras
-                        if (e.key === 'Enter') handleCreateList();
-                        if (e.key === 'Escape') setShowNameInput(false);
-                      }}
-                      placeholder="Nombre de la lista..."
-                      style={{
-                        flex: 1, padding: '6px 10px', fontSize: '0.85rem',
-                        border: '1.5px solid #0369a1', borderRadius: 6,
-                        outline: 'none', fontFamily: 'inherit',
-                      }}
-                    />
-                    <IconButton size="small" onClick={handleCreateList} disabled={!listNameInput.trim()}>
-                      <CheckIcon sx={{ fontSize: 16, color: '#0369a1' }} />
-                    </IconButton>
-                  </Box>
-                )}
+            {selectionMode === 'list' && [
+              /* Crear lista nueva */
+              !showNameInput ? (
+                <MenuItem key="crear-lista" onClick={() => {
+                  setShowNameInput(true);
+                  setTimeout(() => inputRef.current?.focus(), 50);
+                }} sx={{ py: 1 }}>
+                  <ListItemIcon><SaveIcon sx={{ color: '#0369a1', fontSize: 18 }} /></ListItemIcon>
+                  <ListItemText primary="Crear lista nueva" primaryTypographyProps={{ sx: { fontWeight: 600, fontSize: '0.85rem' } }} />
+                </MenuItem>
+              ) : (
+                <Box key="crear-lista-input" sx={{ px: 2, py: 1.5, display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <input
+                    ref={inputRef}
+                    value={listNameInput}
+                    onChange={e => setListNameInput(e.target.value)}
+                    onKeyDown={e => {
+                      e.stopPropagation(); // ← evita que el Menu capture las letras
+                      if (e.key === 'Enter') handleCreateList();
+                      if (e.key === 'Escape') setShowNameInput(false);
+                    }}
+                    placeholder="Nombre de la lista..."
+                    style={{
+                      flex: 1, padding: '6px 10px', fontSize: '0.85rem',
+                      border: '1.5px solid #0369a1', borderRadius: 6,
+                      outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
+                  <IconButton size="small" onClick={handleCreateList} disabled={!listNameInput.trim()}>
+                    <CheckIcon sx={{ fontSize: 16, color: '#0369a1' }} />
+                  </IconButton>
+                </Box>
+              ),
 
-                {/* Agregar a lista existente */}
-                {existingLists.length > 0 && (
-                  <>
-                    <Divider sx={{ my: 0.5 }} />
-                    <MenuItem disableRipple sx={{ cursor: 'default', '&:hover': { background: 'transparent' } }}>
-                      <Typography variant="caption" sx={{ fontSize: '.7rem', opacity: .6, textTransform: 'uppercase', letterSpacing: '.05em', color: 'text.secondary', fontWeight: 800 }}>
-                        Agregar a lista existente
-                      </Typography>
-                    </MenuItem>
-                    {existingLists.map(list => (
-                      <MenuItem key={list.id} onClick={() => { onAddToList?.(list.id); setActionAnchor(null); }} sx={{ py: 0.75 }}>
-                        <ListItemIcon>
-                          <PlaylistAddIcon sx={{ fontSize: 16, color: list.color || '#0369a1' }} />
-                        </ListItemIcon>
-                        <ListItemText primary={list.name} primaryTypographyProps={{ sx: { fontSize: '0.85rem' } }} />
-                      </MenuItem>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
+              /* Agregar a lista existente */
+              ...(existingLists.length > 0 ? [
+                <Divider key="div-existentes" sx={{ my: 0.5 }} />,
+                <MenuItem key="caption-existentes" disableRipple sx={{ cursor: 'default', '&:hover': { background: 'transparent' } }}>
+                  <Typography variant="caption" sx={{ fontSize: '.7rem', opacity: .6, textTransform: 'uppercase', letterSpacing: '.05em', color: 'text.secondary', fontWeight: 800 }}>
+                    Agregar a lista existente
+                  </Typography>
+                </MenuItem>,
+                ...existingLists.map(list => (
+                  <MenuItem key={list.id} onClick={() => { onAddToList?.(list.id); setActionAnchor(null); }} sx={{ py: 0.75 }}>
+                    <ListItemIcon>
+                      <PlaylistAddIcon sx={{ fontSize: 16, color: list.color || '#0369a1' }} />
+                    </ListItemIcon>
+                    <ListItemText primary={list.name} primaryTypographyProps={{ sx: { fontSize: '0.85rem' } }} />
+                  </MenuItem>
+                )),
+              ] : []),
+            ]}
 
           </Menu>
         </>
