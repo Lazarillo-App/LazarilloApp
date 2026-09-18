@@ -69,8 +69,10 @@ export const UNIT_ALIASES = {
   // unidad → u
   u: 'u', un: 'u', uni: 'u', unid: 'u', unidad: 'u', unidades: 'u', und: 'u',
   doc: 'u', docena: 'u',
-  // otras de peso
-  oz: 'oz', onza: 'oz', onzas: 'oz', lb: 'lb', libra: 'lb', libras: 'lb',
+  // volumen → oz (onza FLUIDA, no de peso — ver getConversionFactor/isCompatibleUnits)
+  oz: 'oz', onza: 'oz', onzas: 'oz',
+  // peso → lb
+  lb: 'lb', libra: 'lb', libras: 'lb',
 };
 export function canonicalUnit(u) {
   const n = normUnit(u);
@@ -153,7 +155,8 @@ export function unidadesParaInsumo(insumoData) {
 }
 
 export function getConversionFactor(from, to) {
-  const PESO = { gr: 1, gramo: 1, gramos: 1, g: 1, k: 1000, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, oz: 28.35, onza: 28.35, lb: 453.59 };
+  // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en PESO.
+  const PESO = { gr: 1, gramo: 1, gramos: 1, g: 1, k: 1000, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, lb: 453.59 };
   const VOLUM = { ml: 1, cc: 1, lt: 1000, l: 1000, litro: 1000, litros: 1000, oz: 30, 'oz fl': 29.57 };
   const f = normUnit(from);
   const t = normUnit(to);
@@ -170,7 +173,8 @@ export function getConversionFactor(from, to) {
 }
 
 export function isCompatibleUnits(a, b) {
-  const PESO = new Set(['gr', 'gramo', 'gramos', 'g', 'k', 'kg', 'kilo', 'kilos', 'kilogramo', 'oz', 'onza', 'lb']);
+  // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en PESO.
+  const PESO = new Set(['gr', 'gramo', 'gramos', 'g', 'k', 'kg', 'kilo', 'kilos', 'kilogramo', 'lb']);
   const VOLUM = new Set(['ml', 'cc', 'lt', 'l', 'litro', 'litros', 'oz']);
   const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena']);
   const na = normUnit(a), nb = normUnit(b);
@@ -216,8 +220,9 @@ export function calcCostoUnitarioElaborado(elaborado, unidadItem, unidadElegida,
   if (uElegida === rendUnidad || uElegida === 'u' || uElegida === 'porcion') {
     return costoPorUnidad;
   }
-  const isPeso = (u) => ['gr', 'kg', 'oz', 'lb'].includes(canonicalUnit(u));
-  const isVolum = (u) => ['ml', 'lt'].includes(canonicalUnit(u));
+  // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en isPeso.
+  const isPeso = (u) => ['gr', 'kg', 'lb'].includes(canonicalUnit(u));
+  const isVolum = (u) => ['ml', 'lt', 'oz'].includes(canonicalUnit(u));
   if (pesoEq > 0 && (isPeso(uElegida) || isVolum(uElegida))) {
     const unidadFisica = canonicalUnit(elaborado?.unidadPeso || 'gr');
     const costoPorUnidadFisica = costoPorUnidad / pesoEq;      // costo por 1 unidadFísica
