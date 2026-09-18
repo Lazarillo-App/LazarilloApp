@@ -754,6 +754,21 @@ export default function VistaCartaMenu({
   const maqueta = maquetasPorModo[modo] || maquetaVacia(articulos, modo);
 
   const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
+  // Índice inverso artículo→agrupación (para "grupoDelArt" en cada fila del menú).
+  // Antes era un .find()+.some() recorriendo TODAS las agrupaciones por CADA
+  // artículo visible, en cada render — con muchos artículos, eso es el costo
+  // dominante de cualquier tipeo o arrastre en esta vista. Precalculado una sola
+  // vez por cambio de `agrupaciones`, queda en un lookup O(1) por fila.
+  const grupoPorArticuloId = useMemo(() => {
+    const m = new Map();
+    for (const grp of (agrupaciones || [])) {
+      for (const x of (grp?.articulos || [])) {
+        const id = Number(x?.id);
+        if (Number.isFinite(id) && !m.has(id)) m.set(id, grp);
+      }
+    }
+    return m;
+  }, [agrupaciones]);
   // artById con las descripciones escritas en la carta aplicadas, más una fila "virtual"
   // por cada vinculación de productos (grupo de precio con nombre propio): nombre =
   // nombre de la vinculación, precio = el del primer miembro (ya viene sincronizado
@@ -2580,10 +2595,8 @@ export default function VistaCartaMenu({
                                                   ArticuloAccionesMenu. Resuelve la agrupación real del artículo
                                                   (en la carta no hay "agrupación seleccionada" global). */}
                                               {activeBizId && !String(artId).startsWith("__grupo__") && (() => {
-                                                // Agrupación real de ESTE artículo (buscándolo en las agrupaciones)
-                                                const grupoDelArt = (agrupaciones || []).find((g) =>
-                                                  (g?.articulos || []).some((x) => Number(x?.id) === Number(a.id))
-                                                ) || null;
+                                                // Agrupación real de ESTE artículo (lookup precalculado, ver grupoPorArticuloId)
+                                                const grupoDelArt = grupoPorArticuloId.get(Number(a.id)) || null;
                                                 const estaEnTodo = !grupoDelArt;
                                                 const agrupSel = grupoDelArt
                                                   ? { id: Number(grupoDelArt.id), nombre: grupoDelArt.nombre ?? grupoDelArt.name ?? '' }
