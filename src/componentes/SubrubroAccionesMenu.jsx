@@ -430,13 +430,6 @@ function SubrubroAccionesMenu({
         }));
       } catch { }
 
-      // 🆕 Navegar al destino (resalta el primer artículo del bloque)
-      try {
-        window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
-          detail: { articleId: Number(ids[0]), groupId: Number(toId), bizId: Number(toBizId) },
-        }));
-      } catch { /* */ }
-
       onAfterMutation?.(ids);
       if (!isTodo) onRefetch?.();
     } catch (e) {
