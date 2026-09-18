@@ -570,14 +570,6 @@ function ArticuloAccionesMenu({
       });
 
       onDiscontinuadoChange?.(idNum, false, { stay: true });
-
-      if (fromGroupId && fromBizId) {
-        try {
-          window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
-            detail: { articleId: idNum, groupId: Number(fromGroupId), bizId: Number(fromBizId) },
-          }));
-        } catch { /* */ }
-      }
     } catch (e) {
       console.error('REACTIVAR_ERROR', e);
       notify?.('No se pudo reactivar el artículo', 'error');
@@ -673,12 +665,6 @@ function ArticuloAccionesMenu({
       });
 
       onAfterMutation?.([idNum]);
-
-      try {
-        window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
-          detail: { articleId: idNum, groupId: Number(toId), bizId: Number(toBizId) },
-        }));
-      } catch { /* */ }
     } catch (e) {
       console.error('MOVER_ERROR', e);
       notify?.('No se pudo mover el artículo', 'error');

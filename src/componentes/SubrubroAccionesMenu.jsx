@@ -594,22 +594,6 @@ function SubrubroAccionesMenu({
 
       const grupos = Object.values(origenesMap);
 
-      // 🆕 Navegar al grupo con más artículos reactivados (si hay varios orígenes)
-      if (grupos.length > 0) {
-        const primario = grupos.reduce((a, b) => (a.ids.length >= b.ids.length ? a : b));
-        if (primario.groupId && primario.bizId && primario.ids[0]) {
-          try {
-            window.dispatchEvent(new CustomEvent('articulos:navigate-to-reactivated', {
-              detail: {
-                articleId: Number(primario.ids[0]),
-                groupId: Number(primario.groupId),
-                bizId: Number(primario.bizId),
-              },
-            }));
-          } catch { /* */ }
-        }
-      }
-
       const resumen = grupos.length > 0 ? grupos.map(g => `"${g.groupName}"`).join(', ') : null;
       emitUiAction({
         businessId: effectiveBusinessId, kind: 'info', scope: 'articulo',

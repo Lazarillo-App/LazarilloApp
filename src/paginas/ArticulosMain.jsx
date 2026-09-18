@@ -188,7 +188,7 @@ export default function ArticulosMain(props) {
   const [ventasOverrides, setVentasOverrides] = useState(() => new Map());
   const [searchText, setSearchText] = useState('');
   const [promoModalOpen, setPromoModalOpen] = useState(false);
-  const { activeBusinessId, selectBusiness, setActiveBusiness } = useBusiness();
+  const { activeBusinessId, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
   const {
@@ -1807,45 +1807,6 @@ export default function ArticulosMain(props) {
     ]
   );
 
-  // 🆕 Listener: navegar al origen cuando se reactiva un artículo desde Discontinuados
-  const pendingFocusAfterBizSwitchRef = useRef(null);
-
-  useEffect(() => {
-    const handler = (ev) => {
-      const detail = ev?.detail || {};
-      const articleId = Number(detail.articleId);
-      const groupId = Number(detail.groupId);
-      const bizId = Number(detail.bizId);
-      if (!Number.isFinite(articleId) || articleId === 0) return;
-      if (!Number.isFinite(groupId) || !Number.isFinite(bizId)) return;
-
-      if (Number(bizId) === Number(activeBusinessId)) {
-        // Mismo negocio → focus directo
-        focusArticle(articleId, groupId);
-      } else {
-        // Otro negocio → cambiar negocio y dejar el focus pendiente
-        pendingFocusAfterBizSwitchRef.current = { articleId, groupId, bizId };
-        try { selectBusiness(bizId); } catch (e) { console.error(e); }
-      }
-    };
-    window.addEventListener('articulos:navigate-to-reactivated', handler);
-    return () => window.removeEventListener('articulos:navigate-to-reactivated', handler);
-  }, [activeBusinessId, focusArticle, selectBusiness]);
-
-  // 🆕 Aplicar focus pendiente cuando termine de cargar el negocio nuevo
-  useEffect(() => {
-    const pending = pendingFocusAfterBizSwitchRef.current;
-    if (!pending) return;
-    if (Number(activeBusinessId) !== Number(pending.bizId)) return;
-    if (!agrupacionesRich || !agrupacionesRich.length) return;
-    // 🆕 Esperar también a que el grupo target esté en agrupacionesRich,
-    // porque agrupacionesRich puede estar todavía con los datos del biz viejo
-    const targetExists = agrupacionesRich.some(g => Number(g?.id) === Number(pending.groupId));
-    if (!targetExists) return;
-    pendingFocusAfterBizSwitchRef.current = null;
-    focusArticle(pending.articleId, pending.groupId);
-  }, [activeBusinessId, agrupacionesRich, focusArticle]);
-
   useEffect(() => {
     const id = Number(pendingJumpRef.current);
     if (!Number.isFinite(id) || id <= 0) return;
@@ -2479,17 +2440,7 @@ export default function ArticulosMain(props) {
             </span>
           </Box>
           <h2 style={{ margin: 0 }}>
-            Gestión de Artículos
-            {activeBranch && (
-              <span style={{
-                marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
-                color: activeBranch.color || 'var(--color-primary)',
-                verticalAlign: 'middle',
-              }}>
-                — {activeBranch.name}
-              </span>
-            )}
-          </h2>
+            Gestión de Artículos</h2>
           {priceLists.length > 0 && (
             <ArticleListSelector
               lists={priceLists}
