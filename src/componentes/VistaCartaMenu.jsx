@@ -217,15 +217,18 @@ function reconciliar(guardada, articulosPlano, modo) {
   }
 
   // Título de sección natural de un artículo (según modo), igual que maquetaInicial
+  const tipoNatural = modo === "rubro" ? "rubro" : "agrupacion";
   const tituloNatural = (a) => {
     if (modo === "rubro") return isSin(a.rubro) ? "Otros" : clean(a.rubro);
     return (!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion);
   };
 
-  // Mapa título -> secId existente (para colgar nuevos en su sección natural)
+  // Mapa "tipo|título" -> secId existente (para colgar nuevos en su sección
+  // natural) — la clave incluye el tipo porque un mismo nombre puede existir
+  // como agrupación Y como rubro a la vez (secciones distintas).
   const secPorTitulo = new Map();
   for (const [sid, sec] of Object.entries(secciones)) {
-    const key = sec.origen ?? sec.titulo;
+    const key = `${sec.tipo ?? "agrupacion"}|${sec.origen ?? sec.titulo}`;
     if (!secPorTitulo.has(key)) secPorTitulo.set(key, sid);
   }
 
@@ -247,16 +250,16 @@ function reconciliar(guardada, articulosPlano, modo) {
       const ay = clean((activos.find((a) => String(a.id) === y) || {}).nombre);
       return ax.localeCompare(ay, "es");
     });
-    const sidExistente = secPorTitulo.get(titulo);
+    const sidExistente = secPorTitulo.get(`${tipoNatural}|${titulo}`);
     if (sidExistente) {
       // agregar al final de la sección existente
       secciones[sidExistente].itemIds.push(...ordenados);
     } else {
       // crear sección + hoja nueva para estos artículos nuevos
       const sid = "sec-new-" + (nSec++);
-      secciones[sid] = { id: sid, titulo, origen: titulo, tipo: modo === "rubro" ? "rubro" : "agrupacion", itemIds: ordenados };
+      secciones[sid] = { id: sid, titulo, origen: titulo, tipo: tipoNatural, itemIds: ordenados };
       hojas.push({ id: "hoja-" + sid, nombre: titulo, cols: 1, columnas: [[sid]] });
-      secPorTitulo.set(titulo, sid);
+      secPorTitulo.set(`${tipoNatural}|${titulo}`, sid);
       nHoja++;
     }
   }
