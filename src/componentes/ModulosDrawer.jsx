@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
-import logoDark from '@/assets/brand/logo-dark.png';
 
 /**
  * ModulosDrawer — el menú "escondido" para navegar entre los módulos
@@ -41,29 +40,22 @@ const GROUPS = [
   },
 ];
 
-// Colores del negocio activo (mismas CSS vars que usa Navbar.jsx), en vez de
-// una paleta fija — así el menú "se siente" del negocio en el que estás.
+// Una base oscura fija, apenas teñida con el color del negocio activo (~20%)
+// — se "siente" el negocio sin que el panel entero pase a ser de ese color,
+// que da un golpe visual muy fuerte con negocios de colores muy saturados,
+// muy claros o muy oscuros. Con la base siempre oscura, el texto claro
+// mantiene buen contraste sin importar el color del negocio.
 const C = {
-  noche: 'var(--color-primary, #12111F)',
-  line: 'color-mix(in srgb, var(--on-primary, #ffffff) 14%, transparent)',
-  sidebarText: 'var(--on-primary, #c8d2e0)',
-  sidebarDim: 'color-mix(in srgb, var(--on-primary, #ffffff) 55%, transparent)',
-  hover: 'color-mix(in srgb, var(--on-primary, #ffffff) 8%, transparent)',
+  noche: 'color-mix(in srgb, var(--color-primary, #7a1f3d) 20%, #12111F)',
+  line: 'rgba(255,255,255,.10)',
+  sidebarText: '#c8d2e0',
+  sidebarDim: '#7a89a5',
+  hover: 'rgba(255,255,255,.06)',
 };
 
 export default function ModulosDrawer({ open, onClose }) {
   const navigate = useNavigate();
   const [query, setQuery] = React.useState('');
-
-  // El logo claro/oscuro según si el color del negocio es fondo claro u
-  // oscuro (mismo criterio que Navbar.jsx, leído de la misma CSS var).
-  const [isLightBg, setIsLightBg] = React.useState(false);
-  React.useEffect(() => {
-    if (!open) return;
-    const onPrimary = getComputedStyle(document.documentElement).getPropertyValue('--on-primary').trim();
-    setIsLightBg(onPrimary === '#000000');
-  }, [open]);
-  const brandSrc = isLightBg ? logoDark : logoLight;
 
   const irA = (to) => {
     if (!to) return;
@@ -75,7 +67,7 @@ export default function ModulosDrawer({ open, onClose }) {
     <Drawer anchor="left" open={open} onClose={onClose}>
       <Box sx={{ width: 300, height: '100%', background: C.noche, display: 'flex', flexDirection: 'column', fontFamily: "'Archivo',sans-serif" }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 10px' }}>
-          <img src={brandSrc} alt="Lazarillo" style={{ height: 26, display: 'block' }} />
+          <img src={logoLight} alt="Lazarillo" style={{ height: 26, display: 'block' }} />
           <Tooltip title="Cerrar">
             <IconButton size="small" onClick={onClose} sx={{ color: C.sidebarText }}>
               <CloseIcon fontSize="small" />

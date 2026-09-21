@@ -492,12 +492,11 @@ export default function Navbar() {
             aria-label="Abrir módulos"
             sx={{
               position: 'fixed',
-              left: 0,
-              top: '50%',
-              transform: 'translateY(-50%)',
+              left: 3,
+              top: 106,
               zIndex: (t) => t.zIndex.appBar - 1,
-              width: 18,
-              height: 60,
+              width: 16,
+              height: 48,
               padding: 0,
               border: 'none',
               borderRadius: '0 10px 10px 0',
@@ -509,7 +508,7 @@ export default function Navbar() {
               cursor: 'pointer',
               boxShadow: '2px 0 6px rgba(0,0,0,.18)',
               transition: 'width .12s',
-              '&:hover': { width: 24 },
+              '&:hover': { width: 22 },
             }}
           >
             <ChevronRightIcon fontSize="small" />
