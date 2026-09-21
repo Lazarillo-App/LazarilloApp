@@ -482,8 +482,11 @@ export default function Navbar() {
       </Snackbar>
 
       {/* Pestaña fija para abrir el menú de módulos — antes era un ícono en la
-          barra (justo antes del logo); ahora es una solapita adosada al borde
-          izquierdo de la pantalla, con los colores del negocio activo. */}
+          barra (justo antes del logo); ahora es una solapita chica, pegada al
+          borde izquierdo pero contenida DENTRO de la altura de la barra (no
+          se mete en el contenido de la página, que cambia de layout según la
+          pantalla). Un poco más clara/oscura que la barra para distinguirse
+          sin agregar otro color nuevo. */}
       {!modulosOpen && (
         <Tooltip title="Módulos" placement="right">
           <Box
@@ -492,21 +495,21 @@ export default function Navbar() {
             aria-label="Abrir módulos"
             sx={{
               position: 'fixed',
-              left: 3,
-              top: 106,
-              zIndex: (t) => t.zIndex.appBar - 1,
+              left: 0,
+              top: 12,
+              zIndex: (t) => t.zIndex.appBar + 1,
               width: 16,
-              height: 48,
+              height: 40,
               padding: 0,
-              border: 'none',
-              borderRadius: '0 10px 10px 0',
-              background: 'var(--color-primary, #111111)',
+              border: '1px solid color-mix(in srgb, var(--on-primary, #fff) 25%, transparent)',
+              borderLeft: 'none',
+              borderRadius: '0 8px 8px 0',
+              background: 'color-mix(in srgb, var(--on-primary, #fff) 16%, var(--color-primary, #111111))',
               color: 'var(--on-primary, #ffffff)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              boxShadow: '2px 0 6px rgba(0,0,0,.18)',
               transition: 'width .12s',
               '&:hover': { width: 22 },
             }}
