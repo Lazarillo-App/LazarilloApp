@@ -304,7 +304,7 @@ function cartaCss(diseno, negocio, scale) {
   const s = scale || 1; const r = (n) => Math.round(n * s * 100) / 100;
   return `*{box-sizing:border-box}
 .cart{font-family:${Dx.bFont};color:${inkH};background:${bgH}}
-.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(Dx.logoGap ?? 14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:90%;object-fit:contain}
+.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(Dx.logoGap ?? 14)}px}.logo img{display:inline-block;height:${r(Dx.logoSize || 72)}px;width:auto;max-width:90%;object-fit:contain}
 .lab{text-align:center;font-size:${r(11)}px;letter-spacing:2px;color:${accH};font-weight:700}
 .title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 ${r(Dx.logoGap ?? 14)}px}
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
@@ -2064,11 +2064,17 @@ export default function VistaCartaMenu({
                 </div>
               </div>
 
-              {/* Extras: mayúsculas, línea, marco */}
+              {/* Extras: mayúsculas/tipo título, línea, marco */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Detalles</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                  {pill(diseno.upper, () => setDiseno((d) => ({ ...d, upper: !d.upper })), "MAYÚSCULAS", "Títulos de sección en mayúsculas")}
+                  <div style={{ display: "flex", gap: 6, width: "100%" }}>
+                    {[["mayuscula", true, "MAYÚSCULA"], ["titulo", false, "Tipo Título"]].map(([k, val, l]) => (
+                      <button key={k} onClick={() => setDiseno((d) => ({ ...d, upper: val }))}
+                        title="Cómo se muestran los títulos de sección"
+                        style={{ flex: 1, padding: "4px 8px", borderRadius: 7, border: `1px solid ${diseno.upper === val ? accent : "#d8d3ca"}`, background: diseno.upper === val ? accent : "#fff", color: diseno.upper === val ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                    ))}
+                  </div>
                   <select value={diseno.line} onChange={(e) => setDiseno((d) => ({ ...d, line: e.target.value }))}
                     style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
                     {MENU_LINES.map((l) => <option key={l} value={l}>Línea: {l}</option>)}
