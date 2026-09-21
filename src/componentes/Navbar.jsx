@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
-import AppsIcon from '@mui/icons-material/Apps';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
@@ -217,18 +217,6 @@ export default function Navbar() {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
-            {/* Módulos: abre el menú "escondido" para navegar entre módulos operativos */}
-            <Tooltip title="Módulos">
-              <IconButton
-                color="inherit"
-                sx={{ color: 'inherit' }}
-                aria-label="Abrir módulos"
-                onClick={() => setModulosOpen(true)}
-              >
-                <AppsIcon />
-              </IconButton>
-            </Tooltip>
-
             {/* Logo */}
             <Box
               component={NavLink}
@@ -492,6 +480,42 @@ export default function Navbar() {
           {snack.msg}
         </Alert>
       </Snackbar>
+
+      {/* Pestaña fija para abrir el menú de módulos — antes era un ícono en la
+          barra (justo antes del logo); ahora es una solapita adosada al borde
+          izquierdo de la pantalla, con los colores del negocio activo. */}
+      {!modulosOpen && (
+        <Tooltip title="Módulos" placement="right">
+          <Box
+            component="button"
+            onClick={() => setModulosOpen(true)}
+            aria-label="Abrir módulos"
+            sx={{
+              position: 'fixed',
+              left: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              zIndex: (t) => t.zIndex.appBar - 1,
+              width: 18,
+              height: 60,
+              padding: 0,
+              border: 'none',
+              borderRadius: '0 10px 10px 0',
+              background: 'var(--color-primary, #111111)',
+              color: 'var(--on-primary, #ffffff)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '2px 0 6px rgba(0,0,0,.18)',
+              transition: 'width .12s',
+              '&:hover': { width: 24 },
+            }}
+          >
+            <ChevronRightIcon fontSize="small" />
+          </Box>
+        </Tooltip>
+      )}
 
       <ModulosDrawer open={modulosOpen} onClose={() => setModulosOpen(false)} />
     </>

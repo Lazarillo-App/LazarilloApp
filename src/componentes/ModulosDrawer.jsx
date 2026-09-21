@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
+import logoDark from '@/assets/brand/logo-dark.png';
 
 /**
  * ModulosDrawer — el menú "escondido" para navegar entre los módulos
@@ -40,15 +41,29 @@ const GROUPS = [
   },
 ];
 
+// Colores del negocio activo (mismas CSS vars que usa Navbar.jsx), en vez de
+// una paleta fija — así el menú "se siente" del negocio en el que estás.
 const C = {
-  noche: '#12111F', tinta: '#15213E', celeste: '#5BC2EA',
-  line: 'rgba(255,255,255,.10)',
-  sidebarText: '#c8d2e0', sidebarDim: '#7a89a5',
+  noche: 'var(--color-primary, #12111F)',
+  line: 'color-mix(in srgb, var(--on-primary, #ffffff) 14%, transparent)',
+  sidebarText: 'var(--on-primary, #c8d2e0)',
+  sidebarDim: 'color-mix(in srgb, var(--on-primary, #ffffff) 55%, transparent)',
+  hover: 'color-mix(in srgb, var(--on-primary, #ffffff) 8%, transparent)',
 };
 
 export default function ModulosDrawer({ open, onClose }) {
   const navigate = useNavigate();
   const [query, setQuery] = React.useState('');
+
+  // El logo claro/oscuro según si el color del negocio es fondo claro u
+  // oscuro (mismo criterio que Navbar.jsx, leído de la misma CSS var).
+  const [isLightBg, setIsLightBg] = React.useState(false);
+  React.useEffect(() => {
+    if (!open) return;
+    const onPrimary = getComputedStyle(document.documentElement).getPropertyValue('--on-primary').trim();
+    setIsLightBg(onPrimary === '#000000');
+  }, [open]);
+  const brandSrc = isLightBg ? logoDark : logoLight;
 
   const irA = (to) => {
     if (!to) return;
@@ -60,7 +75,7 @@ export default function ModulosDrawer({ open, onClose }) {
     <Drawer anchor="left" open={open} onClose={onClose}>
       <Box sx={{ width: 300, height: '100%', background: C.noche, display: 'flex', flexDirection: 'column', fontFamily: "'Archivo',sans-serif" }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 14px 10px' }}>
-          <img src={logoLight} alt="Lazarillo" style={{ height: 26, display: 'block' }} />
+          <img src={brandSrc} alt="Lazarillo" style={{ height: 26, display: 'block' }} />
           <Tooltip title="Cerrar">
             <IconButton size="small" onClick={onClose} sx={{ color: C.sidebarText }}>
               <CloseIcon fontSize="small" />
@@ -71,7 +86,7 @@ export default function ModulosDrawer({ open, onClose }) {
         {/* Buscador de funciones — por ahora solo visual, sin filtrar nada.
             Más adelante: tipear "pagos de mercado pago" y redirigir directo
             a Conciliación con eso a la vista. */}
-        <Box sx={{ margin: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)', border: `1px solid ${C.line}`, borderRadius: 10, padding: '9px 12px' }}>
+        <Box sx={{ margin: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, background: C.hover, border: `1px solid ${C.line}`, borderRadius: 10, padding: '9px 12px' }}>
           <span style={{ fontSize: 15, opacity: 0.7 }}>🔍</span>
           <input
             value={query}
@@ -115,7 +130,7 @@ export default function ModulosDrawer({ open, onClose }) {
                       fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 14.5,
                       color: disabled ? C.sidebarDim : C.sidebarText,
                       opacity: disabled ? 0.5 : 1,
-                      '&:hover': disabled ? {} : { background: 'rgba(255,255,255,.06)' },
+                      '&:hover': disabled ? {} : { background: C.hover },
                     }}
                   >
                     <span style={{ fontSize: 18, width: 22, textAlign: 'center' }}>{m.emoji}</span>
