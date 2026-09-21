@@ -304,7 +304,7 @@ function cartaCss(diseno, negocio, scale) {
   const s = scale || 1; const r = (n) => Math.round(n * s * 100) / 100;
   return `*{box-sizing:border-box}
 .cart{font-family:${Dx.bFont};color:${inkH};background:${bgH}}
-.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(Dx.logoGap ?? 14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:65%;object-fit:contain}
+.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(Dx.logoGap ?? 14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:90%;object-fit:contain}
 .lab{text-align:center;font-size:${r(11)}px;letter-spacing:2px;color:${accH};font-weight:700}
 .title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 ${r(Dx.logoGap ?? 14)}px}
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
