@@ -1909,7 +1909,7 @@ export default function VistaCartaMenu({
           {MENU_FONTS.map((f) => <option key={f.label} value={f.d}>{f.label}</option>)}
         </select>
 
-        <button onClick={() => setEstilosOpen(true)} title="Colores, tamaños e interlineado"
+        <button onClick={() => { setEstilosOpen(true); setPrintOpen(false); }} title="Colores, tamaños e interlineado"
           style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #d8d3ca", background: "#fff", color: "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
           🎨 Estilos
         </button>
@@ -1930,7 +1930,7 @@ export default function VistaCartaMenu({
           </>
         )}
 
-        <button onClick={() => setPrintOpen(true)} disabled={dlBusy}
+        <button onClick={() => { setPrintOpen(true); setEstilosOpen(false); }} disabled={dlBusy}
           style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: dlBusy ? "#bbb" : "#2a2320", color: "#fff", fontSize: 13, fontWeight: 700, cursor: dlBusy ? "default" : "pointer" }}>
           {dlBusy ? "Generando…" : "⬇ Exportar"}
         </button>
@@ -2122,6 +2122,103 @@ export default function VistaCartaMenu({
                 <button onClick={() => setEstilosOpen(false)}
                   style={{ border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: accent, color: "#fff" }}>
                   Listo
+                </button>
+              </div>
+            </div>
+          ) : printOpen ? (
+            /* Exportar ACÁ, en el lugar del sidebar, en vez de un modal flotante —
+               así, si hay que ajustar algo antes de exportar (sacar una sección,
+               tildar "ajustar a 1 hoja"), se puede hacer directo sobre la carta sin
+               tener que cerrar nada. */
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ margin: 0, fontSize: "0.92rem", fontWeight: 800 }}>Exportar carta</h3>
+                <button onClick={() => setPrintOpen(false)} style={{ border: "none", background: "none", fontSize: 18, color: "#999", cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Tamaño de hoja</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {Object.keys(PAPER_SIZES).map((sz) => (
+                    <button key={sz} onClick={() => setPrintCfg((c) => ({ ...c, size: sz }))}
+                      style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${printCfg.size === sz ? accent : "#d8d3ca"}`, background: printCfg.size === sz ? accent : "#fff", color: printCfg.size === sz ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{sz}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Orientación</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[["v", "Vertical"], ["h", "Horizontal"]].map(([k, l]) => (
+                    <button key={k} onClick={() => setPrintCfg((c) => ({ ...c, orient: k }))}
+                      style={{ flex: 1, padding: "5px 14px", borderRadius: 8, border: `1px solid ${printCfg.orient === k ? accent : "#d8d3ca"}`, background: printCfg.orient === k ? accent : "#fff", color: printCfg.orient === k ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Formato</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[["pdf", "PDF"], ["png", "PNG"]].map(([k, l]) => (
+                    <button key={k} onClick={() => setPrintCfg((c) => ({ ...c, fmt: k }))}
+                      style={{ flex: 1, padding: "5px 14px", borderRadius: 8, border: `1px solid ${printCfg.fmt === k ? accent : "#d8d3ca"}`, background: printCfg.fmt === k ? accent : "#fff", color: printCfg.fmt === k ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              {printCfg.fmt === "pdf" && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "#2a2320", cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!printCfg.fitOnePage}
+                    onChange={(e) => setPrintCfg((c) => ({ ...c, fitOnePage: e.target.checked }))} />
+                  Ajustar a 1 hoja (achica todo para que no se pase de página)
+                </label>
+              )}
+              {hojas.length > 1 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Alcance</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setExportarAlcance("hoja")}
+                      style={{ flex: 1, padding: "5px 10px", borderRadius: 8, border: `1px solid ${exportarAlcance === "hoja" ? accent : "#d8d3ca"}`, background: exportarAlcance === "hoja" ? accent : "#fff", color: exportarAlcance === "hoja" ? "#fff" : "#2a2320", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Esta hoja
+                    </button>
+                    <button onClick={() => setExportarAlcance("todas")}
+                      style={{ flex: 1, padding: "5px 10px", borderRadius: 8, border: `1px solid ${exportarAlcance === "todas" ? accent : "#d8d3ca"}`, background: exportarAlcance === "todas" ? accent : "#fff", color: exportarAlcance === "todas" ? "#fff" : "#2a2320", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Todas ({hojas.length})
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "#888", lineHeight: 1.4 }}>
+                {exportarAlcance === "todas" && hojas.length > 1
+                  ? (printCfg.fmt === "png"
+                    ? <>Se exportan las {hojas.length} hojas, una por archivo, en un ZIP.</>
+                    : <>Se exportan las {hojas.length} hojas juntas, una atrás de otra, en un solo PDF.</>)
+                  : <>Se exporta la hoja <b>{hoja?.nombre}</b> con sus {hoja?.cols} columna{hoja?.cols !== 1 ? "s" : ""}, tal como la ves.</>}
+              </div>
+              {exportProgress && (
+                <div style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>
+                  Generando {exportProgress.i + 1} de {exportProgress.total}…
+                </div>
+              )}
+              {preview && (
+                <div>
+                  <div style={{
+                    fontSize: 12, fontWeight: 700, marginBottom: 6,
+                    color: preview.pages > 1 ? "#c0392b" : "#1a9c6e",
+                  }}>
+                    {preview.pages > 1
+                      ? `⚠️ Esta hoja ocupa ${preview.pages} páginas — se ve la línea de corte en rojo. Tildá "Ajustar a 1 hoja" si querés que entre en una sola.`
+                      : "✓ Entra en 1 sola hoja."}
+                  </div>
+                  <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e5e0d8", borderRadius: 8 }}>
+                    <img src={preview.url} alt="Vista previa de la hoja" style={{ width: "100%", display: "block" }} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #eee", paddingTop: 12 }}>
+                <button onClick={generarPreview} disabled={previewBusy}
+                  style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, cursor: previewBusy ? "default" : "pointer", background: "#fff", color: accent }}>
+                  {previewBusy ? "Generando…" : "Vista previa"}
+                </button>
+                <button onClick={descargar} disabled={dlBusy}
+                  style={{ border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 800, cursor: dlBusy ? "default" : "pointer", background: dlBusy ? "#bbb" : accent, color: "#fff" }}>
+                  {dlBusy ? "Generando…" : "Descargar"}
                 </button>
               </div>
             </div>
@@ -2953,103 +3050,6 @@ export default function VistaCartaMenu({
         );
       })()}
 
-      {/* Modal exportar */}
-      {printOpen && (
-        <div onClick={() => setPrintOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 1000 }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "#fff", borderRadius: 14, padding: 24, width: "min(420px, 92vw)", display: "flex", flexDirection: "column", gap: 16 }}>
-            <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800 }}>Exportar carta</h3>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Tamaño de hoja</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {Object.keys(PAPER_SIZES).map((sz) => (
-                  <button key={sz} onClick={() => setPrintCfg((c) => ({ ...c, size: sz }))}
-                    style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${printCfg.size === sz ? accent : "#d8d3ca"}`, background: printCfg.size === sz ? accent : "#fff", color: printCfg.size === sz ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{sz}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Orientación</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[["v", "Vertical"], ["h", "Horizontal"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setPrintCfg((c) => ({ ...c, orient: k }))}
-                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${printCfg.orient === k ? accent : "#d8d3ca"}`, background: printCfg.orient === k ? accent : "#fff", color: printCfg.orient === k ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{l}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Formato</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[["pdf", "PDF"], ["png", "PNG"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setPrintCfg((c) => ({ ...c, fmt: k }))}
-                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${printCfg.fmt === k ? accent : "#d8d3ca"}`, background: printCfg.fmt === k ? accent : "#fff", color: printCfg.fmt === k ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>{l}</button>
-                ))}
-              </div>
-            </div>
-            {printCfg.fmt === "pdf" && (
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "#2a2320", cursor: "pointer" }}>
-                <input type="checkbox" checked={!!printCfg.fitOnePage}
-                  onChange={(e) => setPrintCfg((c) => ({ ...c, fitOnePage: e.target.checked }))} />
-                Ajustar a 1 hoja (achica todo para que no se pase de página)
-              </label>
-            )}
-            {hojas.length > 1 && (
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Alcance</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => setExportarAlcance("hoja")}
-                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${exportarAlcance === "hoja" ? accent : "#d8d3ca"}`, background: exportarAlcance === "hoja" ? accent : "#fff", color: exportarAlcance === "hoja" ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                    Esta hoja
-                  </button>
-                  <button onClick={() => setExportarAlcance("todas")}
-                    style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${exportarAlcance === "todas" ? accent : "#d8d3ca"}`, background: exportarAlcance === "todas" ? accent : "#fff", color: exportarAlcance === "todas" ? "#fff" : "#2a2320", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                    Todas las hojas ({hojas.length})
-                  </button>
-                </div>
-              </div>
-            )}
-            <div style={{ fontSize: 11.5, color: "#888" }}>
-              {exportarAlcance === "todas" && hojas.length > 1
-                ? (printCfg.fmt === "png"
-                  ? <>Se exportan las {hojas.length} hojas, una por archivo, en un ZIP.</>
-                  : <>Se exportan las {hojas.length} hojas juntas, una atrás de otra, en un solo PDF.</>)
-                : <>Se exporta la hoja <b>{hoja?.nombre}</b> con sus {hoja?.cols} columna{hoja?.cols !== 1 ? "s" : ""}, tal como la ves.</>}
-            </div>
-            {exportProgress && (
-              <div style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>
-                Generando {exportProgress.i + 1} de {exportProgress.total}…
-              </div>
-            )}
-            {preview && (
-              <div>
-                <div style={{
-                  fontSize: 12, fontWeight: 700, marginBottom: 6,
-                  color: preview.pages > 1 ? "#c0392b" : "#1a9c6e",
-                }}>
-                  {preview.pages > 1
-                    ? `⚠️ Esta hoja ocupa ${preview.pages} páginas — se ve la línea de corte en rojo. Tildá "Ajustar a 1 hoja" si querés que entre en una sola.`
-                    : "✓ Entra en 1 sola hoja."}
-                </div>
-                <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e5e0d8", borderRadius: 8 }}>
-                  <img src={preview.url} alt="Vista previa de la hoja" style={{ width: "100%", display: "block" }} />
-                </div>
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button onClick={() => setPrintOpen(false)} style={{ border: "none", background: "none", color: "#999", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 12px" }}>Cancelar</button>
-              <button onClick={generarPreview} disabled={previewBusy}
-                style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: previewBusy ? "default" : "pointer", background: "#fff", color: accent }}>
-                {previewBusy ? "Generando…" : "Vista previa"}
-              </button>
-              <button onClick={descargar} disabled={dlBusy}
-                style={{ border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 800, cursor: dlBusy ? "default" : "pointer", background: dlBusy ? "#bbb" : accent, color: "#fff" }}>
-                {dlBusy ? "Generando…" : "Descargar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
