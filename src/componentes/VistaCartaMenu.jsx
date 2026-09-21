@@ -496,13 +496,68 @@ function combinarCanvasPng(cv, footerCv, diseno, negocio) {
   return combined;
 }
 
+// Arma el canvas de vista previa (cuerpo + pie + marco) y, si NO está tildado
+// "ajustar a 1 hoja", dibuja líneas punteadas donde caerían los cortes de
+// página — para ver, antes de exportar, si el contenido se pasa de una hoja.
+function armarPreviewCanvas(cv, footerCv, cfg, diseno, negocio, contentWmm, contentHmm) {
+  const combined = combinarCanvasPng(cv, footerCv, diseno, negocio);
+  if (cfg.fitOnePage) return { canvas: combined, totalPages: 1 };
+
+  const pxPerMm = cv.width / contentWmm;
+  const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
+  const pageContentHmm = Math.max(20, contentHmm - footerHmm);
+  const pageHpx = Math.floor(pageContentHmm * pxPerMm);
+  const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
+
+  if (totalPages > 1) {
+    const ctx = combined.getContext("2d");
+    ctx.save();
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = Math.max(2, Math.round(cv.width * 0.002));
+    ctx.setLineDash([Math.round(cv.width * 0.012), Math.round(cv.width * 0.008)]);
+    for (let p = 1; p < totalPages; p++) {
+      const y = p * pageHpx;
+      if (y >= combined.height) break;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(combined.width, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  return { canvas: combined, totalPages };
+}
+
 // Agrega las paginas de UNA hoja ya capturada a un jsPDF existente (mutacion in-place).
 // `esPrimerHojaGlobal`: true solo para la primerisima pagina del documento entero -
 // esa pagina ya existe al crear el jsPDF, asi que ahi NO hay que pedir pdf.addPage().
-function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, esPrimerHojaGlobal) {
+// `fitOnePage`: en vez de recortar el contenido en tantas paginas fisicas como haga
+// falta, lo achica proporcionalmente (cuerpo + pie) para que entre siempre en UNA
+// sola pagina — evita el caso de "un poquito mas de una hoja" (una segunda pagina
+// casi vacia con el sobrante de la primera).
+function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, esPrimerHojaGlobal, fitOnePage = false) {
   const bgH = diseno.bg || "#ffffff";
   const pxPerMm = cv.width / contentWmm;
   const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
+
+  if (!esPrimerHojaGlobal) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
+
+  if (fitOnePage) {
+    const bodyHmmRaw = cv.height / pxPerMm;
+    const scale = Math.min(1, contentHmm / (bodyHmmRaw + footerHmm));
+    const imgWmm = contentWmm * scale;
+    const imgHmm = bodyHmmRaw * scale;
+    if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
+    pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", margLat + (contentWmm - imgWmm) / 2, margVert, imgWmm, imgHmm);
+    if (footerCv) {
+      const footWmm = contentWmm * scale;
+      const footHmm = footerHmm * scale;
+      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat + (contentWmm - footWmm) / 2, margVert + contentHmm - footHmm, footWmm, footHmm);
+    }
+    dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
+    return;
+  }
+
   const pageContentHmm = Math.max(20, contentHmm - footerHmm);
   const pageHpx = Math.floor(pageContentHmm * pxPerMm);
   const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
@@ -516,7 +571,7 @@ function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, conten
     ctx.fillStyle = bgH; ctx.fillRect(0, 0, tmp.width, tmp.height);
     ctx.drawImage(cv, 0, sliceTop, cv.width, sliceH, 0, 0, cv.width, sliceH);
     const imgHmm = sliceH / pxPerMm;
-    if (!(esPrimerHojaGlobal && p === 0)) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
+    if (p > 0) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
     if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
     pdf.addImage(tmp.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, contentWmm, imgHmm);
     // Pie de pagina igual en TODAS las hojas/paginas.
@@ -564,7 +619,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
   const JSPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
   if (!JSPDF) throw new Error("jsPDF no disponible");
   const pdf = new JSPDF({ orientation: wmm > hmm ? "landscape" : "portrait", unit: "mm", format: [wmm, hmm] });
-  agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, true);
+  agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, true, !!cfg.fitOnePage);
   dl(pdf.output("blob"), fname + ".pdf");
 }
 
@@ -613,7 +668,7 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
     onProgress?.(i, lista.length);
     const hoja = lista[i];
     const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
-    agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0);
+    agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0, !!cfg.fitOnePage);
   }
   onProgress?.(lista.length, lista.length);
   dl(pdf.output("blob"), `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""}).pdf`);
@@ -651,10 +706,12 @@ export default function VistaCartaMenu({
     g?.estilos ? { ...DISENO_BASE, ...g.estilos } : { ...DISENO_BASE, ink: negocio?.ink || DISENO_BASE.ink, title: negocio?.ink || DISENO_BASE.title }
   ));
   const [showLogo, setShowLogo] = useState(g?.showLogo != null ? g.showLogo : true);
-  const [printCfg, setPrintCfg] = useState({ size: "A4", orient: "v", fmt: "pdf" });
+  const [printCfg, setPrintCfg] = useState({ size: "A4", orient: "v", fmt: "pdf", fitOnePage: false });
   const [printOpen, setPrintOpen] = useState(false);
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
   const [exportProgress, setExportProgress] = useState(null); // { i, total } mientras exporta "todas"
+  const [preview, setPreview] = useState(null); // { url, pages } | null
+  const [previewBusy, setPreviewBusy] = useState(false);
   const [estilosOpen, setEstilosOpen] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
   const [hojaActiva, setHojaActiva] = useState(0);
@@ -1419,6 +1476,31 @@ export default function VistaCartaMenu({
       showAlert("No pude generar la descarga. Detalle: " + (e?.message || e), "error");
     } finally { setDlBusy(false); setExportProgress(null); setPrintOpen(false); }
   }, [hoja, hojas, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo, exportarAlcance]);
+
+  // Vista previa de la hoja ACTIVA con la config actual (tamaño/orientación/ajustar a
+  // 1 hoja) — para ver antes de descargar si el contenido entra o se pasa de página.
+  // No descarga nada: solo renderiza el mismo canvas que usaría la exportación real.
+  const generarPreview = useCallback(async () => {
+    if (!hoja) return;
+    setPreviewBusy(true);
+    try {
+      await ensureLibs();
+      if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
+      const bgH = diseno.bg || "#ffffff";
+      const { contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(printCfg);
+      const { cv, footerCv } = await capturarHojaCanvas(hoja, maqueta.secciones, artById, diseno, neg, showLogo, iconosPorTitulo, renderWpx, framePad, gapPx, bgH);
+      const { canvas, totalPages } = armarPreviewCanvas(cv, footerCv, printCfg, diseno, neg, contentWmm, contentHmm);
+      setPreview({ url: canvas.toDataURL("image/png"), pages: totalPages });
+    } catch (e) {
+      showAlert("No pude generar la vista previa. " + (e?.message || e), "error");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo]);
+
+  // Si cambian los ajustes de exportación (tamaño, orientación, ajustar a 1 hoja),
+  // la vista previa ya generada queda desactualizada — se limpia para no confundir.
+  React.useEffect(() => { setPreview(null); }, [printCfg, hoja?.id]);
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
@@ -2787,6 +2869,13 @@ export default function VistaCartaMenu({
                 ))}
               </div>
             </div>
+            {printCfg.fmt === "pdf" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "#2a2320", cursor: "pointer" }}>
+                <input type="checkbox" checked={!!printCfg.fitOnePage}
+                  onChange={(e) => setPrintCfg((c) => ({ ...c, fitOnePage: e.target.checked }))} />
+                Ajustar a 1 hoja (achica todo para que no se pase de página)
+              </label>
+            )}
             {hojas.length > 1 && (
               <div>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#666", marginBottom: 6 }}>Alcance</div>
@@ -2814,8 +2903,27 @@ export default function VistaCartaMenu({
                 Generando {exportProgress.i + 1} de {exportProgress.total}…
               </div>
             )}
+            {preview && (
+              <div>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, marginBottom: 6,
+                  color: preview.pages > 1 ? "#c0392b" : "#1a9c6e",
+                }}>
+                  {preview.pages > 1
+                    ? `⚠️ Esta hoja ocupa ${preview.pages} páginas — se ve la línea de corte en rojo. Tildá "Ajustar a 1 hoja" si querés que entre en una sola.`
+                    : "✓ Entra en 1 sola hoja."}
+                </div>
+                <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e5e0d8", borderRadius: 8 }}>
+                  <img src={preview.url} alt="Vista previa de la hoja" style={{ width: "100%", display: "block" }} />
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button onClick={() => setPrintOpen(false)} style={{ border: "none", background: "none", color: "#999", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 12px" }}>Cancelar</button>
+              <button onClick={generarPreview} disabled={previewBusy}
+                style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: previewBusy ? "default" : "pointer", background: "#fff", color: accent }}>
+                {previewBusy ? "Generando…" : "Vista previa"}
+              </button>
               <button onClick={descargar} disabled={dlBusy}
                 style={{ border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 800, cursor: dlBusy ? "default" : "pointer", background: dlBusy ? "#bbb" : accent, color: "#fff" }}>
                 {dlBusy ? "Generando…" : "Descargar"}
