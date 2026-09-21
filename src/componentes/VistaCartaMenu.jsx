@@ -743,6 +743,8 @@ export default function VistaCartaMenu({
   // Última dirección usada para "ordenar por precio" por sección — solo para
   // mostrar la flecha correcta en el botón (asc/desc), no se persiste.
   const [ordenPrecioDir, setOrdenPrecioDir] = useState({});
+  // Ídem para "ordenar por nombre" (A→Z / Z→A) por sección.
+  const [ordenNombreDir, setOrdenNombreDir] = useState({});
   // Estado de guardado: "idle" | "saving" | "saved"
   const [saveState, setSaveState] = useState("idle");
   const saveTimer = useRef(null);
@@ -1455,6 +1457,25 @@ export default function VistaCartaMenu({
           if (px == null) return 1;
           if (py == null) return -1;
           return dir === "desc" ? py - px : px - py;
+        });
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: [...items, ...seps] } } };
+    });
+  }, [setMaqueta, artById]);
+
+  // Ordenar los ítems de una sección por nombre (A→Z / Z→A). Mismo criterio
+  // que ordenarPorPrecio: los separadores quedan al final, sin romperse.
+  const ordenarPorNombre = useCallback((secId, dir) => {
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const nombreDe = (id) => clean(artById.get(String(id))?.nombre || "");
+      const seps = sec.itemIds.filter((id) => String(id).startsWith("__sep__"));
+      const items = sec.itemIds
+        .filter((id) => !String(id).startsWith("__sep__"))
+        .slice()
+        .sort((x, y) => {
+          const cmp = nombreDe(x).localeCompare(nombreDe(y), "es");
+          return dir === "desc" ? -cmp : cmp;
         });
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: [...items, ...seps] } } };
     });
@@ -2488,6 +2509,18 @@ export default function VistaCartaMenu({
                                       onMouseEnter={(e) => e.currentTarget.style.color = accent}
                                       onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>
                                       {ordenPrecioDir[sid] === "asc" ? "$↓" : "$↑"}
+                                    </button>
+                                    <button onClick={(e) => {
+                                      e.stopPropagation();
+                                      const dir = ordenNombreDir[sid] === "asc" ? "desc" : "asc";
+                                      setOrdenNombreDir((p) => ({ ...p, [sid]: dir }));
+                                      ordenarPorNombre(sid, dir);
+                                    }}
+                                      title={`Ordenar por nombre (próximo clic: ${ordenNombreDir[sid] === "asc" ? "Z→A" : "A→Z"}) — no se ve al exportar`}
+                                      style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 11.5, lineHeight: 1, padding: 0, fontWeight: 700 }}
+                                      onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                      onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>
+                                      {ordenNombreDir[sid] === "asc" ? "A↓" : "A↑"}
                                     </button>
                                     <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, null); }}
                                       title="Agregar una línea separadora en esta sección"

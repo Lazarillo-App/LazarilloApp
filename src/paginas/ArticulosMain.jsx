@@ -1221,10 +1221,17 @@ export default function ArticulosMain(props) {
           const id = getArtId(a);
           if (id == null) continue;
           if (effectiveDiscIds.has(id)) continue; // no mostramos discontinuados en la carta
+          // Si el artículo tiene "Nuevo precio" cargado (precioManual, la misma
+          // columna que ve la Tabla), la carta debe mostrar ESE precio, no el
+          // vigente — es el precio que se va a usar apenas se aplique.
+          const precioManual = priceConfig?.byArticle?.[String(id)]?.precioManual;
+          const precioEfectivo = precioManual != null && precioManual !== ''
+            ? Number(precioManual)
+            : Number(a.precio ?? 0);
           out.push({
             id,
             nombre: String(a.nombre ?? a.descripcion ?? '').trim(),
-            precio: Number(a.precio ?? 0),
+            precio: precioEfectivo,
             // En la UI, el "rubro" (sección grande) es el subrubro; la sub es la categoria.
             rubro: String(a.subrubro ?? sub.subrubro ?? '').trim(),
             sub: String(a.categoria ?? cat.categoria ?? '').trim(),
@@ -1235,7 +1242,7 @@ export default function ArticulosMain(props) {
       }
     }
     return out;
-  }, [categorias, agrupacionesRich, effectiveDiscIds]);
+  }, [categorias, agrupacionesRich, effectiveDiscIds, priceConfig]);
 
   // Mapa nombre-agrupación → id, para que la carta resuelva el viewMode de cada
   // sección (los bloques por rubro/sub leen la misma preferencia que la tabla).
