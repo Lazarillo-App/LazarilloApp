@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
+import AppsIcon from '@mui/icons-material/Apps';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
@@ -16,6 +17,7 @@ import { RecetasAPI } from '@/servicios/apiBusinesses';
 import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
+import ModulosDrawer from './ModulosDrawer';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -67,6 +69,7 @@ const getUserInitials = () => {
 export default function Navbar() {
   const [navEl, setNavEl] = React.useState(null);
   const [userEl, setUserEl] = React.useState(null);
+  const [modulosOpen, setModulosOpen] = React.useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -214,6 +217,18 @@ export default function Navbar() {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
+            {/* Módulos: abre el menú "escondido" para navegar entre módulos operativos */}
+            <Tooltip title="Módulos">
+              <IconButton
+                color="inherit"
+                sx={{ color: 'inherit' }}
+                aria-label="Abrir módulos"
+                onClick={() => setModulosOpen(true)}
+              >
+                <AppsIcon />
+              </IconButton>
+            </Tooltip>
+
             {/* Logo */}
             <Box
               component={NavLink}
@@ -477,6 +492,8 @@ export default function Navbar() {
           {snack.msg}
         </Alert>
       </Snackbar>
+
+      <ModulosDrawer open={modulosOpen} onClose={() => setModulosOpen(false)} />
     </>
   );
 }

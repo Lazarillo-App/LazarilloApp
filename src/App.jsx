@@ -29,6 +29,7 @@ import Login from './paginas/Login';
 import LazarilloLanding from './paginas/LazarilloLanding';
 import Register from './paginas/Register';
 import Perfil from './paginas/Perfil';
+import Inicio from './paginas/Inicio';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import RequireActiveAccount from './routing/RequireActiveAccount';
 import Activar from './paginas/Activar';
@@ -263,6 +264,7 @@ export default function App() {
                   }
                 />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
+                <Route path="/inicio" element={<Inicio />} />
                 <Route path="/configuracion" element={<ConfiguracionMain />} />
               </Route>
             </Route>

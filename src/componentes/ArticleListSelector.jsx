@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 // src/componentes/ArticleListSelector.jsx
 // Selector de lista de precios — estética similar a SucursalSelector.
 // Aparece al lado del título "Gestión de Artículos".
