@@ -789,26 +789,57 @@ export default function VistaCartaMenu({
   }, [agrupaciones]);
 
   // ── Maquetas por modo: cada vista (rubro / agrupacion) guarda su propia
-  //    composición. Cambiar de modo NO destruye la otra.
-  //    Retrocompat: carta v1 tenía una sola `maqueta` guardada bajo `g.modo`.
-  const [maquetasPorModo, setMaquetasPorModo] = useState(() => {
-    const out = {};
+  //    composición: el switch "por agrupación / por rubro" es SOLO para cómo
+  //    se organiza el panel de "disponibles" (qué mostrar para arrastrar a la
+  //    hoja) — la hoja en sí es una sola, y puede mezclar secciones de los dos
+  //    orígenes a la vez (ej. una agrupación completa + un par de rubros
+  //    sueltos), sin que cambiar el switch la altere.
+  //    Retrocompat: cartas viejas guardaban una maqueta POR modo (v2) o una
+  //    sola bajo `g.modo` (v1). Al migrar, se toma la del modo que estaba
+  //    activo al guardar como base; si la del otro modo tenía secciones con
+  //    contenido que no están ya representadas, se suman al pool (disponibles
+  //    para arrastrar), sin pisar ni mezclar hojas automáticamente.
+  const [maqueta, setMaquetaState] = useState(() => {
+    if (Number(g?.version) >= 3 && g?.maqueta) {
+      // Formato v3 (ya unificado): una sola maqueta, sin fork por modo.
+      return reconciliar(g.maqueta, articulos, modo);
+    }
     if (g?.maquetas && typeof g.maquetas === "object") {
-      // Formato nuevo (v2): ya viene por modo
-      if (g.maquetas.rubro) out.rubro = reconciliar(g.maquetas.rubro, articulos, "rubro");
-      if (g.maquetas.agrupacion) out.agrupacion = reconciliar(g.maquetas.agrupacion, articulos, "agrupacion");
-    } else if (g?.maqueta) {
+      const modoGuardado = g?.modo === "rubro" ? "rubro" : "agrupacion";
+      const modoSecundario = modoGuardado === "rubro" ? "agrupacion" : "rubro";
+      const primaria = g.maquetas[modoGuardado]
+        ? reconciliar(g.maquetas[modoGuardado], articulos, modoGuardado)
+        : maquetaVacia(articulos, modoGuardado);
+      const secundariaGuardada = g.maquetas[modoSecundario];
+      if (!secundariaGuardada) return primaria;
+
+      const secundaria = reconciliar(secundariaGuardada, articulos, modoSecundario);
+      const origenesYaEnPrimaria = new Set(
+        Object.values(primaria.secciones).map((s) => s.origen ?? s.titulo)
+      );
+      const secciones = { ...primaria.secciones };
+      const poolExtra = [];
+      for (const [sid, sec] of Object.entries(secundaria.secciones)) {
+        if (!sec.itemIds?.length) continue;
+        const origen = sec.origen ?? sec.titulo;
+        if (origenesYaEnPrimaria.has(origen)) continue; // ya representada, no duplicar
+        secciones[sid] = sec;
+        poolExtra.push(sid);
+      }
+      if (!poolExtra.length) return primaria;
+      return {
+        ...primaria,
+        secciones,
+        pool: { ...primaria.pool, secciones: [...(primaria.pool?.secciones || []), ...poolExtra] },
+      };
+    }
+    if (g?.maqueta) {
       // Formato viejo (v1): una sola maqueta bajo el modo con que se guardó
       const modoGuardado = g?.modo === "rubro" ? "rubro" : "agrupacion";
-      out[modoGuardado] = reconciliar(g.maqueta, articulos, modoGuardado);
+      return reconciliar(g.maqueta, articulos, modoGuardado);
     }
-    // El modo activo debe tener maqueta sí o sí (si no, vacía)
-    if (!out[modo]) out[modo] = maquetaVacia(articulos, modo);
-    return out;
+    return maquetaVacia(articulos, modo);
   });
-
-  // La maqueta activa es la del modo actual.
-  const maqueta = maquetasPorModo[modo] || maquetaVacia(articulos, modo);
 
   const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
   // Índice inverso artículo→agrupación (para "grupoDelArt" en cada fila del menú).
@@ -859,43 +890,31 @@ export default function VistaCartaMenu({
     return m;
   }, [artByIdBase, descripciones, maqueta.gruposVinculados]);
 
-  // `setMaqueta` se llama desde ~15 callbacks (renombrarHoja, eliminarHoja,
-  // moverItem, quitarBloque, etc.) que NO la tienen en su propio array de
-  // dependencias de useCallback (bug real, ya arreglado con este cambio en vez
-  // de tocar los 15 uno por uno). Antes, `setMaqueta` cambiaba de identidad cada
-  // vez que `modo`/`articulos` cambiaban — y esos otros callbacks, al no tener
-  // esa dependencia, quedaban con una versión VIEJA de `setMaqueta` que todavía
-  // recordaba el `modo` de cuando se crearon. Resultado: apenas cambiabas entre
-  // "por rubro"/"por agrupación" una vez, esas acciones escribían en silencio
-  // sobre la maqueta del modo VIEJO — invisible en la vista actual (exactamente
-  // "no cambia nada" / "no se puede eliminar" / etc.).
-  // Solución: `setMaqueta` ahora es 100% estable (deps `[]`) y lee modo/artículos
-  // SIEMPRE actuales vía ref — así no importa qué dependencias tengan los que la usan.
-  const modoRef = useRef(modo);
-  React.useEffect(() => { modoRef.current = modo; }, [modo]);
-  const articulosRef = useRef(articulos);
-  React.useEffect(() => { articulosRef.current = articulos; }, [articulos]);
-
+  // `setMaqueta` es estable (deps `[]`): ahora que hay una sola maqueta (no una
+  // por modo), no necesita leer `modo` para saber dónde escribir.
   const setMaqueta = useCallback((updater) => {
-    setMaquetasPorModo((prev) => {
-      const modoActual = modoRef.current;
-      const actual = prev[modoActual] || maquetaVacia(articulosRef.current, modoActual);
-      const siguiente = typeof updater === "function" ? updater(actual) : updater;
-      return { ...prev, [modoActual]: siguiente };
-    });
+    setMaquetaState((actual) => (typeof updater === "function" ? updater(actual) : updater));
   }, []);
 
-  // Al cambiar de modo: si el nuevo modo aún no tiene maqueta, generar una vacía
-  // (una sola vez). NO se pisa lo ya armado en ese modo.
-  const maqRef = useRef({ modo });
-  React.useEffect(() => {
-    if (maqRef.current.modo !== modo) {
-      maqRef.current = { modo };
-      setMaquetasPorModo((prev) => prev[modo] ? prev : { ...prev, [modo]: maquetaVacia(articulos, modo) });
-      setHojaActiva(0);
-      setFusionMode(false); setFusionSel([]);
+  // ¿El "origen" de una sección corresponde a una agrupación real, a un rubro
+  // real, o a ninguno (sección libre/renombrada a mano, sin equivalente real)?
+  // Ya NO se decide por el modo global — una misma hoja puede mezclar secciones
+  // de los dos orígenes a la vez, así que cada sección se clasifica por su
+  // propio origen contra el catálogo actual.
+  const rubrosRealesSet = useMemo(() => {
+    const s = new Set();
+    for (const a of (articulos || [])) {
+      if (!clean(a.nombre)) continue;
+      s.add(isSin(a.rubro) ? "Otros" : clean(a.rubro));
     }
-  }, [modo, articulos]);
+    return s;
+  }, [articulos]);
+  const tipoDeOrigen = useCallback((origen) => {
+    if (!origen) return null;
+    if ((agrupaciones || []).some((g) => String(g?.nombre ?? g?.name ?? "") === origen)) return "agrupacion";
+    if (rubrosRealesSet.has(origen)) return "rubro";
+    return null;
+  }, [agrupaciones, rubrosRealesSet]);
 
   // ── Reconciliación en vivo (modelo espejo) ──────────────────────────────────
   // La maqueta se arma una sola vez (useState inicial). Si después cambia la
@@ -904,27 +923,28 @@ export default function VistaCartaMenu({
   // que ya no pertenece; si su sección nueva está puesta en la carta entra ahí, y
   // si no, queda disponible en el catálogo.
   // Se compara contra `origen` (pertenencia que dio vida a la sección), no contra
-  // el título, para no vaciar las secciones renombradas a mano.
+  // el título, para no vaciar las secciones renombradas a mano. Como una hoja
+  // puede mezclar secciones de agrupación y de rubro, cada artículo se compara
+  // contra el eje que corresponda a la sección donde está HOY (tipoDeOrigen).
   const pertenenciaRef = useRef("");
   React.useEffect(() => {
-    const tituloNaturalDe = (a) => (modo === "rubro"
-      ? (isSin(a.rubro) ? "Otros" : clean(a.rubro))
-      : ((!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion)));
-
-    const naturalPorId = new Map(
-      (articulos || [])
-        .filter((a) => clean(a.nombre))
-        .map((a) => [String(a.id), tituloNaturalDe(a)])
-    );
+    const naturalAgrupPorId = new Map();
+    const naturalRubroPorId = new Map();
+    for (const a of (articulos || [])) {
+      if (!clean(a.nombre)) continue;
+      const idStr = String(a.id);
+      naturalAgrupPorId.set(idStr, (!clean(a.agrupacion) || isSin(a.agrupacion)) ? "Otros" : clean(a.agrupacion));
+      naturalRubroPorId.set(idStr, isSin(a.rubro) ? "Otros" : clean(a.rubro));
+    }
 
     // Reaccionar solo cuando la pertenencia cambia de verdad, no en cada render.
-    const firma = Array.from(naturalPorId, ([id, t]) => `${id}:${t}`).join("|");
+    const firma = Array.from(naturalAgrupPorId, ([id, t]) => `${id}:A:${t}`).join("|")
+      + "||" + Array.from(naturalRubroPorId, ([id, t]) => `${id}:R:${t}`).join("|");
     if (firma === pertenenciaRef.current) return;
     pertenenciaRef.current = firma;
 
-    setMaquetasPorModo((prev) => {
-      const actual = prev[modo];
-      if (!actual) return prev;
+    setMaquetaState((actual) => {
+      if (!actual) return actual;
 
       // Secciones puestas en alguna hoja, indexadas por su origen real.
       const secIdPorOrigen = new Map();
@@ -943,8 +963,12 @@ export default function VistaCartaMenu({
 
       for (const [sid, sec] of Object.entries(actual.secciones)) {
         const origen = sec.origen ?? sec.titulo;
+        const tipo = tipoDeOrigen(origen);
+        if (!tipo) continue; // sección libre/sin equivalente real: no se reconcilia sola
+        const naturalPorId = tipo === "rubro" ? naturalRubroPorId : naturalAgrupPorId;
+
         for (const id of sec.itemIds || []) {
-          if (String(id).startsWith("__sep__")) continue;
+          if (String(id).startsWith("__sep__") || String(id).startsWith("__grupo__")) continue;
           const key = String(id);
           const natural = naturalPorId.get(key);
           if (natural == null) continue;      // ya no existe: lo limpia reconciliar
@@ -961,7 +985,7 @@ export default function VistaCartaMenu({
         }
       }
 
-      if (!quitar.size && !agregar.size) return prev;
+      if (!quitar.size && !agregar.size) return actual;
 
       const secciones = { ...actual.secciones };
       for (const [sid, ids] of quitar) {
@@ -977,9 +1001,9 @@ export default function VistaCartaMenu({
         if (nuevos.length) secciones[sid] = { ...sec, itemIds: [...(sec.itemIds || []), ...nuevos] };
       }
 
-      return { ...prev, [modo]: { ...actual, secciones } };
+      return { ...actual, secciones };
     });
-  }, [articulos, modo]);
+  }, [articulos, tipoDeOrigen]);
 
   const regenerar = useCallback(() => {
     setMaqueta(maquetaVacia(articulos, modo));
@@ -988,18 +1012,19 @@ export default function VistaCartaMenu({
   }, [articulos, modo, setMaqueta]);
 
   // Arma el objeto que se persiste en props.carta del negocio.
-  // v2: guarda una maqueta por modo (rubro / agrupacion) para no perder lo armado
-  // al cambiar de vista. `modo` es solo el modo activo al momento de guardar.
+  // v3: una sola maqueta (ya no una por modo) — el switch agrupación/rubro es
+  // solo del panel de "disponibles", no de la hoja. `modo` queda guardado nada
+  // más como preferencia de qué panel mostrar al reabrir.
   const construirCarta = useCallback(() => ({
-    version: 2,
+    version: 3,
     modo,
     showLogo,
-    maquetas: maquetasPorModo,
+    maqueta,
     descripciones,
     iconos: iconosPorTitulo,
     estilos: diseno,
     contacto,
-  }), [modo, showLogo, maquetasPorModo, descripciones, diseno, contacto]);
+  }), [modo, showLogo, maqueta, descripciones, diseno, contacto]);
 
   // Guardado (usado por autosave y botón manual)
   const guardar = useCallback(async () => {
@@ -1027,7 +1052,7 @@ export default function VistaCartaMenu({
     saveTimer.current = setTimeout(() => { guardar(); }, 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maquetasPorModo, descripciones, iconosPorTitulo, diseno, contacto, modo, showLogo]);
+  }, [maqueta, descripciones, iconosPorTitulo, diseno, contacto, modo, showLogo]);
 
   const hojas = maqueta.hojas;
   const hoja = hojas[Math.min(hojaActiva, Math.max(0, hojas.length - 1))] || hojas[0];
@@ -1224,8 +1249,9 @@ export default function VistaCartaMenu({
       // de "primera aparición" y los bloques visibles se reordenan solos.
       let ordenRubros = sec.ordenRubros;
       if (!(Array.isArray(ordenRubros) && ordenRubros.length)) {
-        const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
-        const vm = (modo === "agrupacion" && agrupId != null)
+        const origenSec = sec.origen ?? sec.titulo;
+        const agrupId = agrupIdByNombre[origenSec];
+        const vm = (tipoDeOrigen(origenSec) === "agrupacion" && agrupId != null)
           ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
           : null;
         const campoBloque = campoBloqueDeViewMode(vm);
@@ -1255,7 +1281,7 @@ export default function VistaCartaMenu({
         },
       };
     });
-  }, [setMaqueta, agrupIdByNombre, viewModeByGroup, modo, artById]);
+  }, [setMaqueta, agrupIdByNombre, viewModeByGroup, tipoDeOrigen, artById]);
 
   // Quitar una sección: solo la saca de la carta. Vuelve a estar disponible en el catálogo.
   const quitarSeccion = useCallback((secId) => {
@@ -1554,23 +1580,28 @@ export default function VistaCartaMenu({
     // moverla entre rubros solo reacomoda el layout, no tiene un rubro real que cambiar.
     if (!destTitulo || !activeBizId || String(artId).startsWith("__grupo__")) return;
     try {
-      if (modo === "rubro") {
-        const { http } = await import("@/servicios/apiBusinesses");
-        await http(`/businesses/${activeBizId}/articles/${artId}`, { method: "PATCH", body: { rubro: destTitulo } });
-      } else {
+      // La sección destino decide CÓMO se persiste, no el modo global (una hoja
+      // puede mezclar secciones de agrupación y de rubro a la vez). Si el destino
+      // es una agrupación real, se mueve entre agrupaciones; si es un rubro real
+      // o una sección nueva/libre (sin equivalente real todavía), el rubro es un
+      // campo de texto simple y siempre se puede fijar directo.
+      if (tipoDeOrigen(destTitulo) === "agrupacion") {
         const grupoOrigen = (agrupaciones || []).find((g) => (g?.articulos || []).some((x) => Number(x?.id) === Number(artId)));
         const destAgrupId = agrupIdByNombre[destTitulo];
         if (grupoOrigen && destAgrupId != null && Number(grupoOrigen.id) !== Number(destAgrupId)) {
           const { moveItemsBetweenGroups } = await import("@/servicios/apiAgrupaciones");
           await moveItemsBetweenGroups(activeBizId, Number(grupoOrigen.id), { toId: Number(destAgrupId), ids: [Number(artId)] });
         }
+      } else {
+        const { http } = await import("@/servicios/apiBusinesses");
+        await http(`/businesses/${activeBizId}/articles/${artId}`, { method: "PATCH", body: { rubro: destTitulo } });
       }
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       onAccionRecargarCategorias?.();
     } catch (e) {
       showAlert("No se pudo actualizar el rubro real del producto. " + (e?.message || ""), "error");
     }
-  }, [modo, activeBizId, agrupaciones, agrupIdByNombre, onAccionRecargarCategorias]);
+  }, [tipoDeOrigen, activeBizId, agrupaciones, agrupIdByNombre, onAccionRecargarCategorias]);
 
   const [pendingMoveDrop, setPendingMoveDrop] = useState(null); // { origSecId, destSecId, artId, destArtId }
 
@@ -2395,7 +2426,7 @@ export default function VistaCartaMenu({
                                     </div>
                                   )}
                                   <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                    {modo === "agrupacion" && onChangeViewMode && agrupIdByNombre[sec.origen ?? sec.titulo] != null && (() => {
+                                    {tipoDeOrigen(sec.origen ?? sec.titulo) === "agrupacion" && onChangeViewMode && agrupIdByNombre[sec.origen ?? sec.titulo] != null && (() => {
                                       const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
                                       const vmActual = viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro";
                                       const opt = (mode, label) => (
@@ -2416,7 +2447,7 @@ export default function VistaCartaMenu({
                                         </span>
                                       );
                                     })()}
-                                    {modo === "rubro" && activeBizId && (
+                                    {tipoDeOrigen(sec.origen ?? sec.titulo) === "rubro" && activeBizId && (
                                       <span onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
                                         style={{ display: "inline-flex", transform: "scale(0.78)", transformOrigin: "center" }}>
@@ -2474,9 +2505,9 @@ export default function VistaCartaMenu({
                                 {/* ítems (con posible subdivisión en bloques por rubro/sub,
                                   leyendo el mismo viewMode que la tabla para esta agrupación) */}
                                 {(() => {
-                                  // Resolver viewMode de esta agrupación (solo en modo agrupación).
+                                  // Resolver viewMode de esta sección (solo si es una agrupación real).
                                   const agrupId = agrupIdByNombre[sec.origen ?? sec.titulo];
-                                  const vm = (modo === "agrupacion" && agrupId != null)
+                                  const vm = (tipoDeOrigen(sec.origen ?? sec.titulo) === "agrupacion" && agrupId != null)
                                     ? (viewModeByGroup[Number(agrupId)] || viewModeByGroup[String(agrupId)] || "by-subrubro")
                                     : null;
                                   const campoBloque = campoBloqueDeViewMode(vm);
@@ -2555,10 +2586,10 @@ export default function VistaCartaMenu({
                                           .filter((x) => ((artById.get(String(x))?.[campoBloque]) || "Otros").toString() === rubroDeEste)
                                           .map(Number)
                                           .filter(Number.isFinite);
-                                        // En modo agrupación la sección ES una agrupación real: la resolvemos para
-                                        // que "Mover a…" y "Crear agrupación" sepan de dónde salen los artículos.
+                                        // Si esta sección ES una agrupación real, la resolvemos para que
+                                        // "Mover a…" y "Crear agrupación" sepan de dónde salen los artículos.
                                         const origenSec = sec.origen ?? sec.titulo;
-                                        const agrupDeSeccion = modo === "agrupacion"
+                                        const agrupDeSeccion = tipoDeOrigen(origenSec) === "agrupacion"
                                           ? ((agrupaciones || []).find((g) => String(g?.nombre ?? g?.name ?? "") === String(origenSec)) || null)
                                           : null;
                                         // Convención invertida de la carta: campoBloque "rubro" = subrubro DB,
@@ -2613,7 +2644,7 @@ export default function VistaCartaMenu({
                                                     onAccionRecargarCategorias?.();
                                                   }}
                                                   notify={() => { }}
-                                                  accionesOcultas={modo === "agrupacion"
+                                                  accionesOcultas={tipoDeOrigen(origenSec) === "agrupacion"
                                                     ? ['quitarDeAgrupacion']
                                                     : ['quitarDeAgrupacion', 'moverA', 'crearAgrupacion']}
                                                 />
