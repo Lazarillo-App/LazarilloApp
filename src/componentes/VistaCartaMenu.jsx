@@ -556,16 +556,22 @@ function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, conten
   if (!esPrimerHojaGlobal) pdf.addPage([wmm, hmm], wmm > hmm ? "landscape" : "portrait");
 
   if (fitOnePage) {
+    // Antes esto escalaba ancho Y alto por el mismo factor (para "entrar" en la
+    // altura de la hoja), lo que dejaba un margen en blanco a los costados cuando
+    // el contenido era más alto de lo que entraba: el ancho se achicaba aunque
+    // nunca hubo desborde horizontal (el canvas ya se capturó al ancho exacto de
+    // la hoja). Ahora el ancho siempre ocupa todo el contentWmm — solo se
+    // comprime la altura lo necesario para entrar en una página.
     const bodyHmmRaw = cv.height / pxPerMm;
     const scale = Math.min(1, contentHmm / (bodyHmmRaw + footerHmm));
-    const imgWmm = contentWmm * scale;
+    const imgWmm = contentWmm;
     const imgHmm = bodyHmmRaw * scale;
     if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
-    pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", margLat + (contentWmm - imgWmm) / 2, margVert, imgWmm, imgHmm);
+    pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, imgWmm, imgHmm);
     if (footerCv) {
-      const footWmm = contentWmm * scale;
+      const footWmm = contentWmm;
       const footHmm = footerHmm * scale;
-      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat + (contentWmm - footWmm) / 2, margVert + contentHmm - footHmm, footWmm, footHmm);
+      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert + contentHmm - footHmm, footWmm, footHmm);
     }
     dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
     return;
