@@ -64,6 +64,7 @@ const DISENO_BASE = {
   // Etapa 2A+: controles finos de estilo
   itemGap: 3,        // interlineado entre ítems (px)
   logoAlign: "center", // posición del logo: left | center | right
+  logoSize: 72,      // alto máximo del logo (px, antes de la escala del render)
   sectionSize: 16,   // tamaño de los títulos de sección (rubro)
   iconSize: 16,      // tamaño del icono de sección
   itemSize: 14.5,    // tamaño del nombre del artículo
@@ -302,7 +303,7 @@ function cartaCss(diseno, negocio, scale) {
   const s = scale || 1; const r = (n) => Math.round(n * s * 100) / 100;
   return `*{box-sizing:border-box}
 .cart{font-family:${Dx.bFont};color:${inkH};background:${bgH}}
-.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:8px}.logo img{display:inline-block;max-height:${r(72)}px;max-width:55%;object-fit:contain}
+.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:65%;object-fit:contain}
 .lab{text-align:center;font-size:${r(11)}px;letter-spacing:2px;color:${accH};font-weight:700}
 .title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 4px}
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
@@ -362,11 +363,11 @@ function svgIcon(net, c) {
 }
 
 // Header/footer de la hoja
-function headerHtml(hoja, diseno, negocio, showLogo) {
+function headerHtml(hoja, diseno, negocio, showLogo, showNombre = true) {
   const Dx = diseno;
   const logoHtml = (showLogo && negocio && negocio.logo) ? `<div class="logo"><img src="${esc(negocio.logo)}" crossorigin="anonymous" /></div>` : "";
   const nombre = clean(negocio?.nombre);
-  const tituloHtml = nombre ? `<div class="title">${esc(nombre)}</div>` : "";
+  const tituloHtml = (showNombre && nombre) ? `<div class="title">${esc(nombre)}</div>` : "";
   return `${logoHtml}<div class="lab">${esc(hoja.label)}</div>${tituloHtml}`;
 }
 // Imagen decorativa de la hoja (fondo/banner/esquina), para el HTML exportado a PDF/PNG.
@@ -452,7 +453,7 @@ function dibujarMarcoPdf(pdf, frame, color, x, y, w, h) {
 // Arma el HTML de UNA hoja fuera de pantalla y la captura a canvas (cuerpo + pie
 // aparte, igual que antes). Extraído para poder reusarlo también al exportar TODAS
 // las hojas juntas (un PDF combinado o un ZIP de PNGs).
-async function capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH) {
+async function capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH) {
   const nCols = Math.max(1, (hoja.columnas || [[]]).length);
   const colWpx = Math.floor((renderWpx - framePad * 2 - (nCols - 1) * gapPx) / nCols);
   const css = cartaCss({ ...diseno, frame: "none" }, negocio, 1);
@@ -471,7 +472,7 @@ async function capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, sho
     // poder repetirlo igual en CADA hoja exportada — antes quedaba pegado al
     // final de todo el contenido apilado, así que en una carta de varias
     // páginas solo aparecía en la última.
-    + `<div class="cart pgc" id="vcm-export-body" style="padding-top:${framePad}px;position:relative">${imagenHojaHtml(hoja)}<div>${headerHtml(hoja, diseno, negocio, showLogo)}</div><div class="pcols">${colsHtml}</div></div>`
+    + `<div class="cart pgc" id="vcm-export-body" style="padding-top:${framePad}px;position:relative">${imagenHojaHtml(hoja)}<div>${headerHtml(hoja, diseno, negocio, showLogo, showNombre)}</div><div class="pcols">${colsHtml}</div></div>`
     + (footerText ? `<div class="cart pgc" id="vcm-export-footer" style="padding-bottom:${framePad}px">${footerText}</div>` : "");
   document.body.appendChild(wrap);
 
@@ -608,14 +609,14 @@ function medidasExport(cfg) {
   return { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad };
 }
 
-async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, cfg, iconos) {
+async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, cfg, iconos) {
   const bgH = diseno.bg || "#ffffff";
   const { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(cfg);
 
   await ensureLibs();
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
 
-  const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+  const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
 
   const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
   const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
@@ -636,7 +637,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
 
 // Exporta TODAS las hojas de la carta juntas: un unico PDF multipagina, o un ZIP con
 // un PNG por hoja. `onProgress(i, total)` opcional, para mostrar avance en la UI.
-async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio, showLogo, cfg, iconos, nombreCarta, onProgress) {
+async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio, showLogo, showNombre, cfg, iconos, nombreCarta, onProgress) {
   const bgH = diseno.bg || "#ffffff";
   const { wmm, hmm, margLat, margVert, contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(cfg);
   const lista = (hojas || []).filter(Boolean);
@@ -657,7 +658,7 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
     for (let i = 0; i < lista.length; i++) {
       onProgress?.(i, lista.length);
       const hoja = lista[i];
-      const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+      const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
       const combined = combinarCanvasPng(cv, footerCv, diseno, negocio);
       const blob = await new Promise((res) => combined.toBlob(res, "image/png"));
       let base = clean(hoja.nombre) || `hoja-${i + 1}`;
@@ -678,7 +679,7 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
   for (let i = 0; i < lista.length; i++) {
     onProgress?.(i, lista.length);
     const hoja = lista[i];
-    const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, iconos, renderWpx, framePad, gapPx, bgH);
+    const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
     agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0, !!cfg.fitOnePage);
   }
   onProgress?.(lista.length, lista.length);
@@ -717,6 +718,7 @@ export default function VistaCartaMenu({
     g?.estilos ? { ...DISENO_BASE, ...g.estilos } : { ...DISENO_BASE, ink: negocio?.ink || DISENO_BASE.ink, title: negocio?.ink || DISENO_BASE.title }
   ));
   const [showLogo, setShowLogo] = useState(g?.showLogo != null ? g.showLogo : true);
+  const [showNombre, setShowNombre] = useState(g?.showNombre != null ? g.showNombre : true);
   const [printCfg, setPrintCfg] = useState({ size: "A4", orient: "v", fmt: "pdf", fitOnePage: false });
   const [printOpen, setPrintOpen] = useState(false);
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
@@ -1014,12 +1016,13 @@ export default function VistaCartaMenu({
     version: 3,
     modo,
     showLogo,
+    showNombre,
     maqueta,
     descripciones,
     iconos: iconosPorTitulo,
     estilos: diseno,
     contacto,
-  }), [modo, showLogo, maqueta, descripciones, diseno, contacto]);
+  }), [modo, showLogo, showNombre, maqueta, descripciones, diseno, contacto]);
 
   // Guardado (usado por autosave y botón manual)
   const guardar = useCallback(async () => {
@@ -1047,7 +1050,7 @@ export default function VistaCartaMenu({
     saveTimer.current = setTimeout(() => { guardar(); }, 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maqueta, descripciones, iconosPorTitulo, diseno, contacto, modo, showLogo]);
+  }, [maqueta, descripciones, iconosPorTitulo, diseno, contacto, modo, showLogo, showNombre]);
 
   const hojas = maqueta.hojas;
   const hoja = hojas[Math.min(hojaActiva, Math.max(0, hojas.length - 1))] || hojas[0];
@@ -1518,14 +1521,14 @@ export default function VistaCartaMenu({
     try {
       setDlBusy(true);
       if (exportarAlcance === "todas" && hojas.length > 1) {
-        await exportarTodasLasHojas(hojas, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo, neg?.nombre, (i, total) => setExportProgress({ i, total }));
+        await exportarTodasLasHojas(hojas, maqueta.secciones, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo, neg?.nombre, (i, total) => setExportProgress({ i, total }));
       } else {
-        await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo);
+        await exportarHoja(hoja, maqueta.secciones, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo);
       }
     } catch (e) {
       showAlert("No pude generar la descarga. Detalle: " + (e?.message || e), "error");
     } finally { setDlBusy(false); setExportProgress(null); setPrintOpen(false); }
-  }, [hoja, hojas, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo, exportarAlcance]);
+  }, [hoja, hojas, maqueta, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo, exportarAlcance]);
 
   // Vista previa de la hoja ACTIVA con la config actual (tamaño/orientación/ajustar a
   // 1 hoja) — para ver antes de descargar si el contenido entra o se pasa de página.
@@ -1538,7 +1541,7 @@ export default function VistaCartaMenu({
       if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
       const bgH = diseno.bg || "#ffffff";
       const { contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(printCfg);
-      const { cv, footerCv } = await capturarHojaCanvas(hoja, maqueta.secciones, artById, diseno, neg, showLogo, iconosPorTitulo, renderWpx, framePad, gapPx, bgH);
+      const { cv, footerCv } = await capturarHojaCanvas(hoja, maqueta.secciones, artById, diseno, neg, showLogo, showNombre, iconosPorTitulo, renderWpx, framePad, gapPx, bgH);
       const { canvas, totalPages } = armarPreviewCanvas(cv, footerCv, printCfg, diseno, neg, contentWmm, contentHmm);
       setPreview({ url: canvas.toDataURL("image/png"), pages: totalPages });
     } catch (e) {
@@ -1546,7 +1549,7 @@ export default function VistaCartaMenu({
     } finally {
       setPreviewBusy(false);
     }
-  }, [hoja, maqueta, artById, diseno, neg, showLogo, printCfg, iconosPorTitulo]);
+  }, [hoja, maqueta, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo]);
 
   // Si cambian los ajustes de exportación (tamaño, orientación, ajustar a 1 hoja),
   // la vista previa ya generada queda desactualizada — se limpia para no confundir.
@@ -1861,6 +1864,7 @@ export default function VistaCartaMenu({
         <div style={{ width: 1, height: 22, background: "#e0dcd3" }} />
 
         {negocio?.logo && pill(showLogo, () => setShowLogo((v) => !v), "🖼️ Logo")}
+        {negocio?.nombre && pill(showNombre, () => setShowNombre((v) => !v), "🔤 Nombre")}
 
         {/* Imagen decorativa de la hoja: subir → queda pendiente → arrastrarla a una
             zona (fondo/banner/esquina) sobre la hoja activa.
@@ -2375,7 +2379,7 @@ export default function VistaCartaMenu({
                     </>
                   )}
                   {/* Header arriba de todas las columnas (igual que el PDF) */}
-                  <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo) }} />
+                  <div className="cart" dangerouslySetInnerHTML={{ __html: headerHtml(hoja, diseno, neg, showLogo, showNombre) }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                     {(hoja.columnas || []).map((colSecIds, colIdx) => (
