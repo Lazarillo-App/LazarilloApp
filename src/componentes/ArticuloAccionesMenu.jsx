@@ -593,7 +593,7 @@ function ArticuloAccionesMenu({
       window.dispatchEvent(new CustomEvent('articulos:updated'));
     } catch (e) {
       console.error('ELIMINAR_ERROR', e);
-      notify?.('No se pudo eliminar el artículo', 'error');
+      notify?.('No se pudo eliminar el artículo. ' + (e?.message || ''), 'error');
     } finally {
       setEliminando(false);
       setDlgEliminarOpen(false);
