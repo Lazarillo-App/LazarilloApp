@@ -24,7 +24,7 @@ import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
-import { BusinessesAPI, RecetasAPI, PriceConfigAPI, http } from '../servicios/apiBusinesses';
+import { BusinessesAPI, RecetasAPI, PriceConfigAPI } from '../servicios/apiBusinesses';
 import { showConfirm } from '../servicios/appConfirm';
 import { BASE } from '../servicios/apiBase';
 import { getRedondeoConfig, saveRedondeoConfig } from '../utils/redondeoUtils';
@@ -38,6 +38,7 @@ import RecetaModal from '../componentes/RecetaModal';
 import UploadInsumosModal from '../componentes/UploadInsumosModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
 import { useAccess } from '@/context/AccessContext';
+import { useNormalizarNombres } from '@/hooks/useNormalizarNombres';
 // Sub-tabs extraídos
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
@@ -81,8 +82,7 @@ export default function ConfiguracionMain() {
   const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
 
   // ── Normalizar nombres (artículos + insumos, todo el negocio) ──
-  const [normalizarFormato, setNormalizarFormato] = useState('titulo');
-  const [normalizando, setNormalizando] = useState(false);
+  const { formato: normalizarFormato, setFormato: setNormalizarFormato, normalizando, normalizar: normalizarNombresBase } = useNormalizarNombres(businessId);
 
   // ── Modales ABM ──
   const [showNuevoArticulo, setShowNuevoArticulo] = useState(false);
@@ -116,34 +116,19 @@ export default function ConfiguracionMain() {
 
   // Cambia el nombre real de TODOS los artículos e insumos del negocio al
   // formato elegido — no es reversible con un click, así que pide confirmación
-  // explícita. En artículos de MaxiRest queda protegido de la próxima sync
-  // (mismo criterio que renombrar uno a mano); en insumos no hace falta ese
-  // truco porque la sync de insumos nunca vuelve a tocar el nombre.
+  // explícita (ver useNormalizarNombres). En artículos de MaxiRest queda
+  // protegido de la próxima sync (mismo criterio que renombrar uno a mano);
+  // en insumos no hace falta ese truco porque la sync de insumos nunca vuelve
+  // a tocar el nombre.
   const normalizarNombres = useCallback(async () => {
-    if (!businessId) return;
-    const etiqueta = normalizarFormato === 'mayuscula' ? 'MAYÚSCULA' : 'Título (Primera mayúscula, resto minúscula)';
-    const ok = await showConfirm(
-      `Esto va a cambiar el nombre de TODOS los artículos, insumos, rubros y subrubros de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`,
-      { danger: true }
-    );
-    if (!ok) return;
-    setNormalizando(true);
     try {
-      const [rArt, rIns] = await Promise.all([
-        http(`/businesses/${businessId}/articles/normalizar-nombres`, { method: 'POST', body: { formato: normalizarFormato }, withBusinessId: false }),
-        http(`/insumos/normalizar-nombres`, { method: 'POST', body: { formato: normalizarFormato } }),
-      ]);
-      try {
-        window.dispatchEvent(new CustomEvent('articulos:updated'));
-        window.dispatchEvent(new CustomEvent('insumos:updated'));
-      } catch { }
-      notify(`Listo — ${rArt?.cambiados || 0} artículo(s) y ${rIns?.cambiados || 0} insumo(s) actualizados`);
+      const r = await normalizarNombresBase();
+      if (!r) return; // canceló la confirmación
+      notify(`Listo — ${r.articulos} artículo(s) y ${r.insumos} insumo(s) actualizados`);
     } catch (e) {
       notify('Error al normalizar: ' + (e.message || e), 'error');
-    } finally {
-      setNormalizando(false);
     }
-  }, [businessId, normalizarFormato, notify]);
+  }, [normalizarNombresBase, notify]);
 
   // ── Cargar configuración ──
   useEffect(() => {

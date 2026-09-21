@@ -17,6 +17,7 @@ import { showAlert } from "../servicios/appAlert";
 import { showPrompt } from "../servicios/appPrompt";
 import { BASE } from "../servicios/apiBase";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
+import { useNormalizarNombres } from "../hooks/useNormalizarNombres";
 
 // Feature flag: imagen decorativa por hoja (fondo/banner/esquina). Implementada y
 // funcionando, pero oculta del botón de la toolbar a pedido de la usuaria (2026-09)
@@ -726,6 +727,19 @@ export default function VistaCartaMenu({
   ));
   const [showLogo, setShowLogo] = useState(g?.showLogo != null ? g.showLogo : true);
   const [showNombre, setShowNombre] = useState(g?.showNombre != null ? g.showNombre : true);
+  // Misma acción real de "Normalizar nombres" de Configuración (cambia el
+  // nombre de verdad en artículos/insumos/rubros/subrubros) — acá solo se
+  // expone el mismo botón, no se repite la función.
+  const { formato: normalizarFormato, setFormato: setNormalizarFormato, normalizando, normalizar: normalizarNombresBase } = useNormalizarNombres(activeBizId);
+  const normalizarNombresCarta = useCallback(async () => {
+    try {
+      const r = await normalizarNombresBase();
+      if (!r) return;
+      showAlert(`Listo — ${r.articulos} artículo(s) y ${r.insumos} insumo(s) actualizados`, "success");
+    } catch (e) {
+      showAlert("Error al normalizar: " + (e?.message || e), "error");
+    }
+  }, [normalizarNombresBase]);
   const [printCfg, setPrintCfg] = useState({ size: "A4", orient: "v", fmt: "pdf", fitOnePage: false });
   const [printOpen, setPrintOpen] = useState(false);
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
@@ -2070,17 +2084,10 @@ export default function VistaCartaMenu({
                 </div>
               </div>
 
-              {/* Extras: mayúsculas/tipo título, línea, marco */}
+              {/* Detalles: línea, marco */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Detalles</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: 6, width: "100%" }}>
-                    {[["mayuscula", true, "MAYÚSCULA"], ["titulo", false, "Tipo Título"]].map(([k, val, l]) => (
-                      <button key={k} onClick={() => setDiseno((d) => ({ ...d, upper: val }))}
-                        title="Cómo se muestran los títulos de sección"
-                        style={{ flex: 1, padding: "4px 8px", borderRadius: 7, border: `1px solid ${diseno.upper === val ? accent : "#d8d3ca"}`, background: diseno.upper === val ? accent : "#fff", color: diseno.upper === val ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
-                    ))}
-                  </div>
                   <select value={diseno.line} onChange={(e) => setDiseno((d) => ({ ...d, line: e.target.value }))}
                     style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
                     {MENU_LINES.map((l) => <option key={l} value={l}>Línea: {l}</option>)}
@@ -2089,6 +2096,28 @@ export default function VistaCartaMenu({
                     style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
                     {MENU_FRAMES.map((f) => <option key={f} value={f}>Marco: {f === "none" ? "sin marco" : f}</option>)}
                   </select>
+                </div>
+              </div>
+
+              {/* Normalizar nombres: misma acción de Configuración (cambia de
+                  verdad artículos/insumos/rubros/subrubros), disponible acá
+                  también para no tener que salir de Vista Diseño a hacerlo. */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Normalizar nombres</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 10.5, color: "#aaa", lineHeight: 1.4 }}>
+                    Cambia de verdad el nombre de todos los artículos, insumos, rubros y subrubros del negocio (no solo cómo se ven acá).
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[["mayuscula", "MAYÚSCULA"], ["titulo", "Tipo Título"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setNormalizarFormato(k)}
+                        style={{ flex: 1, padding: "4px 8px", borderRadius: 7, border: `1px solid ${normalizarFormato === k ? accent : "#d8d3ca"}`, background: normalizarFormato === k ? accent : "#fff", color: normalizarFormato === k ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                    ))}
+                  </div>
+                  <button onClick={normalizarNombresCarta} disabled={normalizando}
+                    style={{ border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: normalizando ? "default" : "pointer", background: normalizando ? "#bbb" : accent, color: "#fff" }}>
+                    {normalizando ? "Normalizando…" : "Normalizar ahora"}
+                  </button>
                 </div>
               </div>
 
