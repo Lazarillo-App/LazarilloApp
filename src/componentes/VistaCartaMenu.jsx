@@ -65,6 +65,7 @@ const DISENO_BASE = {
   itemGap: 3,        // interlineado entre ítems (px)
   logoAlign: "center", // posición del logo: left | center | right
   logoSize: 72,      // alto máximo del logo (px, antes de la escala del render)
+  logoGap: 14,       // espacio debajo del logo/nombre, antes del resto de la carta (px)
   sectionSize: 16,   // tamaño de los títulos de sección (rubro)
   iconSize: 16,      // tamaño del icono de sección
   itemSize: 14.5,    // tamaño del nombre del artículo
@@ -303,9 +304,9 @@ function cartaCss(diseno, negocio, scale) {
   const s = scale || 1; const r = (n) => Math.round(n * s * 100) / 100;
   return `*{box-sizing:border-box}
 .cart{font-family:${Dx.bFont};color:${inkH};background:${bgH}}
-.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:65%;object-fit:contain}
+.logo{text-align:${Dx.logoAlign || "center"};margin-bottom:${r(Dx.logoGap ?? 14)}px}.logo img{display:inline-block;max-height:${r(Dx.logoSize || 72)}px;max-width:65%;object-fit:contain}
 .lab{text-align:center;font-size:${r(11)}px;letter-spacing:2px;color:${accH};font-weight:700}
-.title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 4px}
+.title{text-align:center;font-family:${Dx.dFont};font-size:${r(Dx.titleSize || 30)}px;font-weight:700;color:${titleH};margin:2px 0 ${r(Dx.logoGap ?? 14)}px}
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
 .rub{margin-bottom:${r(14)}px;break-inside:avoid}
 .rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;line-height:1.25;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
@@ -1861,11 +1862,6 @@ export default function VistaCartaMenu({
           ))}
         </div>
 
-        <div style={{ width: 1, height: 22, background: "#e0dcd3" }} />
-
-        {negocio?.logo && pill(showLogo, () => setShowLogo((v) => !v), "🖼️ Logo")}
-        {negocio?.nombre && pill(showNombre, () => setShowNombre((v) => !v), "🔤 Nombre")}
-
         {/* Imagen decorativa de la hoja: subir → queda pendiente → arrastrarla a una
             zona (fondo/banner/esquina) sobre la hoja activa.
             Oculto a pedido de la usuaria (2026-09) tras probarlo: la experiencia todavía
@@ -1957,6 +1953,53 @@ export default function VistaCartaMenu({
                 <button onClick={() => setEstilosOpen(false)} style={{ border: "none", background: "none", fontSize: 18, color: "#999", cursor: "pointer", lineHeight: 1 }}>✕</button>
               </div>
 
+              {/* Encabezado: logo y/o nombre, alineación, tamaño y espacio */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Encabezado</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {negocio?.logo && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {[["nombre", "Nombre", false, true], ["logo", "Logo", true, false], ["ambos", "Logo y nombre", true, true]].map(([k, l, lg, nm]) => {
+                        const activo = showLogo === lg && showNombre === nm;
+                        return (
+                          <button key={k} onClick={() => { setShowLogo(lg); setShowNombre(nm); }}
+                            style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: `1px solid ${activo ? accent : "#d8d3ca"}`, background: activo ? accent : "#fff", color: activo ? "#fff" : "#2a2320", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {negocio?.logo && showLogo && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#666" }}>Posición:</span>
+                      {[["left", "Izq"], ["center", "Centro"], ["right", "Der"]].map(([k, l]) => (
+                        <button key={k} onClick={() => setDiseno((d) => ({ ...d, logoAlign: k }))}
+                          style={{ padding: "4px 8px", borderRadius: 7, border: `1px solid ${diseno.logoAlign === k ? accent : "#d8d3ca"}`, background: diseno.logoAlign === k ? accent : "#fff", color: diseno.logoAlign === k ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
+                      ))}
+                    </div>
+                  )}
+                  {negocio?.logo && showLogo && (
+                    <div>
+                      <span style={{ fontSize: 12, color: "#2a2320" }}>Tamaño del logo</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <input type="range" min={30} max={140} step={2} value={diseno.logoSize ?? 72}
+                          onChange={(e) => setDiseno((d) => ({ ...d, logoSize: Number(e.target.value) }))}
+                          style={{ flex: 1, accentColor: accent }} />
+                        <span style={{ fontSize: 11, color: "#999", width: 28, flexShrink: 0 }}>{diseno.logoSize ?? 72}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <span style={{ fontSize: 12, color: "#2a2320" }}>Espacio del encabezado</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      <input type="range" min={0} max={40} step={1} value={diseno.logoGap ?? 14}
+                        onChange={(e) => setDiseno((d) => ({ ...d, logoGap: Number(e.target.value) }))}
+                        style={{ flex: 1, accentColor: accent }} />
+                      <span style={{ fontSize: 11, color: "#999", width: 28, flexShrink: 0 }}>{diseno.logoGap ?? 14}px</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Colores */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Colores</div>
@@ -2025,15 +2068,6 @@ export default function VistaCartaMenu({
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Detalles</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                  {negocio?.logo && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12, color: "#666" }}>Logo:</span>
-                      {[["left", "Izq"], ["center", "Centro"], ["right", "Der"]].map(([k, l]) => (
-                        <button key={k} onClick={() => setDiseno((d) => ({ ...d, logoAlign: k }))}
-                          style={{ padding: "4px 8px", borderRadius: 7, border: `1px solid ${diseno.logoAlign === k ? accent : "#d8d3ca"}`, background: diseno.logoAlign === k ? accent : "#fff", color: diseno.logoAlign === k ? "#fff" : "#2a2320", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{l}</button>
-                      ))}
-                    </div>
-                  )}
                   {pill(diseno.upper, () => setDiseno((d) => ({ ...d, upper: !d.upper })), "MAYÚSCULAS", "Títulos de sección en mayúsculas")}
                   <select value={diseno.line} onChange={(e) => setDiseno((d) => ({ ...d, line: e.target.value }))}
                     style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #d8d3ca", fontSize: 11.5, cursor: "pointer", background: "#fff", width: "100%" }}>
