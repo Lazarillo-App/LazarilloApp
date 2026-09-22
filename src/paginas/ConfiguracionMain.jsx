@@ -19,6 +19,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PublicIcon from '@mui/icons-material/Public';
 import BusinessIcon from '@mui/icons-material/Business';
 import HistoryIcon from '@mui/icons-material/History';
+import GroupsIcon from '@mui/icons-material/Groups';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
@@ -43,6 +44,7 @@ import { useNormalizarNombres } from '@/hooks/useNormalizarNombres';
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
 import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
+import SectoresTab from '../componentes/configuracion/SectoresTab';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
@@ -64,7 +66,7 @@ export default function ConfiguracionMain() {
   // ── Tabs ──
   const [tab, setTab] = useState(() => {
     const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 4 ? t : 0;
+    return Number.isFinite(t) && t >= 0 && t <= 5 ? t : 0;
   });
   const [subTabArt, setSubTabArt] = useState(0);
   const [subTabIns, setSubTabIns] = useState(0);
@@ -432,6 +434,9 @@ export default function ConfiguracionMain() {
             {puedeGestionarNegocio && (
               <Tab icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
             )}
+            {puedeGestionarNegocio && (
+              <Tab icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
+            )}
           </Tabs>
 
           {/* TAB 0 — ARTÍCULOS Y VENTAS */}
@@ -677,6 +682,13 @@ export default function ConfiguracionMain() {
           {puedeGestionarNegocio && (
             <TabPanel value={tab} index={4}>
               <ConfigHistorialTab businessId={businessId} />
+            </TabPanel>
+          )}
+
+          {/* TAB 5 — SECTORES (owner/admin) — Vista Operación */}
+          {puedeGestionarNegocio && (
+            <TabPanel value={tab} index={5}>
+              <SectoresTab businessId={businessId} themeColor={themeColor} />
             </TabPanel>
           )}
         </>
