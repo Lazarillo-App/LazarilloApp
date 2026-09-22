@@ -346,33 +346,6 @@ export default function ConfigArticulosTab({
               </CardBody>
             </Card>
           </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Card>
-              <CardHeader icon={<PercentIcon />} title="Merma global" subtitle="% de desperdicio aplicado a todas las recetas" />
-              <CardBody>
-                <Stack spacing={1.5}>
-                  <Typography variant="body2" color="text.secondary">
-                    Se aplica sobre el costo de insumos de cada receta. Las mermas individuales por ingrediente se componen encima de esta.
-                  </Typography>
-                  <Stack direction="row" spacing={1.5} alignItems="center">
-                    <TextField size="small" type="number"
-                      value={config.desperdicio_global_pct}
-                      onChange={e => setConfig(c => ({ ...c, desperdicio_global_pct: e.target.value }))}
-                      inputProps={{ min: 0, max: 100, step: 0.5 }}
-                      InputProps={{ endAdornment: <InputAdornment position="end"><PercentIcon sx={{ fontSize: 16 }} /></InputAdornment> }}
-                      sx={{ width: 120 }}
-                    />
-                    <Button variant="contained" size="small" disabled={!!saving.desperdicio_global_pct}
-                      startIcon={saving.desperdicio_global_pct ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-                      onClick={() => saveConfig('desperdicio_global_pct')}
-                      sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
-                      {saving.desperdicio_global_pct ? 'Guardando…' : 'Guardar'}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </CardBody>
-            </Card>
-          </Grid>
         </Grid>
       )}
 

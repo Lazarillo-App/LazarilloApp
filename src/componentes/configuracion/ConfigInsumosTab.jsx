@@ -251,6 +251,43 @@ function InsumoAlerta({ ins, expanded, onToggle, onOpenReceta }) {
   );
 }
 
+/* ── Bloque de insumos en alerta, agrupados por rubro (colapsable) ──
+   Con 100 insumos vencidos, mostrar cada uno como fila propia hace un scroll
+   eterno aunque estén colapsados (la cabecera de cada fila ya ocupa lugar).
+   Agrupando por rubro y colapsando el bloque entero se ve solo un resumen
+   por rubro hasta que se abre el que interesa. */
+function BloqueRubroAlertas({ rubro, insumos, expanded, onToggle, alertaExpanded, setAlertaExpanded, onOpenReceta }) {
+  return (
+    <Box sx={{ borderRadius: 2, border: '1px solid #e8eaf0', overflow: 'hidden' }}>
+      <Box onClick={onToggle} sx={{
+        px: 1.75, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        cursor: 'pointer', bgcolor: '#f7f8fa', '&:hover': { bgcolor: '#eef0f4' },
+      }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <CategoryIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
+          <Typography fontWeight={700} sx={{ fontSize: '0.8rem' }}>{rubro}</Typography>
+          <Chip label={insumos.length} size="small"
+            sx={{ height: 18, fontSize: '0.65rem', bgcolor: '#fef3c7', color: '#92400e' }} />
+        </Stack>
+        <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>{expanded ? '▲' : '▼'}</Typography>
+      </Box>
+      {expanded && (
+        <Stack spacing={0.75} sx={{ p: 1, bgcolor: '#fbfbfc' }}>
+          {insumos.map(ins => (
+            <InsumoAlerta
+              key={ins.insumoId}
+              ins={ins}
+              expanded={alertaExpanded === ins.insumoId}
+              onToggle={() => setAlertaExpanded(p => p === ins.insumoId ? null : ins.insumoId)}
+              onOpenReceta={onOpenReceta}
+            />
+          ))}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
 /* ══════════════════════════════════════════════════
    COMPONENTE PRINCIPAL
 ══════════════════════════════════════════════════ */
@@ -286,6 +323,21 @@ export default function ConfigInsumosTab({
   const [savedDesperdicio, setSavedDesperdicio] = React.useState(config?.desperdicio_global_pct ?? '');
   React.useEffect(() => { setSavedDesperdicio(config?.desperdicio_global_pct ?? ''); }, [config?.desperdicio_global_pct]);
   const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
+  const [bloquesAlertasAbiertos, setBloquesAlertasAbiertos] = React.useState(() => new Set());
+  const toggleBloqueAlertas = (rubro) => setBloquesAlertasAbiertos((prev) => {
+    const next = new Set(prev);
+    if (next.has(rubro)) next.delete(rubro); else next.add(rubro);
+    return next;
+  });
+  const alertasPorRubro = React.useMemo(() => {
+    const map = new Map();
+    for (const ins of alertasInsumos) {
+      const rubro = ins.rubro || 'Sin rubro';
+      if (!map.has(rubro)) map.set(rubro, []);
+      map.get(rubro).push(ins);
+    }
+    return [...map.entries()].map(([rubro, insumos]) => ({ rubro, insumos }));
+  }, [alertasInsumos]);
 
   const handleConfirm = () => {
     if (!confirmDlg) return;
@@ -573,7 +625,7 @@ export default function ConfigInsumosTab({
               <CardHeader
                 icon={<WarningAmberIcon />}
                 title="Insumos con compras vencidas"
-                subtitle="Insumos en recetas activas sin compras recientes — click para expandir y ver las recetas"
+                subtitle="Insumos en recetas activas sin compras recientes — agrupados por rubro, click para abrir cada uno"
                 action={
                   <Stack direction="row" spacing={1} alignItems="center">
                     {alertasTotal > 0 && (
@@ -605,12 +657,15 @@ export default function ConfigInsumosTab({
                   </Stack>
                 ) : (
                   <Stack spacing={0.75}>
-                    {alertasInsumos.map(ins => (
-                      <InsumoAlerta
-                        key={ins.insumoId}
-                        ins={ins}
-                        expanded={alertaExpanded === ins.insumoId}
-                        onToggle={() => setAlertaExpanded(p => p === ins.insumoId ? null : ins.insumoId)}
+                    {alertasPorRubro.map(({ rubro, insumos }) => (
+                      <BloqueRubroAlertas
+                        key={rubro}
+                        rubro={rubro}
+                        insumos={insumos}
+                        expanded={bloquesAlertasAbiertos.has(rubro)}
+                        onToggle={() => toggleBloqueAlertas(rubro)}
+                        alertaExpanded={alertaExpanded}
+                        setAlertaExpanded={setAlertaExpanded}
                         onOpenReceta={onOpenReceta}
                       />
                     ))}
