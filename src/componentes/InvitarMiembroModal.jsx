@@ -9,8 +9,10 @@ import {
 import GroupAddOutlinedIcon     from '@mui/icons-material/GroupAddOutlined';
 import BusinessIcon             from '@mui/icons-material/Business';
 import StorefrontOutlinedIcon   from '@mui/icons-material/StorefrontOutlined';
+import { useNavigate } from 'react-router-dom';
 
 import { createInvitation, listKnownPeople }   from '@/servicios/apiTeam';
+import { listarSectores } from '@/servicios/apiSectores';
 import { useAccess }          from '@/context/AccessContext';
 import { useBusiness }        from '@/context/BusinessContext';
 import { useOrganization }    from '@/context/OrganizationContext';
@@ -34,6 +36,21 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const [error, setError]                     = useState(null);
   const [knownPeople, setKnownPeople]         = useState([]);
   const [aliasHeredado, setAliasHeredado]     = useState(false); // true si el alias vino de una persona existente
+  const [sectores, setSectores]               = useState([]);
+  const [selectedSectorIds, setSelectedSectorIds] = useState(() => new Set());
+  const navigate = useNavigate();
+
+  // Sector (Vista Operación): solo tiene sentido con rol Staff y un negocio
+  // puntual — se carga la lista de sectores de ESE negocio (scopeId, el de
+  // dónde se abrió el modal; Staff no usa el selector multi-negocio de abajo).
+  useEffect(() => {
+    if (!open || role !== 'staff' || scopeType !== 'business' || !scopeId) { setSectores([]); return; }
+    let alive = true;
+    listarSectores(scopeId)
+      .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setSectores([]); });
+    return () => { alive = false; };
+  }, [open, role, scopeType, scopeId]);
 
   // Cargar personas conocidas del owner al abrir (para sugerir y heredar alias)
   useEffect(() => {
@@ -52,6 +69,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
       setAliasHeredado(false);
       setRole(puedeInvitarAdmin ? 'admin' : 'staff');
       setSelectedScopeKeys(new Set());
+      setSelectedSectorIds(new Set());
       setError(null); setLoading(false);
     } else {
       // Por default queda preseleccionado el scope del negocio donde se abrió el modal
@@ -130,6 +148,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
         scopes,
         role,
         alias: alias.trim(),
+        sectorIds: role === 'staff' && selectedSectorIds.size ? Array.from(selectedSectorIds) : undefined,
       });
 
       if (res?.ok) {
@@ -234,6 +253,48 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
             {puedeInvitarStaff && <MenuItem value="staff">Staff (operativo)</MenuItem>}
           </TextField>
+
+          {/* Sector dentro del negocio (solo Staff) — define qué recetas ve */}
+          {role === 'staff' && scopeType === 'business' && (
+            <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30` }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                SECTOR DENTRO DE {scopeName || `#${scopeId}`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Define qué recetas ve. Podés tildar más de uno.
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
+                {sectores.map((s) => {
+                  const activo = selectedSectorIds.has(s.id);
+                  return (
+                    <Chip
+                      key={s.id}
+                      label={s.nombre}
+                      size="small"
+                      onClick={() => setSelectedSectorIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                        return next;
+                      })}
+                      sx={{
+                        cursor: 'pointer', fontWeight: 600,
+                        bgcolor: activo ? tc : 'transparent',
+                        color: activo ? '#fff' : 'text.primary',
+                        border: `1px solid ${activo ? tc : '#d8d3ca'}`,
+                      }}
+                    />
+                  );
+                })}
+                <Chip
+                  label="Gestionar sectores"
+                  size="small"
+                  variant="outlined"
+                  onClick={() => { onClose?.(); navigate('/configuracion?tab=5'); }}
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Stack>
+            </Box>
+          )}
 
           {/* Selector de alcance (solo para admin con múltiples opciones) */}
           {mostrarSelector ? (
