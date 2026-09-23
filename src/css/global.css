@@ -192,9 +192,10 @@ tbody td {
     height: auto;
   }
 
-  /* Sidebar deja de ser sticky para que no corte */
-  .articulos-sidebar,
-  .sidebar {
+  /* Sidebar deja de ser sticky para que no corte — solo la clase vieja/no
+     usada (.articulos-sidebar). .sidebar SÍ se usa hoy (Artículos e Insumos)
+     y este position:static !important le rompía el header fijo. */
+  .articulos-sidebar {
     position: static !important;
     height: auto;
     max-height: none;
