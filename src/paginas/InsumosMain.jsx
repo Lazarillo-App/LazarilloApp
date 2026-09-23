@@ -1379,10 +1379,28 @@ export default function InsumosMain() {
     return base;
   }, [businessName, isMainDivision, activeDivisionName]);
 
+  // Alto real de la barra superior — medido, no asumido (mismo criterio que
+  // ArticulosMain.jsx: calc(100vh - Npx) no siempre coincide con la pantalla
+  // real, sobre todo con el zoom global de la app).
+  const [navHeight, setNavHeight] = useState(86);
+  useEffect(() => {
+    const el = document.querySelector('.MuiAppBar-root');
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const recalcular = () => setNavHeight(el.getBoundingClientRect().height || 86);
+    recalcular();
+    const ro = new ResizeObserver(recalcular);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   /* ── Render ── */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 16,
+      position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
+      overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
         <h2 style={{ margin: 0 }}>
           {titulo}
           {activeBranch && (
@@ -1494,8 +1512,8 @@ export default function InsumosMain() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', height: '75vh', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
-        <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', position: 'sticky', top: 0, alignSelf: 'start', height: 'calc(100vh - 0px)', overflowY: 'auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+        <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
           <InsumosSidebar
             rubros={rubrosTree}
             rubroSeleccionado={rubroSeleccionado}
@@ -1541,7 +1559,7 @@ export default function InsumosMain() {
           />
         </div>
 
-        <div id="insumos-scroll" style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 0px)' }}>
+        <div id="insumos-scroll" style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
             branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}

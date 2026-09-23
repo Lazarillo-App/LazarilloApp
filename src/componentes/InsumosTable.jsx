@@ -266,6 +266,34 @@ const InsumosTable = forwardRef(function InsumosTable({
   const listRef = useRef(null);
   const [rubros, setRubros] = useState([]);
 
+  // Alto real de la lista virtualizada: medido del contenedor (no un "100vh -
+  // N px" fijo) — mismo criterio que TablaArticulos.jsx, para que siempre
+  // llegue hasta abajo sin importar el zoom o el tamaño de pantalla.
+  const tablaWrapRef = useRef(null);
+  const tablaHeaderRef = useRef(null);
+  const [listHeight, setListHeight] = useState(() => (
+    typeof window !== "undefined" && window.innerHeight
+      ? Math.max(300, window.innerHeight - 220)
+      : 600
+  ));
+
+  useEffect(() => {
+    const wrapEl = tablaWrapRef.current;
+    if (!wrapEl || typeof ResizeObserver === "undefined") return;
+
+    const recalcular = () => {
+      const wrapH = wrapEl.getBoundingClientRect().height;
+      const headerH = tablaHeaderRef.current?.getBoundingClientRect().height || 0;
+      setListHeight(Math.max(300, Math.round(wrapH - headerH)));
+    };
+
+    recalcular();
+    const ro = new ResizeObserver(recalcular);
+    ro.observe(wrapEl);
+    if (tablaHeaderRef.current) ro.observe(tablaHeaderRef.current);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!businessId) {
       setRubros([]);
@@ -825,9 +853,9 @@ const InsumosTable = forwardRef(function InsumosTable({
 
   return (
     <div className="tabla-articulos-inner" style={{ height: '100%' }}>
-      <div style={{ height: '100%', width: "100%", position: "relative" }}>
+      <div ref={tablaWrapRef} style={{ height: '100%', width: "100%", position: "relative" }}>
         {/* HEADER sticky */}
-        <div className="table-col-header">
+        <div ref={tablaHeaderRef} className="table-col-header">
           <div
             className="table-col-header-inner"
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
@@ -964,11 +992,7 @@ const InsumosTable = forwardRef(function InsumosTable({
             rows={flatRows}
             rowHeight={ITEM_HEIGHT}
             overscan={10}
-            height={
-              typeof window !== "undefined"
-                ? Math.max(300, window.innerHeight - 220)
-                : 600
-            }
+            height={listHeight}
             getRowId={(row) => {
               if (row?.type === "insumo") {
                 const id = Number(row?.data?.id);
