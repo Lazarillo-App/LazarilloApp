@@ -28,22 +28,19 @@ function cargarImagen(src) {
   });
 }
 
-// Dibuja el QR con un logo en el centro — el del negocio si tiene (arriba del
-// cartel ya dice "Lazarillo", así que el centro identifica el local), y si no
-// tiene logo propio, el de Lazarillo como respaldo. Necesita corrección de
-// error alta ('H') para que siga siendo legible con el logo encima.
-async function dibujarQrConLogo(link, logoUrl) {
+// Dibuja el QR con la L de Lazarillo en el centro. El logo del negocio va
+// arriba del cartel (o el nombre, si no tiene logo) — el centro se deja fijo
+// con la marca de Lazarillo porque el logo de cada negocio puede tener
+// cualquier proporción y deformarse al forzarlo a un cuadrado chico. Necesita
+// corrección de error alta ('H') para que siga siendo legible con el logo
+// encima.
+async function dibujarQrConLogo(link) {
   const size = 320;
   const canvas = document.createElement('canvas');
   await QRCode.toCanvas(canvas, link, { width: size, margin: 1, errorCorrectionLevel: 'H' });
 
   const ctx = canvas.getContext('2d');
-  let logo;
-  try {
-    logo = await cargarImagen(logoUrl || logoMark);
-  } catch {
-    logo = await cargarImagen(logoMark);
-  }
+  const logo = await cargarImagen(logoMark);
 
   const logoSize = Math.round(size * 0.22);
   const cx = (size - logoSize) / 2;
@@ -55,9 +52,12 @@ async function dibujarQrConLogo(link, logoUrl) {
   return canvas.toDataURL('image/png');
 }
 
-function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName }) {
+function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName, businessLogo }) {
   const w = window.open('', '_blank', 'width=500,height=700');
   if (!w) return;
+  const encabezado = businessLogo
+    ? `<img class="logo-negocio" src="${businessLogo}" alt="${businessName}" />`
+    : `<div class="marca-negocio">${businessName}</div>`;
   w.document.write(`
     <!doctype html><html><head><title>Acceso del equipo — ${businessName}</title>
     <style>
@@ -65,11 +65,11 @@ function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName }) 
       body { font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center;
              height: 100vh; margin: 0; }
       .cartel { border: 2px solid #111; border-radius: 16px; padding: 32px 40px; text-align: center; width: 340px; }
-      .marca { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
-      .sub { font-size: 10px; letter-spacing: 2px; color: #666; margin-bottom: 18px; }
+      .logo-negocio { max-width: 220px; max-height: 60px; object-fit: contain; margin-bottom: 14px; }
+      .marca-negocio { font-size: 20px; font-weight: 900; margin-bottom: 14px; }
       h2 { margin: 0 0 4px; font-size: 18px; }
       p.instr { color: #555; font-size: 12.5px; margin: 0 0 16px; }
-      img { width: 220px; height: 220px; }
+      .qr { width: 220px; height: 220px; }
       .code { font-size: 22px; font-weight: 800; letter-spacing: 6px; margin-top: 12px; }
       .code-hint { font-size: 10px; color: #888; margin-top: 2px; }
       .negocio { margin-top: 18px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 12px; color: #444; }
@@ -77,11 +77,10 @@ function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName }) 
     </style></head>
     <body onload="window.print()">
       <div class="cartel">
-        <div class="marca">LAZARILLO</div>
-        <div class="sub">GESTIÓN GASTRONÓMICA</div>
+        ${encabezado}
         <h2>Sumate al equipo</h2>
         <p class="instr">Escaneá con la cámara del celular<br/>para crear tu usuario</p>
-        <img src="${qrDataUrl}" alt="QR" />
+        <img class="qr" src="${qrDataUrl}" alt="QR" />
         <div class="code">${code}</div>
         <div class="code-hint">o cargá este código</div>
         <div class="negocio">
@@ -111,13 +110,13 @@ export default function AccesoEquipoModal({ open, onClose, businessId, branchId,
         if (!alive) return;
         setAccessCode(ac);
         const url = `${window.location.origin}/r/${ac.code}`;
-        const dataUrl = await dibujarQrConLogo(url, businessLogo);
+        const dataUrl = await dibujarQrConLogo(url);
         if (alive) setQrDataUrl(dataUrl);
       })
       .catch((e) => { if (alive) showAlert(e?.message || 'No se pudo generar el acceso', 'error'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [open, businessId, branchId, businessLogo]);
+  }, [open, businessId, branchId]);
 
   const togglePausa = async () => {
     setBusy(true);
@@ -181,7 +180,7 @@ export default function AccesoEquipoModal({ open, onClose, businessId, branchId,
         <Button
           startIcon={<PrintIcon />}
           disabled={loading || !qrDataUrl}
-          onClick={() => abrirCartelParaImprimir({ qrDataUrl, code: accessCode?.code, businessName, branchName })}
+          onClick={() => abrirCartelParaImprimir({ qrDataUrl, code: accessCode?.code, businessName, branchName, businessLogo })}
         >
           Imprimir QR
         </Button>
