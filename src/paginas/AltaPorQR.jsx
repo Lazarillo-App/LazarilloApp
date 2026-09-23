@@ -10,6 +10,27 @@ import {
   resolverCodigoPublico, pedirAccesoPublico, confirmarAccesoPublico,
 } from '@/servicios/apiAccesoEquipo';
 
+// Prefijos de los países donde opera el negocio hoy. Argentina lleva el "9"
+// después del 54 porque así lo exige la API de WhatsApp para celulares
+// argentinos, aunque nadie lo marque al llamar.
+const PAISES = [
+  { dial: '549', label: '🇦🇷 Argentina', codigo: '+54' },
+  { dial: '598', label: '🇺🇾 Uruguay', codigo: '+598' },
+  { dial: '56', label: '🇨🇱 Chile', codigo: '+56' },
+  { dial: '595', label: '🇵🇾 Paraguay', codigo: '+595' },
+  { dial: '591', label: '🇧🇴 Bolivia', codigo: '+591' },
+  { dial: '51', label: '🇵🇪 Perú', codigo: '+51' },
+  { dial: '57', label: '🇨🇴 Colombia', codigo: '+57' },
+  { dial: '52', label: '🇲🇽 México', codigo: '+52' },
+  { dial: '34', label: '🇪🇸 España', codigo: '+34' },
+  { dial: '1', label: '🇺🇸 Estados Unidos', codigo: '+1' },
+];
+
+function normalizarCelular(dial, numeroLocal) {
+  const soloDigitos = numeroLocal.replace(/\D/g, '').replace(/^0+/, '');
+  return `+${dial}${soloDigitos}`;
+}
+
 export default function AltaPorQR() {
   const { code } = useParams();
   const [negocio, setNegocio] = useState(null);
@@ -18,6 +39,8 @@ export default function AltaPorQR() {
 
   const [nombre, setNombre] = useState('');
   const [canal, setCanal] = useState('celular');
+  const [pais, setPais] = useState(PAISES[0].dial);
+  const [numeroLocal, setNumeroLocal] = useState('');
   const [valor, setValor] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -45,11 +68,16 @@ export default function AltaPorQR() {
     e.preventDefault();
     setErr('');
     if (!nombre.trim()) { setErr('Ingresá tu nombre'); return; }
-    if (!valor.trim()) { setErr(canal === 'celular' ? 'Ingresá tu celular' : 'Ingresá tu email'); return; }
+    if (canal === 'celular' ? !numeroLocal.trim() : !valor.trim()) {
+      setErr(canal === 'celular' ? 'Ingresá tu celular' : 'Ingresá tu email');
+      return;
+    }
+    const valorFinal = canal === 'celular' ? normalizarCelular(pais, numeroLocal) : valor.trim();
     setBusy(true);
     try {
-      const r = await pedirAccesoPublico(code, { nombre: nombre.trim(), canal, valor: valor.trim() });
+      const r = await pedirAccesoPublico(code, { nombre: nombre.trim(), canal, valor: valorFinal });
       if (!r?.ok) { setErr(r?.error === 'code_not_found' ? 'El acceso ya no está disponible' : 'No se pudo pedir el acceso'); return; }
+      setValor(valorFinal);
       setRequestId(r.requestId);
       setPaso('confirmar');
     } catch (e2) {
@@ -124,9 +152,21 @@ export default function AltaPorQR() {
               </div>
 
               <label className="auth-label" htmlFor="valor">{canal === 'celular' ? 'Celular' : 'Email'}</label>
-              <input id="valor" className="input" value={valor} onChange={(e) => setValor(e.target.value)}
-                placeholder={canal === 'celular' ? '11 5555 4321' : 'tu@email.com'}
-                inputMode={canal === 'celular' ? 'tel' : 'email'} />
+              {canal === 'celular' ? (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select className="input" value={pais} onChange={(e) => setPais(e.target.value)}
+                    style={{ flex: '0 0 auto', width: 120 }}>
+                    {PAISES.map((p) => (
+                      <option key={p.dial} value={p.dial}>{p.label} {p.codigo}</option>
+                    ))}
+                  </select>
+                  <input id="valor" className="input" value={numeroLocal} onChange={(e) => setNumeroLocal(e.target.value)}
+                    placeholder="11 5555 4321" inputMode="tel" style={{ flex: 1 }} />
+                </div>
+              ) : (
+                <input id="valor" className="input" value={valor} onChange={(e) => setValor(e.target.value)}
+                  placeholder="tu@email.com" inputMode="email" />
+              )}
 
               <button className="btn btn-sky w-full" disabled={busy} style={{ marginTop: 12 }}>
                 {busy ? 'Enviando…' : 'Pedir acceso'}
