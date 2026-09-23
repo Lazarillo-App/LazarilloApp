@@ -487,6 +487,34 @@ export default function TablaArticulos({
   const listRef = useRef(null);
   const lastJumpedIdRef = useRef(null);
 
+  // Alto real de la lista virtualizada: medido del contenedor (no un "100vh -
+  // N px" fijo) para que siempre llegue hasta abajo sin importar el zoom, el
+  // tamaño de pantalla o cambios futuros en lo que hay arriba de la tabla.
+  const tablaWrapRef = useRef(null);
+  const tablaHeaderRef = useRef(null);
+  const [listHeight, setListHeight] = useState(() => (
+    typeof window !== "undefined" && window.innerHeight
+      ? Math.max(240, window.innerHeight - 220)
+      : 520
+  ));
+
+  useEffect(() => {
+    const wrapEl = tablaWrapRef.current;
+    if (!wrapEl || typeof ResizeObserver === "undefined") return;
+
+    const recalcular = () => {
+      const wrapH = wrapEl.getBoundingClientRect().height;
+      const headerH = tablaHeaderRef.current?.getBoundingClientRect().height || 0;
+      setListHeight(Math.max(240, Math.round(wrapH - headerH)));
+    };
+
+    recalcular();
+    const ro = new ResizeObserver(recalcular);
+    ro.observe(wrapEl);
+    if (tablaHeaderRef.current) ro.observe(tablaHeaderRef.current);
+    return () => ro.disconnect();
+  }, [visibleCols.length]);
+
   const [rubroEditModal, setRubroEditModal] = useState(null);
 
   const findPath = useCallback((cats, id) => {
@@ -2339,9 +2367,9 @@ export default function TablaArticulos({
         />
       )}
 
-      <div className="tabla-articulos-container">
-        <div style={{ height: "calc(100vh - 220px)", width: "100%" }}>
-          <div className="table-col-header">
+      <div className="tabla-articulos-container" style={{ height: "100%" }}>
+        <div ref={tablaWrapRef} style={{ height: "100%", width: "100%" }}>
+          <div ref={tablaHeaderRef} className="table-col-header">
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
             <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'stretch' }}>
               <div />
@@ -2531,7 +2559,7 @@ export default function TablaArticulos({
                 <VirtualList
                   ref={listRef} rows={flatRows} rowHeight={(row) => (row?.kind === 'item' ? 60 : 42)}
                   onScrollTop={handleScrollTop}
-                  height={typeof window !== "undefined" && window.innerHeight ? Math.max(240, window.innerHeight - 220) : 520}
+                  height={listHeight}
                   overscan={8} onVisibleItemsIds={handleVisibleIds}
                   getRowId={(r) => (r?.kind === "item" ? Number(r?.art?.id) : null)}
                   renderRow={renderRow} extraData={(ventasPorArticulo?.size || 0) + selectedIds.size + (selectionMode ? 1 : 0)}
