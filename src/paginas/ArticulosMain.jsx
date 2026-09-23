@@ -2433,8 +2433,11 @@ export default function ArticulosMain(props) {
 
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 16,
+      height: 'calc(100vh - var(--navbar-height, 86px))', overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
           <Box sx={{ display: 'flex', gap: 2, ml: 'auto', order: 2, alignItems: 'center' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
@@ -2606,15 +2609,14 @@ export default function ArticulosMain(props) {
 
       <div style={{
         display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
-        borderRadius: 12, overflow: 'hidden', height: '75vh',
+        borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0,
         boxShadow: '0 1px 4px rgba(0,0,0,.08)'
       }}>
         <div
           ref={sidebarScrollRef}
           style={{
             borderRight: '1px solid #eee', background: '#fafafa',
-            position: 'sticky', top: 0, alignSelf: 'start',
-            height: 'calc(100vh - 0px)', overflowY: 'auto'
+            height: '100%', overflow: 'hidden',
           }}>
           <SidebarCategorias
             categorias={categorias}
@@ -2669,7 +2671,7 @@ export default function ArticulosMain(props) {
 
         <div
           id="tabla-scroll"
-          style={{ background: '#fff', overflow: 'auto', maxHeight: 'calc(100vh - 190px)', paddingBottom: 40 }}>
+          style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
             branches={[]}
             ventasMapByBranch={{}}

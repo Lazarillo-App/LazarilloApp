@@ -236,17 +236,6 @@ h2 {
   }
 }
 
-element.style {
-  border-right: 1px solid rgb(238, 238, 238);
-  background:
-    color-mix(in srgb, var(--color-primary) 40%, transparent);
-  position: sticky;
-  top: 0px;
-  align-self: start;
-  height: 68vh !important;
-  overflow-y: auto;
-}
-
 .articulos-layout {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
@@ -256,13 +245,13 @@ element.style {
   box-sizing: border-box;
 }
 
-/* Columna izquierda (sidebar) */
+/* Columna izquierda (sidebar) — sin scroll propio: la fija su contenedor en
+   ArticulosMain.jsx a la altura completa de la pantalla (un solo scroll real,
+   el de la tabla de artículos). */
 .articulos-sidebar,
 .sidebar {
-  position: sticky !important;
-  align-self: start;
-  overflow: auto;
-  height: 75vh;
+  height: 100%;
+  overflow: hidden;
   background: var(--color-bg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
