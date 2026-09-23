@@ -636,10 +636,12 @@ function InsumosSidebar({
             )}
           </div>
         )}
-      </div>
 
-      {/* ── Panel Agrupaciones ────────────────────────────────── */}
-      {activeTab === 'agrupaciones' && (
+        {/* ── Panel Agrupaciones (select + toggle elaborados) — sigue
+             adentro del bloque fijo de arriba, junto con el toggle
+             Agrupaciones/Listas; lo que scrollea es solo la lista de
+             rubros de más abajo. ── */}
+        {activeTab === 'agrupaciones' && (
         <>
           <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
@@ -794,7 +796,14 @@ function InsumosSidebar({
               <ToggleButton value="elaborados">Elaborados</ToggleButton>
             </ToggleButtonGroup>
           </div>
+        </>
+        )}
+      </div>
 
+      {/* ── Lista de rubros/subrubros — esta sí scrollea; el select y el
+           toggle de arriba quedan fijos dentro del bloque sticky. ── */}
+      {activeTab === 'agrupaciones' && (
+        <>
           <ul className="sidebar-draggable-list">
             {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}
 
