@@ -136,7 +136,12 @@ const VirtualList = forwardRef(function VirtualList(
       ref={scrollRef}
       style={{
         height,
-        overflow: 'auto',
+        overflowY: 'auto',
+        // Nunca scroll horizontal: si el contenido es más ancho que el
+        // contenedor, la barra horizontal se comía espacio vertical abajo
+        // (tapando la última fila) en vez de simplemente no aparecer — una
+        // lista de filas no debería necesitar scroll lateral.
+        overflowX: 'hidden',
         position: 'relative',
         willChange: 'transform',
       }}
