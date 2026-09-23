@@ -34,6 +34,8 @@ import { useAccess } from '@/context/AccessContext';
 import BusinessCreateModal from '@/componentes/BusinessCreateModal';
 import InvitarMiembroModal from '@/componentes/InvitarMiembroModal';
 import EditarAccesoModal from '@/componentes/EditarAccesoModal';
+import AccesoEquipoModal from '@/componentes/AccesoEquipoModal';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncservice';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
@@ -106,6 +108,7 @@ function TeamSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [showAccesoQR, setShowAccesoQR] = useState(false);
 const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (detalle de negocios)
   const [editandoPersona, setEditandoPersona] = useState(null); // persona en el modal de editar acceso
 
@@ -241,15 +244,26 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         badge={members.length ? `${members.length} ${members.length === 1 ? 'persona' : 'personas'}` : undefined}
         action={
           puedeGestionar ? (
-            <Tooltip title="Invitar miembro">
-              <IconButton
-                size="small"
-                onClick={() => setShowInvite(true)}
-                sx={{ color: tc }}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="QR de acceso del equipo (negocio activo)">
+                <IconButton
+                  size="small"
+                  onClick={() => setShowAccesoQR(true)}
+                  sx={{ color: tc }}
+                >
+                  <QrCode2Icon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Invitar miembro">
+                <IconButton
+                  size="small"
+                  onClick={() => setShowInvite(true)}
+                  sx={{ color: tc }}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           ) : null
         }
       >
@@ -452,6 +466,17 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           }
         }}
       />
+
+      {showAccesoQR && (
+        <AccesoEquipoModal
+          open={showAccesoQR}
+          onClose={() => setShowAccesoQR(false)}
+          businessId={bizId}
+          branchId="main"
+          businessName={bizName}
+          branchName={null}
+        />
+      )}
 
       <Snackbar
         open={!!snack}
