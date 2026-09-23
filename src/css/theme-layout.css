@@ -245,17 +245,27 @@ h2 {
   box-sizing: border-box;
 }
 
-/* Columna izquierda (sidebar) — sin scroll propio: la fija su contenedor en
-   ArticulosMain.jsx a la altura completa de la pantalla (un solo scroll real,
-   el de la tabla de artículos). */
+/* Columna izquierda (sidebar) — el scroll real pasa en su contenedor externo
+   (ArticulosMain.jsx, .sidebar-scroll-wrap), este solo llena esa altura. */
 .articulos-sidebar,
 .sidebar {
   height: 100%;
-  overflow: hidden;
   background: var(--color-bg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 0;
+}
+
+/* Wrapper con el scroll real del sidebar, barra oculta (sigue andando con
+   rueda/touch/drag, solo no se ve la barrita fea). */
+.sidebar-scroll-wrap {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* Edge legacy */
+}
+.sidebar-scroll-wrap::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari/Edge */
 }
 
 .css-trm6af-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutlinedInput-input.MuiSelect-select {

@@ -2614,9 +2614,10 @@ export default function ArticulosMain(props) {
       }}>
         <div
           ref={sidebarScrollRef}
+          className="sidebar-scroll-wrap"
           style={{
             borderRight: '1px solid #eee', background: '#fafafa',
-            height: '100%', overflow: 'hidden',
+            height: '100%',
           }}>
           <SidebarCategorias
             categorias={categorias}
