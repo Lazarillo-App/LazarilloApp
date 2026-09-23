@@ -2450,7 +2450,8 @@ export default function ArticulosMain(props) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 16,
-      height: `calc(100vh - ${navHeight}px)`, overflow: 'hidden',
+      position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
+      overflow: 'hidden',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
