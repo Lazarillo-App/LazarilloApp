@@ -24,6 +24,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import CheckIcon from '@mui/icons-material/Check';
 import UndoIcon from '@mui/icons-material/Undo';
 import CloseIcon from '@mui/icons-material/Close';
+import { useNavigate } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
@@ -72,6 +73,7 @@ const formatDate = (dateStr) => {
 export default function NotificationsPanel({ businessId: businessIdProp }) {
   const { activeBusinessId } = useBusiness() || {};
   const businessId = Number(businessIdProp ?? activeBusinessId) || null;
+  const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
 
@@ -304,6 +306,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       if (kind === 'move') return '📦';
       return '📌';
     }
+    if (notif?.kind === 'access_request') return '👤';
     return '🔔';
   };
 
@@ -361,19 +364,50 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     }
   }, [businessId, patchNotification, safeRefreshAfterAction, setBusy]);
 
-  // ✅ 4) SOLO UI notifs con scope válido
+  // Notificaciones que vienen del backend (sync_notifications) — antes se
+  // pedían (fetch) pero nunca se mostraban ni se contaban en el badge.
+  const backendNotifs = useMemo(() => {
+    return (notifications || []).map((n) => ({
+      id: `be:${n.id}`,
+      _backendId: n.id,
+      source: 'backend',
+      read: !!n.read,
+      kind: n.type,
+      title: n.title,
+      message: n.message,
+      created_at: n.created_at,
+      metadata: n.metadata,
+      resolved: false,
+    }));
+  }, [notifications]);
+
+  // ✅ 4) UI notifs (no resueltas) + notifs del backend, ordenadas por fecha
   const merged = useMemo(() => {
-    // Mostrar todas las notificaciones UI no resueltas, sin filtrar por scope
-    return (uiNotifs || []).filter((n) => !n.resolved);
-  }, [uiNotifs]);
+    const ui = (uiNotifs || []).filter((n) => !n.resolved);
+    return [...backendNotifs, ...ui].sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+  }, [uiNotifs, backendNotifs]);
 
   const unreadUiCount = useMemo(
     () => (uiNotifs || []).filter((n) => !n.read && !n.resolved).length,
     [uiNotifs]
   );
 
-  // ✅ Badge solo cuenta UI notifs
-  const badgeCount = unreadUiCount;
+  // ✅ Badge: UI notifs + no leídas del backend (pedidos de acceso, sync, etc.)
+  const badgeCount = unreadUiCount + (unreadCount || 0);
+
+  const handleNotifClick = useCallback((notif) => {
+    if (notif.source === 'backend') {
+      if (!notif.read) markAsRead([notif._backendId]);
+      if (notif.kind === 'access_request') {
+        setOpen(false);
+        navigate('/configuracion?tab=5');
+      }
+      return;
+    }
+    setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+  }, [markAsRead, navigate]);
 
   const markAllUiAsRead = () => {
     setUiNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -493,9 +527,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                 return (
                   <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
                     <ListItemButton
-                      onClick={() =>
-                        setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)))
-                      }
+                      onClick={() => handleNotifClick(notif)}
                       sx={{
                         borderRadius: 2,
                         alignItems: 'flex-start',
