@@ -92,6 +92,15 @@ function TeamSection() {
   const { organization } = useOrganization() || {};
   const bizId = currentBusiness?.id || null;
   const bizName = currentBusiness?.name || null;
+  const bizLogo = useMemo(() => {
+    const biz = (allBusinesses || []).find((b) => String(b.id) === String(bizId));
+    const branding = biz?.branding || biz?.props?.branding || {};
+    const raw = String(branding?.logo_url || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://lazarilloapp-backend.onrender.com';
+    return raw.startsWith('/') ? `${API_BASE}${raw}` : `${API_BASE}/${raw}`;
+  }, [allBusinesses, bizId]);
   const propioEmail = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || 'null')?.email || null; }
     catch { return null; }
@@ -474,6 +483,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           businessId={bizId}
           branchId="main"
           businessName={bizName}
+          businessLogo={bizLogo}
           branchName={null}
         />
       )}

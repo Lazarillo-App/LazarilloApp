@@ -381,6 +381,7 @@ const syncingProvRef = useRef(false);
           businessId={viewBiz?.id}
           branchId={accesoBranch.id}
           businessName={name}
+          businessLogo={logo}
           branchName={accesoBranch.name}
         />
       )}

@@ -18,21 +18,32 @@ import logoMark from '@/assets/brand/logo.png';
 import { obtenerCodigoAcceso, pausarReanudarAcceso } from '@/servicios/apiAccesoEquipo';
 import { showAlert } from '@/servicios/appAlert';
 
-// Dibuja el QR con el logo Lazarillo en el centro — necesita corrección de
+function cargarImagen(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Dibuja el QR con un logo en el centro — el del negocio si tiene (arriba del
+// cartel ya dice "Lazarillo", así que el centro identifica el local), y si no
+// tiene logo propio, el de Lazarillo como respaldo. Necesita corrección de
 // error alta ('H') para que siga siendo legible con el logo encima.
-async function dibujarQrConLogo(link) {
+async function dibujarQrConLogo(link, logoUrl) {
   const size = 320;
   const canvas = document.createElement('canvas');
   await QRCode.toCanvas(canvas, link, { width: size, margin: 1, errorCorrectionLevel: 'H' });
 
   const ctx = canvas.getContext('2d');
-  const logo = await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = logoMark;
-  });
+  let logo;
+  try {
+    logo = await cargarImagen(logoUrl || logoMark);
+  } catch {
+    logo = await cargarImagen(logoMark);
+  }
 
   const logoSize = Math.round(size * 0.22);
   const cx = (size - logoSize) / 2;
@@ -50,7 +61,7 @@ function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName }) 
   w.document.write(`
     <!doctype html><html><head><title>Acceso del equipo — ${businessName}</title>
     <style>
-      @page { size: A4; margin: 0; }
+      @page { size: A5; margin: 0; }
       body { font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center;
              height: 100vh; margin: 0; }
       .cartel { border: 2px solid #111; border-radius: 16px; padding: 32px 40px; text-align: center; width: 340px; }
@@ -83,7 +94,7 @@ function abrirCartelParaImprimir({ qrDataUrl, code, businessName, branchName }) 
   w.document.close();
 }
 
-export default function AccesoEquipoModal({ open, onClose, businessId, branchId, businessName, branchName }) {
+export default function AccesoEquipoModal({ open, onClose, businessId, branchId, businessName, branchName, businessLogo }) {
   const [loading, setLoading] = React.useState(true);
   const [accessCode, setAccessCode] = React.useState(null);
   const [qrDataUrl, setQrDataUrl] = React.useState(null);
@@ -100,13 +111,13 @@ export default function AccesoEquipoModal({ open, onClose, businessId, branchId,
         if (!alive) return;
         setAccessCode(ac);
         const url = `${window.location.origin}/r/${ac.code}`;
-        const dataUrl = await dibujarQrConLogo(url);
+        const dataUrl = await dibujarQrConLogo(url, businessLogo);
         if (alive) setQrDataUrl(dataUrl);
       })
       .catch((e) => { if (alive) showAlert(e?.message || 'No se pudo generar el acceso', 'error'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [open, businessId, branchId]);
+  }, [open, businessId, branchId, businessLogo]);
 
   const togglePausa = async () => {
     setBusy(true);
