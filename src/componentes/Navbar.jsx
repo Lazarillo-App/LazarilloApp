@@ -69,6 +69,7 @@ const getUserInitials = () => {
 export default function Navbar() {
   const [navEl, setNavEl] = React.useState(null);
   const [userEl, setUserEl] = React.useState(null);
+  const [userAnchorPos, setUserAnchorPos] = React.useState(null);
   const [modulosOpen, setModulosOpen] = React.useState(false);
 
   const navigate = useNavigate();
@@ -373,7 +374,11 @@ export default function Navbar() {
             <Box sx={{ flexGrow: 0, ml: 0.5 }}>
               <Tooltip title="Perfil">
                 <IconButton
-                  onClick={(e) => setUserEl(e.currentTarget)}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setUserAnchorPos({ top: rect.bottom + 6, left: rect.right });
+                    setUserEl(e.currentTarget);
+                  }}
                   sx={{ p: 0, color: 'inherit' }}
                   aria-label="Abrir menú de perfil"
                 >
@@ -395,16 +400,15 @@ export default function Navbar() {
 
               <Menu
                 sx={{
-                  mt: '45px',
                   '& .MuiPaper-root': {
                     background: 'var(--color-primary)',
                     color: 'var(--on-primary)',
                   },
                 }}
-                anchorEl={userEl}
+                anchorReference="anchorPosition"
+                anchorPosition={userAnchorPos || { top: 0, left: 0 }}
                 open={Boolean(userEl)}
                 onClose={() => setUserEl(null)}
-                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                 transformOrigin={{ vertical: 'top', horizontal: 'right' }}
                 MenuListProps={{ 'aria-label': 'Opciones de perfil' }}
               >
