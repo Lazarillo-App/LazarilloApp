@@ -29,6 +29,8 @@ import {
   setBusinessPriceList,
 } from "@/servicios/apiMaxiPriceLists";
 import PriceListConfigModal from "./PriceListConfigModal";
+import AccesoEquipoModal from "./AccesoEquipoModal";
+import QrCode2Icon from "@mui/icons-material/QrCode2";
 
 export default function BusinessCard({
   biz,
@@ -82,6 +84,7 @@ export default function BusinessCard({
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchColor, setNewBranchColor] = useState('#1976d2');
   const [savingBranch, setSavingBranch] = useState(false);
+  const [accesoBranch, setAccesoBranch] = useState(null); // sucursal para la que se abrió el modal de QR
 
   // ── Lista de precios ──────────────────────────────────────────────────────
   const orgId = organization?.id ?? null;
@@ -371,6 +374,17 @@ const syncingProvRef = useRef(false);
         />
       )}
 
+      {accesoBranch && (
+        <AccesoEquipoModal
+          open={!!accesoBranch}
+          onClose={() => setAccesoBranch(null)}
+          businessId={viewBiz?.id}
+          branchId={accesoBranch.id}
+          businessName={name}
+          branchName={accesoBranch.name}
+        />
+      )}
+
       <div className="bc-card">
         {/* ── TOP ── */}
         <div className="bc-top">
@@ -513,6 +527,11 @@ const syncingProvRef = useRef(false);
                       {b.address.line1}
                     </span>
                   )}
+                  <button type="button" className="bc-branch-acceso"
+                    onClick={() => setAccesoBranch(b)}
+                    title="QR de acceso del equipo para esta sucursal">
+                    <QrCode2Icon sx={{ fontSize: 13 }} />
+                  </button>
                 </span>
               ))}
             </div>
@@ -613,6 +632,8 @@ const syncingProvRef = useRef(false);
           .bc-branch-badge{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--color-border,#e5e7eb);border-left-width:3px;border-radius:6px;padding:3px 8px;background:#fafafa;font-size:11px;}
           .bc-branch-name{font-weight:600;color:#374151;}
           .bc-branch-addr{color:#9ca3af;display:flex;align-items:center;gap:1px;}
+          .bc-branch-acceso{border:none;background:transparent;color:#9ca3af;cursor:pointer;display:inline-flex;align-items:center;padding:0;margin-left:2px;}
+          .bc-branch-acceso:hover{color:var(--color-primary,#0ea5e9);}
 
           /* ── Lista de precios ── */
           .bc-price-section{border-top:1px solid var(--color-border,#e5e7eb);padding-top:10px;display:flex;flex-direction:column;gap:6px;}

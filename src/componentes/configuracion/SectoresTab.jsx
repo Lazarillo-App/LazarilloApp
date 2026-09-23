@@ -16,6 +16,7 @@ import GroupsIcon from '@mui/icons-material/Groups';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { obtenerAgrupaciones } from '@/servicios/apiAgrupaciones';
 import { listarSectores, crearSector, actualizarSector, eliminarSector } from '@/servicios/apiSectores';
+import { listarPendientes, aprobarPendiente, rechazarPendiente } from '@/servicios/apiAccesoEquipo';
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
 
@@ -307,6 +308,130 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
   );
 }
 
+/* ─── Pendientes de aprobación (alta por QR) ─── */
+function FilaPendiente({ p, sectores, onDecidido }) {
+  const [role, setRole] = React.useState('staff');
+  const [sectorIds, setSectorIds] = React.useState(() => new Set());
+  const [busy, setBusy] = React.useState(false);
+
+  const contacto = p.canal === 'celular' ? p.celular : p.email;
+
+  const aprobar = async () => {
+    setBusy(true);
+    try {
+      await aprobarPendiente(p.id, {
+        role,
+        sectorIds: role === 'staff' ? Array.from(sectorIds) : undefined,
+      });
+      showAlert(`${p.nombre} fue aprobado`, 'success');
+      onDecidido();
+    } catch (e) {
+      showAlert(e?.message || 'No se pudo aprobar', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rechazar = async () => {
+    if (!(await showConfirm(`¿Rechazar el pedido de ${p.nombre}?`))) return;
+    setBusy(true);
+    try {
+      await rechazarPendiente(p.id);
+      showAlert('Pedido rechazado', 'success');
+      onDecidido();
+    } catch (e) {
+      showAlert(e?.message || 'No se pudo rechazar', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Box sx={{ p: 1.5, borderRadius: 1.5, border: '1px solid #e8eaf0' }}>
+      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+        <Typography fontWeight={700} sx={{ fontSize: '0.85rem' }}>{p.nombre}</Typography>
+        <Typography variant="caption" color="text.secondary">{contacto}</Typography>
+        {p.branch_name && <Chip label={p.branch_name} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />}
+        <Box sx={{ flex: 1 }} />
+        {['staff', 'admin'].map((r) => (
+          <Button key={r} size="small" variant={role === r ? 'contained' : 'outlined'}
+            onClick={() => setRole(r)} sx={{ minWidth: 0, px: 1.25, fontSize: '0.72rem' }}>
+            {r === 'admin' ? 'Admin' : 'Staff'}
+          </Button>
+        ))}
+      </Stack>
+      {role === 'staff' && (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+          {sectores.map((s) => {
+            const activo = sectorIds.has(s.id);
+            return (
+              <Chip key={s.id} label={s.nombre} size="small"
+                onClick={() => setSectorIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                  return next;
+                })}
+                sx={{
+                  cursor: 'pointer', fontWeight: 600,
+                  bgcolor: activo ? 'var(--color-primary, #3b82f6)' : 'transparent',
+                  color: activo ? '#fff' : 'text.primary',
+                  border: `1px solid ${activo ? 'var(--color-primary, #3b82f6)' : '#d8d3ca'}`,
+                }}
+              />
+            );
+          })}
+        </Stack>
+      )}
+      <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
+        <Button size="small" color="error" onClick={rechazar} disabled={busy}>Rechazar</Button>
+        <Button size="small" variant="contained" onClick={aprobar} disabled={busy}
+          sx={{ bgcolor: 'var(--color-primary, #3b82f6)', '&:hover': { bgcolor: 'var(--color-primary, #3b82f6)', filter: 'brightness(0.9)' } }}>
+          Aprobar
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+function PendientesCard({ businessId, sectores }) {
+  const [pendientes, setPendientes] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  const cargar = React.useCallback(async () => {
+    if (!businessId) return;
+    setLoading(true);
+    try {
+      setPendientes(await listarPendientes(businessId));
+    } catch (e) {
+      showAlert(e?.message || 'No se pudieron cargar los pendientes', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [businessId]);
+
+  React.useEffect(() => { cargar(); }, [cargar]);
+
+  if (!loading && pendientes.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader icon={<GroupsIcon />} title="Pendientes de aprobación"
+        subtitle="Gente que pidió acceso escaneando el QR de una sucursal" />
+      <CardBody>
+        {loading ? (
+          <Stack alignItems="center" py={2}><CircularProgress size={20} /></Stack>
+        ) : (
+          <Stack spacing={1}>
+            {pendientes.map((p) => (
+              <FilaPendiente key={p.id} p={p} sectores={sectores} onDecidido={cargar} />
+            ))}
+          </Stack>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 export default function SectoresTab({ businessId }) {
   const [sectores, setSectores] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -372,6 +497,8 @@ export default function SectoresTab({ businessId }) {
   }
 
   return (
+    <Stack spacing={2.5}>
+    <PendientesCard businessId={businessId} sectores={sectores} />
     <Card>
       <CardHeader icon={<GroupsIcon />} title="Sectores" subtitle="Barra, Cocina, Salón — qué recetas ve cada uno del equipo operativo"
         action={
@@ -413,5 +540,6 @@ export default function SectoresTab({ businessId }) {
         )}
       </CardBody>
     </Card>
+    </Stack>
   );
 }

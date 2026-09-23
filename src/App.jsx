@@ -36,6 +36,7 @@ import Activar from './paginas/Activar';
 import AdminApp from './admin/AdminApp';
 // ── NUEVAS PÁGINAS ──
 import AceptarInvitacion from './paginas/AceptarInvitacion';
+import AltaPorQR from './paginas/AltaPorQR';
 import SelectorNegocio from './paginas/SelectorNegocio';
 
 import './css/global.css';
@@ -222,6 +223,9 @@ export default function App() {
 
         {/* ── Pública: aceptar invitación ── */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacion />} />
+
+        {/* ── Pública: alta por QR de sucursal (Vista Operación) ── */}
+        <Route path="/r/:code" element={<AltaPorQR />} />
 
         <Route element={<ProtectedRoute />}>
           {/* ADMIN independiente del negocio */}
