@@ -154,6 +154,14 @@ function scopeToSelected(scope) {
   }
   return selected;
 }
+function contarRubros(selected, treesByAgrupacion) {
+  let n = 0;
+  for (const [agId, val] of selected.entries()) {
+    if (val === 'all') { n += (treesByAgrupacion.get(agId) || []).length; continue; }
+    if (val instanceof Map) n += val.size;
+  }
+  return n;
+}
 function contarArticulos(selected, treesByAgrupacion) {
   const ids = new Set();
   for (const [agId, val] of selected.entries()) {
@@ -176,9 +184,34 @@ function contarArticulos(selected, treesByAgrupacion) {
   return ids.size;
 }
 
+// Qué rubros/categorías de esta agrupación coinciden con la búsqueda —
+// null en el Map = "todas las categorías del rubro" (coincidió el rubro entero).
+function coincidenciasBusqueda(agTree, q) {
+  const rubros = new Map();
+  for (const r of agTree) {
+    if (r.subrubro.toLowerCase().includes(q)) { rubros.set(r.subrubro, null); continue; }
+    const cats = r.categorias.filter((c) => c.categoria.toLowerCase().includes(q)).map((c) => c.categoria);
+    if (cats.length) rubros.set(r.subrubro, new Set(cats));
+  }
+  return rubros;
+}
+
 /* ─── Árbol tri-state de un sector ─── */
-function ArbolAgrupacion({ agrupacion, agTree, selected, onToggleAgrupacion, onToggleRubro, onToggleSubrubro }) {
-  const [abierta, setAbierta] = React.useState(false);
+function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrupacion, onToggleRubro, onToggleSubrubro }) {
+  const [abiertaManual, setAbiertaManual] = React.useState(false);
+  const q = (busqueda || '').trim().toLowerCase();
+  const agNombreMatch = !!q && agrupacion.nombre.toLowerCase().includes(q);
+
+  const filtro = React.useMemo(() => {
+    if (!q || agNombreMatch) return null; // sin filtro: se muestra todo
+    return coincidenciasBusqueda(agTree, q);
+  }, [agTree, q, agNombreMatch]);
+
+  const tieneCoincidencias = !q || agNombreMatch || (filtro && filtro.size > 0);
+  if (!tieneCoincidencias) return null;
+
+  const abierta = (!!q && tieneCoincidencias) || abiertaManual;
+
   const val = selected.get(agrupacion.id);
   const checked = val === 'all';
   const indeterminate = val instanceof Map && val.size > 0;
@@ -187,7 +220,7 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, onToggleAgrupacion, onT
   return (
     <Box sx={{ border: '1px solid #e8eaf0', borderRadius: 1.5, mb: 1 }}>
       <Stack direction="row" alignItems="center" sx={{ px: 1 }}>
-        <IconButton size="small" onClick={() => setAbierta((v) => !v)} disabled={!agTree.length}>
+        <IconButton size="small" onClick={() => setAbiertaManual((v) => !v)} disabled={!agTree.length}>
           {abierta ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" sx={{ opacity: agTree.length ? 1 : 0.25 }} />}
         </IconButton>
         <Checkbox size="small" checked={checked} indeterminate={indeterminate} onChange={() => onToggleAgrupacion(agrupacion.id)} />
@@ -197,6 +230,9 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, onToggleAgrupacion, onT
       <Collapse in={abierta}>
         <Box sx={{ pl: 5, pb: 1 }}>
           {agTree.map((r) => {
+            if (filtro && !filtro.has(r.subrubro)) return null;
+            const catSet = filtro?.get(r.subrubro);
+
             const rChecked = val === 'all' || (val instanceof Map && val.get(r.subrubro) === 'all');
             const rIndet = val instanceof Map && val.get(r.subrubro) instanceof Set && val.get(r.subrubro).size > 0;
             const rCount = r.categorias.reduce((n, c) => n + c.articulos.length, 0);
@@ -211,6 +247,7 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, onToggleAgrupacion, onT
                 {r.categorias.length > 1 && (
                   <Box sx={{ pl: 4 }}>
                     {r.categorias.map((c) => {
+                      if (catSet && !catSet.has(c.categoria)) return null;
                       const sChecked = rChecked
                         || (val instanceof Map && val.get(r.subrubro) instanceof Set && val.get(r.subrubro).has(c.categoria));
                       return (
@@ -239,8 +276,10 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
   const [color, setColor] = React.useState(sector?.color || COLORES[0]);
   const [selected, setSelected] = React.useState(() => scopeToSelected(sector?.scope));
   const [guardando, setGuardando] = React.useState(false);
+  const [busqueda, setBusqueda] = React.useState('');
 
   const totalArticulos = contarArticulos(selected, treesByAgrupacion);
+  const totalRubros = contarRubros(selected, treesByAgrupacion);
 
   const guardar = async () => {
     if (!nombre.trim()) { showAlert('Ponele un nombre al sector', 'error'); return; }
@@ -263,7 +302,10 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
 
   return (
     <Card>
-      <CardHeader icon={<GroupsIcon />} title={sector?.id ? `Editar ${sector.nombre}` : 'Nuevo sector'} />
+      <CardHeader icon={<GroupsIcon />}
+        title={sector?.id ? `Editar ${sector.nombre}` : 'Nuevo sector'}
+        subtitle={sector?.id ? `${sector.personas} persona${sector.personas !== 1 ? 's' : ''}` : null}
+      />
       <CardBody>
         <Stack spacing={2}>
           <TextField label="Nombre" size="small" value={nombre} onChange={(e) => setNombre(e.target.value)} sx={{ maxWidth: 280 }} />
@@ -280,15 +322,23 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
           </Box>
           <Box>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-              <Typography variant="caption" fontWeight={700} color="text.secondary">ALCANCE</Typography>
-              <Typography variant="caption" color="text.secondary">{totalArticulos} artículo(s) dentro</Typography>
+              <Typography variant="caption" fontWeight={700} color="text.secondary">ALCANCE SELECCIONADO</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {totalRubros} rubro{totalRubros !== 1 ? 's' : ''} · {totalArticulos} artículo{totalArticulos !== 1 ? 's' : ''}
+              </Typography>
             </Stack>
+            <TextField
+              size="small" fullWidth placeholder="Buscar agrupación, rubro o subrubro…"
+              value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+              sx={{ mb: 1.5 }}
+            />
             {agrupaciones.map((ag) => (
               <ArbolAgrupacion
                 key={ag.id}
                 agrupacion={ag}
                 agTree={treesByAgrupacion.get(ag.id) || []}
                 selected={selected}
+                busqueda={busqueda}
                 onToggleAgrupacion={(agId) => setSelected((s) => toggleAgrupacion(s, agId))}
                 onToggleRubro={(agId, rubro) => setSelected((s) => toggleRubro(s, agId, rubro, treesByAgrupacion.get(agId) || []))}
                 onToggleSubrubro={(agId, rubro, sub) => setSelected((s) => toggleSubrubro(s, agId, rubro, sub, treesByAgrupacion.get(agId) || []))}
