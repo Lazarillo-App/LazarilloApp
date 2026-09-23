@@ -257,6 +257,21 @@ export default function ArticulosMain(props) {
     periodoRef.current = periodo;
   }, [periodo]);
 
+  // Alto real de la barra superior — medido, no asumido: la variable CSS
+  // --navbar-height puede no coincidir exactamente (cambia por media query, o
+  // con el zoom global de la app) y eso dejaba un espacio sin usar abajo del
+  // todo en sidebar/tabla.
+  const [navHeight, setNavHeight] = useState(86);
+  useEffect(() => {
+    const el = document.querySelector('.MuiAppBar-root');
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const recalcular = () => setNavHeight(el.getBoundingClientRect().height || 86);
+    recalcular();
+    const ro = new ResizeObserver(recalcular);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Limpiar overrides al cambiar de negocio para evitar que
   // los valores del negocio anterior se sumen al nuevo
   useEffect(() => {
@@ -2435,7 +2450,7 @@ export default function ArticulosMain(props) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 16,
-      height: 'calc(100vh - var(--navbar-height, 86px))', overflow: 'hidden',
+      height: `calc(100vh - ${navHeight}px)`, overflow: 'hidden',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>

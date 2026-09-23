@@ -134,6 +134,7 @@ const VirtualList = forwardRef(function VirtualList(
   return (
     <div
       ref={scrollRef}
+      className="hide-scrollbar"
       style={{
         height,
         overflowY: 'auto',

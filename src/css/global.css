@@ -21,6 +21,16 @@ a {
   color: inherit;
 }
 
+/* Scroll funcional (rueda/touch/drag) pero sin la barra visible — usado en
+   listas virtualizadas y en el sidebar de Gestión de Artículos/Insumos. */
+.hide-scrollbar {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* Edge legacy */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari/Edge */
+}
+
 .hidden {
   display: none !important;
 }

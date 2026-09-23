@@ -246,10 +246,15 @@ h2 {
 }
 
 /* Columna izquierda (sidebar) — el scroll real pasa en su contenedor externo
-   (ArticulosMain.jsx, .sidebar-scroll-wrap), este solo llena esa altura. */
+   (ArticulosMain.jsx, .sidebar-scroll-wrap). Ojo: NO fijar height acá — si el
+   contenido (header fijo + lista) es más alto que el 100% del wrapper, el
+   controles fijos (Agrupaciones/Rubro/Subrubro) deja de "trabarse" apenas el
+   scroll pasa esa altura, porque position:sticky queda acotado a la caja de
+   ESTE elemento. Que crezca lo que necesite; quien recorta/scrollea es
+   .sidebar-scroll-wrap de afuera. */
 .articulos-sidebar,
 .sidebar {
-  height: 100%;
+  min-height: 100%;
   background: var(--color-bg) !important;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
