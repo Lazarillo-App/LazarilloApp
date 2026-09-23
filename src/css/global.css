@@ -9,6 +9,13 @@ body,
   margin: 0px;
 }
 
+/* Toda la app un poco más compacta (texto, botones, espaciados) — el mismo
+   efecto que tiene achicar el zoom del navegador al 90%, pero ya aplicado
+   siempre, sin que cada quien tenga que acordarse de hacerlo a mano. */
+html {
+  zoom: 0.9;
+}
+
 a {
   text-decoration: none;
   color: inherit;
