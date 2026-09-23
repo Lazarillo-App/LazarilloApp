@@ -1495,7 +1495,7 @@ export default function InsumosMain() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', height: '75vh', boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
-        <div style={{ borderRight: '1px solid #eee', background: '#fafafa', position: 'sticky', top: 0, alignSelf: 'start', height: 'calc(100vh - 0px)', overflowY: 'auto' }}>
+        <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', position: 'sticky', top: 0, alignSelf: 'start', height: 'calc(100vh - 0px)', overflowY: 'auto' }}>
           <InsumosSidebar
             rubros={rubrosTree}
             rubroSeleccionado={rubroSeleccionado}
