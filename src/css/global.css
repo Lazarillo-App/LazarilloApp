@@ -192,14 +192,18 @@ tbody td {
     height: auto;
   }
 
-  /* Sidebar deja de ser sticky para que no corte — solo la clase vieja/no
-     usada (.articulos-sidebar). .sidebar SÍ se usa hoy (Artículos e Insumos)
-     y este position:static !important le rompía el header fijo. */
+  /* Sidebar en mobile: se deja crecer libre (sin techo de altura), pero SIN
+     tocarle position — el position:static !important de antes le rompía el
+     header fijo de .sidebar (la clase real, en uso hoy en Artículos e
+     Insumos); acá solo hace falta el "no le pongas techo". */
   .articulos-sidebar {
     position: static !important;
+    border-radius: var(--radius-md);
+  }
+  .articulos-sidebar,
+  .sidebar {
     height: auto;
     max-height: none;
-    border-radius: var(--radius-md);
   }
 
   /* Select/encabezados más compactos */
