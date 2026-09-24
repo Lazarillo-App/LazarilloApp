@@ -324,17 +324,17 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {logoUrl ? (
             <Box component="img" src={logoUrl} alt={businessName} sx={{
-              width: 22, height: 22, objectFit: 'contain', borderRadius: '6px',
+              width: 32, height: 32, objectFit: 'contain', borderRadius: '8px',
               p: 0.5, background: 'rgba(255,255,255,0.92)', border: '1px solid',
               borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
               boxShadow: '0 0 0 1px color-mix(in srgb, var(--on-primary) 10%, transparent) inset',
             }} />
           ) : (
             <span style={{
-              display: 'inline-grid', placeItems: 'center', width: 22, height: 22,
-              borderRadius: 6, border: '1px solid color-mix(in srgb, var(--on-primary) 25%, transparent)',
+              display: 'inline-grid', placeItems: 'center', width: 32, height: 32,
+              borderRadius: 8, border: '1px solid color-mix(in srgb, var(--on-primary) 25%, transparent)',
               background: 'color-mix(in srgb, var(--on-primary) 10%, transparent)',
-              fontSize: 11, fontWeight: 800, color: 'var(--on-primary)',
+              fontSize: 15, fontWeight: 800, color: 'var(--on-primary)',
             }} aria-hidden>
               {String(businessName || '#').slice(0, 1).toUpperCase()}
             </span>
@@ -345,7 +345,7 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
                 {organization.name}
               </span>
             )}
-            <span style={{ fontSize: '0.875rem' }}>{businessName}</span>
+            <span style={{ fontSize: '1.05rem' }}>{businessName}</span>
             {showDivisionLabel && (
               <span style={{ fontSize: '.8rem', opacity: 0.75, fontWeight: 500 }}>
                 ✅ {activeDivision?.name}

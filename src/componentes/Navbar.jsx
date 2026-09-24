@@ -382,7 +382,7 @@ export default function Navbar() {
                     // aparece "arrimado" hacia la esquina superior izquierda.
                     const rect = e.currentTarget.getBoundingClientRect();
                     const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-                    setUserAnchorPos({ top: (rect.bottom + 6) / zoom, left: rect.right / zoom });
+                    setUserAnchorPos({ top: (rect.bottom + 6) / zoom, left: (rect.left + rect.width / 2) / zoom });
                     setUserEl(e.currentTarget);
                   }}
                   sx={{ p: 0, color: 'inherit' }}
@@ -391,11 +391,11 @@ export default function Navbar() {
                   <Avatar
                     src={userAvatar || undefined}
                     sx={{
-                      width: 32,
-                      height: 32,
+                      width: 40,
+                      height: 40,
                       bgcolor: 'color-mix(in srgb, var(--on-primary) 18%, transparent)',
                       color: 'var(--on-primary)',
-                      fontSize: '0.82rem',
+                      fontSize: '1rem',
                       fontWeight: 700,
                     }}
                   >
@@ -415,7 +415,7 @@ export default function Navbar() {
                 anchorPosition={userAnchorPos || { top: 0, left: 0 }}
                 open={Boolean(userEl)}
                 onClose={() => setUserEl(null)}
-                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'center' }}
                 MenuListProps={{ 'aria-label': 'Opciones de perfil' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
