@@ -31,7 +31,7 @@ const PERMISSIONS = {
     'manage_branches', 'manage_settings',
   ]),
   admin: new Set([
-    'manage_team', 'invite_staff',                       // NO invite_admin
+    'manage_team', 'invite_staff', 'invite_admin',
     'manage_articles', 'manage_insumos', 'manage_recetas', 'manage_agrupaciones',
     'manage_listas', 'view_sales', 'view_purchases', 'view_audit',
     'manage_branches', 'manage_settings',

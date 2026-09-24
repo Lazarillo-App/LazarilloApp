@@ -9,22 +9,77 @@ import {
 import GroupAddOutlinedIcon     from '@mui/icons-material/GroupAddOutlined';
 import BusinessIcon             from '@mui/icons-material/Business';
 import StorefrontOutlinedIcon   from '@mui/icons-material/StorefrontOutlined';
-import { useNavigate } from 'react-router-dom';
 
 import { createInvitation, listKnownPeople }   from '@/servicios/apiTeam';
 import { listarSectores } from '@/servicios/apiSectores';
 import { useAccess }          from '@/context/AccessContext';
 import { useBusiness }        from '@/context/BusinessContext';
 import { useOrganization }    from '@/context/OrganizationContext';
+import GestionarSectoresModal from '@/componentes/GestionarSectoresModal';
 
 const tc = 'var(--color-primary, #3b82f6)';
+
+/* ─── Bloque de sector de UN negocio puntual — se repite uno por cada
+   negocio elegido, porque el sector nunca cruza de negocio. ─── */
+function SectorPickerBox({ businessId, businessName, selected, onToggle }) {
+  const [sectores, setSectores] = useState([]);
+  const [gestionando, setGestionando] = useState(false);
+
+  const cargar = () => {
+    listarSectores(businessId)
+      .then((list) => setSectores(Array.isArray(list) ? list : []))
+      .catch(() => setSectores([]));
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar(); }, [businessId]);
+
+  return (
+    <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30` }}>
+      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+        SECTOR DENTRO DE {businessName}
+      </Typography>
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
+        {sectores.map((s) => {
+          const activo = selected.has(s.id);
+          return (
+            <Chip
+              key={s.id}
+              label={s.nombre}
+              size="small"
+              onClick={() => onToggle(s.id)}
+              sx={{
+                cursor: 'pointer', fontWeight: 600,
+                bgcolor: activo ? tc : 'transparent',
+                color: activo ? '#fff' : 'text.primary',
+                border: `1px solid ${activo ? tc : '#d8d3ca'}`,
+              }}
+            />
+          );
+        })}
+        <Chip
+          label="Gestionar sectores"
+          size="small"
+          variant="outlined"
+          onClick={() => setGestionando(true)}
+          sx={{ cursor: 'pointer' }}
+        />
+      </Stack>
+      <GestionarSectoresModal
+        open={gestionando}
+        onClose={() => { setGestionando(false); cargar(); }}
+        businessId={businessId}
+      />
+    </Box>
+  );
+}
 
 export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId, scopeName, onCreated }) {
   const { isOwner, canDo }       = useAccess();
   const { items: allBusinesses } = useBusiness() || {};
   const { organization }         = useOrganization() || {};
 
-  const puedeInvitarAdmin = isOwner;
+  const puedeInvitarAdmin = canDo('invite_admin');
   const puedeInvitarStaff = canDo('invite_staff');
 
   const [email, setEmail]                     = useState('');
@@ -36,21 +91,10 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const [error, setError]                     = useState(null);
   const [knownPeople, setKnownPeople]         = useState([]);
   const [aliasHeredado, setAliasHeredado]     = useState(false); // true si el alias vino de una persona existente
-  const [sectores, setSectores]               = useState([]);
-  const [selectedSectorIds, setSelectedSectorIds] = useState(() => new Set());
-  const navigate = useNavigate();
-
-  // Sector (Vista Operación): solo tiene sentido con rol Staff y un negocio
-  // puntual — se carga la lista de sectores de ESE negocio (scopeId, el de
-  // dónde se abrió el modal; Staff no usa el selector multi-negocio de abajo).
-  useEffect(() => {
-    if (!open || role !== 'staff' || scopeType !== 'business' || !scopeId) { setSectores([]); return; }
-    let alive = true;
-    listarSectores(scopeId)
-      .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
-      .catch(() => { if (alive) setSectores([]); });
-    return () => { alive = false; };
-  }, [open, role, scopeType, scopeId]);
+  // Sector elegido por negocio: Map<businessId, Set<sectorId>> — un sector
+  // nunca cruza de negocio, así que si se invita a 2+ negocios a la vez cada
+  // uno tiene su propio bloque de sectores.
+  const [sectorSelByBiz, setSectorSelByBiz]   = useState(() => new Map());
 
   // Cargar personas conocidas del owner al abrir (para sugerir y heredar alias)
   useEffect(() => {
@@ -69,7 +113,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
       setAliasHeredado(false);
       setRole(puedeInvitarAdmin ? 'admin' : 'staff');
       setSelectedScopeKeys(new Set());
-      setSelectedSectorIds(new Set());
+      setSectorSelByBiz(new Map());
       setError(null); setLoading(false);
     } else {
       // Por default queda preseleccionado el scope del negocio donde se abrió el modal
@@ -110,9 +154,42 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const isOrgSelected = !!organization
     && selectedScopeKeys.has(`organization:${organization.id}`);
 
-  // El selector solo tiene sentido si el rol es admin y hay más de una opción posible
-  const mostrarSelector = role === 'admin'
+  // El selector aplica siempre para admin, y también para Staff cuando quien
+  // invita es owner — como owner siempre tiene acceso a todo, no tiene sentido
+  // limitarlo al negocio activo (a un admin no-owner sí se lo deja fijo).
+  const mostrarSelector = (role === 'admin' || (role === 'staff' && isOwner))
     && (organization || negociosSueltos.length > 1);
+
+  // Negocios puntuales para los bloques de sector — el sector es por-negocio,
+  // así que se muestra un bloque por cada negocio tildado (no para "toda la
+  // organización", que cubre negocios futuros sin sectores propios todavía).
+  const selectedBusinessIds = useMemo(() => {
+    if (!mostrarSelector) return Number.isFinite(Number(scopeId)) ? new Set([Number(scopeId)]) : new Set();
+    if (isOrgSelected) return new Set();
+    return new Set(
+      Array.from(selectedScopeKeys)
+        .filter((k) => k.startsWith('business:'))
+        .map((k) => Number(k.split(':')[1]))
+    );
+  }, [mostrarSelector, isOrgSelected, selectedScopeKeys, scopeId]);
+
+  const sectorBizIds = role === 'staff' ? Array.from(selectedBusinessIds) : [];
+
+  const nombreDeNegocio = (bizId) => {
+    if (!mostrarSelector) return scopeName || `#${bizId}`;
+    const biz = [...subNegociosOrg, ...negociosSueltos].find((b) => Number(b.id) === bizId);
+    return biz?.name || `#${bizId}`;
+  };
+
+  const toggleSector = (bizId, sectorId) => {
+    setSectorSelByBiz((prev) => {
+      const next = new Map(prev);
+      const set = new Set(next.get(bizId) || []);
+      if (set.has(sectorId)) set.delete(sectorId); else set.add(sectorId);
+      next.set(bizId, set);
+      return next;
+    });
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -124,7 +201,8 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
 
     // Resolver scopes finales: si hay selector, uno o varios tildados; si no, el prop fijo.
     // "Organización" cubre todos sus sub-negocios — si está tildada, no hace falta (ni
-    // corresponde) mandar también cada sub-negocio suelto.
+    // corresponde) mandar también cada sub-negocio suelto. Cada scope de negocio lleva
+    // su propio sectorIds (un sector nunca cruza de negocio).
     let scopes;
     if (mostrarSelector) {
       if (selectedScopeKeys.size === 0) {
@@ -135,10 +213,19 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
         ? [{ scopeType: 'organization', scopeId: organization.id }]
         : Array.from(selectedScopeKeys).map(k => {
           const [t, id] = k.split(':');
-          return { scopeType: t, scopeId: Number(id) };
+          const bizId = Number(id);
+          const sel = sectorSelByBiz.get(bizId);
+          return {
+            scopeType: t, scopeId: bizId,
+            sectorIds: (role === 'staff' && t === 'business' && sel?.size) ? Array.from(sel) : undefined,
+          };
         });
     } else {
-      scopes = [{ scopeType, scopeId }];
+      const sel = sectorSelByBiz.get(Number(scopeId));
+      scopes = [{
+        scopeType, scopeId,
+        sectorIds: (role === 'staff' && sel?.size) ? Array.from(sel) : undefined,
+      }];
     }
 
     setLoading(true);
@@ -148,7 +235,6 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
         scopes,
         role,
         alias: alias.trim(),
-        sectorIds: role === 'staff' && selectedSectorIds.size ? Array.from(selectedSectorIds) : undefined,
       });
 
       if (res?.ok) {
@@ -172,6 +258,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   };
   
   return (
+    <>
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
         <GroupAddOutlinedIcon sx={{ color: tc }} />
@@ -254,49 +341,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             {puedeInvitarStaff && <MenuItem value="staff">Staff (operativo)</MenuItem>}
           </TextField>
 
-          {/* Sector dentro del negocio (solo Staff) — define qué recetas ve */}
-          {role === 'staff' && scopeType === 'business' && (
-            <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30` }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                SECTOR DENTRO DE {scopeName || `#${scopeId}`}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Define qué recetas ve. Podés tildar más de uno.
-              </Typography>
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
-                {sectores.map((s) => {
-                  const activo = selectedSectorIds.has(s.id);
-                  return (
-                    <Chip
-                      key={s.id}
-                      label={s.nombre}
-                      size="small"
-                      onClick={() => setSelectedSectorIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
-                        return next;
-                      })}
-                      sx={{
-                        cursor: 'pointer', fontWeight: 600,
-                        bgcolor: activo ? tc : 'transparent',
-                        color: activo ? '#fff' : 'text.primary',
-                        border: `1px solid ${activo ? tc : '#d8d3ca'}`,
-                      }}
-                    />
-                  );
-                })}
-                <Chip
-                  label="Gestionar sectores"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => { onClose?.(); navigate('/configuracion?tab=5'); }}
-                  sx={{ cursor: 'pointer' }}
-                />
-              </Stack>
-            </Box>
-          )}
-
-          {/* Selector de alcance (solo para admin con múltiples opciones) */}
+          {/* Selector de alcance (admin siempre; Staff también si quien invita es owner) */}
           {mostrarSelector ? (
             <Box>
               <Typography
@@ -443,7 +488,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
               </FormControl>
             </Box>
           ) : (
-            /* Staff o sin opciones múltiples: scope fijo al negocio actual */
+            /* Staff (admin no-owner) o sin opciones múltiples: scope fijo al negocio actual */
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                 Negocio
@@ -452,6 +497,22 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                 {scopeName || `#${scopeId}`}
               </Typography>
             </Box>
+          )}
+
+          {/* Sector dentro de cada negocio elegido (solo Staff) — define qué recetas ve.
+              Uno por negocio: nunca se comparte selección entre dos negocios distintos. */}
+          {sectorBizIds.length > 0 && (
+            <Stack spacing={1.25}>
+              {sectorBizIds.map((bizId) => (
+                <SectorPickerBox
+                  key={bizId}
+                  businessId={bizId}
+                  businessName={nombreDeNegocio(bizId)}
+                  selected={sectorSelByBiz.get(bizId) || new Set()}
+                  onToggle={(sectorId) => toggleSector(bizId, sectorId)}
+                />
+              ))}
+            </Stack>
           )}
 
           {error   && <Alert severity="error">{error}</Alert>}
@@ -470,5 +531,6 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
         </Button>
       </DialogActions>
     </Dialog>
+    </>
   );
 }

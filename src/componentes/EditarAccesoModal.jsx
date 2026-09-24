@@ -20,31 +20,36 @@ import BusinessIcon from '@mui/icons-material/Business';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
-import { useNavigate } from 'react-router-dom';
 import { createInvitation, revokeAssignment, updateAssignment } from '@/servicios/apiTeam';
 import { listarSectores } from '@/servicios/apiSectores';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { showConfirm } from '@/servicios/appConfirm';
+import GestionarSectoresModal from '@/componentes/GestionarSectoresModal';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
 /* ─── Fila de un negocio con acceso: ver, editar rol/sector, o quitar ─── */
-function FilaNegocio({ n, isOwner, busy, onQuitar, onGuardado }) {
+function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const [editando, setEditando] = useState(false);
   const [rol, setRol] = useState(n.role);
   const [sectorIds, setSectorIds] = useState(() => new Set(n.sectorIds || []));
   const [sectores, setSectores] = useState([]);
   const [guardando, setGuardando] = useState(false);
   const [errorEdit, setErrorEdit] = useState(null);
+  const [gestionando, setGestionando] = useState(false);
+
+  const cargarSectores = () => {
+    if (rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
+    listarSectores(n.scopeId)
+      .then((list) => setSectores(Array.isArray(list) ? list : []))
+      .catch(() => setSectores([]));
+  };
 
   useEffect(() => {
-    if (!editando || rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
-    let alive = true;
-    listarSectores(n.scopeId)
-      .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
-      .catch(() => { if (alive) setSectores([]); });
-    return () => { alive = false; };
+    if (!editando) return;
+    cargarSectores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editando, rol, n.scopeType, n.scopeId]);
 
   const empezarEdicion = () => {
@@ -116,7 +121,7 @@ function FilaNegocio({ n, isOwner, busy, onQuitar, onGuardado }) {
               onChange={(e) => setRol(e.target.value)}
               sx={{ width: 140 }}
             >
-              {isOwner && <MenuItem value="admin">Administrador</MenuItem>}
+              {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
               <MenuItem value="staff">Staff</MenuItem>
             </TextField>
             <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
@@ -153,7 +158,19 @@ function FilaNegocio({ n, isOwner, busy, onQuitar, onGuardado }) {
                     />
                   );
                 })}
+                <Chip
+                  label="Gestionar sectores"
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setGestionando(true)}
+                  sx={{ cursor: 'pointer' }}
+                />
               </Stack>
+              <GestionarSectoresModal
+                open={gestionando}
+                onClose={() => { setGestionando(false); cargarSectores(); }}
+                businessId={n.scopeId}
+              />
             </Box>
           )}
         </Box>
@@ -164,17 +181,18 @@ function FilaNegocio({ n, isOwner, busy, onQuitar, onGuardado }) {
 
 export default function EditarAccesoModal({ open, onClose, persona, onChanged }) {
   const { items: allBusinesses } = useBusiness() || {};
-  const { isOwner } = useAccess() || {};
+  const { canDo } = useAccess() || {};
+  const puedeInvitarAdmin = canDo?.('invite_admin');
 
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const navigate = useNavigate();
 
   // Fila "agregar negocio"
   const [nuevoBizId, setNuevoBizId] = useState('');
-  const [nuevoRol, setNuevoRol] = useState(isOwner ? 'admin' : 'staff');
+  const [nuevoRol, setNuevoRol] = useState(puedeInvitarAdmin ? 'admin' : 'staff');
   const [sectores, setSectores] = useState([]);
   const [sectorIds, setSectorIds] = useState(() => new Set());
+  const [gestionandoSectores, setGestionandoSectores] = useState(false);
 
   const negocios = persona?.negocios || [];
 
@@ -271,7 +289,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                 <FilaNegocio
                   key={n.assignmentId ?? `${n.scopeType}-${n.scopeId}`}
                   n={n}
-                  isOwner={isOwner}
+                  puedeInvitarAdmin={puedeInvitarAdmin}
                   busy={busy}
                   onQuitar={quitarAcceso}
                   onGuardado={onChanged}
@@ -313,7 +331,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   onChange={(e) => setNuevoRol(e.target.value)}
                   sx={{ width: 140 }}
                 >
-                  {isOwner && <MenuItem value="admin">Administrador</MenuItem>}
+                  {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
                   <MenuItem value="staff">Staff</MenuItem>
                 </TextField>
                 <Button
@@ -364,10 +382,20 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                     label="Gestionar sectores"
                     size="small"
                     variant="outlined"
-                    onClick={() => { onClose?.(); navigate('/configuracion?tab=5'); }}
+                    onClick={() => setGestionandoSectores(true)}
                     sx={{ cursor: 'pointer' }}
                   />
                 </Stack>
+                <GestionarSectoresModal
+                  open={gestionandoSectores}
+                  onClose={() => {
+                    setGestionandoSectores(false);
+                    listarSectores(nuevoBizId)
+                      .then((list) => setSectores(Array.isArray(list) ? list : []))
+                      .catch(() => {});
+                  }}
+                  businessId={nuevoBizId}
+                />
               </Box>
             )}
           </Box>
