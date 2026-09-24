@@ -225,8 +225,13 @@ h2 {
   font-size: 1.1rem !important;
 }
 .navbar-biz-logo {
-  width: 44px !important;
-  height: 44px !important;
+  height: 40px !important;
+  width: auto !important;
+  max-width: 130px !important;
+}
+.navbar-biz-fallback {
+  width: 40px !important;
+  height: 40px !important;
 }
 .navbar-biz-name {
   font-size: 1.15rem !important;

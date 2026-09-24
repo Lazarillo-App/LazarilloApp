@@ -323,18 +323,17 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {logoUrl ? (
-            <Box component="img" src={logoUrl} alt={businessName} className="navbar-biz-logo" sx={{
-              width: 44, height: 44, objectFit: 'contain', borderRadius: '8px',
-              p: 0.5, background: 'rgba(255,255,255,0.92)', border: '1px solid',
-              borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
-              boxShadow: '0 0 0 1px color-mix(in srgb, var(--on-primary) 10%, transparent) inset',
-            }} />
+            // Sin caja ni fondo: el logo se ve tal cual sobre el color del navbar,
+            // adaptado a su propia proporción (redondo, alargado o cuadrado) — no
+            // se lo fuerza a un cuadrado fijo, solo se topea el alto.
+            <Box component="img" src={logoUrl} alt={businessName} className="navbar-biz-logo"
+              sx={{ height: 40, width: 'auto', maxWidth: 130, objectFit: 'contain' }} />
           ) : (
-            <span className="navbar-biz-logo" style={{
-              display: 'inline-grid', placeItems: 'center', width: 44, height: 44,
+            <span className="navbar-biz-fallback" style={{
+              display: 'inline-grid', placeItems: 'center', width: 40, height: 40,
               borderRadius: 8, border: '1px solid color-mix(in srgb, var(--on-primary) 25%, transparent)',
               background: 'color-mix(in srgb, var(--on-primary) 10%, transparent)',
-              fontSize: 19, fontWeight: 800, color: 'var(--on-primary)',
+              fontSize: 17, fontWeight: 800, color: 'var(--on-primary)',
             }} aria-hidden>
               {String(businessName || '#').slice(0, 1).toUpperCase()}
             </span>
