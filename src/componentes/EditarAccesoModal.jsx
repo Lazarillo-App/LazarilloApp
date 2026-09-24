@@ -9,7 +9,7 @@
 //
 // Recibe la persona consolidada: { email, alias, negocios: [{assignmentId, scopeType, scopeId, scopeName, role, account_status}] }
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Stack, Typography, Box, Chip, IconButton, MenuItem,
@@ -19,7 +19,9 @@ import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlin
 import BusinessIcon from '@mui/icons-material/Business';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
+import { useNavigate } from 'react-router-dom';
 import { createInvitation, revokeAssignment } from '@/servicios/apiTeam';
+import { listarSectores } from '@/servicios/apiSectores';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { showConfirm } from '@/servicios/appConfirm';
@@ -32,12 +34,26 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
 
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
 
   // Fila "agregar negocio"
   const [nuevoBizId, setNuevoBizId] = useState('');
   const [nuevoRol, setNuevoRol] = useState(isOwner ? 'admin' : 'staff');
+  const [sectores, setSectores] = useState([]);
+  const [sectorIds, setSectorIds] = useState(() => new Set());
 
   const negocios = persona?.negocios || [];
+
+  // Sector (Vista Operación): mismo criterio que InvitarMiembroModal — solo
+  // tiene sentido con rol Staff, y se carga para el negocio recién elegido.
+  useEffect(() => {
+    if (nuevoRol !== 'staff' || !nuevoBizId) { setSectores([]); setSectorIds(new Set()); return; }
+    let alive = true;
+    listarSectores(nuevoBizId)
+      .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setSectores([]); });
+    return () => { alive = false; };
+  }, [nuevoRol, nuevoBizId]);
 
   // Negocios donde la persona YA tiene acceso (por scopeId de tipo business)
   const idsConAcceso = useMemo(() => {
@@ -79,9 +95,11 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
         scopeId: Number(nuevoBizId),
         role: nuevoRol,
         alias: persona.alias || persona.email, // el backend igual lo pisa con el heredado
+        sectorIds: nuevoRol === 'staff' && sectorIds.size ? Array.from(sectorIds) : undefined,
       });
       try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
       setNuevoBizId('');
+      setSectorIds(new Set());
       onChanged?.();
     } catch (e) {
       setError(e?.response?.data?.error || e?.message || 'No se pudo agregar el acceso');
@@ -189,6 +207,48 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   Agregar
                 </Button>
               </Stack>
+            )}
+
+            {/* Sector (Vista Operación) — solo con rol Staff y negocio elegido */}
+            {nuevoRol === 'staff' && nuevoBizId && (
+              <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1.5 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                  SECTOR DENTRO DE {negociosDisponibles.find((b) => String(b.id) === String(nuevoBizId))?.name || `#${nuevoBizId}`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Define qué recetas ve. Podés tildar más de uno.
+                </Typography>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
+                  {sectores.map((s) => {
+                    const activo = sectorIds.has(s.id);
+                    return (
+                      <Chip
+                        key={s.id}
+                        label={s.nombre}
+                        size="small"
+                        onClick={() => setSectorIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                          return next;
+                        })}
+                        sx={{
+                          cursor: 'pointer', fontWeight: 600,
+                          bgcolor: activo ? tc : 'transparent',
+                          color: activo ? '#fff' : 'text.primary',
+                          border: `1px solid ${activo ? tc : '#d8d3ca'}`,
+                        }}
+                      />
+                    );
+                  })}
+                  <Chip
+                    label="Gestionar sectores"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => { onClose?.(); navigate('/configuracion?tab=5'); }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Stack>
+              </Box>
             )}
           </Box>
 
