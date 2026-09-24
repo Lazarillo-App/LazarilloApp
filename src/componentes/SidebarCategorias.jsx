@@ -580,7 +580,7 @@ function SidebarCategorias({
                           if (isDisc || isPromo) return null;
                           if (isTodo) {
                             return onRenameGroup && (
-                              <Tooltip title='Convertir "Sin agrupación" en una nueva agrupación'>
+                              <Tooltip title=''>
                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                                   <EditIcon fontSize="inherit" />
                                 </IconButton>
@@ -637,7 +637,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {onDeleteGroup && (
-                                <Tooltip title="Eliminar agrupación">
+                                <Tooltip title="">
                                   <span>
                                     <IconButton size="small" onClick={(e) => {
                                       e.stopPropagation();
