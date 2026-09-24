@@ -678,7 +678,7 @@ function PerfilContenido() {
         : 'Usuario';
 
   return (
-    <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
+    <Box className="zoom-reset" sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
       {/* ── Header ── */}
       <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>

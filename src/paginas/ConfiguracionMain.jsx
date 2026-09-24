@@ -398,7 +398,7 @@ export default function ConfiguracionMain() {
 
   // ── RENDER ──
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, md: 3 } }}>
+    <Box className="zoom-reset" sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
       <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
         <TuneIcon sx={{ color: themeColor, fontSize: 26 }} />

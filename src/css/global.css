@@ -16,6 +16,16 @@ html {
   zoom: 0.9;
 }
 
+/* Cancela el zoom global de arriba para pantallas "administrativas" (Perfil,
+   Configuración) que no son tablas de datos — 1/0.9. Ojo: cualquier menú/
+   select/tooltip que abra DESDE ADENTRO de esta zona sigue "escapando" a
+   document.body (que queda al 0.9 de siempre), así que si alguno se ve
+   desalineado hay que corregirlo puntualmente, igual que se hizo con el
+   dropdown de perfil en Navbar.jsx. */
+.zoom-reset {
+  zoom: 1.1111112;
+}
+
 a {
   text-decoration: none;
   color: inherit;
