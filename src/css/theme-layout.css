@@ -214,6 +214,24 @@ h2 {
   height: 50px !important;
 }
 
+/* Navbar: tamaños explícitos con !important — hay varias reglas .css-XXXX
+   (snapshots pegados de DevTools en algún momento, más arriba en este mismo
+   archivo) que pueden matchear por casualidad el hash que genera MUI para
+   estos mismos componentes y pisar el tamaño puesto en sx. Con clase propia
+   no queda a la suerte del orden/hash. */
+.navbar-user-avatar {
+  width: 48px !important;
+  height: 48px !important;
+  font-size: 1.1rem !important;
+}
+.navbar-biz-logo {
+  width: 44px !important;
+  height: 44px !important;
+}
+.navbar-biz-name {
+  font-size: 1.15rem !important;
+}
+
 .css-cmpglg-MuiFormControl-root-MuiTextField-root {
   width: 35%;
 }

@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
-  Snackbar, Alert, LinearProgress, Badge
+  Snackbar, Alert, LinearProgress, Badge, ClickAwayListener
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -68,8 +68,7 @@ const getUserInitials = () => {
 
 export default function Navbar() {
   const [navEl, setNavEl] = React.useState(null);
-  const [userEl, setUserEl] = React.useState(null);
-  const [userAnchorPos, setUserAnchorPos] = React.useState(null);
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [modulosOpen, setModulosOpen] = React.useState(false);
 
   const navigate = useNavigate();
@@ -371,31 +370,26 @@ export default function Navbar() {
               </Box>
             )}
 
-            {/* Perfil */}
-            <Box sx={{ flexGrow: 0, ml: 0.5 }}>
+            {/* Perfil — dropdown propio (no MUI Menu portal) para no depender de
+                matemática de posición cruzando el zoom global: al vivir en el
+                mismo contenedor que el avatar (position:relative acá al lado),
+                cae directamente debajo sin ningún cálculo. */}
+            <Box sx={{ flexGrow: 0, ml: 0.5, position: 'relative' }}>
               <Tooltip title="Perfil">
                 <IconButton
-                  onClick={(e) => {
-                    // El zoom global (html { zoom: 0.9 }, ver global.css) re-escala
-                    // cualquier valor que le asignemos a un position:fixed, así que
-                    // hay que compensarlo dividiendo el rect medido — si no, el menú
-                    // aparece "arrimado" hacia la esquina superior izquierda.
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-                    setUserAnchorPos({ top: (rect.bottom + 6) / zoom, left: (rect.left + rect.width / 2) / zoom });
-                    setUserEl(e.currentTarget);
-                  }}
+                  onClick={() => setUserMenuOpen((v) => !v)}
                   sx={{ p: 0, color: 'inherit' }}
                   aria-label="Abrir menú de perfil"
                 >
                   <Avatar
                     src={userAvatar || undefined}
+                    className="navbar-user-avatar"
                     sx={{
-                      width: 40,
-                      height: 40,
+                      width: 48,
+                      height: 48,
                       bgcolor: 'color-mix(in srgb, var(--on-primary) 18%, transparent)',
                       color: 'var(--on-primary)',
-                      fontSize: '1rem',
+                      fontSize: '1.1rem',
                       fontWeight: 700,
                     }}
                   >
@@ -404,56 +398,53 @@ export default function Navbar() {
                 </IconButton>
               </Tooltip>
 
-              <Menu
-                sx={{
-                  '& .MuiPaper-root': {
-                    background: 'var(--color-primary)',
-                    color: 'var(--on-primary)',
-                  },
-                }}
-                anchorReference="anchorPosition"
-                anchorPosition={userAnchorPos || { top: 0, left: 0 }}
-                open={Boolean(userEl)}
-                onClose={() => setUserEl(null)}
-                transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-                MenuListProps={{ 'aria-label': 'Opciones de perfil' }}
-              >
-                <MenuList dense sx={{ color: 'inherit' }}>
-                  {logged ? (
-                    [
-                      <Box key="user-header" sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
-                        <Box sx={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.2 }}>
-                          {getUser()?.name || getUser()?.nombre || 'Usuario'}
-                        </Box>
-                      </Box>,
-                      <Divider
-                        key="div-header"
-                        sx={{
-                          my: 0.5,
-                          borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
-                        }}
-                      />,
-                      <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserEl(null)}>
-                        Perfil
-                      </MenuItem>,
-                      <Divider
-                        key="div"
-                        sx={{
-                          my: 0.5,
-                          borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
-                        }}
-                      />,
-                      <MenuItem key="salir" onClick={logout}>
-                        Salir
-                      </MenuItem>,
-                    ]
-                  ) : (
-                    <MenuItem component={NavLink} to="/login" onClick={() => setUserEl(null)}>
-                      Login
-                    </MenuItem>
-                  )}
-                </MenuList>
-              </Menu>
+              {userMenuOpen && (
+                <ClickAwayListener onClickAway={() => setUserMenuOpen(false)}>
+                  <Box
+                    sx={{
+                      position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                      minWidth: 200, zIndex: 1300, borderRadius: 1, boxShadow: 6, overflow: 'hidden',
+                      bgcolor: 'var(--color-primary)', color: 'var(--on-primary)',
+                    }}
+                  >
+                    <MenuList dense sx={{ color: 'inherit' }} aria-label="Opciones de perfil">
+                      {logged ? (
+                        [
+                          <Box key="user-header" sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
+                            <Box sx={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.2 }}>
+                              {getUser()?.name || getUser()?.nombre || 'Usuario'}
+                            </Box>
+                          </Box>,
+                          <Divider
+                            key="div-header"
+                            sx={{
+                              my: 0.5,
+                              borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
+                            }}
+                          />,
+                          <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserMenuOpen(false)}>
+                            Perfil
+                          </MenuItem>,
+                          <Divider
+                            key="div"
+                            sx={{
+                              my: 0.5,
+                              borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
+                            }}
+                          />,
+                          <MenuItem key="salir" onClick={logout}>
+                            Salir
+                          </MenuItem>,
+                        ]
+                      ) : (
+                        <MenuItem component={NavLink} to="/login" onClick={() => setUserMenuOpen(false)}>
+                          Login
+                        </MenuItem>
+                      )}
+                    </MenuList>
+                  </Box>
+                </ClickAwayListener>
+              )}
             </Box>
             {/* 🔔 Notificaciones siempre visibles */}
             {!isAppAdmin && logged && (
