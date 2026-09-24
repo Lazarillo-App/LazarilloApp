@@ -26,6 +26,7 @@ import BranchFormModal from './BranchFormModal';
 import SyncComprasModal from './SyncComprasModal';
 import SettingsIcon from '@mui/icons-material/Settings';
 import StoreIcon from '@mui/icons-material/Store';
+import AccesoEquipoInline from './AccesoEquipoInline';
 
 /* ─────────────────────────────────────────────────────── helpers */
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://lazarilloapp-backend.onrender.com';
@@ -226,6 +227,16 @@ function OrgBizCard({
             </div>
           )}
         </div>
+
+        {/* ── Acceso del equipo ── QR de la sucursal principal del negocio */}
+        {canEdit && (
+          <AccesoEquipoInline
+            businessId={biz.id}
+            branchId="main"
+            businessName={name}
+            businessLogo={logo}
+          />
+        )}
 
         {/* ── Sucursales ── */}
         {canEdit && (
