@@ -335,7 +335,7 @@ function OrgBizCard({
 
         <style>{`
           .bc-card{background:var(--color-surface,#fff);border:1px solid var(--color-border,#e5e7eb);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}
-          .bc-top{display:flex;gap:16px;}
+          .bc-top{display:flex;gap:16px;align-items:flex-start;}
           .bc-left{flex:1;min-width:0;}
           .bc-title-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;}
           .bc-title{margin:0;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
