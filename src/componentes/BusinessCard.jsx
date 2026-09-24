@@ -30,6 +30,7 @@ import {
 } from "@/servicios/apiMaxiPriceLists";
 import PriceListConfigModal from "./PriceListConfigModal";
 import AccesoEquipoModal from "./AccesoEquipoModal";
+import AccesoEquipoInline from "./AccesoEquipoInline";
 import QrCode2Icon from "@mui/icons-material/QrCode2";
 
 export default function BusinessCard({
@@ -478,6 +479,16 @@ const syncingProvRef = useRef(false);
             )}
           </div>
         </div>
+
+        {/* ── ACCESO DEL EQUIPO ── QR de la sucursal principal del negocio */}
+        {canEdit && viewBiz?.id && (
+          <AccesoEquipoInline
+            businessId={viewBiz.id}
+            branchId="main"
+            businessName={name}
+            businessLogo={logo}
+          />
+        )}
 
         {/* ── SUCURSALES ── solo si puede gestionarlas */}
         {isActive && canEdit && (
