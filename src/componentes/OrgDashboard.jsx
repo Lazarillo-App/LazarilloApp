@@ -142,35 +142,23 @@ function OrgBizCard({
       />
 
       <div className="bc-card">
-        <div className="bc-top">
-          <div className="bc-left">
-            <div className="bc-title-row">
-              <h4 className="bc-title" title={name}>{name}</h4>
-              {isPrincipal && (
-                <span className="bc-badge-principal" title="Negocio principal de la organización">
-                  Principal
-                </span>
-              )}
-              {isActive && (
-                <span className="bc-badge-active" title="Negocio activo">
-                  <CheckCircleIcon fontSize="inherit" />
-                  Activo
-                </span>
-              )}
-            </div>
-            {address && <p className="bc-address" title={address}>{address}</p>}
-          </div>
-
-          <div className={`bc-thumb-wrap ${isLogoThumb ? 'logo-mode' : 'photo-mode'}`}>
-            {thumbnail ? (
-              <img className="bc-thumb" src={thumbnail} alt={name} loading="lazy"
-                onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = photo || ''; }} />
-            ) : (
-              <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
-            )}
-          </div>
+        <div className="bc-title-row">
+          <h4 className="bc-title" title={name}>{name}</h4>
+          {isPrincipal && (
+            <span className="bc-badge-principal" title="Negocio principal de la organización">
+              Principal
+            </span>
+          )}
+          {isActive && (
+            <span className="bc-badge-active" title="Negocio activo">
+              <CheckCircleIcon fontSize="inherit" />
+              Activo
+            </span>
+          )}
         </div>
+        {address && <p className="bc-address" title={address}>{address}</p>}
 
+        <div className="bc-top">
         <div className="bc-actions">
           <div className="bc-actions-main">
             {!isActive && (
@@ -226,6 +214,16 @@ function OrgBizCard({
               )}
             </div>
           )}
+        </div>
+
+          <div className={`bc-thumb-wrap ${isLogoThumb ? 'logo-mode' : 'photo-mode'}`}>
+            {thumbnail ? (
+              <img className="bc-thumb" src={thumbnail} alt={name} loading="lazy"
+                onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = photo || ''; }} />
+            ) : (
+              <div className="bc-thumb bc-thumb-fallback" aria-label="thumbnail" />
+            )}
+          </div>
         </div>
 
         {/* ── Acceso del equipo ── QR de la sucursal principal del negocio */}
@@ -336,19 +334,18 @@ function OrgBizCard({
         <style>{`
           .bc-card{background:var(--color-surface,#fff);border:1px solid var(--color-border,#e5e7eb);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}
           .bc-top{display:flex;gap:16px;align-items:flex-start;}
-          .bc-left{flex:1;min-width:0;}
           .bc-title-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;}
           .bc-title{margin:0;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
           .bc-badge-active{display:inline-flex;align-items:center;gap:4px;background:color-mix(in srgb,var(--color-primary,#34d399) 18%,white);color:#166534;font-weight:700;padding:2px 8px;border-radius:999px;font-size:12px;}
           .bc-badge-principal{display:inline-flex;align-items:center;background:#f0f9ff;color:#0369a1;font-weight:700;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #bae6fd;}
           .bc-address{margin:.125rem 0 0 0;color:#6b7280;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
           .bc-thumb-wrap{width:180px;aspect-ratio:16/9;border-radius:12px;overflow:hidden;flex-shrink:0;border:1px solid var(--color-border,#e5e7eb);background:#f3f4f6;display:block;position:relative;}
+          .bc-thumb-wrap.logo-mode{width:auto;aspect-ratio:auto;border:none;background:transparent;overflow:visible;border-radius:0;max-width:160px;max-height:90px;display:flex;align-items:center;justify-content:center;}
           .bc-thumb{width:100%;height:100%;display:block;}
-          .bc-thumb-wrap.logo-mode{background:#fff;}
-          .bc-thumb-wrap.logo-mode .bc-thumb{object-fit:contain;padding:6px;}
+          .bc-thumb-wrap.logo-mode .bc-thumb{width:auto;height:auto;max-width:160px;max-height:90px;object-fit:contain;padding:0;}
           .bc-thumb-wrap.photo-mode .bc-thumb{object-fit:cover;}
           .bc-thumb-fallback{background:linear-gradient(135deg,#f3f4f6,#e5e7eb);}
-          .bc-actions{display:flex;flex-direction:column;gap:6px;}
+          .bc-actions{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
           .bc-actions-main{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;}
           .bc-actions-sync{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;}
           .bc-btn{border:0;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer;transition:filter .15s,background .15s;display:inline-flex;align-items:center;gap:6px;font-size:14px;}

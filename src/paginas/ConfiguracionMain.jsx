@@ -338,7 +338,13 @@ export default function ConfiguracionMain() {
   // ── Org helpers ──
   const activeBiz = active || null;
   const list = Array.isArray(items) ? items : [];
-  const orgBizIds = new Set((organizations || []).flatMap(o => (o.businesses || []).map(b => String(b.id))));
+  // Solo cuentan las organizaciones que realmente se muestran como bloque propio
+  // (2+ negocios) — una organización de un solo negocio no se renderiza aparte,
+  // así que ese negocio tiene que seguir apareciendo en "Mis locales".
+  const orgBizIds = new Set(
+    (organizations || []).filter(o => (o.businesses || []).length > 1)
+      .flatMap(o => (o.businesses || []).map(b => String(b.id)))
+  );
   const outsideOrg = orgBizIds.size > 0 ? list.filter(b => !orgBizIds.has(String(b.id))) : list;
 
   const onCreateComplete = async (biz) => {
@@ -576,7 +582,10 @@ export default function ConfiguracionMain() {
               const me = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; } catch { return {}; } })();
               const meName = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
               const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-              const orgBizIds = new Set((organizations || []).flatMap(o => (o.businesses || []).map(b => String(b.id))));
+              const orgBizIds = new Set(
+                (organizations || []).filter(o => (o.businesses || []).length > 1)
+                  .flatMap(o => (o.businesses || []).map(b => String(b.id)))
+              );
               const outsideOrg = orgBizIds.size > 0
                 ? (items || []).filter(b => !orgBizIds.has(String(b.id)))
                 : (items || []);
