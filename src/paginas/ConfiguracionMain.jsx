@@ -413,6 +413,7 @@ export default function ConfiguracionMain() {
       ) : (
         <>
           <Tabs
+            key={puedeGestionarNegocio ? 'full' : 'basic'}
             value={tab}
             onChange={(_, v) => { setTab(v); setSearchParams({}, { replace: true }); }}
             sx={{

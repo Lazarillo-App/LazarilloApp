@@ -375,8 +375,13 @@ export default function Navbar() {
               <Tooltip title="Perfil">
                 <IconButton
                   onClick={(e) => {
+                    // El zoom global (html { zoom: 0.9 }, ver global.css) re-escala
+                    // cualquier valor que le asignemos a un position:fixed, así que
+                    // hay que compensarlo dividiendo el rect medido — si no, el menú
+                    // aparece "arrimado" hacia la esquina superior izquierda.
                     const rect = e.currentTarget.getBoundingClientRect();
-                    setUserAnchorPos({ top: rect.bottom + 6, left: rect.right });
+                    const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+                    setUserAnchorPos({ top: (rect.bottom + 6) / zoom, left: rect.right / zoom });
                     setUserEl(e.currentTarget);
                   }}
                   sx={{ p: 0, color: 'inherit' }}
