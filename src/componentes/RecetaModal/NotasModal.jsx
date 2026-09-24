@@ -5,6 +5,7 @@ import {
   Autocomplete, CircularProgress,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import EditIcon from '@mui/icons-material/Edit';
 import NotesIcon from '@mui/icons-material/Notes';
 import ImageIcon from '@mui/icons-material/Image';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
@@ -89,6 +90,8 @@ function BloqueMetodo({ businessId, metodo, setMetodo, temperatura, setTemperatu
 ════════════════════════════════════════ */
 function BloquePasos({ pasos, setPasos, label }) {
   const [nuevo, setNuevo] = useState('');
+  const [editandoIdx, setEditandoIdx] = useState(null);
+  const [editTexto, setEditTexto] = useState('');
   const dragIdx = useRef(null);
 
   const agregar = () => {
@@ -107,6 +110,13 @@ function BloquePasos({ pasos, setPasos, label }) {
       return arr;
     });
   };
+  const empezarEdicion = (i) => { setEditandoIdx(i); setEditTexto(pasos[i]); };
+  const confirmarEdicion = () => {
+    const limpio = editTexto.trim();
+    if (limpio) setPasos(prev => prev.map((p, idx) => (idx === editandoIdx ? limpio : p)));
+    setEditandoIdx(null);
+  };
+  const cancelarEdicion = () => setEditandoIdx(null);
 
   return (
     <Box>
@@ -120,13 +130,13 @@ function BloquePasos({ pasos, setPasos, label }) {
             direction="row"
             alignItems="center"
             spacing={1}
-            draggable
+            draggable={editandoIdx !== i}
             onDragStart={() => { dragIdx.current = i; }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => { if (dragIdx.current != null) mover(dragIdx.current, i); dragIdx.current = null; }}
             sx={{
               border: '1px solid', borderColor: 'divider', borderRadius: 1.5,
-              px: 1, py: 0.75, bgcolor: 'background.paper', cursor: 'grab',
+              px: 1, py: 0.75, bgcolor: 'background.paper', cursor: editandoIdx === i ? 'default' : 'grab',
             }}
           >
             <DragIndicatorIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
@@ -137,7 +147,29 @@ function BloquePasos({ pasos, setPasos, label }) {
             }}>
               {i + 1}
             </Box>
-            <Typography variant="body2" sx={{ flex: 1, fontSize: '0.85rem' }}>{p}</Typography>
+            {editandoIdx === i ? (
+              <TextField
+                variant="standard"
+                fullWidth
+                autoFocus
+                value={editTexto}
+                onChange={(e) => setEditTexto(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); confirmarEdicion(); }
+                  if (e.key === 'Escape') { e.preventDefault(); cancelarEdicion(); }
+                }}
+                onBlur={confirmarEdicion}
+                InputProps={{ disableUnderline: true, sx: { fontSize: '0.85rem' } }}
+                sx={{ flex: 1 }}
+              />
+            ) : (
+              <Typography variant="body2" sx={{ flex: 1, fontSize: '0.85rem' }}>{p}</Typography>
+            )}
+            {editandoIdx !== i && (
+              <IconButton size="small" onClick={() => empezarEdicion(i)}>
+                <EditIcon sx={{ fontSize: 15 }} />
+              </IconButton>
+            )}
             <IconButton size="small" onClick={() => quitar(i)}>
               <CloseIcon sx={{ fontSize: 15 }} />
             </IconButton>
