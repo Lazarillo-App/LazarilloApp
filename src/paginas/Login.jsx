@@ -283,7 +283,7 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell zoom-reset">
       {showModal && <ContactModal onClose={() => setShowModal(false)} />}
 
       {/* ── ASIDE IZQUIERDO ─────────────────────────────────────────── */}

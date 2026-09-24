@@ -123,7 +123,7 @@ export default function Register() {
   };
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell zoom-reset">
 
       {/* ── ASIDE IZQUIERDO ─────────────────────────────────────────── */}
       <aside className="auth-aside">

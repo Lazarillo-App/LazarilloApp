@@ -114,7 +114,7 @@ export default function AltaPorQR() {
   };
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell zoom-reset">
       <aside className="auth-aside">
         <div className="auth-aside-inner">
           <Link to="/" className="auth-brand">
@@ -162,9 +162,9 @@ export default function AltaPorQR() {
           ) : paso === 'form' ? (
             <form onSubmit={pedirAcceso} noValidate>
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
                 borderRadius: 10, background: 'rgba(34,197,94,.12)', border: '1px solid rgba(34,197,94,.35)',
-                marginBottom: 16,
+                marginBottom: 10,
               }}>
                 <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
                 <div>
@@ -180,7 +180,7 @@ export default function AltaPorQR() {
                 placeholder="Ej: Ana López" autoFocus />
 
               <label className="auth-label">Cómo querés entrar</label>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                 <button type="button" className="btn"
                   style={{ flex: 1, background: canal === 'celular' ? 'var(--color-primary,#3b82f6)' : 'transparent', color: canal === 'celular' ? '#fff' : 'inherit', border: '1px solid #d8d3ca' }}
                   onClick={() => setCanal('celular')}>Celular</button>
