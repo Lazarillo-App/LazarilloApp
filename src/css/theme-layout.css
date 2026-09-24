@@ -225,9 +225,10 @@ h2 {
   font-size: 1.1rem !important;
 }
 .navbar-biz-logo {
-  height: 40px !important;
   width: auto !important;
   max-width: 130px !important;
+  /* el alto lo decide JS según la proporción real del logo (ver
+     BusinessDivisionSelector.jsx) — no forzarlo acá con !important. */
 }
 .navbar-biz-fallback {
   width: 40px !important;

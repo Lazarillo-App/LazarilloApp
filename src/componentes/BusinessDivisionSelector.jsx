@@ -78,6 +78,13 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
   const open = Boolean(anchorEl);
   const businessName = active?.name || 'Local';
   const logoUrl = getBizLogoUrl(active);
+
+  // Un logo ancho (cinta, wordmark) se ve bien topeado solo por alto; uno
+  // cuadrado/vertical, a esa misma altura, se ve chico — le damos un poco
+  // más de alto una vez que sabemos su proporción real (tras cargar).
+  const [logoAspect, setLogoAspect] = useState(null);
+  React.useEffect(() => { setLogoAspect(null); }, [logoUrl]);
+  const logoHeight = logoAspect != null && logoAspect <= 1.35 ? 52 : 40;
   const activeDivisionIdNorm = activeDivisionId ?? null;
   const showDivisionLabel = activeDivisionIdNorm !== null && activeDivision;
 
@@ -327,7 +334,8 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
             // adaptado a su propia proporción (redondo, alargado o cuadrado) — no
             // se lo fuerza a un cuadrado fijo, solo se topea el alto.
             <Box component="img" src={logoUrl} alt={businessName} className="navbar-biz-logo"
-              sx={{ height: 40, width: 'auto', maxWidth: 130, objectFit: 'contain' }} />
+              onLoad={(e) => setLogoAspect(e.target.naturalWidth / (e.target.naturalHeight || 1))}
+              sx={{ height: logoHeight, width: 'auto', maxWidth: 130, objectFit: 'contain' }} />
           ) : (
             <span className="navbar-biz-fallback" style={{
               display: 'inline-grid', placeItems: 'center', width: 40, height: 40,
