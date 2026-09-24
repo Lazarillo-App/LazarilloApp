@@ -10,6 +10,14 @@ export async function getMyOrganization() {
   return res?.organization ?? null;
 }
 
+// Todas las organizaciones a las que pertenece el caller (no solo la del
+// negocio activo), ya ordenadas por el backend con la del negocio activo
+// primero — para poder agruparlas todas en la UI de Configuración.
+export async function getMyOrganizations() {
+  const res = await http('/me/organization', { withBusinessId: true });
+  return Array.isArray(res?.organizations) ? res.organizations : [];
+}
+
 /* ══════════════════════════════════════════════════════════
    Crear organización (onboarding)
    POST /api/organizations

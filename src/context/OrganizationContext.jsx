@@ -14,7 +14,7 @@ import React, {
 import { useBusiness } from './BusinessContext';
 import { useAuth } from './AuthContext';
 import {
-  getMyOrganization,
+  getMyOrganizations,
   createOrganization,
   updateOrganization,
   createBusinessFromGroup,
@@ -29,6 +29,10 @@ export function OrganizationProvider({ children }) {
   const { activeId, activeBusinessId, refetchBusinesses, items: bizItems } = useBusiness() || {};
 
   const [organization, setOrganization] = useState(null);
+  // Todas las organizaciones del caller (no solo la del negocio activo), ya
+  // ordenadas por el backend con la activa primero — para agruparlas todas
+  // en Configuración > Organización en vez de mostrar solo una.
+  const [organizations, setOrganizations] = useState([]);
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState(null);
 
@@ -46,17 +50,14 @@ export function OrganizationProvider({ children }) {
     setOrgLoading(true);
     setOrgError(null);
     try {
-      const org = await getMyOrganization();
+      const orgs = await getMyOrganizations();
+      setOrganizations(orgs);
 
-      if (org?.businesses?.length > 0) {
-        const orgBizIds = new Set(org.businesses.map(b => Number(b.id)));
-        if (!orgBizIds.has(currentBizId)) {
-          setOrganization(null);
-          return;
-        }
-      }
-
-      setOrganization(org);
+      // "organization" (singular, compat con el resto del código) = la que
+      // contiene el negocio activo; el backend ya la manda primera, pero se
+      // busca explícito por si el activo cambió justo entre pedido y respuesta.
+      const activa = orgs.find(o => (o.businesses || []).some(b => Number(b.id) === currentBizId));
+      setOrganization(activa || null);
     } catch (e) {
       setOrgError(e?.message || 'error_loading_org');
     } finally {
@@ -218,6 +219,7 @@ export function OrganizationProvider({ children }) {
   ───────────────────────────────────────────────── */
   const value = useMemo(() => ({
     organization,
+    organizations,      // TODAS las organizaciones del caller, activa primero
     orgLoading,
     orgError,
     refetchOrg,
@@ -232,6 +234,7 @@ export function OrganizationProvider({ children }) {
     hasSubBusinesses,   // si hay más de 1 negocio
   }), [
     organization,
+    organizations,
     orgLoading,
     orgError,
     refetchOrg,

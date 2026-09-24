@@ -80,6 +80,7 @@ export default function Navbar() {
     const path = location.pathname;
     if (path.includes('/insumos')) return '1';   // tab Insumos
     if (path.includes('/articulos') || path === '/') return '0'; // tab Artículos
+    if (path.includes('/perfil')) return '3';    // tab Organización
     return null; // sin preferencia
   };
 

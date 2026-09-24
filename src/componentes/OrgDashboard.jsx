@@ -376,8 +376,16 @@ function OrgBizCard({
 }
 
 /* ─────────────────────────────────────────────────────── OrgDashboard */
-export default function OrgDashboard({ compact = false, onSelectBusiness }) {
-  const { organization, allBusinesses, rootBusiness } = useOrganization();
+export default function OrgDashboard({ compact = false, onSelectBusiness, org = null }) {
+  const { organization: organizationCtx, allBusinesses: allBusinessesCtx, rootBusiness: rootBusinessCtx } = useOrganization();
+  // Si viene `org` explícito (Configuración ya lo agrupó por organización),
+  // se usa ESE en vez del "la organización del negocio activo" del contexto —
+  // así se puede renderizar una organización distinta por cada bloque.
+  const organization = org || organizationCtx;
+  const allBusinesses = org ? (org.businesses || []) : allBusinessesCtx;
+  const rootBusiness = org
+    ? (org.businesses || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0] || null
+    : rootBusinessCtx;
   const { activeBusinessId, selectBusiness, refetchBusinesses } = useBusiness();
   const { isOwner, isAdmin } = useAccess() || {};
   // Editar (nombre, sucursal, etc.) es un derecho que el admin comparte con el owner —

@@ -100,7 +100,7 @@ export default function ConfiguracionMain() {
   const [recetaModalData, setRecetaModalData] = useState(null);
 
   // ── Org ──
-  const { organization, allBusinesses } = useOrganization() || {};
+  const { organization, organizations, allBusinesses } = useOrganization() || {};
   const {
     removeBusinessFromState, loading: businessesLoading,
     activeId, selectBusiness, items, active, refetchBusinesses,
@@ -338,8 +338,8 @@ export default function ConfiguracionMain() {
   // ── Org helpers ──
   const activeBiz = active || null;
   const list = Array.isArray(items) ? items : [];
-  const orgBizIds = new Set((allBusinesses || []).map(b => String(b.id)));
-  const outsideOrg = organization && orgBizIds.size > 1 ? list.filter(b => !orgBizIds.has(String(b.id))) : list;
+  const orgBizIds = new Set((organizations || []).flatMap(o => (o.businesses || []).map(b => String(b.id))));
+  const outsideOrg = orgBizIds.size > 0 ? list.filter(b => !orgBizIds.has(String(b.id))) : list;
 
   const onCreateComplete = async (biz) => {
     setShowCreate(false);
@@ -576,8 +576,8 @@ export default function ConfiguracionMain() {
               const me = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null') || {}; } catch { return {}; } })();
               const meName = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.name || 'Usuario';
               const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-              const orgBizIds = new Set((allBusinesses || []).map(b => String(b.id)));
-              const outsideOrg = organization && orgBizIds.size > 1
+              const orgBizIds = new Set((organizations || []).flatMap(o => (o.businesses || []).map(b => String(b.id))));
+              const outsideOrg = orgBizIds.size > 0
                 ? (items || []).filter(b => !orgBizIds.has(String(b.id)))
                 : (items || []);
 
@@ -598,26 +598,31 @@ export default function ConfiguracionMain() {
                     </div>
                   )}
 
-                  {/* ── Organización con sus negocios ── */}
-                  {organization && (allBusinesses || []).length > 1 && (
-                    <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
+                  {/* ── Organizaciones con sus negocios — una por cada una, la del
+                      negocio activo primero (ya viene ordenada así del backend) ── */}
+                  {(organizations || []).filter(o => (o.businesses || []).length > 1).map((org) => (
+                    <Paper key={org.id} variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
                       <Stack direction="row" alignItems="center" spacing={1}
                         sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
                         <BusinessIcon sx={{ color: themeColor, fontSize: 18 }} />
                         <Typography variant="subtitle2" fontWeight={700}>
-                          Mi organización — {organization.name || 'Sin nombre'}
+                          Mi organización — {org.name || 'Sin nombre'}
                         </Typography>
+                        {organization?.id === org.id && (
+                          <Chip size="small" label="Activa" color="success" variant="outlined"
+                            sx={{ height: 18, fontSize: '0.62rem' }} />
+                        )}
                       </Stack>
                       <Box sx={{ p: 2 }}>
-                        <OrgDashboard compact onSelectBusiness={async (biz) => {
+                        <OrgDashboard compact org={org} onSelectBusiness={async (biz) => {
                           try { await selectBusiness?.(biz.id); } catch { }
                         }} />
                       </Box>
                     </Paper>
-                  )}
+                  ))}
 
                   {/* ── Mis locales (fuera de org) ── */}
-                  {!(outsideOrg.length === 0 && organization && orgBizIds.size > 1) && (
+                  {!(outsideOrg.length === 0 && orgBizIds.size > 0) && (
                     <Paper variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
                       <Stack direction="row" alignItems="center" justifyContent="space-between"
                         sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -638,7 +643,7 @@ export default function ConfiguracionMain() {
                             <Typography variant="body2" color="text.secondary">Aún no tenés locales. Creá el primero.</Typography>
                           </Box>
                         ) : (
-                          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: '1fr' }}>
                             {outsideOrg.map(biz => (
                               <BusinessCard key={biz.id} biz={biz} activeId={activeId}
                                 onSetActive={async (id) => { await selectBusiness?.(id); }}
