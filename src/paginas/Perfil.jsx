@@ -163,6 +163,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           scopeName,
           role: r.role,
           account_status: r.account_status,
+          sectorIds: Array.isArray(r.sector_ids) ? r.sector_ids.map(Number) : [],
         });
       }
       // Rol más alto por persona (para el chip principal)

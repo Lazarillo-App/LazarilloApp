@@ -18,15 +18,149 @@ import {
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import BusinessIcon from '@mui/icons-material/Business';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import { useNavigate } from 'react-router-dom';
-import { createInvitation, revokeAssignment } from '@/servicios/apiTeam';
+import { createInvitation, revokeAssignment, updateAssignment } from '@/servicios/apiTeam';
 import { listarSectores } from '@/servicios/apiSectores';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { showConfirm } from '@/servicios/appConfirm';
 
 const tc = 'var(--color-primary, #3b82f6)';
+
+/* ─── Fila de un negocio con acceso: ver, editar rol/sector, o quitar ─── */
+function FilaNegocio({ n, isOwner, busy, onQuitar, onGuardado }) {
+  const [editando, setEditando] = useState(false);
+  const [rol, setRol] = useState(n.role);
+  const [sectorIds, setSectorIds] = useState(() => new Set(n.sectorIds || []));
+  const [sectores, setSectores] = useState([]);
+  const [guardando, setGuardando] = useState(false);
+  const [errorEdit, setErrorEdit] = useState(null);
+
+  useEffect(() => {
+    if (!editando || rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
+    let alive = true;
+    listarSectores(n.scopeId)
+      .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setSectores([]); });
+    return () => { alive = false; };
+  }, [editando, rol, n.scopeType, n.scopeId]);
+
+  const empezarEdicion = () => {
+    setRol(n.role);
+    setSectorIds(new Set(n.sectorIds || []));
+    setErrorEdit(null);
+    setEditando(true);
+  };
+
+  const guardar = async () => {
+    setGuardando(true); setErrorEdit(null);
+    try {
+      await updateAssignment(n.assignmentId, {
+        role: rol,
+        sectorIds: rol === 'staff' ? Array.from(sectorIds) : [],
+      });
+      try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
+      setEditando(false);
+      onGuardado?.();
+    } catch (e) {
+      setErrorEdit(e?.response?.data?.error || e?.message || 'No se pudo guardar');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const puedeEditar = n.role !== 'owner' && !!n.assignmentId;
+
+  return (
+    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1 }}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <BusinessIcon sx={{ fontSize: 16, color: tc }} />
+        <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>
+          {n.scopeName}
+        </Typography>
+        {!editando && (
+          <Chip label={n.role} size="small"
+            sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
+        )}
+        {n.account_status === 'invited' && (
+          <Chip label="pendiente" size="small" color="warning" variant="outlined"
+            sx={{ height: 20, fontSize: '0.62rem' }} />
+        )}
+        {puedeEditar && !editando && (
+          <Tooltip title="Editar rol/sector">
+            <span>
+              <IconButton size="small" onClick={empezarEdicion} disabled={busy}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        <Tooltip title="Quitar acceso a este negocio">
+          <span>
+            <IconButton size="small" onClick={() => onQuitar(n)} disabled={busy}
+              sx={{ color: 'error.main' }}>
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+
+      {editando && (
+        <Box sx={{ mt: 1.25 }}>
+          {errorEdit && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setErrorEdit(null)}>{errorEdit}</Alert>}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              select label="Rol" size="small" value={rol}
+              onChange={(e) => setRol(e.target.value)}
+              sx={{ width: 140 }}
+            >
+              {isOwner && <MenuItem value="admin">Administrador</MenuItem>}
+              <MenuItem value="staff">Staff</MenuItem>
+            </TextField>
+            <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
+            <Button size="small" variant="contained" onClick={guardar} disabled={guardando}
+              sx={{ bgcolor: tc, '&:hover': { bgcolor: tc, filter: 'brightness(0.9)' } }}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </Stack>
+
+          {rol === 'staff' && n.scopeType === 'business' && (
+            <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                SECTOR DENTRO DE {n.scopeName}
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
+                {sectores.map((s) => {
+                  const activo = sectorIds.has(s.id);
+                  return (
+                    <Chip
+                      key={s.id}
+                      label={s.nombre}
+                      size="small"
+                      onClick={() => setSectorIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                        return next;
+                      })}
+                      sx={{
+                        cursor: 'pointer', fontWeight: 600,
+                        bgcolor: activo ? tc : 'transparent',
+                        color: activo ? '#fff' : 'text.primary',
+                        border: `1px solid ${activo ? tc : '#d8d3ca'}`,
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 export default function EditarAccesoModal({ open, onClose, persona, onChanged }) {
   const { items: allBusinesses } = useBusiness() || {};
@@ -134,28 +268,14 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
               {negocios.length === 0 ? (
                 <Typography variant="body2" color="text.disabled">Sin accesos activos.</Typography>
               ) : negocios.map(n => (
-                <Stack key={n.assignmentId ?? `${n.scopeType}-${n.scopeId}`}
-                  direction="row" alignItems="center" spacing={1}
-                  sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1 }}>
-                  <BusinessIcon sx={{ fontSize: 16, color: tc }} />
-                  <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>
-                    {n.scopeName}
-                  </Typography>
-                  <Chip label={n.role} size="small"
-                    sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
-                  {n.account_status === 'invited' && (
-                    <Chip label="pendiente" size="small" color="warning" variant="outlined"
-                      sx={{ height: 20, fontSize: '0.62rem' }} />
-                  )}
-                  <Tooltip title="Quitar acceso a este negocio">
-                    <span>
-                      <IconButton size="small" onClick={() => quitarAcceso(n)} disabled={busy}
-                        sx={{ color: 'error.main' }}>
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </Stack>
+                <FilaNegocio
+                  key={n.assignmentId ?? `${n.scopeType}-${n.scopeId}`}
+                  n={n}
+                  isOwner={isOwner}
+                  busy={busy}
+                  onQuitar={quitarAcceso}
+                  onGuardado={onChanged}
+                />
               ))}
             </Stack>
           </Box>
