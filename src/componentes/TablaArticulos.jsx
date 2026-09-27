@@ -1004,8 +1004,9 @@ export default function TablaArticulos({
     } else {
       base = allArticulos;
     }
+    const _preFilterLen = base.length;
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
-    if (filterIds instanceof Set) console.log('[DEBUG listas] articulosAMostrar tiene 506?', base.some(a => getId(a) === 506), 'total=', base.length);
+    if (filterIds instanceof Set) console.log('[DEBUG listas] rama=', categoriaSeleccionada && agrupacionSeleccionada ? 'cat+agrup' : categoriaSeleccionada ? 'cat' : agrupacionSeleccionada ? (esTodoGroup(agrupacionSeleccionada) ? 'agrup-todo' : 'agrup-' + agrupacionSeleccionada?.nombre) : 'else-allArticulos', 'preFilterLen=', _preFilterLen, 'tiene 506?', base.some(a => getId(a) === 506), 'total=', base.length);
     return base;
   }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds]);
 
