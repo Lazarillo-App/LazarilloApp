@@ -137,7 +137,11 @@ export default function ArticulosMain(props) {
   const [syncVersion, setSyncVersion] = useState(0);
   const [categorias, setCategorias] = useState([]);
   const [agrupaciones, setAgrupaciones] = useState([]);
-  const [agrupacionSeleccionada, setAgrupacionSeleccionada] = useState(null);
+  const [agrupacionSeleccionada, setAgrupacionSeleccionadaRaw] = useState(null);
+  const setAgrupacionSeleccionada = useCallback((v) => {
+    console.log('[DEBUG listas] setAgrupacionSeleccionada llamado con', typeof v === 'function' ? '(función)' : v?.nombre, new Error().stack.split('\n').slice(1, 4).join(' | '));
+    setAgrupacionSeleccionadaRaw(v);
+  }, []);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [discoOrigenById, setDiscoOrigenById] = useState({});
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
