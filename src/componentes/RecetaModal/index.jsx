@@ -1329,7 +1329,7 @@ export default function RecetaModal({
             await insumoUpdate(articulo.id, { nombre: nombreNuevo }, insumosBizId || businessId);
           } else {
             // Artículo (incluye promos)
-            await fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
+            const renameRes = await fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
               method: 'PATCH',
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -1338,6 +1338,10 @@ export default function RecetaModal({
               },
               body: JSON.stringify({ nombre: nombreNuevo }),
             });
+            if (!renameRes.ok) {
+              const d = await renameRes.json().catch(() => ({}));
+              throw new Error(d?.message || d?.error || `Error ${renameRes.status}`);
+            }
           }
           try {
             window.dispatchEvent(new CustomEvent('articulos:updated'));

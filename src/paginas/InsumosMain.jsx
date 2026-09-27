@@ -243,8 +243,7 @@ export default function InsumosMain() {
   const handleCreateInsumoList = async (name, ids) => {
     setInsumoListSaving(true);
     try {
-      const list = await _createInsumoList(name);
-      if (list && ids?.length) await addInsumoListItems(list.id, ids);
+      await _createInsumoList(name, ids);
       notify?.(`✅ Lista "${name}" creada con ${ids?.length || 0} insumo${ids?.length !== 1 ? 's' : ''}`);
     } catch (e) {
       console.error('[handleCreateInsumoList]', e);

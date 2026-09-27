@@ -68,12 +68,13 @@ export function useInsumoLists(bizId) {
     }
   }, [activeListId, loadListItems]);
 
-  const createList = useCallback(async (name) => {
+  const createList = useCallback(async (name, ids) => {
     if (!name?.trim() || !bizId) return null;
     try {
-      const res = await httpBiz('/insumo-lists', { method: 'POST', body: { name: name.trim() } }, bizId);
+      const cleanIds = Array.isArray(ids) ? ids.filter((n) => Number.isFinite(Number(n))) : [];
+      const res = await httpBiz('/insumo-lists', { method: 'POST', body: { name: name.trim(), ids: cleanIds } }, bizId);
       if (!res?.list) throw new Error('Respuesta inesperada del servidor');
-      setLists(prev => [{ ...res.list, item_count: 0 }, ...prev]);
+      setLists(prev => [{ ...res.list, item_count: res.added ?? cleanIds.length }, ...prev]);
       return res.list;
     } catch (e) {
       console.error('[useInsumoLists] createList error:', e.message);

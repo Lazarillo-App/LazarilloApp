@@ -26,13 +26,13 @@ const ListsAPI = {
     if (!r.ok) throw new Error(await r.text());
     return r.json(); // { lists: [{id, name, color, item_count}] }
   },
-  create: async (bizId, { name, color }) => {
+  create: async (bizId, { name, color, ids }) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-lists`, {
       method: 'POST', headers: authHeaders(bizId),
-      body: JSON.stringify({ name, color }),
+      body: JSON.stringify({ name, color, ids }),
     });
     if (!r.ok) throw new Error(await r.text());
-    return r.json(); // { list: {id, name, color} }
+    return r.json(); // { list: {id, name, color}, added }
   },
   addItems: async (bizId, listId, ids) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-lists/${listId}/items`, {
@@ -238,16 +238,11 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     if (!bizId || !name.trim()) return;
     setSaving(true);
     try {
-      const res = await ListsAPI.create(bizId, { name: name.trim() });
+      const res = await ListsAPI.create(bizId, { name: name.trim(), ids: Array.from(selectedIds) });
       const newList = res?.list;
       if (!newList) throw new Error('Respuesta inesperada');
 
-      // Agregar los artículos seleccionados a la nueva lista
-      if (selectedIds.size > 0) {
-        await ListsAPI.addItems(bizId, newList.id, Array.from(selectedIds));
-      }
-
-      setLists(prev => [...prev, { ...newList, item_count: selectedIds.size }]);
+      setLists(prev => [...prev, { ...newList, item_count: res?.added ?? selectedIds.size }]);
       notify?.(`✅ Lista "${name}" creada con ${selectedIds.size} artículo${selectedIds.size !== 1 ? 's' : ''}`);
       clearSelection();
       toggleMode(null);
