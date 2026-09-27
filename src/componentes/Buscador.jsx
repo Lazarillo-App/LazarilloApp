@@ -271,6 +271,7 @@ export default function Buscador({
   return (
     <Autocomplete
       freeSolo
+      autoHighlight
       open={open}
       onOpen={() => setOpen(!!inputValue)}
       onClose={(_, reason) => {
