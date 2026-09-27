@@ -36,6 +36,19 @@ export function buildMuiTheme(p) {
           root: { borderRadius: 12 },
         },
       },
+      // Con el zoom global (html { zoom: 0.9 }, ver global.css) el Tooltip
+      // portaleado a document.body queda mal posicionado — el mismo tipo de
+      // bug que tenía el dropdown de perfil, pero acá no hay margen para
+      // reescribirlo a mano en cada uso. disablePortal lo deja anclado en el
+      // mismo árbol/zoom que el elemento que lo dispara, sin cruce de
+      // contexto, así que cae en su lugar en vez de "encima de todo".
+      MuiTooltip: {
+        defaultProps: {
+          slotProps: {
+            popper: { disablePortal: true },
+          },
+        },
+      },
     },
   });
 }
