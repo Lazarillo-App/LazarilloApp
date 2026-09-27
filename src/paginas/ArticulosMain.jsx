@@ -26,6 +26,8 @@ import { useFirstDate } from '../hooks/useFirstDate';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
 import { ArticuloNuevoModal } from '../componentes/configuracion/ABMModals';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useArticuloTour } from '@/hooks/useArticuloTour';
 import Buscador from '@/componentes/Buscador';
 import SubBusinessCreateModal from '../componentes/SubBusinessCreateModal';
 import ReactDOM from 'react-dom';
@@ -289,6 +291,15 @@ export default function ArticulosMain(props) {
 
   const { rootBusiness, allBusinesses, updateOrg, organization, refetchOrg } = useOrganization();
   usePersistUiActions(activeBizId);
+
+  // Tour guiado "cómo cargar tu primer artículo manual" — solo para negocios
+  // nuevos, sin Maxi y sin artículos todavía (ver useArticuloTour).
+  const activeBusinessObj = useMemo(
+    () => (allBusinesses || []).find((b) => String(b.id) === String(activeBizId)) || null,
+    [allBusinesses, activeBizId]
+  );
+  const tour = useArticuloTour({ bizId: activeBizId, business: activeBusinessObj });
+  const btnAgregarRef = useRef(null);
 
   const {
     ventasMap,
@@ -2581,6 +2592,7 @@ export default function ArticulosMain(props) {
           {/* Botón + Agregar */}
           <div>
             <Button
+              ref={btnAgregarRef}
               variant="contained"
               size="small"
               onClick={e => setAgregarMenuAnchor(e.currentTarget)}
@@ -2602,7 +2614,11 @@ export default function ArticulosMain(props) {
               onClose={() => setAgregarMenuAnchor(null)}
               PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
             >
-              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
+              <MenuItem onClick={() => {
+                setAgregarMenuAnchor(null);
+                setAgregarArticuloOpen(true);
+                if (tour.step === 1) tour.next();
+              }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
                 <span style={{ fontSize: 16 }}>📄</span> Un artículo
               </MenuItem>
@@ -2611,6 +2627,14 @@ export default function ArticulosMain(props) {
                 <span style={{ fontSize: 16 }}>📦</span> Cargar lote de Artículos
               </MenuItem>
             </Menu>
+            {tour.step === 1 && (
+              <SpotlightTour
+                targetRef={btnAgregarRef}
+                pose="saluda"
+                text={<>¡Hola! Soy Anthony 👋 Veo que todavía no tenés artículos cargados — acá vas a poder cargarlos <b>manualmente</b>. Hacé clic para empezar.</>}
+                onSkip={tour.skip}
+              />
+            )}
           </div>
 
           <Button
@@ -2840,9 +2864,18 @@ export default function ArticulosMain(props) {
       {/* ── Agregar artículo manual ── */}
       <ArticuloNuevoModal
         open={agregarArticuloOpen}
-        onClose={() => setAgregarArticuloOpen(false)}
+        onClose={() => {
+          setAgregarArticuloOpen(false);
+          if (tour.step >= 2) tour.restart();
+        }}
         businessId={activeBusinessId}
-        onCreated={() => { window.dispatchEvent(new Event('business:synced')); }}
+        onCreated={() => {
+          window.dispatchEvent(new Event('business:synced'));
+          if (tour.step >= 2) tour.finish();
+        }}
+        tourStep={tour.step >= 2 ? tour.step : null}
+        onTourNext={tour.next}
+        onTourSkip={tour.skip}
       />
 
       {/* ── Upload artículos / rubros ── */}

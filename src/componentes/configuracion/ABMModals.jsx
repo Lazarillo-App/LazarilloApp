@@ -1,6 +1,6 @@
 // src/componentes/configuracion/ABMModals.jsx
 // Modales de alta manual de artículos e insumos
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, MenuItem, InputAdornment, FormControl,
@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { BASE } from '@/servicios/apiBase';
+import SpotlightTour from '@/componentes/SpotlightTour';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
@@ -277,8 +278,14 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
 }
 
 /* ─── Alta de Artículo ─── */
-export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, articulo = null }) {
+export function ArticuloNuevoModal({
+  open, onClose, businessId, onCreated, articulo = null,
+  tourStep = null, onTourNext, onTourSkip,
+}) {
   const themeColor = 'var(--color-primary, #3b82f6)';
+  const campoNombreRubroRef = useRef(null);
+  const padrinoRef = useRef(null);
+  const guardarRef = useRef(null);
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
   const isEdit = !!articulo;
   // Artículo manual (id < 0): la edición de SKU/código externo tiene sentido (aún no
@@ -485,7 +492,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, artic
 
           {/* Toggle padrino + autocomplete — no aplica al editar un artículo existente */}
           {!isEdit && (
-          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
+          <Box ref={padrinoRef} sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: -1 }}>
               <Checkbox size="small" checked={usarPadrino}
                 onChange={(e) => {
@@ -544,6 +551,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, artic
           </Box>
           )}
 
+          <Stack ref={campoNombreRubroRef} spacing={2}>
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
 
@@ -620,6 +628,7 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, artic
               )}
             </Stack>
           </Stack>
+          </Stack>
 
           <Stack direction="row" spacing={1.5}>
             <TextField label={isEdit ? 'Precio' : 'Precio inicial'} size="small" type="number" fullWidth
@@ -644,12 +653,39 @@ export function ArticuloNuevoModal({ open, onClose, businessId, onCreated, artic
       </DialogContent>
       <DialogActions sx={{ px: 2.5, pb: 2 }}>
         <Button size="small" color="inherit" onClick={onClose}>Cancelar</Button>
-        <Button size="small" variant="contained" onClick={handleSave} disabled={saving}
+        <Button ref={guardarRef} size="small" variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
           sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
           {saving ? (isEdit ? 'Guardando…' : 'Creando…') : (isEdit ? 'Guardar cambios' : 'Crear artículo')}
         </Button>
       </DialogActions>
+
+      {tourStep === 2 && (
+        <SpotlightTour
+          targetRef={campoNombreRubroRef}
+          pose="presenta"
+          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del artículo — son los únicos datos obligatorios. El resto (precio, subrubro, SKU) lo podés completar después.</>}
+          onSkip={onTourSkip}
+          onNext={onTourNext}
+        />
+      )}
+      {tourStep === 3 && (
+        <SpotlightTour
+          targetRef={padrinoRef}
+          pose="investiga"
+          text={<>Si tildás esto, podés elegir un artículo que ya tengas cargado como <b>referencia</b>: copia su rubro, subrubro, precio y agrupación automáticamente, así no completás todo desde cero.</>}
+          onSkip={onTourSkip}
+          onNext={onTourNext}
+        />
+      )}
+      {tourStep === 4 && (
+        <SpotlightTour
+          targetRef={guardarRef}
+          pose="saluda"
+          text="Cuando estés list@, guardá — tu artículo va a aparecer al instante en la tabla."
+          onSkip={onTourSkip}
+        />
+      )}
     </Dialog>
   );
 }

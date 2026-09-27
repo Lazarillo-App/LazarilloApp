@@ -442,6 +442,10 @@ export const BusinessesAPI = {
   maxiSave: (id, creds) =>
     http(`/businesses/${id}/maxi-credentials`, { method: 'POST', body: creds, withBusinessId: false }),
 
+  // Flags de tours/tutoriales ya vistos (guardados en props.onboarding)
+  setOnboardingFlag: (id, key, value = true) =>
+    http(`/businesses/${id}/onboarding`, { method: 'PATCH', body: { key, value }, withBusinessId: false }),
+
   // Catálogo desde DB
   // Lista PLANA: { items: [{ id, nombre, categoria, subrubro, precio, costo, raw }...] }
   articlesFromDB: async (id) => {
