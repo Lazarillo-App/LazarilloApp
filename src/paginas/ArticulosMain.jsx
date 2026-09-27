@@ -2141,6 +2141,10 @@ export default function ArticulosMain(props) {
 
   // Selección inteligente: Sin Agrupación tiene prioridad AL CARGAR, luego no interrumpe
   useEffect(() => {
+    // Con una lista activa (pestaña Listas), agrupacionSeleccionada=null es
+    // intencional — no autoseleccionar nada por encima, mismo motivo que el
+    // guard de la otra selección automática más abajo.
+    if (activeListId) return;
     const todoId = todoInfo?.todoGroupId;
     const todoCount = todoInfo?.idsSinAgrupCount || 0;
     const todoEmpty = todoCount === 0;
@@ -2195,6 +2199,7 @@ export default function ArticulosMain(props) {
     }
   }, [
     activeBizId,
+    activeListId,
     todoInfo?.todoGroupId,
     todoInfo?.idsSinAgrupCount,
     favoriteGroupId,
