@@ -279,6 +279,7 @@ export default function TablaArticulos({
   onTotalResolved,
   onGroupCreated,
   visibleIds,
+  listItemDetails = null,
   onMutateGroups,
   jumpToArticleId,
   selectedArticleId,
@@ -666,6 +667,7 @@ export default function TablaArticulos({
 
   const allArticulos = useMemo(() => {
     const out = [];
+    const seen = new Set();
     for (const sub of categorias || []) {
       const subrubroNombre = String(sub?.subrubro ?? sub?.nombre ?? "Sin subrubro");
       for (const cat of sub?.categorias || []) {
@@ -679,11 +681,35 @@ export default function TablaArticulos({
             categoria: a?.categoria ?? categoriaNombre,
             costoTotal: Number(_rec?.costoTotal) || 0,  // costo de su receta (para sugerido en promos)
           });
+          seen.add(_id);
         }
       }
     }
+    // Artículos que están en la lista activa pero organizados en la agrupación
+    // de OTRO sub-negocio de la misma organización: el árbol de Agrupaciones de
+    // ESTE negocio no los trae (cada sub-negocio ve solo lo suyo), pero una
+    // Lista es una "copia" propia para gestiones puntuales y debe seguir
+    // mostrándolos igual — se completan con lo que ya resolvió el backend en
+    // /article-lists/:id/items (que no aplica ese filtro).
+    if (filterIds instanceof Set && listItemDetails instanceof Map) {
+      for (const id of filterIds) {
+        if (seen.has(id)) continue;
+        const d = listItemDetails.get(id);
+        if (!d) continue;
+        out.push({
+          id,
+          nombre: d.nombre ?? `#${id}`,
+          categoria: d.categoria ?? "Sin categoría",
+          subrubro: d.subrubro ?? "Sin subrubro",
+          precio: Number(d.precio) || 0,
+          costo: Number(d.costo) || 0,
+          costoTotal: 0,
+          origen: d.origen ?? null,
+        });
+      }
+    }
     return out;
-  }, [categorias, recetasCostos]);
+  }, [categorias, recetasCostos, filterIds, listItemDetails]);
 
   const baseById = useMemo(() => {
     const m = new Map();

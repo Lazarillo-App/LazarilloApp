@@ -194,7 +194,7 @@ export default function ArticulosMain(props) {
   const {
     selectionMode, selectedIds, saving: selectionSaving,
     toggleMode, toggleSelected, selectAll, clearSelection,
-    lists, loadingLists, activeListId, activeListItems,
+    lists, loadingLists, activeListId, activeListItems, activeListItemDetails,
     createList, addToExistingList, deleteList, selectList,
     linkGroups, linkByArticleId, createLink, deleteLink, removeMemberFromLink, addArticlesToLink,
     editingGroup, startEditLink, saveEditLink,
@@ -2732,6 +2732,7 @@ export default function ArticulosMain(props) {
             onGroupCreated={handleGroupCreated}
             onMutateGroups={mutateGroups}
             visibleIds={effectiveVisibleIds}
+            listItemDetails={activeListId ? activeListItemDetails : null}
             favoriteGroupId={favoriteGroupId}
             onSetFavorite={handleSetFavorite}
             jumpToArticleId={jumpToId}

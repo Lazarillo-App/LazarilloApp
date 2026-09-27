@@ -45,7 +45,7 @@ const ListsAPI = {
   getItems: async (bizId, listId) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-lists/${listId}/items`, { headers: authHeaders(bizId) });
     if (!r.ok) throw new Error(await r.text());
-    return r.json(); // { items: [{article_id}] }
+    return r.json(); // { items: [{article_id, nombre, categoria, subrubro, precio, costo, origen}] }
   },
   delete: async (bizId, listId) => {
     const r = await fetch(`${BASE}/businesses/${bizId}/article-lists/${listId}`, {
@@ -122,6 +122,11 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   const [loadingLists, setLoadingLists] = useState(false);
   const [activeListId, setActiveListId] = useState(null); // lista activa en sidebar
   const [activeListItems, setActiveListItems] = useState(new Set()); // IDs en la lista activa
+  // Datos propios de cada item (nombre/categoria/subrubro/precio) resueltos por el
+  // backend a nivel de organización — necesarios para poder mostrar un artículo de
+  // la lista aunque hoy esté agrupado en OTRO sub-negocio y por eso el árbol de
+  // Agrupaciones del negocio activo no lo traiga.
+  const [activeListItemDetails, setActiveListItemDetails] = useState(new Map());
 
   // ── Vinculaciones ──
   // linkByArticleId: Map<articleId, Array<{ groupId, groupName, linkType, memberIds: Set, sync_recipe, sync_precio, sync_objetivo }>>
@@ -292,21 +297,28 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
   }, [bizId, activeListId, notify]);
 
   const loadListItems = useCallback(async (listId) => {
-    if (!bizId || !listId) { setActiveListItems(new Set()); return; }
+    if (!bizId || !listId) { setActiveListItems(new Set()); setActiveListItemDetails(new Map()); return; }
     try {
       const res = await ListsAPI.getItems(bizId, listId);
-      const ids = new Set((res?.items || []).map(i => Number(i.article_id)));
+      const items = res?.items || [];
+      const ids = new Set(items.map(i => Number(i.article_id)));
+      const details = new Map(items.map(i => [Number(i.article_id), {
+        nombre: i.nombre, categoria: i.categoria, subrubro: i.subrubro,
+        precio: i.precio, costo: i.costo, origen: i.origen,
+      }]));
       setActiveListItems(ids);
+      setActiveListItemDetails(details);
     } catch (e) {
       console.error('[loadListItems]', e);
       setActiveListItems(new Set());
+      setActiveListItemDetails(new Map());
     }
   }, [bizId]);
 
   const selectList = useCallback((listId) => {
     setActiveListId(listId);
     if (listId) loadListItems(listId);
-    else setActiveListItems(new Set());
+    else { setActiveListItems(new Set()); setActiveListItemDetails(new Map()); }
   }, [loadListItems]);
 
   // ── CRUD Vinculaciones ─────────────────────────────────────────────────
@@ -477,7 +489,7 @@ export function useArticleSelection({ bizId, notify, onLinkPropagated }) {
     toggleMode, toggleSelected, selectAll, clearSelection,
 
     // Listas
-    lists, loadingLists, activeListId, activeListItems,
+    lists, loadingLists, activeListId, activeListItems, activeListItemDetails,
     createList, addToExistingList, deleteList, selectList,
 
     // Vinculaciones
