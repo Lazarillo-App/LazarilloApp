@@ -1891,13 +1891,17 @@ export default function ArticulosMain(props) {
   }, [categorias]);
 
   useEffect(() => {
+    // No autoseleccionar "TODO" mientras hay una lista activa (pestaña Listas) —
+    // si no, esto pisaba el agrupacionSeleccionada=null que pone onSelectList un
+    // render después, resucitando el mismo filtro-intersección que se quería evitar.
+    if (activeListId) return;
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
     if (!agrupacionSeleccionada && todoGroupId && catsReady) {
       setAgrupacionSeleccionada({ id: Number(todoGroupId), nombre: 'TODO', articulos: [] });
       setFiltroBusqueda('');
       setCategoriaSeleccionada(null);
     }
-  }, [todoGroupId, agrupacionSeleccionada, categorias]);
+  }, [todoGroupId, agrupacionSeleccionada, categorias, activeListId]);
 
   // IDs que pertenecen al negocio activo.
   // orgAssignedIds = artículos asignados en agrupaciones de TODA la org (incluye otros subnegocios).

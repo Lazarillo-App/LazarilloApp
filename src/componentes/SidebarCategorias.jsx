@@ -728,26 +728,24 @@ function SidebarCategorias({
                         )}
                       </div>
                       {onDownloadList && (
-                        <Tooltip title="Descargar ventas de esta lista">
-                          <IconButton
-                            size="small"
-                            onClick={(e) => { e.stopPropagation(); onDownloadList(list.id, list.name); }}
-                            sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
-                          >
-                            <DownloadIcon fontSize="inherit" color="primary" />
-                          </IconButton>
-                        </Tooltip>
+                        <IconButton
+                          size="small"
+                          aria-label="Descargar ventas de esta lista"
+                          onClick={(e) => { e.stopPropagation(); onDownloadList(list.id, list.name); }}
+                          sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
+                        >
+                          <DownloadIcon fontSize="inherit" color="primary" />
+                        </IconButton>
                       )}
                       {onDeleteList && (
-                        <Tooltip title="Eliminar lista">
-                          <IconButton
-                            size="small"
-                            onClick={(e) => { e.stopPropagation(); onDeleteList(list.id); }}
-                            sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
-                          >
-                            <DeleteIcon fontSize="inherit" color="error" />
-                          </IconButton>
-                        </Tooltip>
+                        <IconButton
+                          size="small"
+                          aria-label="Eliminar lista"
+                          onClick={(e) => { e.stopPropagation(); onDeleteList(list.id); }}
+                          sx={{ opacity: 0.4, '&:hover': { opacity: 1 }, flexShrink: 0 }}
+                        >
+                          <DeleteIcon fontSize="inherit" color="error" />
+                        </IconButton>
                       )}
                     </div>
                   );
