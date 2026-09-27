@@ -2653,7 +2653,15 @@ export default function ArticulosMain(props) {
             visibleIds={effectiveVisibleIds}
             lists={lists}
             activeListId={activeListId}
-            onSelectList={selectList}
+            onSelectList={(id) => {
+              // Si quedaba una agrupación/rubro seleccionado de antes, el filtro de
+              // la lista se aplicaba ADEMÁS de ese (intersección), no en su lugar —
+              // una lista casi nunca coincide con un solo rubro, así que mostraba
+              // "No hay artículos" aunque la lista tuviera items reales.
+              setAgrupacionSeleccionada(null);
+              setCategoriaSeleccionada(null);
+              selectList(id);
+            }}
             onDeleteList={deleteList}
             onDownloadList={handleDownloadList}
             onManualPick={markManualPick}
