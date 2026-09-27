@@ -692,11 +692,9 @@ export default function TablaArticulos({
     // mostrándolos igual — se completan con lo que ya resolvió el backend en
     // /article-lists/:id/items (que no aplica ese filtro).
     if (filterIds instanceof Set && listItemDetails instanceof Map) {
-      console.log('[DEBUG listas] filterIds=', Array.from(filterIds), 'seen=', Array.from(seen), 'listItemDetails keys=', Array.from(listItemDetails.keys()));
       for (const id of filterIds) {
         if (seen.has(id)) continue;
         const d = listItemDetails.get(id);
-        console.log('[DEBUG listas] id', id, 'no está en seen, detalle=', d);
         if (!d) continue;
         out.push({
           id,
@@ -1007,6 +1005,7 @@ export default function TablaArticulos({
       base = allArticulos;
     }
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
+    if (filterIds instanceof Set) console.log('[DEBUG listas] articulosAMostrar tiene 506?', base.some(a => getId(a) === 506), 'total=', base.length);
     return base;
   }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds]);
 
@@ -1017,6 +1016,7 @@ export default function TablaArticulos({
     if (promoComponentIds.size > 0) {
       base = base.filter((a) => !promoComponentIds.has(Number(getId(a))));
     }
+    if (filterIds instanceof Set) console.log('[DEBUG listas] tras filtro promo, tiene 506?', base.some(a => getId(a) === 506), 'promoComponentIds tiene 506?', promoComponentIds.has(506));
     if (filtroDefer) {
       const q = String(filtroDefer).toLowerCase().trim();
       base = base.filter((a) => (a.nombre || "").toLowerCase().includes(q) || String(getId(a)).includes(q));
@@ -1027,8 +1027,9 @@ export default function TablaArticulos({
         return Number(qty) > 0;
       });
     }
+    if (filterIds instanceof Set) console.log('[DEBUG listas] articulosFiltrados final tiene 506?', base.some(a => getId(a) === 506), 'filtroDefer=', filtroDefer, 'soloConVentas=', soloConVentas);
     return base;
-  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds]);
+  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds, filterIds]);
 
   const isRubroView = tableHeaderMode === "cat-first";
 
