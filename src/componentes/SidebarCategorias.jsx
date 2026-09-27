@@ -226,6 +226,12 @@ function SidebarCategorias({
   }, [opcionesSelect, agrupacionSeleccionada, todoGroupId]);
 
   useEffect(() => {
+    // Con una lista activa (pestaña Listas), agrupacionSeleccionada=null es
+    // intencional (lo pone onSelectList al elegir la lista) — sin este guard,
+    // este efecto lo pisaba enseguida con una agrupación "por defecto" (TODO /
+    // favorita / la primera), igual que los otros dos efectos de autoselección
+    // que ya tienen este mismo guard en ArticulosMain.jsx.
+    if (activeListId) return;
     const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
     const currentId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
     const existsInRaw = currentId != null &&
@@ -258,7 +264,7 @@ function SidebarCategorias({
     onManualPick?.();
   }, [opcionesSelect, agrupaciones, agrupacionSeleccionada, setAgrupacionSeleccionada,
     isMainDivision, todoGroupId, favoriteGroupId, setCategoriaSeleccionada,
-    setFiltroBusqueda, setBusqueda, onManualPick]);
+    setFiltroBusqueda, setBusqueda, onManualPick, activeListId]);
 
   useEffect(() => { setCategoriaSeleccionada?.(null); }, [divisionNum]);
 
