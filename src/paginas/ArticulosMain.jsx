@@ -2189,6 +2189,7 @@ export default function ArticulosMain(props) {
           (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
 
         if (!selExistsInList) {
+          console.log('[DEBUG listas] efecto selección inteligente asigna favorita=', fav?.nombre, 'activeListId era=', activeListId);
           setAgrupacionSeleccionada(fav);
           setCategoriaSeleccionada(null);
           setFiltroBusqueda('');
@@ -2667,6 +2668,7 @@ export default function ArticulosMain(props) {
               // la lista se aplicaba ADEMÁS de ese (intersección), no en su lugar —
               // una lista casi nunca coincide con un solo rubro, así que mostraba
               // "No hay artículos" aunque la lista tuviera items reales.
+              console.log('[DEBUG listas] onSelectList llamado con id=', id, 'agrupacionSeleccionada actual=', agrupacionSeleccionada?.nombre);
               setAgrupacionSeleccionada(null);
               setCategoriaSeleccionada(null);
               selectList(id);
