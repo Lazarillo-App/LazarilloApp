@@ -692,9 +692,11 @@ export default function TablaArticulos({
     // mostrándolos igual — se completan con lo que ya resolvió el backend en
     // /article-lists/:id/items (que no aplica ese filtro).
     if (filterIds instanceof Set && listItemDetails instanceof Map) {
+      console.log('[DEBUG listas] filterIds=', Array.from(filterIds), 'seen=', Array.from(seen), 'listItemDetails keys=', Array.from(listItemDetails.keys()));
       for (const id of filterIds) {
         if (seen.has(id)) continue;
         const d = listItemDetails.get(id);
+        console.log('[DEBUG listas] id', id, 'no está en seen, detalle=', d);
         if (!d) continue;
         out.push({
           id,
