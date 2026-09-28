@@ -10,6 +10,45 @@ import { showAlert } from "../../servicios/appAlert";
 import { showConfirm } from "../../servicios/appConfirm";
 import { showPrompt } from "../../servicios/appPrompt";
 
+// pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
+// alguien sube un PDF acá — se carga con import() dinámico para no engordar
+// el bundle principal de TODA la app con algo que la mayoría ni toca.
+let pdfjsLibPromise = null;
+function getPdfjsLib() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    ]).then(([mod, workerUrlMod]) => {
+      mod.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+      return mod;
+    });
+  }
+  return pdfjsLibPromise;
+}
+
+// Intenta extraer el texto de un PDF por código (gratis, instantáneo) antes de
+// mandarlo a la IA. Funciona bien con PDFs exportados digitalmente (listas de
+// precios, menús armados en Word/Excel-a-PDF); un PDF que es en realidad una
+// foto/escaneo devuelve texto vacío o casi vacío, y ahí se sigue usando el
+// camino de siempre (mandar el documento a la IA).
+async function extractPdfText(file) {
+  try {
+    const pdfjsLib = await getPdfjsLib();
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((it) => it.str).join(" ") + "\n";
+    }
+    return text.trim();
+  } catch {
+    return "";
+  }
+}
+
 // Base del backend (mismo origen que el resto de la app).
 const API_BASE = BASE;
 
@@ -293,6 +332,15 @@ function MappedUpload({ kind, value, onChange, label, accent = C.maroon, logo, n
   const [step, setStep] = React.useState(0);
   const [confirmado, setConfirmado] = React.useState(saved?.confirmado ?? false);
   const [editMapeo, setEditMapeo] = React.useState(false);
+  // Archivo(s) elegidos pero todavía no procesados — antes se mandaban a
+  // parsear/IA apenas se elegían, sin dar chance de darse cuenta que era el
+  // archivo equivocado. Ahora hay un paso intermedio de "¿es este?".
+  const [pendingFiles, setPendingFiles] = React.useState([]);
+  const previewUrls = React.useMemo(
+    () => pendingFiles.map((f) => ((f.type || "").startsWith("image/") ? URL.createObjectURL(f) : null)),
+    [pendingFiles]
+  );
+  React.useEffect(() => () => { previewUrls.forEach((u) => u && URL.revokeObjectURL(u)); }, [previewUrls]);
   React.useEffect(() => { if (onSave) onSave({ header, rows, map, initMap, ai, confirmado }); }, [header, rows, map, initMap, ai, confirmado]);
 
   const derived = React.useMemo(() => {
@@ -336,14 +384,28 @@ function MappedUpload({ kind, value, onChange, label, accent = C.maroon, logo, n
     if (m.rubro >= 0 && m.subrubro >= 0 && avgLen(m.rubro) > avgLen(m.subrubro) * 1.5) { const t = m.rubro; m.rubro = m.subrubro; m.subrubro = t; }
     return m;
   };
-  const handle = async (e) => {
-    const files = Array.from(e.target.files || []); if (!files.length) return; e.target.value = "";
+  const procesarArchivos = async (fileList) => {
+    const files = Array.from(fileList || []); if (!files.length) return;
     setReading(true);
     let hdr = header, newRows = [], aiText = ai;
     for (const f of files) {
       try {
-        if (isImgPdf(f)) { const b64 = await toB64(f); aiText = [aiText, await extractWithAI(kind, f.type || "image/jpeg", b64, (f.name.split(".").pop() || "").toLowerCase() === "pdf")].filter(Boolean).join("\n"); }
-        else { const { header: h, data } = await readRows(f); if (!hdr && h) hdr = h; newRows = newRows.concat(data); }
+        const ext = (f.name.split(".").pop() || "").toLowerCase();
+        if (ext === "pdf") {
+          // PDF: primero intentamos extraer el texto por código (gratis,
+          // instantáneo). Si el PDF es digital (no una foto/escaneo) esto
+          // alcanza y evitamos mandar el documento entero a la IA.
+          const textoPlano = await extractPdfText(f);
+          const extraido = textoPlano.length > 40
+            ? await extractTextWithAI(kind, textoPlano)
+            : await extractWithAI(kind, f.type || "application/pdf", await toB64(f), true);
+          aiText = [aiText, extraido].filter(Boolean).join("\n");
+        } else if (isImgPdf(f)) {
+          const b64 = await toB64(f);
+          aiText = [aiText, await extractWithAI(kind, f.type || "image/jpeg", b64, false)].filter(Boolean).join("\n");
+        } else {
+          const { header: h, data } = await readRows(f); if (!hdr && h) hdr = h; newRows = newRows.concat(data);
+        }
       } catch { /* skip */ }
     }
     if (hdr && !header) { const m0 = refinarMap(mapColumns(hdr), hdr, newRows); setHeader(hdr); setMap(m0); setInitMap(m0); setStep(0); setConfirmado(false); }
@@ -352,11 +414,20 @@ function MappedUpload({ kind, value, onChange, label, accent = C.maroon, logo, n
     setReading(false);
   };
 
-  const reset = () => { setHeader(null); setRows([]); setMap({}); setInitMap(null); setAi(""); setStep(0); setConfirmado(false); onChange(""); };
+  // Elegir archivo(s) → paso intermedio de preview, todavía no se procesa nada.
+  const onFileSelected = (e) => {
+    const list = Array.from(e.target.files || []); e.target.value = "";
+    if (list.length) setPendingFiles(list);
+  };
+  const confirmarPendientes = () => { const list = pendingFiles; setPendingFiles([]); procesarArchivos(list); };
+  const descartarPendientes = () => setPendingFiles([]);
+
+  const reset = () => { setHeader(null); setRows([]); setMap({}); setInitMap(null); setAi(""); setStep(0); setConfirmado(false); setPendingFiles([]); onChange(""); };
 
   // archivos pasados desde afuera (botón "Subir …" que abre el selector directo)
+  // — también pasan por el preview, misma lógica que elegir del input.
   const filesRef = React.useRef(null);
-  React.useEffect(() => { if (files && files.length && files !== filesRef.current) { filesRef.current = files; handle({ target: { files } }); } }, [files]);
+  React.useEffect(() => { if (files && files.length && files !== filesRef.current) { filesRef.current = files; setPendingFiles(Array.from(files)); } }, [files]);
 
   // asignar una columna del archivo (i) a un campo de Lazarillo
   const asignar = (field, i) => {
@@ -416,14 +487,36 @@ function MappedUpload({ kind, value, onChange, label, accent = C.maroon, logo, n
 
   return (
     <div>
-      <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) handle({ target: { files: e.dataTransfer.files } }); }}
-        style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: tieneDatos ? 14 : 34, textAlign: "center", background: C.paper }}>
-        {!tieneDatos ? (
+      <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) setPendingFiles(Array.from(e.dataTransfer.files)); }}
+        style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: (tieneDatos || pendingFiles.length) ? 14 : 34, textAlign: "center", background: C.paper }}>
+        {pendingFiles.length > 0 ? (
+          <div>
+            <div style={{ fontWeight: 600, color: C.maroonDark, marginBottom: 10 }}>¿Es este el archivo correcto?</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 14 }}>
+              {pendingFiles.map((f, i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, maxWidth: 110 }}>
+                  {previewUrls[i] ? (
+                    <img src={previewUrls[i]} alt={f.name} style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}` }} />
+                  ) : (
+                    <div style={{ width: 84, height: 84, borderRadius: 8, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, background: "#fff" }}>
+                      {(f.name.split(".").pop() || "").toLowerCase() === "pdf" ? "📄" : "📊"}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: C.muted, wordBreak: "break-all", textAlign: "center" }}>{f.name}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <Btn ghost small onClick={descartarPendientes}>✕ Elegir otro</Btn>
+              <Btn small accent={accent} onClick={confirmarPendientes}>✓ Usar este archivo</Btn>
+            </div>
+          </div>
+        ) : !tieneDatos ? (
           <label style={{ cursor: "pointer", display: "block" }}>
             <div style={{ fontSize: 30 }}>📎</div>
             <div style={{ fontWeight: 600, color: C.maroonDark, marginTop: 6 }}>Subí tu archivo de {label}</div>
             <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Excel, PDF, foto del papel o CSV · uno o varios · o arrastralo acá</div>
-            <input type="file" accept=".csv,.xlsx,.xls,.xlsm,.pdf,image/*" multiple onChange={handle} style={{ display: "none" }} />
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm,.pdf,image/*" multiple onChange={onFileSelected} style={{ display: "none" }} />
           </label>
         ) : (header && !confirmado) ? (() => {
           // ── Mapeo guiado, de a un campo ──
@@ -552,7 +645,7 @@ function MappedUpload({ kind, value, onChange, label, accent = C.maroon, logo, n
               {prev.length > 8 && <div style={{ fontSize: 12, color: C.muted, padding: "6px 12px", background: C.card }}>y {prev.length - 8} más…</div>}
             </div>
             <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12 }}>
-              <label style={{ cursor: "pointer", fontSize: 13, color: accent, fontWeight: 600 }}>➕ Agregar más archivos<input type="file" accept=".csv,.xlsx,.xls,.xlsm,.pdf,image/*" multiple onChange={handle} style={{ display: "none" }} /></label>
+              <label style={{ cursor: "pointer", fontSize: 13, color: accent, fontWeight: 600 }}>➕ Agregar más archivos<input type="file" accept=".csv,.xlsx,.xls,.xlsm,.pdf,image/*" multiple onChange={onFileSelected} style={{ display: "none" }} /></label>
               <button onClick={reset} style={{ background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>🗑 Limpiar</button>
             </div>
           </div>
@@ -594,6 +687,23 @@ async function extractWithAI(kind, mediaType, b64, isPdf) {
   else content.push({ type: "image", source: { type: "base64", media_type: mediaType, data: b64 } });
   content.push({ type: "text", text: EXTRACT_PROMPTS[kind] });
   const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/ai/assist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ system: "Sos un extractor de datos para un ERP gastronómico. Respondés SOLO con las líneas pedidas, sin comentarios ni markdown.", content }),
+  });
+  if (!res.ok) return "";
+  const data = await res.json();
+  return (data?.text || "").replace(/```/g, "").trim();
+}
+
+// Mismo prompt que extractWithAI, pero para un PDF cuyo texto YA se extrajo
+// por código (extractPdfText) — se manda como texto plano en vez del binario
+// completo del documento: más rápido, más barato, y no depende de que la IA
+// "lea" el layout del PDF.
+async function extractTextWithAI(kind, text) {
+  const token = localStorage.getItem("token");
+  const content = [{ type: "text", text: `${EXTRACT_PROMPTS[kind]}\n\nTexto extraído del documento:\n${text.slice(0, 12000)}` }];
   const res = await fetch(`${API_BASE}/ai/assist`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
