@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
+import AnthonyWidget from './componentes/AnthonyWidget';
 //import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
@@ -209,6 +210,7 @@ export default function App() {
       <AppConfirmModal />
       <UpdateBanner />
       {isLogged && role !== 'app_admin' && <Navbar />}
+      {isLogged && role !== 'app_admin' && <AnthonyWidget />}
 
       <Routes>
         <Route path="/" element={<LazarilloLanding />} />

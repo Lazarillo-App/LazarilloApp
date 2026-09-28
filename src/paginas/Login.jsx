@@ -10,7 +10,8 @@ import '../css/Auth.css';
 
 import DOG from '@/assets/brand/anthony.png';
 import LOGO from '@/assets/brand/logo.png';
-import AnthonyWidget from '@/componentes/AnthonyWidget';
+
+const WA = 'https://wa.me/5491163989934';
 
 const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim());
 
@@ -284,7 +285,6 @@ export default function Login() {
   return (
     <div className="auth-shell zoom-reset">
       {showModal && <ContactModal onClose={() => setShowModal(false)} />}
-      <AnthonyWidget />
 
       {/* ── ASIDE IZQUIERDO ─────────────────────────────────────────── */}
       <aside className="auth-aside">
@@ -324,6 +324,11 @@ export default function Login() {
             <button className="btn btn-sky" onClick={() => setShowModal(true)}>
               Pedí una demo gratuita
             </button>
+            <a className="wa-float" href={WA} target="_blank" rel="noopener" aria-label="WhatsApp">
+              <svg viewBox="0 0 32 32" fill="#fff" xmlns="http://www.w3.org/2000/svg">
+                <path d="M16 .4C7.4.4.4 7.4.4 16c0 2.8.7 5.5 2.1 7.9L.3 31.7l8-2.1c2.3 1.3 4.9 1.9 7.6 1.9h.1c8.6 0 15.6-7 15.6-15.6 0-4.2-1.6-8.1-4.6-11C24.1 2 20.2.4 16 .4zm0 28.5h-.1c-2.4 0-4.7-.6-6.7-1.9l-.5-.3-5 1.3 1.3-4.9-.3-.5C3.3 21 2.7 18.5 2.7 16 2.7 8.7 8.7 2.8 16 2.8c3.5 0 6.8 1.4 9.3 3.9 2.5 2.5 3.9 5.8 3.9 9.3 0 7.3-6 13.2-13.2 13.2zm7.2-9.9c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8.2-.2.4-.4.5-.7.2-.2.2-.4.4-.6.1-.3.1-.5 0-.7-.1-.2-.9-2.2-1.3-3-.3-.8-.7-.7-.9-.7h-.8c-.3 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.2s1.4 3.7 1.5 3.9c.2.3 2.7 4.2 6.6 5.9.9.4 1.6.6 2.2.8.9.3 1.8.2 2.4.2.7-.1 2.3-.9 2.6-1.9.3-.9.3-1.7.2-1.9-.1-.1-.3-.2-.7-.4z" />
+              </svg>
+            </a>
             <span className="auth-aside-wa-hint">Respondemos en menos de 24 h</span>
           </div>
         </div>
