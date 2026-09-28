@@ -197,10 +197,27 @@ export default function ItemRow({
 
     // Etiquetar insumos y combinar: artículos primero, luego insumos
     const insumosTag = list.slice(0, 30).map(i => ({ ...i, _tipo: 'insumo' }));
-    return [...arts.slice(0, 30), ...insumosTag];
+    // "Crear insumo nuevo" siempre primero — no hace falta que la búsqueda
+    // esté vacía de resultados para poder dar de alta uno.
+    const crearOpcion = { _tipo: 'crear', id: '__crear_insumo__' };
+    return [crearOpcion, ...arts.slice(0, 30), ...insumosTag];
   }, [insumos, search, soloConCompras, allArticulos, articuloId, esPromo]);
 
+  // "Crear insumo nuevo" queda siempre primero en la lista, pero el foco por
+  // defecto no debe caer ahí: si hay resultados reales, el índice 1 (el primer
+  // resultado real) es el que gana con Enter sin navegar — igual que antes de
+  // agregar la opción de crear. Solo si no hay ningún resultado real, Enter cae
+  // directo en "crear".
+  useEffect(() => {
+    if (!search.trim()) { setFocusedIndex(-1); return; }
+    setFocusedIndex(filtrados.length > 1 ? 1 : 0);
+  }, [filtrados]);
+
   const selectInsumo = useCallback((ins) => {
+    if (ins._tipo === 'crear') {
+      setCrearInsumoOpen(true);
+      return;
+    }
     // ── Modo artículo (promo): el "ins" es en realidad un artículo ──
     if (ins._tipo === 'articulo') {
       const costoArt = Number(ins.costoTotal) || Number(ins.precio) || 0;  // costo de producción: receta si tiene, sino precio
@@ -562,11 +579,7 @@ export default function ItemRow({
               <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
                   value={search}
-                  onChange={e => {
-                    setSearch(e.target.value);
-                    setFocusedIndex(-1);
-                    setFocusedIndex(0);
-                  }}
+                  onChange={e => setSearch(e.target.value)}
                   InputProps={{
                     startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
                     endAdornment: (
@@ -607,23 +620,32 @@ export default function ItemRow({
                 />
               </Box>
               <Box ref={listRef} sx={{ maxHeight: 280, overflowY: 'auto' }}>
-                {filtrados.length === 0 ? (
-                  <Box sx={{ p: 1.5, textAlign: 'center' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                      Sin resultados
-                    </Typography>
-                    <Box
-                      onClick={() => setCrearInsumoOpen(true)}
-                      sx={{
-                        display: 'inline-flex', alignItems: 'center', gap: 0.5,
-                        cursor: 'pointer', color: PRIMARY, fontSize: '0.8rem', fontWeight: 700,
-                        px: 1, py: 0.5, borderRadius: 1, '&:hover': { bgcolor: `${PRIMARY}10` },
-                      }}
-                    >
-                      + Crear{search.trim() ? ` "${search.trim()}"` : ''} como insumo nuevo
-                    </Box>
-                  </Box>
-                ) : filtrados.map((ins, idx) => {
+                {filtrados.map((ins, idx) => {
+                  // ── Opción fija: crear insumo nuevo (siempre primera) ──
+                  if (ins._tipo === 'crear') {
+                    const sinResultados = filtrados.length === 1 && search.trim().length > 0;
+                    return (
+                      <Box key="crear-insumo" data-option-index={idx}
+                        onClick={() => selectInsumo(ins)}
+                        sx={{
+                          px: 1.5, py: 0.85, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 0.75,
+                          borderBottom: '1px solid', borderColor: 'divider',
+                          bgcolor: focusedIndex === idx ? 'action.selected' : `${PRIMARY}08`,
+                          outline: focusedIndex === idx ? '2px solid' : 'none',
+                          outlineColor: focusedIndex === idx ? 'primary.main' : 'transparent',
+                          outlineOffset: -2,
+                          '&:hover': { bgcolor: focusedIndex === idx ? 'action.selected' : `${PRIMARY}14` },
+                        }}>
+                        <Typography component="span" sx={{ fontSize: '0.9rem', color: PRIMARY, fontWeight: 800, lineHeight: 1 }}>+</Typography>
+                        <Typography component="span" variant="body2" sx={{ fontSize: '0.8rem', color: PRIMARY, fontWeight: 700 }}>
+                          {sinResultados
+                            ? `Sin resultados — crear "${search.trim()}" como insumo nuevo`
+                            : `Crear${search.trim() ? ` "${search.trim()}"` : ''} insumo nuevo`}
+                        </Typography>
+                      </Box>
+                    );
+                  }
                   // ── Opción de artículo (promo) ──
                   if (ins._tipo === 'articulo') {
                     return (
