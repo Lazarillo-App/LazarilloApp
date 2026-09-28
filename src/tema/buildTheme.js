@@ -36,19 +36,15 @@ export function buildMuiTheme(p) {
           root: { borderRadius: 12 },
         },
       },
-      // Con el zoom global (html { zoom: 0.9 }, ver global.css) el Tooltip
-      // portaleado a document.body queda mal posicionado — el mismo tipo de
-      // bug que tenía el dropdown de perfil, pero acá no hay margen para
-      // reescribirlo a mano en cada uso. disablePortal lo deja anclado en el
-      // mismo árbol/zoom que el elemento que lo dispara, sin cruce de
-      // contexto, así que cae en su lugar en vez de "encima de todo".
-      MuiTooltip: {
-        defaultProps: {
-          slotProps: {
-            popper: { disablePortal: true },
-          },
-        },
-      },
+      // OJO: disablePortal en MuiTooltip (probado antes acá) causaba un loop
+      // de reposicionamiento infinito ("Maximum update depth exceeded",
+      // bloqueaba toda la navegación) — sin portal, el Popper vive dentro del
+      // flujo normal del documento, y si su propia presencia desplaza al
+      // elemento que lo ancla, el cálculo de posición de Popper.js nunca se
+      // estabiliza. Revertido: los tooltips vuelven a portalearse a
+      // document.body (default de MUI), que es justamente lo que evita este
+      // problema. El desfasaje bajo el zoom global queda pendiente de
+      // resolver con otro enfoque (no disablePortal).
     },
   });
 }
