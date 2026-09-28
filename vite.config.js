@@ -37,6 +37,10 @@ function versionFilePlugin() {
 
 export default defineConfig({
   base: '/',
+  // sourcemap temporal: para que el error "Maximum update depth exceeded"
+  // que está bloqueando la navegación muestre el componente real en vez de
+  // chunk-XXXX.js minificado. Sacar una vez encontrado el bug.
+  build: { sourcemap: true },
   plugins: [react(), versionFilePlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
