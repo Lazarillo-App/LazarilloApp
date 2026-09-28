@@ -825,8 +825,12 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
         input,select,textarea{font-family:inherit}
       `}</style>
 
-      {/* Header */}
-      <header style={{ position: "sticky", top: 0, zIndex: 50, height: 56, boxSizing: "border-box", background: brand?.secondary || LAZ.secondary, color: "#fff", padding: "0 22px", borderBottom: `2px solid ${brand?.primary || LAZ.primary}`, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background .25s,border-color .25s" }}>
+      {/* Barra propia del asistente — misma altura que antes (56px, la usan
+          otros elementos sticky de más abajo como referencia), pero SIN
+          sticky/fixed: el Navbar real de la app ya envuelve esta pantalla
+          (ver App.jsx), así que quedaba una segunda barra fija encima de la
+          otra. */}
+      <div style={{ height: 56, boxSizing: "border-box", background: brand?.secondary || LAZ.secondary, color: "#fff", padding: "0 22px", borderBottom: `2px solid ${brand?.primary || LAZ.primary}`, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background .25s,border-color .25s" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <img src={LOGO_LIGHT} alt="Lazarillo" style={{ height: 20, objectFit: "contain", display: "block" }} />
           <span style={{ fontSize: 12, opacity: .85, letterSpacing: ".5px" }}>
@@ -834,7 +838,7 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
           </span>
         </div>
         {view !== "home" && <Btn ghost small onClick={reset} style={{ color: "#fff", border: "1px solid rgba(255,255,255,.45)" }}>← Inicio</Btn>}
-      </header>
+      </div>
 
       <div style={{ flex: 1, width: "100%", maxWidth: 1000, margin: "0 auto", padding: "22px" }}>
         {view === "home" && <Home onPick={setView} />}
@@ -1229,7 +1233,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
 
   return (
     <div className="rise">
-      <Steps items={["Datos Principales", "Estilos", "Redes Sociales"]} active={ws} accent={brand.primary} />
+      <Steps items={["Datos Principales", "Estilos", "Redes Sociales"]} active={ws} accent={brand.primary} onStep={setWs} />
       <AnthonyDice pose={buscando ? "investiga" : ws === 0 ? "saluda" : ws === 1 ? "presenta" : "senala"} size={84} accent={brand.primary}>
         {buscando ? "Dame un segundo que busco tu negocio en Google…"
           : ws === 0 ? "Buscá tu local arriba y completo los datos por vos. Después subí el logo y te armo los colores."
@@ -2927,8 +2931,12 @@ FORMATO DE RESPUESTA: separá tu respuesta en DOS partes con el separador "|||":
   const conceptoClosed = msgs.some((m) => m.role === "assistant" && /proponerte la carta/i.test(m.content));
 
   const pasos = ["Concepto", "Elegir carta", "Menú", "Recetas e insumos"];
-  if (step === 3) return <div className="rise"><Steps items={pasos} active={2} accent={acc} /><MenuReview articulos={articulos} setArticulos={setArticulos} onBack={() => setStep(1)} onNext={() => setStep(4)} accent={acc} logo="" nombre={marcaNombre} negocio={{ nombre: marcaNombre, logo: "", colores: identidad?.colores || { primary: acc, secondary: acc } }} hojasIniciales={hojasNuevo} /></div>;
-  if (step === 4) return <div className="rise"><Steps items={pasos} active={3} accent={acc} /><Workspace insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} shoppingHint accent={acc} /></div>;
+  // Volver a "Elegir carta" desde el stepper (además del botón onBack de MenuReview,
+  // que hace lo mismo) — el chat de "Concepto" no se puede re-abrir así, por eso
+  // ese click no hace nada.
+  const irAElegirCarta = (i) => { if (i === 1) setStep(1); };
+  if (step === 3) return <div className="rise"><Steps items={pasos} active={2} accent={acc} onStep={irAElegirCarta} /><MenuReview articulos={articulos} setArticulos={setArticulos} onBack={() => setStep(1)} onNext={() => setStep(4)} accent={acc} logo="" nombre={marcaNombre} negocio={{ nombre: marcaNombre, logo: "", colores: identidad?.colores || { primary: acc, secondary: acc } }} hojasIniciales={hojasNuevo} /></div>;
+  if (step === 4) return <div className="rise"><Steps items={pasos} active={3} accent={acc} onStep={irAElegirCarta} /><Workspace insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} shoppingHint accent={acc} /></div>;
 
   return (
     <div className="rise">
