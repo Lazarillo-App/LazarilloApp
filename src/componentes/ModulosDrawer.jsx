@@ -107,7 +107,7 @@ export default function ModulosDrawer({ open, onClose }) {
         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 10px' }}>
           {GROUPS.map((g) => (
             <Box key={g.id} sx={{ marginBottom: '15px' }}>
-              <Box sx={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: C.sidebarDim, padding: '0 4px 7px' }}>
+              <Box sx={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: C.sidebarDim, padding: '0 4px 7px' }}>
                 {g.label}
               </Box>
               {g.modules.map((m) => {
