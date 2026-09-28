@@ -2553,6 +2553,7 @@ export default function RecetaModal({
                             appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
                             precioVenta={precioActual}
                             rendimiento={rendimiento}
+                            onInsumoCreated={(nuevo) => setInsumos(prev => [nuevo, ...prev])}
                           />
                         );
                       })}

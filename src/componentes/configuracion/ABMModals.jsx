@@ -14,7 +14,7 @@ import SpotlightTour from '@/componentes/SpotlightTour';
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
 /* ─── Alta de Insumo ─── */
-export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
+export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initialNombre = '' }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const [form, setForm] = useState({
     nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '',
@@ -71,6 +71,14 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated }) {
       setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);
     }
   }, [open]);
+
+  // Precarga el nombre cuando se abre desde el buscador de ingredientes de una
+  // receta (el insumo tipeado no existía todavía).
+  useEffect(() => {
+    if (open && initialNombre) {
+      setForm(f => ({ ...f, nombre: initialNombre }));
+    }
+  }, [open, initialNombre]);
 
   const rubroFinal = form.rubro === '__nuevo__' ? form.rubroNuevo.trim() : form.rubro;
 

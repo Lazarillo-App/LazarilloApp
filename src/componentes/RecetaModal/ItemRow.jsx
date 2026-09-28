@@ -22,6 +22,7 @@ import {
 } from './helpers';
 import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
+import { InsumoNuevoModal } from '@/componentes/configuracion/ABMModals';
 
 /* ════════════════════════════════════════
    FILA DE INGREDIENTE
@@ -52,8 +53,10 @@ export default function ItemRow({
   appConfigDesperdicio = 5,
   precioVenta = 0,
   rendimiento = 1,
+  onInsumoCreated,
 }) {
   const [search, setSearch] = useState('');
+  const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
   const [notasOpen, setNotasOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -605,7 +608,21 @@ export default function ItemRow({
               </Box>
               <Box ref={listRef} sx={{ maxHeight: 280, overflowY: 'auto' }}>
                 {filtrados.length === 0 ? (
-                  <Box sx={{ p: 2, textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Sin resultados</Typography></Box>
+                  <Box sx={{ p: 1.5, textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      Sin resultados
+                    </Typography>
+                    <Box
+                      onClick={() => setCrearInsumoOpen(true)}
+                      sx={{
+                        display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                        cursor: 'pointer', color: PRIMARY, fontSize: '0.8rem', fontWeight: 700,
+                        px: 1, py: 0.5, borderRadius: 1, '&:hover': { bgcolor: `${PRIMARY}10` },
+                      }}
+                    >
+                      + Crear{search.trim() ? ` "${search.trim()}"` : ''} como insumo nuevo
+                    </Box>
+                  </Box>
                 ) : filtrados.map((ins, idx) => {
                   // ── Opción de artículo (promo) ──
                   if (ins._tipo === 'articulo') {
@@ -1063,6 +1080,20 @@ export default function ItemRow({
             </Typography>
           </Box>
         </Box>
+      )}
+
+      {crearInsumoOpen && (
+        <InsumoNuevoModal
+          open={crearInsumoOpen}
+          onClose={() => setCrearInsumoOpen(false)}
+          businessId={insumosBizId || businessId}
+          initialNombre={search}
+          onCreated={(nuevo) => {
+            onInsumoCreated?.(nuevo);
+            selectInsumo({ ...nuevo, _tipo: 'insumo' });
+            setCrearInsumoOpen(false);
+          }}
+        />
       )}
     </Box>
   );
