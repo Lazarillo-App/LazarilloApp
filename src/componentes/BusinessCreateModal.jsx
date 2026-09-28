@@ -176,9 +176,9 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     if (step === 0) return name.trim().length > 0; // Datos
     if (step === 1) return true; // Estilos
     if (step === 2) return true; // Redes
-    if (step === 3) return !!mxEmail && !!mxPass && !!mxCod; // Maxi
+    if (step === 3) return true; // Maxi — opcional, se puede crear sin credenciales
     return false;
-  }, [step, name, mxEmail, mxPass, mxCod]);
+  }, [step, name]);
 
   /* ─── Crear local si aún no existe ─── */
   async function ensureBusinessCreated() {
@@ -329,20 +329,17 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     setBusy(true);
 
     try {
-      // 1️⃣ Crear negocio si aún no existe
+      // 1️⃣ Crear negocio si aún no existe (ensureBusinessCreated ya guarda las
+      // credenciales de Maxi si vinieron completas — repetirlo acá sin ese
+      // chequeo hacía fallar la creación entera cuando el usuario las dejaba
+      // vacías a propósito, porque Maxi son opcionales)
       const biz = await ensureBusinessCreated();
 
-      // 2️⃣ Guardar credenciales de Maxi
-      await BusinessesAPI.maxiSave(biz.id, {
-        email: mxEmail,
-        password: mxPass,
-        codcli: mxCod,
-      });
+      if (mxEmail && mxPass && mxCod) {
+        setNotice("Sincronizando artículos…");
+      }
 
-      // 3️⃣ Sincronizar catálogo (artículos + mapeos)
-      setNotice("Sincronizando artículos…");
-
-      // 4️⃣ AHORA sí: marcar negocio como activo y persistir tema
+      // 2️⃣ Marcar negocio como activo y persistir tema
       const branding =
         biz?.props?.branding || biz?.branding || {
           primary,
@@ -401,14 +398,17 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
         {/* Stepper */}
         <div className="gc-steps">
           {steps.map((label, i) => (
-            <div
+            <button
               key={label}
+              type="button"
               className={`gc-step ${i === step ? "active" : i < step ? "done" : ""
                 }`}
+              onClick={() => { if (!busy) { setErr(""); setNotice(""); setStep(i); } }}
+              disabled={busy}
             >
               <span className="gc-step-index">{i + 1}</span>
               <span className="gc-step-label">{label}</span>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -697,6 +697,9 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
             <form onSubmit={onFinish}>
               <section>
                 <h4 className="gc-section-title">Credenciales de MaxiRest</h4>
+                <p className="gc-muted" style={{ margin: '-4px 0 4px' }}>
+                  Opcional — podés crear el local sin esto y cargarlo después.
+                </p>
                 <div className="gc-field">
                   <label htmlFor="gc-mx-email" className="gc-label">
                     Email
@@ -708,7 +711,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                     placeholder="email@example.com"
                     value={mxEmail}
                     onChange={(e) => setMxEmail(e.target.value)}
-                    required
                   />
                 </div>
 
@@ -724,7 +726,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       placeholder="••••••••"
                       value={mxPass}
                       onChange={(e) => setMxPass(e.target.value)}
-                      required
                     />
                     <button
                       type="button"
@@ -746,7 +747,6 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                     placeholder="Ej: 12345"
                     value={mxCod}
                     onChange={(e) => setMxCod(e.target.value)}
-                    required
                   />
                 </div>
               </section>
@@ -783,14 +783,18 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
           .gc-header h3{margin:0;font-size:1.05rem;font-weight:800}
 
           .gc-steps{display:flex;gap:8px;align-items:center;justify-content:center;padding:10px 12px;border-bottom:1px solid #eef2f7;background:#fafafa}
-          .gc-step{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;font-weight:700;font-size:.85rem;color:#475569}
+          .gc-step{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;font-weight:700;font-size:.85rem;color:#475569;background:#fff;font-family:inherit;cursor:pointer}
+          .gc-step:hover:not(:disabled){border-color:#34d399}
+          .gc-step:disabled{cursor:default}
           .gc-step .gc-step-index{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;background:#e5e7eb;font-size:.8rem}
           .gc-step.active{border-color:#34d399;color:#065f46}
           .gc-step.active .gc-step-index{background:#34d399;color:#0b0f0c}
           .gc-step.done{border-color:#a7f3d0;color:#065f46;opacity:.9}
           .gc-step.done .gc-step-index{background:#a7f3d0;color:#0b0f0c}
 
-          .gc-body{padding:16px 18px 12px}
+          .gc-body{padding:16px 18px 12px;min-height:460px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column}
+          .gc-body form{display:flex;flex-direction:column;flex:1}
+          .gc-body section{flex:1}
           section{margin-bottom:8px}
           .gc-section-title{margin:0 0 8px;font-size:1rem;font-weight:800}
           .gc-field{margin-top:10px}
