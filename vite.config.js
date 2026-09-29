@@ -37,10 +37,6 @@ function versionFilePlugin() {
 
 export default defineConfig({
   base: '/',
-  // sourcemap temporal: para que el error "Maximum update depth exceeded"
-  // que está bloqueando la navegación muestre el componente real en vez de
-  // chunk-XXXX.js minificado. Sacar una vez encontrado el bug.
-  build: { sourcemap: true },
   plugins: [react(), versionFilePlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -58,5 +54,23 @@ export default defineConfig({
         secure: true,
       },
     },
+  },
+  // Sin esto, el escaneo inicial de `npm run dev` solo sigue los imports
+  // ESTÁTICOS alcanzables desde el punto de entrada — cualquier página que
+  // solo se visita después de navegar (Insumos, Configuración, etc.) podía
+  // revelar dependencias de node_modules que Vite no había pre-empaquetado
+  // todavía. Al descubrirlas recién ahí, Vite dispara una RE-OPTIMIZACIÓN +
+  // recarga completa de la pestaña en pleno medio de la navegación — eso es
+  // lo que se veía como "la URL cambia pero la pantalla se queda trabada"
+  // (con varias recargas encimándose, nunca llegaba a asentarse una sola).
+  // No pasa en producción (`vite build` no tiene este mecanismo), pero rompía
+  // la experiencia de desarrollo. Con `entries` acá, el escaneo inicial cubre
+  // TODAS las páginas de una, así no hay sorpresas a mitad de sesión.
+  optimizeDeps: {
+    entries: [
+      'index.html',
+      'src/paginas/**/*.jsx',
+      'src/componentes/**/*.jsx',
+    ],
   },
 })

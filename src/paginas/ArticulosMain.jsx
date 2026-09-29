@@ -1109,7 +1109,7 @@ export default function ArticulosMain(props) {
       setCategoriaSeleccionada(null);
       setActiveIds(new Set());
     }
-  });
+  }, [agrupacionSeleccionada?.id]);
 
   useEffect(() => {
     if (!activeBizId) return;
