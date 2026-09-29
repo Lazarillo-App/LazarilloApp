@@ -165,7 +165,7 @@ function MoverAModal({
   const showBizSelect = negocios.length > 1;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth keepMounted>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
         Mover {tituloExtra} a…
       </DialogTitle>
@@ -939,7 +939,7 @@ function ArticuloAccionesMenu({
       />
 
       {/* ── Diálogo mover a otro rubro ── */}
-      <Dialog open={dlgMoverRubroOpen} onClose={() => !movingRubro && setDlgMoverRubroOpen(false)} maxWidth="xs" fullWidth keepMounted>
+      <Dialog open={dlgMoverRubroOpen} onClose={() => !movingRubro && setDlgMoverRubroOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
           <TextField
