@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useEffect, useState, useContext } from 'react';
+import React, { createContext, useEffect, useState, useContext, useCallback, useMemo } from 'react';
 import { me, login as apiLogin, logout as apiLogout } from '../servicios/apiAuth';
 
 const AuthCtx = createContext(null);
@@ -86,32 +86,37 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     console.log('[AuthContext] 🔓 Login:', email);
     const u = await apiLogin(email, password);
     setUser(u);
     localStorage.setItem('user', JSON.stringify(u)); // ✅ Guardar user en LS
     window.dispatchEvent(new Event('auth:login'));
     return u;
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     console.log('[AuthContext] 🔒 Logout');
     apiLogout();
     setUser(null);
-    localStorage.removeItem('user'); 
+    localStorage.removeItem('user');
     localStorage.removeItem('activeBusinessId');
     window.dispatchEvent(new Event('auth:logout'));
-  };
+  }, []);
 
-  const value = {
+  // Memoizado: sin esto, este Provider (el más externo de toda la app, ver
+  // main.jsx) le pasaba un objeto NUEVO a value en cada render, forzando el
+  // re-render de TODO lo que use useAuth() aunque user/booting no hubieran
+  // cambiado — parte de la cascada que terminaba en "Maximum update depth
+  // exceeded" al navegar.
+  const value = useMemo(() => ({
     user,
     setUser,
     booting,
     login,
     logout,
     isLogged: !!user,
-  };
+  }), [user, booting, login, logout]);
 
   return (
     <AuthCtx.Provider value={value}>

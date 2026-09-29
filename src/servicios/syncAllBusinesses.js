@@ -43,9 +43,16 @@ export async function syncAllBusinesses({
       const id = biz?.id;
       if (!id) return { id, ok: false, error: "invalid_id" };
 
-      // Importante: asegurar encabezado X-Business-Id correcto para cada llamado
-      const prev = localStorage.getItem("activeBusinessId");
-      localStorage.setItem("activeBusinessId", String(id));
+      // OJO: acá antes se pisaba localStorage.activeBusinessId por cada negocio
+      // (con un try/finally que lo restauraba) para "asegurar" el header
+      // X-Business-Id — pero syncNow ya manda el id en la URL y pide
+      // withBusinessId:false explícitamente, así que ese paso no hacía falta
+      // para nada. Con concurrency:2 corriendo en paralelo, dos negocios
+      // pisaban esa misma clave de localStorage a la vez y se write pisaban
+      // entre sí — BusinessContext escucha ese storage y reacciona a cada
+      // cambio con un setState, así que esa carrera terminaba en un loop de
+      // renders ("Maximum update depth exceeded") que bloqueaba toda la
+      // navegación mientras este sync en segundo plano seguía corriendo.
       try {
         // 1) artículos / catálogo
         const r1 = await BusinessesAPI.syncNow(id, { scope });
@@ -76,10 +83,6 @@ export async function syncAllBusinesses({
           ? "MAXI_401"
           : msg || "SYNC_ERROR";
         return { id, ok: false, error: friendly };
-      } finally {
-        // Restaurar activo previo del bucle
-        if (prev) localStorage.setItem("activeBusinessId", prev);
-        else localStorage.removeItem("activeBusinessId");
       }
     });
 

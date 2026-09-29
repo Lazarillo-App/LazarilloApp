@@ -6,7 +6,7 @@
 // o al guardar desde ConfiguracionMain.
 
 import React, {
-  createContext, useContext, useState, useEffect, useCallback,
+  createContext, useContext, useState, useEffect, useCallback, useMemo,
 } from 'react';
 import { useActiveBusiness } from './BusinessContext';
 import { useAuth } from './AuthContext';
@@ -97,8 +97,17 @@ export function ConfigProvider({ children }) {
     return () => window.removeEventListener('config:updated', onUpdated);
   }, []);
 
+  const reload = useCallback(() => load(businessId), [load, businessId]);
+
+  // Memoizado: sin esto, este Provider (envuelve toda la app bajo BrowserRouter,
+  // ver main.jsx) pasaba un objeto Y una función "reload" NUEVOS en cada
+  // render, forzando el re-render de todo lo que use useConfig() sin que la
+  // config en sí hubiera cambiado — parte de la cascada que terminaba en
+  // "Maximum update depth exceeded" al navegar.
+  const value = useMemo(() => ({ ...cfg, loading, reload }), [cfg, loading, reload]);
+
   return (
-    <ConfigContext.Provider value={{ ...cfg, loading, reload: () => load(businessId) }}>
+    <ConfigContext.Provider value={value}>
       {children}
     </ConfigContext.Provider>
   );
