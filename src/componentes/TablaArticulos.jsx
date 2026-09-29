@@ -1318,7 +1318,7 @@ export default function TablaArticulos({
 
   useEffect(() => {
     const id = Number(jumpToArticleId);
-    if (!Number.isFinite(id)) return;
+    if (!Number.isFinite(id) || id <= 0) return;
     if (lastJumpedIdRef.current === id) return;
 
     let cancelled = false;

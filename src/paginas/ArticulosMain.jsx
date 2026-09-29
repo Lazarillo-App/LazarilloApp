@@ -774,10 +774,27 @@ export default function ArticulosMain(props) {
       ? Number(safe.idsSinAgrupCount)
       : todoIdsSet.size;
 
-    setTodoInfo({
-      todoGroupId,
-      idsSinAgrupCount,
-      todoIds: todoIdsSet,
+    // TablaArticulos llama a esto con un Set/array NUEVO en cada render (aunque
+    // el contenido sea igual al anterior) — sin este chequeo, setTodoInfo
+    // siempre disparaba un objeto distinto, lo que recalculaba `visibleIds`
+    // (depende de todoInfo entero), eso volvía a TablaArticulos como prop
+    // `visibleIds`, recalculaba `allArticulos`/`idsSinAgrup` ahí, y eso volvía
+    // a llamar a onTodoInfo — un loop infinito real que trababa la navegación
+    // ("Maximum update depth exceeded"). Bail out si el contenido es idéntico.
+    setTodoInfo((prev) => {
+      if (
+        prev.todoGroupId === todoGroupId &&
+        prev.idsSinAgrupCount === idsSinAgrupCount &&
+        prev.todoIds.size === todoIdsSet.size &&
+        [...prev.todoIds].every((id) => todoIdsSet.has(id))
+      ) {
+        return prev;
+      }
+      return {
+        todoGroupId,
+        idsSinAgrupCount,
+        todoIds: todoIdsSet,
+      };
     });
   }, []);
 
