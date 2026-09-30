@@ -692,7 +692,7 @@ function InsumosSidebar({
                           if (isTodo) {
                             return (
                               isMainDivision && onRenameGroup && (
-                                <Tooltip title='Convertir "Sin agrupación" en nueva agrupación' disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title='Convertir "Sin agrupación" en nueva agrupación' disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                                     <EditIcon fontSize="inherit" />
                                   </IconButton>
@@ -704,7 +704,7 @@ function InsumosSidebar({
                           return (
                             <>
                               {onSetFavorite && (
-                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
                                     {Number(favoriteGroupId) === Number(g.id) ? (
                                       <StarIcon fontSize="inherit" color="warning" />
@@ -716,7 +716,7 @@ function InsumosSidebar({
                               )}
 
                               {onEditGroup && (
-                                <Tooltip title="Renombrar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title="Renombrar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton
                                     size="small"
                                     onClick={(e) => {
@@ -749,7 +749,7 @@ function InsumosSidebar({
                               )}
 
                               {onDeleteGroup && (
-                                <Tooltip title="Eliminar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title="Eliminar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton
                                     size="small"
                                     onClick={(e) => {

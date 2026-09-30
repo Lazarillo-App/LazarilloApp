@@ -590,7 +590,7 @@ function SidebarCategorias({
                           if (isDisc || isPromo) return null;
                           if (isTodo) {
                             return onRenameGroup && (
-                              <Tooltip title='' disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                              <Tooltip title='' disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                                   <EditIcon fontSize="inherit" />
                                 </IconButton>
@@ -600,7 +600,7 @@ function SidebarCategorias({
                           return (
                             <>
                               {onSetFavorite && (
-                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     e.stopPropagation();
                                     const isFavorite = Number(favoriteGroupId) !== Number(g.id);
@@ -621,7 +621,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {onEditGroup && (
-                                <Tooltip title="Renombrar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title="Renombrar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     e.stopPropagation();
                                     const oldName = labelAgrup(g);
@@ -647,7 +647,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {onDeleteGroup && (
-                                <Tooltip title="" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title="" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <span>
                                     <IconButton size="small" onClick={(e) => {
                                       e.stopPropagation();
@@ -669,7 +669,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {!isTodo && !isDisc && (
-                                <Tooltip title="Crear sub-negocio con esta agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
+                                <Tooltip title="Crear sub-negocio con esta agrupación" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "preventOverflow", options: { altBoundary: true } }] } } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     setSelectOpen(false);
                                     e.stopPropagation();
