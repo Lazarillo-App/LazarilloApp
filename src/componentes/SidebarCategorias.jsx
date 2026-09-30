@@ -578,7 +578,11 @@ function SidebarCategorias({
                           </span>
                         )}
                       </span>
-                      <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                      >
                         {(() => {
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
@@ -586,7 +590,7 @@ function SidebarCategorias({
                           if (isDisc || isPromo) return null;
                           if (isTodo) {
                             return onRenameGroup && (
-                              <Tooltip title=''>
+                              <Tooltip title='' disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
                                 <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                                   <EditIcon fontSize="inherit" />
                                 </IconButton>
@@ -596,7 +600,7 @@ function SidebarCategorias({
                           return (
                             <>
                               {onSetFavorite && (
-                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
+                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     e.stopPropagation();
                                     const isFavorite = Number(favoriteGroupId) !== Number(g.id);
@@ -617,7 +621,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {onEditGroup && (
-                                <Tooltip title="Renombrar agrupación">
+                                <Tooltip title="Renombrar agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     e.stopPropagation();
                                     const oldName = labelAgrup(g);
@@ -643,7 +647,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {onDeleteGroup && (
-                                <Tooltip title="">
+                                <Tooltip title="" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
                                   <span>
                                     <IconButton size="small" onClick={(e) => {
                                       e.stopPropagation();
@@ -665,7 +669,7 @@ function SidebarCategorias({
                                 </Tooltip>
                               )}
                               {!isTodo && !isDisc && (
-                                <Tooltip title="Crear sub-negocio con esta agrupación">
+                                <Tooltip title="Crear sub-negocio con esta agrupación" disableInteractive placement="bottom" slotProps={{ popper: { modifiers: [{ name: "flip", enabled: false }] } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     setSelectOpen(false);
                                     e.stopPropagation();

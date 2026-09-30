@@ -3,7 +3,9 @@
 }
 
 
-button:focus,
+/* Solo mostrar el anillo de foco con navegación por teclado (:focus-visible),
+   no en cada clic de mouse — ahí lo agregaba SIEMPRE y quedaba un recuadro
+   feo hasta hacer clic en otro lado. */
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }

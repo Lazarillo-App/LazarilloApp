@@ -468,38 +468,37 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         })}
 
         {/* Otros locales (sin org) */}
-        {!loadingBiz && soloNegocios.length > 0 && (
-          <>
-            {hayOrgs && (
-              <Divider sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 20%, transparent)', my: 0.25 }} />
-            )}
-            <MenuItem
-              onClick={() => setCollapsedOtros(v => !v)}
-              sx={{
-                px: 2, py: 0.5, cursor: 'pointer',
-                '&:hover': { background: 'color-mix(in srgb, var(--on-primary) 8%, transparent)' },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 32, color: 'inherit', opacity: .6 }}>
-                <BusinessIcon sx={{ fontSize: 18 }} />
-              </ListItemIcon>
-              <Typography variant="caption" sx={{
-                opacity: 0.75, fontSize: '.72rem', fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: '.07em', flex: 1, color: 'inherit'
-              }}>
-                {hayOrgs ? 'Otros locales' : 'Negocios'}
-              </Typography>
-              {collapsedOtros
-                ? <ExpandMoreIcon sx={{ fontSize: 16, opacity: 0.6 }} />
-                : <ExpandLessIcon sx={{ fontSize: 16, opacity: 0.6 }} />
-              }
-            </MenuItem>
-            {!collapsedOtros && (
-              <Divider sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 15%, transparent)', my: 0 }} />
-            )}
-            {!collapsedOtros && soloNegocios.flatMap(b => renderBizItem(b, false))}
-          </>
-        )}
+        {!loadingBiz && soloNegocios.length > 0 && [
+          hayOrgs && (
+            <Divider key="otros-sep" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 20%, transparent)', my: 0.25 }} />
+          ),
+          <MenuItem
+            key="otros-header"
+            onClick={() => setCollapsedOtros(v => !v)}
+            sx={{
+              px: 2, py: 0.5, cursor: 'pointer',
+              '&:hover': { background: 'color-mix(in srgb, var(--on-primary) 8%, transparent)' },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 32, color: 'inherit', opacity: .6 }}>
+              <BusinessIcon sx={{ fontSize: 18 }} />
+            </ListItemIcon>
+            <Typography variant="caption" sx={{
+              opacity: 0.75, fontSize: '.72rem', fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '.07em', flex: 1, color: 'inherit'
+            }}>
+              {hayOrgs ? 'Otros locales' : 'Negocios'}
+            </Typography>
+            {collapsedOtros
+              ? <ExpandMoreIcon sx={{ fontSize: 16, opacity: 0.6 }} />
+              : <ExpandLessIcon sx={{ fontSize: 16, opacity: 0.6 }} />
+            }
+          </MenuItem>,
+          !collapsedOtros && (
+            <Divider key="otros-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 15%, transparent)', my: 0 }} />
+          ),
+          ...(!collapsedOtros ? soloNegocios.flatMap(b => renderBizItem(b, false)) : []),
+        ]}
 
         {!loadingBiz && bizList.length === 0 && (
           <MenuItem disabled>

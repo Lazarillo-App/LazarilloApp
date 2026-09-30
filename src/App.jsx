@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
 import AnthonyWidget from './componentes/AnthonyWidget';
@@ -213,7 +213,7 @@ export default function App() {
       {isLogged && role !== 'app_admin' && <AnthonyWidget />}
 
       <Routes>
-        <Route path="/" element={<LazarilloLanding />} />
+        <Route path="/" element={isLogged ? <Navigate to="/menu" replace /> : <LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/activar" element={<Activar />} />
@@ -279,7 +279,7 @@ export default function App() {
           )}
         </Route>
 
-        <Route path="*" element={<LazarilloLanding />} />
+        <Route path="*" element={isLogged ? <Navigate to="/menu" replace /> : <LazarilloLanding />} />
 
       </Routes>
     </ThemeProviderNegocio>
