@@ -38,14 +38,30 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
     if (!open || !businessId) return;
     const token = localStorage.getItem('token') || '';
     const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) };
-    // Rubros (el endpoint devuelve { items: [{ codigo, nombre, ... }] })
-    fetch(`${BASE}/insumos/rubros`, { headers })
+    // Rubros (el endpoint devuelve { items: [{ codigo, nombre, ... }] }) — mismo
+    // endpoint que usa la tabla de Insumos (useInsumosRubros); /insumos/rubros
+    // (sin "maxi/") no es el real, por eso venía siempre vacío acá.
+    fetch(`${BASE}/insumos/maxi/rubros`, { headers })
       .then(r => r.json()).catch(() => ({}))
       .then(d => setRubros((d?.items || []).map(r => r.nombre)));
     // Agrupaciones de insumos (groups_list → { data: [{ id, nombre, ... }] })
     fetch(`${BASE}/insumos/groups`, { headers })
       .then(r => r.json()).catch(() => ({}))
-      .then(d => setAgrupaciones((d?.data || []).map(g => ({ id: g.id, nombre: g.nombre }))));
+      .then(d => {
+        // El backend incluye "Sin agrupación" (grupo Todo) como una agrupación
+        // real más — pero el Select ya tiene esa opción fija con value="" más
+        // abajo, así que sin filtrarla acá quedaba duplicada en la lista.
+        const norm = s => String(s || '').trim().toLowerCase();
+        const items = (d?.data || [])
+          .filter(g => {
+            const n = norm(g.nombre);
+            if (['todo', 'sin agrupacion', 'sin agrupación', 'sin agrupar', 'sin grupo'].includes(n)) return false;
+            if (n.includes('discontinu')) return false; // mismo criterio que ArticuloNuevoModal
+            return true;
+          })
+          .map(g => ({ id: g.id, nombre: g.nombre }));
+        setAgrupaciones(items);
+      });
   }, [open, businessId]);
 
   // Buscar candidatos de padrino con debounce
@@ -232,9 +248,9 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
               <InputLabel>Rubro *</InputLabel>
               <Select MenuProps={downwardMenuProps()} label="Rubro *" value={form.rubro} disabled={saving || !!success}
                 onChange={e => setForm(f => ({ ...f, rubro: e.target.value, rubroNuevo: '' }))}>
-                {rubros.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-                <Divider />
                 <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>+ Rubro nuevo…</MenuItem>
+                <Divider />
+                {rubros.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
               </Select>
             </FormControl>
             {form.rubro === '__nuevo__' && (
@@ -591,16 +607,16 @@ export function ArticuloNuevoModal({
                   onChange={e => setForm(f => ({
                     ...f, rubro: e.target.value, subrubro: '',
                   }))}>
+                  <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>
+                    + Crear rubro nuevo…
+                  </MenuItem>
+                  <Divider />
                   {rubros.length === 0 && (
                     <MenuItem disabled value="">
                       <em style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Sin rubros aún</em>
                     </MenuItem>
                   )}
                   {rubros.map(r => <MenuItem key={r.nombre} value={r.nombre}>{r.nombre}</MenuItem>)}
-                  <Divider />
-                  <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>
-                    + Crear rubro nuevo…
-                  </MenuItem>
                 </Select>
               </FormControl>
               {esRubroNuevo && (
@@ -620,11 +636,11 @@ export function ArticuloNuevoModal({
                   onChange={e => setForm(f => ({ ...f, subrubro: e.target.value }))}
                   disabled={!rubroEfectivo}>
                   <MenuItem value="">Sin subrubro</MenuItem>
-                  {subrubrosDelRubro.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                  {(subrubrosDelRubro.length > 0 || esRubroNuevo) && <Divider />}
                   <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>
                     + Crear subrubro nuevo…
                   </MenuItem>
+                  {(subrubrosDelRubro.length > 0 || esRubroNuevo) && <Divider />}
+                  {subrubrosDelRubro.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
                 </Select>
               </FormControl>
               {esSubrubroNuevo && (
