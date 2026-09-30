@@ -1662,7 +1662,13 @@ export default function InsumosMain() {
         open={nuevoInsumoOpen}
         onClose={() => setNuevoInsumoOpen(false)}
         businessId={resolvedBizId}
-        onCreated={() => { forceRefresh(); }}
+        onCreated={() => {
+          forceRefresh();
+          // forceRefresh solo invalida la caché de ESTA tabla — sin el evento
+          // global, el buscador (useGlobalSearchOptions) no se enteraba de que
+          // hay un insumo nuevo hasta recargar la página.
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+        }}
       />
 
       {recetaInsumoModal && (

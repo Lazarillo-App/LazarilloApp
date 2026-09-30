@@ -2862,7 +2862,15 @@ export default function ArticulosMain(props) {
         open={agregarArticuloOpen}
         onClose={() => setAgregarArticuloOpen(false)}
         businessId={activeBusinessId}
-        onCreated={() => { window.dispatchEvent(new Event('business:synced')); }}
+        onCreated={() => {
+          // articulos:updated: lo escuchan TablaArticulos (refetch de la tabla)
+          // y useGlobalSearchOptions (buscador global) — sin esto, un alta
+          // manual desde el propio Menú no aparecía en ninguno de los dos
+          // hasta recargar la página. business:synced sigue haciendo falta
+          // para invalidar agrupaciones/árbol cacheado con React Query.
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          window.dispatchEvent(new Event('business:synced'));
+        }}
       />
 
       {/* ── Upload artículos / rubros ── */}

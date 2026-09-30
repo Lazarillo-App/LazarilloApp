@@ -2558,7 +2558,14 @@ export default function RecetaModal({
                             appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
                             precioVenta={precioActual}
                             rendimiento={rendimiento}
-                            onInsumoCreated={(nuevo) => setInsumos(prev => [nuevo, ...prev])}
+                            onInsumoCreated={(nuevo) => {
+                              setInsumos(prev => [nuevo, ...prev]);
+                              // Sin esto, un insumo creado desde el buscador de
+                              // ingredientes de una receta no aparecía en la
+                              // tabla de Insumos ni en el buscador global hasta
+                              // recargar la página — nada avisaba fuera de este modal.
+                              try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
+                            }}
                           />
                         );
                       })}
