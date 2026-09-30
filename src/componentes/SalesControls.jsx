@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { FormControl, InputLabel, Select, MenuItem, TextField, Stack } from '@mui/material';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const PRESETS = [
   { key: '7', label: 'Últimos 7 días', days: 7 },
@@ -29,7 +30,7 @@ export default function SalesControls({ value, onChange }) {
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
       <FormControl size="small" sx={{ minWidth: 180 }}>
         <InputLabel>Rango</InputLabel>
-        <Select
+        <Select MenuProps={downwardMenuProps()}
           label="Rango"
           value={mode}
           onChange={(e) => onChange({ ...value, mode: e.target.value })}

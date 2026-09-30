@@ -66,6 +66,7 @@ import TabComprasInsumo from './TabComprasInsumo';
 import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
    MODAL PRINCIPAL
@@ -2066,6 +2067,7 @@ export default function RecetaModal({
                                       setUnidadPeso('gr');
                                     }
                                   }}
+                                  MenuProps={downwardMenuProps()}
                                   sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
                                 >
                                   <MenuItem value="porcion">Porción</MenuItem>
@@ -2101,6 +2103,7 @@ export default function RecetaModal({
                                       onChange={e => setUnidadPeso(e.target.value)}
                                       displayEmpty
                                       renderValue={(v) => v || 'u.'}
+                                      MenuProps={downwardMenuProps()}
                                       sx={{ fontSize: '0.8rem', color: unidadPeso ? 'inherit' : 'text.disabled', '& .MuiSelect-select': { py: '6px' } }}
                                     >
                                       <MenuItem value="gr">gr</MenuItem>
@@ -2451,8 +2454,10 @@ export default function RecetaModal({
                               </Box>
                             )}
                             MenuProps={{
+                              marginThreshold: null,
                               anchorOrigin: { vertical: 'bottom', horizontal: 'center' },
                               transformOrigin: { vertical: 'top', horizontal: 'center' },
+                              slotProps: { paper: { style: { maxHeight: '50vh' } } },
                             }}
                             sx={{
                               '& .MuiSelect-select': { py: 0, textAlign: 'center' },

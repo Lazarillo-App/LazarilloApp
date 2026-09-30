@@ -8,6 +8,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HistoryIcon from '@mui/icons-material/History';
 import { AuditLogAPI } from '../../servicios/apiBusinesses';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const ENTITY_LABELS = {
   receta: 'Receta',
@@ -153,7 +154,7 @@ export default function ConfigHistorialTab({ businessId }) {
         </Typography>
         <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel>Tipo</InputLabel>
-          <Select label="Tipo" value={entityType} onChange={e => setEntityType(e.target.value)}>
+          <Select MenuProps={downwardMenuProps()} label="Tipo" value={entityType} onChange={e => setEntityType(e.target.value)}>
             <MenuItem value="">Todos</MenuItem>
             <MenuItem value="receta">Recetas</MenuItem>
             <MenuItem value="receta_elaborado">Recetas de elaborados</MenuItem>

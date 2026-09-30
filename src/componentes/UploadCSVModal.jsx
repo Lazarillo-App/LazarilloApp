@@ -28,6 +28,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import CloseIcon from '@mui/icons-material/Close';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 // Modal de instrucciones
 function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors }) {
@@ -370,7 +371,7 @@ export default function UploadCSVModal({
                       <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
                     </Box>
                   </InputLabel>
-                  <Select
+                  <Select MenuProps={downwardMenuProps()}
                     value={branchId === null || branchId === undefined ? '' : String(branchId)}
                     label="Sucursal"
                     displayEmpty

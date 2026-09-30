@@ -27,6 +27,7 @@ import {
 
 import { useBusiness } from '../context/BusinessContext';
 import { httpBiz } from '../servicios/apiBusinesses';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 export default function MoverAgrupacionModal({
   open,
@@ -207,7 +208,7 @@ export default function MoverAgrupacionModal({
           {mode === 'existente' && (
             <FormControl fullWidth disabled={divLoading || loading || !hasDivisions}>
               <InputLabel>Seleccionar subnegocio</InputLabel>
-              <Select
+              <Select MenuProps={downwardMenuProps()}
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 label="Seleccionar subnegocio"

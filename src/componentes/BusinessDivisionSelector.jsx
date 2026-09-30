@@ -368,12 +368,17 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         open={open}
         onClose={handleClose}
         disableRestoreFocus
+        marginThreshold={null}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         sx={{
           '& .MuiPaper-root': {
             background: 'var(--color-primary)', color: 'var(--on-primary)',
-            minWidth: 300, maxHeight: 520, overflowY: 'auto',
+            // maxWidth: sin esto, con nombres largos de org/negocio el popup
+            // podía crecer bastante más ancho que 300px — y al estar anclado
+            // por el borde DERECHO, crecer de ancho lo corre hacia la
+            // izquierda, alejándolo del botón que lo abrió.
+            minWidth: 300, maxWidth: 340, maxHeight: 520, overflowY: 'auto',
           },
         }}
         MenuListProps={{

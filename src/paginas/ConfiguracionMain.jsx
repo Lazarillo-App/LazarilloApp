@@ -49,6 +49,7 @@ import { TabPanel, SectionCard } from '../componentes/configuracion/configHelper
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
 import '../css/theme-layout.css';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 export { getRedondeoConfig, saveRedondeoConfig };
 
@@ -504,7 +505,7 @@ export default function ConfiguracionMain() {
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <FormControl size="small" sx={{ width: 200 }}>
                         <InputLabel>Moneda</InputLabel>
-                        <Select value={config.divisa || ''} label="Moneda"
+                        <Select MenuProps={downwardMenuProps()} value={config.divisa || ''} label="Moneda"
                           onChange={e => setConfig(c => ({ ...c, divisa: e.target.value }))}>
                           {[
                             { code: 'ARS', label: 'ARS — Peso argentino' },
@@ -556,7 +557,7 @@ export default function ConfiguracionMain() {
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <FormControl size="small" sx={{ width: 240 }}>
                         <InputLabel>Formato</InputLabel>
-                        <Select value={normalizarFormato} label="Formato"
+                        <Select MenuProps={downwardMenuProps()} value={normalizarFormato} label="Formato"
                           onChange={e => setNormalizarFormato(e.target.value)}>
                           <MenuItem value="titulo">Título (Primera mayúscula)</MenuItem>
                           <MenuItem value="mayuscula">MAYÚSCULA</MenuItem>

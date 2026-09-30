@@ -11,6 +11,7 @@ import VisibilityIcon    from '@mui/icons-material/Visibility';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { BASE } from '@/servicios/apiBase';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 function authHeaders(bizId) {
   const token = localStorage.getItem('token') || '';
@@ -294,7 +295,7 @@ export default function LotesPanel({ businessId, lotesTipo = 'compras', allBusin
           <Typography mb={2}>Mover el lote <strong>{selectedLote?.batch_id}</strong> a:</Typography>
           <FormControl fullWidth size="small">
             <InputLabel>Negocio destino</InputLabel>
-            <Select value={moveTargetBiz} label="Negocio destino"
+            <Select MenuProps={downwardMenuProps()} value={moveTargetBiz} label="Negocio destino"
               onChange={e => setMoveTargetBiz(e.target.value)}>
               {(allBusinesses || [])
                 .filter(b => String(b.id) !== String(businessId))

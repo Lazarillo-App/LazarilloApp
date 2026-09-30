@@ -15,6 +15,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { BASE } from '../servicios/apiBase';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const ROLES_RUBROS = [
   { value: 'ignorar', label: '— Ignorar —', color: '#94a3b8', bg: '#f1f5f9' },
@@ -141,7 +142,7 @@ function PreviewTabla({ tipo, file, columnas, muestra, mapeo, onChange }) {
                       {col}
                     </Typography>
                     <FormControl size="small" fullWidth>
-                      <Select value={rol} onChange={(e) => onChange(col, e.target.value)}
+                      <Select MenuProps={downwardMenuProps()} value={rol} onChange={(e) => onChange(col, e.target.value)}
                         sx={{
                           fontSize: '0.68rem', fontWeight: 600, bgcolor: info.bg, color: info.color, height: 26,
                           '.MuiOutlinedInput-notchedOutline': { borderColor: `${info.color}40` },

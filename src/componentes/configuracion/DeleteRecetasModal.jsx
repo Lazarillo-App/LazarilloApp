@@ -11,6 +11,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { RecetasAPI } from '../../servicios/apiBusinesses';
 import { obtenerAgrupaciones } from '../../servicios/apiAgrupaciones';
 import { insumoGroupsList } from '../../servicios/apiInsumos';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 /**
  * Modal de borrado masivo de recetas.
@@ -155,7 +156,7 @@ export default function DeleteRecetasModal({ open, onClose, businessId, tipo, th
 
             {filtroScope === 'agrupacion' && (
               <FormControl size="small" fullWidth>
-                <Select
+                <Select MenuProps={downwardMenuProps()}
                   value={agrupacionId}
                   onChange={(e) => setAgrupacionId(e.target.value)}
                   displayEmpty

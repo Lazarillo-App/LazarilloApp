@@ -36,6 +36,7 @@ import { BASE } from '../servicios/apiBase';
 // ─── Imágenes de instrucciones ───
 import image1Url from '../assets/brand/instrucciones-compras-1.jpeg';
 import image2Url from '../assets/brand/instrucciones-compras-2.jpeg';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 // ─── Modal de instrucciones ───
 function InstructionsModal({ open, onClose, themeColors }) {
@@ -326,7 +327,7 @@ export default function UploadComprasModal({ open, onClose, businessId, onSucces
                       <StoreIcon sx={{ fontSize: 16 }} /> Sucursal
                     </Box>
                   </InputLabel>
-                  <Select
+                  <Select MenuProps={downwardMenuProps()}
                     value={branchId === null || branchId === undefined ? '' : String(branchId)}
                     label="Sucursal"
                     notched

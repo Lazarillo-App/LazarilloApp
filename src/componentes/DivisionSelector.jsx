@@ -13,6 +13,7 @@ import {
   ViewModule as ViewModuleIcon 
 } from '@mui/icons-material';
 import { useBusiness } from '../context/BusinessContext';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 function DivisionSelector() {
   // 🆕 Ahora usamos useBusiness() en lugar de useDivision()
@@ -63,7 +64,7 @@ function DivisionSelector() {
       }}
     >
       <InputLabel id="division-selector-label">División</InputLabel>
-      <Select
+      <Select MenuProps={downwardMenuProps()}
         labelId="division-selector-label"
         id="division-selector"
         value={activeDivisionId || ''}

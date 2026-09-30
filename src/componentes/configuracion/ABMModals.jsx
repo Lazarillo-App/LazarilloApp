@@ -10,6 +10,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import { BASE } from '@/servicios/apiBase';
 import SpotlightTour from '@/componentes/SpotlightTour';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
@@ -229,7 +230,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ flex: 1 }}>
               <InputLabel>Rubro *</InputLabel>
-              <Select label="Rubro *" value={form.rubro} disabled={saving || !!success}
+              <Select MenuProps={downwardMenuProps()} label="Rubro *" value={form.rubro} disabled={saving || !!success}
                 onChange={e => setForm(f => ({ ...f, rubro: e.target.value, rubroNuevo: '' }))}>
                 {rubros.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
                 <Divider />
@@ -246,7 +247,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           {/* Agrupación (opcional) */}
           <FormControl size="small" fullWidth>
             <InputLabel>Agrupación</InputLabel>
-            <Select label="Agrupación" value={form.agrupacionId} disabled={saving || !!success}
+            <Select MenuProps={downwardMenuProps()} label="Agrupación" value={form.agrupacionId} disabled={saving || !!success}
               onChange={e => setForm(f => ({ ...f, agrupacionId: e.target.value }))}>
               <MenuItem value=""><em>Sin agrupación</em></MenuItem>
               {agrupaciones.map(a => <MenuItem key={a.id} value={a.id}>{a.nombre}</MenuItem>)}
@@ -256,7 +257,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ width: 140 }}>
               <InputLabel>Unidad</InputLabel>
-              <Select label="Unidad" value={form.unidadMed} disabled={saving || !!success}
+              <Select MenuProps={downwardMenuProps()} label="Unidad" value={form.unidadMed} disabled={saving || !!success}
                 onChange={e => setForm(f => ({ ...f, unidadMed: e.target.value }))}>
                 {UNIDADES_INSUMO.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
               </Select>
@@ -586,7 +587,7 @@ export function ArticuloNuevoModal({
             <Stack sx={{ flex: 1 }} spacing={0.75}>
               <FormControl size="small" fullWidth>
                 <InputLabel>Rubro *</InputLabel>
-                <Select label="Rubro *" value={form.rubro}
+                <Select MenuProps={downwardMenuProps()} label="Rubro *" value={form.rubro}
                   onChange={e => setForm(f => ({
                     ...f, rubro: e.target.value, subrubro: '',
                   }))}>
@@ -615,7 +616,7 @@ export function ArticuloNuevoModal({
             <Stack sx={{ flex: 1 }} spacing={0.75}>
               <FormControl size="small" fullWidth>
                 <InputLabel>Subrubro</InputLabel>
-                <Select label="Subrubro" value={form.subrubro}
+                <Select MenuProps={downwardMenuProps()} label="Subrubro" value={form.subrubro}
                   onChange={e => setForm(f => ({ ...f, subrubro: e.target.value }))}
                   disabled={!rubroEfectivo}>
                   <MenuItem value="">Sin subrubro</MenuItem>
@@ -646,7 +647,7 @@ export function ArticuloNuevoModal({
             {!isEdit && (
             <FormControl size="small" fullWidth>
               <InputLabel>Agrupación</InputLabel>
-              <Select label="Agrupación" value={form.agrupacionId}
+              <Select MenuProps={downwardMenuProps()} label="Agrupación" value={form.agrupacionId}
                 onChange={e => setForm(f => ({ ...f, agrupacionId: e.target.value }))}>
                 <MenuItem value="">Sin agrupación</MenuItem>
                 {agrupaciones

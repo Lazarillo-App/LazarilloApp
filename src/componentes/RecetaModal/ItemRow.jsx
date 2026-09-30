@@ -23,6 +23,7 @@ import {
 import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
 import { InsumoNuevoModal } from '@/componentes/configuracion/ABMModals';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
    FILA DE INGREDIENTE
@@ -820,7 +821,7 @@ export default function ItemRow({
         </Box>
 
         {/* ── Unidad ── */}
-        <Select
+        <Select MenuProps={downwardMenuProps()}
           size="small"
           value={item.unidad || item.supplyMedida || 'u'}
           onChange={e => onChange(index, { unidad: e.target.value })}
@@ -1002,7 +1003,7 @@ export default function ItemRow({
           {/* Merma — dropdown con "No" + las mermas del insumo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>Merma:</Typography>
-            <Select
+            <Select MenuProps={downwardMenuProps()}
               size="small"
               multiple
               displayEmpty

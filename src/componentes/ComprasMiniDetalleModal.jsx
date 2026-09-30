@@ -19,6 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BASE } from '../servicios/apiBase';
 import { useBranch } from '@/hooks/useBranch';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const fmtMoney = (v) => {
   const n = Number(v ?? 0);
@@ -742,7 +743,7 @@ export function ComprasDetalleContenido({
           {bizOptions.length > 1 && (
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Ver compras de</InputLabel>
-              <Select
+              <Select MenuProps={downwardMenuProps()}
                 value={selectedBiz}
                 label="Ver compras de"
                 onChange={(e) => setSelectedBiz(e.target.value)}
@@ -769,7 +770,7 @@ export function ComprasDetalleContenido({
           {(hasSucursales || dynamicBranches.length > 0) && (
             <FormControl size="small" sx={{ minWidth: 160 }}>
               <InputLabel>Sucursal</InputLabel>
-              <Select
+              <Select MenuProps={downwardMenuProps()}
                 value={selectedBranch}
                 label="Sucursal"
                 onChange={(e) => setSelectedBranch(e.target.value)}

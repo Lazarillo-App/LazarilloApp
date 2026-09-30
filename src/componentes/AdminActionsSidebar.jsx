@@ -8,6 +8,7 @@ import {
   Button, Chip, Divider, CircularProgress, Tooltip
 } from '@mui/material';
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ---------------- utils ---------------- */
 function normalizeMaxiStatus(res = {}) {
@@ -268,7 +269,7 @@ export default function AdminActionsSidebar({ onSynced }) {
 
         <FormControl size="small" fullWidth>
           <InputLabel>Local</InputLabel>
-          <Select
+          <Select MenuProps={downwardMenuProps()}
             label="Local"
             value={selectedId || ''}
             onChange={(e) => setSelectedId(e.target.value)}

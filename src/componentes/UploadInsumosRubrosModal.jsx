@@ -13,6 +13,7 @@ import CloseIcon       from '@mui/icons-material/Close';
 import ArrowBackIcon   from '@mui/icons-material/ArrowBack';
 import CategoryIcon    from '@mui/icons-material/Category';
 import { BASE }        from '../servicios/apiBase';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const ROLES = [
   { value: 'ignorar', label: '— Ignorar —',        color: '#94a3b8', bg: '#f1f5f9' },
@@ -235,7 +236,7 @@ export default function UploadInsumosRubrosModal({ open, onClose, businessId, on
                             {col}
                           </Typography>
                           <FormControl size="small" fullWidth>
-                            <Select value={rol} onChange={e => handleChangeRol(col, e.target.value)}
+                            <Select MenuProps={downwardMenuProps()} value={rol} onChange={e => handleChangeRol(col, e.target.value)}
                               sx={{ fontSize: '0.68rem', fontWeight: 600, bgcolor: info.bg, color: info.color, height: 26,
                                 '.MuiSelect-select': { py: '3px', pr: '22px !important' },
                                 '.MuiSvgIcon-root': { fontSize: 15, color: info.color } }}>

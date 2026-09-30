@@ -15,6 +15,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import CloseIcon from '@mui/icons-material/Close';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { BASE } from '../servicios/apiBase';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 // ─── Definición de campos por tipo ───────────────────────────────────────────
 const CAMPOS = {
@@ -522,7 +523,7 @@ export default function UploadInsumosModal({
                         {campo.desc}
                       </Typography>
                       <FormControl size="small" sx={{ minWidth: 150 }}>
-                        <Select value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
+                        <Select MenuProps={downwardMenuProps()} value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
                           onChange={e => setMapeo(m => ({ ...m, [campo.key]: e.target.value || undefined }))}>
                           <MenuItem value=""><em>— Seleccioná —</em></MenuItem>
                           {preview.headers.map(h => <MenuItem key={h} value={h} sx={{ fontSize: '0.8rem' }}>{h}</MenuItem>)}
@@ -544,7 +545,7 @@ export default function UploadInsumosModal({
                             {campo.desc}
                           </Typography>
                           <FormControl size="small" sx={{ minWidth: 150 }}>
-                            <Select value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
+                            <Select MenuProps={downwardMenuProps()} value={mapeo[campo.key] || ''} displayEmpty sx={{ fontSize: '0.8rem' }}
                               onChange={e => setMapeo(m => ({ ...m, [campo.key]: e.target.value || undefined }))}>
                               <MenuItem value=""><em>— No importar —</em></MenuItem>
                               {preview.headers.map(h => <MenuItem key={h} value={h} sx={{ fontSize: '0.8rem' }}>{h}</MenuItem>)}

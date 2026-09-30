@@ -25,6 +25,7 @@ import {
 } from "../servicios/apiAgrupaciones";
 import { httpBiz } from "../servicios/apiBusinesses";
 import AgrupacionCreateModal from "./AgrupacionCreateModal";
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const LAYOUT_KEY = 'lazarillo:agrupLayoutByGroup';
 
@@ -514,7 +515,7 @@ const AgrupacionesList = ({
                       <Typography variant="caption" sx={{ mr: 1 }}>
                         Vista:
                       </Typography>
-                      <Select
+                      <Select MenuProps={downwardMenuProps()}
                         size="small"
                         value={layout}
                         onChange={(e) => setLayoutForGroup(g.id, e.target.value)}
@@ -626,7 +627,7 @@ const AgrupacionesList = ({
                   <CardActions sx={{ justifyContent: "space-between", flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}>
                     <FormControl size="small" sx={{ minWidth: 220 }} disabled={isTodo}>
                       <InputLabel>Mover seleccionados a…</InputLabel>
-                      <Select
+                      <Select MenuProps={downwardMenuProps()}
                         label="Mover seleccionados a…"
                         value={targetByGroup[g.id] ?? ""}
                         onChange={(e) => setTargetByGroup((s) => ({ ...s, [g.id]: e.target.value }))}

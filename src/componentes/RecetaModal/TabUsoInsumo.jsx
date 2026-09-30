@@ -5,6 +5,7 @@ import { Box, Typography, CircularProgress, Select, MenuItem, Button } from '@mu
 import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma } from '@/servicios/apiInsumos';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
    TAB USO — recetas donde se usa el insumo
@@ -76,7 +77,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
           <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
             Aplicar merma en estas recetas:
           </Typography>
-          <Select
+          <Select MenuProps={downwardMenuProps()}
             size="small"
             displayEmpty
             value={mermaElegidaId}
@@ -146,7 +147,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
                 {Number(u.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {u.unidad || unidadBase}
               </div>
               {mermas.length > 0 ? (
-                <Select
+                <Select MenuProps={downwardMenuProps()}
                   size="small"
                   value={u.merma_id != null ? String(u.merma_id) : ''}
                   onChange={e => cambiarMermaFila(u, e.target.value === '' ? null : Number(e.target.value))}

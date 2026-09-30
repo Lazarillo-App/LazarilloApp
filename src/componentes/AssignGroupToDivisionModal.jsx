@@ -23,6 +23,7 @@ import {
 } from '@mui/material';
 import { Store as StoreIcon, ViewModule as ViewModuleIcon } from '@mui/icons-material';
 import { useDivisions } from '@/hooks/useDivisions';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 export default function AssignGroupToDivisionModal({
   open,
@@ -147,7 +148,7 @@ export default function AssignGroupToDivisionModal({
 
         <FormControl fullWidth disabled={loading || assigning || creating}>
           <InputLabel>División destino</InputLabel>
-          <Select
+          <Select MenuProps={downwardMenuProps()}
             value={selectedDivisionId}
             onChange={(e) => setSelectedDivisionId(e.target.value)}
             label="División destino"

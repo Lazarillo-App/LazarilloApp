@@ -37,12 +37,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ScienceIcon from '@mui/icons-material/Science';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import MoveToInboxIcon from '@mui/icons-material/MoveToInbox';
-import { 
-  listInsumosElaborados, 
+import {
+  listInsumosElaborados,
   toggleInsumosElaboradosBulk,
   moverElaboradosAGrupo,
-  getElaboradosStats 
+  getElaboradosStats
 } from '../servicios/apiInsumosElaborados';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const normalize = (s) =>
   String(s || '')
@@ -356,7 +357,7 @@ function GestorElaboradosModal({
                 <Box display="flex" gap={2} alignItems="center">
                   <FormControl size="small" sx={{ flex: 1 }}>
                     <InputLabel>Mover todos a grupo...</InputLabel>
-                    <Select
+                    <Select MenuProps={downwardMenuProps()}
                       value={targetGroupId}
                       onChange={(e) => setTargetGroupId(e.target.value)}
                       label="Mover todos a grupo..."

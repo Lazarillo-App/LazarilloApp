@@ -20,6 +20,7 @@ import { RecetasAPI } from '@/servicios/apiBusinesses';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import { BASE } from '@/servicios/apiBase';
 import { unidadesParaInsumo, canonicalUnit } from '@/componentes/RecetaModal/helpers';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 export default function RubroEditModal({
   open,
@@ -414,7 +415,7 @@ export default function RubroEditModal({
                 inputProps={{ min: 0, step: 0.01 }}
               />
               <FormControl size="small" sx={{ width: 110 }}>
-                <Select
+                <Select MenuProps={downwardMenuProps()}
                   value={recUnidad}
                   onChange={e => setRecUnidad(e.target.value)}
                 >

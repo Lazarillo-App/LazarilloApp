@@ -14,6 +14,7 @@ import {
 import { sanitizeDecimal } from '@/utils/decimales';
 import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo = null }) {
   const [lista, setLista] = useState([]);
@@ -261,7 +262,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               sx={{ width: 90 }}
             />
             <FormControl size="small" sx={{ width: 80 }}>
-              <Select
+              <Select MenuProps={downwardMenuProps()}
                 value={envase.unidad}
                 onChange={e => {
                   const nuevaUnidad = e.target.value;
@@ -328,7 +329,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
                 defaultValue={String(Number(eq.contenido)).replace('.', ',')}
                 onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(eq.contenido)) editar(eq, 'contenido', v); }}
                 inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
-              <Select size="small" value={eq.unidad}
+              <Select MenuProps={downwardMenuProps()} size="small" value={eq.unidad}
                 onChange={e => editar(eq, 'unidad', e.target.value)}
                 sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' } }}>
                 {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
@@ -357,7 +358,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               onChange={e => setNuevo(n => ({ ...n, contenido: sanitizeDecimal(e.target.value) }))}
               onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
               inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
-            <Select size="small" value={nuevo.unidad} displayEmpty
+            <Select MenuProps={downwardMenuProps()} size="small" value={nuevo.unidad} displayEmpty
               onChange={e => setNuevo(n => ({ ...n, unidad: e.target.value }))}
               sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' }, color: nuevo.unidad ? 'inherit' : 'text.disabled' }}>
               <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>unidad</MenuItem>
