@@ -542,6 +542,13 @@ function SidebarCategorias({
                 const g = opcionesSelect.find((x) => String(x.id) === String(value));
                 return g ? labelAgrup(g) : 'Sin agrupación';
               }}
+              MenuProps={{
+                // Sin esto, con muchas agrupaciones el popup crecía sin límite y
+                // MUI lo reposicionaba lejos del selector (arriba de todo, pegado
+                // al viewport) para que entrara entero. Con una altura máxima fija
+                // scrollea adentro y queda siempre anclado debajo del selector.
+                slotProps: { paper: { style: { maxHeight: 420 } } },
+              }}
             >
               {opcionesSelect.map((g) => {
                 const isTodo = esTodoGroup(g);

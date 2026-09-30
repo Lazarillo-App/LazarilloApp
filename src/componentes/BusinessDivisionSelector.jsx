@@ -367,6 +367,7 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
+        disableRestoreFocus
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         sx={{
