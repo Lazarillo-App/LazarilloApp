@@ -678,7 +678,11 @@ function InsumosSidebar({
                         )}
                       </span>
 
-                      <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                      >
                         {(() => {
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
@@ -688,7 +692,7 @@ function InsumosSidebar({
                           if (isTodo) {
                             return (
                               isMainDivision && onRenameGroup && (
-                                <Tooltip title='Convertir "Sin agrupación" en nueva agrupación'>
+                                <Tooltip title='Convertir "Sin agrupación" en nueva agrupación' disableInteractive>
                                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); onRenameGroup(g); }}>
                                     <EditIcon fontSize="inherit" />
                                   </IconButton>
@@ -700,7 +704,7 @@ function InsumosSidebar({
                           return (
                             <>
                               {onSetFavorite && (
-                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'}>
+                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive>
                                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
                                     {Number(favoriteGroupId) === Number(g.id) ? (
                                       <StarIcon fontSize="inherit" color="warning" />
@@ -712,7 +716,7 @@ function InsumosSidebar({
                               )}
 
                               {onEditGroup && (
-                                <Tooltip title="Renombrar agrupación">
+                                <Tooltip title="Renombrar agrupación" disableInteractive>
                                   <IconButton
                                     size="small"
                                     onClick={(e) => {
@@ -745,7 +749,7 @@ function InsumosSidebar({
                               )}
 
                               {onDeleteGroup && (
-                                <Tooltip title="Eliminar agrupación">
+                                <Tooltip title="Eliminar agrupación" disableInteractive>
                                   <IconButton
                                     size="small"
                                     onClick={(e) => {

@@ -1022,7 +1022,12 @@ export default function InsumosMain() {
     if (!currentGroups.length) return;
     const currentSelId = selectedGroupIdRef.current;
     const currentSel = selectedGroupRef.current;
-    if (currentSel && esDiscontinuadosGroup(currentSel)) return;
+    // Si el usuario ELIGIÓ Discontinuados a mano (hace poco), no lo sacamos de ahí.
+    // Pero si "cayó" en Discontinuados solo porque este efecto corrió ANTES de que
+    // los datos reales (favorita, sin-agrupación) terminaran de cargar, no debe
+    // quedar bloqueado ahí para siempre — por eso el guard usa la misma ventana de
+    // "pick manual reciente" que ya usa el resto de este efecto, no un bloqueo total.
+    if (currentSel && esDiscontinuadosGroup(currentSel) && (Date.now() - lastManualPickRef.current < 5000)) return;
 
     // ── Sin Agrupación tiene insumos ──
     if (!todoEmpty && todoId) {
@@ -1056,7 +1061,9 @@ export default function InsumosMain() {
     }
 
     if (currentGroups.length > 0) {
-      const firstGroup = currentGroups[0];
+      // Discontinuados nunca debe quedar como destino automático — solo se llega
+      // ahí por elección explícita del usuario.
+      const firstGroup = currentGroups.find((g) => !esDiscontinuadosGroup(g)) || currentGroups[0];
       if (!currentSelId || Number(currentSelId) !== Number(firstGroup.id)) {
         setSelectedGroupId(firstGroup.id);
         setRubroSeleccionado(null);
