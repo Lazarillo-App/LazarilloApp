@@ -11,17 +11,23 @@ body,
 
 /* Toda la app un poco más compacta (texto, botones, espaciados) — el mismo
    efecto que tiene achicar el zoom del navegador al 90%, pero ya aplicado
-   siempre, sin que cada quien tenga que acordarse de hacerlo a mano. */
-html {
+   siempre, sin que cada quien tenga que acordarse de hacerlo a mano.
+   IMPORTANTE: va en #root, NO en html/body. Los popups de MUI (Select,
+   Menu, Autocomplete, Tooltip) se "portan" directo a document.body, fuera
+   de #root — si el zoom estuviera en html, esos popups heredarían el
+   mismo 0.9 y el cálculo de posición de MUI (que ya lee coordenadas en
+   pantalla vía getBoundingClientRect) se aplicaba DOS VECES, corriendo
+   todo hacia arriba/izquierda proporcionalmente a lo lejos que estuviera
+   del borde (por eso se notaba tanto en el buscador y el selector de
+   negocio, lejos del borde izquierdo, y casi nada en selects pegados a
+   la izquierda). Con el zoom en #root, esos popups quedan afuera y se
+   posicionan con las coordenadas reales de pantalla, una sola vez. */
+#root {
   zoom: 0.9;
 }
 
-/* Cancela el zoom global de arriba para pantallas "administrativas" (Perfil,
-   Configuración) que no son tablas de datos — 1/0.9. Ojo: cualquier menú/
-   select/tooltip que abra DESDE ADENTRO de esta zona sigue "escapando" a
-   document.body (que queda al 0.9 de siempre), así que si alguno se ve
-   desalineado hay que corregirlo puntualmente, igual que se hizo con el
-   dropdown de perfil en Navbar.jsx. */
+/* Cancela el zoom de arriba para pantallas "administrativas" (Perfil,
+   Configuración) que no son tablas de datos — 1/0.9. */
 .zoom-reset {
   zoom: 1.1111112;
 }
