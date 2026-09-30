@@ -1231,6 +1231,60 @@ export default function RecetaModal({
       return;
     }
 
+    // ── Editar una promo YA EXISTENTE (agregar/quitar/ajustar componentes) ──
+    // Antes esta rama no existía: esPromo nunca se chequeaba acá (solo en
+    // handleDelete), así que guardar una promo ya creada caía en el guardado
+    // genérico de receta de más abajo — que no actualiza la promo real, por
+    // eso los cambios no quedaban guardados.
+    if (esPromo && articulo?.id) {
+      const comps = items
+        .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .map(it => ({
+          articleId: Number(it.articleRefId),
+          cantidad: Number(it.cantidad) || 1,
+          unidad: it.unidad || 'u',
+        }));
+      const insus = items
+        .filter(it => it.supplyId && !it.articleRefId)
+        .map(it => ({
+          insumoId: Number(it.supplyId),
+          cantidad: Number(it.cantidad) || 1,
+          unidad: it.unidad || 'u',
+        }));
+      if (comps.length < 1) { setError('La promoción necesita al menos un artículo componente'); return; }
+      setSaving(true);
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${BASE}/businesses/${businessId}/promociones/${articulo.id}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Business-Id': String(businessId),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nombre: (nombre || artNombre || '').trim(),
+            componentes: comps,
+            insumos: insus,
+            porcentajeVenta: pctCostoIdeal,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d?.error || d?.message || `Error ${res.status}`);
+        }
+        setSuccess(true);
+        try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
+        onSaved?.({ __promoUpdated: true, article_id: articulo.id });
+        if (!keepOpen) setTimeout(() => onClose?.(), 600);
+      } catch (e) {
+        setError(e.message || 'No se pudo actualizar la promoción');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
     const itemsBase = itemsOverride || items;
     const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
@@ -2458,6 +2512,17 @@ export default function RecetaModal({
                               anchorOrigin: { vertical: 'bottom', horizontal: 'center' },
                               transformOrigin: { vertical: 'top', horizontal: 'center' },
                               slotProps: { paper: { style: { maxHeight: '50vh' } } },
+                              TransitionProps: {
+                                onEntered: (paperEl) => {
+                                  try {
+                                    const rect = paperEl.getBoundingClientRect();
+                                    const available = window.innerHeight - rect.top - 8;
+                                    if (available > 0 && rect.height > available) {
+                                      paperEl.style.maxHeight = `${available}px`;
+                                    }
+                                  } catch { /* no-op */ }
+                                },
+                              },
                             }}
                             sx={{
                               '& .MuiSelect-select': { py: 0, textAlign: 'center' },

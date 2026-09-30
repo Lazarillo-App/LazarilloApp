@@ -21,6 +21,7 @@ import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
 
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
 import { showConfirm } from '@/servicios/appConfirm';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -654,22 +655,7 @@ function InsumosSidebar({
                 const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
                 return g ? g.nombre : 'Sin agrupación';
               }}
-              MenuProps={{
-                // Con muchas agrupaciones el popup crecía sin límite, y MUI
-                // (marginThreshold, default 16px) lo corría lejos del selector —
-                // hasta pegado arriba del viewport — para que entrara entero.
-                // marginThreshold:null desactiva ese reacomodo por viewport, y el
-                // maxHeight en vh hace que scrollee ADENTRO en vez de moverse:
-                // así el popup queda siempre pegado debajo del selector.
-                marginThreshold: null,
-                // horizontal:'left' en vez del 'center' default — centrado, con
-                // un popup más ancho que el selector, se corría bastante a la
-                // izquierda (incluso fuera de pantalla). Alineado a la izquierda
-                // arranca justo debajo del selector.
-                anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
-                transformOrigin: { vertical: 'top', horizontal: 'left' },
-                slotProps: { paper: { style: { maxHeight: '50vh' } } },
-              }}
+              MenuProps={downwardMenuProps()}
             >
               {opcionesSelect.map((g) => {
                 const monto = comprasPorAgrupacion.get(Number(g.id)) || 0;

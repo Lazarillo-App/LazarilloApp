@@ -27,6 +27,7 @@ import { Button } from '@mui/material';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import { assignAgrupacionToDivision as assignAgrupacionToDivisionAPI } from '@/servicios/apiDivisions';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { downwardMenuProps } from '@/utils/menuProps';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 const groupLabel = (g) => String(g?.name ?? g?.nombre ?? '').trim();
@@ -542,22 +543,7 @@ function SidebarCategorias({
                 const g = opcionesSelect.find((x) => String(x.id) === String(value));
                 return g ? labelAgrup(g) : 'Sin agrupación';
               }}
-              MenuProps={{
-                // Con muchas agrupaciones el popup crecía sin límite, y MUI
-                // (marginThreshold, default 16px) lo corría lejos del selector —
-                // hasta pegado arriba del viewport — para que entrara entero.
-                // marginThreshold:null desactiva ese reacomodo por viewport, y el
-                // maxHeight en vh hace que scrollee ADENTRO en vez de moverse:
-                // así el popup queda siempre pegado debajo del selector.
-                marginThreshold: null,
-                // horizontal:'left' en vez del 'center' default — centrado, con
-                // un popup más ancho que el selector, se corría bastante a la
-                // izquierda (incluso fuera de pantalla). Alineado a la izquierda
-                // arranca justo debajo del selector.
-                anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
-                transformOrigin: { vertical: 'top', horizontal: 'left' },
-                slotProps: { paper: { style: { maxHeight: '50vh' } } },
-              }}
+              MenuProps={downwardMenuProps()}
             >
               {opcionesSelect.map((g) => {
                 const isTodo = esTodoGroup(g);
