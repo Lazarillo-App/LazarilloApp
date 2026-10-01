@@ -81,6 +81,10 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
         nombre,
         codigo,
         tipo: 'articulo',
+        // Artículo-promo (wrapper): siempre id negativo (ver crearPromocion en el
+        // backend). Suele compartir nombre con el artículo real que la compone, así
+        // que el buscador necesita distinguirlas con una etiqueta — ver Buscador.jsx.
+        esPromo: id < 0,
         _key: key,
       });
     }

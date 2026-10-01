@@ -342,11 +342,10 @@ export default function Buscador({
                 fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px',
                 borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em',
                 flexShrink: 0,
-                bgcolor: tipo === 'articulo' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)',
-                color: tipo === 'articulo' ? '#1e40af' : '#92400e',
-                background: tipo === 'articulo' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)',
+                color: option?.esPromo ? '#6d28d9' : (tipo === 'articulo' ? '#1e40af' : '#92400e'),
+                background: option?.esPromo ? 'rgba(124,58,237,0.12)' : (tipo === 'articulo' ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)'),
               }}>
-                {tipo === 'articulo' ? 'Artículo' : 'Insumo'}
+                {option?.esPromo ? 'Promoción' : (tipo === 'articulo' ? 'Artículo' : 'Insumo')}
               </span>
             )}
           </li>

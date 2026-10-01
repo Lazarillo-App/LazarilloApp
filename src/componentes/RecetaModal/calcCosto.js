@@ -99,29 +99,44 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
   }
 
   if (elaborado) {
-    // DB-puro: precio_ref del elaborado YA es el costo por unidad de RENDIMIENTO
-    // (materializado en backend). La unidad base es rendimiento_unidad, NO supplyMedida
-    // (que puede venir sucia de MaxiRest: 'K'/'L'/'U'). Convertimos desde ahí.
-    const costoBase = (tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0)
+    const usaPrecioSugerido = tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0;
+    const costoBase = usaPrecioSugerido
       ? Number(elaborado.precioSugerido)
       : (Number(item.precioRefDB) || 0);
-    const unidadBase = canonicalUnit(elaborado?.rendimientoUnidad || item.supplyMedida || 'u');
+    // La unidad base tiene que ser la del VALOR que estamos usando como costoBase, no
+    // siempre la misma:
+    // - precioSugerido es un valor LIVE del elaborado → su unidad es rendimiento_unidad.
+    // - item.precioRefDB es una FOTO congelada de cuando se agregó el ingrediente —
+    //   ItemRow.jsx, al agregarlo, puede haber rebasado el costo a la unidad del peso
+    //   equivalente (ej. elaborado "rinde 35 unidades ≈ 500gr" se guarda como costo POR
+    //   GRAMO, con supplyMedida='gr', para poder cargar la cantidad en gr/kg si se
+    //   quiere). Si ahí usáramos rendimiento_unidad ('u') en vez de supplyMedida ('gr'),
+    //   un costo-por-gramo se trataba como si fuera costo-por-unidad sin convertir —
+    //   exactamente el bug: elegir "u" después de agregarlo daba el valor de 1 gramo.
+    const unidadBase = usaPrecioSugerido
+      ? canonicalUnit(elaborado?.rendimientoUnidad || 'u')
+      : canonicalUnit(item.supplyMedida || elaborado?.rendimientoUnidad || 'u');
     const unidadElegida = canonicalUnit(item.unidad || unidadBase);
-    // Rendimiento en porción/unidad (no un peso/volumen medible directo): si la unidad
-    // elegida acá ES física (gr/kg/ml/lt/oz), hay que pasar por el peso/volumen
-    // equivalente de 1 porción (rendimientoPeso/unidadPeso) — calcPrecioEnUnidad no sabe
-    // nada de eso, solo convierte entre unidades reconocidas (y "porción" no es una).
-    // "porción" y "u" son la MISMA unidad de rendimiento (ver canonicalUnit en helpers.js),
-    // así que esto aplica sin importar con cuál de las dos se cargó el elaborado.
-    const medibles = ['kg', 'gr', 'lt', 'ml', 'l'];
-    if (!medibles.includes(unidadBase) && unidadElegida !== unidadBase && unidadElegida !== 'u') {
-      const pesoEq = Number(elaborado?.rendimientoPeso) || 0;
-      if (pesoEq > 0) {
-        const unidadPesoEq = canonicalUnit(elaborado?.unidadPeso || 'gr');
-        const costoPorUnidadFisica = costoBase / pesoEq;
-        const factor = getConversionFactor(unidadPesoEq, unidadElegida);
-        return (factor > 0 ? costoPorUnidadFisica / factor : costoPorUnidadFisica) * factorMerma;
-      }
+    if (unidadBase === unidadElegida) return costoBase * factorMerma;
+    // Puente vía el peso/volumen equivalente de 1 "unidad de rendimiento" (ej. elaborado
+    // que "rinde 35 u ≈ 500gr c/u"): hace falta cuando se mezcla 'u' con una unidad física
+    // en CUALQUIER dirección (u→gr, gr→u, gr→kg pasando por 'u' en el medio, etc.) —
+    // calcPrecioEnUnidad no sabe nada de esto, solo convierte entre unidades reconocidas
+    // vía tabla fija, y "u" no tiene un factor fijo hacia gr/kg/ml/lt (depende de CADA
+    // elaborado). "porción" y "u" son la misma unidad de rendimiento acá (ver
+    // canonicalUnit en helpers.js), así que esto aplica sin importar con cuál de las dos
+    // se haya cargado el elaborado.
+    const pesoEq = Number(elaborado?.rendimientoPeso) || 0;
+    if (pesoEq > 0 && (unidadBase === 'u' || unidadElegida === 'u')) {
+      const unidadPesoEq = canonicalUnit(elaborado?.unidadPeso || 'gr');
+      // 1) costoBase → costo por 1 unidadPesoEq (ej. $/gr)
+      const costoPorUnidadPeso = unidadBase === 'u'
+        ? costoBase / pesoEq
+        : costoBase / (getConversionFactor(unidadBase, unidadPesoEq) || 1);
+      // 2) costo por unidadPesoEq → costo en la unidad elegida
+      if (unidadElegida === 'u') return (costoPorUnidadPeso * pesoEq) * factorMerma;
+      const factor2 = getConversionFactor(unidadPesoEq, unidadElegida);
+      return (factor2 > 0 ? costoPorUnidadPeso / factor2 : costoPorUnidadPeso) * factorMerma;
     }
     return calcPrecioEnUnidad(costoBase, unidadBase, unidadElegida) * factorMerma;
   }

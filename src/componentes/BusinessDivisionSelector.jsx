@@ -321,10 +321,12 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
           color: 'var(--on-primary)', textTransform: 'none', fontWeight: 700,
           border: '1px solid color-mix(in srgb, var(--on-primary) 22%, transparent)',
           px: 1.25, gap: 0.5,
-          '&:focus-visible': {
-            outline: '2px solid color-mix(in srgb, var(--on-primary) 65%, transparent)',
-            outlineOffset: 2,
-          },
+          // Sin anillo de foco propio acá: el botón ya tiene borde + hover + abre un
+          // desplegable al clickear, feedback de sobra sin necesidad de un contorno
+          // adicional — que además podía aparecer en producción incluso con un simple
+          // clic de mouse (heurística de :focus-visible del navegador, no siempre 100%
+          // consistente entre dev y prod).
+          '&:focus, &:focus-visible': { outline: 'none' },
         }}
         endIcon={<ExpandMoreIcon />}
       >
