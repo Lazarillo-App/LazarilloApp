@@ -8,10 +8,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { insumosList } from '@/servicios/apiInsumos';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { obtenerAgrupaciones } from '@/servicios/apiAgrupaciones';
 
 export function useGlobalSearchOptions(bizId, insumosBizId = null) {
   const [articulos, setArticulos] = useState([]);
   const [insumos, setInsumos] = useState([]);
+  // IDs de artículos que son miembros de la agrupación "Promociones" — no solo los
+  // wrappers de id negativo (crearPromocion), sino cualquier artículo normal que el
+  // usuario haya sumado a mano a ese grupo. Ambos deben verse etiquetados.
+  const [promoMemberIds, setPromoMemberIds] = useState(() => new Set());
   const [loading, setLoading] = useState(false);
   // No usa React Query — es estado propio, así que sin esto solo se refrescaba si
   // cambiaba bizId (crear/editar un artículo o insumo no lo hacía, quedando el
@@ -62,6 +67,28 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
     return () => { alive = false; };
   }, [bizId, insumosBizId, refreshTick]);
 
+  useEffect(() => {
+    if (!bizId) { setPromoMemberIds(new Set()); return; }
+    let alive = true;
+    obtenerAgrupaciones(bizId).then(({ list }) => {
+      if (!alive) return;
+      const promoGroup = (list || []).find(g => String(g?.nombre || '').trim().toLowerCase() === 'promociones');
+      const ids = new Set();
+      if (promoGroup) {
+        for (const a of (promoGroup.articulos || [])) {
+          const id = Number(a?.id ?? a?.articulo_id ?? a);
+          if (Number.isFinite(id)) ids.add(id);
+        }
+        for (const id of (promoGroup.app_articles_ids || [])) {
+          const n = Number(id);
+          if (Number.isFinite(n)) ids.add(n);
+        }
+      }
+      setPromoMemberIds(ids);
+    }).catch(() => { if (alive) setPromoMemberIds(new Set()); });
+    return () => { alive = false; };
+  }, [bizId, refreshTick]);
+
   const opciones = useMemo(() => {
     const out = [];
     const seen = new Set();
@@ -84,7 +111,7 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
         // Artículo-promo (wrapper): siempre id negativo (ver crearPromocion en el
         // backend). Suele compartir nombre con el artículo real que la compone, así
         // que el buscador necesita distinguirlas con una etiqueta — ver Buscador.jsx.
-        esPromo: id < 0,
+        esPromo: id < 0 || promoMemberIds.has(id),
         _key: key,
       });
     }
@@ -109,7 +136,7 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
     }
 
     return out;
-  }, [articulos, insumos]);
+  }, [articulos, insumos, promoMemberIds]);
 
   return { opciones, loading };
 }

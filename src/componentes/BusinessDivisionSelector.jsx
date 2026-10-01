@@ -319,9 +319,9 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         onClick={handleOpen}
         sx={{
           color: 'var(--on-primary)', textTransform: 'none', fontWeight: 700,
-          border: '1px solid color-mix(in srgb, var(--on-primary) 22%, transparent)',
+          border: 'none',
           px: 1.25, gap: 0.5,
-          // Sin anillo de foco propio acá: el botón ya tiene borde + hover + abre un
+          // Sin anillo de foco propio acá: el botón ya tiene hover + abre un
           // desplegable al clickear, feedback de sobra sin necesidad de un contorno
           // adicional — que además podía aparecer en producción incluso con un simple
           // clic de mouse (heurística de :focus-visible del navegador, no siempre 100%
