@@ -122,7 +122,9 @@ export default function UploadInsumosRubrosModal({ open, onClose, businessId, on
       if (data.ok || res.ok) {
         setProgress({ inserted: data.inserted ?? 0, updated: data.updated ?? 0, total: data.total ?? 0 });
         setStep('done');
-        window.dispatchEvent(new Event('insumos:recargar'));
+        // insumos:recargar no tiene listeners (evento muerto) — insumos:updated
+        // sí lo escuchan la tabla de Insumos y el buscador global.
+        window.dispatchEvent(new CustomEvent('insumos:updated'));
       } else {
         throw new Error(data.error || 'Error al importar');
       }

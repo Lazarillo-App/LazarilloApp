@@ -16,7 +16,7 @@ import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
-import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem } from '@mui/material';
+import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem, Divider } from '@mui/material';
 import { emitUiAction } from '../servicios/uiEvents';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
@@ -25,7 +25,8 @@ import { useSalesData, getVentasFromMap } from '../hooks/useSalesData';
 import { useFirstDate } from '../hooks/useFirstDate';
 import UploadCSVModal from '../componentes/UploadCSVModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
-import { ArticuloNuevoModal } from '../componentes/configuracion/ABMModals';
+import UploadInsumosModal from '../componentes/UploadInsumosModal';
+import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import Buscador from '@/componentes/Buscador';
 import SubBusinessCreateModal from '../componentes/SubBusinessCreateModal';
 import ReactDOM from 'react-dom';
@@ -179,6 +180,10 @@ export default function ArticulosMain(props) {
   const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
   const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
   const [uploadArticulosMode, setUploadArticulosMode] = useState('articulos'); // 'articulos' | 'rubros'
+  // Botón "+ Agregar" unificado: desde Menú también se puede crear/cargar
+  // insumos directo, sin tener que ir a la pantalla de Insumos primero.
+  const [agregarInsumoOpen, setAgregarInsumoOpen] = useState(false);
+  const [uploadInsumosOpen, setUploadInsumosOpen] = useState(false);
   const [subBizModalOpen, setSubBizModalOpen] = useState(false);
   const [groupForSubBiz, setGroupForSubBiz] = useState(null);
   const [alertaVentas, setAlertaVentas] = useState(null);
@@ -2635,7 +2640,16 @@ export default function ArticulosMain(props) {
               </MenuItem>
               <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('articulos'); setUploadArticulosOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>📦</span> Cargar lote de Artículos
+                <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
+              </MenuItem>
+              <Divider />
+              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setAgregarInsumoOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
+                <span style={{ fontSize: 16 }}>🧂</span> Un insumo
+              </MenuItem>
+              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
+                <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
               </MenuItem>
             </Menu>
           </div>
@@ -2886,6 +2900,25 @@ export default function ArticulosMain(props) {
         onClose={() => setUploadArticulosOpen(false)}
         businessId={activeBusinessId}
         initialMode={uploadArticulosMode}
+      />
+
+      {/* ── Botón "+ Agregar" unificado: crear/cargar insumos sin salir de Menú ── */}
+      <InsumoNuevoModal
+        open={agregarInsumoOpen}
+        onClose={() => setAgregarInsumoOpen(false)}
+        businessId={activeBusinessId}
+        onCreated={() => {
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+        }}
+      />
+      <UploadInsumosModal
+        open={uploadInsumosOpen}
+        onClose={() => setUploadInsumosOpen(false)}
+        businessId={activeBusinessId}
+        onSuccess={() => {
+          setUploadInsumosOpen(false);
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+        }}
       />
 
       <UploadCSVModal

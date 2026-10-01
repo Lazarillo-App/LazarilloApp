@@ -36,7 +36,7 @@ import {
 } from '../servicios/notifyGroupActions';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
-import { Snackbar, Alert, Menu, MenuItem, Button, CircularProgress, Tooltip } from '@mui/material';
+import { Snackbar, Alert, Menu, MenuItem, Button, CircularProgress, Tooltip, Divider } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -54,7 +54,8 @@ import { useInsumoLists } from '@/hooks/useInsumoLists';
 import { useBranch } from '@/hooks/useBranch';
 import { BASE } from '@/servicios/apiBase';
 import RecetaModal from '../componentes/RecetaModal';
-import { InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
+import { InsumoNuevoModal, ArticuloNuevoModal } from '../componentes/configuracion/ABMModals';
+import UploadArticulosModal from '../componentes/UploadArticulosModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -302,6 +303,10 @@ export default function InsumosMain() {
   const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
   const [nuevoInsumoOpen, setNuevoInsumoOpen] = useState(false);
+  // Botón "+ Agregar" unificado: desde Insumos también se puede crear/cargar
+  // artículos directo, sin tener que ir a la pantalla de Menú primero.
+  const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
+  const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
 
   usePersistUiActions(businessId);
 
@@ -1505,13 +1510,26 @@ export default function InsumosMain() {
                 onClick={() => { setAgregarMenuAnchor(null); setNuevoInsumoOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
               >
-                <span style={{ fontSize: 16 }}>➕</span> Nuevo insumo
+                <span style={{ fontSize: 16 }}>🧂</span> Un insumo
               </MenuItem>
               <MenuItem
                 onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
                 sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
               >
-                <span style={{ fontSize: 16 }}>📦</span> Carga masiva (CSV)
+                <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
+              </MenuItem>
+              <Divider />
+              <MenuItem
+                onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+              >
+                <span style={{ fontSize: 16 }}>📄</span> Un artículo
+              </MenuItem>
+              <MenuItem
+                onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosOpen(true); }}
+                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+              >
+                <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
               </MenuItem>
             </Menu>
           </div>
@@ -1627,14 +1645,21 @@ export default function InsumosMain() {
         open={uploadInsumosOpen}
         onClose={() => setUploadInsumosOpen(false)}
         businessId={resolvedBizId}
-        onSuccess={() => { setUploadInsumosOpen(false); window.dispatchEvent(new Event('insumos:recargar')); }}
+        onSuccess={() => {
+          setUploadInsumosOpen(false);
+          forceRefresh();
+          // insumos:recargar no tiene NINGÚN listener en toda la app (evento
+          // muerto) — ni esta misma tabla ni el buscador global se enteraban
+          // de una carga masiva. insumos:updated sí lo escuchan ambos.
+          window.dispatchEvent(new CustomEvent('insumos:updated'));
+        }}
       />
 
       <UploadInsumosRubrosModal
         open={uploadRubrosOpen}
         onClose={() => setUploadRubrosOpen(false)}
         businessId={resolvedBizId}
-        onSuccess={() => window.dispatchEvent(new Event('insumos:recargar'))}
+        onSuccess={() => { forceRefresh(); window.dispatchEvent(new CustomEvent('insumos:updated')); }}
       />
 
       <UploadComprasModal
@@ -1669,6 +1694,22 @@ export default function InsumosMain() {
           // hay un insumo nuevo hasta recargar la página.
           window.dispatchEvent(new CustomEvent('insumos:updated'));
         }}
+      />
+
+      {/* ── Botón "+ Agregar" unificado: crear/cargar artículos sin salir de Insumos ── */}
+      <ArticuloNuevoModal
+        open={agregarArticuloOpen}
+        onClose={() => setAgregarArticuloOpen(false)}
+        businessId={businessId}
+        onCreated={() => {
+          window.dispatchEvent(new CustomEvent('articulos:updated'));
+          window.dispatchEvent(new Event('business:synced'));
+        }}
+      />
+      <UploadArticulosModal
+        open={uploadArticulosOpen}
+        onClose={() => setUploadArticulosOpen(false)}
+        businessId={businessId}
       />
 
       {recetaInsumoModal && (
