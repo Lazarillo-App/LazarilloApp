@@ -69,6 +69,12 @@ export const UNIT_ALIASES = {
   // unidad → u
   u: 'u', un: 'u', uni: 'u', unid: 'u', unidad: 'u', unidades: 'u', und: 'u',
   doc: 'u', docena: 'u',
+  // porción → u: para quien carga el rendimiento de un elaborado, "porción" y "unidad"
+  // son el mismo concepto (1 porción = 1 unidad de ese rendimiento) — se mantienen como
+  // opciones separadas en el Select por comodidad (cada quien piensa distinto), pero acá
+  // se tratan como una sola unidad para que el costo/conversión no dependa de cuál haya
+  // elegido quien cargó la receta.
+  porcion: 'u', porciones: 'u', 'porción': 'u', 'porciónes': 'u',
   // volumen → oz (onza FLUIDA, no de peso — ver getConversionFactor/isCompatibleUnits)
   oz: 'oz', onza: 'oz', onzas: 'oz',
   // peso → lb
@@ -176,7 +182,7 @@ export function isCompatibleUnits(a, b) {
   // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en PESO.
   const PESO = new Set(['gr', 'gramo', 'gramos', 'g', 'k', 'kg', 'kilo', 'kilos', 'kilogramo', 'lb']);
   const VOLUM = new Set(['ml', 'cc', 'lt', 'l', 'litro', 'litros', 'oz']);
-  const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena']);
+  const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena', 'porcion', 'porciones', 'porción', 'porciónes']);
   const na = normUnit(a), nb = normUnit(b);
   if (na === nb) return true;
   if (PESO.has(na) && PESO.has(nb)) return true;

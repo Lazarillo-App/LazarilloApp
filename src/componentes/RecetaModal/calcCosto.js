@@ -107,6 +107,22 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
       : (Number(item.precioRefDB) || 0);
     const unidadBase = canonicalUnit(elaborado?.rendimientoUnidad || item.supplyMedida || 'u');
     const unidadElegida = canonicalUnit(item.unidad || unidadBase);
+    // Rendimiento en porción/unidad (no un peso/volumen medible directo): si la unidad
+    // elegida acá ES física (gr/kg/ml/lt/oz), hay que pasar por el peso/volumen
+    // equivalente de 1 porción (rendimientoPeso/unidadPeso) — calcPrecioEnUnidad no sabe
+    // nada de eso, solo convierte entre unidades reconocidas (y "porción" no es una).
+    // "porción" y "u" son la MISMA unidad de rendimiento (ver canonicalUnit en helpers.js),
+    // así que esto aplica sin importar con cuál de las dos se cargó el elaborado.
+    const medibles = ['kg', 'gr', 'lt', 'ml', 'l'];
+    if (!medibles.includes(unidadBase) && unidadElegida !== unidadBase && unidadElegida !== 'u') {
+      const pesoEq = Number(elaborado?.rendimientoPeso) || 0;
+      if (pesoEq > 0) {
+        const unidadPesoEq = canonicalUnit(elaborado?.unidadPeso || 'gr');
+        const costoPorUnidadFisica = costoBase / pesoEq;
+        const factor = getConversionFactor(unidadPesoEq, unidadElegida);
+        return (factor > 0 ? costoPorUnidadFisica / factor : costoPorUnidadFisica) * factorMerma;
+      }
+    }
     return calcPrecioEnUnidad(costoBase, unidadBase, unidadElegida) * factorMerma;
   }
 
