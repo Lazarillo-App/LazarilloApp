@@ -20,6 +20,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import BusinessIcon from '@mui/icons-material/Business';
 import HistoryIcon from '@mui/icons-material/History';
 import GroupsIcon from '@mui/icons-material/Groups';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
@@ -45,6 +46,7 @@ import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab'
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
 import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
 import SectoresTab from '../componentes/configuracion/SectoresTab';
+import AprobacionesTab from '../componentes/configuracion/AprobacionesTab';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
@@ -445,6 +447,9 @@ export default function ConfiguracionMain() {
             {puedeGestionarNegocio && (
               <Tab icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
             )}
+            {puedeGestionarNegocio && (
+              <Tab icon={<FactCheckIcon fontSize="small" />} iconPosition="start" label="Aprobaciones" />
+            )}
           </Tabs>
 
           {/* TAB 0 — ARTÍCULOS Y VENTAS */}
@@ -705,6 +710,13 @@ export default function ConfiguracionMain() {
           {puedeGestionarNegocio && (
             <TabPanel value={tab} index={5}>
               <SectoresTab businessId={businessId} themeColor={themeColor} />
+            </TabPanel>
+          )}
+
+          {/* TAB 6 — APROBACIONES (owner/admin) — Vista Operación, Fase 3 */}
+          {puedeGestionarNegocio && (
+            <TabPanel value={tab} index={6}>
+              <AprobacionesTab businessId={businessId} />
             </TabPanel>
           )}
         </>

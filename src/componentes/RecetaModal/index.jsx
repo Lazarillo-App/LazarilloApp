@@ -168,6 +168,10 @@ export default function RecetaModal({
   const [insumosLoading, setInsumosLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  // Vista Operación, Fase 3: cuando quien guarda es Staff, el backend no
+  // aplica el cambio — lo deja como propuesta a revisión. Mensaje distinto
+  // al de "guardado" para que quede claro que no se tocó la receta real.
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   // Sub-modales
   const [notasModalOpen, setNotasModalOpen] = useState(false);
@@ -1168,6 +1172,7 @@ export default function RecetaModal({
 
   const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
     setError('');
+    setPendingApproval(false);
 
     // Sin cambios reales desde la última carga/guardado: no hay nada que mandar al
     // backend. keepOpen (autoSave/flechas) → no-op total. Si no, cerrar como si
@@ -1363,6 +1368,17 @@ export default function RecetaModal({
         throw new Error(d?.message || d?.error || `Error ${res.status}`);
       }
       const json = await res.json();
+
+      // Staff: no se aplicó nada, queda como propuesta — cortar acá antes de
+      // cualquier efecto secundario (renombrar, mover a Promociones, etc.) que
+      // asume que la receta real cambió.
+      if (json?.pending) {
+        setPendingApproval(true);
+        setSaving(false);
+        if (!keepOpen) setTimeout(() => onClose?.(), 1800);
+        return;
+      }
+
       const saved = json?.receta ?? json;
       setReceta(saved);
       setSuccess(true);
@@ -2778,6 +2794,11 @@ export default function RecetaModal({
 
                   {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
                   {success && <Alert severity="success" sx={{ mb: 1.5 }}>¡Receta guardada!</Alert>}
+                  {pendingApproval && (
+                    <Alert severity="info" sx={{ mb: 1.5 }}>
+                      Enviado a revisión — un admin lo tiene que aprobar antes de que se aplique.
+                    </Alert>
+                  )}
                 </>
               );
             })()}
