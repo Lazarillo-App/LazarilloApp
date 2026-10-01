@@ -1588,6 +1588,7 @@ export default function ArticulosMain(props) {
         if (groupsSet.size > 0) {
           let discGroupId = null;
           let todoGroupIdFound = null;
+          let promoGroupIdFound = null;
           let realGroupId = null;
 
           for (const gid of groupsSet) {
@@ -1599,13 +1600,19 @@ export default function ArticulosMain(props) {
               discGroupId = n;
             } else if (nombre === 'sin agrupacion') {
               todoGroupIdFound = n;
+            } else if (nombre === 'promociones') {
+              // Un artículo que es componente de una promo sigue viviendo en su
+              // agrupación de origen — buscar SU nombre debe llevar ahí, no a
+              // Promociones (para eso se busca el nombre de la promo).
+              promoGroupIdFound = n;
             } else {
               realGroupId = n; // guardar pero no romper el loop
             }
           }
 
-          // Discontinuados tiene MÁXIMA prioridad
-          targetGroupId = discGroupId ?? realGroupId ?? todoGroupIdFound ?? Number([...groupsSet][0]);
+          // Discontinuados tiene MÁXIMA prioridad; Promociones queda como
+          // último recurso, debajo incluso de "Sin agrupación".
+          targetGroupId = discGroupId ?? realGroupId ?? todoGroupIdFound ?? promoGroupIdFound ?? Number([...groupsSet][0]);
         } else if (alreadyVisible) {
           targetGroupId = agrupacionSeleccionada?.id ?? null;
         } else if (Number.isFinite(Number(todoInfo?.todoGroupId))) {

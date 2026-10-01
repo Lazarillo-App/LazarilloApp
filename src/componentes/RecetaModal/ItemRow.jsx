@@ -71,15 +71,18 @@ export default function ItemRow({
 
   const wasAutoOpened = useRef(autoOpenSearch && !item.supplyId && !item.articleRefId);
 
-  // Si el search se cierra y no hay insumo seleccionado, eliminar la fila
+  // Si el search se cierra y no hay insumo seleccionado, eliminar la fila —
+  // pero no mientras esté abierto el modal de "Crear insumo nuevo": ese es
+  // una continuación del mismo flujo (el usuario está definiendo el insumo
+  // que después va a quedar seleccionado), no un abandono de la búsqueda.
   useEffect(() => {
-    if (!searchOpen && wasAutoOpened.current && !item.supplyId && !item.articleRefId) {
+    if (!searchOpen && !crearInsumoOpen && wasAutoOpened.current && !item.supplyId && !item.articleRefId) {
       onRemove(index);
     }
     if (item.supplyId || item.articleRefId) {
       wasAutoOpened.current = false;
     }
-  }, [searchOpen, item.supplyId, item.articleRefId, index, onRemove]);
+  }, [searchOpen, crearInsumoOpen, item.supplyId, item.articleRefId, index, onRemove]);
 
   useEffect(() => {
     if (autoOpenSearch) {
@@ -91,9 +94,15 @@ export default function ItemRow({
   useEffect(() => {
     if (!searchOpen) return;
     const handleClickOutside = (e) => {
-      // Ignorar clicks en el dropdown o trigger de búsqueda
+      // Ignorar clicks en el dropdown o trigger de búsqueda, y también
+      // cualquier click dentro de un Dialog/Modal abierto encima (ej. el de
+      // "Crear insumo nuevo" con el checkbox de padrino) — ese modal se
+      // porta fuera de este árbol del DOM, así que sin este chequeo un click
+      // ahí se tomaba como "afuera", cerraba el search y (ver el efecto de
+      // abajo) terminaba borrando toda la fila con el modal adentro.
       if (e.target.closest('[data-search-dropdown]') ||
-        e.target.closest('[data-search-trigger]')) return;
+        e.target.closest('[data-search-trigger]') ||
+        e.target.closest('.MuiDialog-root, .MuiModal-root')) return;
       onSearchClose();
     };
     document.addEventListener('mousedown', handleClickOutside);
