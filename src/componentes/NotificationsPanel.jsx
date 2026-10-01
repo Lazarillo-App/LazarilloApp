@@ -409,8 +409,13 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     setUiNotifs((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
   }, [markAsRead, navigate]);
 
+  // Marca TODO como leído: las locales (uiNotifs, guardadas en localStorage) y las
+  // del backend (pedidos de acceso, sync, etc.) — antes solo tocaba las locales, así
+  // que las del backend (el grueso del "99+" cuando hay notificaciones viejas que se
+  // acumularon) nunca se limpiaban con este botón.
   const markAllUiAsRead = () => {
     setUiNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (unreadCount > 0) markAllAsRead();
   };
 
   // Countdown para notificaciones de objetivo_update (2 minutos)
@@ -482,7 +487,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
             </IconButton>
           </div>
 
-          {unreadUiCount > 0 && (
+          {badgeCount > 0 && (
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
               <Button
                 size="small"
@@ -490,7 +495,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                 onClick={markAllUiAsRead}
                 variant="outlined"
               >
-                Marcar como leídas ({unreadUiCount})
+                Marcar como leídas ({badgeCount})
               </Button>
             </Box>
           )}
