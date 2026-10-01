@@ -1,13 +1,12 @@
 // src/componentes/configuracion/AprobacionesTab.jsx
-// Vista Operación — Fase 3: bandeja de aprobación de recetas propuestas por Staff.
-// Ningún cambio de un Staff pisa la receta real hasta que se aprueba acá (el
-// backend ya lo garantiza — esto es la pantalla para decidir).
+// Vista Operación — Fase 3: "La bandeja del administrador". Ningún cambio de
+// un Staff pisa la receta real hasta que se aprueba acá (el backend ya lo
+// garantiza — esto es la pantalla para decidir).
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Box, Stack, Typography, Button, CircularProgress, Chip, Divider,
+  Box, Stack, Typography, Button, CircularProgress, Chip, Avatar,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
-import FactCheckIcon from '@mui/icons-material/FactCheck';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import EditNoteIcon from '@mui/icons-material/EditNote';
@@ -16,59 +15,22 @@ import {
 } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
 
-function Card({ children }) {
-  return (
-    <Box sx={{ borderRadius: 2.5, overflow: 'hidden', border: '1px solid #e8eaf0', bgcolor: 'background.paper' }}>
-      {children}
-    </Box>
-  );
-}
-function CardHeader({ icon, title, subtitle }) {
-  const tc = 'var(--color-primary, #3b82f6)';
-  return (
-    <Box sx={{ px: 2.5, py: 1.75, borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 1.25 }}>
-      {icon && React.cloneElement(icon, { sx: { color: tc, fontSize: 17 } })}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography fontWeight={700} sx={{ fontSize: '0.85rem', lineHeight: 1.2 }}>{title}</Typography>
-        {subtitle && <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.73rem' }}>{subtitle}</Typography>}
-      </Box>
-    </Box>
-  );
-}
-
-const fmt = (v) => {
+const fmtNum = (v) => {
   if (v == null || v === '') return '—';
   if (typeof v === 'number') return v.toLocaleString('es-AR', { maximumFractionDigits: 2 });
   return String(v);
 };
+const fmtMoney = (v) => v == null ? '—' : `$ ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const CAMPOS_LABEL = {
-  nombre: 'Nombre',
-  porciones: 'Rendimiento',
-  porcentajeVenta: 'Objetivo %',
-  notas: 'Notas',
-  metodoCoccion: 'Método de cocción',
-  temperatura: 'Temperatura',
-  tiempoMin: 'Tiempo (min)',
-};
-
-function ScalarDiff({ before, after }) {
-  const b = before || {};
-  const a = after || {};
-  const campos = Object.keys(CAMPOS_LABEL).filter(k => String(b[k] ?? '') !== String(a[k] ?? '') && (b[k] != null || a[k] != null));
-  if (!campos.length) return null;
-  return (
-    <Stack spacing={0.5} sx={{ mb: 1.5 }}>
-      {campos.map(k => (
-        <Stack key={k} direction="row" spacing={1} alignItems="baseline">
-          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 130, flexShrink: 0 }}>{CAMPOS_LABEL[k]}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {before ? <>{fmt(b[k])} → </> : null}<strong>{fmt(a[k])}</strong>
-          </Typography>
-        </Stack>
-      ))}
-    </Stack>
-  );
+function fmtRelativo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const diffMs = Date.now() - d.getTime();
+  const horas = diffMs / 3_600_000;
+  if (horas < 1) return 'hace un momento';
+  if (horas < 24) return `hace ${Math.floor(horas)} h`;
+  if (horas < 48) return 'ayer';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
 function itemKey(it) {
@@ -76,56 +38,86 @@ function itemKey(it) {
   if (Number.isFinite(ref) && ref !== 0) return `art-${ref}`;
   return `ins-${Number(it?.supplyId ?? it?.supply_id)}`;
 }
-function itemNombre(it) {
-  return it?.supplyNombre || it?.supply_nombre || '(sin nombre)';
-}
-function itemCantUnidad(it) {
-  return `${fmt(it?.cantidad)} ${it?.unidad || ''}`.trim();
+const itemNombre = (it) => it?.supplyNombre || it?.supply_nombre || '(sin nombre)';
+const itemCantUnidad = (it) => `${fmtNum(it?.cantidad)} ${it?.unidad || ''}`.trim();
+
+function DiffRow({ label, before, after, isNew, strong }) {
+  return (
+    <Box sx={{
+      display: 'grid',
+      gridTemplateColumns: isNew ? '1fr auto' : '1fr auto auto',
+      gap: 2, alignItems: 'center',
+      px: 1.5, py: 1,
+      '&:nth-of-type(odd)': { bgcolor: '#fdf6ee' },
+    }}>
+      <Typography fontWeight={strong ? 700 : 400} fontSize="0.85rem" color={strong ? 'text.primary' : 'text.secondary'}>
+        {label}
+      </Typography>
+      {!isNew && (
+        <Typography fontSize="0.85rem" color="text.disabled" sx={{ textDecoration: before != null ? 'line-through' : 'none', textAlign: 'right' }}>
+          {before ?? '—'}
+        </Typography>
+      )}
+      <Typography fontWeight={700} fontSize="0.85rem" color="success.main" sx={{ textAlign: 'right' }}>
+        {after}
+      </Typography>
+    </Box>
+  );
 }
 
-function ItemsDiff({ before, after }) {
+function ProposalDiff({ proposal }) {
+  const before = proposal.payload_before;
+  const after = proposal.payload_after;
+  const esNueva = !before;
+
   const beforeItems = Array.isArray(before?.items) ? before.items : [];
   const afterItems = Array.isArray(after?.items) ? after.items : [];
   const beforeMap = new Map(beforeItems.map(it => [itemKey(it), it]));
   const afterMap = new Map(afterItems.map(it => [itemKey(it), it]));
   const keys = Array.from(new Set([...beforeMap.keys(), ...afterMap.keys()]));
 
-  if (!keys.length) return <Typography variant="caption" color="text.secondary">Sin ingredientes.</Typography>;
+  const unidadCosto = proposal.costo_despues?.unidad || proposal.costo_antes?.unidad || 'u';
 
   return (
-    <Stack spacing={0.5}>
+    <Box sx={{ border: '1px solid #eee', borderRadius: 1.5, overflow: 'hidden', mt: 1 }}>
+      <Box sx={{
+        display: 'grid', gridTemplateColumns: esNueva ? '1fr auto' : '1fr auto auto',
+        gap: 2, px: 1.5, py: 0.75, bgcolor: '#fafafa', borderBottom: '1px solid #eee',
+      }}>
+        <Typography variant="caption" fontWeight={700} color="text.secondary">INGREDIENTE</Typography>
+        {!esNueva && <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textAlign: 'right' }}>ANTES</Typography>}
+        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textAlign: 'right' }}>
+          {esNueva ? 'CANTIDAD' : 'PROPUESTO'}
+        </Typography>
+      </Box>
+
       {keys.map(key => {
         const b = beforeMap.get(key);
         const a = afterMap.get(key);
+        const nombre = itemNombre(a || b);
         if (b && !a) {
-          return (
-            <Stack key={key} direction="row" spacing={1}>
-              <Chip size="small" label="quitado" color="error" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-              <Typography variant="caption" sx={{ textDecoration: 'line-through' }} color="text.secondary">
-                {itemNombre(b)} · {itemCantUnidad(b)}
-              </Typography>
-            </Stack>
-          );
+          return <DiffRow key={key} label={`${nombre} (quitado)`} before={itemCantUnidad(b)} after="—" isNew={esNueva} />;
         }
-        if (!b && a) {
-          return (
-            <Stack key={key} direction="row" spacing={1}>
-              <Chip size="small" label="nuevo" color="success" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-              <Typography variant="caption">{itemNombre(a)} · {itemCantUnidad(a)}</Typography>
-            </Stack>
-          );
-        }
-        const cambio = itemCantUnidad(b) !== itemCantUnidad(a);
         return (
-          <Stack key={key} direction="row" spacing={1}>
-            {cambio && <Chip size="small" label="cambiado" color="warning" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />}
-            <Typography variant="caption">
-              {itemNombre(a)} · {cambio ? <>{itemCantUnidad(b)} → <strong>{itemCantUnidad(a)}</strong></> : itemCantUnidad(a)}
-            </Typography>
-          </Stack>
+          <DiffRow
+            key={key}
+            label={nombre}
+            before={b ? itemCantUnidad(b) : null}
+            after={itemCantUnidad(a)}
+            isNew={esNueva}
+          />
         );
       })}
-    </Stack>
+
+      {!esNueva && proposal.costo_despues && (
+        <DiffRow
+          label="Costo del elaborado"
+          before={proposal.costo_antes ? `${fmtMoney(proposal.costo_antes.porUnidad)}/${unidadCosto}` : null}
+          after={`${fmtMoney(proposal.costo_despues.porUnidad)}/${unidadCosto}`}
+          strong
+        />
+      )}
+    </Box>
   );
 }
 
@@ -134,95 +126,91 @@ function ProposalCard({ proposal, onDecided }) {
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionComment, setRevisionComment] = useState('');
 
+  const esNueva = !proposal.payload_before;
   const nombreDestino = proposal.payload_after?.nombre || proposal.receta_nombre_actual || `#${proposal.article_id || proposal.insumo_id}`;
-  const fecha = proposal.created_at ? new Date(proposal.created_at).toLocaleString('es-AR', {
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-  }) : '';
+  const proponente = proposal.created_by_name || proposal.created_by_email || 'Alguien del equipo';
+  const inicial = proponente.trim().charAt(0).toUpperCase() || '?';
 
-  const handleAprobar = async () => {
+  const subtitulo = [
+    proponente,
+    proposal.sector_nombre ? `sector ${proposal.sector_nombre}` : null,
+    fmtRelativo(proposal.created_at),
+  ].filter(Boolean).join(' · ');
+
+  const runAction = async (fn, successMsg) => {
     setBusy(true);
     try {
-      await aprobarPropuesta(proposal.business_id, proposal.id);
-      showAlert('Propuesta aprobada y aplicada');
+      await fn();
+      showAlert(successMsg);
       onDecided(proposal.id);
+      return true;
     } catch (e) {
-      showAlert(e?.message || 'Error aprobando la propuesta', 'error');
+      showAlert(e?.message || 'Error', 'error');
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const handleRechazar = async () => {
-    setBusy(true);
-    try {
-      await rechazarPropuesta(proposal.business_id, proposal.id);
-      showAlert('Propuesta rechazada');
-      onDecided(proposal.id);
-    } catch (e) {
-      showAlert(e?.message || 'Error rechazando la propuesta', 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
+  const handleAprobar = () => runAction(
+    () => aprobarPropuesta(proposal.business_id, proposal.id),
+    'Propuesta aprobada y aplicada',
+  );
+  const handleRechazar = () => runAction(
+    () => rechazarPropuesta(proposal.business_id, proposal.id),
+    'Propuesta rechazada',
+  );
   const handlePedirRevision = async () => {
     if (!revisionComment.trim()) return;
-    setBusy(true);
-    try {
-      await pedirRevisionPropuesta(proposal.business_id, proposal.id, revisionComment.trim());
-      showAlert('Se pidió revisión');
-      setRevisionOpen(false);
-      setRevisionComment('');
-      onDecided(proposal.id);
-    } catch (e) {
-      showAlert(e?.message || 'Error pidiendo revisión', 'error');
-    } finally {
-      setBusy(false);
-    }
+    const ok = await runAction(
+      () => pedirRevisionPropuesta(proposal.business_id, proposal.id, revisionComment.trim()),
+      'Se pidió revisión',
+    );
+    if (ok) { setRevisionOpen(false); setRevisionComment(''); }
   };
 
   return (
-    <Box sx={{ border: '1px solid #eee', borderRadius: 2, p: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
-        <Box>
-          <Typography fontWeight={700} fontSize="0.92rem">{nombreDestino}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            Propuesto por {proposal.created_by_name || proposal.created_by_email || 'alguien del equipo'} · {fecha}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={0.5} alignItems="center">
-          {proposal.status === 'in_revision' && (
-            <Chip size="small" label="a revisión" color="warning" sx={{ height: 22 }} />
-          )}
-          {proposal.concurrentes > 1 && (
-            <Chip size="small" label={`${proposal.concurrentes} propuestas abiertas`} color="default" sx={{ height: 22 }} />
-          )}
+    <Box sx={{ border: '1px solid #eee', borderRadius: 2, p: 2, bgcolor: 'background.paper' }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+        <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ minWidth: 0 }}>
+          <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: '#e8e8e8', color: 'text.secondary' }}>
+            {inicial}
+          </Avatar>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography fontWeight={700} fontSize="0.95rem">
+              {nombreDestino} — {esNueva ? 'receta nueva' : 'cambio en la receta'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">{subtitulo}</Typography>
+            {proposal.status === 'in_revision' && proposal.admin_comment && (
+              <Typography variant="caption" sx={{ display: 'block', fontStyle: 'italic' }} color="warning.main">
+                Tu comentario: "{proposal.admin_comment}"
+              </Typography>
+            )}
+          </Box>
+        </Stack>
+        <Stack direction="row" spacing={1} flexShrink={0}>
+          <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
+            Aprobar
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<EditNoteIcon />} disabled={busy} onClick={() => setRevisionOpen(true)}>
+            A revisión
+          </Button>
+          <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
+            Rechazar
+          </Button>
         </Stack>
       </Stack>
 
-      {proposal.status === 'in_revision' && proposal.admin_comment && (
-        <Typography variant="caption" sx={{ display: 'block', mb: 1, fontStyle: 'italic' }} color="text.secondary">
-          Tu comentario: "{proposal.admin_comment}"
-        </Typography>
+      <ProposalDiff proposal={proposal} />
+
+      {proposal.concurrentes > 1 && (
+        <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#fff7e6', border: '1px solid #ffe2a8', borderRadius: 1.5 }}>
+          <Typography variant="caption" color="#8a5a00">
+            ⚠ Hay <strong>{proposal.concurrentes} propuestas abiertas</strong> sobre {nombreDestino}, de personas distintas.
+            Al aprobar una, la otra queda pendiente de decisión.
+          </Typography>
+        </Box>
       )}
-
-      <Divider sx={{ my: 1 }} />
-
-      <ScalarDiff before={proposal.payload_before} after={proposal.payload_after} />
-      <ItemsDiff before={proposal.payload_before} after={proposal.payload_after} />
-
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-        <Button size="small" variant="contained" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
-          Aprobar
-        </Button>
-        <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />} disabled={busy}
-          onClick={() => setRevisionOpen(true)}>
-          A revisión
-        </Button>
-        <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
-          Rechazar
-        </Button>
-      </Stack>
 
       <Dialog open={revisionOpen} onClose={() => setRevisionOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Pedir revisión</DialogTitle>
@@ -272,27 +260,40 @@ export default function AprobacionesTab({ businessId }) {
   };
 
   return (
-    <Card>
-      <CardHeader
-        icon={<FactCheckIcon />}
-        title="Aprobaciones"
-        subtitle="Cambios de recetas propuestos por el equipo, pendientes de tu revisión"
-      />
-      <Box sx={{ p: 2.5 }}>
-        {loading ? (
-          <Stack alignItems="center" py={4}><CircularProgress size={28} /></Stack>
-        ) : !proposals.length ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            No hay propuestas pendientes.
-          </Typography>
-        ) : (
-          <Stack spacing={1.5}>
-            {proposals.map(p => (
-              <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} />
-            ))}
-          </Stack>
-        )}
+    <Box>
+      <Typography variant="overline" fontWeight={800} color="success.main" sx={{ letterSpacing: '0.08em' }}>
+        La bandeja del administrador
+      </Typography>
+
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2, mt: 0.5 }}>
+        <Typography fontWeight={700} fontSize="0.9rem" color="text.secondary" sx={{ letterSpacing: '0.04em' }}>
+          APROBACIONES PENDIENTES
+        </Typography>
+        <Chip size="small" label={proposals.length} color={proposals.length ? 'warning' : 'default'} sx={{ fontWeight: 700 }} />
+      </Stack>
+
+      {loading ? (
+        <Stack alignItems="center" py={4}><CircularProgress size={28} /></Stack>
+      ) : !proposals.length ? (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+          No hay propuestas pendientes.
+        </Typography>
+      ) : (
+        <Stack spacing={1.5}>
+          {proposals.map(p => (
+            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} />
+          ))}
+        </Stack>
+      )}
+
+      <Box sx={{ mt: 3, px: 2, py: 1.5, bgcolor: '#f7f7f7', borderRadius: 1.5 }}>
+        <Typography variant="caption" color="text.secondary">
+          El administrador ve qué cambió exactamente, con el valor anterior tachado al lado del propuesto,
+          y el efecto sobre el costo. Hasta que aprueba, la receta vigente sigue siendo la de antes.
+          Tiene tres acciones: <strong>aprobar</strong>, <strong>devolver a revisión</strong> para que se corrija,
+          o <strong>rechazar</strong>. Las dos últimas piden un motivo que le llega a quien propuso el cambio.
+        </Typography>
       </Box>
-    </Card>
+    </Box>
   );
 }
