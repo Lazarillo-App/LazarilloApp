@@ -258,8 +258,16 @@ function ColOrderModal({ open, cols, onSave, onClose }) {
   );
 }
 
+// Vista Staff (Fase 4): columnas fijas, no configurables — código/nombre/ventas
+// ya están siempre fijos fuera de colConfig (ver header/filas más abajo).
+const STAFF_COLS = [
+  { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
+  { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
+];
+
 /* ---------------- componente principal ---------------- */
 export default function TablaArticulos({
+  isStaff = false,
   filtroBusqueda = "",
   agrupacionSeleccionada,
   agrupaciones = [],
@@ -400,6 +408,7 @@ export default function TablaArticulos({
     { id: 'precio', label: 'Precio', width: '.35fr' },
     { id: 'rentabilidad', label: 'Rentabilidad', width: '250px' },
     { id: 'manual', label: 'Nuevo precio', width: '.35fr' },
+    { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr' },
     { id: 'acciones', label: 'Acciones', width: '.2fr' },
   ];
 
@@ -440,6 +449,7 @@ export default function TablaArticulos({
   }, [agrupacionSeleccionada]);
 
   const visibleCols = useMemo(() => {
+    if (isStaff) return STAFF_COLS;
     const cols = colConfig.filter(c => c.visible);
     if (!estaEnPromociones) return cols;
     // Inyectar "$ Sin Promo" justo después de "costo" (o al inicio si no está)
@@ -447,7 +457,7 @@ export default function TablaArticulos({
     const sinPromoCol = { id: 'sinPromo', label: '$ Sin Promo', width: '.35fr', visible: true };
     if (idx === -1) return [sinPromoCol, ...cols];
     return [...cols.slice(0, idx + 1), sinPromoCol, ...cols.slice(idx + 1)];
-  }, [colConfig, estaEnPromociones]);
+  }, [colConfig, estaEnPromociones, isStaff]);
 
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
@@ -2021,6 +2031,16 @@ export default function TablaArticulos({
               );
             }
 
+            case 'ultimaModificacion': {
+              const ts = recetaData?.updatedAt;
+              const fechaFmt = ts ? new Date(ts).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : null;
+              return (
+                <div key="ultimaModificacion" style={{ ...cellNum, color: TABLE_MUTED }}>
+                  {fechaFmt || '—'}
+                </div>
+              );
+            }
+
             case 'rentabilidad':
               return (
                 <div key="rentabilidad" style={{ ...cellNum }}>
@@ -2437,16 +2457,18 @@ export default function TablaArticulos({
             </div>
             <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <input type="checkbox"
-                  checked={selectionMode ? isAllSelected : false}
-                  onChange={() => {
-                    if (!selectionMode) { onToggleMode?.('picking'); return; }
-                    if (isAllSelected) currentVisibleArticleIds.forEach(id => selectedIds.has(id) && onToggleSelected?.(id));
-                    else onSelectAll?.(currentVisibleArticleIds);
-                  }}
-                  title={!selectionMode ? "Seleccionar artículos" : isAllSelected ? "Deseleccionar todos" : "Seleccionar todos"}
-                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }}
-                />
+                {!isStaff && (
+                  <input type="checkbox"
+                    checked={selectionMode ? isAllSelected : false}
+                    onChange={() => {
+                      if (!selectionMode) { onToggleMode?.('picking'); return; }
+                      if (isAllSelected) currentVisibleArticleIds.forEach(id => selectedIds.has(id) && onToggleSelected?.(id));
+                      else onSelectAll?.(currentVisibleArticleIds);
+                    }}
+                    title={!selectionMode ? "Seleccionar artículos" : isAllSelected ? "Deseleccionar todos" : "Seleccionar todos"}
+                    style={{ width: 14, height: 14, cursor: "pointer", accentColor: selectionMode === "link" ? "#7c3aed" : "#0369a1" }}
+                  />
+                )}
               </div>
 
               <div onClick={() => toggleSort("codigo")} className="col-sortable">
@@ -2535,16 +2557,21 @@ export default function TablaArticulos({
                       </div>
                     );
                   }
+                  case 'ultimaModificacion': return (
+                    <div key="ultimaModificacion" style={{ justifyContent: 'flex-start' }}>Últ. modificación</div>
+                  );
                   case 'acciones': return (
                     <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <IconButton
-                        size="small"
-                        onClick={() => setColDlgOpen(true)}
-                        title="Configurar columnas"
-                        sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
-                      >
-                        <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
-                      </IconButton>
+                      {!isStaff && (
+                        <IconButton
+                          size="small"
+                          onClick={() => setColDlgOpen(true)}
+                          title="Configurar columnas"
+                          sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
+                        >
+                          <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
+                        </IconButton>
+                      )}
                     </div>
                   );
                   default: return null;

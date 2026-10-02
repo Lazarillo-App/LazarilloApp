@@ -57,6 +57,7 @@ import { useArticleCostsAndConfig } from '@/hooks/useArticleCostsAndConfig';
 import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import VistaCartaMenu from '../componentes/VistaCartaMenu';
+import { useAccess } from '@/context/AccessContext';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -128,6 +129,8 @@ export default function ArticulosMain(props) {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Vista Operación, Fase 4: columnas/controles restringidos para Staff.
+  const { isStaff } = useAccess() || {};
   const {
     activeDivisionId,
     activeDivisionAgrupacionIds,
@@ -2552,35 +2555,39 @@ export default function ArticulosMain(props) {
             loadingFirst={loadingFirstVentas}
             labelOverride={activeBranchFilter?.mode === 'all' ? '' : null}
           />
-          <VentasActionsMenu
-            rango={rango}
-            onImport={() => setUploadModalOpen(true)}
-            onExport={handleDownloadVentasCsv}
-            disabled={!activeBizId || ventasLoading}
-            allBusinesses={allBusinesses}
-            activeBizId={activeBizId}
-            branches={rawBranches || []}
-            lists={lists}
-            activeListId={activeListId}
-            activeListItems={activeListItems}
-            alertaVentas={alertaVentas}
-          />
+          {!isStaff && (
+            <VentasActionsMenu
+              rango={rango}
+              onImport={() => setUploadModalOpen(true)}
+              onExport={handleDownloadVentasCsv}
+              disabled={!activeBizId || ventasLoading}
+              allBusinesses={allBusinesses}
+              activeBizId={activeBizId}
+              branches={rawBranches || []}
+              lists={lists}
+              activeListId={activeListId}
+              activeListItems={activeListItems}
+              alertaVentas={alertaVentas}
+            />
+          )}
           <SucursalSelector variant="inline" />
-          <SelectionToolbar
-            selectionMode={selectionMode}
-            selectedIds={selectedIds}
-            saving={selectionSaving}
-            existingLists={lists}
-            onToggleMode={toggleMode}
-            onClearSelection={clearSelection}
-            onCreateList={createList}
-            onAddToList={addToExistingList}
-            onCreateLink={createLink}
-            editingGroup={editingGroup}
-            onSaveEditLink={saveEditLink}
-            onDeleteList={deleteList}
-            onDownloadList={handleDownloadList}
-          />
+          {!isStaff && (
+            <SelectionToolbar
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              saving={selectionSaving}
+              existingLists={lists}
+              onToggleMode={toggleMode}
+              onClearSelection={clearSelection}
+              onCreateList={createList}
+              onAddToList={addToExistingList}
+              onCreateLink={createLink}
+              editingGroup={editingGroup}
+              onSaveEditLink={saveEditLink}
+              onDeleteList={deleteList}
+              onDownloadList={handleDownloadList}
+            />
+          )}
           <div style={{ minWidth: 260, maxWidth: 360 }}>
             <Buscador
               placeholder="Buscar artículos, insumos…"
@@ -2721,17 +2728,17 @@ export default function ArticulosMain(props) {
             onPriceConfigSave={handlePriceConfigSave}
             agrupacionArticuloIds={agrupacionArticuloIds}
             favoriteGroupId={favoriteGroupId}
-            onSetFavorite={handleSetFavorite}
-            onEditGroup={handleRenameGroup}
-            onDeleteGroup={handleDeleteGroup}
-            onRenameGroup={handleRenameGroup}
+            onSetFavorite={isStaff ? undefined : handleSetFavorite}
+            onEditGroup={isStaff ? undefined : handleRenameGroup}
+            onDeleteGroup={isStaff ? undefined : handleDeleteGroup}
+            onRenameGroup={isStaff ? undefined : handleRenameGroup}
             ventasMap={ventasMap}
             metaById={metaById}
             getAmountForId={getAmountForId}
             onMutateGroups={mutateGroups}
             onRefetch={refetchAgrupaciones}
             notify={showMiss}
-            onCreateSubBusiness={(agrupacion) => {
+            onCreateSubBusiness={isStaff ? undefined : (agrupacion) => {
               setGroupForSubBiz(agrupacion);
               setSubBizModalOpen(true);
             }}
@@ -2748,6 +2755,7 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
+            isStaff={isStaff}
             branches={[]}
             ventasMapByBranch={{}}
             filtroBusqueda={''}
@@ -2775,28 +2783,28 @@ export default function ArticulosMain(props) {
             visibleIds={effectiveVisibleIds}
             listItemDetails={activeListId ? activeListItemDetails : null}
             favoriteGroupId={favoriteGroupId}
-            onSetFavorite={handleSetFavorite}
+            onSetFavorite={isStaff ? undefined : handleSetFavorite}
             jumpToArticleId={jumpToId}
             selectedArticleId={selectedArticleId}
             onActualizar={() => setReloadKey(k => k + 1)}
             tableHeaderMode={tableHeaderMode}
-            onDiscontinuadoChange={handleDiscontinuadoChange}
+            onDiscontinuadoChange={isStaff ? undefined : handleDiscontinuadoChange}
             modalTreeMode={modalTreeMode}
-            onDiscontinuarBloque={handleDiscontinuarBloque}
+            onDiscontinuarBloque={isStaff ? undefined : handleDiscontinuarBloque}
             getAmountForId={getAmountForId}
             discIds={effectiveDiscIds}
             recetasCostos={recetasCostos}
             recetasElaborados={recetasElaborados}
             priceConfig={priceConfig}
             globalCostoIdeal={globalCostoIdeal}
-            onPriceConfigSave={handlePriceConfigSave}
-            onBulkManualSave={handleBulkManualSave}
+            onPriceConfigSave={isStaff ? undefined : handlePriceConfigSave}
+            onBulkManualSave={isStaff ? undefined : handleBulkManualSave}
             onSaved={handleRecetaSaved}
-            selectionMode={selectionMode}
+            selectionMode={isStaff ? null : selectionMode}
             selectedIds={selectedIds}
-            onToggleSelected={toggleSelected}
-            onSelectAll={selectAll}
-            onToggleMode={toggleMode}
+            onToggleSelected={isStaff ? undefined : toggleSelected}
+            onSelectAll={isStaff ? undefined : selectAll}
+            onToggleMode={isStaff ? undefined : toggleMode}
             linkByArticleId={linkByArticleId}
             nameById={nameById}
             onRemoveMemberFromLink={async (...args) => {
