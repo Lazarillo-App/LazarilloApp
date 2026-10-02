@@ -255,7 +255,7 @@ export default function AdminLayout({ children }) {
   );
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <div className="zoom-reset" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
 
       {/* Sidebar desktop */}
       <div style={{ display: 'none' }} className="admin-sidebar-desktop">

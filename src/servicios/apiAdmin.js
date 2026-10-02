@@ -31,6 +31,8 @@ export const AdminAPI = {
   updateUser: (id, body) => http(`/admin/users/${id}`, { method:'PATCH', body }),
   deleteUser: (id, { confirm = false } = {}) =>
     http(`/admin/users/${id}${confirm ? '?confirm=1' : ''}`, { method:'DELETE' }),
+  hardDeleteUser: (id, confirmEmail) =>
+    http(`/admin/users/${id}/hard`, { method:'DELETE', body: { confirmEmail } }),
   createUser: (body) => http('/admin/users', { method:'POST', body }),
   resetPassword: (id) => http(`/admin/users/${id}/reset-password`, { method:'POST' }),
   restoreUser: (id) => http(`/admin/users/${id}/restore`, { method:'POST' }),

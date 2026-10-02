@@ -7,6 +7,10 @@ import { AdminAPI } from '../../servicios/apiAdmin';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import EditIcon from '@mui/icons-material/Edit';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, IconButton,
+} from '@mui/material';
 
 const ACTION_LABEL = { create: 'Creación', update: 'Actualización', delete: 'Eliminación', restore: 'Restauración', reassign: 'Reasignación' };
 
@@ -19,6 +23,12 @@ export default function AdminUserDetail() {
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [editNameOpen, setEditNameOpen] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [hardDelOpen, setHardDelOpen] = useState(false);
+  const [hardDelConfirmText, setHardDelConfirmText] = useState('');
+  const [hardDeleting, setHardDeleting] = useState(false);
 
   const isAppAdmin = useMemo(() => String(user?.role) === 'app_admin', [user]);
 
@@ -55,6 +65,44 @@ export default function AdminUserDetail() {
     return () => { alive = false; };
   }, [id]);
 
+  const openEditName = () => {
+    setEditNameValue(user?.name || '');
+    setEditNameOpen(true);
+  };
+
+  const runHardDelete = async () => {
+    setHardDeleting(true);
+    try {
+      await AdminAPI.hardDeleteUser(user.id, hardDelConfirmText.trim());
+      showAlert('Cuenta borrada definitivamente');
+      nav('/admin/usuarios', { replace: true });
+    } catch (e) {
+      const code = e?.data?.error;
+      const msg = code === 'CONFIRM_EMAIL_MISMATCH'
+        ? 'El email no coincide — no se borró nada.'
+        : (e?.message || 'No se pudo borrar la cuenta');
+      showAlert(msg, 'error');
+    } finally {
+      setHardDeleting(false);
+    }
+  };
+
+  const saveName = async () => {
+    const nuevo = editNameValue.trim();
+    if (!nuevo) { showAlert('El nombre no puede quedar vacío', 'error'); return; }
+    setSavingName(true);
+    try {
+      await AdminAPI.updateUser(id, { name: nuevo });
+      setUser(u => ({ ...u, name: nuevo }));
+      setEditNameOpen(false);
+      showAlert('Nombre actualizado');
+    } catch (e) {
+      showAlert(e?.message || 'No se pudo actualizar el nombre', 'error');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   if (loading) return <div style={{ color: 'var(--color-fg)' }}>Cargando…</div>;
   if (!user) return <div style={{ color: 'var(--color-fg)' }}>Usuario no encontrado.</div>;
 
@@ -75,7 +123,12 @@ export default function AdminUserDetail() {
       <section className="ud-top">
         <div className="avatar">{initial}</div>
         <div className="id-block">
-          <div className="name">{user.name || '—'}</div>
+          <div className="name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {user.name || '—'}
+            <IconButton size="small" onClick={openEditName} title="Editar nombre">
+              <EditIcon fontSize="inherit" />
+            </IconButton>
+          </div>
           <div className="sub">ID: {user.id} · Rol: {user.role}</div>
         </div>
         <div className="mini-kpis">
@@ -196,6 +249,16 @@ export default function AdminUserDetail() {
             <span>Eliminar</span>
           </button>
         )}
+
+        <button
+          className="btn danger"
+          disabled={busy || isAppAdmin}
+          title={isAppAdmin ? 'No se puede eliminar un administrador general' : 'Borra la cuenta y sus negocios por completo — no se puede deshacer'}
+          onClick={() => { setHardDelConfirmText(''); setHardDelOpen(true); }}
+        >
+          <DeleteOutlineIcon fontSize="small" />
+          <span>Borrar definitivo</span>
+        </button>
       </footer>
 
       <style>{`
@@ -274,6 +337,55 @@ export default function AdminUserDetail() {
           .mini-kpis{ width:100%; justify-content:center; margin-top:6px }
         }
       `}</style>
+
+      <Dialog open={editNameOpen} onClose={() => setEditNameOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Editar nombre</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth margin="dense"
+            label="Nombre"
+            value={editNameValue}
+            onChange={(e) => setEditNameValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveName()}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditNameOpen(false)}>Cancelar</Button>
+          <Button variant="contained" disabled={savingName || !editNameValue.trim()} onClick={saveName}>
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={hardDelOpen} onClose={() => !hardDeleting && setHardDelOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle style={{ color: '#b91c1c' }}>Borrar definitivo</DialogTitle>
+        <DialogContent>
+          <p style={{ fontSize: 13, marginTop: 0 }}>
+            Esto borra la cuenta <strong>{user.email}</strong>, sus negocios y todo lo que cuelga de
+            ellos (artículos, recetas, ventas, compras, equipo) <strong>para siempre</strong> — no
+            es el borrado reversible de "Eliminar". No se puede deshacer.
+          </p>
+          <p style={{ fontSize: 13 }}>
+            Escribí <strong>{user.email}</strong> para confirmar:
+          </p>
+          <TextField
+            autoFocus fullWidth size="small"
+            value={hardDelConfirmText}
+            onChange={(e) => setHardDelConfirmText(e.target.value)}
+            placeholder={user.email}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHardDelOpen(false)} disabled={hardDeleting}>Cancelar</Button>
+          <Button
+            variant="contained" color="error"
+            disabled={hardDeleting || hardDelConfirmText.trim().toLowerCase() !== user.email.toLowerCase()}
+            onClick={runHardDelete}
+          >
+            Borrar para siempre
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }
