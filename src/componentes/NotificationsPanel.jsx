@@ -381,6 +381,27 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     }));
   }, [notifications]);
 
+  // ── Ventanita emergente (toast) para propuestas de receta nuevas ──
+  // Distinta del drawer: aparece sola, abajo a la izquierda, mientras la
+  // persona sigue trabajando en la tabla — no hace falta abrir la campanita
+  // para enterarse de que llegó algo a Aprobaciones.
+  const [proposalToasts, setProposalToasts] = useState([]);
+  const toastedIdsRef = React.useRef(new Set());
+
+  useEffect(() => {
+    const nuevas = (notifications || []).filter((n) =>
+      !n.read && n.metadata?.kind === 'receta_proposal' && !toastedIdsRef.current.has(n.id)
+    );
+    if (!nuevas.length) return;
+    nuevas.forEach((n) => toastedIdsRef.current.add(n.id));
+    setProposalToasts((prev) => [
+      ...nuevas.map((n) => ({ id: n.id, message: n.message, title: n.title })),
+      ...prev,
+    ].slice(0, 5));
+  }, [notifications]);
+
+  const cerrarToast = (id) => setProposalToasts((prev) => prev.filter((t) => t.id !== id));
+
   // ✅ 4) UI notifs (no resueltas) + notifs del backend, ordenadas por fecha
   const merged = useMemo(() => {
     const ui = (uiNotifs || []).filter((n) => !n.resolved);
@@ -467,6 +488,38 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           <NotificationsIcon />
         </Badge>
       </IconButton>
+
+      {proposalToasts.length > 0 && (
+        <Box sx={{
+          position: 'fixed', left: 16, bottom: 16, zIndex: 1400,
+          display: 'flex', flexDirection: 'column-reverse', gap: 1, maxWidth: 360,
+        }}>
+          {proposalToasts.map((t) => (
+            <Box
+              key={t.id}
+              sx={{
+                bgcolor: 'background.paper', borderRadius: 2, boxShadow: 4,
+                border: '1px solid', borderColor: 'divider',
+                p: 1.5, display: 'flex', alignItems: 'flex-start', gap: 1,
+              }}
+            >
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography fontWeight={700} fontSize="0.85rem">{t.title}</Typography>
+                <Typography fontSize="0.78rem" color="text.secondary">{t.message}</Typography>
+                <Button
+                  size="small" sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
+                  onClick={() => { cerrarToast(t.id); navigate('/configuracion?tab=6'); }}
+                >
+                  Ver aprobaciones
+                </Button>
+              </Box>
+              <IconButton size="small" onClick={() => cerrarToast(t.id)}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          ))}
+        </Box>
+      )}
 
       <Drawer anchor="right" open={open} onClose={() => setOpen(false)}>
         <div style={{ width: 520, padding: '16px' }}>

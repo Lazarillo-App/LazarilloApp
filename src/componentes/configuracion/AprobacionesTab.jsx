@@ -41,7 +41,7 @@ function itemKey(it) {
 const itemNombre = (it) => it?.supplyNombre || it?.supply_nombre || '(sin nombre)';
 const itemCantUnidad = (it) => `${fmtNum(it?.cantidad)} ${it?.unidad || ''}`.trim();
 
-function DiffRow({ label, before, after, isNew, strong }) {
+function DiffRow({ label, note, before, after, isNew, strong }) {
   return (
     <Box sx={{
       display: 'grid',
@@ -50,9 +50,16 @@ function DiffRow({ label, before, after, isNew, strong }) {
       px: 1.5, py: 1,
       '&:nth-of-type(odd)': { bgcolor: '#fdf6ee' },
     }}>
-      <Typography fontWeight={strong ? 700 : 400} fontSize="0.85rem" color={strong ? 'text.primary' : 'text.secondary'}>
-        {label}
-      </Typography>
+      <Box>
+        <Typography fontWeight={strong ? 700 : 400} fontSize="0.85rem" color={strong ? 'text.primary' : 'text.secondary'}>
+          {label}
+        </Typography>
+        {note && (
+          <Typography fontSize="0.72rem" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            "{note}"
+          </Typography>
+        )}
+      </Box>
       {!isNew && (
         <Typography fontSize="0.85rem" color="text.disabled" sx={{ textDecoration: before != null ? 'line-through' : 'none', textAlign: 'right' }}>
           {before ?? '—'}
@@ -95,6 +102,7 @@ function ProposalDiff({ proposal }) {
         const b = beforeMap.get(key);
         const a = afterMap.get(key);
         const nombre = itemNombre(a || b);
+        const nota = a?.observaciones || a?.notas || '';
         if (b && !a) {
           return <DiffRow key={key} label={`${nombre} (quitado)`} before={itemCantUnidad(b)} after="—" isNew={esNueva} />;
         }
@@ -102,6 +110,7 @@ function ProposalDiff({ proposal }) {
           <DiffRow
             key={key}
             label={nombre}
+            note={nota}
             before={b ? itemCantUnidad(b) : null}
             after={itemCantUnidad(a)}
             isNew={esNueva}
@@ -111,7 +120,7 @@ function ProposalDiff({ proposal }) {
 
       {!esNueva && proposal.costo_despues && (
         <DiffRow
-          label="Costo del elaborado"
+          label="Costo total"
           before={proposal.costo_antes ? `${fmtMoney(proposal.costo_antes.porUnidad)}/${unidadCosto}` : null}
           after={`${fmtMoney(proposal.costo_despues.porUnidad)}/${unidadCosto}`}
           strong
@@ -216,7 +225,7 @@ function ProposalCard({ proposal, onDecided }) {
         <DialogTitle>Pedir revisión</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Contale a quien la propuso qué hay que ajustar — vuelve a sus manos, no se pierde.
+            Si hay dudas, mandale un mensaje a {proponente} — este comentario vuelve a sus manos para que lo corrija.
           </Typography>
           <TextField
             autoFocus fullWidth multiline minRows={3}
@@ -236,7 +245,7 @@ function ProposalCard({ proposal, onDecided }) {
   );
 }
 
-export default function AprobacionesTab({ businessId }) {
+export default function AprobacionesTab({ businessId, onCountChange }) {
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -254,6 +263,7 @@ export default function AprobacionesTab({ businessId }) {
   }, [businessId]);
 
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { onCountChange?.(proposals.length); }, [proposals.length, onCountChange]);
 
   const handleDecided = (id) => {
     setProposals(prev => prev.filter(p => p.id !== id));
@@ -285,15 +295,6 @@ export default function AprobacionesTab({ businessId }) {
           ))}
         </Stack>
       )}
-
-      <Box sx={{ mt: 3, px: 2, py: 1.5, bgcolor: '#f7f7f7', borderRadius: 1.5 }}>
-        <Typography variant="caption" color="text.secondary">
-          El administrador ve qué cambió exactamente, con el valor anterior tachado al lado del propuesto,
-          y el efecto sobre el costo. Hasta que aprueba, la receta vigente sigue siendo la de antes.
-          Tiene tres acciones: <strong>aprobar</strong>, <strong>devolver a revisión</strong> para que se corrija,
-          o <strong>rechazar</strong>. Las dos últimas piden un motivo que le llega a quien propuso el cambio.
-        </Typography>
-      </Box>
     </Box>
   );
 }

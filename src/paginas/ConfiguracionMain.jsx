@@ -11,7 +11,7 @@ import { ensureTodo } from '../servicios/apiAgrupacionesTodo';
 import {
   Box, Stack, Typography, Tabs, Tab, Snackbar, Alert,
   CircularProgress, FormControl, InputLabel, Select, MenuItem,
-  Button, Grid, Avatar, Chip, Paper, Skeleton, IconButton, Tooltip,
+  Button, Grid, Avatar, Chip, Paper, Skeleton, IconButton, Tooltip, Badge,
 } from '@mui/material';
 import TuneIcon from '@mui/icons-material/Tune';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
@@ -47,6 +47,7 @@ import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
 import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
 import SectoresTab from '../componentes/configuracion/SectoresTab';
 import AprobacionesTab from '../componentes/configuracion/AprobacionesTab';
+import { listarPropuestas } from '@/servicios/apiRecetaProposals';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
 import '../css/global.css';
@@ -63,6 +64,18 @@ export default function ConfiguracionMain() {
   // se controla aparte en teamController. Borrar un negocio queda exclusivo del
   // owner (irreversible, confirmado explícitamente).
   const puedeGestionarNegocio = isOwner || isAdmin;
+
+  // Badge de la pestaña "Aprobaciones" — cuántas propuestas de Staff están
+  // pendientes, sin necesidad de entrar a la pestaña para enterarse.
+  const [pendingProposalsCount, setPendingProposalsCount] = useState(0);
+  useEffect(() => {
+    if (!businessId || !puedeGestionarNegocio) return;
+    let alive = true;
+    listarPropuestas(businessId).then((list) => {
+      if (alive) setPendingProposalsCount(list.length);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [businessId, puedeGestionarNegocio]);
   const [searchParams, setSearchParams] = useSearchParams();
   const themeColor = 'var(--color-primary, #3b82f6)';
 
@@ -448,7 +461,15 @@ export default function ConfiguracionMain() {
               <Tab icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
             )}
             {puedeGestionarNegocio && (
-              <Tab icon={<FactCheckIcon fontSize="small" />} iconPosition="start" label="Aprobaciones" />
+              <Tab
+                icon={
+                  <Badge badgeContent={pendingProposalsCount} color="warning" max={99}>
+                    <FactCheckIcon fontSize="small" />
+                  </Badge>
+                }
+                iconPosition="start"
+                label="Aprobaciones"
+              />
             )}
           </Tabs>
 
@@ -716,7 +737,7 @@ export default function ConfiguracionMain() {
           {/* TAB 6 — APROBACIONES (owner/admin) — Vista Operación, Fase 3 */}
           {puedeGestionarNegocio && (
             <TabPanel value={tab} index={6}>
-              <AprobacionesTab businessId={businessId} />
+              <AprobacionesTab businessId={businessId} onCountChange={setPendingProposalsCount} />
             </TabPanel>
           )}
         </>
