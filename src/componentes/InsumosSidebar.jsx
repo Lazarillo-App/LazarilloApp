@@ -787,21 +787,24 @@ function InsumosSidebar({
             </Select>
           </FormControl>
 
-          {/* Toggle elaborados / no-elaborados */}
-          <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={vista}
-              onChange={(_, val) => {
-                if (!val) return;
-                onVistaChange?.(val);
-              }}
-            >
-              <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
-              <ToggleButton value="elaborados">Elaborados</ToggleButton>
-            </ToggleButtonGroup>
-          </div>
+          {/* Toggle elaborados / no-elaborados — sin onVistaChange (Staff, Fase 4:
+              solo ve elaborados) ni el toggle tiene sentido, se oculta entero. */}
+          {onVistaChange && (
+            <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={vista}
+                onChange={(_, val) => {
+                  if (!val) return;
+                  onVistaChange?.(val);
+                }}
+              >
+                <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
+                <ToggleButton value="elaborados">Elaborados</ToggleButton>
+              </ToggleButtonGroup>
+            </div>
+          )}
         </>
         )}
       </div>

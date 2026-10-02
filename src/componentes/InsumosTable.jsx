@@ -215,6 +215,7 @@ function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
 }
 
 const InsumosTable = forwardRef(function InsumosTable({
+  isStaff = false,
   rows = [],
   loading = false,
   onEdit,
@@ -443,7 +444,13 @@ const InsumosTable = forwardRef(function InsumosTable({
     } catch { }
   }, [colStorageKey]);
 
-  const visibleCols = useMemo(() => colConfig.filter(c => c.visible), [colConfig]);
+  // Vista Staff (Fase 4): código/nombre/unidad/costo ya son fijas (FIXED_INSUMOS);
+  // acá solo queda sumar la fecha. "Última compra" no aplica a un elaborado (no
+  // se compra, se fabrica) — se usa la fecha de última modificación en su lugar.
+  const visibleCols = useMemo(() => {
+    if (isStaff) return [{ id: 'fecha', label: 'Últ. modificación', width: '.65fr', sortKey: 'fecha', visible: true }];
+    return colConfig.filter(c => c.visible);
+  }, [colConfig, isStaff]);
 
   const dragColIdx = useRef(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
@@ -967,14 +974,16 @@ const InsumosTable = forwardRef(function InsumosTable({
             ))}
 
             <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <IconButton
-                size="medium"
-                onClick={() => setColDlgOpen(true)}
-                title="Configurar columnas"
-                sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
-              >
-                <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
-              </IconButton>
+              {!isStaff && (
+                <IconButton
+                  size="medium"
+                  onClick={() => setColDlgOpen(true)}
+                  title="Configurar columnas"
+                  sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
+                >
+                  <TuneIcon sx={{ fontSize: 20, color: 'black' }} />
+                </IconButton>
+              )}
             </div>
           </div>
         </div>
@@ -1264,22 +1273,24 @@ const InsumosTable = forwardRef(function InsumosTable({
                       })}
 
                       <div style={{ textAlign: "center" }}>
-                        <InsumoAccionesMenu
-                          insumo={r}
-                          groups={groups}
-                          selectedGroupId={selectedGroupId}
-                          discontinuadosGroupId={discontinuadosGroupId}
-                          todoGroupId={todoGroupId}
-                          onRefetch={handleAfterAction}
-                          onReloadCatalogo={onReloadCatalogo}
-                          notify={notify}
-                          onMutateGroups={onMutateGroups}
-                          onAfterMutation={handleAfterAction}
-                          onAfterToggleElaborado={onAfterToggleElaborado}
-                          onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
-                          onOpenRecetaElaborado={onOpenRecetaElaborado}
-                          businessId={originalBusinessId || businessId}
-                        />
+                        {!isStaff && (
+                          <InsumoAccionesMenu
+                            insumo={r}
+                            groups={groups}
+                            selectedGroupId={selectedGroupId}
+                            discontinuadosGroupId={discontinuadosGroupId}
+                            todoGroupId={todoGroupId}
+                            onRefetch={handleAfterAction}
+                            onReloadCatalogo={onReloadCatalogo}
+                            notify={notify}
+                            onMutateGroups={onMutateGroups}
+                            onAfterMutation={handleAfterAction}
+                            onAfterToggleElaborado={onAfterToggleElaborado}
+                            onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                            onOpenRecetaElaborado={onOpenRecetaElaborado}
+                            businessId={originalBusinessId || businessId}
+                          />
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1342,22 +1353,24 @@ const InsumosTable = forwardRef(function InsumosTable({
                         );
                       })}
                       <div style={{ textAlign: "center" }}>
-                        <InsumoAccionesMenu
-                          insumo={r}
-                          groups={groups}
-                          selectedGroupId={selectedGroupId}
-                          discontinuadosGroupId={discontinuadosGroupId}
-                          todoGroupId={todoGroupId}
-                          onRefetch={handleAfterAction}
-                          onReloadCatalogo={onReloadCatalogo}
-                          notify={notify}
-                          onMutateGroups={onMutateGroups}
-                          onAfterMutation={handleAfterAction}
-                          onAfterToggleElaborado={onAfterToggleElaborado}
-                          onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
-                          onOpenRecetaElaborado={onOpenRecetaElaborado}
-                          businessId={originalBusinessId || businessId}
-                        />
+                        {!isStaff && (
+                          <InsumoAccionesMenu
+                            insumo={r}
+                            groups={groups}
+                            selectedGroupId={selectedGroupId}
+                            discontinuadosGroupId={discontinuadosGroupId}
+                            todoGroupId={todoGroupId}
+                            onRefetch={handleAfterAction}
+                            onReloadCatalogo={onReloadCatalogo}
+                            notify={notify}
+                            onMutateGroups={onMutateGroups}
+                            onAfterMutation={handleAfterAction}
+                            onAfterToggleElaborado={onAfterToggleElaborado}
+                            onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                            onOpenRecetaElaborado={onOpenRecetaElaborado}
+                            businessId={originalBusinessId || businessId}
+                          />
+                        )}
                       </div>
                     </>
                   )}

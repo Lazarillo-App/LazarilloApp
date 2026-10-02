@@ -60,6 +60,7 @@ import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInsumosRubros, useInsumosList, useInsumoGroups } from '@/hooks/useInsumos';
+import { useAccess } from '@/context/AccessContext';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -141,6 +142,8 @@ export default function InsumosMain() {
   const { businessId } = useActiveBusiness();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Vista Operación, Fase 4: Staff solo ve elaborados, sin gestión.
+  const { isStaff } = useAccess() || {};
 
   // ── Listas de insumos + modo selección ────────────────────────────────────
   // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
@@ -263,6 +266,10 @@ export default function InsumosMain() {
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
   // vista: 'elaborados' | 'no-elaborados' — se actualiza al cambiar de agrupación
   const [vista, setVista] = useState(DEFAULT_VISTA);
+  // Staff solo gestiona elaborados (Vista Operación, Fase 4) — fuerza la vista
+  // sin importar lo que haya quedado guardado en localStorage/backend para
+  // este usuario de una sesión anterior.
+  const effectiveVista = isStaff ? 'elaborados' : vista;
   const [reloadKey, setReloadKey] = useState(0);
   const [allInsumos, setAllInsumos] = useState([]);
   const [rubrosMap, setRubrosMap] = useState(new Map());
@@ -924,21 +931,21 @@ export default function InsumosMain() {
     // Fallback: es_elaborador del rubro (cuando el insumo no tiene el campo propio).
     if (!isDiscView) {
       base = base.filter((ins) => {
-        if (ins?.es_elaborado === true) return vista === 'elaborados';
-        if (ins?.es_elaborado === false) return vista === 'no-elaborados';
+        if (ins?.es_elaborado === true) return effectiveVista === 'elaborados';
+        if (ins?.es_elaborado === false) return effectiveVista === 'no-elaborados';
         const info = resolveRubroInfo(ins);
         const esElaboradorPorFlag = info?.es_elaborador === true;
         // Fallback por nombre del rubro si no tiene flag
         const nombreRubro = info?.nombre || String(ins?.rubro_nombre || ins?.rubroNombre || '');
         const esElaboradorPorNombre = norm(nombreRubro).includes('elaborado');
         const esElaborador = esElaboradorPorFlag || esElaboradorPorNombre;
-        if (vista === 'elaborados') return esElaborador;
+        if (effectiveVista === 'elaborados') return esElaborador;
         return !esElaborador;
       });
     }
 
     return base;
-  }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, vista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
+  }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, effectiveVista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
 
   const rubrosTree = useMemo(() => {
     if (!filteredBase.length) return [];
@@ -1435,28 +1442,32 @@ export default function InsumosMain() {
             disableToday
           />
 
-          <ComprasActionsMenu
-            rango={rangoCompras}
-            onImport={() => setUploadComprasOpen(true)}
-            onExport={handleDownloadCompras}
-            disabled={!businessId || comprasLoading}
-          />
+          {!isStaff && (
+            <ComprasActionsMenu
+              rango={rangoCompras}
+              onImport={() => setUploadComprasOpen(true)}
+              onExport={handleDownloadCompras}
+              disabled={!businessId || comprasLoading}
+            />
+          )}
           {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
-          <InsumoListToolbar
-            selectionMode={insumoSelectionMode}
-            selectedIds={selectedInsumoIds}
-            onToggleMode={toggleInsumoMode}
-            onClearSelection={clearInsumoSelection}
-            saving={insumoListSaving}
-            existingLists={insumoLists}
-            onCreateList={handleCreateInsumoList}
-            onAddToList={handleAddToInsumoList}
-            onDeleteList={deleteInsumoList}
-            onDownloadList={handleDownloadList}
-            insumoLists={insumoLists}
-            activeInsumoListId={activeInsumoListId}
-            onSelectInsumoList={selectInsumoList}
-          />
+          {!isStaff && (
+            <InsumoListToolbar
+              selectionMode={insumoSelectionMode}
+              selectedIds={selectedInsumoIds}
+              onToggleMode={toggleInsumoMode}
+              onClearSelection={clearInsumoSelection}
+              saving={insumoListSaving}
+              existingLists={insumoLists}
+              onCreateList={handleCreateInsumoList}
+              onAddToList={handleAddToInsumoList}
+              onDeleteList={deleteInsumoList}
+              onDownloadList={handleDownloadList}
+              insumoLists={insumoLists}
+              activeInsumoListId={activeInsumoListId}
+              onSelectInsumoList={selectInsumoList}
+            />
+          )}
           <div style={{ minWidth: 260, maxWidth: 260 }}>
 
            <Buscador
@@ -1512,25 +1523,34 @@ export default function InsumosMain() {
               >
                 <span style={{ fontSize: 16 }}>🧂</span> Un insumo
               </MenuItem>
-              <MenuItem
-                onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-              >
-                <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
-              </MenuItem>
-              <Divider />
-              <MenuItem
-                onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-              >
-                <span style={{ fontSize: 16 }}>📄</span> Un artículo
-              </MenuItem>
-              <MenuItem
-                onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-              >
-                <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
-              </MenuItem>
+              {/* Lote de insumos, Un artículo, Lote de artículos: el servidor ya
+                  rechaza estas acciones para Staff (blockStaffWrite) — ocultarlas
+                  acá evita que vea un botón que siempre va a fallarle. */}
+              {!isStaff && (
+                <MenuItem
+                  onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
+                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+                >
+                  <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
+                </MenuItem>
+              )}
+              {!isStaff && <Divider />}
+              {!isStaff && (
+                <MenuItem
+                  onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
+                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+                >
+                  <span style={{ fontSize: 16 }}>📄</span> Un artículo
+                </MenuItem>
+              )}
+              {!isStaff && (
+                <MenuItem
+                  onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosOpen(true); }}
+                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
+                >
+                  <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
+                </MenuItem>
+              )}
             </Menu>
           </div>
         </div>
@@ -1544,17 +1564,17 @@ export default function InsumosMain() {
             setRubroSeleccionado={setRubroSeleccionado}
             businessId={resolvedBizId}
             originalBusinessId={businessId}
-            vista={vista}
-            onVistaChange={handleChangeListMode}
+            vista={effectiveVista}
+            onVistaChange={isStaff ? undefined : handleChangeListMode}
             groups={groupsScoped}
             groupsLoading={groupsLoading}
             selectedGroupId={selectedGroupId}
             onSelectGroupId={handleSelectGroupId}
             favoriteGroupId={favoriteGroupId}
-            onSetFavorite={handleToggleFavorite}
-            onEditGroup={handleEditGroup}
-            onDeleteGroup={handleDeleteGroup}
-            onRenameGroup={handleRenameGroup}
+            onSetFavorite={isStaff ? undefined : handleToggleFavorite}
+            onEditGroup={isStaff ? undefined : handleEditGroup}
+            onDeleteGroup={isStaff ? undefined : handleDeleteGroup}
+            onRenameGroup={isStaff ? undefined : handleRenameGroup}
             todoGroupId={todoGroupId}
             idsSinAgrupCount={idsSinAgrupActivos.size}
             onMutateGroups={onMutateGroups}
@@ -1564,7 +1584,7 @@ export default function InsumosMain() {
             rubrosMap={rubrosMap}
             onReloadCatalogo={forceRefresh}
             forceRefresh={forceRefresh}
-            onCreateGroupFromRubro={handleOpenGroupModalForRubro}
+            onCreateGroupFromRubro={isStaff ? undefined : handleOpenGroupModalForRubro}
             discontinuadosGroupId={discontinuadosGroupId}
             onManualPick={markManualPick}
             activeDivisionId={activeDivisionId}
@@ -1592,14 +1612,15 @@ export default function InsumosMain() {
             onEdit={() => { }}
             onDelete={() => { }}
             noBusiness={!businessId}
-            vista={vista}
+            vista={effectiveVista}
+            isStaff={isStaff}
             businessId={resolvedBizId}
             originalBusinessId={businessId}
             groups={groupsScoped}
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
-            onOpenGroupModalForInsumo={handleOpenGroupModalForInsumo}
-            onCreateGroupFromRubro={handleOpenGroupModalForRubro}
+            onOpenGroupModalForInsumo={isStaff ? undefined : handleOpenGroupModalForInsumo}
+            onCreateGroupFromRubro={isStaff ? undefined : handleOpenGroupModalForRubro}
             rubrosMap={rubrosMap}
             onRefetch={loadGroups}
             onMutateGroups={onMutateGroups}
@@ -1616,15 +1637,15 @@ export default function InsumosMain() {
             comprasLoading={comprasLoading}
             rangoCompras={rangoCompras}
             businesses={organization?.businesses || []}
-            onAfterToggleElaborado={handleAfterToggleElaborado}
-            onAfterToggleElaboradoBulk={handleAfterToggleElaboradoBulk}
+            onAfterToggleElaborado={isStaff ? undefined : handleAfterToggleElaborado}
+            onAfterToggleElaboradoBulk={isStaff ? undefined : handleAfterToggleElaboradoBulk}
             onOpenRecetaElaborado={handleOpenRecetaElaborado}
             recetasElaborados={recetasElaborados}
             soloConCompras={soloConCompras}
             onToggleSoloConCompras={toggleSoloConCompras}
-            selectionMode={insumoSelectionMode}
+            selectionMode={isStaff ? null : insumoSelectionMode}
             selectedInsumoIds={selectedInsumoIds}
-            onToggleInsumo={toggleInsumoSelected}
+            onToggleInsumo={isStaff ? undefined : toggleInsumoSelected}
           />
         </div>
       </div>
