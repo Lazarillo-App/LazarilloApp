@@ -34,6 +34,47 @@ export function getToken() {
   return localStorage.getItem('token') || '';
 }
 
+/* ───── "Ver como" (impersonación desde el panel admin) ───── */
+const IMPERSONATE_KEY = 'lazarillo:adminReturn';
+
+export function isImpersonating() {
+  try { return !!sessionStorage.getItem(IMPERSONATE_KEY); } catch { return false; }
+}
+
+export function getImpersonateOrigin() {
+  try {
+    const raw = sessionStorage.getItem(IMPERSONATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+// Guarda la sesión admin actual y pisa localStorage con la del usuario objetivo
+// — mismo mecanismo que un login normal (saveSession + evento auth:login), así
+// el resto de la app (contexts, rutas) no necesita saber que es impersonación.
+export function startImpersonation({ token, user }) {
+  try {
+    sessionStorage.setItem(IMPERSONATE_KEY, JSON.stringify({
+      token: getToken(),
+      user: getUser(),
+      activeBusinessId: localStorage.getItem('activeBusinessId'),
+    }));
+  } catch {}
+  saveSession({ token, user });
+  try { window.dispatchEvent(new CustomEvent('auth:login', { detail: user })); } catch {}
+}
+
+export function stopImpersonation() {
+  const origin = getImpersonateOrigin();
+  if (!origin) return false;
+  try { sessionStorage.removeItem(IMPERSONATE_KEY); } catch {}
+  saveSession({ token: origin.token, user: origin.user });
+  if (origin.activeBusinessId) {
+    try { localStorage.setItem('activeBusinessId', origin.activeBusinessId); } catch {}
+  }
+  try { window.dispatchEvent(new CustomEvent('auth:login', { detail: origin.user })); } catch {}
+  return true;
+}
+
 export const AuthAPI = {
   async login(email, password) {
     const data = await http('/auth/login', {

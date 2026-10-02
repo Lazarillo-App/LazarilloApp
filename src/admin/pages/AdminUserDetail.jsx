@@ -4,10 +4,12 @@ import { showConfirm } from '../../servicios/appConfirm';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AdminAPI } from '../../servicios/apiAdmin';
+import { startImpersonation } from '../../servicios/apiAuth';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import EditIcon from '@mui/icons-material/Edit';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, IconButton,
 } from '@mui/material';
@@ -68,6 +70,20 @@ export default function AdminUserDetail() {
   const openEditName = () => {
     setEditNameValue(user?.name || '');
     setEditNameOpen(true);
+  };
+
+  const handleVerComo = async () => {
+    if (!(await showConfirm(`¿Entrar como ${user.name || user.email}? Vas a tener su sesión real (su rol, sus negocios) hasta que vuelvas a tu cuenta.`))) return;
+    setBusy(true);
+    try {
+      const data = await AdminAPI.impersonateUser(user.id);
+      startImpersonation(data);
+      nav('/menu', { replace: true });
+    } catch (e) {
+      showAlert(e?.message || 'No se pudo entrar como este usuario', 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const runHardDelete = async () => {
@@ -203,6 +219,16 @@ export default function AdminUserDetail() {
         >
           <RestartAltIcon fontSize="small" />
           <span>Restablecer</span>
+        </button>
+
+        <button
+          className="btn"
+          disabled={busy || isAppAdmin || user.status === 'deleted'}
+          title={isAppAdmin ? 'No se puede entrar como un administrador general' : 'Entrar con la sesión real de este usuario'}
+          onClick={handleVerComo}
+        >
+          <VisibilityIcon fontSize="small" />
+          <span>Ver como</span>
         </button>
 
         {user.status === 'deleted' ? (
