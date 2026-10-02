@@ -11,6 +11,7 @@ import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
 import ConfiguracionMain from './paginas/ConfiguracionMain';
+import RequireAdminOrOwner from './componentes/RequireAdminOrOwner';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
 import UploadFoto from './paginas/UploadFoto';
@@ -271,7 +272,7 @@ export default function App() {
                 />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/inicio" element={<Inicio />} />
-                <Route path="/configuracion" element={<ConfiguracionMain />} />
+                <Route path="/configuracion" element={<RequireAdminOrOwner><ConfiguracionMain /></RequireAdminOrOwner>} />
               </Route>
             </Route>
           ) : (

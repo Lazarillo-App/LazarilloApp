@@ -88,7 +88,7 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner } = useAccess() || {};
+  const { isOwner, isStaff } = useAccess() || {};
 
   const { activeBusinessId } = useBusiness() || {};
 
@@ -282,7 +282,7 @@ export default function Navbar() {
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && (
+                  {!isAppAdmin && !isStaff && (
                     <MenuItem onClick={() => {
                       setNavEl(null);
                       const t = getConfigTab();
@@ -329,7 +329,7 @@ export default function Navbar() {
                         Insumos
                       </Button>
                     )}
-                    {!isAppAdmin && (
+                    {!isAppAdmin && !isStaff && (
                       <Tooltip title="Configuración">
                         <IconButton
                           color="inherit"

@@ -617,7 +617,7 @@ function SecuritySection() {
 function PerfilContenido() {
   const { organization } = useOrganization() || {};
   const { items, refetchBusinesses } = useBusiness() || {};
-  const { currentRole, highestRole } = useAccess() || {};
+  const { currentRole, highestRole, currentBusiness, isStaff } = useAccess() || {};
   const sinNegocios = !items || items.length === 0;
   const [showCreateBiz, setShowCreateBiz] = React.useState(false);
 
@@ -817,15 +817,22 @@ function PerfilContenido() {
             <DataRow label="Nombre" value={meName} />
             <DataRow label="Email" value={me?.email} />
             <DataRow label="Rol" value={roleLabel} />
+            {isStaff && currentBusiness?.name && <DataRow label="Negocio" value={currentBusiness.name} />}
             {organization?.name && <DataRow label="Organización" value={organization.name} />}
           </Stack>
         </Section>
 
-        {/* ── Equipo (FUNCIONAL) ── */}
-        <TeamSection />
+        {/* Staff: solo ve sus propios datos y a qué negocio pertenece — nada de
+            gestión de equipo ni seguridad de cuenta ajena. */}
+        {!isStaff && (
+          <>
+            {/* ── Equipo (FUNCIONAL) ── */}
+            <TeamSection />
 
-        {/* ── Seguridad ── */}
-        <SecuritySection />
+            {/* ── Seguridad ── */}
+            <SecuritySection />
+          </>
+        )}
 
       </Stack>
       {/* Diálogo editar nombre */}
