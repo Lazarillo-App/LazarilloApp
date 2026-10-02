@@ -1644,7 +1644,14 @@ export default function ArticulosMain(props) {
       }
 
       setSelectedArticleId(id);
-      setJumpToId(id);
+      // Pasar siempre por null antes de volver a poner el mismo id: si ya
+      // estábamos en ese artículo (buscarlo de nuevo, típico con un
+      // componente de promo al que se vuelve seguido), setJumpToId(id) con
+      // el mismo valor que ya tenía es un no-op para React — el salto/resalte
+      // nunca se disparaba una segunda vez. Forzar el ciclo null→id
+      // garantiza un cambio real de estado cada vez.
+      setJumpToId(null);
+      requestAnimationFrame(() => setJumpToId(id));
       scheduleJump(id);
 
       setTimeout(() => {
