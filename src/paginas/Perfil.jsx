@@ -822,17 +822,18 @@ function PerfilContenido() {
           </Stack>
         </Section>
 
-        {/* Staff: solo ve sus propios datos y a qué negocio pertenece — nada de
-            gestión de equipo ni seguridad de cuenta ajena. */}
+        {/* Staff: no ve gestión de equipo (es de otras cuentas, no de la propia),
+            pero sí Seguridad — cambiar su contraseña es de su propia cuenta,
+            nada relativo al negocio. */}
         {!isStaff && (
           <>
             {/* ── Equipo (FUNCIONAL) ── */}
             <TeamSection />
-
-            {/* ── Seguridad ── */}
-            <SecuritySection />
           </>
         )}
+
+        {/* ── Seguridad ── */}
+        <SecuritySection />
 
       </Stack>
       {/* Diálogo editar nombre */}
