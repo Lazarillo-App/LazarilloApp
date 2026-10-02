@@ -19,6 +19,7 @@ import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 import { ArticuloNuevoModal } from './configuracion/ABMModals';
+import { downwardMenuProps } from '@/utils/menuProps';
 import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgrupaciones';
@@ -948,6 +949,7 @@ function ArticuloAccionesMenu({
             value={nuevoRubro}
             onChange={(e) => setNuevoRubro(e.target.value)}
             helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
+            SelectProps={{ MenuProps: downwardMenuProps(40) }}
           >
             {rubrosDisponibles.map((r) => {
               const val = `${r.agrupacionId}|${r.subrubro}`;

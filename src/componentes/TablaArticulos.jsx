@@ -112,6 +112,11 @@ const esTodoGroup = (g) => {
   );
 };
 
+const esDiscontinuadosGroup = (g) => {
+  const n = String(g?.nombre || "").trim().toUpperCase();
+  return n === "DISCONTINUADOS" || n === "DESCONTINUADOS";
+};
+
 const TABLE_TEXT = "#111827";
 const TABLE_MUTED = "#6b7280";
 const SECTION_TEXT = "#374151";
@@ -1108,6 +1113,9 @@ export default function TablaArticulos({
     const map = new Map(); // clave `${agrupId}|${subrubro}` → evita duplicados y separa mismo rubro en distintas agrupaciones
     const fuente = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
     for (const g of (fuente || [])) {
+      // "Mover a otro rubro" solo tiene sentido entre agrupaciones reales —
+      // Sin Agrupación/Discontinuados no son destinos válidos.
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) continue;
       const agrupacionId = Number(g?.id);
       const agrupacionNombre = g?.nombre ?? g?.name ?? '';
       for (const a of (g?.articulos || [])) {
