@@ -46,6 +46,12 @@ async function apiApplyChangeSet(businessId, changeSetId) {
   return http(`/businesses/${businessId}/sync/change-sets/${changeSetId}/apply`, { method: 'POST' });
 }
 
+// Kinds del circuito de propuestas de receta que disparan la ventanita emergente
+// (ver services/recetaProposals.js / recetaProposalsController.js en el backend).
+const PROPOSAL_KINDS = new Set([
+  'receta_proposal', 'receta_proposal_approved', 'receta_proposal_rejected', 'receta_proposal_revision',
+]);
+
 /* ========= helpers ========= */
 function pickChangeSetId(notif) {
   const raw = notif?.metadata?.change_set_id ?? notif?.meta?.change_set_id ?? null;
@@ -381,21 +387,22 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     }));
   }, [notifications]);
 
-  // ── Ventanita emergente (toast) para propuestas de receta nuevas ──
+  // ── Ventanita emergente (toast) para el circuito de propuestas de receta ──
   // Distinta del drawer: aparece sola, abajo a la izquierda, mientras la
   // persona sigue trabajando en la tabla — no hace falta abrir la campanita
-  // para enterarse de que llegó algo a Aprobaciones.
+  // para enterarse. Cubre las 4 instancias: propuesta nueva (admin), y
+  // aprobada/rechazada/a revisión (quien la propuso).
   const [proposalToasts, setProposalToasts] = useState([]);
   const toastedIdsRef = React.useRef(new Set());
 
   useEffect(() => {
     const nuevas = (notifications || []).filter((n) =>
-      !n.read && n.metadata?.kind === 'receta_proposal' && !toastedIdsRef.current.has(n.id)
+      !n.read && PROPOSAL_KINDS.has(n.metadata?.kind) && !toastedIdsRef.current.has(n.id)
     );
     if (!nuevas.length) return;
     nuevas.forEach((n) => toastedIdsRef.current.add(n.id));
     setProposalToasts((prev) => [
-      ...nuevas.map((n) => ({ id: n.id, message: n.message, title: n.title })),
+      ...nuevas.map((n) => ({ id: n.id, message: n.message, title: n.title, kind: n.metadata?.kind })),
       ...prev,
     ].slice(0, 5));
   }, [notifications]);
@@ -506,12 +513,14 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography fontWeight={700} fontSize="0.85rem">{t.title}</Typography>
                 <Typography fontSize="0.78rem" color="text.secondary">{t.message}</Typography>
-                <Button
-                  size="small" sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
-                  onClick={() => { cerrarToast(t.id); navigate('/configuracion?tab=6'); }}
-                >
-                  Ver aprobaciones
-                </Button>
+                {t.kind === 'receta_proposal' && (
+                  <Button
+                    size="small" sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
+                    onClick={() => { cerrarToast(t.id); navigate('/configuracion?tab=6'); }}
+                  >
+                    Ver aprobaciones
+                  </Button>
+                )}
               </Box>
               <IconButton size="small" onClick={() => cerrarToast(t.id)}>
                 <CloseIcon fontSize="small" />
