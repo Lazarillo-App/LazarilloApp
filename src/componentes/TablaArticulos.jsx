@@ -408,12 +408,14 @@ export default function TablaArticulos({
   const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
 
   // ── Definición canónica de columnas reordenables ──
+  // "Últ. modificación" NO va acá a propósito: es una columna exclusiva de
+  // la vista Staff (STAFF_COLS más abajo), no una opción configurable para
+  // admin/owner.
   const REORDERABLE_COLS = [
     { id: 'costo', label: 'Costo', width: '.35fr' },
     { id: 'precio', label: 'Precio', width: '.35fr' },
     { id: 'rentabilidad', label: 'Rentabilidad', width: '250px' },
     { id: 'manual', label: 'Nuevo precio', width: '.35fr' },
-    { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr' },
     { id: 'acciones', label: 'Acciones', width: '.2fr' },
   ];
 
