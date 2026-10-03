@@ -13,7 +13,7 @@
 //  - un archivo por subcomponente (ItemRow, NotasModal, TabMermaInsumo, etc.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Modal, Box, Typography, TextField, Button, IconButton,
   Alert, CircularProgress, Divider, Chip, Tooltip,
@@ -141,7 +141,10 @@ export default function RecetaModal({
   const [newItemIndex, setNewItemIndex] = useState(null);
   const [insumos, setInsumos] = useState([]);
   const alertaSemanas = appConfig.comprasAlertaSemanas ?? 4;
-  const [sortByCosto, setSortByCosto] = useState(false);
+  // Por defecto ordenado por costo (el más caro arriba) — para detectar rápido
+  // un monto fuera de lugar apenas se abre la receta, sin tener que acordarse
+  // de tocar el botón de orden cada vez.
+  const [sortByCosto, setSortByCosto] = useState(true);
 
   // Notas y foto de la receta
   const [notas, setNotas] = useState('');
@@ -1098,32 +1101,7 @@ export default function RecetaModal({
   const rendimientoNoDefault = Number(rendimiento) !== 1 || rendimientoUnidad !== 'porcion' || rendimientoPeso != null;
   const rendimientoOpen = rendimientoManualOpen != null ? rendimientoManualOpen : rendimientoNoDefault;
 
-  // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
-  // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente).
-  const divisorRend = Number(rendimiento) || 1;
-  const costoXRendimiento = divisorRend > 0 ? costoTotal / divisorRend : 0;
-  // Redondeado con el mismo criterio elegido en Configuración (múltiplo más cercano),
-  // igual que los precios manuales/aumentos masivos en la tabla de artículos.
-  const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
-  const precioSugerido = precioSugeridoCrudo > 0
-    ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
-    : 0;
-  const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
-  const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
-
-  // Venta sin promo: suma de los precios de venta de los componentes-artículo
-  const ventaSinPromo = useMemo(() => {
-    if (!promoMode) return 0;
-    return items.reduce((acc, it) => {
-      if (!it.articleRefId) return acc;
-      const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
-      return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
-    }, 0);
-  }, [items, promoMode, getPrecioSinPromo]);
-  const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
-
-  /* ── Guardar ── */
-  // ── Detección de cambios reales antes de guardar ──
+  // ── Detección de cambios reales desde la última carga/guardado ──
   // Antes, autoSave (al cambiar de tab o navegar con las flechas ←/→ entre recetas)
   // guardaba SIEMPRE que hubiera contenido, aunque no se hubiera tocado nada — el
   // "Guardando…" tardaba y la mayoría de las veces no había ningún cambio real.
@@ -1163,12 +1141,61 @@ export default function RecetaModal({
   }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, pctCostoIdeal, items]);
 
   const pristineSnapshotRef = useRef(null);
+  // Bump-only: fuerza a re-evaluar hayCambiosSinGuardar DESPUÉS de que el efecto de
+  // abajo actualiza pristineSnapshotRef — un ref no dispara re-render por sí solo, así
+  // que sin esto, el primer render tras cargar/guardar comparaba el snapshot NUEVO
+  // contra el pristine VIEJO (todavía no actualizado) y marcaba "hay cambios" por un
+  // instante aunque no se tocó nada. useLayoutEffect (no useEffect) para que ese
+  // segundo render pase ANTES de pintar — sin parpadeo del número en pantalla.
+  const [pristineReady, setPristineReady] = useState(0);
   // Se recalcula cada vez que `receta` cambia (recién cargada/recargada) — en ese
   // punto items/nombre/etc. ya están actualizados en el mismo render.
-  useEffect(() => {
-    if (!receta) { pristineSnapshotRef.current = null; return; }
-    pristineSnapshotRef.current = buildDirtySnapshot();
+  useLayoutEffect(() => {
+    pristineSnapshotRef.current = receta ? buildDirtySnapshot() : null;
+    setPristineReady(v => v + 1);
   }, [receta]);
+
+  // Sin cambios desde la carga: el costo mostrado es el que quedó GUARDADO en la DB
+  // (recetas.costo_total, calculado por el backend) — no el recálculo en vivo de acá.
+  // Con la receta recién abierta, los dos deberían dar lo mismo; la diferencia real es
+  // qué pasa si no coinciden por algún motivo (dato viejo, caché, bug) — ahí la tabla y
+  // el modal deben mostrar EXACTAMENTE lo mismo, porque las dos leen el mismo origen.
+  // El cálculo en vivo (costoTotal) se sigue usando para previsualizar MIENTRAS se edita
+  // (antes de guardar) y para armar el payload que se manda al guardar.
+  const hayCambiosSinGuardar = useMemo(() => {
+    if (pristineSnapshotRef.current == null) return false;
+    return buildDirtySnapshot() !== pristineSnapshotRef.current;
+  }, [buildDirtySnapshot, pristineReady]);
+  const costoTotalMostrado = useMemo(() => {
+    if (!hayCambiosSinGuardar && receta && receta.costo_total != null) {
+      return Number(receta.costo_total);
+    }
+    return costoTotal;
+  }, [hayCambiosSinGuardar, receta, costoTotal]);
+
+  // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
+  // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente).
+  const divisorRend = Number(rendimiento) || 1;
+  const costoXRendimiento = divisorRend > 0 ? costoTotalMostrado / divisorRend : 0;
+  // Redondeado con el mismo criterio elegido en Configuración (múltiplo más cercano),
+  // igual que los precios manuales/aumentos masivos en la tabla de artículos.
+  const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
+  const precioSugerido = precioSugeridoCrudo > 0
+    ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
+    : 0;
+  const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
+  const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
+
+  // Venta sin promo: suma de los precios de venta de los componentes-artículo
+  const ventaSinPromo = useMemo(() => {
+    if (!promoMode) return 0;
+    return items.reduce((acc, it) => {
+      if (!it.articleRefId) return acc;
+      const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
+      return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
+    }, 0);
+  }, [items, promoMode, getPrecioSinPromo]);
+  const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
 
   const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
     setError('');
@@ -1465,8 +1492,11 @@ export default function RecetaModal({
         onSaved?.({
           ...saved,
           article_id: articulo.id,
-          costo_total: costoTotal,
-          costo_por_porcion: costoXRendimiento,
+          // El backend ya recalculó y persistió costo_total/costo_unitario (recalcularCostoReceta)
+          // antes de responder acá — usar ESE valor, no el recálculo en vivo del modal, para que
+          // lo que se muestra en la tabla apenas se guarda sea el mismo dato que quedó en la DB.
+          costo_total: saved?.costo_total ?? costoTotal,
+          costo_por_porcion: saved?.costo_unitario ?? costoXRendimiento,
           precio_sugerido: json?.precio_sugerido ?? precioSugerido,
           porciones: Math.max(1, Number(rendimiento) || 1),
         });
@@ -2696,7 +2726,7 @@ export default function RecetaModal({
                     {Number(rendimiento) > 1 && (
                       <Box>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotal)}</Typography>
+                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotalMostrado)}</Typography>
                       </Box>
                     )}
 
