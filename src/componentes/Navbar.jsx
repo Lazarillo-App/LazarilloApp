@@ -216,7 +216,10 @@ export default function Navbar() {
           boxShadow: 'none',
         }}
       >
-        <Container maxWidth="xl">
+        {/* Sin maxWidth: con "xl" (1536px) el contenido quedaba centrado con
+            franjas vacías a los costados en pantallas grandes/ultrawide,
+            mientras el resto de la app ocupa el ancho completo. */}
+        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
             {/* Logo */}
             <Box
