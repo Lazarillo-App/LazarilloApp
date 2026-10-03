@@ -208,6 +208,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             <Autocomplete
               size="small"
               options={padrinoCandidates}
+              groupBy={(o) => o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda'}
               loading={padrinoLoading}
               value={padrinoSelected}
               getOptionLabel={(o) => o?.nombre || ''}
@@ -221,6 +222,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
                     <Typography variant="caption" color="text.secondary">
                       {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
                       {o.agrupacion_nombre ? ` · 📁 ${o.agrupacion_nombre}` : ''}
+                      {o.sku ? ` · ${o.sku}` : ''}
                     </Typography>
                   </Box>
                 </li>
