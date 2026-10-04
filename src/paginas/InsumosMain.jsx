@@ -1161,6 +1161,18 @@ export default function InsumosMain() {
     } catch { }
   }, [businessId, baseAll, focusInsumo, insumosGroupIndex, rubrosMap]);
 
+  // Igual que el pickup de sessionStorage de arriba, pero para cuando YA estás en esta
+  // página — ahí navigate('/insumos') no remonta nada, así que ese efecto nunca corre.
+  // Usado por el botón "Ir al insumo" de las notificaciones (NotificationsPanel.jsx).
+  useEffect(() => {
+    const handler = (e) => {
+      const id = Number(e?.detail?.id);
+      if (Number.isFinite(id)) focusInsumo(id);
+    };
+    window.addEventListener('focus:pendingInsumo', handler);
+    return () => window.removeEventListener('focus:pendingInsumo', handler);
+  }, [focusInsumo]);
+
   const handleSelectGroupId = useCallback((rawId) => {
     const n = Number(rawId);
     markManualPick();

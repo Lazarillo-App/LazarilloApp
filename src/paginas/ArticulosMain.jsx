@@ -2089,6 +2089,18 @@ export default function ArticulosMain(props) {
     } catch (e) { console.warn('[pendingFocusArticulo]', e); }
   }, [activeBizId, opcionesBuscador, agrupacionesRich, agIndex, focusArticle]);
 
+  // Igual que el pickup de sessionStorage de arriba, pero para cuando YA estás en esta
+  // página — ahí navigate('/menu') no remonta nada, así que ese efecto nunca corre.
+  // Usado por el botón "Ir al artículo" de las notificaciones (NotificationsPanel.jsx).
+  useEffect(() => {
+    const handler = (e) => {
+      const id = Number(e?.detail?.id);
+      if (Number.isFinite(id)) focusArticle(id);
+    };
+    window.addEventListener('focus:pendingArticulo', handler);
+    return () => window.removeEventListener('focus:pendingArticulo', handler);
+  }, [focusArticle]);
+
   // Buscador global: artículos + insumos
   const { rootBusiness: rootBizForSearch, organization: orgForSearch } = useOrganization();
   const activeInOrgForSearch = (orgForSearch?.businesses || []).some(

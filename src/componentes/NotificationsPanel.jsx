@@ -608,6 +608,14 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   try {
                     sessionStorage.setItem(scope === 'insumo' ? 'pendingFocusInsumo' : 'pendingFocusArticulo', String(id));
                   } catch { /* sessionStorage puede no estar disponible */ }
+                  // Si ya estás parada en la página correcta, navigate() a la MISMA ruta no
+                  // remonta el componente — el efecto que lee pendingFocusX del sessionStorage
+                  // nunca corre, y el click no hacía nada. Este evento cubre ese caso: si la
+                  // página ya está montada y escuchando, foquea de una sin esperar un remount.
+                  window.dispatchEvent(new CustomEvent(
+                    scope === 'insumo' ? 'focus:pendingInsumo' : 'focus:pendingArticulo',
+                    { detail: { id } }
+                  ));
                   navigate(scope === 'insumo' ? '/insumos' : '/menu');
                 };
 
