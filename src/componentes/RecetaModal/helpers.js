@@ -74,7 +74,9 @@ export const UNIT_ALIASES = {
   // opciones separadas en el Select por comodidad (cada quien piensa distinto), pero acá
   // se tratan como una sola unidad para que el costo/conversión no dependa de cuál haya
   // elegido quien cargó la receta.
-  porcion: 'u', porciones: 'u', 'porción': 'u', 'porciónes': 'u',
+  // "p" es una abreviatura real de "porción" que aparece en recetas viejas (confirmado
+  // en datos de producción) — misma unidad que "u"/"porción", sin puente de peso.
+  porcion: 'u', porciones: 'u', 'porción': 'u', 'porciónes': 'u', p: 'u',
   // volumen → oz (onza FLUIDA, no de peso — ver getConversionFactor/isCompatibleUnits)
   oz: 'oz', onza: 'oz', onzas: 'oz',
   // peso → lb
