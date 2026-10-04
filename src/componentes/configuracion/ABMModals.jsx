@@ -568,6 +568,7 @@ export function ArticuloNuevoModal({
               <Autocomplete
                 size="small" sx={{ mt: 1 }}
                 options={padrinoCandidates}
+                groupBy={(o) => o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda'}
                 loading={padrinoLoading}
                 value={padrinoSelected}
                 onChange={(_, val) => onPadrinoSelected(val)}
