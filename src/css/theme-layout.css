@@ -456,6 +456,31 @@ h2 {
   background: var(--color-bg);
 }
 
+/* Excepción puntual al scroll invisible global (index.css, "* { scrollbar-width:
+   none }"): en la tabla de Artículos la quieren ver de vuelta. Acotado a este
+   contenedor — el resto de la app sigue sin barra visible. */
+.tabla-articulos-container,
+.tabla-articulos-container * {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+.tabla-articulos-container::-webkit-scrollbar,
+.tabla-articulos-container *::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+.tabla-articulos-container ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+}
+.tabla-articulos-container ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.tabla-articulos-container ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .tabla-content {
   flex: 1;
   margin-left: 0;
