@@ -169,6 +169,19 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
       setSuccess(data.data);
       onCreated?.(data.data);
+      try {
+        window.dispatchEvent(new CustomEvent('ui:action', {
+          detail: {
+            businessId,
+            kind: 'insumo_create',
+            scope: 'insumo',
+            title: `🆕 ${data.data?.nombre || form.nombre} creado`,
+            message: `En "${rubroFinal}"`,
+            createdAt: new Date().toISOString(),
+            payload: { ids: [data.data?.id], rubro: rubroFinal },
+          },
+        }));
+      } catch { /* no bloquear el alta si falla la notificación */ }
       setTimeout(() => {
         setSuccess(null);
         setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
@@ -500,6 +513,21 @@ export function ArticuloNuevoModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
       onCreated?.(data.articulo);
+      if (!isEdit) {
+        try {
+          window.dispatchEvent(new CustomEvent('ui:action', {
+            detail: {
+              businessId,
+              kind: 'articulo_create',
+              scope: 'articulo',
+              title: `🆕 ${data.articulo?.nombre || form.nombre} creado`,
+              message: rubroEfectivo ? `En "${rubroEfectivo}"` : 'Artículo manual',
+              createdAt: new Date().toISOString(),
+              payload: { ids: [data.articulo?.id], rubro: rubroEfectivo, subrubro: subrubroEfectivo },
+            },
+          }));
+        } catch { /* no bloquear el alta si falla la notificación */ }
+      }
       onClose();
     } catch (e) {
       setError(e.message || (isEdit ? 'Error al guardar los cambios' : 'Error al crear el artículo'));

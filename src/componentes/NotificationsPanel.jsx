@@ -24,6 +24,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import CheckIcon from '@mui/icons-material/Check';
 import UndoIcon from '@mui/icons-material/Undo';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
@@ -583,6 +584,33 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                   return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
                 };
 
+                // "Ir al artículo/insumo": solo cuando el payload trae UN solo id (alta,
+                // movimiento) — con varios de una no hay a dónde "ir" puntualmente.
+                // notif.payload (eventos 'ui' en vivo, esta sesión) o notif.metadata
+                // (notificación ya guardada y releída del backend — ver notificationService.js
+                // createUiNotification, que persiste el payload tal cual dentro de metadata).
+                const GOTO_KINDS = new Set(['move', 'articulo_create', 'insumo_create', 'articulo_move', 'insumo_move']);
+                const getGotoId = (notif) => {
+                  if (!notif || !GOTO_KINDS.has(notif.kind)) return null;
+                  const ids = notif.payload?.ids || notif.metadata?.ids;
+                  if (!Array.isArray(ids) || ids.length !== 1) return null;
+                  const id = Number(ids[0]);
+                  return Number.isFinite(id) ? id : null;
+                };
+                // Mismo mecanismo de "foco pendiente" que ya usa el buscador global para
+                // saltar entre Artículos e Insumos (sessionStorage + efecto de montaje en
+                // cada página — ver ArticulosMain.jsx/InsumosMain.jsx, "pendingFocusX").
+                const goToTarget = (notif) => {
+                  const id = getGotoId(notif);
+                  if (id == null) return;
+                  const scope = notif.scope || notif.payload?.scope || notif.metadata?.scope || 'articulo';
+                  setOpen(false);
+                  try {
+                    sessionStorage.setItem(scope === 'insumo' ? 'pendingFocusInsumo' : 'pendingFocusArticulo', String(id));
+                  } catch { /* sessionStorage puede no estar disponible */ }
+                  navigate(scope === 'insumo' ? '/insumos' : '/menu');
+                };
+
                 const getCountdownLabel = (notif) => {
                   const secs = countdowns[notif.id];
                   if (!secs) return null;
@@ -673,22 +701,38 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                                 {formatDate(notif.created_at)}
                               </Typography>
 
-                              {canUndo(notif) && (
+                              {(canUndo(notif) || getGotoId(notif) != null) && (
                                 <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
 
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    color="warning"
-                                    startIcon={<UndoIcon />}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      undoUiNotif(notif);
-                                    }}
-                                    sx={{ textTransform: 'none' }}
-                                  >
-                                    Deshacer
-                                  </Button>
+                                  {canUndo(notif) && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="warning"
+                                      startIcon={<UndoIcon />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        undoUiNotif(notif);
+                                      }}
+                                      sx={{ textTransform: 'none' }}
+                                    >
+                                      Deshacer
+                                    </Button>
+                                  )}
+                                  {getGotoId(notif) != null && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<ArrowForwardIcon />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        goToTarget(notif);
+                                      }}
+                                      sx={{ textTransform: 'none' }}
+                                    >
+                                      Ir {notif.scope === 'insumo' ? 'al insumo' : 'al artículo'}
+                                    </Button>
+                                  )}
                                 </Box>
                               )}
                             </Box>
