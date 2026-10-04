@@ -21,6 +21,7 @@ const ConfigContext = createContext({
   precioCosteoInsumos:  'ultima_compra',
   redondeoPrecios:      null,
   divisa:               'ARS',
+  notificarAltaArticuloInsumo: true,
   loading:              false,
   reload:               () => {},
 });
@@ -38,6 +39,7 @@ export function ConfigProvider({ children }) {
     precioCosteoInsumos:  'ultima_compra',
     redondeoPrecios:      null,
     divisa:               'ARS',
+    notificarAltaArticuloInsumo: true,
   });
   const [loading, setLoading] = useState(false);
 
@@ -64,6 +66,7 @@ export function ConfigProvider({ children }) {
           precioCosteoInsumos:  d.config.precio_costeo_insumos          || 'ultima_compra',
           redondeoPrecios:      d.config.redondeo_precios               ?? null,
           divisa:               d.config.divisa                         || 'ARS',
+          notificarAltaArticuloInsumo: d.config.notificar_alta_articulo_insumo ?? true,
         });
       }
     } catch { /* silencioso */ }
@@ -89,6 +92,7 @@ export function ConfigProvider({ children }) {
         precio_costeo_insumos:  'precioCosteoInsumos',
         redondeo_precios:       'redondeoPrecios',
         divisa:                 'divisa',
+        notificar_alta_articulo_insumo: 'notificarAltaArticuloInsumo',
       };
       const cfgKey = MAP[key];
       if (cfgKey) setCfg(prev => ({ ...prev, [cfgKey]: value }));

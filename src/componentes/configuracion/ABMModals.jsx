@@ -11,12 +11,14 @@ import AddIcon from '@mui/icons-material/Add';
 import { BASE } from '@/servicios/apiBase';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { downwardMenuProps } from '@/utils/menuProps';
+import { useConfig } from '@/context/ConfigContext';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
 /* ─── Alta de Insumo ─── */
 export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initialNombre = '' }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
+  const { notificarAltaArticuloInsumo } = useConfig();
   const [form, setForm] = useState({
     nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '',
     esElaborado: false, sku: '', agrupacionId: '',
@@ -169,19 +171,21 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
       setSuccess(data.data);
       onCreated?.(data.data);
-      try {
-        window.dispatchEvent(new CustomEvent('ui:action', {
-          detail: {
-            businessId,
-            kind: 'insumo_create',
-            scope: 'insumo',
-            title: `🆕 ${data.data?.nombre || form.nombre} creado`,
-            message: `En "${rubroFinal}"`,
-            createdAt: new Date().toISOString(),
-            payload: { ids: [data.data?.id], rubro: rubroFinal },
-          },
-        }));
-      } catch { /* no bloquear el alta si falla la notificación */ }
+      if (notificarAltaArticuloInsumo ?? true) {
+        try {
+          window.dispatchEvent(new CustomEvent('ui:action', {
+            detail: {
+              businessId,
+              kind: 'insumo_create',
+              scope: 'insumo',
+              title: `🆕 ${data.data?.nombre || form.nombre} creado`,
+              message: `En "${rubroFinal}"`,
+              createdAt: new Date().toISOString(),
+              payload: { ids: [data.data?.id], rubro: rubroFinal },
+            },
+          }));
+        } catch { /* no bloquear el alta si falla la notificación */ }
+      }
       setTimeout(() => {
         setSuccess(null);
         setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
@@ -323,6 +327,7 @@ export function ArticuloNuevoModal({
   tourStep = null, onTourNext, onTourSkip,
 }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
+  const { notificarAltaArticuloInsumo } = useConfig();
   const campoNombreRubroRef = useRef(null);
   const padrinoRef = useRef(null);
   const guardarRef = useRef(null);
@@ -513,7 +518,7 @@ export function ArticuloNuevoModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
       onCreated?.(data.articulo);
-      if (!isEdit) {
+      if (!isEdit && (notificarAltaArticuloInsumo ?? true)) {
         try {
           window.dispatchEvent(new CustomEvent('ui:action', {
             detail: {

@@ -12,6 +12,7 @@ import {
   Box, Stack, Typography, Tabs, Tab, Snackbar, Alert,
   CircularProgress, FormControl, InputLabel, Select, MenuItem,
   Button, Grid, Avatar, Chip, Paper, Skeleton, IconButton, Tooltip, Badge,
+  Switch, FormControlLabel,
 } from '@mui/material';
 import TuneIcon from '@mui/icons-material/Tune';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
@@ -25,6 +26,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { useActiveBusiness, useBusiness } from '../context/BusinessContext';
 import { BusinessesAPI, RecetasAPI, PriceConfigAPI } from '../servicios/apiBusinesses';
 import { showConfirm } from '../servicios/appConfirm';
@@ -93,6 +95,7 @@ export default function ConfiguracionMain() {
     compras_alerta_semanas: '', ventas_alerta_dias: '',
     divisa: '', precio_costeo_insumos: 'ultima_compra', redondeo_precios: null,
     desperdicio_global_pct: '',
+    notificar_alta_articulo_insumo: true,
   });
 
   const [configLoading, setConfigLoading] = useState(true);
@@ -172,6 +175,7 @@ export default function ConfiguracionMain() {
           // Si DB devuelve null, usar localStorage como fallback
           redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
           redondeo_mostrar_modal: cfg.redondeo_mostrar_modal ?? localRedondeo?.mostrarModal ?? true,
+          notificar_alta_articulo_insumo: cfg.notificar_alta_articulo_insumo ?? true,
         });
         if (cfg.redondeo_precios !== undefined) {
           const local = getRedondeoConfig(businessId);
@@ -192,6 +196,9 @@ export default function ConfiguracionMain() {
       }
       if (key === 'redondeo_mostrar_modal') {
         setConfig(c => ({ ...c, redondeo_mostrar_modal: value }));
+      }
+      if (key === 'notificar_alta_articulo_insumo') {
+        setConfig(c => ({ ...c, notificar_alta_articulo_insumo: value }));
       }
     };
     window.addEventListener('config:updated', onConfigUpdated);
@@ -295,6 +302,16 @@ export default function ConfiguracionMain() {
       }));
     } catch (e) { notify('Error al guardar preferencia', 'error'); }
   }, [businessId, config.redondeo_precios, notify]);
+
+  const handleToggleNotificarAlta = useCallback(async (activo) => {
+    setConfig(c => ({ ...c, notificar_alta_articulo_insumo: activo }));
+    try {
+      await BusinessesAPI.update(businessId, { props: { notificar_alta_articulo_insumo: activo } });
+      window.dispatchEvent(new CustomEvent('config:updated', {
+        detail: { key: 'notificar_alta_articulo_insumo', value: activo }
+      }));
+    } catch (e) { notify('Error al guardar preferencia', 'error'); }
+  }, [businessId, notify]);
 
   const saveConfigCosteo = useCallback(async () => {
     if (!businessId) return;
@@ -597,6 +614,25 @@ export default function ConfiguracionMain() {
                         {normalizando ? 'Normalizando…' : 'Normalizar ahora'}
                       </Button>
                     </Stack>
+                  </Stack>
+                </SectionCard>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <SectionCard icon={<NotificationsActiveIcon />} title="Notificaciones" accent>
+                  <Stack spacing={1}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={config.notificar_alta_articulo_insumo ?? true}
+                          onChange={e => handleToggleNotificarAlta(e.target.checked)}
+                        />
+                      }
+                      label="Avisar al crear un artículo o insumo"
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      Muestra una notificación con la opción de "Ir al artículo/insumo" apenas lo das de alta manualmente.
+                    </Typography>
                   </Stack>
                 </SectionCard>
               </Grid>
