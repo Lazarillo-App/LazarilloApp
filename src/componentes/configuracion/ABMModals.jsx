@@ -345,6 +345,21 @@ export function ArticuloNuevoModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Código y nombre original (POS/sync) — solo lectura, para ubicar el artículo
+  // en el sistema de origen. El objeto `articulo` de la fila de la tabla no
+  // siempre los trae, así que se piden frescos al abrir en modo edición.
+  const [infoOrigen, setInfoOrigen] = useState(null);
+  useEffect(() => {
+    if (!open || !isEdit || !articulo?.id || !businessId) { setInfoOrigen(null); return; }
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+    })
+      .then(r => r.json())
+      .then(d => { if (d?.ok) setInfoOrigen(d.articulo); })
+      .catch(() => { });
+  }, [open, isEdit, articulo?.id, businessId]);
+
   // Padrino
   const [usarPadrino, setUsarPadrino] = useState(false);
   const [padrinoSelected, setPadrinoSelected] = useState(null);
@@ -614,7 +629,17 @@ export function ArticuloNuevoModal({
 
           <Stack ref={campoNombreRubroRef} spacing={2}>
           <TextField label="Nombre *" size="small" fullWidth autoFocus
-            value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
+            value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+            helperText={isEdit && infoOrigen?.nombre_original && infoOrigen.nombre_original !== form.nombre
+              ? `Nombre original (POS): ${infoOrigen.nombre_original}`
+              : undefined}
+          />
+
+          {/* Código — solo lectura, de referencia. Edita el SKU externo abajo en
+              artículos manuales; en los sincronizados el código viene de Maxi. */}
+          {isEdit && infoOrigen?.codigo && (
+            <TextField label="Código" size="small" fullWidth disabled value={infoOrigen.codigo} />
+          )}
 
           {/* SKU externo — solo aplica a creación, o edición de un artículo manual
               (uno ya sincronizado con Maxi no procesa este campo en el PATCH) */}
