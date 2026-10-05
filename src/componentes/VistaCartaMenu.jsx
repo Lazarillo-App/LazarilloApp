@@ -311,7 +311,8 @@ function cartaCss(diseno, negocio, scale) {
 .sep{width:46px;height:0;border-top:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};margin:0 auto 6px}
 .rub{margin-bottom:${r(14)}px;break-inside:avoid}
 .rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;line-height:1.25;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
-.it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px}
+.it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px;padding:3px 6px;margin-left:-6px;border-radius:5px;transition:background .1s}
+.it:hover{background:rgba(0,0,0,.05)}
 .nm{font-family:${Dx.dFont};font-weight:600;font-size:${r(Dx.itemSize || 14.5)}px;color:${inkH}}
 .dots{flex:1;border-bottom:${lineWidth(Dx.line, 1)}px ${Dx.line} ${ldH};transform:translateY(-4px)}
 .pr{font-weight:700;font-size:${r(Dx.itemSize || 14.5)}px;color:${priceH};font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
@@ -2833,7 +2834,7 @@ export default function VistaCartaMenu({
                                               borderBottom: `1px dotted ${(neg.accent || accent)}55`,
                                             }}>
                                             <span>{bloqueActual}</span>
-                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 }}
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0, cursor: "default" }}
                                               draggable={false}
                                               onMouseDown={(e) => e.stopPropagation()}
                                               onClick={(e) => e.stopPropagation()}
@@ -2901,7 +2902,7 @@ export default function VistaCartaMenu({
                                             {/* Siempre visibles (como antes) — el corte del precio no era por
                                                 mostrarse siempre sino porque el espacio reservado (90px) era más
                                                 chico que lo que en verdad ocupan estos botones. Ya con 130px alcanza. */}
-                                            <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4 }} onMouseDown={(e) => e.stopPropagation()}>
+                                            <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4, cursor: "default" }} onMouseDown={(e) => e.stopPropagation()}>
                                               <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, artId); }}
                                                 title="Agregar línea divisoria debajo de este artículo"
                                                 style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
