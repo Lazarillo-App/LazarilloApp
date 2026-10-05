@@ -246,7 +246,15 @@ function reconciliar(guardada, articulosPlano, modo) {
   }
 
   let nSec = Object.keys(secciones).length;
-  let nHoja = hojas.length;
+  // Secciones nuevas (ids) que no tienen todavía una hoja asignada — van al
+  // pool, NUNCA se arma una hoja sola para ellas. Mismo criterio que
+  // maquetaVacia ("← al pool, no a una hoja"): quién arma las hojas es la
+  // usuaria, no la reconciliación. Antes esto creaba una hoja nueva acá mismo,
+  // así que cada vez que aparecía un artículo en un rubro/agrupación sin
+  // sección guardada (típico: la primera promo nueva de un negocio, que cae
+  // en la agrupación "Promociones") te aparecía una hoja "Promociones" sola,
+  // sin haberla pedido.
+  const poolSeccionesNuevas = [];
   for (const [titulo, ids] of nuevosPorTitulo) {
     const ordenados = ids.slice().sort((x, y) => {
       const ax = clean((activos.find((a) => String(a.id) === x) || {}).nombre);
@@ -258,18 +266,21 @@ function reconciliar(guardada, articulosPlano, modo) {
       // agregar al final de la sección existente
       secciones[sidExistente].itemIds.push(...ordenados);
     } else {
-      // crear sección + hoja nueva para estos artículos nuevos
       const sid = "sec-new-" + (nSec++);
       secciones[sid] = { id: sid, titulo, origen: titulo, tipo: tipoNatural, itemIds: ordenados };
-      hojas.push({ id: "hoja-" + sid, nombre: titulo, cols: 1, columnas: [[sid]] });
+      poolSeccionesNuevas.push(sid);
       secPorTitulo.set(`${tipoNatural}|${titulo}`, sid);
-      nHoja++;
     }
   }
 
   // Limpiar referencias a secciones vacías que quedaron en columnas (opcional: dejarlas)
   return {
-    hojas, secciones, pool: guardada.pool || { secciones: [], items: [] },
+    hojas,
+    secciones,
+    pool: {
+      secciones: [...(guardada.pool?.secciones || []), ...poolSeccionesNuevas],
+      items: guardada.pool?.items || [],
+    },
     removidos: Array.from(removidos),
     gruposVinculados: guardada.gruposVinculados || {},
   };
