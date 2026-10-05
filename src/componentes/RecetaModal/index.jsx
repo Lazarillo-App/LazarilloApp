@@ -2856,8 +2856,16 @@ export default function RecetaModal({
                       {/* Barra de ajuste del Costo Objetivo — debajo del sugerido, visible siempre.
                           +/- de a 1 punto, o doble click sobre el % de arriba para tipearlo directo. */}
                       <Stack direction="row" alignItems="center" spacing={0.25} sx={{ mt: 0.5 }}>
-                        <IconButton size="small" sx={{ p: 0.25 }} onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) - 1)}>
-                          <RemoveIcon sx={{ fontSize: 16 }} />
+                        <IconButton
+                          size="small"
+                          onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) - 1)}
+                          sx={{
+                            width: 22, height: 22, p: 0,
+                            bgcolor: 'action.hover',
+                            '&:hover': { bgcolor: 'action.selected' },
+                          }}
+                        >
+                          <RemoveIcon sx={{ fontSize: 15 }} />
                         </IconButton>
                         <Slider
                           value={Number(pctCostoIdeal) || 0}
@@ -2869,8 +2877,16 @@ export default function RecetaModal({
                           onChangeCommitted={(_, val) => commitObjetivo(val)}
                           sx={{ py: 0.5, flex: 1 }}
                         />
-                        <IconButton size="small" sx={{ p: 0.25 }} onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) + 1)}>
-                          <AddIcon sx={{ fontSize: 16 }} />
+                        <IconButton
+                          size="small"
+                          onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) + 1)}
+                          sx={{
+                            width: 22, height: 22, p: 0,
+                            bgcolor: 'action.hover',
+                            '&:hover': { bgcolor: 'action.selected' },
+                          }}
+                        >
+                          <AddIcon sx={{ fontSize: 15 }} />
                         </IconButton>
                       </Stack>
                     </Box>}
