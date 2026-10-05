@@ -15,10 +15,15 @@ import { useConfig } from '@/context/ConfigContext';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
-/* ─── Alta de Insumo ─── */
-export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initialNombre = '' }) {
+/* ─── Alta / edición de Insumo ─── */
+export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initialNombre = '', insumo = null }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const { notificarAltaArticuloInsumo } = useConfig();
+  const isEdit = !!insumo;
+  // Insumo manual (no sincronizado con Maxi todavía): el código es provisorio
+  // (L-...) y tiene sentido poder editarlo. Uno ya sincronizado no — el backend
+  // ni siquiera procesa ese campo en el PUT (ver actualizar, insumosController).
+  const isManualInsumo = isEdit && String(insumo?.origen || '').toLowerCase() === 'manual';
   const [form, setForm] = useState({
     nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '',
     esElaborado: false, sku: '', agrupacionId: '',
@@ -35,6 +40,20 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const [padrinoCandidates, setPadrinoCandidates] = useState([]);
   const [padrinoLoading, setPadrinoLoading] = useState(false);
   const rubroNuevoInsumoRef = useRef(null);
+
+  // Código y nombre original (POS/sync) — solo lectura, se piden frescos al abrir
+  // en modo edición (mismo patrón que ArticuloNuevoModal).
+  const [infoOrigen, setInfoOrigen] = useState(null);
+  useEffect(() => {
+    if (!open || !isEdit || !insumo?.id || !businessId) { setInfoOrigen(null); return; }
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/insumos/${insumo.id}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+    })
+      .then(r => r.json())
+      .then(d => { if (d?.ok) setInfoOrigen(d.data); })
+      .catch(() => { });
+  }, [open, isEdit, insumo?.id, businessId]);
 
   // Mismo fix que en ArticuloNuevoModal: el <Select> de MUI devuelve el foco a sí
   // mismo al cerrar su menú, ganándole la carrera al autoFocus del campo nuevo.
@@ -108,6 +127,21 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
     }
   }, [open, initialNombre]);
 
+  // Precarga del form en modo edición.
+  useEffect(() => {
+    if (!open || !insumo) return;
+    setForm({
+      nombre: insumo.nombre || '',
+      rubro: insumo.rubro_nombre || '',
+      rubroNuevo: '',
+      unidadMed: insumo.unidad_med || 'u',
+      precioRef: insumo.precio_ref != null ? String(insumo.precio_ref) : '',
+      esElaborado: !!insumo.es_elaborado,
+      sku: String(insumo.origen || '').toLowerCase() === 'manual' ? (insumo.codigo_maxi || '') : '',
+      agrupacionId: '',
+    });
+  }, [open, insumo]);
+
   const rubroFinal = form.rubro === '__nuevo__' ? form.rubroNuevo.trim() : form.rubro;
 
   const onPadrinoSelected = (padrino) => {
@@ -159,27 +193,43 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
     setSaving(true); setError('');
     try {
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${BASE}/insumos`, {
-        method: 'POST',
+      const url = isEdit ? `${BASE}/insumos/${insumo.id}` : `${BASE}/insumos`;
+      const body = isEdit
+        ? {
+            nombre: form.nombre.trim(), rubro: rubroFinal,
+            unidadMed: form.unidadMed || 'u',
+            precioRef: form.precioRef ? Number(form.precioRef) : null,
+            es_elaborado: form.esElaborado,
+            ...(isManualInsumo ? { codigoMaxi: form.sku?.trim() || null } : {}),
+          }
+        : {
+            nombre: form.nombre.trim(), rubro: rubroFinal,
+            unidadMed: form.unidadMed || 'u',
+            precioRef: form.precioRef ? Number(form.precioRef) : null,
+            skuExterno: form.sku?.trim() || null,
+            agrupacionId: form.agrupacionId || null,
+            es_elaborado: form.esElaborado, origen: 'manual',
+          };
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Business-Id': String(businessId),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          nombre: form.nombre.trim(), rubro: rubroFinal,
-          unidadMed: form.unidadMed || 'u',
-          precioRef: form.precioRef ? Number(form.precioRef) : null,
-          skuExterno: form.sku?.trim() || null,
-          agrupacionId: form.agrupacionId || null,
-          es_elaborado: form.esElaborado, origen: 'manual',
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.status === 409) { setError(data.error + (data.existing ? ` (ID: ${data.existing.id})` : '')); setSaving(false); return; }
       if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
-      setSuccess(data.data);
       onCreated?.(data.data);
+      if (isEdit) {
+        window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: insumo.id } }));
+        onClose();
+        setSaving(false);
+        return;
+      }
+      setSuccess(data.data);
       if (notificarAltaArticuloInsumo ?? true) {
         try {
           window.dispatchEvent(new CustomEvent('ui:action', {
@@ -214,7 +264,9 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Nuevo insumo</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+        {isEdit ? 'Editar insumo' : 'Nuevo insumo'}
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={2} pt={0.5}>
           {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
@@ -224,11 +276,15 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             </Alert>
           )}
 
-          {/* Padrino: heredar rubro/unidad/precio/agrupación de otro insumo */}
+          {/* Padrino: heredar rubro/unidad/precio/agrupación de otro insumo —
+              también disponible al editar, para recategorizar copiando de otro
+              insumo ya cargado (mismo criterio que ArticuloNuevoModal). */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Checkbox size="small" checked={usarPadrino} disabled={saving || !!success}
               onChange={e => { setUsarPadrino(e.target.checked); if (!e.target.checked) { setPadrinoSelected(null); setPadrinoQuery(''); } }} />
-            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Usar un insumo de referencia (padrino)</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+              {isEdit ? 'Tomar rubro/unidad/precio de otro insumo' : 'Usar un insumo de referencia (padrino)'}
+            </Typography>
           </Box>
           {usarPadrino && (
             <Autocomplete
@@ -261,15 +317,33 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             />
           )}
 
+          {isEdit && (
+            <Stack direction="row" spacing={1.5}>
+              {/* Código: codigo_maxi del insumo — la llave de fusión con MaxiRest,
+                  igual provisoria (L-...) si todavía no sincronizó. */}
+              <TextField label="Código" size="small" fullWidth disabled
+                value={infoOrigen?.codigo_maxi ?? insumo?.codigo_maxi ?? ''} />
+              {/* Nombre original: el de Maxi/POS, o el mismo actual si todavía
+                  nunca se renombró desde Lazarillo — se congela la primera vez
+                  que se edita el nombre (ver actualizar, backend). */}
+              <TextField label="Nombre original" size="small" fullWidth disabled
+                value={infoOrigen?.nombre_original || infoOrigen?.nombre || form.nombre || ''} />
+            </Stack>
+          )}
+
           <TextField label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
             disabled={saving || !!success} />
 
+          {/* SKU externo — solo aplica a creación, o edición de un insumo manual
+              (uno ya sincronizado con Maxi no procesa este campo en el PUT) */}
+          {(!isEdit || isManualInsumo) && (
             <TextField label="SKU / Código Maxi" size="small" fullWidth
             value={form.sku} disabled={saving || !!success}
             onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
             placeholder="Opcional — si Maxi trae este código, se fusionan"
             helperText="Dejalo vacío para generar un SKU provisorio (L-)" />
+          )}
 
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ flex: 1 }}>
@@ -288,7 +362,8 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             )}
           </Stack>
 
-          {/* Agrupación (opcional) */}
+          {/* Agrupación: solo al crear — moverlo ya es una acción aparte en el menú */}
+          {!isEdit && (
           <FormControl size="small" fullWidth>
             <InputLabel>Agrupación</InputLabel>
             <Select MenuProps={downwardMenuProps()} label="Agrupación" value={form.agrupacionId} disabled={saving || !!success}
@@ -297,6 +372,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
               {agrupaciones.map(a => <MenuItem key={a.id} value={a.id}>{a.nombre}</MenuItem>)}
             </Select>
           </FormControl>
+          )}
 
           <Stack direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ width: 140 }}>
@@ -312,10 +388,12 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
               InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
           </Stack>
 
+          {!isEdit && (
           <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
             Se generará un SKU provisorio automáticamente (<code>LAZ-...</code>).
             Cuando Maxi sincronice un insumo con el mismo nombre y rubro, lo reemplazará.
           </Alert>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
@@ -323,7 +401,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
         <Button size="small" variant="contained" onClick={handleSave} disabled={saving || !!success}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
           sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
-          {saving ? 'Creando…' : 'Crear insumo'}
+          {saving ? (isEdit ? 'Guardando…' : 'Creando…') : (isEdit ? 'Guardar cambios' : 'Crear insumo')}
         </Button>
       </DialogActions>
     </Dialog>

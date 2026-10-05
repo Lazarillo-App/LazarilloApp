@@ -310,6 +310,9 @@ export default function InsumosMain() {
   const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
   const [nuevoInsumoOpen, setNuevoInsumoOpen] = useState(false);
+  // Insumo a editar: mismo modal que la creación (InsumoNuevoModal), en modo
+  // edición — reemplaza el mini-diálogo de "Editar nombre" que tenía InsumoAccionesMenu.
+  const [insumoEditando, setInsumoEditando] = useState(null);
   // Botón "+ Agregar" unificado: desde Insumos también se puede crear/cargar
   // artículos directo, sin tener que ir a la pantalla de Menú primero.
   const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
@@ -1628,6 +1631,7 @@ export default function InsumosMain() {
             rows={tableRowsFiltrados}
             loading={false}
             onEdit={() => { }}
+            onOpenEditModal={(ins) => setInsumoEditando(ins)}
             onDelete={() => { }}
             noBusiness={!businessId}
             vista={effectiveVista}
@@ -1732,6 +1736,17 @@ export default function InsumosMain() {
           // global, el buscador (useGlobalSearchOptions) no se enteraba de que
           // hay un insumo nuevo hasta recargar la página.
           window.dispatchEvent(new CustomEvent('insumos:updated'));
+        }}
+      />
+
+      <InsumoNuevoModal
+        open={!!insumoEditando}
+        insumo={insumoEditando}
+        onClose={() => setInsumoEditando(null)}
+        businessId={resolvedBizId}
+        onCreated={() => {
+          forceRefresh();
+          window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: insumoEditando?.id } }));
         }}
       />
 

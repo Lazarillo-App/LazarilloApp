@@ -46,6 +46,7 @@ function InsumoAccionesMenu({
   onAfterToggleElaborado,
   onCreateGroupFromInsumo,
   onOpenRecetaElaborado,
+  onOpenEditModal,
   businessId,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -61,20 +62,11 @@ function InsumoAccionesMenu({
   const currentGroupId = selectedGroupId ? Number(selectedGroupId) : null;
   const isTodoView = todoGroupId && currentGroupId === todoGroupId;
   const insumoNombre = String(insumo?.nombre || '').trim() || `INS-${insumoId}`;
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [renaming, setRenaming] = useState(false);
   const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
   const [eliminando, setEliminando] = useState(false);
 
   // Solo los insumos manuales se pueden eliminar
   const esManual = String(insumo?.origen || '').toLowerCase() === 'manual';
-
-  const openRename = useCallback(() => {
-    setRenameValue(insumoNombre);
-    handleClose();
-    setTimeout(() => setRenameOpen(true), 0);
-  }, [insumoNombre, handleClose]);
 
   // Derivado del objeto insumo — única fuente de verdad
   const isElaborado = Boolean(insumo?.es_elaborado);
@@ -112,43 +104,6 @@ function InsumoAccionesMenu({
     handleClose();
     onOpenRecetaElaborado?.(insumo);
   }
-
-  /* ========== RENOMBRAR ========== */
-  const ejecutarRename = useCallback(async () => {
-    const nuevo = renameValue.trim();
-    if (!nuevo || nuevo === insumoNombre) {
-      setRenameOpen(false);
-      return;
-    }
-    setRenaming(true);
-    try {
-      // Llamada al PUT /insumos/:id que ya existe
-      const token = localStorage.getItem('token') || '';
-      const res = await fetch(`/api/insumos/${insumoId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          'X-Business-Id': String(businessId || ''),
-        },
-        body: JSON.stringify({ nombre: nuevo }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      notify?.(`Insumo renombrado a "${nuevo}"`, 'success');
-      // Con detail.insumoId: el listener compartido en RecetaModal (mismo handler
-      // que insumo:equivalencias-changed) lo necesita para saber a qué insumo
-      // aplica — sin esto no refrescaba el nombre en ninguna receta ya abierta
-      // que lo use como ingrediente.
-      window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId } }));
-      await onReloadCatalogo?.();
-      setRenameOpen(false);
-    } catch (e) {
-      console.error('RENAME_INSUMO_ERROR', e);
-      notify?.('No se pudo renombrar el insumo', 'error');
-    } finally {
-      setRenaming(false);
-    }
-  }, [renameValue, insumoNombre, insumoId, businessId, notify, onReloadCatalogo]);
 
   const ejecutarEliminar = useCallback(async () => {
     if (!esManual) return;
@@ -362,10 +317,10 @@ function InsumoAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        {/* 1. Renombrar*/}
-        <MenuItem onClick={openRename}>
+        {/* 1. Editar — mismo modal que la creación, en modo edición */}
+        <MenuItem onClick={() => { handleClose(); onOpenEditModal?.(insumo); }}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Editar nombre</ListItemText>
+          <ListItemText>Editar insumo</ListItemText>
         </MenuItem>
         {/* 2. Discontinuar / Reactivar */}
         <MenuItem onClick={toggleDiscontinuar}>
@@ -468,26 +423,6 @@ function InsumoAccionesMenu({
             disabled={!destId || isMoving}
           >
             {isMoving ? 'Moviendo…' : 'Mover'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Editar nombre del insumo</DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-                    <TextField
-            autoFocus fullWidth size="small"
-            label="Nombre"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onFocus={(e) => e.target.select()}
-            onKeyDown={(e) => { if (e.key === 'Enter') ejecutarRename(); }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
-          <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
-            {renaming ? 'Guardando…' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -219,6 +219,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   rows = [],
   loading = false,
   onEdit,
+  onOpenEditModal,
   onDelete,
   noBusiness = false,
   vista = "no-elaborados",
@@ -1288,6 +1289,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                             onAfterToggleElaborado={onAfterToggleElaborado}
                             onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
                             onOpenRecetaElaborado={onOpenRecetaElaborado}
+                            onOpenEditModal={onOpenEditModal}
                             businessId={originalBusinessId || businessId}
                           />
                         )}
@@ -1368,6 +1370,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                             onAfterToggleElaborado={onAfterToggleElaborado}
                             onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
                             onOpenRecetaElaborado={onOpenRecetaElaborado}
+                            onOpenEditModal={onOpenEditModal}
                             businessId={originalBusinessId || businessId}
                           />
                         )}
