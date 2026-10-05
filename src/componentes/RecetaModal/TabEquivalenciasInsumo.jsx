@@ -134,7 +134,10 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
     setLoading(true);
     insumoEquivalenciasList(insumoId, businessId)
       .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
-      .catch(() => setError('No se pudieron cargar las equivalencias'))
+      // No hay aviso en pantalla: la mayoría de los insumos no tiene equivalencias
+      // cargadas todavía, y eso no es un error — se ve como lista vacía. Una falla
+      // real de backend igual rompe el resto de la pantalla; queda en consola.
+      .catch((e) => { console.error('[TabEquivalenciasInsumo] Error al cargar equivalencias:', e); setLista([]); })
       .finally(() => setLoading(false));
   }, [insumoId, businessId]);
 
