@@ -329,6 +329,12 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             <Autocomplete
               size="small"
               options={displayedPadrinoCandidates}
+              // El backend ya decide qué candidatos mandar (nombre, rubro, "otros en
+              // rubro"...) — sin esto, el filtro de texto propio de MUI (que compara
+              // contra getOptionLabel) descartaba en el cliente todo lo que no
+              // contuviera el texto tipeado en el NOMBRE, aunque viniera a propósito
+              // por pertenecer al mismo rubro.
+              filterOptions={(x) => x}
               groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
               loading={padrinoLoading}
               value={padrinoSelected}
@@ -759,6 +765,7 @@ export function ArticuloNuevoModal({
               <Autocomplete
                 size="small" sx={{ mt: 1 }}
                 options={displayedPadrinoCandidates}
+                filterOptions={(x) => x}
                 groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
                 loading={padrinoLoading}
                 value={padrinoSelected}
