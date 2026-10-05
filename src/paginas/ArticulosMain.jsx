@@ -1872,21 +1872,29 @@ export default function ArticulosMain(props) {
     const id = Number(pendingJumpRef.current);
     if (!Number.isFinite(id) || id <= 0) return;
 
+    // timeoutId se reasigna en cada tick — el cleanup de abajo siempre cancela
+    // el que esté pendiente en ESE momento (antes solo cancelaba el primero,
+    // t0; cualquier setTimeout(tick, 80) programado después quedaba corriendo
+    // "zombie" en paralelo con el de la búsqueda siguiente, y jumpTriesRef
+    // nunca llegaba al tope de 25 porque se reseteaba a 1 en vez de
+    // incrementarse — entre ambos bugs, dos saltos seguidos podían competir y
+    // terminar en el artículo equivocado).
+    let timeoutId;
     const tick = () => {
       if (tryJumpNow(id)) {
         pendingJumpRef.current = null;
         return;
       }
-      jumpTriesRef.current = 1;
+      jumpTriesRef.current += 1;
       if (jumpTriesRef.current > 25) {
         pendingJumpRef.current = null;
         return;
       }
-      setTimeout(tick, 80);
+      timeoutId = setTimeout(tick, 80);
     };
 
-    const t0 = setTimeout(tick, 40);
-    return () => clearTimeout(t0);
+    timeoutId = setTimeout(tick, 40);
+    return () => clearTimeout(timeoutId);
   }, [
     categorias,
     agrupacionSeleccionada,
