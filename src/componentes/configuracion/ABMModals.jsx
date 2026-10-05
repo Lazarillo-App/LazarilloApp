@@ -290,7 +290,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             <Autocomplete
               size="small"
               options={padrinoCandidates}
-              groupBy={(o) => o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda'}
+              groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
               loading={padrinoLoading}
               value={padrinoSelected}
               getOptionLabel={(o) => o?.nombre || ''}
@@ -693,7 +693,7 @@ export function ArticuloNuevoModal({
               <Autocomplete
                 size="small" sx={{ mt: 1 }}
                 options={padrinoCandidates}
-                groupBy={(o) => o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda'}
+                groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
                 loading={padrinoLoading}
                 value={padrinoSelected}
                 onChange={(_, val) => onPadrinoSelected(val)}
