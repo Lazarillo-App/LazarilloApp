@@ -1982,9 +1982,13 @@ export default function ArticulosMain(props) {
         const appIds = Array.isArray(g.app_articles_ids) ? g.app_articles_ids : [];
         for (const raw of appIds) { const n = Number(raw); if (n > 0) s.add(n); }
       }
-      if (todoInfo?.todoIds?.size) {
-        for (const id of todoInfo.todoIds) { const n = Number(id); if (n > 0) s.add(n); }
-      }
+      // Mismo fallback que usa opcionesBuscador más abajo: todoInfo.todoIds lo computa
+      // TablaArticulos internamente y puede llegar vacío (todavía no montó, o un
+      // artículo recién creado no entró en ese cálculo) — sin el fallback a
+      // todoIdsFromTree (derivado del árbol, ya corregido para incluir manuales),
+      // un artículo sin agrupación quedaba afuera del buscador de este subnegocio.
+      const sinAgrupSub = todoInfo?.todoIds?.size ? todoInfo.todoIds : todoIdsFromTree;
+      for (const id of sinAgrupSub) { const n = Number(id); if (n !== 0) s.add(n); }
     } else {
       // PRINCIPAL: artículos propios = los del árbol que NO están asignados a subnegocios
       // "Asignados a subnegocios" = orgAssignedIds MENOS los que están en agrupaciones del propio principal
@@ -2014,7 +2018,7 @@ export default function ArticulosMain(props) {
     }
 
     return s;
-  }, [agrupaciones, orgAssignedIds, todoInfo?.todoIds, nameById, activeBizId, rootBusiness]);
+  }, [agrupaciones, orgAssignedIds, todoInfo?.todoIds, todoIdsFromTree, nameById, activeBizId, rootBusiness]);
 
   // IDs de artículos de la agrupación seleccionada (para pasar al sidebar con el objetivo)
   const agrupacionArticuloIds = useMemo(() => {
