@@ -15,6 +15,39 @@ import { useConfig } from '@/context/ConfigContext';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
+// Colapsa los candidatos de padrino agrupados como "Rubro: X" (el backend ya
+// manda ahí TODOS los artículos/insumos de ese rubro) en un único renglón
+// clicable — mostrarlos todos de entrada inundaba el dropdown si el rubro
+// tenía muchos. Se reemplaza por sus ítems reales recién cuando ese rubro
+// puntual está en `expandedRubros`.
+function withCollapsedRubros(candidatos, expandedRubros) {
+  const out = [];
+  const porRubro = new Map();
+  for (const c of candidatos) {
+    if (c.grupo && c.grupo.startsWith('Rubro: ')) {
+      const rubroName = c.grupo.slice('Rubro: '.length);
+      if (!porRubro.has(rubroName)) porRubro.set(rubroName, []);
+      porRubro.get(rubroName).push(c);
+    } else {
+      out.push(c);
+    }
+  }
+  for (const [rubroName, items] of porRubro) {
+    if (expandedRubros.has(rubroName)) {
+      out.push(...items);
+    } else {
+      out.push({
+        __rubroHeader: true,
+        id: `__rubro__${rubroName}`,
+        nombre: rubroName,
+        count: items.length,
+        grupo: `Rubro: ${rubroName}`,
+      });
+    }
+  }
+  return out;
+}
+
 /* ─── Alta / edición de Insumo ─── */
 export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initialNombre = '', insumo = null }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
@@ -39,6 +72,11 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const [padrinoQuery, setPadrinoQuery] = useState('');
   const [padrinoCandidates, setPadrinoCandidates] = useState([]);
   const [padrinoLoading, setPadrinoLoading] = useState(false);
+  const [expandedRubros, setExpandedRubros] = useState(() => new Set());
+  const displayedPadrinoCandidates = useMemo(
+    () => withCollapsedRubros(padrinoCandidates, expandedRubros),
+    [padrinoCandidates, expandedRubros]
+  );
   const rubroNuevoInsumoRef = useRef(null);
 
   // Código y nombre original (POS/sync) — solo lectura, se piden frescos al abrir
@@ -96,6 +134,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
 
   // Buscar candidatos de padrino con debounce
   useEffect(() => {
+    setExpandedRubros(new Set());
     if (!usarPadrino || padrinoQuery.trim().length < 2) { setPadrinoCandidates([]); return; }
     const token = localStorage.getItem('token') || '';
     setPadrinoLoading(true);
@@ -115,7 +154,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
     if (!open) {
       setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
       setError(''); setSuccess(null);
-      setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);
+      setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]); setExpandedRubros(new Set());
     }
   }, [open]);
 
@@ -289,26 +328,46 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           {usarPadrino && (
             <Autocomplete
               size="small"
-              options={padrinoCandidates}
+              options={displayedPadrinoCandidates}
               groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
               loading={padrinoLoading}
               value={padrinoSelected}
               getOptionLabel={(o) => o?.nombre || ''}
               isOptionEqualToValue={(a, b) => a?.id === b?.id}
-              onChange={(_, val) => onPadrinoSelected(val)}
+              onChange={(_, val) => { if (val?.__rubroHeader) return; onPadrinoSelected(val); }}
               onInputChange={(_, val) => setPadrinoQuery(val)}
-              renderOption={(props, o) => (
-                <li {...props} key={o.id}>
-                  <Box>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{o.nombre}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Rubro: {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
-                      {o.agrupacion_nombre ? ` · 📁 ${o.agrupacion_nombre}` : ''}
-                      {' · Cód: '}{o.codigo ?? o.sku ?? '—'}
-                    </Typography>
-                  </Box>
-                </li>
-              )}
+              renderOption={(props, o) => {
+                if (o.__rubroHeader) {
+                  return (
+                    <li
+                      {...props}
+                      key={o.id}
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onClick={(e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        setExpandedRubros(prev => new Set(prev).add(o.nombre));
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 700, color: themeColor }}>
+                        ▸ Ver {o.count} insumo{o.count === 1 ? '' : 's'} en este rubro
+                      </Typography>
+                    </li>
+                  );
+                }
+                return (
+                  <li {...props} key={o.id}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{o.nombre}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Rubro: {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
+                        {o.agrupacion_nombre ? ` · 📁 ${o.agrupacion_nombre}` : ''}
+                        {' · Cód: '}{o.codigo ?? o.sku ?? '—'}
+                      </Typography>
+                    </Box>
+                  </li>
+                );
+              }}
               renderInput={(params) => (
                 <TextField {...params} label="Buscar insumo padrino" placeholder="Escribí para buscar…"
                   InputProps={{ ...params.InputProps, endAdornment: (<>{padrinoLoading ? <CircularProgress size={16} /> : null}{params.InputProps.endAdornment}</>) }} />
@@ -455,6 +514,11 @@ export function ArticuloNuevoModal({
   const [padrinoQuery, setPadrinoQuery] = useState('');
   const [padrinoCandidates, setPadrinoCandidates] = useState([]);
   const [padrinoLoading, setPadrinoLoading] = useState(false);
+  const [expandedRubros, setExpandedRubros] = useState(() => new Set());
+  const displayedPadrinoCandidates = useMemo(
+    () => withCollapsedRubros(padrinoCandidates, expandedRubros),
+    [padrinoCandidates, expandedRubros]
+  );
 
   const subrubrosDelRubro = useMemo(() => {
     const r = rubros.find(r => r.nombre === form.rubro);
@@ -504,6 +568,7 @@ export function ArticuloNuevoModal({
       setPadrinoSelected(null);
       setPadrinoQuery('');
       setPadrinoCandidates([]);
+      setExpandedRubros(new Set());
     }
   }, [open]);
 
@@ -525,6 +590,7 @@ export function ArticuloNuevoModal({
 
   // Buscar candidatos de padrino con debounce
   useEffect(() => {
+    setExpandedRubros(new Set());
     if (!usarPadrino || !businessId) {
       setPadrinoCandidates([]);
       return;
@@ -692,27 +758,47 @@ export function ArticuloNuevoModal({
             {usarPadrino && (
               <Autocomplete
                 size="small" sx={{ mt: 1 }}
-                options={padrinoCandidates}
+                options={displayedPadrinoCandidates}
                 groupBy={(o) => o.grupo || (o.esMatch === false ? 'También en ese rubro' : 'Coincide con la búsqueda')}
                 loading={padrinoLoading}
                 value={padrinoSelected}
-                onChange={(_, val) => onPadrinoSelected(val)}
+                onChange={(_, val) => { if (val?.__rubroHeader) return; onPadrinoSelected(val); }}
                 onInputChange={(_, val) => setPadrinoQuery(val)}
                 getOptionLabel={(opt) => opt?.nombre || ''}
                 isOptionEqualToValue={(opt, val) => Number(opt?.id) === Number(val?.id)}
-                renderOption={(props, opt) => (
-                  <li {...props} key={opt.id}>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>{opt.nombre}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Rubro: {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
-                        {' · '}${Number(opt.precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        {opt.agrupacion_nombre ? ` · 📁 ${opt.agrupacion_nombre}` : ''}
-                        {' · Cód: '}{opt.codigo ?? opt.sku ?? '—'}
-                      </Typography>
-                    </Box>
-                  </li>
-                )}
+                renderOption={(props, opt) => {
+                  if (opt.__rubroHeader) {
+                    return (
+                      <li
+                        {...props}
+                        key={opt.id}
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => {
+                          e.preventDefault(); e.stopPropagation();
+                          setExpandedRubros(prev => new Set(prev).add(opt.nombre));
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: themeColor }}>
+                          ▸ Ver {opt.count} artículo{opt.count === 1 ? '' : 's'} en este rubro
+                        </Typography>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li {...props} key={opt.id}>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>{opt.nombre}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Rubro: {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
+                          {' · '}${Number(opt.precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {opt.agrupacion_nombre ? ` · 📁 ${opt.agrupacion_nombre}` : ''}
+                          {' · Cód: '}{opt.codigo ?? opt.sku ?? '—'}
+                        </Typography>
+                      </Box>
+                    </li>
+                  );
+                }}
                 renderInput={(params) => (
                   <TextField {...params} placeholder="Buscar por nombre o SKU…" size="small"
                     InputProps={{
