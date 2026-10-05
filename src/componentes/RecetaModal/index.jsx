@@ -135,6 +135,9 @@ export default function RecetaModal({
   // Edición directa del % objetivo con doble click, al lado de la barrita
   const [editandoObjetivo, setEditandoObjetivo] = useState(false);
   const [objetivoDraft, setObjetivoDraft] = useState('');
+  // Edición directa del precio sugerido ($) con doble click
+  const [editandoPrecioSugerido, setEditandoPrecioSugerido] = useState(false);
+  const [precioSugeridoDraft, setPrecioSugeridoDraft] = useState('');
   // globalConfigObjetivo viene del contexto global, no de un fetch local
   const globalConfigObjetivo = esElaborado
     ? (appConfig.insumosCostoIdeal ?? 30)
@@ -1203,6 +1206,13 @@ export default function RecetaModal({
   const precioSugerido = precioSugeridoCrudo > 0
     ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
     : 0;
+  // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
+  // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
+  const commitPrecioSugerido = (val) => {
+    const precio = Number(val);
+    if (!(precio > 0) || !(costoXRendimiento > 0)) return;
+    commitObjetivo((costoXRendimiento / precio) * 100);
+  };
   const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
   const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
 
@@ -2801,13 +2811,34 @@ export default function RecetaModal({
                         )}
                         % costo)
                       </Typography>
-                      <Typography
-                        variant="h6"
-                        fontWeight={800}
-                        sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main' }}
-                      >
-                        {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
-                      </Typography>
+                      {editandoPrecioSugerido ? (
+                        <TextField
+                          autoFocus
+                          size="small"
+                          type="number"
+                          variant="standard"
+                          value={precioSugeridoDraft}
+                          onChange={(e) => setPrecioSugeridoDraft(e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          onBlur={() => { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }
+                            if (e.key === 'Escape') setEditandoPrecioSugerido(false);
+                          }}
+                          InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: '1.25rem', fontWeight: 800 } }}
+                          sx={{ width: 120 }}
+                        />
+                      ) : (
+                        <Typography
+                          variant="h6"
+                          fontWeight={800}
+                          onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
+                          title="Doble click para editar"
+                          sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
+                        >
+                          {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
+                        </Typography>
+                      )}
                       {sugeridoExcedeVenta && (
                         <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
                           <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />
