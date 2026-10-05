@@ -628,18 +628,21 @@ export function ArticuloNuevoModal({
           )}
 
           <Stack ref={campoNombreRubroRef} spacing={2}>
-          <TextField label="Nombre *" size="small" fullWidth autoFocus
-            value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-            helperText={isEdit && infoOrigen?.nombre_original && infoOrigen.nombre_original !== form.nombre
-              ? `Nombre original (POS): ${infoOrigen.nombre_original}`
-              : undefined}
-          />
-
-          {/* Código — solo lectura, de referencia. Edita el SKU externo abajo en
-              artículos manuales; en los sincronizados el código viene de Maxi. */}
-          {isEdit && infoOrigen?.codigo && (
-            <TextField label="Código" size="small" fullWidth disabled value={infoOrigen.codigo} />
+          {isEdit && (
+            <Stack direction="row" spacing={1.5}>
+              {/* Código: el id del artículo en la DB — ya cumple ese rol para
+                  sincronizados (viene de Maxi) y manuales (lo genera Lazarillo). */}
+              <TextField label="Código" size="small" fullWidth disabled
+                value={infoOrigen?.id ?? articulo?.id ?? ''} />
+              {/* Nombre original: el de Maxi/POS, o el mismo actual si todavía
+                  nunca se renombró desde Lazarillo — se congela la primera vez
+                  que se edita el nombre (ver actualizarArticulo, backend). */}
+              <TextField label="Nombre original" size="small" fullWidth disabled
+                value={infoOrigen?.nombre_original || infoOrigen?.nombre || form.nombre || ''} />
+            </Stack>
           )}
+          <TextField label="Nombre *" size="small" fullWidth autoFocus
+            value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
 
           {/* SKU externo — solo aplica a creación, o edición de un artículo manual
               (uno ya sincronizado con Maxi no procesa este campo en el PATCH) */}
