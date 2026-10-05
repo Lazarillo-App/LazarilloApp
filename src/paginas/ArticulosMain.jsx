@@ -2491,6 +2491,13 @@ export default function ArticulosMain(props) {
           <div style={{ width: 140 }} />
         </div>
         <VistaCartaMenu
+          // key por negocio: VistaCartaMenu inicializa un montón de estado local
+          // (diseño, descripciones, contacto, etc.) desde las props SOLO en el
+          // primer render — sin este key, cambiar de negocio quedándose en esta
+          // vista actualizaba las props pero el componente seguía mostrando todo
+          // lo del negocio anterior hasta ir a la tabla y volver (eso sí
+          // desmontaba/remontaba, porque vistaCarta pasa por false en el medio).
+          key={activeBizId}
           articulos={articulosParaCarta}
           negocio={negocioCarta}
           accent={negocioCarta.ink || '#7a1f3d'}
