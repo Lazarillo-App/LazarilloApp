@@ -34,6 +34,15 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const [padrinoQuery, setPadrinoQuery] = useState('');
   const [padrinoCandidates, setPadrinoCandidates] = useState([]);
   const [padrinoLoading, setPadrinoLoading] = useState(false);
+  const rubroNuevoInsumoRef = useRef(null);
+
+  // Mismo fix que en ArticuloNuevoModal: el <Select> de MUI devuelve el foco a sí
+  // mismo al cerrar su menú, ganándole la carrera al autoFocus del campo nuevo.
+  useEffect(() => {
+    if (form.rubro !== '__nuevo__') return;
+    const t = setTimeout(() => rubroNuevoInsumoRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [form.rubro]);
 
   // Cargar rubros y agrupaciones al abrir
   useEffect(() => {
@@ -273,7 +282,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
               </Select>
             </FormControl>
             {form.rubro === '__nuevo__' && (
-              <TextField label="Nombre del rubro" size="small" sx={{ flex: 1 }} autoFocus
+              <TextField label="Nombre del rubro" size="small" sx={{ flex: 1 }} autoFocus inputRef={rubroNuevoInsumoRef}
                 value={form.rubroNuevo} disabled={saving || !!success}
                 onChange={e => setForm(f => ({ ...f, rubroNuevo: e.target.value }))} />
             )}
@@ -331,6 +340,8 @@ export function ArticuloNuevoModal({
   const campoNombreRubroRef = useRef(null);
   const padrinoRef = useRef(null);
   const guardarRef = useRef(null);
+  const rubroNuevoRef = useRef(null);
+  const subrubroNuevoRef = useRef(null);
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
   const isEdit = !!articulo;
   // Artículo manual (id < 0): la edición de SKU/código externo tiene sentido (aún no
@@ -374,6 +385,21 @@ export function ArticuloNuevoModal({
 
   const esRubroNuevo = form.rubro === '__nuevo__';
   const esSubrubroNuevo = form.subrubro === '__nuevo__';
+
+  // El campo "Nombre del rubro/subrubro nuevo" tiene autoFocus, pero el propio
+  // <Select> de MUI devuelve el foco a sí mismo al cerrar su menú (accesibilidad) —
+  // esa devolución gana la carrera y el autoFocus del TextField se pierde. Forzar
+  // el foco acá, un tick después de que el Select termine su propia restauración.
+  useEffect(() => {
+    if (!esRubroNuevo) return;
+    const t = setTimeout(() => rubroNuevoRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [esRubroNuevo]);
+  useEffect(() => {
+    if (!esSubrubroNuevo) return;
+    const t = setTimeout(() => subrubroNuevoRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [esSubrubroNuevo]);
 
   // Cargar rubros y agrupaciones al abrir
   useEffect(() => {
@@ -684,7 +710,7 @@ export function ArticuloNuevoModal({
                 </Select>
               </FormControl>
               {esRubroNuevo && (
-                <TextField size="small" fullWidth autoFocus
+                <TextField size="small" fullWidth autoFocus inputRef={rubroNuevoRef}
                   label="Nombre del rubro nuevo"
                   placeholder="Ej: Bebidas, Comidas, Postres…"
                   value={rubroNuevo}
@@ -708,7 +734,7 @@ export function ArticuloNuevoModal({
                 </Select>
               </FormControl>
               {esSubrubroNuevo && (
-                <TextField size="small" fullWidth autoFocus
+                <TextField size="small" fullWidth autoFocus inputRef={subrubroNuevoRef}
                   label="Nombre del subrubro nuevo"
                   placeholder="Ej: Cócteles, Sin alcohol…"
                   value={subrubroNuevo}
