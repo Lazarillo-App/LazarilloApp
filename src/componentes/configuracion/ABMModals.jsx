@@ -565,8 +565,9 @@ export function ArticuloNuevoModal({
         <Stack spacing={2} pt={0.5}>
           {error && <Alert severity="error" sx={{ py: 0.5, fontSize: '0.82rem' }}>{error}</Alert>}
 
-          {/* Toggle padrino + autocomplete — no aplica al editar un artículo existente */}
-          {!isEdit && (
+          {/* Toggle padrino + autocomplete — también disponible al editar, para
+              recategorizar (rubro/subrubro/precio) copiando de otro artículo ya
+              cargado, sin tener que cargarlo todo de nuevo a mano. */}
           <Box ref={padrinoRef} sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider' }}>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: -1 }}>
               <Checkbox size="small" checked={usarPadrino}
@@ -580,7 +581,7 @@ export function ArticuloNuevoModal({
                 }}
               />
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Crear a partir de otro artículo
+                {isEdit ? 'Tomar rubro/subrubro/precio de otro artículo' : 'Crear a partir de otro artículo'}
               </Typography>
             </Stack>
 
@@ -625,7 +626,6 @@ export function ArticuloNuevoModal({
               />
             )}
           </Box>
-          )}
 
           <Stack ref={campoNombreRubroRef} spacing={2}>
           {isEdit && (
