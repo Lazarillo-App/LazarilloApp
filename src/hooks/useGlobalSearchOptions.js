@@ -70,16 +70,31 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
   useEffect(() => {
     if (!bizId) { setPromoMemberIds(new Set()); return; }
     let alive = true;
-    obtenerAgrupaciones(bizId).then(({ list }) => {
+    Promise.allSettled([
+      obtenerAgrupaciones(bizId),
+      BusinessesAPI.getPromoIds(bizId),
+    ]).then(([agRes, promoRes]) => {
       if (!alive) return;
-      const promoGroup = (list || []).find(g => String(g?.nombre || '').trim().toLowerCase() === 'promociones');
       const ids = new Set();
-      if (promoGroup) {
-        for (const a of (promoGroup.articulos || [])) {
-          const id = Number(a?.id ?? a?.articulo_id ?? a);
-          if (Number.isFinite(id)) ids.add(id);
+      if (agRes.status === 'fulfilled') {
+        const list = agRes.value?.list;
+        const promoGroup = (list || []).find(g => String(g?.nombre || '').trim().toLowerCase() === 'promociones');
+        if (promoGroup) {
+          for (const a of (promoGroup.articulos || [])) {
+            const id = Number(a?.id ?? a?.articulo_id ?? a);
+            if (Number.isFinite(id)) ids.add(id);
+          }
+          for (const id of (promoGroup.app_articles_ids || [])) {
+            const n = Number(id);
+            if (Number.isFinite(n)) ids.add(n);
+          }
         }
-        for (const id of (promoGroup.app_articles_ids || [])) {
+      }
+      // Fuente real: artículos dueños de una receta con es_promo=TRUE. El id
+      // negativo por sí solo NO implica promo — también lo usan los artículos
+      // manuales comunes, así que no sirve como heurística (ver esPromo abajo).
+      if (promoRes.status === 'fulfilled') {
+        for (const id of (promoRes.value?.ids || [])) {
           const n = Number(id);
           if (Number.isFinite(n)) ids.add(n);
         }
@@ -108,10 +123,10 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
         nombre,
         codigo,
         tipo: 'articulo',
-        // Artículo-promo (wrapper): siempre id negativo (ver crearPromocion en el
-        // backend). Suele compartir nombre con el artículo real que la compone, así
-        // que el buscador necesita distinguirlas con una etiqueta — ver Buscador.jsx.
-        esPromo: id < 0 || promoMemberIds.has(id),
+        // Artículo-promo: tiene una receta con es_promo=TRUE (ver getPromoIds en el
+        // backend) o fue sumado a mano a la agrupación "Promociones". El id negativo
+        // NO alcanza como señal: también lo usan los artículos manuales comunes.
+        esPromo: promoMemberIds.has(id),
         _key: key,
       });
     }
