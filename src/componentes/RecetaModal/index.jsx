@@ -23,6 +23,7 @@ import {
   ToggleButton, ToggleButtonGroup, Slider, Popover,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import SearchIcon from '@mui/icons-material/Search';
@@ -131,6 +132,9 @@ export default function RecetaModal({
   const appConfig = useConfig();
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
+  // Edición directa del % objetivo con doble click, al lado de la barrita
+  const [editandoObjetivo, setEditandoObjetivo] = useState(false);
+  const [objetivoDraft, setObjetivoDraft] = useState('');
   // globalConfigObjetivo viene del contexto global, no de un fetch local
   const globalConfigObjetivo = esElaborado
     ? (appConfig.insumosCostoIdeal ?? 30)
@@ -261,6 +265,22 @@ export default function RecetaModal({
     if (globalConfigObjetivo != null) return Number(globalConfigObjetivo);
     return 30;
   }, [globalConfigObjetivo, esElaborado]);
+
+  // Confirma un nuevo % de costo objetivo — mismo guardado que ya hacían el
+  // TextField "Costo Objetivo" de arriba y el onChangeCommitted de la barrita
+  // (ahora también usado por los botones +/- y la edición con doble click).
+  const commitObjetivo = useCallback((val) => {
+    const num = Math.max(0, Math.min(150, Math.round(Number(val) || 0)));
+    setPctCostoIdeal(num);
+    if (!num || !articulo?.id) return;
+    costoObjetivoExternoRef.current = num;
+    onPriceConfigSave?.({
+      scope: 'articulo',
+      scopeId: String(articulo.id),
+      objetivo: num,
+    });
+    try { window.dispatchEvent(new CustomEvent('objetivo:changed', { detail: { articleId: articulo.id, objetivo: num } })); } catch { }
+  }, [articulo?.id, onPriceConfigSave]);
 
   // Cuando cambia costoObjetivoExterno desde la tabla, aplicarlo inmediatamente
   // Inicializa el objetivo mostrado con el externo SOLO al abrir el modal.
@@ -2224,19 +2244,7 @@ export default function RecetaModal({
                           inputMode="decimal"
                           value={pctCostoIdeal}
                           onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
-                          onBlur={(e) => {
-                            const val = Number(e.target.value) || 0;
-                            if (!val || !articulo?.id) return;
-                            // Sincronizar el ref del externo: el cambio en la receta
-                            // pasa a ser la verdad, así resolveObjetivo no lo pisa con el viejo.
-                            costoObjetivoExternoRef.current = val;
-                            onPriceConfigSave?.({
-                              scope: 'articulo',
-                              scopeId: String(articulo.id),
-                              objetivo: val,
-                            });
-                            try { window.dispatchEvent(new CustomEvent('objetivo:changed', { detail: { articleId: articulo.id, objetivo: val } })); } catch { }
-                          }}
+                          onBlur={(e) => commitObjetivo(e.target.value)}
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
                           InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
@@ -2764,7 +2772,35 @@ export default function RecetaModal({
                           Venta sin promo: ${fmt(ventaSinPromo)}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>Precio sugerido ({pctCostoIdeal}% costo)</Typography>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Precio sugerido (
+                        {editandoObjetivo ? (
+                          <input
+                            autoFocus
+                            type="number"
+                            min={0}
+                            max={150}
+                            value={objetivoDraft}
+                            onChange={(e) => setObjetivoDraft(e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={() => { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }
+                              if (e.key === 'Escape') setEditandoObjetivo(false);
+                            }}
+                            style={{ width: 34, font: 'inherit', fontWeight: 700, textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4 }}
+                          />
+                        ) : (
+                          <span
+                            onDoubleClick={() => { setObjetivoDraft(String(pctCostoIdeal)); setEditandoObjetivo(true); }}
+                            title="Doble click para editar"
+                            style={{ cursor: 'text', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}
+                          >
+                            {pctCostoIdeal}
+                          </span>
+                        )}
+                        % costo)
+                      </Typography>
                       <Typography
                         variant="h6"
                         fontWeight={800}
@@ -2786,28 +2822,26 @@ export default function RecetaModal({
                           {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
                         </Stack>
                       )}
-                      {/* Barra de ajuste del Costo Objetivo — debajo del sugerido, visible siempre */}
-                      <Slider
-                        value={Number(pctCostoIdeal) || 0}
-                        min={0}
-                        max={100}
-                        step={1}
-                        size="small"
-                        onChange={(_, val) => setPctCostoIdeal(val)}
-                        onChangeCommitted={(_, val) => {
-                          // Mismo comportamiento que el campo "Costo Objetivo" de arriba.
-                          const num = Number(val) || 0;
-                          if (!num || !articulo?.id) return;
-                          costoObjetivoExternoRef.current = num;
-                          onPriceConfigSave?.({
-                            scope: 'articulo',
-                            scopeId: String(articulo.id),
-                            objetivo: num,
-                          });
-                          try { window.dispatchEvent(new CustomEvent('objetivo:changed', { detail: { articleId: articulo.id, objetivo: num } })); } catch { }
-                        }}
-                        sx={{ mt: 0.5, py: 0.5 }}
-                      />
+                      {/* Barra de ajuste del Costo Objetivo — debajo del sugerido, visible siempre.
+                          +/- de a 1 punto, o doble click sobre el % de arriba para tipearlo directo. */}
+                      <Stack direction="row" alignItems="center" spacing={0.25} sx={{ mt: 0.5 }}>
+                        <IconButton size="small" sx={{ p: 0.25 }} onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) - 1)}>
+                          <RemoveIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                        <Slider
+                          value={Number(pctCostoIdeal) || 0}
+                          min={0}
+                          max={100}
+                          step={1}
+                          size="small"
+                          onChange={(_, val) => setPctCostoIdeal(val)}
+                          onChangeCommitted={(_, val) => commitObjetivo(val)}
+                          sx={{ py: 0.5, flex: 1 }}
+                        />
+                        <IconButton size="small" sx={{ p: 0.25 }} onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) + 1)}>
+                          <AddIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Stack>
                     </Box>}
                     {!modoInsumo && <Box>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
