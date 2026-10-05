@@ -5,7 +5,7 @@
 import { showAlert } from '../servicios/appAlert';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
 import InsumosSidebar from '../componentes/InsumosSidebar.jsx';
 import InsumosTable from '../componentes/InsumosTable.jsx';
 import InsumoGroupModal from '../componentes/InsumoGroupModal.jsx';
@@ -753,7 +753,13 @@ export default function InsumosMain() {
   const { data: groupsData } = useInsumoGroups(resolvedBizIdNum);
   const { data: groupsActiveBizData } = useInsumoGroups(isSubneg ? businessIdNum : 0);
 
-  useEffect(() => {
+  // useLayoutEffect (no useEffect): corre sincrónico ANTES del pintado del
+  // navegador — con useEffect, cada montaje (cambiar de pestaña, volver con el
+  // buscador global) pintaba un frame con los arrays vacíos y recién después
+  // los llenaba, el "pestañeo" que se nota al navegar entre Artículos/Insumos.
+  // Con datos ya en caché (React Query) esto deja el cambio de pantalla
+  // instantáneo, sin ese frame intermedio vacío.
+  useLayoutEffect(() => {
     if (!businessId) {
       setAllInsumos([]); setGroups([]); setGroupsActiveBiz([]); setRubrosMap(new Map()); setRubrosIdMap(new Map());
       setSelectedGroupId(null); setRubroSeleccionado(null);
@@ -786,7 +792,7 @@ export default function InsumosMain() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId, rubrosData, groupsData, insumosListData]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!businessId) return;
     const list = groupsActiveBizData
       ? (Array.isArray(groupsActiveBizData?.data) ? groupsActiveBizData.data : Array.isArray(groupsActiveBizData) ? groupsActiveBizData : [])

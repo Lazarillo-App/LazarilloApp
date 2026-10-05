@@ -337,7 +337,6 @@ export default function TablaArticulos({
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
 
-  const [categorias, setCategorias] = useState([]);
   const [todoGroupId, setTodoGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
 
@@ -612,16 +611,23 @@ export default function TablaArticulos({
     isError: articlesTreeError,
   } = useArticlesTree(activeBizIdNum);
 
+  // Derivado directo del query (no estado+efecto): con el estado viejo, cada
+  // montaje pintaba un frame con categorias=[] antes de que el efecto corriera
+  // y recién después llegaba el árbol real — ese doble pintado era el
+  // "pestañeo" al navegar entre Artículos/Insumos o al volver con el buscador
+  // global, incluso con el árbol ya en caché (React Query).
+  const categorias = useMemo(
+    () => (activeBizId ? (articlesTreeData || []) : []),
+    [activeBizId, articlesTreeData]
+  );
+
   useEffect(() => {
     if (!activeBizId) {
-      setCategorias([]);
       onCategoriasLoaded?.([]);
       openSnack("No hay negocio activo", "warning");
       return;
     }
-    const tree = articlesTreeData || [];
-    setCategorias(tree);
-    onCategoriasLoaded?.(tree);
+    onCategoriasLoaded?.(articlesTreeData || []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBizId, articlesTreeData]);
 
