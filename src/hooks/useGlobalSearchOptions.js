@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { insumosList } from '@/servicios/apiInsumos';
-import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { BusinessesAPI, RecetasAPI } from '@/servicios/apiBusinesses';
 import { obtenerAgrupaciones } from '@/servicios/apiAgrupaciones';
 
 export function useGlobalSearchOptions(bizId, insumosBizId = null) {
@@ -72,7 +72,7 @@ export function useGlobalSearchOptions(bizId, insumosBizId = null) {
     let alive = true;
     Promise.allSettled([
       obtenerAgrupaciones(bizId),
-      BusinessesAPI.getPromoIds(bizId),
+      RecetasAPI.getPromoIds(bizId),
     ]).then(([agRes, promoRes]) => {
       if (!alive) return;
       const ids = new Set();
