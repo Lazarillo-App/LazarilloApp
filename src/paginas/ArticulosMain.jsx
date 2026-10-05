@@ -1982,13 +1982,13 @@ export default function ArticulosMain(props) {
         const appIds = Array.isArray(g.app_articles_ids) ? g.app_articles_ids : [];
         for (const raw of appIds) { const n = Number(raw); if (n > 0) s.add(n); }
       }
-      // Mismo fallback que usa opcionesBuscador más abajo: todoInfo.todoIds lo computa
-      // TablaArticulos internamente y puede llegar vacío (todavía no montó, o un
-      // artículo recién creado no entró en ese cálculo) — sin el fallback a
-      // todoIdsFromTree (derivado del árbol, ya corregido para incluir manuales),
-      // un artículo sin agrupación quedaba afuera del buscador de este subnegocio.
-      const sinAgrupSub = todoInfo?.todoIds?.size ? todoInfo.todoIds : todoIdsFromTree;
-      for (const id of sinAgrupSub) { const n = Number(id); if (n !== 0) s.add(n); }
+      // UNIÓN, no "uno u otro": todoInfo.todoIds lo computa TablaArticulos con SU
+      // propia lógica interna y puede quedar desactualizado para un artículo puntual
+      // (no solo vacío del todo) — elegir uno de los dos descartaba por completo al
+      // que solo apareciera en todoIdsFromTree (derivado del árbol, con los
+      // manuales ya incluidos), aunque ese sí estuviera al día.
+      for (const id of (todoInfo?.todoIds || [])) { const n = Number(id); if (n !== 0) s.add(n); }
+      for (const id of todoIdsFromTree) { const n = Number(id); if (n !== 0) s.add(n); }
     } else {
       // PRINCIPAL: artículos propios = los del árbol que NO están asignados a subnegocios
       // "Asignados a subnegocios" = orgAssignedIds MENOS los que están en agrupaciones del propio principal
@@ -2058,8 +2058,10 @@ export default function ArticulosMain(props) {
       }
     }
 
-    // También incluir artículos de Sin Agrupación
-    const sinAgrupIds = todoInfo?.todoIds?.size ? todoInfo.todoIds : todoIdsFromTree;
+    // También incluir artículos de Sin Agrupación — UNIÓN de las dos fuentes (ver
+    // mismo comentario en idsNegocioActivo más arriba: todoInfo.todoIds puede estar
+    // desactualizado para un artículo puntual, no solo vacío).
+    const sinAgrupIds = new Set([...(todoInfo?.todoIds || []), ...todoIdsFromTree]);
     for (const rawId of sinAgrupIds) {
       const id = Number(rawId);
       if (!id || seen.has(id)) continue;
