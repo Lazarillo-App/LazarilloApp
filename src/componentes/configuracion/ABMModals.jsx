@@ -302,9 +302,9 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
                   <Box>
                     <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 600 }}>{o.nombre}</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
+                      Rubro: {o.rubro || 'Sin rubro'} · {o.unidad_med} · ${o.precio_ref}
                       {o.agrupacion_nombre ? ` · 📁 ${o.agrupacion_nombre}` : ''}
-                      {o.sku ? ` · ${o.sku}` : ''}
+                      {' · Cód: '}{o.codigo ?? o.sku ?? '—'}
                     </Typography>
                   </Box>
                 </li>
@@ -705,10 +705,10 @@ export function ArticuloNuevoModal({
                     <Box>
                       <Typography variant="body2" fontWeight={600}>{opt.nombre}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
+                        Rubro: {opt.rubro || 'Sin rubro'}{opt.subrubro ? ` › ${opt.subrubro}` : ''}
                         {' · '}${Number(opt.precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {opt.agrupacion_nombre ? ` · 📁 ${opt.agrupacion_nombre}` : ''}
-                        {opt.sku ? ` · ${opt.sku}` : ''}
+                        {' · Cód: '}{opt.codigo ?? opt.sku ?? '—'}
                       </Typography>
                     </Box>
                   </li>
