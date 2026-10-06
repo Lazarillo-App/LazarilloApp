@@ -902,7 +902,7 @@ export default function RecetaModal({
             };
           }));
 
-          // Cargar datos de elaborados internamente
+          // Costos de sub-recetas (elaborados) en una sola llamada; si falla, se piden de a 4
           const elaboradosIds = (rec.items || [])
             .filter(it => it.tipo_costo !== 'nulo')
             .map(it => it.supply_id)
@@ -910,35 +910,46 @@ export default function RecetaModal({
 
           if (elaboradosIds.length > 0) {
             const token = localStorage.getItem('token') || '';
-            mapConLimite(elaboradosIds, id =>
-                fetch(`${BASE}/businesses/${insumoBizId}/insumos/${id}/receta`, {
-                  headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(insumoBizId) }
-                })
-                  .then(r => r.json())
-                  .then(d => {
-                    const r = d?.receta;
-                    if (!r) return null;
-                    return [String(id), {
-                      costoTotal: Number(r.costo_total) || 0,
-                      porciones: Number(r.porciones) || 1,
-                      precioSugerido: Number(d.precio_sugerido) || 0,
-                      rendimientoUnidad: r.rendimiento_unidad || 'porcion',
-                      rendimientoPeso: r.rendimiento_peso != null ? Number(r.rendimiento_peso) : null,
-                      unidadPeso: r.unidad_peso || null,
-                    }];
-                  })
-                  .catch(() => null)
-            ).then(results => {
-              if (cancelled) return;
+            const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(insumoBizId), 'Content-Type': 'application/json' };
+            const aMapa = (recetasPorId) => {
               const mapa = {};
-              results.filter(Boolean).forEach(([id, data]) => { mapa[id] = data; });
-              if (Object.keys(mapa).length > 0) {
-                setLocalRecetasElaborados(prev => ({ ...prev, ...mapa }));
-              }
-            });
+              Object.entries(recetasPorId || {}).forEach(([id, data]) => { mapa[id] = data; });
+              return mapa;
+            };
+            const aplicar = (mapa) => {
+              if (cancelled || Object.keys(mapa).length === 0) return;
+              setLocalRecetasElaborados(prev => ({ ...prev, ...mapa }));
+            };
+            fetch(`${BASE}/businesses/${insumoBizId}/insumos/batch-recetas`, {
+              method: 'POST', headers, body: JSON.stringify({ ids: elaboradosIds }),
+            })
+              .then(r => r.json())
+              .then(d => { if (!d?.ok) throw new Error('batch'); aplicar(aMapa(d.recetas)); })
+              .catch(() => {
+                mapConLimite(elaboradosIds, id =>
+                  fetch(`${BASE}/businesses/${insumoBizId}/insumos/${id}/receta`, { headers })
+                    .then(r => r.json())
+                    .then(d => {
+                      const r = d?.receta;
+                      if (!r) return null;
+                      return [String(id), {
+                        costoTotal: Number(r.costo_total) || 0,
+                        porciones: Number(r.porciones) || 1,
+                        precioSugerido: Number(d.precio_sugerido) || 0,
+                        rendimientoUnidad: r.rendimiento_unidad || 'porcion',
+                        rendimientoPeso: r.rendimiento_peso != null ? Number(r.rendimiento_peso) : null,
+                        unidadPeso: r.unidad_peso || null,
+                      }];
+                    })
+                    .catch(() => null)
+                ).then(results => {
+                  const mapa = {};
+                  results.filter(Boolean).forEach(([id, data]) => { mapa[id] = data; });
+                  aplicar(mapa);
+                });
+              });
           }
 
-          // Cargar equivalencias de todos los ingredientes (para el dropdown de unidad al reabrir)
           // Equivalencias y mermas de todos los ingredientes en una sola llamada (antes eran 2 por ingrediente)
           const supplyIdsConEq = [...new Set((rec.items || []).map(it => it.supply_id).filter(Boolean))];
           if (supplyIdsConEq.length > 0) {
