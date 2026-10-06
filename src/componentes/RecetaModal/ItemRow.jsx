@@ -58,6 +58,11 @@ export default function ItemRow({
 }) {
   const [search, setSearch] = useState('');
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
+  const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
+  // Insumo de la fila (no artículo ni promo): el lápiz de la izquierda lo edita
+  const insumoDeFila = item.supplyId && !item.articleRefId && !item.esArticulo
+    ? (insumos || []).find(i => String(i.id) === String(item.supplyId)) || null
+    : null;
   const [notasOpen, setNotasOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -411,8 +416,8 @@ export default function ItemRow({
         py: 0.5, px: 0.5,
       }}>
         {/* drag */}
-        <Tooltip title="Cambiar insumo">
-          <IconButton data-search-trigger size="small" onClick={() => searchOpen ? onSearchClose() : onSearchOpen()} sx={{ p: '2px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
+        <Tooltip title={insumoDeFila ? 'Editar insumo' : 'Cambiar insumo'}>
+          <IconButton data-search-trigger size="small" onClick={() => insumoDeFila ? setEditarInsumoOpen(true) : (searchOpen ? onSearchClose() : onSearchOpen())} sx={{ p: '2px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
             <EditIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Tooltip>
@@ -1127,6 +1132,16 @@ export default function ItemRow({
             selectInsumo({ ...nuevo, _tipo: 'insumo' });
             setCrearInsumoOpen(false);
           }}
+        />
+      )}
+
+      {editarInsumoOpen && insumoDeFila && (
+        <InsumoNuevoModal
+          open={editarInsumoOpen}
+          insumo={insumoDeFila}
+          onClose={() => setEditarInsumoOpen(false)}
+          businessId={insumosBizId || businessId}
+          onCreated={() => {}}
         />
       )}
     </Box>
