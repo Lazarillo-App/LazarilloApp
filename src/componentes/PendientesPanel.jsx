@@ -1,9 +1,8 @@
 // src/componentes/PendientesPanel.jsx
 // Pestaña "Pendientes" del sidebar. Staff: sus propios cambios y en qué estado están
 // (en gris hasta que se aprueben). Admin/owner: propuestas abiertas para revisar.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import { Box, Typography, Chip, Stack, CircularProgress } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
 import { useAccess } from '@/context/AccessContext';
 import { listarPropuestas, listarMisPropuestas } from '@/servicios/apiRecetaProposals';
 
@@ -16,7 +15,6 @@ const ESTADO = {
 
 export default function PendientesPanel({ businessId }) {
   const { isStaff } = useAccess() || {};
-  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,10 +43,14 @@ export default function PendientesPanel({ businessId }) {
       {items.map((p) => {
         const est = ESTADO[p.status] || ESTADO.pending;
         const esGris = isStaff && (p.status === 'pending' || p.status === 'in_revision');
-        const nombre = p.receta_nombre_actual
+        const nombre = p.receta_nombre_actual || p.insumo_nombre || p.articulo_nombre
           || (p.insumo_id ? `Insumo #${p.insumo_id}` : `Artículo #${p.article_id}`);
         return (
-          <Box key={p.id} onClick={() => { if (!isStaff) navigate('/configuracion?tab=6'); }}
+          <Box key={p.id} onClick={() => {
+              if (isStaff) return;
+              const esInsumo = !!p.insumo_id;
+              window.dispatchEvent(new CustomEvent('revision:abrir', { detail: { tipo: esInsumo ? 'insumo' : 'articulo', id: esInsumo ? p.insumo_id : p.article_id, nombre: nombre } }));
+            }}
             sx={{
               p: 1, borderRadius: 1.5, border: '1px solid #e2e8f0',
               bgcolor: esGris ? '#f3f4f6' : '#fff', color: esGris ? '#9ca3af' : 'inherit',
@@ -69,3 +71,4 @@ export default function PendientesPanel({ businessId }) {
     </Stack>
   );
 }
+

@@ -315,6 +315,15 @@ export default function InsumosMain() {
   // edición — reemplaza el mini-diálogo de "Editar nombre" que tenía InsumoAccionesMenu.
   const [insumoEditando, setInsumoEditando] = useState(null);
   const [revisionMasivaOpen, setRevisionMasivaOpen] = useState(false);
+  useEffect(() => {
+    const abrir = (e) => {
+      const d = e.detail || {};
+      if (d.tipo !== 'insumo') return;
+      setRecetaInsumoModal({ id: Number(d.id), nombre: d.nombre || '', precio_ref: 0 });
+    };
+    window.addEventListener('revision:abrir', abrir);
+    return () => window.removeEventListener('revision:abrir', abrir);
+  }, []);
   // Botón "+ Agregar" unificado: desde Insumos también se puede crear/cargar
   // artículos directo, sin tener que ir a la pantalla de Menú primero.
   const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);

@@ -1450,6 +1450,18 @@ export default function TablaArticulos({
 
   // Navegación entre recetas (anterior/siguiente) recorriendo la lista ordenada
   // por rubro. Pasa entre rubros, ignora agrupaciones (usa flatRows de items).
+  useEffect(() => {
+    const abrir = (e) => {
+      const d = e.detail || {};
+      if (d.tipo !== 'articulo') return;
+      const art = (categorias || []).flatMap((sub) => (sub.categorias || []).flatMap((c) => c.articulos || []))
+        .find((a) => Number(getId(a)) === Number(d.id));
+      setRecetaArticulo(art ? { ...art, esPromo: false } : { id: Number(d.id), nombre: d.nombre || '', precio: 0, esPromo: false });
+    };
+    window.addEventListener('revision:abrir', abrir);
+    return () => window.removeEventListener('revision:abrir', abrir);
+  }, [categorias]);
+
   const navegarReceta = useCallback((dir) => {
     const curId = Number(recetaArticulo?.id);
     if (!curId) return;

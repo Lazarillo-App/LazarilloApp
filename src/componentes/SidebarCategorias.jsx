@@ -15,6 +15,7 @@ import {
 
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
 import PendientesPanel from './PendientesPanel';
+import { usePendientesCount, marcarPendientesVistos } from '@/hooks/usePendientesCount';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -152,6 +153,8 @@ function SidebarCategorias({
   const [divisionModalOpen, setDivisionModalOpen] = useState(false);
   const [groupToMove, setGroupToMove] = useState(null);
   const [selectOpen, setSelectOpen] = useState(false);
+  const pendientesN = usePendientesCount(businessId);
+  useEffect(() => { if (sidebarMode === 'pendientes' && businessId) marcarPendientesVistos(businessId); }, [sidebarMode, businessId]);
   const [localListMode, setLocalListMode] = useState(staff ? 'by-subrubro' : listMode);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
@@ -505,7 +508,7 @@ function SidebarCategorias({
           {[
             { id: 'agrupaciones', label: 'Agrupaciones' },
             ...(!staff ? [{ id: 'listas', label: <>Listas {lists.length > 0 && <span style={{ opacity: 0.7 }}>({lists.length})</span>}</> }] : []),
-            { id: 'pendientes', label: 'Pendientes' },
+            { id: 'pendientes', label: <>Pendientes {pendientesN > 0 && <span style={{ marginLeft: 4, background: '#d97706', color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: '0.66rem' }}>{pendientesN}</span>}</> },
           ].map((t, idx, arr) => {
             const activo = sidebarMode === t.id;
             return (

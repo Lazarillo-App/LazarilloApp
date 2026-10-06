@@ -3,6 +3,7 @@
 // src/componentes/InsumosSidebar.jsx
 
 import PendientesPanel from './PendientesPanel';
+import { usePendientesCount, marcarPendientesVistos } from '@/hooks/usePendientesCount';
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   FormControl, InputLabel, Select, MenuItem,
@@ -523,6 +524,8 @@ function InsumosSidebar({
   }, [rubrosMap]);
 
   const [activeTab, setActiveTab] = useState('agrupaciones');
+  const pendientesN = usePendientesCount(businessId);
+  useEffect(() => { if (activeTab === 'pendientes' && businessId) marcarPendientesVistos(businessId); }, [activeTab, businessId]);
 
   return (
     <div className="sidebar">
@@ -536,7 +539,7 @@ function InsumosSidebar({
           {[
             { id: 'agrupaciones', label: 'Agrupaciones', onClick: () => { setActiveTab('agrupaciones'); onClearInsumoList?.(); } },
             ...(!staff ? [{ id: 'listas', label: <>Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}</>, onClick: () => setActiveTab('listas') }] : []),
-            { id: 'pendientes', label: 'Pendientes', onClick: () => setActiveTab('pendientes') },
+            { id: 'pendientes', label: <>Pendientes {pendientesN > 0 && <span style={{ marginLeft: 4, background: '#d97706', color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: '0.66rem' }}>{pendientesN}</span>}</>, onClick: () => setActiveTab('pendientes') },
           ].map((t, idx, arr) => {
             const activo = activeTab === t.id;
             return (
