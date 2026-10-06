@@ -875,45 +875,34 @@ export default function RecetaModal({
           }
 
           // Cargar equivalencias de todos los ingredientes (para el dropdown de unidad al reabrir)
-          // Cargar equivalencias y mermas de todos los ingredientes al reabrir la receta
-          const supplyIdsConEq = (rec.items || [])
-            .map(it => it.supply_id)
-            .filter(Boolean);
+          // Equivalencias y mermas de todos los ingredientes en una sola llamada (antes eran 2 por ingrediente)
+          const supplyIdsConEq = [...new Set((rec.items || []).map(it => it.supply_id).filter(Boolean))];
           if (supplyIdsConEq.length > 0) {
-            Promise.all(
-              supplyIdsConEq.map(id =>
-                Promise.all([
-                  insumoEquivalenciasList(id, insumoBizId).then(r => Array.isArray(r?.data) ? r.data : [])
-                    .catch(e => { console.warn('[RecetaModal] fallo equivalencias insumo', id, e); return []; }),
-                  insumoMermasList(id, insumoBizId).then(r => Array.isArray(r?.data) ? r.data : [])
-                    .catch(e => { console.warn('[RecetaModal] fallo mermas insumo', id, e); return []; }),
-                ]).then(([eqs, mermas]) => [String(id), eqs, mermas])
-              )
-            ).then(results => {
-              if (cancelled) return;
-              const eqMap = {}, mermaMap = {};
-              results.forEach(([id, eqs, mermas]) => {
-                if (eqs.length) eqMap[id] = eqs;
-                if (mermas.length) mermaMap[id] = mermas;
-              });
-              if (Object.keys(eqMap).length > 0 || Object.keys(mermaMap).length > 0) {
+            const token = localStorage.getItem("token") || "";
+            fetch(`${BASE}/insumos/batch-detalle`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "X-Business-Id": String(insumoBizId), "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: supplyIdsConEq }),
+            })
+              .then(r => r.json())
+              .then(d => {
+                if (cancelled || !d?.ok) return;
+                const eqMap = d.equivalencias || {};
+                const mermaMap = d.mermas || {};
                 setItems(prev => prev.map(it => {
                   if (!it.supplyId) return it;
                   const patch = {};
                   const eqsFrescas = eqMap[String(it.supplyId)];
                   if (eqsFrescas) {
                     patch.equivalencias = eqsFrescas;
-                    // Usar unidadOriginal (cruda, tal cual la DB) y no it.unidad — este
-                    // último ya pasó por normalizarUnidadGuardada al cargar la receta y,
-                    // si la equivalencia se llama igual que un alias físico ("unidad" → "u"),
-                    // llegaría acá ya colapsado a "u" y nunca volvería a matchear.
+                    // Usar unidadOriginal (cruda, tal cual la DB): ver comentario de la versión anterior.
                     patch.unidad = resolverUnidadConEquivalencia(it.unidadOriginal ?? it.unidad, eqsFrescas, it.supplyMedida);
                   }
                   if (mermaMap[String(it.supplyId)]) patch.mermas = mermaMap[String(it.supplyId)];
                   return Object.keys(patch).length ? { ...it, ...patch } : it;
                 }));
-              }
-            });
+              })
+              .catch(e => console.warn("[RecetaModal] fallo batch-detalle", e));
           }
         } else {
           setNombre(artNombre);
