@@ -2703,7 +2703,7 @@ export default function ArticulosMain(props) {
             </Menu>
           </div>
 
-          <Button
+          {!isStaff && <Button
             variant="outlined"
             size="small"
             onClick={() => setVistaCarta(true)}
@@ -2718,7 +2718,7 @@ export default function ArticulosMain(props) {
             }}
           >
             Diseño
-          </Button>
+          </Button>}
         </div>
       </div>
 
