@@ -154,7 +154,6 @@ function SidebarCategorias({
   const [groupToMove, setGroupToMove] = useState(null);
   const [selectOpen, setSelectOpen] = useState(false);
   const pendientesN = usePendientesCount(businessId);
-  useEffect(() => { if (sidebarMode === 'pendientes' && businessId) marcarPendientesVistos(businessId); }, [sidebarMode, businessId]);
   const [localListMode, setLocalListMode] = useState(staff ? 'by-subrubro' : listMode);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
@@ -163,6 +162,8 @@ function SidebarCategorias({
     if (staff) return 'agrupaciones';
     try { return localStorage.getItem(SIDEBAR_MODE_KEY) || 'agrupaciones'; } catch { return 'agrupaciones'; }
   });
+
+  useEffect(() => { if (sidebarMode === 'pendientes' && businessId) marcarPendientesVistos(businessId); }, [sidebarMode, businessId]);
 
   const handleSidebarMode = useCallback((mode) => {
     if (!mode) return;
