@@ -2936,6 +2936,11 @@ export default function VistaCartaMenu({
                                                 style={{ marginRight: 8, cursor: "pointer" }} />
                                             )}
                                             <span className="nm">{a.esGrupoVinculado ? "🔗 " : ""}{a.nombre}</span>
+                                            {(a.rubro || a.sub) && (
+                                              <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 6 }}>
+                                                {[a.rubro, a.sub].filter(Boolean).join(" › ")}
+                                              </span>
+                                            )}
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
                                             {/* Siempre visibles (como antes) — el corte del precio no era por
