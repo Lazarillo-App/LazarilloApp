@@ -324,6 +324,7 @@ function cartaCss(diseno, negocio, scale) {
 .rt{font-family:${Dx.dFont};font-weight:700;font-size:${r(Dx.sectionSize || 16)}px;line-height:1.25;color:${titleH};border-bottom:${lineWidth(Dx.line, 2)}px ${Dx.line} ${accH};padding-bottom:3px;margin-bottom:7px;${upCss}}
 .it{display:flex;align-items:baseline;gap:8px;margin-bottom:${r(gap)}px;padding:3px 6px;margin-left:-6px;border-radius:5px;transition:background .1s}
 .it:hover{background:rgba(0,0,0,.05)}
+.gh{font-size:${r(12)}px;font-weight:700;color:${accH};margin:${r(10)}px 0 ${r(4)}px;padding-bottom:2px;border-bottom:1px dotted ${accH}55}
 .nm{font-family:${Dx.dFont};font-weight:600;font-size:${r(Dx.itemSize || 14.5)}px;color:${inkH}}
 .dots{flex:1;border-bottom:${lineWidth(Dx.line, 1)}px ${Dx.line} ${ldH};transform:translateY(-4px)}
 .pr{font-weight:700;font-size:${r(Dx.itemSize || 14.5)}px;color:${priceH};font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
@@ -347,13 +348,21 @@ function campoBloqueDeViewMode(viewMode) {
 function seccionHtml(sec, artById, diseno, iconos) {
   if (!sec) return "";
   const Dx = diseno;
+  let jerarquiaAnterior = null;
   const items = (sec.itemIds || []).map((id) => {
     // Separador visual
     if (String(id).startsWith("__sep__")) return `<div class="sepline"></div>`;
     const a = artById.get(String(id));
     if (!a) return "";
+    // Encabezado "rubro - subrubro" al cambiar de grupo, igual que la tabla y la vista de diseño
+    const etiqueta = [clean(a.rubro), clean(a.sub)].filter(Boolean).join(" - ");
+    let cab = "";
+    if (etiqueta && etiqueta !== jerarquiaAnterior) {
+      cab = `<div class="gh">${esc(etiqueta)}</div>`;
+    }
+    jerarquiaAnterior = etiqueta;
     const precio = a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : "";
-    return `<div class="it"><span class="nm">${esc(a.nombre)}</span><span class="dots"></span><span class="pr">${precio}</span></div>${a.descripcion ? `<div class="ds">${esc(a.descripcion)}</div>` : ""}`;
+    return `${cab}<div class="it"><span class="nm">${esc(a.nombre)}</span><span class="dots"></span><span class="pr">${precio}</span></div>${a.descripcion ? `<div class="ds">${esc(a.descripcion)}</div>` : ""}`;
   }).join("");
   const icoRaw = iconos && iconos[sec.titulo] !== undefined ? iconos[sec.titulo] : iconFor(sec.titulo);
   // line-height:1 + vertical-align:middle: sin esto, el emoji del ícono tiene
