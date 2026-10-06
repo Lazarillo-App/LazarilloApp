@@ -531,38 +531,6 @@ function combinarCanvasPng(cv, footerCv, diseno, negocio) {
   return combined;
 }
 
-// Arma el canvas de vista previa (cuerpo + pie + marco) y, si NO está tildado
-// "ajustar a 1 hoja", dibuja líneas punteadas donde caerían los cortes de
-// página — para ver, antes de exportar, si el contenido se pasa de una hoja.
-function armarPreviewCanvas(cv, footerCv, cfg, diseno, negocio, contentWmm, contentHmm) {
-  const combined = combinarCanvasPng(cv, footerCv, diseno, negocio);
-  if (cfg.fitOnePage) return { canvas: combined, totalPages: 1 };
-
-  const pxPerMm = cv.width / contentWmm;
-  const footerHmm = footerCv ? footerCv.height / pxPerMm : 0;
-  const pageContentHmm = Math.max(20, contentHmm - footerHmm);
-  const pageHpx = Math.floor(pageContentHmm * pxPerMm);
-  const totalPages = Math.max(1, Math.ceil(cv.height / pageHpx));
-
-  if (totalPages > 1) {
-    const ctx = combined.getContext("2d");
-    ctx.save();
-    ctx.strokeStyle = "#ef4444";
-    ctx.lineWidth = Math.max(2, Math.round(cv.width * 0.002));
-    ctx.setLineDash([Math.round(cv.width * 0.012), Math.round(cv.width * 0.008)]);
-    for (let p = 1; p < totalPages; p++) {
-      const y = p * pageHpx;
-      if (y >= combined.height) break;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(combined.width, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  return { canvas: combined, totalPages };
-}
-
 // Agrega las paginas de UNA hoja ya capturada a un jsPDF existente (mutacion in-place).
 // `esPrimerHojaGlobal`: true solo para la primerisima pagina del documento entero -
 // esa pagina ya existe al crear el jsPDF, asi que ahi NO hay que pedir pdf.addPage().
@@ -765,7 +733,6 @@ export default function VistaCartaMenu({
   const [printOpen, setPrintOpen] = useState(false);
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
   const [exportProgress, setExportProgress] = useState(null); // { i, total } mientras exporta "todas"
-  const [preview, setPreview] = useState(null); // { url, pages } | null
   // Zoom de la hoja que se está editando (misma hoja, no una copia): para verla completa en pantalla
   const [zoomHoja, setZoomHoja] = useState(1);
   const hojaPaperRef = useRef(null);
@@ -776,7 +743,6 @@ export default function VistaCartaMenu({
     const natural = el.offsetWidth / zoomHoja;
     if (disponible > 0 && natural > 0) setZoomHoja(Math.max(0.3, Math.min(1, disponible / natural)));
   }, [zoomHoja]);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const [estilosOpen, setEstilosOpen] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
   const [hojaActiva, setHojaActiva] = useState(0);
@@ -1610,30 +1576,7 @@ export default function VistaCartaMenu({
     } finally { setDlBusy(false); setExportProgress(null); setPrintOpen(false); }
   }, [hoja, hojas, maqueta, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo, exportarAlcance]);
 
-  // Vista previa de la hoja ACTIVA con la config actual (tamaño/orientación/ajustar a
-  // 1 hoja) — para ver antes de descargar si el contenido entra o se pasa de página.
-  // No descarga nada: solo renderiza el mismo canvas que usaría la exportación real.
-  const generarPreview = useCallback(async () => {
-    if (!hoja) return;
-    setPreviewBusy(true);
-    try {
-      await ensureLibs();
-      if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
-      const bgH = diseno.bg || "#ffffff";
-      const { contentWmm, contentHmm, renderWpx, gapPx, framePad } = medidasExport(printCfg);
-      const { cv, footerCv } = await capturarHojaCanvas(hoja, maqueta.secciones, artById, diseno, neg, showLogo, showNombre, iconosPorTitulo, renderWpx, framePad, gapPx, bgH);
-      const { canvas, totalPages } = armarPreviewCanvas(cv, footerCv, printCfg, diseno, neg, contentWmm, contentHmm);
-      setPreview({ url: canvas.toDataURL("image/png"), pages: totalPages });
-    } catch (e) {
-      showAlert("No pude generar la vista previa. " + (e?.message || e), "error");
-    } finally {
-      setPreviewBusy(false);
-    }
-  }, [hoja, maqueta, artById, diseno, neg, showLogo, showNombre, printCfg, iconosPorTitulo]);
 
-  // Si cambian los ajustes de exportación (tamaño, orientación, ajustar a 1 hoja),
-  // la vista previa ya generada queda desactualizada — se limpia para no confundir.
-  React.useEffect(() => { setPreview(null); }, [printCfg, hoja?.id]);
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
@@ -2284,26 +2227,7 @@ export default function VistaCartaMenu({
                   Generando {exportProgress.i + 1} de {exportProgress.total}…
                 </div>
               )}
-              {preview && (
-                <div>
-                  <div style={{
-                    fontSize: 12, fontWeight: 700, marginBottom: 6,
-                    color: preview.pages > 1 ? "#c0392b" : "#1a9c6e",
-                  }}>
-                    {preview.pages > 1
-                      ? `⚠️ Esta hoja ocupa ${preview.pages} páginas — se ve la línea de corte en rojo. Tildá "Ajustar a 1 hoja" si querés que entre en una sola.`
-                      : "✓ Entra en 1 sola hoja."}
-                  </div>
-                  <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e5e0d8", borderRadius: 8 }}>
-                    <img src={preview.url} alt="Vista previa de la hoja" style={{ width: "100%", display: "block" }} />
-                  </div>
-                </div>
-              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #eee", paddingTop: 12 }}>
-                <button onClick={generarPreview} disabled={previewBusy}
-                  style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, cursor: previewBusy ? "default" : "pointer", background: "#fff", color: accent }}>
-                  {previewBusy ? "Generando…" : "Vista previa"}
-                </button>
                 <button onClick={descargar} disabled={dlBusy}
                   style={{ border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 800, cursor: dlBusy ? "default" : "pointer", background: dlBusy ? "#bbb" : accent, color: "#fff" }}>
                   {dlBusy ? "Generando…" : "Descargar"}
