@@ -395,22 +395,15 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   // persona sigue trabajando en la tabla — no hace falta abrir la campanita
   // para enterarse. Cubre las 4 instancias: propuesta nueva (admin), y
   // aprobada/rechazada/a revisión (quien la propuso).
-  const [proposalToasts, setProposalToasts] = useState([]);
-  const toastedIdsRef = React.useRef(new Set());
+  // Se muestran mientras la notificación esté sin leer: no se borran solas ni al
+  // recargar. Cerrarla (X) o abrirla la marca como leída.
+  const proposalToasts = useMemo(() => (notifications || [])
+    .filter((n) => !n.read && PROPOSAL_KINDS.has(n.metadata?.kind))
+    .slice(0, 5)
+    .map((n) => ({ id: n.id, message: n.message, title: n.title, kind: n.metadata?.kind })),
+  [notifications]);
 
-  useEffect(() => {
-    const nuevas = (notifications || []).filter((n) =>
-      !n.read && PROPOSAL_KINDS.has(n.metadata?.kind) && !toastedIdsRef.current.has(n.id)
-    );
-    if (!nuevas.length) return;
-    nuevas.forEach((n) => toastedIdsRef.current.add(n.id));
-    setProposalToasts((prev) => [
-      ...nuevas.map((n) => ({ id: n.id, message: n.message, title: n.title, kind: n.metadata?.kind })),
-      ...prev,
-    ].slice(0, 5));
-  }, [notifications]);
-
-  const cerrarToast = (id) => setProposalToasts((prev) => prev.filter((t) => t.id !== id));
+  const cerrarToast = (id) => markAsRead([id]);
 
   // ✅ 4) UI notifs (no resueltas) + notifs del backend, ordenadas por fecha
   const merged = useMemo(() => {
