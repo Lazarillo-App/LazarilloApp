@@ -68,7 +68,8 @@ import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
 import { useAccess } from '@/context/AccessContext';
-import MarcarRevisionDialog from '../MarcarRevisionDialog';
+import { marcarARevision } from '@/servicios/apiRecetaProposals';
+import { showAlert } from '@/servicios/appAlert';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
@@ -133,7 +134,31 @@ export default function RecetaModal({
   // Leer config global del contexto — se actualiza automáticamente sin fetch propio
   const appConfig = useConfig();
   const { isStaff } = useAccess() || {};
-  const [revisionOpen, setRevisionOpen] = useState(false);
+  // Marcar a revisión: modo con checks por ingrediente y nota al final
+  const [marcarModo, setMarcarModo] = useState(false);
+  const [marcarSel, setMarcarSel] = useState(() => new Set());
+  const [notaRev, setNotaRev] = useState('');
+  const [enviandoRev, setEnviandoRev] = useState(false);
+  const toggleMarcar = (supplyId) => setMarcarSel((prev) => {
+    const n = new Set(prev); const k = String(supplyId);
+    if (n.has(k)) n.delete(k); else n.add(k);
+    return n;
+  });
+  const salirMarcar = () => { setMarcarModo(false); setMarcarSel(new Set()); setNotaRev(''); };
+  const enviarRevision = async () => {
+    if (!notaRev.trim()) { showAlert('Escribí una nota para quien lo tiene que revisar', 'error'); return; }
+    const items = marcarSel.size
+      ? [...marcarSel].map((id) => ({ tipo: 'insumo', id: Number(id) }))
+      : [{ tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo?.id) }];
+    setEnviandoRev(true);
+    try {
+      const r = await marcarARevision(businessId, items, notaRev.trim());
+      showAlert(`Marcado a revisión: ${r.marcados} elemento(s)`, 'success');
+      salirMarcar();
+    } catch (e) {
+      showAlert(e.message || 'No se pudo marcar a revisión', 'error');
+    } finally { setEnviandoRev(false); }
+  };
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
   // Edición directa del % objetivo con doble click, al lado de la barrita
@@ -1895,6 +1920,12 @@ export default function RecetaModal({
               </Stack>
             )}
             <Stack direction="row" alignItems="center" spacing={0.5}>
+              {!isStaff && !promoMode && (
+                <Button size="small" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
+                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0.25 }}>
+                  {marcarModo ? 'Listo' : 'Marcar'}
+                </Button>
+              )}
               {/* Lupa: buscar y abrir en cascada (artículo o insumo según contexto) */}
               <Tooltip title={modoInsumo ? 'Buscar insumo' : 'Buscar artículo'}>
                 <IconButton
@@ -2628,67 +2659,74 @@ export default function RecetaModal({
                       {itemsOrdenados.map((item, i) => {
                         const realIndex = items.indexOf(item); // índice real en el array original
                         return (
-                          <ItemRow
-                            key={realIndex}
-                            item={item}
-                            index={realIndex}
-                            gridTemplate={gridIngredientes}
-                            esPromo={promoMode || modoPromoNueva}
-                            getPrecioSinPromo={getPrecioSinPromo}
-                            colorSinPromo={colorSinPromo}
-                            objetivoReceta={pctCostoIdeal}
-                            onChange={(idx, partial) => {
-                              changeItem(idx, partial);
-                              if (newItemIndex === idx) setNewItemIndex(null);
-                            }}
-                            onRemove={removeItem}
-                            onOpenRecetaElaborado={async (it) => {
-                              await autoSave(); // guardar la receta padre antes de bajar en cascada
-                              // Item-artículo (promo): abrir receta del artículo componente
-                              if (it.esArticulo || it.articleRefId) {
-                                const artId = Number(it.articleRefId);
-                                const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId);
+                          <Stack key={realIndex} direction="row" alignItems="center" spacing={0.5}>
+                            {marcarModo && (
+                              <Checkbox size="small" disabled={!item.supplyId} checked={!!item.supplyId && marcarSel.has(String(item.supplyId))}
+                                onChange={() => toggleMarcar(item.supplyId)} sx={{ p: 0.5 }} />
+                            )}
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <ItemRow
+                              item={item}
+                              index={realIndex}
+                              gridTemplate={gridIngredientes}
+                              esPromo={promoMode || modoPromoNueva}
+                              getPrecioSinPromo={getPrecioSinPromo}
+                              colorSinPromo={colorSinPromo}
+                              objetivoReceta={pctCostoIdeal}
+                              onChange={(idx, partial) => {
+                                changeItem(idx, partial);
+                                if (newItemIndex === idx) setNewItemIndex(null);
+                              }}
+                              onRemove={removeItem}
+                              onOpenRecetaElaborado={async (it) => {
+                                await autoSave(); // guardar la receta padre antes de bajar en cascada
+                                // Item-artículo (promo): abrir receta del artículo componente
+                                if (it.esArticulo || it.articleRefId) {
+                                  const artId = Number(it.articleRefId);
+                                  const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId);
+                                  pushElaborado({
+                                    id: artId,
+                                    nombre: it.supplyNombre || art?.nombre || `#${artId}`,
+                                    precio: Number(art?.precio) || 0,
+                                    esArticulo: true,
+                                  });
+                                  return;
+                                }
+                                const ins = insumos.find(i => String(i.id) === String(it.supplyId));
                                 pushElaborado({
-                                  id: artId,
-                                  nombre: it.supplyNombre || art?.nombre || `#${artId}`,
-                                  precio: Number(art?.precio) || 0,
-                                  esArticulo: true,
+                                  id: it.supplyId,
+                                  nombre: it.supplyNombre,
+                                  precio: ins?.precio_ref || ins?.precio || 0,
                                 });
-                                return;
-                              }
-                              const ins = insumos.find(i => String(i.id) === String(it.supplyId));
-                              pushElaborado({
-                                id: it.supplyId,
-                                nombre: it.supplyNombre,
-                                precio: ins?.precio_ref || ins?.precio || 0,
-                              });
-                            }}
-                            insumos={insumos}
-                            usedSupplyIds={usedSupplyIds}
-                            alertaSemanas={alertaSemanas}
-                            autoOpenSearch={newItemIndex === realIndex}
-                            recetasElaborados={localRecetasElaborados}
-                            allArticulos={allArticulos}
-                            articuloId={articulo?.id}
-                            businessId={businessId}
-                            insumosBizId={insumoBizId}
-                            searchOpen={openSearchIdx === realIndex}
-                            onSearchOpen={() => setOpenSearchIdx(realIndex)}
-                            onSearchClose={() => setOpenSearchIdx(null)}
-                            soloConCompras={soloConCompras}
-                            onToggleSoloConCompras={toggleSoloConCompras}
-                            appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
-                            precioVenta={precioActual}
-                            rendimiento={rendimiento}
-                            onInsumoCreated={(nuevo) => {
-                              setInsumos(prev => [nuevo, ...prev]);
-                              // Sin esto, un insumo creado desde el buscador de
-                              // ingredientes de una receta no aparecía en la
-                              // tabla de Insumos ni en el buscador global hasta
-                              // recargar la página — nada avisaba fuera de este modal.
-                              try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
-                            }}
-                          />
+                              }}
+                              insumos={insumos}
+                              usedSupplyIds={usedSupplyIds}
+                              alertaSemanas={alertaSemanas}
+                              autoOpenSearch={newItemIndex === realIndex}
+                              recetasElaborados={localRecetasElaborados}
+                              allArticulos={allArticulos}
+                              articuloId={articulo?.id}
+                              businessId={businessId}
+                              insumosBizId={insumoBizId}
+                              searchOpen={openSearchIdx === realIndex}
+                              onSearchOpen={() => setOpenSearchIdx(realIndex)}
+                              onSearchClose={() => setOpenSearchIdx(null)}
+                              soloConCompras={soloConCompras}
+                              onToggleSoloConCompras={toggleSoloConCompras}
+                              appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}
+                              precioVenta={precioActual}
+                              rendimiento={rendimiento}
+                              onInsumoCreated={(nuevo) => {
+                                setInsumos(prev => [nuevo, ...prev]);
+                                // Sin esto, un insumo creado desde el buscador de
+                                // ingredientes de una receta no aparecía en la
+                                // tabla de Insumos ni en el buscador global hasta
+                                // recargar la página — nada avisaba fuera de este modal.
+                                try { window.dispatchEvent(new CustomEvent('insumos:updated')); } catch { }
+                              }}
+                            />
+                            </Box>
+                          </Stack>
                         );
                       })}
                     </Box>
@@ -2908,6 +2946,17 @@ export default function RecetaModal({
             })()}
           </Box>
 
+          {marcarModo && (
+            <Box sx={{ px: 3, py: 1.25, borderTop: '1px solid', borderColor: 'divider', bgcolor: '#fff8e6', display: 'flex', gap: 1.5, alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                {marcarSel.size ? `${marcarSel.size} ingrediente(s) marcados` : 'Sin ingredientes marcados: se marca la receta entera'}
+              </Typography>
+              <TextField size="small" fullWidth placeholder="Nota para quien lo revisa…" value={notaRev} onChange={(e) => setNotaRev(e.target.value)} />
+              <Button variant="contained" color="warning" size="small" disabled={enviandoRev || !notaRev.trim()} onClick={enviarRevision} sx={{ whiteSpace: 'nowrap' }}>
+                {enviandoRev ? 'Enviando…' : 'Enviar a revisión'}
+              </Button>
+            </Box>
+          )}
           {/* ── FOOTER ── */}
           <Box sx={{
             px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider',
@@ -2930,21 +2979,10 @@ export default function RecetaModal({
                   {promoMode ? 'Borrar' : 'Borrar'}
                 </Button>
               )}
-              {!isStaff && !promoMode && (
-                <Button onClick={() => setRevisionOpen(true)} disabled={saving || deleting} color="warning" size="small" variant="outlined">
-                  Marcar a revisión
-                </Button>
-              )}
               <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
                 Cancelar
               </Button>
-              <MarcarRevisionDialog
-                open={revisionOpen}
-                onClose={() => setRevisionOpen(false)}
-                businessId={businessId}
-                titulo={modoInsumo ? 'Marcar insumo a revisión' : 'Marcar receta a revisión'}
-                items={articulo?.id ? [{ tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo.id) }] : []}
-              />
+
               <Button
                 onClick={() => handleSave()}
                 variant="contained"
