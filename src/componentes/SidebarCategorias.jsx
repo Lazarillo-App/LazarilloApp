@@ -677,7 +677,7 @@ function SidebarCategorias({
                                   </span>
                                 </Tooltip>
                               )}
-                              {!isTodo && !isDisc && (
+                              {!staff && !isTodo && !isDisc && (
                                 <Tooltip title="Crear sub-negocio con esta agrupación" disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "offset", options: { offset: [0, 8] } }] } } }}>
                                   <IconButton size="small" onClick={(e) => {
                                     setSelectOpen(false);
