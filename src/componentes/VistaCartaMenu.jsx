@@ -2811,7 +2811,7 @@ export default function VistaCartaMenu({
                                     orden = bloquesOrdenados.flatMap((b) => buckets.get(b));
                                   }
                                   let bloqueAnterior = null; // para emitir encabezado al cambiar
-                                  let jerarquiaAnterior = { rub: null, sub: null };
+                                  let jerarquiaAnterior = { etiqueta: null };
                                   return orden.map((artId, itemPos) => {
                                     // Separador
                                     if (String(artId).startsWith("__sep__")) {
@@ -2836,24 +2836,6 @@ export default function VistaCartaMenu({
                                     if (!a) return null;
                                     const descActual = descripciones[String(artId)] || "";
                                     const editando = editDesc === String(artId);
-                                    // Encabezado de bloque: emitir cuando cambia el rubro/sub.
-                                    let encabezadoJerarquia = null;
-                                    if (!campoBloque) {
-                                      // Sin subdivisión por agrupación: mismo criterio que la tabla — rubro y
-                                      // subrubro como encabezados antes de cada grupo de artículos.
-                                      const rub = clean(a.rubro);
-                                      const sub = clean(a.sub);
-                                      const cambio = rub !== jerarquiaAnterior.rub || sub !== jerarquiaAnterior.sub;
-                                      jerarquiaAnterior = { rub, sub };
-                                      if (cambio && (rub || sub)) {
-                                        const etiqueta = [rub, sub].filter(Boolean).join(" - ");
-                                        encabezadoJerarquia = (
-                                          <div style={{ margin: "8px 0 4px", paddingBottom: 2, fontSize: "0.82em", fontWeight: 700, color: neg.accent || accent, borderBottom: `1px dotted ${(neg.accent || accent)}55` }}>
-                                            {etiqueta}
-                                          </div>
-                                        );
-                                      }
-                                    }
                                     let encabezadoBloque = null;
                                     if (campoBloque && !String(artId).startsWith("__sep__")) {
                                       const bloqueActual = ((a?.[campoBloque]) || "Otros").toString();
@@ -2945,6 +2927,19 @@ export default function VistaCartaMenu({
                                         );
                                       }
                                     }
+                                    // Subencabezado "rubro - subrubro" (como en la tabla). Si el bloque ya muestra
+                                    // uno de los dos niveles, se omite ese para no repetirlo.
+                                    const rub = clean(a.rubro);
+                                    const sub = clean(a.sub);
+                                    const partes = campoBloque === "rubro" ? [sub] : campoBloque === "sub" ? [rub] : [rub, sub];
+                                    const etiqueta = partes.filter(Boolean).join(" - ");
+                                    const cambioEtiqueta = etiqueta !== jerarquiaAnterior.etiqueta || !!encabezadoBloque;
+                                    jerarquiaAnterior = { etiqueta };
+                                    const encabezadoJerarquia = (etiqueta && cambioEtiqueta && !String(artId).startsWith("__sep__")) ? (
+                                      <div style={{ margin: "8px 0 4px", paddingBottom: 2, fontSize: "0.82em", fontWeight: 700, color: neg.accent || accent, borderBottom: `1px dotted ${(neg.accent || accent)}55` }}>
+                                        {etiqueta}
+                                      </div>
+                                    ) : null;
                                     return (
                                       <React.Fragment key={artId}>
                                         {encabezadoBloque}
