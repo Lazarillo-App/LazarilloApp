@@ -2736,6 +2736,7 @@ export default function ArticulosMain(props) {
           }}>
           <SidebarCategorias
             staff={!!isStaff}
+            businessId={activeBizId}
             categorias={categorias}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}

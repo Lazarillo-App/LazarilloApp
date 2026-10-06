@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 
 import SubrubroAccionesMenu from './SubrubroAccionesMenu';
+import PendientesPanel from './PendientesPanel';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -499,35 +500,35 @@ function SidebarCategorias({
         background: '#fafafa', paddingBottom: 4,
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
-        {/* ── Toggle Agrupaciones / Listas ── */}
-        {!staff && <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
-          <button
-            onClick={() => handleSidebarMode('agrupaciones')}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid #e2e8f0', borderRight: 'none',
-              borderRadius: '6px 0 0 6px', cursor: 'pointer',
-              background: sidebarMode === 'agrupaciones' ? '#1e293b' : 'transparent',
-              color: sidebarMode === 'agrupaciones' ? '#fff' : '#64748b',
-              transition: 'all 0.15s',
-            }}
-          >
-            Agrupaciones
-          </button>
-          <button
-            onClick={() => handleSidebarMode('listas')}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid #e2e8f0',
-              borderRadius: '0 6px 6px 0', cursor: 'pointer',
-              background: sidebarMode === 'listas' ? '#1e293b' : 'transparent',
-              color: sidebarMode === 'listas' ? '#fff' : '#64748b',
-              transition: 'all 0.15s',
-            }}
-          >
-            Listas {lists.length > 0 && <span style={{ opacity: 0.7 }}>({lists.length})</span>}
-          </button>
-        </div>}
+        {/* ── Pestañas del sidebar: staff = Agrupaciones + Pendientes; admin/owner = + Listas ── */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
+          {[
+            { id: 'agrupaciones', label: 'Agrupaciones' },
+            ...(!staff ? [{ id: 'listas', label: <>Listas {lists.length > 0 && <span style={{ opacity: 0.7 }}>({lists.length})</span>}</> }] : []),
+            { id: 'pendientes', label: 'Pendientes' },
+          ].map((t, idx, arr) => {
+            const activo = sidebarMode === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleSidebarMode(t.id)}
+                style={{
+                  flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
+                  border: '1px solid #e2e8f0',
+                  borderLeft: idx > 0 ? 'none' : undefined,
+                  borderRadius: idx === 0 ? '6px 0 0 6px' : idx === arr.length - 1 ? '0 6px 6px 0' : 0,
+                  cursor: 'pointer',
+                  background: activo ? '#1e293b' : 'transparent',
+                  color: activo ? '#fff' : '#64748b',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        {sidebarMode === 'pendientes' && <PendientesPanel businessId={businessId} />}
 
         {/* ── Select de agrupaciones (solo en modo agrupaciones) ── */}
         {sidebarMode === 'agrupaciones' && (

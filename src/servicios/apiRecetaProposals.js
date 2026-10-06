@@ -36,3 +36,10 @@ export async function pedirRevisionPropuesta(businessId, id, comment) {
   if (!resp?.ok) throw new Error(resp?.error || 'Error pidiendo revisión');
   return resp;
 }
+
+// GET /api/businesses/:businessId/receta-proposals/mine — cambios propios (staff)
+export async function listarMisPropuestas(businessId) {
+  const resp = await httpBiz(`/receta-proposals/mine`, { method: 'GET' }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'Error obteniendo tus cambios');
+  return resp.proposals || [];
+}
