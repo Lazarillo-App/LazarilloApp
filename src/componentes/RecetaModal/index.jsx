@@ -202,6 +202,35 @@ export default function RecetaModal({
     || (articulo?.id ? `${BASE}/businesses/${businessId}/articles/${articulo.id}/receta` : null);
 
   const [loading, setLoading] = useState(false);
+  // Propuesta abierta de esta receta: lo no aprobado se muestra en gris y editable
+  const [propuestaAbierta, setPropuestaAbierta] = useState(null);
+  const propMergedRef = useRef(null);
+  useEffect(() => {
+    if (!propuestaAbierta || loading || propMergedRef.current === propuestaAbierta.id) return;
+    propMergedRef.current = propuestaAbierta.id;
+    const key = (x) => String(x.supply_id ?? x.supplyId ?? x.insumo_id ?? x.insumoId ?? '');
+    const pmap = new Map((propuestaAbierta.items || []).map((p) => [key(p), p]));
+    setItems((prev) => {
+      const out = prev.map((it) => {
+        const p = pmap.get(String(it.supplyId));
+        if (!p) return it;
+        const cant = Number(p.cantidad);
+        return cant && cant !== Number(it.cantidad) ? { ...it, cantidad: cant, pendiente: true } : it;
+      });
+      const existentes = new Set(prev.map((it) => String(it.supplyId)));
+      for (const p of propuestaAbierta.items || []) {
+        const k = key(p);
+        if (!k || existentes.has(k)) continue;
+        out.push({
+          esArticulo: false, supplyId: Number(k), supplyNombre: p.supply_nombre ?? p.supplyNombre ?? `Insumo ${k}`,
+          supplyMedida: p.unidad ?? 'u', precioRefDB: 0, codigoMaxi: '', unidad: p.unidad ?? 'u',
+          cantidad: Number(p.cantidad) || 1, tipoCosto: 'total', ultimaCompra: null, costoUnitario: 0,
+          notas: '', observaciones: p.observaciones ?? '', pendiente: true,
+        });
+      }
+      return out;
+    });
+  }, [propuestaAbierta, loading]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [insumosLoading, setInsumosLoading] = useState(false);
@@ -799,6 +828,7 @@ export default function RecetaModal({
           const pct = Number(json.insumos_costo_ideal);
           setPctCostoIdeal(prev => prev === 30 ? pct : prev);
         }
+        setPropuestaAbierta(json?.propuesta_abierta || null);
         const rec = json?.receta ?? json ?? null;
         return rec;
       })
