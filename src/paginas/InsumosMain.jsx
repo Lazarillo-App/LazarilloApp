@@ -785,7 +785,7 @@ export default function InsumosMain() {
       const idMap = new Map(); // id → info (por si insumos usan ID interno)
       items.forEach((rubro) => {
         const codigo = String(rubro.codigo);
-        const info = { codigo: rubro.codigo, nombre: rubro.nombre || `Rubro ${codigo}`, es_elaborador: rubro.es_elaborador === true };
+        const info = { codigo: rubro.codigo, nombre: rubro.nombre || String(codigo), es_elaborador: rubro.es_elaborador === true };
         map.set(codigo, info);
         if (rubro.id != null) idMap.set(String(rubro.id), info);
       });

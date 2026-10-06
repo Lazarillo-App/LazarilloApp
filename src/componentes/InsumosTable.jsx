@@ -370,7 +370,7 @@ const InsumosTable = forwardRef(function InsumosTable({
         if (rubroInfo?.nombre) return rubroInfo.nombre;
       }
 
-      return row?.rubro_nombre || row?.rubroNombre || (code != null ? `Rubro ${code}` : "Sin rubro");
+      return row?.rubro_nombre || row?.rubroNombre || (code != null ? String(code) : "Sin rubro");
     },
     [rubrosMap]
   );
