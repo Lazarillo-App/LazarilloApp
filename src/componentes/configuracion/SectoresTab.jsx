@@ -19,6 +19,7 @@ import { listarSectores, crearSector, actualizarSector, eliminarSector } from '@
 import { listarPendientes, aprobarPendiente, rechazarPendiente } from '@/servicios/apiAccesoEquipo';
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
+import { BASE } from '@/servicios/apiBase';
 
 const COLORES = ['#3b82f6', '#f59e0b', '#22c55e', '#a855f7', '#ef4444', '#64748b'];
 
@@ -291,15 +292,37 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
   const [selected, setSelected] = React.useState(() => scopeToSelected(sector?.scope));
   const [guardando, setGuardando] = React.useState(false);
   const [busqueda, setBusqueda] = React.useState('');
+  // Artículos sueltos: suman al alcance aunque no pertenezcan a las agrupaciones tildadas
+  const [sueltos, setSueltos] = React.useState(() => (sector?.scope || [])
+    .filter((i) => i.tipo === 'articulo' && i.articuloId)
+    .map((i) => ({ id: Number(i.articuloId), nombre: i.articuloNombre || `Artículo ${i.articuloId}` })));
+  const [resultadosSueltos, setResultadosSueltos] = React.useState([]);
+  const [buscandoSueltos, setBuscandoSueltos] = React.useState('');
 
-  const totalArticulos = contarArticulos(selected, treesByAgrupacion);
+  React.useEffect(() => {
+    const q = buscandoSueltos.trim();
+    if (q.length < 2 || !businessId) { setResultadosSueltos([]); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const r = await fetch(`${BASE}/businesses/${businessId}/articles/search-padrino?q=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        });
+        const d = await r.json();
+        setResultadosSueltos(d?.candidatos || []);
+      } catch { setResultadosSueltos([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [buscandoSueltos, businessId]);
+
+  const totalArticulos = contarArticulos(selected, treesByAgrupacion) + sueltos.length;
   const totalRubros = contarRubros(selected, treesByAgrupacion);
 
   const guardar = async () => {
     if (!nombre.trim()) { showAlert('Ponele un nombre al sector', 'error'); return; }
     setGuardando(true);
     try {
-      const scope = selectedToScope(selected);
+      const scope = [...selectedToScope(selected), ...sueltos.map((a) => ({ tipo: 'articulo', articuloId: a.id }))];
       if (sector?.id) {
         await actualizarSector(sector.id, { nombre: nombre.trim(), color, scope });
       } else {
@@ -346,6 +369,25 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
               value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
               sx={{ mb: 1.5 }}
             />
+            <Box sx={{ border: '1px dashed #d8dce6', borderRadius: 1.5, p: 1, mb: 1.5 }}>
+              <Typography variant="caption" fontWeight={700} color="text.secondary">ARTÍCULOS SUELTOS</Typography>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ my: 0.75 }}>
+                {sueltos.map((a) => (
+                  <Chip key={a.id} size="small" label={a.nombre}
+                    onDelete={() => setSueltos((l) => l.filter((x) => x.id !== a.id))} />
+                ))}
+                {!sueltos.length && <Typography variant="caption" color="text.secondary">Ninguno todavía.</Typography>}
+              </Stack>
+              <TextField size="small" fullWidth placeholder="Buscar artículo para sumar…"
+                value={buscandoSueltos} onChange={(e) => setBuscandoSueltos(e.target.value)} />
+              {resultadosSueltos.map((c) => (
+                <Typography key={c.id} onClick={() => {
+                  setSueltos((l) => (l.some((x) => x.id === Number(c.id)) ? l : [...l, { id: Number(c.id), nombre: c.nombre }]));
+                }} sx={{ fontSize: '0.78rem', py: 0.5, px: 0.5, cursor: 'pointer', '&:hover': { bgcolor: '#f3f4f8' } }}>
+                  {c.nombre} <span style={{ color: '#999' }}>· {c.rubro || 'Sin rubro'}</span>
+                </Typography>
+              ))}
+            </Box>
             {agrupaciones.map((ag) => (
               <ArbolAgrupacion
                 key={ag.id}
