@@ -736,27 +736,6 @@ export default function VistaCartaMenu({
   // Zoom de la hoja que se está editando (misma hoja, no una copia): para verla completa en pantalla
   const [zoomHoja, setZoomHoja] = useState(1);
   const hojaPaperRef = useRef(null);
-  // Proporción alto/ancho de la hoja tal como está armada (independiente del zoom):
-  // alcanza para saber cuántas páginas ocuparía al exportar, sin renderizar una imagen.
-  const [proporcionHoja, setProporcionHoja] = useState(0);
-  const [mostrarCortes, setMostrarCortes] = useState(true);
-  useEffect(() => {
-    const el = hojaPaperRef.current;
-    if (!el || !el.offsetWidth) return;
-    const medir = () => setProporcionHoja(el.offsetHeight / el.offsetWidth);
-    medir();
-    const ro = new ResizeObserver(medir);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hoja?.id, zoomHoja, printCfg.size, printCfg.orient]);
-  const infoExport = useMemo(() => {
-    const m = medidasExport(printCfg);
-    const exportH = proporcionHoja * m.renderWpx;
-    const pageH = m.contentHmm * PX_PER_MM;
-    if (!exportH || !pageH) return { pages: 1, frac: 1 };
-    const pages = printCfg.fitOnePage ? 1 : Math.max(1, Math.ceil(exportH / pageH - 0.01));
-    return { pages, frac: pageH / exportH };
-  }, [printCfg, proporcionHoja]);
   const ajustarZoomHoja = useCallback(() => {
     const el = hojaPaperRef.current;
     if (!el) return;
@@ -1121,6 +1100,27 @@ export default function VistaCartaMenu({
 
   const hojas = maqueta.hojas;
   const hoja = hojas[Math.min(hojaActiva, Math.max(0, hojas.length - 1))] || hojas[0];
+  // Proporción alto/ancho de la hoja tal como está armada (independiente del zoom):
+  // alcanza para saber cuántas páginas ocuparía al exportar, sin renderizar una imagen.
+  const [proporcionHoja, setProporcionHoja] = useState(0);
+  const [mostrarCortes, setMostrarCortes] = useState(true);
+  useEffect(() => {
+    const el = hojaPaperRef.current;
+    if (!el || !el.offsetWidth) return;
+    const medir = () => setProporcionHoja(el.offsetHeight / el.offsetWidth);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hoja?.id, zoomHoja, printCfg.size, printCfg.orient]);
+  const infoExport = useMemo(() => {
+    const m = medidasExport(printCfg);
+    const exportH = proporcionHoja * m.renderWpx;
+    const pageH = m.contentHmm * PX_PER_MM;
+    if (!exportH || !pageH) return { pages: 1, frac: 1 };
+    const pages = printCfg.fitOnePage ? 1 : Math.max(1, Math.ceil(exportH / pageH - 0.01));
+    return { pages, frac: pageH / exportH };
+  }, [printCfg, proporcionHoja]);
 
   // Catálogo de secciones disponibles: todos los rubros/agrupaciones que existen
   // (según el modo), menos los que ya están en la carta. Reemplaza al viejo "Fuera".
