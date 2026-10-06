@@ -58,7 +58,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   // ni siquiera procesa ese campo en el PUT (ver actualizar, insumosController).
   const isManualInsumo = isEdit && String(insumo?.origen || '').toLowerCase() === 'manual';
   const [form, setForm] = useState({
-    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '',
+    nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'kg', precioRef: '',
     esElaborado: false, sku: '', agrupacionId: '',
   });
   const [rubros, setRubros] = useState([]);
@@ -66,6 +66,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
+  const [precioFocus, setPrecioFocus] = useState(false);
   // Padrino (insumo de referencia para heredar rubro/unidad/precio/agrupación)
   const [usarPadrino, setUsarPadrino] = useState(false);
   const [padrinoSelected, setPadrinoSelected] = useState(null);
@@ -152,7 +153,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   // Reset total al cerrar (incluye estado del padrino)
   useEffect(() => {
     if (!open) {
-      setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
+      setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'kg', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
       setError(''); setSuccess(null);
       setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]); setExpandedRubros(new Set());
     }
@@ -236,7 +237,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
       const body = isEdit
         ? {
             nombre: form.nombre.trim(), rubro: rubroFinal,
-            unidadMed: form.unidadMed || 'u',
+            unidadMed: form.unidadMed || 'kg',
             precioRef: form.precioRef ? Number(form.precioRef) : null,
             es_elaborado: form.esElaborado,
             ...(isManualInsumo ? { codigoMaxi: form.sku?.trim() || null } : {}),
@@ -286,7 +287,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
       }
       setTimeout(() => {
         setSuccess(null);
-        setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
+        setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'kg', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
         onClose();
       }, 1500);
     } catch (e) {
@@ -296,7 +297,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
 
   const handleClose = () => {
     if (saving) return;
-    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'u', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
+    setForm({ nombre: '', rubro: '', rubroNuevo: '', unidadMed: 'kg', precioRef: '', esElaborado: false, sku: '', agrupacionId: '' });
     setError(''); setSuccess(null); onClose();
     setUsarPadrino(false); setPadrinoSelected(null); setPadrinoQuery(''); setPadrinoCandidates([]);
   };
@@ -411,20 +412,39 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           )}
 
           <Stack direction="row" spacing={1.5}>
-            <FormControl size="small" sx={{ flex: 1 }}>
-              <InputLabel>Rubro *</InputLabel>
-              <Select MenuProps={downwardMenuProps()} label="Rubro *" value={form.rubro} disabled={saving || !!success}
-                onChange={e => setForm(f => ({ ...f, rubro: e.target.value, rubroNuevo: '' }))}>
-                <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>+ Rubro nuevo…</MenuItem>
-                <Divider />
-                {rubros.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-              </Select>
-            </FormControl>
-            {form.rubro === '__nuevo__' && (
-              <TextField label="Nombre del rubro" size="small" sx={{ flex: 1 }} autoFocus inputRef={rubroNuevoInsumoRef}
-                value={form.rubroNuevo} disabled={saving || !!success}
-                onChange={e => setForm(f => ({ ...f, rubroNuevo: e.target.value }))} />
-            )}
+            <Autocomplete
+              size="small" sx={{ flex: 1 }} freeSolo autoHighlight
+              options={rubros}
+              disabled={saving || !!success}
+              value={form.rubro === '__nuevo__' ? (form.rubroNuevo || null) : (form.rubro || null)}
+              filterOptions={(opts, { inputValue }) => {
+                const q = inputValue.trim().toLowerCase();
+                const filtradas = q ? opts.filter(o => String(o).toLowerCase().includes(q)) : opts;
+                const existe = opts.some(o => String(o).toLowerCase() === q);
+                return q && !existe ? [{ __crear: true, nombre: inputValue.trim() }, ...filtradas] : filtradas;
+              }}
+              getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre)}
+              isOptionEqualToValue={(o, v) => (typeof o === 'string' ? o : o.nombre) === (typeof v === 'string' ? v : v.nombre)}
+              onInputChange={(_, v, reason) => {
+                if (reason !== 'input') return;
+                const existente = rubros.find(r => r.toLowerCase() === v.trim().toLowerCase());
+                setForm(f => existente ? { ...f, rubro: existente, rubroNuevo: '' } : { ...f, rubro: v.trim() ? '__nuevo__' : '', rubroNuevo: v });
+              }}
+              onChange={(_, val) => {
+                if (val && typeof val === 'object') setForm(f => ({ ...f, rubro: '__nuevo__', rubroNuevo: val.nombre }));
+                else if (typeof val === 'string') setForm(f => ({ ...f, rubro: val, rubroNuevo: '' }));
+                else setForm(f => ({ ...f, rubro: '', rubroNuevo: '' }));
+              }}
+              renderOption={(props, o) => (
+                <li {...props} key={typeof o === 'string' ? o : 'crear-' + o.nombre}
+                  style={typeof o === 'string' ? undefined : { color: themeColor, fontStyle: 'italic' }}>
+                  {typeof o === 'string' ? o : `+ Crear rubro "${o.nombre}"`}
+                </li>
+              )}
+              renderInput={(params) => (
+                <TextField {...params} label="Rubro *" placeholder="Escribí para buscar o crear…" />
+              )}
+            />
           </Stack>
 
           {/* Agrupación: solo al crear — moverlo ya es una acción aparte en el menú */}
@@ -447,9 +467,12 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
                 {UNIDADES_INSUMO.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField label="Precio de referencia" size="small" type="number" sx={{ flex: 1 }}
-              value={form.precioRef} disabled={saving || !!success}
-              onChange={e => setForm(f => ({ ...f, precioRef: e.target.value }))}
+            <TextField label="Precio de referencia" size="small" sx={{ flex: 1 }} inputMode="decimal"
+              value={precioFocus ? form.precioRef : (form.precioRef === '' ? '' : Number(form.precioRef).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+              onFocus={() => setPrecioFocus(true)}
+              onBlur={() => setPrecioFocus(false)}
+              disabled={saving || !!success}
+              onChange={e => setForm(f => ({ ...f, precioRef: e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.') }))}
               InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
           </Stack>
 
