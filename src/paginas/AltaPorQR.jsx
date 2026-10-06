@@ -59,7 +59,10 @@ function CodigoSeisCasilleros({ value, onChange, autoFocus = false }) {
           className="input"
           value={d}
           inputMode="numeric"
-          autoComplete={i === 0 ? "one-time-code" : "off"}
+          name={"codigo-alta-" + i}
+          autoComplete="off"
+          data-lpignore="true"
+          data-form-type="other"
           autoFocus={autoFocus && i === 0}
           onChange={(e) => setDigito(i, e.target.value)}
           onKeyDown={(e) => {
