@@ -126,7 +126,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       if (Array.isArray(parsed)) {
         const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
         const now = Date.now();
+        // Las no leídas nunca se borran por antigüedad: quedan hasta marcarlas como leídas.
         const filtered = parsed.filter(n => {
+          if (!n.read) return true;
           const age = now - new Date(n.created_at || 0).getTime();
           return age < THIRTY_DAYS;
         });
