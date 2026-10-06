@@ -199,6 +199,8 @@ function coincidenciasBusqueda(agTree, q) {
 /* ─── Árbol tri-state de un sector ─── */
 function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrupacion, onToggleRubro, onToggleSubrubro }) {
   const [abiertaManual, setAbiertaManual] = React.useState(false);
+  // Qué rubros tienen desplegada su lista de artículos (solo visual)
+  const [rubrosVer, setRubrosVer] = React.useState({});
   const q = (busqueda || '').trim().toLowerCase();
   const agNombreMatch = !!q && agrupacion.nombre.toLowerCase().includes(q);
 
@@ -243,7 +245,19 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrup
                     onChange={() => onToggleRubro(agrupacion.id, r.subrubro)} />
                   <Typography sx={{ fontSize: '0.78rem', flex: 1 }}>{r.subrubro}</Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>{rCount} art.</Typography>
+                  <IconButton size="small" onClick={() => setRubrosVer((v) => ({ ...v, [r.subrubro]: !v[r.subrubro] }))} title="Ver artículos">
+                    {rubrosVer[r.subrubro] ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                  </IconButton>
                 </Stack>
+                <Collapse in={!!rubrosVer[r.subrubro]}>
+                  <Box sx={{ pl: 5, pb: 0.5 }}>
+                    {r.categorias.map((c) => c.articulos.map((a) => (
+                      <Typography key={a.id} sx={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.6 }}>
+                        {a.nombre} <span style={{ color: '#999' }}>· {c.categoria}</span>
+                      </Typography>
+                    )))}
+                  </Box>
+                </Collapse>
                 {r.categorias.length > 1 && (
                   <Box sx={{ pl: 4 }}>
                     {r.categorias.map((c) => {
