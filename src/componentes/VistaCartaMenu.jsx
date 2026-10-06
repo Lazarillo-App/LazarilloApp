@@ -766,6 +766,16 @@ export default function VistaCartaMenu({
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
   const [exportProgress, setExportProgress] = useState(null); // { i, total } mientras exporta "todas"
   const [preview, setPreview] = useState(null); // { url, pages } | null
+  // Zoom de la hoja que se está editando (misma hoja, no una copia): para verla completa en pantalla
+  const [zoomHoja, setZoomHoja] = useState(1);
+  const hojaPaperRef = useRef(null);
+  const ajustarZoomHoja = useCallback(() => {
+    const el = hojaPaperRef.current;
+    if (!el) return;
+    const disponible = (el.parentElement?.clientWidth || 0) - 36;
+    const natural = el.offsetWidth / zoomHoja;
+    if (disponible > 0 && natural > 0) setZoomHoja(Math.max(0.3, Math.min(1, disponible / natural)));
+  }, [zoomHoja]);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [estilosOpen, setEstilosOpen] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
@@ -2385,6 +2395,15 @@ export default function VistaCartaMenu({
                     else e.target.value = hoja.nombre;
                     e.target.dataset.dirty = "";
                   }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }} title="Zoom de la hoja">
+                  <button onClick={() => setZoomHoja((z) => Math.max(0.3, Math.round((z - 0.1) * 10) / 10))}
+                    style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #d8d3ca", background: "#fff", cursor: "pointer", fontWeight: 700 }}>−</button>
+                  <span style={{ fontSize: 12, color: "#666", minWidth: 40, textAlign: "center" }}>{Math.round(zoomHoja * 100)}%</span>
+                  <button onClick={() => setZoomHoja((z) => Math.min(1.5, Math.round((z + 0.1) * 10) / 10))}
+                    style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #d8d3ca", background: "#fff", cursor: "pointer", fontWeight: 700 }}>+</button>
+                  <button onClick={ajustarZoomHoja}
+                    style={{ height: 26, borderRadius: 6, border: "1px solid #d8d3ca", background: "#fff", cursor: "pointer", fontSize: 12, padding: "0 8px" }}>Ajustar</button>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 12.5, color: "#666" }}>Columnas:</span>
                   {[1, 2, 3, 4].map((n) => (
@@ -2501,8 +2520,8 @@ export default function VistaCartaMenu({
 
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
               <div style={{ background: "#f4f2ee", borderRadius: 12, padding: 18, overflowX: "auto" }}>
-                <div style={{
-                  position: "relative",
+                <div ref={hojaPaperRef} style={{
+                  position: "relative", zoom: zoomHoja,
                   background: diseno.bg || "#fff", border: frameCssValue(diseno.frame, neg.accent), borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
                 }}>
