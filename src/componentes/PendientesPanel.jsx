@@ -3,6 +3,7 @@
 // (en gris hasta que se aprueben). Admin/owner: propuestas abiertas para revisar.
 import React, { useEffect, useState } from "react";
 import { Box, Typography, Chip, Stack, CircularProgress } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { useAccess } from '@/context/AccessContext';
 import { listarPropuestas, listarMisPropuestas } from '@/servicios/apiRecetaProposals';
 
@@ -15,6 +16,7 @@ const ESTADO = {
 
 export default function PendientesPanel({ businessId }) {
   const { isStaff } = useAccess() || {};
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +49,7 @@ export default function PendientesPanel({ businessId }) {
           || (p.insumo_id ? `Insumo #${p.insumo_id}` : `Artículo #${p.article_id}`);
         return (
           <Box key={p.id} onClick={() => {
-              if (isStaff) return;
+              if (!isStaff) { navigate('/configuracion?tab=6'); return; }
               const esInsumo = !!p.insumo_id;
               window.dispatchEvent(new CustomEvent('revision:abrir', { detail: { tipo: esInsumo ? 'insumo' : 'articulo', id: esInsumo ? p.insumo_id : p.article_id, nombre: nombre } }));
             }}
