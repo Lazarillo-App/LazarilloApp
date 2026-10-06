@@ -13,10 +13,9 @@ export function useNormalizarNombres(businessId) {
 
   const normalizar = useCallback(async () => {
     if (!businessId) return null;
-    const etiqueta = formato === 'mayuscula' ? 'MAYÚSCULA' : 'Título (Primera mayúscula, resto minúscula)';
+    const etiqueta = formato === 'mayuscula' ? 'MAYÚSCULA' : 'Título';
     const ok = await showConfirm(
-      `Esto va a cambiar el nombre de TODOS los artículos, insumos, rubros y subrubros de este negocio a formato "${etiqueta}". No se puede deshacer con un solo click (habría que normalizar de nuevo con otro formato). ¿Confirmás?`,
-      { danger: true }
+      `Cambiar el texto a ${etiqueta}. Para volver a cambiarlo, elegí la otra opción.`
     );
     if (!ok) return null;
     setNormalizando(true);
