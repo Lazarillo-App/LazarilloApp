@@ -4,16 +4,18 @@ import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography } from '@mui/material';
 import { marcarARevision } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
+import SelectorRevisor from './SelectorRevisor';
 
 export default function MarcarRevisionDialog({ open, onClose, businessId, items = [], titulo = 'Marcar a revisión', onDone }) {
   const [nota, setNota] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [asignadoA, setAsignadoA] = useState(null);
 
   const enviar = async () => {
     if (!nota.trim()) { showAlert('Escribí una nota para quien lo tiene que revisar', 'error'); return; }
     setEnviando(true);
     try {
-      const r = await marcarARevision(businessId, items, nota.trim());
+      const r = await marcarARevision(businessId, items, nota.trim(), asignadoA);
       showAlert(`Marcado a revisión: ${r.marcados} ${r.marcados === 1 ? 'elemento' : 'elementos'}`, 'success');
       setNota('');
       onDone?.(r.marcados);
@@ -32,6 +34,7 @@ export default function MarcarRevisionDialog({ open, onClose, businessId, items 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Se va a marcar {items.length} {items.length === 1 ? 'elemento' : 'elementos'} para revisión. Quien tenga que revisarlo va a ver una alerta.
         </Typography>
+        <SelectorRevisor businessId={businessId} value={asignadoA} onChange={setAsignadoA} minWidth={0} />
         <TextField autoFocus fullWidth multiline minRows={3} size="small" label="Nota"
           placeholder="Qué hay que revisar…" value={nota} onChange={(e) => setNota(e.target.value)} />
       </DialogContent>

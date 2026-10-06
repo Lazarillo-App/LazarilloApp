@@ -70,6 +70,7 @@ import SelectorInsumo from './SelectorInsumo';
 import { useAccess } from '@/context/AccessContext';
 import { marcarARevision } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
+import SelectorRevisor from '../SelectorRevisor';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
@@ -139,6 +140,7 @@ export default function RecetaModal({
   const [marcarSel, setMarcarSel] = useState(() => new Set());
   const [notaRev, setNotaRev] = useState('');
   const [enviandoRev, setEnviandoRev] = useState(false);
+  const [asignadoRev, setAsignadoRev] = useState(null);
   const toggleMarcar = (supplyId) => setMarcarSel((prev) => {
     const n = new Set(prev); const k = String(supplyId);
     if (n.has(k)) n.delete(k); else n.add(k);
@@ -152,7 +154,7 @@ export default function RecetaModal({
       : [{ tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo?.id) }];
     setEnviandoRev(true);
     try {
-      const r = await marcarARevision(businessId, items, notaRev.trim());
+      const r = await marcarARevision(businessId, items, notaRev.trim(), asignadoRev);
       showAlert(`Marcado a revisión: ${r.marcados} elemento(s)`, 'success');
       salirMarcar();
     } catch (e) {
@@ -2986,6 +2988,7 @@ export default function RecetaModal({
               <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {marcarSel.size ? `${marcarSel.size} ingrediente(s) marcados` : 'Sin ingredientes marcados: se marca la receta entera'}
               </Typography>
+              <SelectorRevisor businessId={businessId} value={asignadoRev} onChange={setAsignadoRev} minWidth={160} />
               <TextField size="small" fullWidth placeholder="Nota para quien lo revisa…" value={notaRev} onChange={(e) => setNotaRev(e.target.value)} />
               <Button variant="contained" color="warning" size="small" disabled={enviandoRev || !notaRev.trim()} onClick={enviarRevision} sx={{ whiteSpace: 'nowrap' }}>
                 {enviandoRev ? 'Enviando…' : 'Enviar'}

@@ -45,8 +45,8 @@ export async function listarMisPropuestas(businessId) {
 }
 
 // POST /api/businesses/:businessId/receta-proposals/marcar-revision
-export async function marcarARevision(businessId, items, comment) {
-  const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment } }, businessId);
+export async function marcarARevision(businessId, items, comment, asignadoA = null) {
+  const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment, asignadoA } }, businessId);
   if (!resp?.ok) throw new Error(resp?.error || 'No se pudo marcar a revisión');
   try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento: el contador se actualiza al volver a abrir */ }
   return resp;
