@@ -11,7 +11,7 @@
 // información vista de otra manera. Todo el estado de diseño es local y solo
 // sirve para exportar (no se persiste en esta etapa).
 //
-import React, { useMemo, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 import { showAlert } from "../servicios/appAlert";
 import { showPrompt } from "../servicios/appPrompt";
@@ -888,6 +888,34 @@ export default function VistaCartaMenu({
     }
     return maquetaVacia(articulos, modo);
   });
+
+  // Los títulos de sección (rubro/agrupación) se guardan dentro de la carta, así
+  // que al normalizar nombres en la base quedaban con el formato viejo hasta
+  // recargar. Se re-alinean con el nombre actual, sin tocar títulos que la
+  // usuaria haya renombrado a mano (titulo distinto del origen).
+  useEffect(() => {
+    const keyOf = (s) => clean(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const canon = { rubro: new Map(), agrupacion: new Map() };
+    for (const a of articulos) {
+      if (clean(a.rubro)) canon.rubro.set(keyOf(a.rubro), clean(a.rubro));
+      if (clean(a.agrupacion)) canon.agrupacion.set(keyOf(a.agrupacion), clean(a.agrupacion));
+    }
+    setMaquetaState((m) => {
+      let changed = false;
+      const secciones = {};
+      for (const [sid, sec] of Object.entries(m.secciones || {})) {
+        const origen = sec.origen ?? sec.titulo;
+        const nuevo = canon[sec.tipo]?.get(keyOf(origen));
+        if (nuevo && nuevo !== origen) {
+          changed = true;
+          secciones[sid] = { ...sec, origen: nuevo, titulo: sec.titulo === origen ? nuevo : sec.titulo };
+        } else {
+          secciones[sid] = sec;
+        }
+      }
+      return changed ? { ...m, secciones } : m;
+    });
+  }, [articulos]);
 
   const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
   // Índice inverso artículo→agrupación (para "grupoDelArt" en cada fila del menú).
