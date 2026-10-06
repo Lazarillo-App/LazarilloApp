@@ -736,6 +736,27 @@ export default function VistaCartaMenu({
   // Zoom de la hoja que se está editando (misma hoja, no una copia): para verla completa en pantalla
   const [zoomHoja, setZoomHoja] = useState(1);
   const hojaPaperRef = useRef(null);
+  // Proporción alto/ancho de la hoja tal como está armada (independiente del zoom):
+  // alcanza para saber cuántas páginas ocuparía al exportar, sin renderizar una imagen.
+  const [proporcionHoja, setProporcionHoja] = useState(0);
+  const [mostrarCortes, setMostrarCortes] = useState(true);
+  useEffect(() => {
+    const el = hojaPaperRef.current;
+    if (!el || !el.offsetWidth) return;
+    const medir = () => setProporcionHoja(el.offsetHeight / el.offsetWidth);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hoja?.id, zoomHoja, printCfg.size, printCfg.orient]);
+  const infoExport = useMemo(() => {
+    const m = medidasExport(printCfg);
+    const exportH = proporcionHoja * m.renderWpx;
+    const pageH = m.contentHmm * PX_PER_MM;
+    if (!exportH || !pageH) return { pages: 1, frac: 1 };
+    const pages = printCfg.fitOnePage ? 1 : Math.max(1, Math.ceil(exportH / pageH - 0.01));
+    return { pages, frac: pageH / exportH };
+  }, [printCfg, proporcionHoja]);
   const ajustarZoomHoja = useCallback(() => {
     const el = hojaPaperRef.current;
     if (!el) return;
@@ -2228,6 +2249,10 @@ export default function VistaCartaMenu({
                 </div>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #eee", paddingTop: 12 }}>
+                <button onClick={() => setMostrarCortes((v) => !v)}
+                  style={{ border: `1px solid ${accent}`, borderRadius: 8, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: "#fff", color: accent }}>
+                  {mostrarCortes ? "Ocultar cortes de página" : "Ver cortes de página"}
+                </button>
                 <button onClick={descargar} disabled={dlBusy}
                   style={{ border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 800, cursor: dlBusy ? "default" : "pointer", background: dlBusy ? "#bbb" : accent, color: "#fff" }}>
                   {dlBusy ? "Generando…" : "Descargar"}
@@ -2442,6 +2467,11 @@ export default function VistaCartaMenu({
                 })}
               </div>
 
+              {infoExport.pages > 1 && (
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#c0392b", background: "#fdecea", border: "1px solid #f5b5ae", borderRadius: 8, padding: "7px 10px", marginBottom: 10 }}>
+                  ⚠️ Esta hoja se exporta en {infoExport.pages} páginas. Ajustá el contenido, tildá "Ajustar a 1 hoja" o creá una nueva hoja.
+                </div>
+              )}
               {/* Contenedor "hoja": marco que envuelve las columnas para que se vea como una página */}
               <div style={{ background: "#f4f2ee", borderRadius: 12, padding: 18, overflowX: "auto" }}>
                 <div ref={hojaPaperRef} style={{
@@ -2449,6 +2479,11 @@ export default function VistaCartaMenu({
                   background: diseno.bg || "#fff", border: frameCssValue(diseno.frame, neg.accent), borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
                 }}>
+                  {mostrarCortes && infoExport.pages > 1 && Array.from({ length: infoExport.pages - 1 }, (_, k) => (
+                    <div key={k} style={{ position: "absolute", left: 0, right: 0, top: `${(k + 1) * infoExport.frac * 100}%`, borderTop: "2px dashed #c0392b", zIndex: 35, pointerEvents: "none" }}>
+                      <span style={{ position: "absolute", right: 6, top: -10, fontSize: 10, fontWeight: 700, color: "#c0392b", background: "#fff", padding: "0 6px", borderRadius: 4 }}>corte de página</span>
+                    </div>
+                  ))}
                   {/* Imagen decorativa ya colocada en esta hoja */}
                   {hoja.imagen && (() => {
                     const img = hoja.imagen;
