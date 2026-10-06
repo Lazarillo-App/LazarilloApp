@@ -32,6 +32,51 @@ function normalizarCelular(dial, numeroLocal) {
   return `+${dial}${soloDigitos}`;
 }
 
+function CodigoSeisCasilleros({ value, onChange, autoFocus = false }) {
+  const refs = React.useRef([]);
+  const digitos = Array.from({ length: 6 }, (_, i) => value[i] || "");
+  const setDigito = (i, v) => {
+    const limpio = v.replace(/D/g, "");
+    if (!limpio) { onChange(value.slice(0, i) + value.slice(i + 1)); return; }
+    const nuevo = (value.slice(0, i) + limpio + value.slice(i + 1)).slice(0, 6);
+    onChange(nuevo);
+    const siguiente = Math.min(i + limpio.length, 5);
+    refs.current[siguiente]?.focus();
+  };
+  const onPegar = (e) => {
+    const texto = (e.clipboardData?.getData("text") || "").replace(/D/g, "").slice(0, 6);
+    if (!texto) return;
+    e.preventDefault();
+    onChange(texto);
+    refs.current[Math.min(texto.length, 5)]?.focus();
+  };
+  return (
+    <div style={{ display: "flex", gap: 8, justifyContent: "center", margin: "6px 0 4px" }}>
+      {digitos.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => (refs.current[i] = el)}
+          className="input"
+          value={d}
+          inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          autoFocus={autoFocus && i === 0}
+          onChange={(e) => setDigito(i, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Backspace" && !digitos[i]) { e.preventDefault(); refs.current[Math.max(i - 1, 0)]?.focus(); onChange(value.slice(0, Math.max(i - 1, 0))); }
+            if (e.key === "ArrowLeft") refs.current[Math.max(i - 1, 0)]?.focus();
+            if (e.key === "ArrowRight") refs.current[Math.min(i + 1, 5)]?.focus();
+          }}
+          onPaste={onPegar}
+          onFocus={(e) => e.target.select()}
+          aria-label={"Dígito " + (i + 1)}
+          style={{ width: 44, height: 52, textAlign: "center", fontSize: 22, fontWeight: 700, padding: 0 }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function AltaPorQR() {
   const { code } = useParams();
   const [negocio, setNegocio] = useState(null);
@@ -228,9 +273,8 @@ export default function AltaPorQR() {
               </p>
               {err && <div className="auth-error">{err}</div>}
 
-              <label className="auth-label" htmlFor="otp">Código</label>
-              <input id="otp" className="input" value={otp} onChange={(e) => setOtp(e.target.value)}
-                placeholder="000000" inputMode="numeric" maxLength={6} autoFocus />
+              <label className="auth-label">Código</label>
+              <CodigoSeisCasilleros value={otp} onChange={setOtp} autoFocus />
 
               <label className="auth-label" htmlFor="password">Elegí una contraseña</label>
               <input id="password" type="password" className="input" value={password}
