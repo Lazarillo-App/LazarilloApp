@@ -396,7 +396,7 @@ export default function ItemRow({
       bgcolor: alertaBg || 'transparent',
       border: alertaBg ? '1px solid #fecaca' : '1px solid transparent',
       ...(isDuplicate && { bgcolor: '#fef2f2', border: '1px solid #fecaca' }),
-      ...(item.pendiente && { bgcolor: '#f3f4f6', border: '1px dashed #cbd5e1', color: '#6b7280' }),
+      ...(item.pendiente && { bgcolor: '#f3f4f6', border: '1px dashed #cbd5e1', color: '#6b7280', pointerEvents: 'none', userSelect: 'none' }),
       transition: 'background 0.2s',
       '&:hover': { bgcolor: alertaBg || (showAdvanced ? 'transparent' : 'action.hover') },
       position: 'relative',
