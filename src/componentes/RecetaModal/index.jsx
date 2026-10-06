@@ -217,6 +217,10 @@ export default function RecetaModal({
         const cant = Number(p.cantidad);
         return cant && cant !== Number(it.cantidad) ? { ...it, cantidad: cant, pendiente: true } : it;
       });
+      const propIds = new Set([...pmap.keys()]);
+      for (const it of out) {
+        if (!propIds.has(String(it.supplyId)) && it.supplyId) Object.assign(it, { quitado: true, pendiente: true });
+      }
       const existentes = new Set(prev.map((it) => String(it.supplyId)));
       for (const p of propuestaAbierta.items || []) {
         const k = key(p);
@@ -2767,7 +2771,8 @@ export default function RecetaModal({
                       startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
                       onClick={addItem}
                       size="small"
-                      disabled={insumosLoading}
+                      disabled={insumosLoading || !!propuestaAbierta}
+                      title={propuestaAbierta ? 'Hay cambios pendientes de aprobación: esperá a que se resuelvan' : undefined}
                       variant="outlined"
                       sx={{ borderColor: PRIMARY, color: PRIMARY }}
                     >

@@ -397,6 +397,7 @@ export default function ItemRow({
       border: alertaBg ? '1px solid #fecaca' : '1px solid transparent',
       ...(isDuplicate && { bgcolor: '#fef2f2', border: '1px solid #fecaca' }),
       ...(item.pendiente && { bgcolor: '#f3f4f6', border: '1px dashed #cbd5e1', color: '#6b7280', pointerEvents: 'none', userSelect: 'none' }),
+      ...(item.quitado && { textDecoration: 'line-through', opacity: 0.7 }),
       transition: 'background 0.2s',
       '&:hover': { bgcolor: alertaBg || (showAdvanced ? 'transparent' : 'action.hover') },
       position: 'relative',
