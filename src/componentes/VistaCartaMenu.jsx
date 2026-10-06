@@ -2836,6 +2836,10 @@ export default function VistaCartaMenu({
                                     if (!a) return null;
                                     const descActual = descripciones[String(artId)] || "";
                                     const editando = editDesc === String(artId);
+                                    // Nivel que el bloque no muestra: va inline junto al título del bloque ("RUBRO - subrubro").
+                                    const rubItem = clean(a.rubro);
+                                    const subItem = clean(a.sub);
+                                    const subBloque = campoBloque === "rubro" ? subItem : campoBloque === "sub" ? rubItem : "";
                                     let encabezadoBloque = null;
                                     if (campoBloque && !String(artId).startsWith("__sep__")) {
                                       const bloqueActual = ((a?.[campoBloque]) || "Otros").toString();
@@ -2881,7 +2885,7 @@ export default function VistaCartaMenu({
                                               margin: "8px 0 2px", paddingBottom: 2, cursor: "grab",
                                               borderBottom: `1px dotted ${(neg.accent || accent)}55`,
                                             }}>
-                                            <span>{bloqueActual}</span>
+                                            <span>{bloqueActual}{subBloque ? <span style={{ opacity: 0.75, fontWeight: 600 }}> - {subBloque}</span> : null}</span>
                                             <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0, cursor: "default" }}
                                               draggable={false}
                                               onMouseDown={(e) => e.stopPropagation()}
@@ -2929,11 +2933,8 @@ export default function VistaCartaMenu({
                                     }
                                     // Subencabezado "rubro - subrubro" (como en la tabla). Si el bloque ya muestra
                                     // uno de los dos niveles, se omite ese para no repetirlo.
-                                    const rub = clean(a.rubro);
-                                    const sub = clean(a.sub);
-                                    const partes = campoBloque === "rubro" ? [sub] : campoBloque === "sub" ? [rub] : [rub, sub];
-                                    const etiqueta = partes.filter(Boolean).join(" - ");
-                                    const cambioEtiqueta = etiqueta !== jerarquiaAnterior.etiqueta || !!encabezadoBloque;
+                                    const etiqueta = campoBloque ? "" : [rubItem, subItem].filter(Boolean).join(" - ");
+                                    const cambioEtiqueta = etiqueta !== jerarquiaAnterior.etiqueta;
                                     jerarquiaAnterior = { etiqueta };
                                     const encabezadoJerarquia = (etiqueta && cambioEtiqueta && !String(artId).startsWith("__sep__")) ? (
                                       <div style={{ margin: "8px 0 4px", paddingBottom: 2, fontSize: "0.82em", fontWeight: 700, color: neg.accent || accent, borderBottom: `1px dotted ${(neg.accent || accent)}55` }}>
