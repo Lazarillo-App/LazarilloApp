@@ -2834,15 +2834,16 @@ export default function VistaCartaMenu({
                                       // subrubro como encabezados antes de cada grupo de artículos.
                                       const rub = clean(a.rubro);
                                       const sub = clean(a.sub);
-                                      const hdr = [];
-                                      if (rub && rub !== jerarquiaAnterior.rub && rub.toLowerCase() !== clean(sec.titulo).toLowerCase()) {
-                                        hdr.push(<div key="rub" style={{ fontSize: "0.78em", fontWeight: 800, color: neg.accent || accent, textTransform: "uppercase", letterSpacing: "0.04em", margin: "8px 0 2px" }}>{rub}</div>);
-                                      }
-                                      if (sub && (sub !== jerarquiaAnterior.sub || rub !== jerarquiaAnterior.rub)) {
-                                        hdr.push(<div key="sub" style={{ fontSize: "0.72em", fontWeight: 700, color: neg.accent || accent, opacity: 0.75, margin: "4px 0 2px" }}>{sub}</div>);
-                                      }
+                                      const cambio = rub !== jerarquiaAnterior.rub || sub !== jerarquiaAnterior.sub;
                                       jerarquiaAnterior = { rub, sub };
-                                      if (hdr.length) encabezadoJerarquia = <>{hdr}</>;
+                                      if (cambio && (rub || sub)) {
+                                        const etiqueta = [rub, sub].filter(Boolean).join(" - ");
+                                        encabezadoJerarquia = (
+                                          <div style={{ margin: "8px 0 4px", paddingBottom: 2, fontSize: "0.82em", fontWeight: 700, color: neg.accent || accent, borderBottom: `1px dotted ${(neg.accent || accent)}55` }}>
+                                            {etiqueta}
+                                          </div>
+                                        );
+                                      }
                                     }
                                     let encabezadoBloque = null;
                                     if (campoBloque && !String(artId).startsWith("__sep__")) {
