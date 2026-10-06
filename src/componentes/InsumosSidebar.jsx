@@ -100,6 +100,7 @@ const resolveInsumoMonto = (insumo, metaById) => {
 };
 
 function InsumosSidebar({
+  staff = false,
   rubros = [],
   rubroSeleccionado,
   setRubroSeleccionado,
@@ -644,7 +645,7 @@ function InsumosSidebar({
              rubros de más abajo. ── */}
         {activeTab === 'agrupaciones' && (
         <>
-          <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
+          {!staff && <FormControl size="small" fullWidth sx={{ mb: 1, mt: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
             <Select
               label="Agrupaciones"
@@ -785,7 +786,7 @@ function InsumosSidebar({
                 );
               })}
             </Select>
-          </FormControl>
+          </FormControl>}
 
           {/* Toggle elaborados / no-elaborados — sin onVistaChange (Staff, Fase 4:
               solo ve elaborados) ni el toggle tiene sentido, se oculta entero. */}

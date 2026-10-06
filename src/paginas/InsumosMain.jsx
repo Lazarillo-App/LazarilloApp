@@ -1593,6 +1593,7 @@ export default function InsumosMain() {
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
         <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
           <InsumosSidebar
+            staff={!!isStaff}
             rubros={rubrosTree}
             rubroSeleccionado={rubroSeleccionado}
             setRubroSeleccionado={setRubroSeleccionado}

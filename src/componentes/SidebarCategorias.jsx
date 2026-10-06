@@ -530,7 +530,7 @@ function SidebarCategorias({
         </div>}
 
         {/* ── Select de agrupaciones (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && !staff && (
+        {sidebarMode === 'agrupaciones' && (
           <FormControl size="small" fullWidth sx={{ mb: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
             <Select
