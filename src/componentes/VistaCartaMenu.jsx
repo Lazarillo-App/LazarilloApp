@@ -2802,6 +2802,7 @@ export default function VistaCartaMenu({
                                     orden = bloquesOrdenados.flatMap((b) => buckets.get(b));
                                   }
                                   let bloqueAnterior = null; // para emitir encabezado al cambiar
+                                  let jerarquiaAnterior = { rub: null, sub: null };
                                   return orden.map((artId, itemPos) => {
                                     // Separador
                                     if (String(artId).startsWith("__sep__")) {
@@ -2827,6 +2828,22 @@ export default function VistaCartaMenu({
                                     const descActual = descripciones[String(artId)] || "";
                                     const editando = editDesc === String(artId);
                                     // Encabezado de bloque: emitir cuando cambia el rubro/sub.
+                                    let encabezadoJerarquia = null;
+                                    if (!campoBloque) {
+                                      // Sin subdivisión por agrupación: mismo criterio que la tabla — rubro y
+                                      // subrubro como encabezados antes de cada grupo de artículos.
+                                      const rub = clean(a.rubro);
+                                      const sub = clean(a.sub);
+                                      const hdr = [];
+                                      if (rub && rub !== jerarquiaAnterior.rub && rub.toLowerCase() !== clean(sec.titulo).toLowerCase()) {
+                                        hdr.push(<div key="rub" style={{ fontSize: "0.78em", fontWeight: 800, color: neg.accent || accent, textTransform: "uppercase", letterSpacing: "0.04em", margin: "8px 0 2px" }}>{rub}</div>);
+                                      }
+                                      if (sub && (sub !== jerarquiaAnterior.sub || rub !== jerarquiaAnterior.rub)) {
+                                        hdr.push(<div key="sub" style={{ fontSize: "0.72em", fontWeight: 700, color: neg.accent || accent, opacity: 0.75, margin: "4px 0 2px" }}>{sub}</div>);
+                                      }
+                                      jerarquiaAnterior = { rub, sub };
+                                      if (hdr.length) encabezadoJerarquia = <>{hdr}</>;
+                                    }
                                     let encabezadoBloque = null;
                                     if (campoBloque && !String(artId).startsWith("__sep__")) {
                                       const bloqueActual = ((a?.[campoBloque]) || "Otros").toString();
@@ -2921,6 +2938,7 @@ export default function VistaCartaMenu({
                                     return (
                                       <React.Fragment key={artId}>
                                         {encabezadoBloque}
+                                        {encabezadoJerarquia}
                                         <div>
                                           <div
                                             draggable={!vincularMode}
@@ -2936,11 +2954,6 @@ export default function VistaCartaMenu({
                                                 style={{ marginRight: 8, cursor: "pointer" }} />
                                             )}
                                             <span className="nm">{a.esGrupoVinculado ? "🔗 " : ""}{a.nombre}</span>
-                                            {(a.rubro || a.sub) && (
-                                              <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 6 }}>
-                                                {[a.rubro, a.sub].filter(Boolean).join(" › ")}
-                                              </span>
-                                            )}
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
                                             {/* Siempre visibles (como antes) — el corte del precio no era por
