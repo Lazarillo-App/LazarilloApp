@@ -114,6 +114,7 @@ function SidebarCategorias({
   visibleIds,
   onManualPick,
   listMode = 'by-subrubro',
+  staff = false,
   onChangeListMode,
   priceConfig = { byAgrupacion: {} },
   globalCostoIdeal = 30,
@@ -150,11 +151,12 @@ function SidebarCategorias({
   const [divisionModalOpen, setDivisionModalOpen] = useState(false);
   const [groupToMove, setGroupToMove] = useState(null);
   const [selectOpen, setSelectOpen] = useState(false);
-  const [localListMode, setLocalListMode] = useState(listMode);
+  const [localListMode, setLocalListMode] = useState(staff ? 'by-subrubro' : listMode);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
   // ── NUEVO: modo sidebar (agrupaciones / listas)
   const [sidebarMode, setSidebarMode] = useState(() => {
+    if (staff) return 'agrupaciones';
     try { return localStorage.getItem(SIDEBAR_MODE_KEY) || 'agrupaciones'; } catch { return 'agrupaciones'; }
   });
 
@@ -498,7 +500,7 @@ function SidebarCategorias({
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
         {/* ── Toggle Agrupaciones / Listas ── */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
+        {!staff && <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
           <button
             onClick={() => handleSidebarMode('agrupaciones')}
             style={{
@@ -525,10 +527,10 @@ function SidebarCategorias({
           >
             Listas {lists.length > 0 && <span style={{ opacity: 0.7 }}>({lists.length})</span>}
           </button>
-        </div>
+        </div>}
 
         {/* ── Select de agrupaciones (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && (
+        {sidebarMode === 'agrupaciones' && !staff && (
           <FormControl size="small" fullWidth sx={{ mb: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
             <Select
@@ -573,7 +575,7 @@ function SidebarCategorias({
                         color: esDiscontinuadosGroup(g) ? '#555' : 'inherit'
                       }}>
                         {labelAgrup(g)}
-                        {gMonto > 0 && !esDiscontinuadosGroup(g) && (
+                        {!staff && gMonto > 0 && !esDiscontinuadosGroup(g) && (
                           <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600 }}>
                             {fmtCurrency(gMonto)}
                             {gPct && <span style={{ color: 'var(--color-text-secondary, #6b7280)', fontWeight: 500 }}> ({gPct}%)</span>}
@@ -768,7 +770,7 @@ function SidebarCategorias({
         )}
 
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && (
+        {sidebarMode === 'agrupaciones' && !staff && (
           <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ToggleButtonGroup
               size="small" exclusive value={localListMode}
@@ -834,7 +836,7 @@ function SidebarCategorias({
                   </span>
 
                   {/* Monto + % apilados verticalmente */}
-                  {typeof monto === 'number' && monto > 0 && (
+                  {!staff && typeof monto === 'number' && monto > 0 && (
                     <div style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
                       opacity: 0.75, flexShrink: 0,

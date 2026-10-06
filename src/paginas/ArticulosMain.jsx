@@ -2735,6 +2735,7 @@ export default function ArticulosMain(props) {
             height: '100%',
           }}>
           <SidebarCategorias
+            staff={!!isStaff}
             categorias={categorias}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}
