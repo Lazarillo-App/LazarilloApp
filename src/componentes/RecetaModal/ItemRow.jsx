@@ -58,6 +58,11 @@ export default function ItemRow({
 }) {
   const [search, setSearch] = useState('');
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
+  const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
+  // Insumo de la fila (no artículo ni promo) para editar desde la receta
+  const insumoDeFila = item.supplyId && !item.articleRefId && !item.esArticulo
+    ? (insumos || []).find(i => String(i.id) === String(item.supplyId)) || null
+    : null;
   const [notasOpen, setNotasOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -457,6 +462,17 @@ export default function ItemRow({
                 >
                   {item.supplyNombre || `#${item.articleRefId || item.supplyId}`}
                 </Typography>
+                {insumoDeFila && (
+                  <Tooltip title="Editar insumo">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => { e.stopPropagation(); setEditarInsumoOpen(true); }}
+                      sx={{ p: '2px', ml: 'auto', flexShrink: 0, color: 'text.disabled', '&:hover': { color: PRIMARY } }}
+                    >
+                      <EditIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 {/* Fecha: última compra (insumo) o última modificación de receta (elaborado) */}
                 {!item.articleRefId && (() => {
                   const insDat = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
@@ -1127,6 +1143,16 @@ export default function ItemRow({
             selectInsumo({ ...nuevo, _tipo: 'insumo' });
             setCrearInsumoOpen(false);
           }}
+        />
+      )}
+
+      {editarInsumoOpen && insumoDeFila && (
+        <InsumoNuevoModal
+          open={editarInsumoOpen}
+          insumo={insumoDeFila}
+          onClose={() => setEditarInsumoOpen(false)}
+          businessId={insumosBizId || businessId}
+          onCreated={() => {}}
         />
       )}
     </Box>
