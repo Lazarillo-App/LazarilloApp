@@ -920,7 +920,7 @@ export default function RecetaModal({
               if (cancelled || Object.keys(mapa).length === 0) return;
               setLocalRecetasElaborados(prev => ({ ...prev, ...mapa }));
             };
-            fetch(`${BASE}/businesses/${insumoBizId}/insumos/batch-recetas`, {
+            fetch(`${BASE}/insumos/batch-recetas`, {
               method: 'POST', headers, body: JSON.stringify({ ids: elaboradosIds }),
             })
               .then(r => r.json())
