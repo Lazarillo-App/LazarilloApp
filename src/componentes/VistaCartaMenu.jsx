@@ -939,7 +939,32 @@ export default function VistaCartaMenu({
     });
   }, [articulos]);
 
-  const artByIdBase = useMemo(() => indexarArticulos(articulos), [articulos]);
+  // Nombres recién editados en la carta: se muestran al instante, sin esperar a que
+  // el árbol de artículos vuelva a cargarse. Se descartan cuando el dato real ya coincide.
+  const [nombresEditados, setNombresEditados] = useState({});
+  useEffect(() => {
+    setNombresEditados((prev) => {
+      const ids = Object.keys(prev);
+      if (!ids.length) return prev;
+      const real = new Map(articulos.map((a) => [String(a.id), a.nombre]));
+      const next = {};
+      for (const id of ids) if (real.get(id) !== prev[id]) next[id] = prev[id];
+      return Object.keys(next).length === ids.length ? prev : next;
+    });
+  }, [articulos]);
+  const artByIdBase = useMemo(() => {
+    const m = indexarArticulos(articulos);
+    for (const [id, nombre] of Object.entries(nombresEditados)) {
+      const a = m.get(id);
+      if (a) m.set(id, { ...a, nombre });
+    }
+    return m;
+  }, [articulos, nombresEditados]);
+  const renombrarEnCarta = useCallback(async (id, nombre) => {
+    setNombresEditados((prev) => ({ ...prev, [String(id)]: nombre }));
+    const ok = await onRenombrarArticulo?.(id, nombre);
+    if (ok === false) setNombresEditados((prev) => { const n = { ...prev }; delete n[String(id)]; return n; });
+  }, [onRenombrarArticulo]);
   // Índice inverso artículo→agrupación (para "grupoDelArt" en cada fila del menú).
   // Antes era un .find()+.some() recorriendo TODAS las agrupaciones por CADA
   // artículo visible, en cada render — con muchos artículos, eso es el costo
@@ -3141,7 +3166,7 @@ export default function VistaCartaMenu({
                                                 defaultValue={a.nombre}
                                                 onBlur={(e) => {
                                                   const nuevo = e.target.value.trim();
-                                                  if (nuevo && nuevo !== a.nombre) onRenombrarArticulo?.(a.id, nuevo);
+                                                  if (nuevo && nuevo !== a.nombre) renombrarEnCarta(a.id, nuevo);
                                                 }}
                                                 onKeyDown={(e) => {
                                                   if (e.key === "Enter") e.target.blur();

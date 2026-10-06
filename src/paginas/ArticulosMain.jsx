@@ -400,13 +400,15 @@ export default function ArticulosMain(props) {
   const onRenombrarArticulo = useCallback(async (articleId, nombre) => {
     const bid = activeBizId;
     const nom = String(nombre || '').trim();
-    if (!bid || !Number.isFinite(Number(articleId)) || !nom) return;
+    if (!bid || !Number.isFinite(Number(articleId)) || !nom) return false;
     try {
       await BusinessesAPI.updateArticle(bid, Number(articleId), { nombre: nom });
       // Refrescar árbol para que carta + tabla muestren el nombre nuevo.
       window.dispatchEvent(new CustomEvent('articulos:updated'));
+      return true;
     } catch (e) {
       console.error('[onRenombrarArticulo]', e.message);
+      return false;
     }
   }, [activeBizId]);
 
