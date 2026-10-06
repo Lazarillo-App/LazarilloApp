@@ -218,6 +218,10 @@ function reconciliar(guardada, articulosPlano, modo) {
   for (const sec of Object.values(secciones)) {
     for (const id of sec.itemIds) yaUbicados.add(String(id));
   }
+  // Miembros de una vinculación ya están representados por su fila agrupada: no son "nuevos".
+  for (const g of Object.values(guardada.gruposVinculados || {})) {
+    for (const id of g.memberIds || []) yaUbicados.add(String(id));
+  }
 
   // Título de sección natural de un artículo (según modo), igual que maquetaInicial
   const tipoNatural = modo === "rubro" ? "rubro" : "agrupacion";
@@ -284,6 +288,39 @@ function reconciliar(guardada, articulosPlano, modo) {
     removidos: Array.from(removidos),
     gruposVinculados: guardada.gruposVinculados || {},
   };
+}
+
+// Quitar artículos de una vinculación SOLO en la carta: los excluidos vuelven a
+// aparecer como filas sueltas justo debajo de la fila agrupada. La vinculación
+// real (tabla/backend) no se toca.
+function sincronizarExcluidos(m, gid, excluidos) {
+  const g = (m.gruposVinculados || {})[gid];
+  if (!g) return m;
+  const pseudo = "__grupo__" + gid;
+  const ex = excluidos.map(String);
+  const miembros = (g.memberIds || []).map(String);
+  const gruposVinculados = { ...m.gruposVinculados, [gid]: { ...g, excluidos: ex } };
+  const secId = Object.keys(m.secciones).find((s) => (m.secciones[s].itemIds || []).some((id) => String(id) === pseudo));
+  if (!secId) return { ...m, gruposVinculados };
+  const sec = m.secciones[secId];
+  const base = sec.itemIds.filter((id) => !miembros.includes(String(id)));
+  const pos = base.findIndex((id) => String(id) === pseudo);
+  base.splice(pos + 1, 0, ...miembros.filter((x) => ex.includes(x)));
+  return { ...m, gruposVinculados, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: base } } };
+}
+
+// Vinculación que existe en la tabla y todavía no se ve en la carta: se coloca en la
+// sección donde están sus artículos, como una sola fila agrupada.
+function colocarGrupoVinculado(m, gid, memberIds, nombre) {
+  const miembros = memberIds.map(String);
+  const gruposVinculados = { ...(m.gruposVinculados || {}), [gid]: { name: nombre, memberIds, excluidos: [] } };
+  const secId = Object.keys(m.secciones).find((s) => (m.secciones[s].itemIds || []).some((id) => miembros.includes(String(id))));
+  if (!secId) return { ...m, gruposVinculados };
+  const sec = m.secciones[secId];
+  const primero = sec.itemIds.findIndex((id) => miembros.includes(String(id)));
+  const base = sec.itemIds.filter((id) => !miembros.includes(String(id)));
+  base.splice(Math.min(primero, base.length), 0, "__grupo__" + gid);
+  return { ...m, gruposVinculados, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: base } } };
 }
 
 // Ancho mínimo para que "double" se vea como 2 líneas — con menos de 3px el
@@ -937,15 +974,20 @@ export default function VistaCartaMenu({
       const miembros = (grupo.memberIds || []).map((mid) => artByIdBase.get(String(mid))).filter(Boolean);
       if (!miembros.length) continue;
       const desc = descripciones[pseudoId];
+      const excl = new Set((grupo.excluidos || []).map(String));
+      const agrupados = miembros.filter((x) => !excl.has(String(x.id)));
+      const textoAgrupados = agrupados.length
+        ? agrupados.map((x) => x.nombre).join(", ")
+        : "Sin artículos agrupados en la carta";
       m.set(pseudoId, {
         id: pseudoId,
         nombre: grupo.name || "Vinculación sin nombre",
         precio: miembros[0].precio,
-        descripcion: desc != null && desc !== "" ? desc : miembros.map((x) => x.nombre).join(", "),
+        descripcion: desc != null && desc !== "" ? desc : textoAgrupados,
         rubro: miembros[0].rubro,
         agrupacion: miembros[0].agrupacion,
         esGrupoVinculado: true,
-        miembroIds: miembros.map((x) => x.id),
+        miembroIds: agrupados.map((x) => x.id),
       });
     }
     return m;
@@ -956,6 +998,76 @@ export default function VistaCartaMenu({
   const setMaqueta = useCallback((updater) => {
     setMaquetaState((actual) => (typeof updater === "function" ? updater(actual) : updater));
   }, []);
+
+  // ── Vinculaciones de la tabla ──────────────────────────────────────────────
+  // Las vinculaciones creadas en la tabla viven en el backend. En la carta se muestran
+  // agrupadas: las nuevas piden un título (una sola vez) y las ya conocidas siguen sus
+  // miembros reales.
+  const [linkGroups, setLinkGroups] = useState([]);
+  const [gruposAbiertos, setGruposAbiertos] = useState({});
+  const linksProcesadosRef = useRef(new Set());
+  useEffect(() => {
+    if (!activeBizId) return undefined;
+    let vivo = true;
+    const cargar = async () => {
+      try {
+        const { LinksAPI } = await import("@/hooks/useArticleSelection");
+        const r = await LinksAPI.getAll(activeBizId);
+        if (vivo) setLinkGroups(r?.groups || []);
+      } catch { /* sin vinculaciones: la carta igual funciona */ }
+    };
+    cargar();
+    window.addEventListener("article:links-changed", cargar);
+    return () => { vivo = false; window.removeEventListener("article:links-changed", cargar); };
+  }, [activeBizId]);
+
+  useEffect(() => {
+    if (!linkGroups.length) return undefined;
+    let vivo = true;
+    const gv = maqueta.gruposVinculados || {};
+    const actualizar = {};
+    const pendientes = [];
+    for (const g of linkGroups) {
+      const gid = String(g.id);
+      const memberIds = (g.members || []).map((x) => Number(x.article_id)).filter(Number.isFinite);
+      if (!memberIds.length) continue;
+      if (gv[gid]) {
+        const prev = (gv[gid].memberIds || []).map(Number);
+        if (prev.length !== memberIds.length || prev.some((x, i) => x !== memberIds[i])) actualizar[gid] = memberIds;
+      } else if (!linksProcesadosRef.current.has(gid)) {
+        pendientes.push({ gid, memberIds, nombre: g.name || "" });
+      }
+    }
+    if (Object.keys(actualizar).length) {
+      setMaqueta((m) => {
+        let out = m;
+        for (const [gid, memberIds] of Object.entries(actualizar)) {
+          const prev = out.gruposVinculados?.[gid];
+          if (!prev) continue;
+          const excl = (prev.excluidos || []).map(Number).filter((x) => memberIds.includes(x));
+          out = sincronizarExcluidos(
+            { ...out, gruposVinculados: { ...out.gruposVinculados, [gid]: { ...prev, memberIds } } },
+            gid, excl
+          );
+        }
+        return out;
+      });
+    }
+    (async () => {
+      for (const p of pendientes) {
+        if (!vivo) return;
+        linksProcesadosRef.current.add(p.gid);
+        const r = await showPrompt(`Esta vinculación tiene ${p.memberIds.length} artículos. ¿Cómo se llama en la carta? (ej: Gaseosas)`, p.nombre);
+        if (!vivo) return;
+        const nombre = (r || "").trim() || p.nombre.trim() || "Vinculación";
+        setMaqueta((m) => colocarGrupoVinculado(m, p.gid, p.memberIds, nombre));
+        const nombres = p.memberIds.map((id) => artByIdBase.get(String(id))?.nombre).filter(Boolean).join(", ");
+        if (nombres) setDescripciones((d) => ({ ...d, ["__grupo__" + p.gid]: nombres }));
+      }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkGroups]);
 
   // ── Reconciliación en vivo (modelo espejo) ──────────────────────────────────
   // La maqueta se arma una sola vez (useState inicial). Si después cambia la
@@ -2944,6 +3056,11 @@ export default function VistaCartaMenu({
                                                 mostrarse siempre sino porque el espacio reservado (90px) era más
                                                 chico que lo que en verdad ocupan estos botones. Ya con 130px alcanza. */}
                                             <span style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 8, alignItems: "center", background: diseno.bg || "#fff", paddingLeft: 4, cursor: "default" }} onMouseDown={(e) => e.stopPropagation()}>
+                                              {a.esGrupoVinculado && (
+                                                <button onClick={(e) => { e.stopPropagation(); const gid = String(artId).replace("__grupo__", ""); setGruposAbiertos((o) => ({ ...o, [gid]: !o[gid] })); }}
+                                                  title="Ver y editar los artículos de esta vinculación (solo en la carta)"
+                                                  style={{ border: "none", background: "none", color: gruposAbiertos[String(artId).replace("__grupo__", "")] ? accent : "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>⛓</button>
+                                              )}
                                               <button onClick={(e) => { e.stopPropagation(); insertarSeparador(sid, artId); }}
                                                 title="Agregar línea divisoria debajo de este artículo"
                                                 style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
@@ -3051,6 +3168,37 @@ export default function VistaCartaMenu({
                                             <div className="ds" style={{ cursor: "pointer" }} onClick={() => setEditDesc(String(artId))}>{descActual}</div>
                                           ) : null)}
                                         </div>
+                                        {a.esGrupoVinculado && gruposAbiertos[String(artId).replace("__grupo__", "")] && (() => {
+                                          const gid = String(artId).replace("__grupo__", "");
+                                          const g = (maqueta.gruposVinculados || {})[gid];
+                                          if (!g) return null;
+                                          const excl = (g.excluidos || []).map(String);
+                                          return (
+                                            <div style={{ margin: "2px 0 8px 14px", padding: "6px 8px", background: "#faf9f7", border: "1px dashed #d8d3ca", borderRadius: 6 }}>
+                                              {(g.memberIds || []).map((mid) => {
+                                                const art = artByIdBase.get(String(mid));
+                                                const agrupado = !excl.includes(String(mid));
+                                                return (
+                                                  <label key={mid} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0", cursor: "pointer" }}>
+                                                    <input type="checkbox" checked={agrupado}
+                                                      onChange={() => {
+                                                        const nuevos = agrupado ? [...excl, String(mid)] : excl.filter((x) => x !== String(mid));
+                                                        setMaqueta((m) => sincronizarExcluidos(m, gid, nuevos));
+                                                      }} />
+                                                    {art?.nombre || mid}
+                                                  </label>
+                                                );
+                                              })}
+                                              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                                <button onClick={() => setMaqueta((m) => sincronizarExcluidos(m, gid, (g.memberIds || []).map(String)))}
+                                                  style={{ border: `1px solid ${accent}`, borderRadius: 6, padding: "3px 8px", fontSize: 11.5, fontWeight: 700, background: "#fff", color: accent, cursor: "pointer" }}>Desvincular en la carta</button>
+                                                <button onClick={() => setMaqueta((m) => sincronizarExcluidos(m, gid, []))}
+                                                  style={{ border: `1px solid ${accent}`, borderRadius: 6, padding: "3px 8px", fontSize: 11.5, fontWeight: 700, background: accent, color: "#fff", cursor: "pointer" }}>Volver a agrupar</button>
+                                              </div>
+                                              <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 4 }}>Esto solo cambia la carta. La vinculación de la tabla no se modifica.</div>
+                                            </div>
+                                          );
+                                        })()}
                                       </React.Fragment>
                                     );
                                   });
