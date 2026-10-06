@@ -84,8 +84,13 @@ export default function ConfiguracionMain() {
   // ── Tabs ──
   const [tab, setTab] = useState(() => {
     const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 5 ? t : 0;
+    return Number.isFinite(t) && t >= 0 && t <= 6 ? t : 0;
   });
+  // Si ya está abierta y llega otro ?tab= (ej. desde un aviso de aprobación), cambia de pestaña
+  useEffect(() => {
+    const t = Number(searchParams.get('tab'));
+    if (Number.isFinite(t) && t >= 0 && t <= 6) setTab(t);
+  }, [searchParams]);
   const [subTabArt, setSubTabArt] = useState(0);
   const [subTabIns, setSubTabIns] = useState(0);
 
