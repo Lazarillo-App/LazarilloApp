@@ -2953,7 +2953,7 @@ export default function RecetaModal({
               </Typography>
               <TextField size="small" fullWidth placeholder="Nota para quien lo revisa…" value={notaRev} onChange={(e) => setNotaRev(e.target.value)} />
               <Button variant="contained" color="warning" size="small" disabled={enviandoRev || !notaRev.trim()} onClick={enviarRevision} sx={{ whiteSpace: 'nowrap' }}>
-                {enviandoRev ? 'Enviando…' : 'Enviar a revisión'}
+                {enviandoRev ? 'Enviando…' : 'Enviar'}
               </Button>
             </Box>
           )}
