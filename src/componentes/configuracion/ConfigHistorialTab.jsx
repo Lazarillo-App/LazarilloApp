@@ -8,6 +8,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HistoryIcon from '@mui/icons-material/History';
 import { AuditLogAPI } from '../../servicios/apiBusinesses';
+import { TeamAPI } from '../../servicios/apiTeam';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 const ENTITY_LABELS = {
@@ -123,6 +124,12 @@ export default function ConfigHistorialTab({ businessId }) {
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [entityType, setEntityType] = useState('');
+  const [personaId, setPersonaId] = useState('');
+  const [miembros, setMiembros] = useState([]);
+  useEffect(() => {
+    if (!businessId) return;
+    TeamAPI.listMembers({ scopeType: 'business', scopeId: businessId }).then(setMiembros).catch(() => setMiembros([]));
+  }, [businessId]);
 
   const cargar = useCallback(async (reset = true) => {
     if (!businessId) return;
@@ -130,7 +137,7 @@ export default function ConfigHistorialTab({ businessId }) {
     setError(null);
     try {
       const before = reset ? undefined : entries[entries.length - 1]?.id;
-      const res = await AuditLogAPI.list(businessId, { entityType: entityType || undefined, before, limit: 30 });
+      const res = await AuditLogAPI.list(businessId, { entityType: entityType || undefined, userId: personaId || undefined, before, limit: 30 });
       const data = res?.data || [];
       setEntries(prev => reset ? data : [...prev, ...data]);
       setHasMore(!!res?.hasMore);
@@ -141,9 +148,9 @@ export default function ConfigHistorialTab({ businessId }) {
       setLoadingMore(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, entityType]);
+  }, [businessId, entityType, personaId]);
 
-  useEffect(() => { cargar(true); }, [businessId, entityType]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar(true); }, [businessId, entityType, personaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto' }}>
@@ -152,6 +159,13 @@ export default function ConfigHistorialTab({ businessId }) {
         <Typography variant="subtitle1" fontWeight={700} sx={{ flex: 1 }}>
           Historial de actividad
         </Typography>
+        <FormControl size="small" sx={{ minWidth: 180, mr: 1 }}>
+          <InputLabel>Persona</InputLabel>
+          <Select MenuProps={downwardMenuProps()} label="Persona" value={personaId} onChange={e => setPersonaId(e.target.value)}>
+            <MenuItem value="">Todas</MenuItem>
+            {miembros.map(m => <MenuItem key={m.user_id} value={m.user_id}>{m.alias || m.name || m.email}</MenuItem>)}
+          </Select>
+        </FormControl>
         <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel>Tipo</InputLabel>
           <Select MenuProps={downwardMenuProps()} label="Tipo" value={entityType} onChange={e => setEntityType(e.target.value)}>
