@@ -1008,6 +1008,19 @@ export default function InsumosMain() {
     });
   }, [tableRows, soloConCompras, comprasMap]);
 
+  const navRecetaInsumo = useMemo(() => {
+    const idx = tableRowsFiltrados.findIndex((r) => Number(r.id) === Number(recetaInsumoModal?.id));
+    return { prev: idx > 0, next: idx >= 0 && idx < tableRowsFiltrados.length - 1 };
+  }, [tableRowsFiltrados, recetaInsumoModal?.id]);
+
+  const navegarRecetaInsumo = useCallback((dir) => {
+    const idx = tableRowsFiltrados.findIndex((r) => Number(r.id) === Number(recetaInsumoModal?.id));
+    if (idx === -1) return;
+    const next = tableRowsFiltrados[dir === 'prev' ? idx - 1 : idx + 1];
+    if (next) setRecetaInsumoModal(next);
+  }, [tableRowsFiltrados, recetaInsumoModal]);
+
+
   useEffect(() => {
     if (!rubroSeleccionado) return;
     if (!(rubrosTree || []).some((r) => String(r.codigo) === String(rubroSeleccionado.codigo))) setRubroSeleccionado(null);
@@ -1771,6 +1784,8 @@ export default function InsumosMain() {
           open={!!recetaInsumoModal}
           onClose={() => setRecetaInsumoModal(null)}
           modoInsumo={true}
+          onNavigate={navegarRecetaInsumo}
+          canNavigate={navRecetaInsumo}
           articulo={{
             id: recetaInsumoModal.id,
             nombre: recetaInsumoModal.nombre,

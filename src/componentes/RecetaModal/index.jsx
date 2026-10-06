@@ -1789,7 +1789,7 @@ export default function RecetaModal({
   const hayOverlayEncima = elaboradosStack.length > 0 || notasModalOpen || cocinaModalOpen
     || reemplazarModalOpen || previewFotoOpen || !!editarFotoSrc || excluirOpen;
   useEffect(() => {
-    if (!open || !onNavigate || modoInsumo || hayOverlayEncima) return;
+    if (!open || !onNavigate || hayOverlayEncima) return;
     const handler = async (e) => {
       // No navegar si se está escribiendo en un campo
       const t = e.target;
@@ -1808,7 +1808,7 @@ export default function RecetaModal({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onNavigate, modoInsumo, canNavigate, autoSave, hayOverlayEncima]);
+  }, [open, onNavigate, canNavigate, autoSave, hayOverlayEncima]);
 
   return (
     <>
@@ -1833,7 +1833,7 @@ export default function RecetaModal({
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={1}>
               {/* Flecha anterior — a la izquierda del nombre */}
-              {onNavigate && !modoInsumo && (
+              {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
                   onClick={async () => { await autoSave(); onNavigate('prev'); }}>
@@ -1856,7 +1856,7 @@ export default function RecetaModal({
                 )}
               </Box>
               {/* Flecha siguiente — a la derecha del nombre */}
-              {onNavigate && !modoInsumo && (
+              {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
                   onClick={async () => { await autoSave(); onNavigate('next'); }}>
