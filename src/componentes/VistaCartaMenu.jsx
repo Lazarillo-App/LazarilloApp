@@ -766,7 +766,6 @@ export default function VistaCartaMenu({
   const [exportarAlcance, setExportarAlcance] = useState("hoja"); // "hoja" | "todas"
   const [exportProgress, setExportProgress] = useState(null); // { i, total } mientras exporta "todas"
   const [preview, setPreview] = useState(null); // { url, pages } | null
-  const [verComoQueda, setVerComoQueda] = useState(false); // muestra la vista previa en el lugar de la hoja
   const [previewBusy, setPreviewBusy] = useState(false);
   const [estilosOpen, setEstilosOpen] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
@@ -1624,7 +1623,7 @@ export default function VistaCartaMenu({
 
   // Si cambian los ajustes de exportación (tamaño, orientación, ajustar a 1 hoja),
   // la vista previa ya generada queda desactualizada — se limpia para no confundir.
-  React.useEffect(() => { setPreview(null); setVerComoQueda(false); }, [printCfg, hoja?.id]);
+  React.useEffect(() => { setPreview(null); }, [printCfg, hoja?.id]);
 
   /* ── Drag & drop ── */
   const dragRef = useRef(null); // { tipo:'seccion'|'item', secId, artId }
@@ -2386,16 +2385,6 @@ export default function VistaCartaMenu({
                     else e.target.value = hoja.nombre;
                     e.target.dataset.dirty = "";
                   }} />
-                <button
-                  onClick={async () => {
-                    if (verComoQueda) { setVerComoQueda(false); return; }
-                    await generarPreview();
-                    setVerComoQueda(true);
-                  }}
-                  disabled={previewBusy}
-                  style={{ border: `1px solid ${verComoQueda ? accent : "#d8d3ca"}`, borderRadius: 8, padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: previewBusy ? "default" : "pointer", background: verComoQueda ? accent : "#fff", color: verComoQueda ? "#fff" : "#2a2320" }}>
-                  {verComoQueda ? "Volver a editar" : (previewBusy ? "Generando…" : "👁 Ver como queda")}
-                </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 12.5, color: "#666" }}>Columnas:</span>
                   {[1, 2, 3, 4].map((n) => (
@@ -2517,12 +2506,6 @@ export default function VistaCartaMenu({
                   background: diseno.bg || "#fff", border: frameCssValue(diseno.frame, neg.accent), borderRadius: 8,
                   padding: 20, boxShadow: "0 4px 24px rgba(0,0,0,.1)", minHeight: 300,
                 }}>
-                  {/* Vista previa en el mismo lugar de la hoja: se ve escalada al ancho disponible */}
-                  {verComoQueda && preview && (
-                    <div style={{ position: "absolute", inset: 0, zIndex: 40, background: diseno.bg || "#fff", borderRadius: 8, display: "flex", justifyContent: "center", alignItems: "flex-start", overflow: "auto", padding: 8 }}>
-                      <img src={preview.url} alt="Vista previa de la hoja" style={{ maxWidth: "100%", height: "auto", display: "block" }} />
-                    </div>
-                  )}
                   {/* Imagen decorativa ya colocada en esta hoja */}
                   {hoja.imagen && (() => {
                     const img = hoja.imagen;
