@@ -1178,7 +1178,9 @@ const InsumosTable = forwardRef(function InsumosTable({
                     fontSize: "0.9rem",
                     gap: 8,
                     ...(isSelected ? { position: "relative" } : {}),
+                    ...(r.estado === "pendiente_aprobacion" ? { background: "#f3f4f6", color: "#9ca3af", pointerEvents: "none", opacity: 0.8 } : {}),
                   }}
+                  title={r.estado === "pendiente_aprobacion" ? "Pendiente de aprobación" : undefined}
                 >
                   {isSelected && <div className="row-left-bar" />}
                   {selectionMode && (
