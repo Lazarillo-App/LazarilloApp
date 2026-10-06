@@ -51,6 +51,7 @@ import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 import { aplicarRedondeo } from '@/utils/redondeoUtils';
+import { mapConLimite } from '@/utils/mapConLimite';
 
 import { PRIMARY, ON_PRIMARY, canonicalUnit, normalizarUnidadGuardada, resolverUnidadConEquivalencia, ordenarInsumosBusqueda, fmt, colorForList } from './helpers';
 import { calcCostoUnitarioItem } from './calcCosto';
@@ -909,8 +910,7 @@ export default function RecetaModal({
 
           if (elaboradosIds.length > 0) {
             const token = localStorage.getItem('token') || '';
-            Promise.all(
-              elaboradosIds.map(id =>
+            mapConLimite(elaboradosIds, id =>
                 fetch(`${BASE}/businesses/${insumoBizId}/insumos/${id}/receta`, {
                   headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(insumoBizId) }
                 })
@@ -928,7 +928,6 @@ export default function RecetaModal({
                     }];
                   })
                   .catch(() => null)
-              )
             ).then(results => {
               if (cancelled) return;
               const mapa = {};
