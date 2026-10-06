@@ -1785,6 +1785,7 @@ export default function InsumosMain() {
           open={!!recetaInsumoModal}
           onClose={() => setRecetaInsumoModal(null)}
           modoInsumo={true}
+          saltarSelector={!!isStaff}
           onNavigate={navegarRecetaInsumo}
           canNavigate={navRecetaInsumo}
           articulo={{

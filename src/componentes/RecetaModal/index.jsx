@@ -67,6 +67,7 @@ import TabComprasInsumo from './TabComprasInsumo';
 import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
+import { useAccess } from '@/context/AccessContext';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
@@ -130,6 +131,7 @@ export default function RecetaModal({
   const [rendimientoManualOpen, setRendimientoManualOpen] = useState(null);
   // Leer config global del contexto — se actualiza automáticamente sin fetch propio
   const appConfig = useConfig();
+  const { isStaff } = useAccess() || {};
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
   // Edición directa del % objetivo con doble click, al lado de la barrita
@@ -2138,7 +2140,7 @@ export default function RecetaModal({
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
                             gemelos, más abajo) ── */}
-                        <Box sx={{ flex: 1, minWidth: 260 }}>
+                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
                           <Box
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
@@ -2247,7 +2249,7 @@ export default function RecetaModal({
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
                           InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          sx={{ width: 96, flexShrink: 0 }}
+                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined }}
                         />
                       </Box>
                     </Box>
@@ -2255,7 +2257,7 @@ export default function RecetaModal({
 
                   {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
                   {!esElaborado && !promoMode && (
-                    <Box ref={gemelosPanelRef} sx={{ mb: 1.5 }}>
+                    <Box ref={gemelosPanelRef} sx={{ mb: 1.5, display: isStaff ? 'none' : undefined }}>
                       {/* Header colapsable */}
                       <Box onClick={() => {
                         setGemelosOpen(v => !v);
@@ -2764,7 +2766,7 @@ export default function RecetaModal({
                         </Box>
                       );
                     })()}
-                    {(!modoInsumo || verCostosExtra) && <Box>
+                    {(!modoInsumo || verCostosExtra) && <Box sx={{ display: isStaff ? 'none' : undefined }}>
                       {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
                       {promoMode && ventaSinPromo > 0 && (
                         <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem' }}>
@@ -2879,7 +2881,7 @@ export default function RecetaModal({
                         </IconButton>
                       </Stack>
                     </Box>}
-                    {!modoInsumo && <Box>
+                    {!modoInsumo && <Box sx={{ display: isStaff ? 'none' : undefined }}>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
                       {pctCostoActual !== null ? (
                         <>

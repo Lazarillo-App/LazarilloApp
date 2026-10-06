@@ -2450,7 +2450,7 @@ export default function TablaArticulos({
                     let span = 0;
                     while (i < cols.length && (cols[i].id === 'costo' || cols[i].id === 'precio' || cols[i].id === 'sinPromo')) { span++; i++; }
                     zonas.push(
-                      <div key={`z-sit-${i}`} style={{ gridColumn: `span ${span}`, textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#94a3b8', background: 'rgba(148,163,184,0.08)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>SITUACIÓN ACTUAL</div>
+                      <div key={`z-sit-${i}`} style={{ display: isStaff ? 'none' : undefined, gridColumn: `span ${span}`, textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#94a3b8', background: 'rgba(148,163,184,0.08)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>SITUACIÓN ACTUAL</div>
                     );
                   } else if (col.id === 'rentabilidad') {
                     zonas.push(
