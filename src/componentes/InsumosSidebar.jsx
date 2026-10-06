@@ -2,6 +2,7 @@
 /* eslint-disable no-unused-vars */
 // src/componentes/InsumosSidebar.jsx
 
+import PendientesPanel from './PendientesPanel';
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   FormControl, InputLabel, Select, MenuItem,
@@ -530,35 +531,35 @@ function InsumosSidebar({
         background: '#fafafa', paddingBottom: 4,
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
-        {/* Toggle Agrupaciones / Listas */}
+        {/* Pestañas: staff = Agrupaciones + Pendientes; admin/owner = + Listas */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
-          <button
-            onClick={() => { setActiveTab('agrupaciones'); onClearInsumoList?.(); }}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid #e2e8f0', borderRight: 'none',
-              borderRadius: '6px 0 0 6px', cursor: 'pointer',
-              background: activeTab === 'agrupaciones' ? '#1e293b' : 'transparent',
-              color: activeTab === 'agrupaciones' ? '#fff' : '#64748b',
-              transition: 'all 0.15s',
-            }}
-          >
-            Agrupaciones
-          </button>
-          <button
-            onClick={() => setActiveTab('listas')}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-              border: '1px solid #e2e8f0',
-              borderRadius: '0 6px 6px 0', cursor: 'pointer',
-              background: activeTab === 'listas' ? '#1e293b' : 'transparent',
-              color: activeTab === 'listas' ? '#fff' : '#64748b',
-              transition: 'all 0.15s',
-            }}
-          >
-            Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}
-          </button>
+          {[
+            { id: 'agrupaciones', label: 'Agrupaciones', onClick: () => { setActiveTab('agrupaciones'); onClearInsumoList?.(); } },
+            ...(!staff ? [{ id: 'listas', label: <>Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}</>, onClick: () => setActiveTab('listas') }] : []),
+            { id: 'pendientes', label: 'Pendientes', onClick: () => setActiveTab('pendientes') },
+          ].map((t, idx, arr) => {
+            const activo = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={t.onClick}
+                style={{
+                  flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
+                  border: '1px solid #e2e8f0',
+                  borderLeft: idx > 0 ? 'none' : undefined,
+                  borderRadius: idx === 0 ? '6px 0 0 6px' : idx === arr.length - 1 ? '0 6px 6px 0' : 0,
+                  cursor: 'pointer',
+                  background: activo ? '#1e293b' : 'transparent',
+                  color: activo ? '#fff' : '#64748b',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </div>
+        {activeTab === 'pendientes' && <PendientesPanel businessId={businessId} />}
 
         {/* ── Panel Listas ─────────────────────────────────────── */}
         {activeTab === 'listas' && (
