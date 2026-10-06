@@ -68,6 +68,7 @@ import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
 import { useAccess } from '@/context/AccessContext';
+import MarcarRevisionDialog from '../MarcarRevisionDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
@@ -132,6 +133,7 @@ export default function RecetaModal({
   // Leer config global del contexto — se actualiza automáticamente sin fetch propio
   const appConfig = useConfig();
   const { isStaff } = useAccess() || {};
+  const [revisionOpen, setRevisionOpen] = useState(false);
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
   // Edición directa del % objetivo con doble click, al lado de la barrita
@@ -2928,9 +2930,21 @@ export default function RecetaModal({
                   {promoMode ? 'Borrar' : 'Borrar'}
                 </Button>
               )}
+              {!isStaff && !promoMode && (
+                <Button onClick={() => setRevisionOpen(true)} disabled={saving || deleting} color="warning" size="small" variant="outlined">
+                  Marcar a revisión
+                </Button>
+              )}
               <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
                 Cancelar
               </Button>
+              <MarcarRevisionDialog
+                open={revisionOpen}
+                onClose={() => setRevisionOpen(false)}
+                businessId={businessId}
+                titulo={modoInsumo ? 'Marcar insumo a revisión' : 'Marcar receta a revisión'}
+                items={articulo?.id ? [{ tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo.id) }] : []}
+              />
               <Button
                 onClick={() => handleSave()}
                 variant="contained"

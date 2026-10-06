@@ -43,3 +43,10 @@ export async function listarMisPropuestas(businessId) {
   if (!resp?.ok) throw new Error(resp?.error || 'Error obteniendo tus cambios');
   return resp.proposals || [];
 }
+
+// POST /api/businesses/:businessId/receta-proposals/marcar-revision
+export async function marcarARevision(businessId, items, comment) {
+  const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment } }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'No se pudo marcar a revisión');
+  return resp;
+}

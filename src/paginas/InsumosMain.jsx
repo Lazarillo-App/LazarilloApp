@@ -5,6 +5,7 @@
 import { showAlert } from '../servicios/appAlert';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
+import MarcarRevisionDialog from '../componentes/MarcarRevisionDialog';
 import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
 import InsumosSidebar from '../componentes/InsumosSidebar.jsx';
 import InsumosTable from '../componentes/InsumosTable.jsx';
@@ -313,6 +314,7 @@ export default function InsumosMain() {
   // Insumo a editar: mismo modal que la creación (InsumoNuevoModal), en modo
   // edición — reemplaza el mini-diálogo de "Editar nombre" que tenía InsumoAccionesMenu.
   const [insumoEditando, setInsumoEditando] = useState(null);
+  const [revisionMasivaOpen, setRevisionMasivaOpen] = useState(false);
   // Botón "+ Agregar" unificado: desde Insumos también se puede crear/cargar
   // artículos directo, sin tener que ir a la pantalla de Menú primero.
   const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
@@ -1485,6 +1487,11 @@ export default function InsumosMain() {
             />
           )}
           {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
+          {!isStaff && insumoSelectionMode && (
+            <Button size="small" variant="outlined" color="warning" onClick={() => setRevisionMasivaOpen(true)} sx={{ ml: 1 }}>
+              Marcar a revisión
+            </Button>
+          )}
           {!isStaff && (
             <InsumoListToolbar
               selectionMode={insumoSelectionMode}
@@ -1738,6 +1745,15 @@ export default function InsumosMain() {
             .catch(() => setComprasMap(new Map()))
             .finally(() => setComprasLoading(false));
         }}
+      />
+
+      <MarcarRevisionDialog
+        open={revisionMasivaOpen}
+        onClose={() => setRevisionMasivaOpen(false)}
+        businessId={resolvedBizId}
+        titulo={selectedInsumoIds.size ? `Marcar ${selectedInsumoIds.size} insumo(s) a revisión` : 'Marcar todos los insumos visibles a revisión'}
+        items={(selectedInsumoIds.size ? [...selectedInsumoIds] : tableRowsFiltrados.map((r) => r.id)).map((id) => ({ tipo: 'insumo', id: Number(id) }))}
+        onDone={() => { setSelectedInsumoIds(new Set()); }}
       />
 
       <InsumoNuevoModal
