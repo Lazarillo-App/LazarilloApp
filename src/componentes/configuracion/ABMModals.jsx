@@ -413,7 +413,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
 
           <Stack direction="row" spacing={1.5}>
             <Autocomplete
-              size="small" sx={{ flex: 1 }} freeSolo autoHighlight
+              size="small" sx={{ flex: 1 }} freeSolo autoHighlight openOnFocus
               options={rubros}
               disabled={saving || !!success}
               value={form.rubro === '__nuevo__' ? (form.rubroNuevo || null) : (form.rubro || null)}
