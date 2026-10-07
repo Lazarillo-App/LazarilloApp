@@ -1305,6 +1305,21 @@ export default function RecetaModal({
     return costoTotal;
   }, [hayCambiosSinGuardar, receta, costoTotal]);
 
+  // El costo guardado en la DB (el que se muestra arriba cuando no hay cambios, para
+  // que coincida con la tabla) puede quedar VIEJO sin que nadie edite nada acá: si un
+  // INGREDIENTE (una sub-receta/elaborado) cambió de precio o de rendimiento después de
+  // la última vez que se guardó ESTA receta, el recálculo en vivo (costoTotal) ya lo
+  // refleja pero el costo_total guardado no, y antes eso no se avisaba — "Costo total"
+  // mostraba el número viejo sin ninguna marca de que ya no es el real (justo lo que
+  // pasó con Tacómetro: cada ingrediente, revisado uno por uno, daba bien, pero el
+  // total de arriba seguía siendo el guardado de antes de corregir Bondiola/Crema Ácida).
+  const costoGuardadoDesactualizado = useMemo(() => {
+    if (hayCambiosSinGuardar || !receta || receta.costo_total == null) return false;
+    const guardado = Number(receta.costo_total) || 0;
+    const tolerancia = Math.max(1, guardado * 0.01);
+    return Math.abs(costoTotal - guardado) > tolerancia;
+  }, [hayCambiosSinGuardar, receta, costoTotal]);
+
   // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
   // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente).
   const divisorRend = Number(rendimiento) || 1;
@@ -1342,8 +1357,13 @@ export default function RecetaModal({
 
     // Sin cambios reales desde la última carga/guardado: no hay nada que mandar al
     // backend. keepOpen (autoSave/flechas) → no-op total. Si no, cerrar como si
-    // hubiera guardado (no hay nada pendiente).
-    if (!modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null) {
+    // hubiera guardado (no hay nada pendiente). EXCEPTO si el costo guardado quedó
+    // desactualizado (algún ingrediente cambió de precio desde afuera) — ahí SÍ hay
+    // algo real para guardar aunque ningún campo se haya tocado a mano: el
+    // costo_total nuevo. Sin esta excepción, clickear "Guardar" frente al aviso de
+    // "el costo guardado no coincide" no hacía nada (el snapshot de campos daba
+    // igual) y el aviso quedaba ahí para siempre.
+    if (!modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
       const snapshotActual = buildDirtySnapshot();
       if (snapshotActual === pristineSnapshotRef.current) {
         if (!keepOpen) onClose?.();
@@ -2895,6 +2915,22 @@ export default function RecetaModal({
                   </Stack>
 
                   <Divider sx={{ mb: 2 }} />
+
+                  {costoGuardadoDesactualizado && (
+                    <Box sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
+                      bgcolor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 1.5,
+                      color: '#9a3412', fontSize: '0.82rem',
+                    }}>
+                      <span>⚠</span>
+                      <span>
+                        El costo guardado (${fmt(Number(receta?.costo_total) || 0)}) no coincide con el cálculo
+                        actual (${fmt(costoTotal)}) — algún ingrediente (una sub-receta) cambió de precio o de
+                        rendimiento desde la última vez que se guardó esta receta. Guardá de nuevo para
+                        actualizarlo.
+                      </span>
+                    </Box>
+                  )}
 
                   <Box sx={{
                     display: 'grid',
