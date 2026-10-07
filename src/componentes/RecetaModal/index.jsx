@@ -485,6 +485,20 @@ export default function RecetaModal({
   // al guardar, si este cambio puede romper la unidad de otras recetas que usan este
   // insumo como ingrediente (ver aviso en handleSave).
   const rendimientoCargadoRef = useRef({ rendimientoUnidad: 'porcion', rendimientoPeso: null, unidadPeso: null });
+  // Aviso "esto rompe N recetas" antes de guardar — modal propio (no window.confirm) para
+  // que mantenga el estilo de la app. confirmRompeResolveRef guarda el resolve de la
+  // Promise que handleSave queda esperando hasta que el usuario elige Aceptar/Cancelar.
+  const [confirmRompeRotos, setConfirmRompeRotos] = useState(null);
+  const confirmRompeResolveRef = useRef(null);
+  const confirmarRompeUnidades = useCallback((rotos) => new Promise((resolve) => {
+    confirmRompeResolveRef.current = resolve;
+    setConfirmRompeRotos(rotos);
+  }), []);
+  const resolverConfirmRompe = useCallback((ok) => {
+    confirmRompeResolveRef.current?.(ok);
+    confirmRompeResolveRef.current = null;
+    setConfirmRompeRotos(null);
+  }, []);
   const [tabResuelto, setTabResuelto] = useState(true);
   useEffect(() => {
     if (!open) { tabResueltoParaRef.current = null; return; }
@@ -986,11 +1000,22 @@ export default function RecetaModal({
           }
         } else {
           setNombre(artNombre);
+          // Insumo ELABORADO nuevo (todavía sin receta propia): el rendimiento por default
+          // arranca en la MISMA unidad física en la que se compra/vende el insumo (kg/gr/
+          // lt/ml), en vez de "porción" siempre — así el lote rinde directo en esa unidad,
+          // sin necesitar ningún Equivalente para poder usarlo por peso en otra receta.
+          // Esto es justo lo que faltaba en recetas viejas con el insumo en kg pero
+          // rindiendo en "unidad" sin Equivalente (ver el caso de Suprema al vacío).
+          // Si el insumo es "u"/porción (no física), sigue arrancando en "porción".
+          const unidadBaseInsumo = canonicalUnit(articulo?.unidad_med || articulo?.medida || '');
+          const rendimientoUnidadDefault = (modoInsumo || esElaborado) && ['kg', 'gr', 'lt', 'ml'].includes(unidadBaseInsumo)
+            ? unidadBaseInsumo
+            : 'porcion';
           setRendimiento(1);
-          setRendimientoUnidad('porcion');
+          setRendimientoUnidad(rendimientoUnidadDefault);
           setRendimientoPeso(null);
           setUnidadPeso(null);
-          rendimientoCargadoRef.current = { rendimientoUnidad: 'porcion', rendimientoPeso: null, unidadPeso: null };
+          rendimientoCargadoRef.current = { rendimientoUnidad: rendimientoUnidadDefault, rendimientoPeso: null, unidadPeso: null };
           setPctCostoIdeal(resolveObjetivo(null));
           setNotas('');
           setNotasUpdatedAt(null);
@@ -1462,10 +1487,7 @@ export default function RecetaModal({
           const opcionesNuevas = unidadesValidasElaborado({ rendimientoUnidad, rendimientoPeso, unidadPeso });
           const rotos = usos.filter(u => u.unidad && !opcionesNuevas.includes(canonicalUnit(u.unidad)));
           if (rotos.length > 0) {
-            const nombres = rotos.map(u => `• ${u.nombre} (usa "${u.unidad}")`).join('\n');
-            const ok = window.confirm(
-              `Este cambio deja sin una unidad válida a ${rotos.length} receta(s) que usan este insumo:\n\n${nombres}\n\nVan a quedar marcadas para revisar la próxima vez que se abran — no se arreglan solas.\n\n¿Guardar igual?`
-            );
+            const ok = await confirmarRompeUnidades(rotos);
             if (!ok) return;
           }
         } catch { /* si falla este chequeo, no bloquear el guardado por eso */ }
@@ -3210,6 +3232,32 @@ export default function RecetaModal({
           }}
         />
       )}
+
+      {/* ── Aviso: cambiar el rendimiento/Equivalente de este elaborado deja sin unidad
+          válida a otras recetas que lo usan ── */}
+      <Dialog open={!!confirmRompeRotos} onClose={() => resolverConfirmRompe(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, color: '#ea580c' }}>⚠ Esto va a romper otras recetas</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Este cambio deja sin una unidad válida a {confirmRompeRotos?.length}{' '}
+            {confirmRompeRotos?.length === 1 ? 'receta' : 'recetas'} que usan este insumo:
+            <Box sx={{ my: 1.5, pl: 0.5 }}>
+              {(confirmRompeRotos || []).map((u, i) => (
+                <Typography key={i} variant="body2" sx={{ color: 'text.primary' }}>
+                  • {u.nombre} (usa "{u.unidad}")
+                </Typography>
+              ))}
+            </Box>
+            Van a quedar marcadas para revisar la próxima vez que se abran — no se arreglan solas.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => resolverConfirmRompe(false)} color="inherit" size="small">Cancelar</Button>
+          <Button onClick={() => resolverConfirmRompe(true)} variant="contained" size="small" sx={{ bgcolor: '#ea580c', '&:hover': { bgcolor: '#c2410c' } }}>
+            Guardar igual
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Confirmar borrar ── */}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
