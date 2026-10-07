@@ -846,7 +846,7 @@ function InsumosSidebar({
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                         <span className="icono" />
                         <span style={{ wordBreak: 'break-word', lineHeight: 1.3 }}>
-                          Rubro {rubro.nombre}
+                          {rubro.nombre}
                         </span>
                       </span>
                       {typeof monto === 'number' && monto > 0 && (
