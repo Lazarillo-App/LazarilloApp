@@ -39,7 +39,7 @@ import {
   notifyGroupFavoriteChanged,
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
-import { saveRedondeoConfig } from '@/utils/redondeoUtils';
+import { saveRedondeoConfig, getRedondeoConfig } from '@/utils/redondeoUtils';
 import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -585,7 +585,16 @@ export default function ArticulosMain(props) {
       setGlobalCostoIdeal(Number(configNegocio.config.articulos_costo_ideal));
     }
     if (configNegocio?.config?.redondeo_precios !== undefined) {
-      saveRedondeoConfig(activeBizIdNum, configNegocio.config.redondeo_precios, true);
+      // OJO: antes esto forzaba mostrarModal=true SIEMPRE, sin mirar lo que el
+      // usuario eligió ("No volver a mostrar este aviso", acá mismo o en
+      // Configuración > Artículos) — cada vez que este efecto corría (cualquier
+      // refresco de datos de Menú) pisaba esa elección de vuelta a "mostrar".
+      // Ahora respeta redondeo_mostrar_modal del negocio (o lo que ya había en
+      // localStorage si el backend no lo tiene).
+      const mostrarModal = configNegocio?.config?.redondeo_mostrar_modal
+        ?? getRedondeoConfig(activeBizIdNum)?.mostrarModal
+        ?? true;
+      saveRedondeoConfig(activeBizIdNum, configNegocio.config.redondeo_precios, mostrarModal);
     }
     setAlertaVentas(alertaVentasRes || null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -399,7 +399,6 @@ export default function TablaArticulos({
   const [ventasVista, setVentasVista] = useState('U');
   const [lastAppliedPct, setLastAppliedPct] = useState({});
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
-  const [redondeoModalPendiente, setRedondeoModalPendiente] = useState(null);
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
@@ -867,25 +866,6 @@ export default function TablaArticulos({
       motivoConfigRedondeo: necesitaConfigurarRedondeo,
     });
   }, [manuales, priceConfig, executeBulkPct, redondeoConfig]);
-
-  // Helper para continuar después del modal de redondeo
-  const continuarDespuesDeRedondeo = useCallback((pct, ids, inputRef, blockKey) => {
-    const idsConNuevoPrecio = ids.filter(id => {
-      const key = String(id);
-      return (manuales[key] !== undefined && manuales[key] !== '') ||
-        priceConfig.byArticle?.[key]?.precioManual != null;
-    });
-    if (idsConNuevoPrecio.length > 0) {
-      setBulkPctDlg({ pct, idsAll: ids, idsConNuevoPrecio, inputRef, blockKey });
-    } else {
-      executeBulkPct(pct, ids, 'todos');
-      if (blockKey) {
-        setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
-        setLastAppliedPct(prev => ({ ...prev, [blockKey]: pct }));
-      }
-      if (inputRef?.current) inputRef.current.value = '';
-    }
-  }, [manuales, priceConfig, executeBulkPct]);
 
   const getVentaForId = useCallback((idNum) => {
     const n = Number(idNum);
@@ -2655,76 +2635,6 @@ export default function TablaArticulos({
         </Snackbar>
       </div>
 
-      {/* ── Modal de redondeo de precios ── */}
-      {redondeoModalPendiente && (
-        <Dialog open onClose={() => {
-          const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
-          setRedondeoModalPendiente(null);
-          continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
-        }} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-            Configurar redondeo de precios
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" gutterBottom>
-              ¿A qué múltiplo querés redondear los nuevos precios?
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
-              {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
-                <Chip
-                  key={op}
-                  label={`$${op}`}
-                  onClick={() => {
-                    saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
-                    setRedondeoConfig(prev => ({ ...prev, valor: op }));
-                    onRedondeoChange?.(op);
-                    BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
-                    window.dispatchEvent(new CustomEvent('config:updated', {
-                      detail: { key: 'redondeo_precios', value: op }
-                    }));
-                  }}
-                  variant="outlined"
-                  size="small"
-                  sx={{ cursor: 'pointer', fontWeight: 500 }}
-                />
-              ))}
-            </Box>
-            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <input
-                type="checkbox"
-                id="redondeo-no-mostrar"
-                checked={!(redondeoConfig?.mostrarModal ?? true)}
-                onChange={(e) => {
-                  const noMostrar = e.target.checked;
-                  saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
-                  setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
-                  // ← agregar en los dos:
-                  try {
-                    BusinessesAPI.update(Number(activeBizId), {
-                      props: { redondeo_mostrar_modal: !noMostrar }
-                    });
-                  } catch { }
-                }}
-                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
-              />
-              <label htmlFor="redondeo-no-mostrar" style={{ fontSize: '0.8rem', cursor: 'pointer', color: '#555' }}>
-                No volver a mostrar (configurar desde Ajustes → Artículos)
-              </label>
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ px: 2, pb: 2 }}>
-            <Button size="small" variant="text" color="inherit"
-              onClick={() => {
-                const { pct, ids, inputRef, blockKey } = redondeoModalPendiente;
-                setRedondeoModalPendiente(null);
-                continuarDespuesDeRedondeo(pct, ids, inputRef, blockKey);
-              }}>
-              Sin redondeo
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
-
       {bulkPctDlg && (
         <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
@@ -2744,11 +2654,14 @@ export default function TablaArticulos({
               </Alert>
             )}
 
-            {/* Sección de redondeo solo si no hay valor configurado */}
-            {bulkPctDlg.motivoConfigRedondeo && (
-              <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
+            {/* Redondeo: siempre visible acá, haya o no un valor ya configurado — antes
+                esta sección (chips para elegir/cambiar el redondeo + "no volver a
+                mostrar") solo aparecía la primera vez (sin configurar); si ya había un
+                valor, no había forma de cambiarlo ni de tocar el aviso sin salir a
+                Configuración > Artículos. */}
+            <Box sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5, border: '1px solid #e2e8f0' }}>
                 <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Redondeo de precios (sin configurar)
+                  {redondeoConfig?.valor ? 'Redondeo de precios' : 'Redondeo de precios (sin configurar)'}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
                   {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
@@ -2775,23 +2688,29 @@ export default function TablaArticulos({
                       }}
                     />
                   ))}
-                  <Chip
-                    key="none"
-                    label="Sin redondeo"
-                    size="small"
-                    variant="outlined"
-                    onClick={() => {
-                      // Dejar explícito que no quiere redondeo → cerrar y aplicar
-                      executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'todos');
-                      if (bulkPctDlg.blockKey) {
-                        setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
-                        setLastAppliedPct(prev => ({ ...prev, [bulkPctDlg.blockKey]: bulkPctDlg.pct }));
-                      }
-                      if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
-                      setBulkPctDlg(null);
-                    }}
-                    sx={{ cursor: 'pointer' }}
-                  />
+                  {/* Atajo "aplicar ya, sin redondear" — solo tiene sentido cuando el
+                      redondeo todavía no está configurado (si ya hay un valor elegido,
+                      este botón no lo desactiva, solo aplicaría con el valor que ya
+                      estaba puesto, y el label "Sin redondeo" mentiría). */}
+                  {!redondeoConfig?.valor && (
+                    <Chip
+                      key="none"
+                      label="Sin redondeo"
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        // Dejar explícito que no quiere redondeo → cerrar y aplicar
+                        executeBulkPct(bulkPctDlg.pct, bulkPctDlg.idsAll, 'todos');
+                        if (bulkPctDlg.blockKey) {
+                          setBlockManuales(prev => { const n = { ...prev }; delete n[bulkPctDlg.blockKey]; return n; });
+                          setLastAppliedPct(prev => ({ ...prev, [bulkPctDlg.blockKey]: bulkPctDlg.pct }));
+                        }
+                        if (bulkPctDlg.inputRef?.current) bulkPctDlg.inputRef.current.value = '';
+                        setBulkPctDlg(null);
+                      }}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  )}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <input
@@ -2818,7 +2737,6 @@ export default function TablaArticulos({
                   </label>
                 </Box>
               </Box>
-            )}
           </DialogContent>
           <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
             <Button size="small" variant="text" color="inherit" onClick={() => setBulkPctDlg(null)}>
