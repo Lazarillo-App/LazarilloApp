@@ -42,6 +42,7 @@ import {
   insumoEquivalenciasList,
   insumoMermasList,
   insumoUpdate,
+  insumoUsoList,
 } from '@/servicios/apiInsumos';
 import { BASE } from '@/servicios/apiBase';
 import { useConfig } from '@/context/ConfigContext';
@@ -53,7 +54,7 @@ import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 import { aplicarRedondeo } from '@/utils/redondeoUtils';
 import { mapConLimite } from '@/utils/mapConLimite';
 
-import { PRIMARY, ON_PRIMARY, canonicalUnit, normalizarUnidadGuardada, resolverUnidadConEquivalencia, ordenarInsumosBusqueda, fmt, colorForList } from './helpers';
+import { PRIMARY, ON_PRIMARY, canonicalUnit, normalizarUnidadGuardada, resolverUnidadConEquivalencia, ordenarInsumosBusqueda, fmt, colorForList, opcionesUnidadItem, unidadesValidasElaborado } from './helpers';
 import { calcCostoUnitarioItem } from './calcCosto';
 import FilaResultadoInsumo from './FilaResultadoInsumo';
 import NotasModal from './NotasModal';
@@ -485,6 +486,10 @@ export default function RecetaModal({
   // en el caso cascada (modoInsumo+saltarSelector), no se pinta contenido de ningún tab
   // — antes se veía primero "receta" (vacío) y recién después saltaba a "compras".
   const tabResueltoParaRef = useRef(null);
+  // Rendimiento/Equivalente TAL COMO se cargaron (de un insumo elaborado) — para saber,
+  // al guardar, si este cambio puede romper la unidad de otras recetas que usan este
+  // insumo como ingrediente (ver aviso en handleSave).
+  const rendimientoCargadoRef = useRef({ rendimientoUnidad: 'porcion', rendimientoPeso: null, unidadPeso: null });
   const [tabResuelto, setTabResuelto] = useState(true);
   useEffect(() => {
     if (!open) { tabResueltoParaRef.current = null; return; }
@@ -848,6 +853,11 @@ export default function RecetaModal({
           setRendimientoUnidad(rec.rendimiento_unidad || 'porcion');
           setRendimientoPeso(rec.rendimiento_peso != null ? Number(rec.rendimiento_peso) : null);
           setUnidadPeso(rec.unidad_peso || null);
+          rendimientoCargadoRef.current = {
+            rendimientoUnidad: rec.rendimiento_unidad || 'porcion',
+            rendimientoPeso: rec.rendimiento_peso != null ? Number(rec.rendimiento_peso) : null,
+            unidadPeso: rec.unidad_peso || null,
+          };
           setPctCostoIdeal(resolveObjetivo(rec.porcentaje_venta));
           setNotas(rec.notas || '');
           setNotasUpdatedAt(rec.notas_updated_at || rec.notasUpdatedAt || null);
@@ -985,6 +995,7 @@ export default function RecetaModal({
           setRendimientoUnidad('porcion');
           setRendimientoPeso(null);
           setUnidadPeso(null);
+          rendimientoCargadoRef.current = { rendimientoUnidad: 'porcion', rendimientoPeso: null, unidadPeso: null };
           setPctCostoIdeal(resolveObjetivo(null));
           setNotas('');
           setNotasUpdatedAt(null);
@@ -1067,6 +1078,20 @@ export default function RecetaModal({
     items.some((it, i) => it.supplyId && items.findIndex(x => String(x.supplyId) === String(it.supplyId)) !== i),
     [items]
   );
+
+  // ── Ítems con "unidad rota": la unidad guardada ya no es una opción válida para su
+  // insumo/elaborado (ej. se corrigió el rendimiento de una sub-receta y la unidad con la
+  // que este ingrediente estaba cargado dejó de existir). Mismo criterio que ItemRow (ver
+  // opcionesUnidadItem en helpers.js) — repetido acá para: (a) sacarlos del costo total en
+  // vez de sumar un número calculado con una unidad que ya no es la que corresponde, y
+  // (b) bloquear Guardar hasta que se elijan de nuevo, en vez de dejar la receta guardada
+  // con un ingrediente a medio definir.
+  const itemsConUnidadRota = useMemo(() => items.filter(it => {
+    if (!it.supplyId && !it.articleRefId) return false;
+    const insumoData = it.supplyId ? insumos.find(i => String(i.id) === String(it.supplyId)) : null;
+    const elabData = it.supplyId ? localRecetasElaborados[String(it.supplyId)] : null;
+    return !opcionesUnidadItem(it, insumoData, elabData).esValida;
+  }), [items, insumos, localRecetasElaborados]);
 
   //* ── Costo de un ítem: única fuente de verdad (calcCostoUnitarioItem, compartida con
   //   ItemRow). Antes esta lógica estaba duplicada acá con ligeras diferencias respecto a
@@ -1163,8 +1188,8 @@ export default function RecetaModal({
 
   /* ── Cálculos ── */
   const costoTotal = useMemo(() =>
-    items.reduce((acc, it) => acc + calcCostoItem(it), 0),
-    [items, calcCostoItem]);
+    items.reduce((acc, it) => acc + (itemsConUnidadRota.includes(it) ? 0 : calcCostoItem(it)), 0),
+    [items, calcCostoItem, itemsConUnidadRota]);
 
   // Label para el cuadro "Costo / unidad" según el rendimiento del lote
   const labelPorUnidad = useMemo(() => {
@@ -1416,6 +1441,41 @@ export default function RecetaModal({
     const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
     const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
+    // No guardar con un ingrediente a medio definir: si su unidad ya no es válida (la
+    // sub-receta/equivalente de ese insumo cambió), hay que elegirle una unidad de nuevo
+    // antes de poder guardar — igual que un ingrediente recién agregado no cuenta hasta
+    // que se le define cantidad y unidad.
+    if (itemsConUnidadRota.length > 0 && !itemsOverride) {
+      setError(`Hay ${itemsConUnidadRota.length} ingrediente(s) con una unidad que ya no es válida — elegí otra unidad en ${itemsConUnidadRota.length === 1 ? 'esa fila' : 'esas filas'} (quedaron marcadas en naranja) antes de guardar.`);
+      return;
+    }
+
+    // ── Esto es la receta propia de un insumo ELABORADO y cambié su rendimiento/
+    // Equivalente: si eso deja sin una unidad válida a ingredientes de OTRAS recetas
+    // que usan este insumo, avisar ANTES de guardar — quien edita tiene que saber qué
+    // está rompiendo. No se arregla solo ni se bloquea para siempre: la receta rota
+    // queda marcada (ver itemsConUnidadRota) para que la revisen cuando la abran.
+    if ((modoInsumo || esElaborado) && articulo?.id && !itemsOverride) {
+      const antes = rendimientoCargadoRef.current;
+      const cambioRendimiento = antes.rendimientoUnidad !== rendimientoUnidad
+        || Number(antes.rendimientoPeso || 0) !== Number(rendimientoPeso || 0)
+        || (antes.unidadPeso || '') !== (unidadPeso || '');
+      if (cambioRendimiento) {
+        try {
+          const r = await insumoUsoList(articulo.id, insumoBizId);
+          const usos = Array.isArray(r?.uso) ? r.uso : [];
+          const opcionesNuevas = unidadesValidasElaborado({ rendimientoUnidad, rendimientoPeso, unidadPeso });
+          const rotos = usos.filter(u => u.unidad && !opcionesNuevas.includes(canonicalUnit(u.unidad)));
+          if (rotos.length > 0) {
+            const nombres = rotos.map(u => `• ${u.nombre} (usa "${u.unidad}")`).join('\n');
+            const ok = window.confirm(
+              `Este cambio deja sin una unidad válida a ${rotos.length} receta(s) que usan este insumo:\n\n${nombres}\n\nVan a quedar marcadas para revisar la próxima vez que se abran — no se arreglan solas.\n\n¿Guardar igual?`
+            );
+            if (!ok) return;
+          }
+        } catch { /* si falla este chequeo, no bloquear el guardado por eso */ }
+      }
+    }
 
     const itemsOrdenados = [...itemsValidos].sort((a, b) => calcCostoItem(b) - calcCostoItem(a));
     setItems(itemsOrdenados);
@@ -2775,6 +2835,22 @@ export default function RecetaModal({
                           </Stack>
                         );
                       })}
+                    </Box>
+                  )}
+
+                  {itemsConUnidadRota.length > 0 && (
+                    <Box sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
+                      bgcolor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 1.5,
+                      color: '#9a3412', fontSize: '0.82rem',
+                    }}>
+                      <span>⚠</span>
+                      <span>
+                        {itemsConUnidadRota.length === 1
+                          ? '1 ingrediente quedó con una unidad que ya no es válida'
+                          : `${itemsConUnidadRota.length} ingredientes quedaron con una unidad que ya no es válida`}
+                        {' '}(se ve en naranja más abajo) — probablemente cambió la receta de ese insumo. No cuentan en el costo total hasta que les elijas una unidad de nuevo y guardes.
+                      </span>
                     </Box>
                   )}
 

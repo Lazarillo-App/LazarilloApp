@@ -18,7 +18,7 @@ import { insumoEquivalenciasList, insumoMermasList } from '@/servicios/apiInsumo
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
-  canonicalUnit, unidadesParaInsumo, getAlertaColor,
+  canonicalUnit, unidadesParaInsumo, getAlertaColor, opcionesUnidadItem,
 } from './helpers';
 import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
@@ -345,6 +345,16 @@ export default function ItemRow({
   const elaborado = forzarCompra ? null : elaboradoData;
   const tipoCosto = item.tipoCosto || 'total';
 
+  // ── Unidad guardada vs. unidades válidas HOY (mismo criterio que el <Select> de abajo) ──
+  // Si el insumo/elaborado de este ítem cambió (ej. se corrigió su rendimiento o se le
+  // sacó el Equivalente), la unidad que quedó guardada puede dejar de ser una opción
+  // válida. Antes eso solo se notaba porque el <Select> quedaba en blanco — el costo
+  // seguía usando el precioRefDB congelado como si nada, dando un monto silenciosamente
+  // mal. Ahora se detecta acá, una sola vez, y se usa tanto para pintar la fila como
+  // para reemplazar el "$ Costo Total" por un aviso en vez de un número que no vale.
+  const { opciones: unidadOpciones, unidadActual, esValida: unidadEsValida } = opcionesUnidadItem(item, insumoData, elaboradoData);
+  const unidadInvalida = !!(item.supplyId || item.articleRefId) && !unidadEsValida;
+
   // Factor de merma total = global (siempre) × merma específica elegida (si hay)
   const factorMerma = useMemo(
     () => calcFactorMerma(item, appConfigDesperdicio, !!elaborado),
@@ -401,6 +411,7 @@ export default function ItemRow({
       bgcolor: alertaBg || 'transparent',
       border: alertaBg ? '1px solid #fecaca' : '1px solid transparent',
       ...(isDuplicate && { bgcolor: '#fef2f2', border: '1px solid #fecaca' }),
+      ...(unidadInvalida && { bgcolor: '#fff7ed', border: '1px solid #fdba74' }),
       ...(item.pendiente && { bgcolor: '#f3f4f6', border: '1px dashed #cbd5e1', color: '#6b7280', pointerEvents: 'none', userSelect: 'none' }),
       ...(item.quitado && { textDecoration: 'line-through', opacity: 0.7 }),
       transition: 'background 0.2s',
@@ -839,7 +850,7 @@ export default function ItemRow({
         {/* ── Unidad ── */}
         <Select MenuProps={downwardMenuProps()}
           size="small"
-          value={item.unidad || item.supplyMedida || 'u'}
+          value={unidadActual}
           onChange={e => onChange(index, { unidad: e.target.value })}
           onKeyDown={e => {
             // Typeahead manual: saltar a la primera unidad que empiece con la tecla
@@ -856,53 +867,35 @@ export default function ItemRow({
               }
             }
           }}
-          sx={{ fontSize: '0.75rem', '& .MuiSelect-select': { py: '4px', fontSize: '0.75rem' } }}
+          sx={{
+            fontSize: '0.75rem',
+            '& .MuiSelect-select': {
+              py: '4px', fontSize: '0.75rem',
+              ...(unidadInvalida ? { color: '#ea580c', fontWeight: 700 } : {}),
+            },
+          }}
         >
           {(() => {
-            // Unidades válidas según la unidad base del insumo (+ equivalencias propias)
-            // Unidades válidas según la unidad base del insumo (+ equivalencias propias)
-            const insData = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
-            const elabDataOpc = item.supplyId ? localRecetasElaborados[String(item.supplyId)] : null;
-            let unidadesValidas;
-            if (elabDataOpc) {
-              // Elaborado: las unidades salen de su rendimiento (equivalente medible)
-              const rp = Number(elabDataOpc.rendimientoPeso) || 0;
-              const ru = canonicalUnit(elabDataOpc.rendimientoUnidad || 'porcion');
-              const up = canonicalUnit(elabDataOpc.unidadPeso || '');
-              if (rp > 0 && up) {
-                // Rinde en porción/unidad con peso equivalente → ofrecer u + las del tipo del equivalente
-                unidadesValidas = ['gr', 'kg'].includes(up) ? ['u', 'gr', 'kg']
-                  : ['ml', 'lt', 'oz'].includes(up) ? ['u', 'ml', 'lt', 'oz']
-                    : ['u'];
-              } else if (['gr', 'kg'].includes(ru)) {
-                unidadesValidas = ['gr', 'kg'];
-              } else if (['ml', 'lt', 'oz'].includes(ru)) {
-                unidadesValidas = ['ml', 'lt', 'oz'];
-              } else {
-                unidadesValidas = ['u'];
-              }
-            } else {
-              unidadesValidas = unidadesParaInsumo(insData || { unidad_med: item.supplyMedida });
-            }
-            // Para elaborados, las unidades salen de su rendimiento (ya en unidadesValidas):
-            // NO agregar su unidad_med base cruda, que no aplica a un elaborado por porción.
-            // Para insumos normales sí se agrega su unidad de compra si falta.
-            const base = (!elabDataOpc && item.supplyMedida && !unidadesValidas.includes(canonicalUnit(item.supplyMedida)))
-              ? [item.supplyMedida] : [];
-            const eqs = (item.equivalencias || []).map(e => e.nombre);
-            const opciones = [...unidadesValidas, ...base, ...eqs];
-            const unidadActual = item.unidad || item.supplyMedida || 'u';
-            return opciones.map(u => {
+            // Unidades válidas (y si la guardada sigue siéndolo): opcionesUnidadItem,
+            // misma fuente que arriba en unidadInvalida — nunca inline acá, para que
+            // el <Select> y el aviso de "unidad rota" jamás puedan desincronizarse.
+            // Si la guardada ya no es válida, se agrega igual como primera opción
+            // (deshabilitada, marcada ⚠) — así el combo NUNCA queda en blanco: siempre
+            // se ve algo, aunque sea "esto está roto, elegí otra unidad".
+            const opciones = unidadEsValida ? unidadOpciones : [unidadActual, ...unidadOpciones];
+            return opciones.map((u, idx) => {
+              const esRota = !unidadEsValida && idx === 0;
               const eqData = (item.equivalencias || []).find(e => e.nombre === u);
               const seleccionada = u === unidadActual;
               return (
-                <MenuItem key={u} value={u} sx={{
+                <MenuItem key={`${u}-${idx}`} value={u} disabled={esRota} sx={{
                   fontSize: '0.8rem',
                   fontWeight: seleccionada ? 800 : 400,
-                  bgcolor: seleccionada ? `${PRIMARY}25` : 'transparent',
-                  '&:hover': { bgcolor: seleccionada ? `${PRIMARY}35` : 'action.hover' },
+                  color: esRota ? '#ea580c' : 'inherit',
+                  bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}25`) : 'transparent',
+                  '&:hover': { bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}35`) : 'action.hover' },
                 }}>
-                  {eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u}
+                  {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u)}
                 </MenuItem>
               );
             });
@@ -910,12 +903,14 @@ export default function ItemRow({
         </Select>
 
         {/* ── $ total (unitario × cantidad) ── */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: superaPrecioVenta ? '#fecaca' : 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: superaPrecioVenta ? '#fef2f2' : (elaborado ? '#f0fdf4' : '#f8fafc'), overflow: 'hidden' }}>
-          <Tooltip title={superaPrecioVenta
-            ? `⚠ Este ingrediente cuesta más que el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad`
-            : (elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`)}>
-            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: superaPrecioVenta ? '#ef4444' : (costoEfectivoLinea < 0 ? '#ef4444' : costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled'), whiteSpace: 'nowrap' }}>
-              {(item.supplyId || item.articleRefId) ? (costoEfectivoLinea !== 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—'}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: unidadInvalida ? '#fdba74' : (superaPrecioVenta ? '#fecaca' : 'divider'), borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: unidadInvalida ? '#fff7ed' : (superaPrecioVenta ? '#fef2f2' : (elaborado ? '#f0fdf4' : '#f8fafc')), overflow: 'hidden' }}>
+          <Tooltip title={unidadInvalida
+            ? `⚠ La unidad guardada ("${unidadActual}") ya no es válida para este insumo — su receta/equivalente cambió. Elegí una unidad para recalcular el costo y guardá de nuevo.`
+            : (superaPrecioVenta
+              ? `⚠ Este ingrediente cuesta más que el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad`
+              : (elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`))}>
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: unidadInvalida ? '#ea580c' : (superaPrecioVenta ? '#ef4444' : (costoEfectivoLinea < 0 ? '#ef4444' : costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled')), whiteSpace: 'nowrap' }}>
+              {unidadInvalida ? '⚠ revisar' : ((item.supplyId || item.articleRefId) ? (costoEfectivoLinea !== 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—')}
             </Typography>
           </Tooltip>
         </Box>

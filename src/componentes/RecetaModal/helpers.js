@@ -162,6 +162,44 @@ export function unidadesParaInsumo(insumoData) {
   return ['u'];
 }
 
+// Unidades válidas para un ítem cuyo insumo es un ELABORADO, según el rendimiento
+// ACTUAL de su propia receta (mismo criterio que unidadesParaInsumo, pero basado en
+// rendimiento/Equivalente en vez de unidad_med — un elaborado no "se compra" en una
+// unidad fija, rinde en lo que diga su propia receta).
+export function unidadesValidasElaborado(elabData) {
+  const rp = Number(elabData?.rendimientoPeso) || 0;
+  const ru = canonicalUnit(elabData?.rendimientoUnidad || 'porcion');
+  const up = canonicalUnit(elabData?.unidadPeso || '');
+  if (rp > 0 && up) {
+    if (['gr', 'kg'].includes(up)) return ['u', 'gr', 'kg'];
+    if (['ml', 'lt', 'oz'].includes(up)) return ['u', 'ml', 'lt', 'oz'];
+    return ['u'];
+  }
+  if (['gr', 'kg'].includes(ru)) return ['gr', 'kg'];
+  if (['ml', 'lt', 'oz'].includes(ru)) return ['ml', 'lt', 'oz'];
+  return ['u'];
+}
+
+/**
+ * Opciones de unidad para un ítem de receta + si la unidad GUARDADA sigue siendo una
+ * de ellas. Única fuente de verdad para el <Select> de ItemRow y para detectar "unidad
+ * rota" (una sub-receta/equivalente cambió y la unidad que este ítem tenía guardada ya
+ * no es una opción válida) — antes esta lista se armaba inline solo para pintar el
+ * <Select>, así que cuando dejaba de matchear simplemente se renderizaba vacío y el
+ * costo seguía usando el valor viejo sin que nada lo marcara como sospechoso.
+ */
+export function opcionesUnidadItem(item, insumoData, elabData) {
+  const unidadesValidas = elabData
+    ? unidadesValidasElaborado(elabData)
+    : unidadesParaInsumo(insumoData || { unidad_med: item.supplyMedida });
+  const base = (!elabData && item.supplyMedida && !unidadesValidas.includes(canonicalUnit(item.supplyMedida)))
+    ? [item.supplyMedida] : [];
+  const eqs = (item.equivalencias || []).map(e => e.nombre);
+  const opciones = [...unidadesValidas, ...base, ...eqs];
+  const unidadActual = item.unidad || item.supplyMedida || 'u';
+  return { opciones, unidadActual, esValida: opciones.includes(unidadActual) };
+}
+
 export function getConversionFactor(from, to) {
   // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en PESO.
   const PESO = { gr: 1, gramo: 1, gramos: 1, g: 1, k: 1000, kg: 1000, kilo: 1000, kilos: 1000, kilogramo: 1000, lb: 453.59 };
