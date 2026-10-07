@@ -1510,7 +1510,16 @@ export default function TablaArticulos({
   const ClearBtn = ({ onClick, visible = true }) => {
     if (!visible) return null;
     return (
-      <button onClick={onClick} title="Borrar" style={{
+      <button
+        onClick={onClick}
+        // Sin esto, el primer click le saca el foco al input de % de al lado ANTES
+        // de que este click termine de procesarse — ese blur dispara triggerBulkPct
+        // (si había un % tipeado sin confirmar) y a veces abre un modal/re-renderiza
+        // de más, "comiéndose" el click. Necesitabas un segundo click para que
+        // realmente pegara en el botón. preventDefault en mousedown evita que el
+        // input pierda el foco antes de que el click de este botón se resuelva.
+        onMouseDown={(e) => e.preventDefault()}
+        title="Borrar" style={{
         marginLeft: 3, padding: '1px 5px', fontSize: '0.65rem',
         lineHeight: 1, border: '1px solid #e5e7eb', borderRadius: 4,
         background: '#fff', color: '#9ca3af', cursor: 'pointer', flexShrink: 0,
