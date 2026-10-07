@@ -19,6 +19,17 @@ const ENTITY_LABELS = {
   receta_item_merma: 'Merma de ingrediente',
   precio_config: 'Precio',
   team_member: 'Miembro del equipo',
+  receta_proposal: 'Propuesta de receta',
+};
+
+// Para receta_proposal, el texto de la fila depende de metadata.decision (qué pasó con
+// la propuesta), no del action genérico create/update — así se lee "propuso", "aprobó",
+// "rechazó", "pidió un ajuste" o "marcó a revisión" en vez de solo "creó"/"editó".
+const PROPOSAL_DECISION_LABELS = {
+  approved: 'aprobó una propuesta en',
+  rejected: 'rechazó una propuesta en',
+  revision: 'pidió un ajuste en una propuesta de',
+  marcada_revision: 'marcó a revisión',
 };
 
 const ACTION_LABELS = {
@@ -94,8 +105,12 @@ function AuditRow({ entry }) {
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="body2" noWrap>
             <strong>{entry.user_alias_snapshot || 'Alguien'}</strong>{' '}
-            {ACTION_LABELS[entry.action] || entry.action}{' '}
-            {(ENTITY_LABELS[entry.entity_type] || entry.entity_type)?.toLowerCase()}
+            {entry.entity_type === 'receta_proposal' && PROPOSAL_DECISION_LABELS[entry.metadata?.decision]
+              ? PROPOSAL_DECISION_LABELS[entry.metadata.decision]
+              : <>
+                  {ACTION_LABELS[entry.action] || entry.action}{' '}
+                  {(ENTITY_LABELS[entry.entity_type] || entry.entity_type)?.toLowerCase()}
+                </>}
             {entry.metadata?.nombre ? ` "${entry.metadata.nombre}"` : ''}
           </Typography>
           <Typography variant="caption" color="text.secondary">{fechaStr}</Typography>
@@ -177,6 +192,7 @@ export default function ConfigHistorialTab({ businessId }) {
             <MenuItem value="receta_item_merma">Merma de ingredientes</MenuItem>
             <MenuItem value="precio_config">Precios</MenuItem>
             <MenuItem value="team_member">Equipo</MenuItem>
+            <MenuItem value="receta_proposal">Propuestas</MenuItem>
           </Select>
         </FormControl>
       </Stack>
