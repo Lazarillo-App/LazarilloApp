@@ -510,19 +510,6 @@ export default function ItemRow({
                 >
                   {item.supplyNombre || `#${item.articleRefId || item.supplyId}`}
                 </Typography>
-                {/* Editar insumo (modal rápido: nombre/rubro/unidad/precio) — separado del
-                    lápiz de la izquierda (ese siempre abre el buscador para CAMBIAR de
-                    insumo). Este es chico y solo aparece si hay un insumo real cargado. */}
-                {insumoDeFila && (
-                  <IconButton
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); setEditarInsumoOpen(true); }}
-                    title="Editar insumo"
-                    sx={{ p: '2px', flexShrink: 0, color: 'text.disabled', '&:hover': { color: PRIMARY } }}
-                  >
-                    <EditIcon sx={{ fontSize: 11 }} />
-                  </IconButton>
-                )}
                 {/* Fecha: última compra (insumo) o última modificación de receta (elaborado) */}
                 {!item.articleRefId && (() => {
                   const insDat = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
@@ -783,6 +770,18 @@ export default function ItemRow({
                           {!esElab && <Chip label="Insumo" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: `${PRIMARY}15`, color: PRIMARY }} />}
                           {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
                           {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
+                          {/* Editar insumo: solo en el que ya está en uso en esta fila (va
+                              primero en la lista) — para corregirlo sin salir del buscador. */}
+                          {String(ins.id) === String(item.supplyId) && (
+                            <IconButton
+                              size="small"
+                              onClick={(e) => { e.stopPropagation(); onSearchClose(); setEditarInsumoOpen(true); }}
+                              title="Editar insumo"
+                              sx={{ p: '2px', ml: 0.5, color: 'text.disabled', '&:hover': { color: PRIMARY } }}
+                            >
+                              <EditIcon sx={{ fontSize: 12 }} />
+                            </IconButton>
+                          )}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                           {ins.codigo_maxi || ins.codigo_mostrar ? `Cód: ${ins.codigo_maxi || ins.codigo_mostrar} · ${ins.unidad_med || ins.medida || 'u'}` : ins.unidad_med || ins.medida || 'u'}
