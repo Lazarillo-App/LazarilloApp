@@ -14,7 +14,7 @@ import NotesIcon from '@mui/icons-material/Notes';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/Tune';
-import { insumoEquivalenciasList, insumoMermasList } from '@/servicios/apiInsumos';
+import { insumoEquivalenciasList, insumoMermasList, insumoUpdate } from '@/servicios/apiInsumos';
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
@@ -59,10 +59,17 @@ export default function ItemRow({
   const [search, setSearch] = useState('');
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
   const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
-  // Insumo de la fila (no artículo ni promo): el lápiz de la izquierda lo edita
+  // Insumo de la fila (no artículo ni promo) — lo edita el ícono de lápiz chico
+  // que aparece junto al nombre (ver más abajo).
   const insumoDeFila = item.supplyId && !item.articleRefId && !item.esArticulo
     ? (insumos || []).find(i => String(i.id) === String(item.supplyId)) || null
     : null;
+  // Precio manual cuando el insumo todavía no tiene ninguno (sin compras, ni
+  // precio_ref cargado) — se guarda como el precio_ref del INSUMO, no solo de
+  // esta fila, para que valga en cualquier receta que lo use.
+  const [precioManualEdit, setPrecioManualEdit] = useState(false);
+  const [precioManualVal, setPrecioManualVal] = useState('');
+  const [precioManualSaving, setPrecioManualSaving] = useState(false);
   const [notasOpen, setNotasOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -210,13 +217,23 @@ export default function ItemRow({
       return (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' });
     });
 
+    // Sin buscar nada todavía (recién se abrió el desplegable): el insumo que YA
+    // está cargado en esta fila va primero, siempre — antes el orden dependía solo
+    // de compras/precio y el insumo actual podía aparecer en cualquier lado (o ni
+    // en los primeros 30), así que reabrir el buscador para "cambiar insumo" se
+    // sentía random en vez de arrancar desde lo que ya estaba puesto.
+    if (!q && item.supplyId) {
+      const idx = list.findIndex(i => String(i.id) === String(item.supplyId));
+      if (idx > 0) list = [list[idx], ...list.slice(0, idx), ...list.slice(idx + 1)];
+    }
+
     // Etiquetar insumos y combinar: artículos primero, luego insumos
     const insumosTag = list.slice(0, 30).map(i => ({ ...i, _tipo: 'insumo' }));
     // "Crear insumo nuevo" siempre primero — no hace falta que la búsqueda
     // esté vacía de resultados para poder dar de alta uno.
     const crearOpcion = { _tipo: 'crear', id: '__crear_insumo__' };
     return [crearOpcion, ...arts.slice(0, 30), ...insumosTag];
-  }, [insumos, search, soloConCompras, allArticulos, articuloId, esPromo]);
+  }, [insumos, search, soloConCompras, allArticulos, articuloId, esPromo, item.supplyId]);
 
   // "Crear insumo nuevo" queda siempre primero en la lista, pero el foco por
   // defecto no debe caer ahí: si hay resultados reales, el índice 1 (el primer
@@ -361,6 +378,26 @@ export default function ItemRow({
     [item.desperdicioPct, item.mermas, item.mermaIds, item.mermaId, appConfigDesperdicio, item.esArticulo, item.articleRefId, elaborado]
   );
 
+  // Descripción legible de qué merma está aplicada — para el tooltip de "$ Costo
+  // Total": antes el número de esa celda ya venía con la merma sumada pero no decía
+  // de dónde salía, así que un costo "raro" (ej. $3.891 cuando 120×$precio da $3.706)
+  // no se entendía sin ir a buscar la config global.
+  const mermaDescripcion = useMemo(() => {
+    if (item.esArticulo || item.articleRefId || elaborado) return null;
+    const pctGlobal = item.desperdicioPct != null ? Number(item.desperdicioPct) : Number(appConfigDesperdicio || 0);
+    const ids = Array.isArray(item.mermaIds) ? item.mermaIds : (item.mermaId != null ? [item.mermaId] : []);
+    const especificas = ids
+      .map(id => (item.mermas || []).find(m => Number(m.id) === Number(id)))
+      .filter(Boolean)
+      .map(m => m.nombre);
+    if (especificas.length) {
+      const base = `Incluye merma: ${especificas.join(', ')}`;
+      return pctGlobal > 0 ? `${base} + global (${fmt(pctGlobal, 1)}%)` : base;
+    }
+    if (pctGlobal > 0) return `Incluye la merma global del negocio (${fmt(pctGlobal, 1)}%)`;
+    return 'Sin merma aplicada';
+  }, [item.esArticulo, item.articleRefId, elaborado, item.desperdicioPct, appConfigDesperdicio, item.mermaIds, item.mermaId, item.mermas]);
+
   /**
    * Precio por unidad elegida — única fuente de verdad (calcCostoUnitarioItem, compartida
    * con el total de la receta en RecetaModal/index.jsx). Antes esta lógica estaba duplicada
@@ -427,8 +464,8 @@ export default function ItemRow({
         py: 0.5, px: 0.5,
       }}>
         {/* drag */}
-        <Tooltip title={insumoDeFila ? 'Editar insumo' : 'Cambiar insumo'}>
-          <IconButton data-search-trigger size="small" onClick={() => insumoDeFila ? setEditarInsumoOpen(true) : (searchOpen ? onSearchClose() : onSearchOpen())} sx={{ p: '2px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
+        <Tooltip title="Cambiar insumo">
+          <IconButton data-search-trigger size="small" onClick={() => searchOpen ? onSearchClose() : onSearchOpen()} sx={{ p: '2px', color: 'text.disabled', '&:hover': { color: PRIMARY } }}>
             <EditIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Tooltip>
@@ -473,6 +510,19 @@ export default function ItemRow({
                 >
                   {item.supplyNombre || `#${item.articleRefId || item.supplyId}`}
                 </Typography>
+                {/* Editar insumo (modal rápido: nombre/rubro/unidad/precio) — separado del
+                    lápiz de la izquierda (ese siempre abre el buscador para CAMBIAR de
+                    insumo). Este es chico y solo aparece si hay un insumo real cargado. */}
+                {insumoDeFila && (
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); setEditarInsumoOpen(true); }}
+                    title="Editar insumo"
+                    sx={{ p: '2px', flexShrink: 0, color: 'text.disabled', '&:hover': { color: PRIMARY } }}
+                  >
+                    <EditIcon sx={{ fontSize: 11 }} />
+                  </IconButton>
+                )}
                 {/* Fecha: última compra (insumo) o última modificación de receta (elaborado) */}
                 {!item.articleRefId && (() => {
                   const insDat = item.supplyId ? insumos.find(i => String(i.id) === String(item.supplyId)) : null;
@@ -903,17 +953,90 @@ export default function ItemRow({
         </Select>
 
         {/* ── $ total (unitario × cantidad) ── */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: unidadInvalida ? '#fdba74' : (superaPrecioVenta ? '#fecaca' : 'divider'), borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: unidadInvalida ? '#fff7ed' : (superaPrecioVenta ? '#fef2f2' : (elaborado ? '#f0fdf4' : '#f8fafc')), overflow: 'hidden' }}>
-          <Tooltip title={unidadInvalida
-            ? `⚠ La unidad guardada ("${unidadActual}") ya no es válida para este insumo — su receta/equivalente cambió. Elegí una unidad para recalcular el costo y guardá de nuevo.`
-            : (superaPrecioVenta
-              ? `⚠ Este ingrediente cuesta más que el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad`
-              : (elaborado ? `De receta elaborada` : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}`))}>
-            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: unidadInvalida ? '#ea580c' : (superaPrecioVenta ? '#ef4444' : (costoEfectivoLinea < 0 ? '#ef4444' : costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled')), whiteSpace: 'nowrap' }}>
-              {unidadInvalida ? '⚠ revisar' : ((item.supplyId || item.articleRefId) ? (costoEfectivoLinea !== 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—')}
-            </Typography>
-          </Tooltip>
-        </Box>
+        {(() => {
+          // Insumo simple SIN precio todavía (nunca se compró, sin precio_ref) — en vez
+          // de mostrar "—" sin más, dejar cargar un precio ACÁ MISMO. Se guarda en el
+          // insumo (precio_ref), no solo en esta fila: vale para cualquier receta que
+          // lo use, no es un override puntual de este ingrediente.
+          const sinPrecioEditable = !!item.supplyId && !item.articleRefId && !item.esArticulo
+            && !elaborado && !unidadInvalida && costoEfectivoLinea === 0;
+
+          if (sinPrecioEditable && precioManualEdit) {
+            const guardarPrecioManual = async () => {
+              const raw = String(precioManualVal).replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+              const val = raw === '' ? null : Number(raw);
+              if (val == null || !(val > 0)) { setPrecioManualEdit(false); setPrecioManualVal(''); return; }
+              setPrecioManualSaving(true);
+              try {
+                await insumoUpdate(item.supplyId, { precioRef: val }, insumosBizId || businessId);
+                try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
+                setPrecioManualEdit(false);
+                setPrecioManualVal('');
+              } catch (e) {
+                console.error('[ItemRow] error guardando precio manual:', e.message);
+              } finally {
+                setPrecioManualSaving(false);
+              }
+            };
+            return (
+              <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid', borderColor: PRIMARY, borderRadius: 1, px: 0.5, minHeight: 30, bgcolor: '#fff', overflow: 'hidden' }}>
+                <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled', mr: 0.25 }}>$</Typography>
+                <TextField
+                  autoFocus
+                  size="small"
+                  variant="standard"
+                  placeholder={`por ${item.supplyMedida || 'u'}`}
+                  value={precioManualVal}
+                  disabled={precioManualSaving}
+                  onChange={(e) => setPrecioManualVal(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  onBlur={guardarPrecioManual}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+                    else if (e.key === 'Escape') { setPrecioManualEdit(false); setPrecioManualVal(''); }
+                  }}
+                  InputProps={{ disableUnderline: true }}
+                  inputProps={{ style: { fontSize: '0.72rem', padding: 0, textAlign: 'right' } }}
+                  sx={{ width: 64 }}
+                />
+              </Box>
+            );
+          }
+
+          // Click para abrir el panel de merma directo desde acá ("modificar" sin ir
+          // a buscar el ícono de ajustes): solo tiene sentido para un insumo simple
+          // con costo real (no elaborado/artículo, no el caso "sin precio" de arriba).
+          const abrirMermaAlClick = !sinPrecioEditable && !elaborado && !item.esArticulo && !item.articleRefId
+            && (item.supplyId || item.articleRefId);
+
+          return (
+            <Box
+              onClick={sinPrecioEditable
+                ? () => { setPrecioManualVal(''); setPrecioManualEdit(true); }
+                : (abrirMermaAlClick ? () => setShowAdvanced(true) : undefined)}
+              sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                border: '1px solid', borderColor: unidadInvalida ? '#fdba74' : (superaPrecioVenta ? '#fecaca' : 'divider'),
+                borderRadius: 1, px: 0.75, minHeight: 30,
+                bgcolor: unidadInvalida ? '#fff7ed' : (superaPrecioVenta ? '#fef2f2' : (elaborado ? '#f0fdf4' : '#f8fafc')),
+                overflow: 'hidden', cursor: (sinPrecioEditable || abrirMermaAlClick) ? 'pointer' : 'default',
+              }}
+            >
+              <Tooltip title={unidadInvalida
+                ? `⚠ La unidad guardada ("${unidadActual}") ya no es válida para este insumo — su receta/equivalente cambió. Elegí una unidad para recalcular el costo y guardá de nuevo.`
+                : (superaPrecioVenta
+                  ? `⚠ Este ingrediente cuesta más que el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad`
+                  : (sinPrecioEditable
+                    ? 'Este insumo no tiene precio cargado todavía — click para cargarlo (queda guardado en el insumo)'
+                    : (elaborado
+                      ? `De receta elaborada`
+                      : `$${fmt(costoEnUnidadElegida)}/${item.unidad || item.supplyMedida || 'u'} × ${item.cantidad || 0}${mermaDescripcion ? ` · ${mermaDescripcion}` : ''}${abrirMermaAlClick ? ' · Click para modificar la merma' : ''}`)))}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: unidadInvalida ? '#ea580c' : (superaPrecioVenta ? '#ef4444' : (costoEfectivoLinea < 0 ? '#ef4444' : costoEfectivoLinea > 0 ? (elaborado ? '#16a34a' : PRIMARY) : 'text.disabled')), whiteSpace: 'nowrap' }}>
+                  {unidadInvalida ? '⚠ revisar' : ((item.supplyId || item.articleRefId) ? (costoEfectivoLinea !== 0 ? `$${fmt(costoEfectivoLinea)}` : '—') : '—')}
+                </Typography>
+              </Tooltip>
+            </Box>
+          );
+        })()}
         {/* ── $ sin promo (solo en promo, precio de venta del componente × cantidad) ── */}
         {esPromo && (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: '#faf5ff', overflow: 'hidden' }}>
