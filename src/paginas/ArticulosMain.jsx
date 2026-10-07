@@ -642,12 +642,39 @@ export default function ArticulosMain(props) {
   }, [activeBizId, queryClient]);
 
   // ── Handler centralizado de guardado de price config ──
+  // Cada llamada hace save + un GET-all completo y pisa el estado con la respuesta.
+  // Si el usuario edita/borra el "nuevo precio" varias veces seguidas (cada blur
+  // dispara una llamada de estas), dos llamadas quedan en vuelo a la vez y las
+  // respuestas pueden volver DESORDENADAS — una más vieja que tarda más puede
+  // resolver DESPUÉS que la más nueva y pisarle el resultado, dejando la tabla con
+  // un estado anterior (el "a veces no lo hace" al borrar). priceConfigSaveSeqRef
+  // descarta cualquier respuesta que no sea la del último guardado disparado.
+  const priceConfigSaveSeqRef = useRef(0);
   const handlePriceConfigSave = React.useCallback((body) => {
     const bizId = Number(activeBizId);
+    const mySeq = ++priceConfigSaveSeqRef.current;
+
+    // Optimista: reflejar el cambio YA en el estado local (precio nuevo, o
+    // vaciado) sin esperar el guardar + volver a traer todo — antes la fila se
+    // sentía "trabada" entre que se tipeaba/borraba y que la red resolvía.
+    if (body?.scope === 'articulo' && body?.scopeId != null) {
+      setPriceConfig(prev => {
+        const byArticle = { ...(prev.byArticle || {}) };
+        const key = String(body.scopeId);
+        if (body._deleteManual) {
+          delete byArticle[key];
+        } else if (body.precioManual != null) {
+          byArticle[key] = { ...(byArticle[key] || {}), precioManual: body.precioManual };
+        }
+        return { ...prev, byArticle };
+      });
+    }
+
     const doSave = async () => {
       try {
-        const result = await PriceConfigAPI.save(bizId, body);
+        await PriceConfigAPI.save(bizId, body);
         const r = await PriceConfigAPI.getAll(bizId);
+        if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
         setPriceConfig({
           byArticle: r?.byArticle || {},
           byRubro: r?.byRubro || {},

@@ -2159,6 +2159,7 @@ export default function TablaArticulos({
                           const n = Number(String(valorMostrado).replace(/\./g, ''));
                           return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(valorMostrado);
                         })()}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                           setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: raw === '' ? '' : Number(raw) }));
@@ -2288,6 +2289,7 @@ export default function TablaArticulos({
                               const n = Number(String(rawManual).replace(/\./g, ''));
                               return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(rawManual);
                             })()}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                               setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
