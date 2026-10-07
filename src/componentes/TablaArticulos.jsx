@@ -399,6 +399,12 @@ export default function TablaArticulos({
   const [ventasVista, setVentasVista] = useState('U');
   const [lastAppliedPct, setLastAppliedPct] = useState({});
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
+  // Acceso directo a cambiar el redondeo desde el input de % (agrupación/rubro) SIN
+  // pasar por el diálogo de confirmación de aumento — ese diálogo solo aparece
+  // cuando hay algo que confirmar (redondeo sin configurar o precios manuales que
+  // se pisan); si ya estaba todo configurado, el aumento se aplicaba directo y no
+  // había ninguna forma de tocar el redondeo sin ir a Configuración.
+  const [redondeoQuickOpen, setRedondeoQuickOpen] = useState(false);
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
@@ -550,6 +556,12 @@ export default function TablaArticulos({
   const [sortDir, setSortDir] = useState("desc");
   const sortByRef = React.useRef(sortBy);
   const bulkSetIdsRef = useRef(new Set());
+  // Precio pre-cargado (no un placeholder real): el select() al foco no alcanzaba
+  // (según el navegador/teclado, puede no dejar nada seleccionado) — así que ahora
+  // se vacía directo el campo al entrar, guardando el valor de antes acá para
+  // restaurarlo si el usuario hace foco y se va sin tipear nada (no se interpreta
+  // como "borrar el precio").
+  const precioFocoOriginalRef = useRef({});
   React.useEffect(() => { sortByRef.current = sortBy; }, [sortBy]);
 
   const toggleSort = useCallback((k) => {
@@ -1530,6 +1542,25 @@ export default function TablaArticulos({
     );
   };
 
+  // Link chico junto al input de % (agrupación/rubro): abre el redondeo para
+  // cambiarlo ahí mismo, sin tener que esperar a que aparezca el diálogo de
+  // confirmación (que no siempre aparece) ni ir a Configuración.
+  const RedondeoLink = () => (
+    <button
+      onClick={() => setRedondeoQuickOpen(true)}
+      onMouseDown={(e) => e.preventDefault()}
+      title="Cambiar el redondeo de precios"
+      style={{
+        marginLeft: 3, padding: '1px 6px', fontSize: '0.65rem',
+        lineHeight: 1, border: '1px solid #e5e7eb', borderRadius: 4,
+        background: '#fff', color: '#64748b', cursor: 'pointer', flexShrink: 0,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {redondeoConfig?.valor ? `Redondeo $${redondeoConfig.valor}` : 'Sin redondeo'} ✎
+    </button>
+  );
+
   const renderRow = ({ row, index, style }) => {
 
     if (row.kind === "agrupacion-header") {
@@ -1661,6 +1692,7 @@ export default function TablaArticulos({
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <RedondeoLink />
                   <ClearBtn
                     onClick={() => {
                       setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
@@ -1815,6 +1847,7 @@ export default function TablaArticulos({
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <RedondeoLink />
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
                     setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
@@ -2168,7 +2201,14 @@ export default function TablaArticulos({
                           const n = Number(String(valorMostrado).replace(/\./g, ''));
                           return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(valorMostrado);
                         })()}
-                        onFocus={(e) => e.target.select()}
+                        onFocus={() => {
+                          // Vacía el campo al entrar (no alcanzaba con seleccionar todo el
+                          // texto — según navegador/teclado podía no quedar nada
+                          // seleccionado) para poder escribir directo sin borrar a mano.
+                          // Si se va sin tipear nada, el onBlur de abajo ya revierte esto
+                          // al valor normal (no hace falta restaurar nada acá).
+                          setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: '' }));
+                        }}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                           setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: raw === '' ? '' : Number(raw) }));
@@ -2298,7 +2338,15 @@ export default function TablaArticulos({
                               const n = Number(String(rawManual).replace(/\./g, ''));
                               return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(rawManual);
                             })()}
-                            onFocus={(e) => e.target.select()}
+                            onFocus={() => {
+                              // Vacía el campo al entrar (el valor que se ve no es un
+                              // placeholder, es el precio real ya cargado) para poder
+                              // tipear directo sin borrarlo a mano antes. Si se va sin
+                              // escribir nada, el onBlur restaura esto en vez de
+                              // interpretarlo como "querés borrar el precio".
+                              precioFocoOriginalRef.current[id] = rawManual;
+                              setManuales(s => ({ ...s, [id]: '' }));
+                            }}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                               setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
@@ -2306,6 +2354,13 @@ export default function TablaArticulos({
                             }}
                             onBlur={(e) => {
                               const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                              const original = precioFocoOriginalRef.current[id];
+                              delete precioFocoOriginalRef.current[id];
+                              if (raw === '' && original !== undefined && original !== '' && original != null) {
+                                // Entró y salió sin tipear nada — volver al precio de antes.
+                                setManuales(s => ({ ...s, [id]: original }));
+                                return;
+                              }
                               const val = raw === '' ? null : Number(raw);
                               bulkSetIdsRef.current.delete(Number(id));
                               if (val === null) {
@@ -2645,6 +2700,74 @@ export default function TablaArticulos({
           <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: "100%" }}>{snack.msg}</Alert>
         </Snackbar>
       </div>
+
+      {redondeoQuickOpen && (
+        <Dialog open onClose={() => setRedondeoQuickOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Redondeo de precios</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
+              Múltiplo al que se redondean los precios al aplicar un aumento.
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+              {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
+                <Chip
+                  key={op}
+                  label={`$${op}`}
+                  size="small"
+                  variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
+                  onClick={() => {
+                    saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
+                    setRedondeoConfig(prev => ({ ...prev, valor: op }));
+                    onRedondeoChange?.(op);
+                    BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
+                    window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_precios', value: op } }));
+                  }}
+                  sx={{
+                    cursor: 'pointer',
+                    fontWeight: redondeoConfig?.valor === op ? 700 : 400,
+                    ...(redondeoConfig?.valor === op && { bgcolor: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }),
+                  }}
+                />
+              ))}
+              <Chip
+                key="none"
+                label="Sin redondeo"
+                size="small"
+                variant={!redondeoConfig?.valor ? 'filled' : 'outlined'}
+                onClick={() => {
+                  saveRedondeoConfig(activeBizId, null, redondeoConfig?.mostrarModal ?? true);
+                  setRedondeoConfig(prev => ({ ...prev, valor: null }));
+                  onRedondeoChange?.(null);
+                  BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: null } }).catch(() => { });
+                  window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_precios', value: null } }));
+                }}
+                sx={{ cursor: 'pointer' }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <input
+                type="checkbox"
+                id="redondeo-quick-no-mostrar"
+                checked={!(redondeoConfig?.mostrarModal ?? true)}
+                onChange={(e) => {
+                  const noMostrar = e.target.checked;
+                  saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
+                  setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
+                  try { BusinessesAPI.update(Number(activeBizId), { props: { redondeo_mostrar_modal: !noMostrar } }); } catch { }
+                  window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_mostrar_modal', value: !noMostrar } }));
+                }}
+                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+              />
+              <label htmlFor="redondeo-quick-no-mostrar" style={{ fontSize: '0.78rem', cursor: 'pointer', color: '#555' }}>
+                No volver a mostrar el aviso de aumento
+              </label>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2 }}>
+            <Button size="small" variant="contained" onClick={() => setRedondeoQuickOpen(false)}>Listo</Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {bulkPctDlg && (
         <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>
