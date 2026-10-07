@@ -99,46 +99,16 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
   }
 
   if (elaborado) {
-    const usaPrecioSugerido = tipoCosto === 'sugerido' && Number(elaborado?.precioSugerido) > 0;
-    const costoBase = usaPrecioSugerido
-      ? Number(elaborado.precioSugerido)
-      : (Number(item.precioRefDB) || 0);
-    // La unidad base tiene que ser la del VALOR que estamos usando como costoBase, no
-    // siempre la misma:
-    // - precioSugerido es un valor LIVE del elaborado → su unidad es rendimiento_unidad.
-    // - item.precioRefDB es una FOTO congelada de cuando se agregó el ingrediente —
-    //   ItemRow.jsx, al agregarlo, puede haber rebasado el costo a la unidad del peso
-    //   equivalente (ej. elaborado "rinde 35 unidades ≈ 500gr" se guarda como costo POR
-    //   GRAMO, con supplyMedida='gr', para poder cargar la cantidad en gr/kg si se
-    //   quiere). Si ahí usáramos rendimiento_unidad ('u') en vez de supplyMedida ('gr'),
-    //   un costo-por-gramo se trataba como si fuera costo-por-unidad sin convertir —
-    //   exactamente el bug: elegir "u" después de agregarlo daba el valor de 1 gramo.
-    const unidadBase = usaPrecioSugerido
-      ? canonicalUnit(elaborado?.rendimientoUnidad || 'u')
-      : canonicalUnit(item.supplyMedida || elaborado?.rendimientoUnidad || 'u');
-    const unidadElegida = canonicalUnit(item.unidad || unidadBase);
-    if (unidadBase === unidadElegida) return costoBase * factorMerma;
-    // Puente vía el peso/volumen equivalente de 1 "unidad de rendimiento" (ej. elaborado
-    // que "rinde 35 u ≈ 500gr c/u"): hace falta cuando se mezcla 'u' con una unidad física
-    // en CUALQUIER dirección (u→gr, gr→u, gr→kg pasando por 'u' en el medio, etc.) —
-    // calcPrecioEnUnidad no sabe nada de esto, solo convierte entre unidades reconocidas
-    // vía tabla fija, y "u" no tiene un factor fijo hacia gr/kg/ml/lt (depende de CADA
-    // elaborado). "porción" y "u" son la misma unidad de rendimiento acá (ver
-    // canonicalUnit en helpers.js), así que esto aplica sin importar con cuál de las dos
-    // se haya cargado el elaborado.
-    const pesoEq = Number(elaborado?.rendimientoPeso) || 0;
-    if (pesoEq > 0 && (unidadBase === 'u' || unidadElegida === 'u')) {
-      const unidadPesoEq = canonicalUnit(elaborado?.unidadPeso || 'gr');
-      // 1) costoBase → costo por 1 unidadPesoEq (ej. $/gr)
-      const costoPorUnidadPeso = unidadBase === 'u'
-        ? costoBase / pesoEq
-        : costoBase / (getConversionFactor(unidadBase, unidadPesoEq) || 1);
-      // 2) costo por unidadPesoEq → costo en la unidad elegida
-      if (unidadElegida === 'u') return (costoPorUnidadPeso * pesoEq) * factorMerma;
-      const factor2 = getConversionFactor(unidadPesoEq, unidadElegida);
-      return (factor2 > 0 ? costoPorUnidadPeso / factor2 : costoPorUnidadPeso) * factorMerma;
-    }
-    return calcPrecioEnUnidad(costoBase, unidadBase, unidadElegida) * factorMerma;
+    // SIEMPRE en vivo: el costo de un ingrediente-elaborado se recalcula contra el
+    // costoTotal/rendimiento ACTUALES de su propia receta (calcCostoUnitarioElaborado),
+    // nunca contra un precio congelado de cuando se agregó (item.precioRefDB). Antes se
+    // mezclaba un precio viejo con el Equivalente (rendimientoPeso) EN VIVO del elaborado
+    // para "convertir" entre u/gr — si el Equivalente cambiaba después de agregar el
+    // ingrediente, esa mezcla daba un monto disparatado (bug real: un elaborado con
+    // "92 u ≈ 150gr" calculaba 150× más de lo que correspondía) aunque la unidad elegida
+    // siguiera siendo válida. En vivo, el precio y el Equivalente usados son siempre del
+    // mismo momento — no hay con qué mezclarse mal.
+    return calcCostoUnitarioElaborado(elaborado, item.supplyMedida, item.unidad, tipoCosto) * factorMerma;
   }
 
   // ── Item-artículo (promo): costo del ARTÍCULO, jerarquía costoTotal receta > costo > precio ──

@@ -1504,7 +1504,15 @@ export default function RecetaModal({
         const cantItem = Number(it.cantidad) || 0;
         const costoItemTotal = calcCostoItem(it);
         let costoUnitario = cantItem > 0 ? costoItemTotal / cantItem : 0;
-        if (it.articleRefId) {
+        // Ingrediente-elaborado: el costo ya se calcula SIEMPRE en vivo (ver calcCosto.js),
+        // así que lo que se persiste tiene que ser ese valor en vivo — nunca lo que haya
+        // quedado en it.precioRefDB de cuando se agregó. Si no se pisa acá, cada guardado
+        // reescribía el precio congelado viejo en la DB sin que nadie lo tocara.
+        const insumoDataItem = it.supplyId ? insumos.find(i => String(i.id) === String(it.supplyId)) : null;
+        const esElaboradoItem = !!it.supplyId
+          && insumoDataItem?.costo_efectivo_origen !== 'compra'
+          && !!localRecetasElaborados[String(it.supplyId)];
+        if (it.articleRefId || esElaboradoItem) {
           precioRefDbItem = costoUnitario;
         }
         return {
