@@ -399,12 +399,10 @@ export default function TablaArticulos({
   const [ventasVista, setVentasVista] = useState('U');
   const [lastAppliedPct, setLastAppliedPct] = useState({});
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
-  // Acceso directo a cambiar el redondeo desde el input de % (agrupación/rubro) SIN
-  // pasar por el diálogo de confirmación de aumento — ese diálogo solo aparece
-  // cuando hay algo que confirmar (redondeo sin configurar o precios manuales que
-  // se pisan); si ya estaba todo configurado, el aumento se aplicaba directo y no
-  // había ninguna forma de tocar el redondeo sin ir a Configuración.
-  const [redondeoQuickOpen, setRedondeoQuickOpen] = useState(false);
+  // El input de % (agrupación/rubro) muestra como placeholder el último % aplicado —
+  // al hacer foco para cargar uno nuevo, ese placeholder se oculta (no hace falta
+  // "borrarlo", nunca fue un valor real, pero quedaba ahí como si lo fuera).
+  const [focusedPctKey, setFocusedPctKey] = useState(null);
   const [visibleSubrubro, setVisibleSubrubro] = useState(null);
   const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
@@ -844,7 +842,7 @@ export default function TablaArticulos({
     }
   }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig, redondeoConfig]);
 
-  const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey) => {
+  const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey, forzarModal = false) => {
     if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
     const pctNum = Number(pct);
 
@@ -857,8 +855,12 @@ export default function TablaArticulos({
     const necesitaConfigurarRedondeo = !redondeoConfig?.valor;
     const necesitaConfirmarManuales = idsConNuevoPrecio.length > 0 && (redondeoConfig?.mostrarModal ?? true);
 
-    // Sin razón para modal → aplicar directo
-    if (!necesitaConfigurarRedondeo && !necesitaConfirmarManuales) {
+    // Sin razón para modal → aplicar directo. EXCEPTO si forzarModal (agrupación: un
+    // alcance mucho más grande que rubro — ahí sí o sí hay algún precio manual en el
+    // medio casi siempre, por eso el modal "ya aparecía solo"; en agrupación, con todo
+    // configurado y sin precios manuales en esa agrupación puntual, nunca aparecía y no
+    // había forma de ver/cambiar el redondeo antes de aplicar a TODA la agrupación).
+    if (!forzarModal && !necesitaConfigurarRedondeo && !necesitaConfirmarManuales) {
       executeBulkPct(pctNum, ids, 'todos');
       if (blockKey) {
         setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
@@ -1542,25 +1544,6 @@ export default function TablaArticulos({
     );
   };
 
-  // Link chico junto al input de % (agrupación/rubro): abre el redondeo para
-  // cambiarlo ahí mismo, sin tener que esperar a que aparezca el diálogo de
-  // confirmación (que no siempre aparece) ni ir a Configuración.
-  const RedondeoLink = () => (
-    <button
-      onClick={() => setRedondeoQuickOpen(true)}
-      onMouseDown={(e) => e.preventDefault()}
-      title="Cambiar el redondeo de precios"
-      style={{
-        marginLeft: 3, padding: '1px 6px', fontSize: '0.65rem',
-        lineHeight: 1, border: '1px solid #e5e7eb', borderRadius: 4,
-        background: '#fff', color: '#64748b', cursor: 'pointer', flexShrink: 0,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {redondeoConfig?.valor ? `Redondeo $${redondeoConfig.valor}` : 'Sin redondeo'} ✎
-    </button>
-  );
-
   const renderRow = ({ row, index, style }) => {
 
     if (row.kind === "agrupacion-header") {
@@ -1680,19 +1663,23 @@ export default function TablaArticulos({
                     <input
                       type="number"
                       value={blockManuales[bkManual] ?? ''}
-                      placeholder={lastAppliedPct[bkManual] != null ? String(lastAppliedPct[bkManual]) : ''}
+                      placeholder={(focusedPctKey !== bkManual && lastAppliedPct[bkManual] != null) ? String(lastAppliedPct[bkManual]) : ''}
+                      onFocus={() => setFocusedPctKey(bkManual)}
                       onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkManual]: e.target.value }))}
                       onBlur={(e) => {
+                        setFocusedPctKey(k => k === bkManual ? null : k);
                         const pct = e.target.value === '' ? null : Number(e.target.value);
                         if (pct == null) return;
-                        triggerBulkPct(pct, row.ids, { current: e.target }, bkManual);
+                        // Agrupación es un alcance mucho más grande que rubro — forzar que
+                        // siempre pase por el modal de confirmación (ahí se ve/cambia el
+                        // redondeo), no solo cuando hay algo puntual que pisar.
+                        triggerBulkPct(pct, row.ids, { current: e.target }, bkManual, true);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                       style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
-                  <RedondeoLink />
                   <ClearBtn
                     onClick={() => {
                       setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
@@ -1835,9 +1822,11 @@ export default function TablaArticulos({
                     <input
                       type="number"
                       value={blockManuales[bkRubroMan] ?? ''}
-                      placeholder={lastAppliedPct[bkRubroMan] != null ? String(lastAppliedPct[bkRubroMan]) : ''}
+                      placeholder={(focusedPctKey !== bkRubroMan && lastAppliedPct[bkRubroMan] != null) ? String(lastAppliedPct[bkRubroMan]) : ''}
+                      onFocus={() => setFocusedPctKey(bkRubroMan)}
                       onChange={(e) => setBlockManuales(prev => ({ ...prev, [bkRubroMan]: e.target.value }))}
                       onBlur={(e) => {
+                        setFocusedPctKey(k => k === bkRubroMan ? null : k);
                         const pct = e.target.value === '' ? null : Number(e.target.value);
                         if (pct == null) return;
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkRubroMan);
@@ -1847,7 +1836,6 @@ export default function TablaArticulos({
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
-                  <RedondeoLink />
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
                     setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
@@ -2700,74 +2688,6 @@ export default function TablaArticulos({
           <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: "100%" }}>{snack.msg}</Alert>
         </Snackbar>
       </div>
-
-      {redondeoQuickOpen && (
-        <Dialog open onClose={() => setRedondeoQuickOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Redondeo de precios</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
-              Múltiplo al que se redondean los precios al aplicar un aumento.
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
-              {[2, 5, 10, 20, 50, 100, 500, 1000].map(op => (
-                <Chip
-                  key={op}
-                  label={`$${op}`}
-                  size="small"
-                  variant={redondeoConfig?.valor === op ? 'filled' : 'outlined'}
-                  onClick={() => {
-                    saveRedondeoConfig(activeBizId, op, redondeoConfig?.mostrarModal ?? true);
-                    setRedondeoConfig(prev => ({ ...prev, valor: op }));
-                    onRedondeoChange?.(op);
-                    BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: op } }).catch(() => { });
-                    window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_precios', value: op } }));
-                  }}
-                  sx={{
-                    cursor: 'pointer',
-                    fontWeight: redondeoConfig?.valor === op ? 700 : 400,
-                    ...(redondeoConfig?.valor === op && { bgcolor: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }),
-                  }}
-                />
-              ))}
-              <Chip
-                key="none"
-                label="Sin redondeo"
-                size="small"
-                variant={!redondeoConfig?.valor ? 'filled' : 'outlined'}
-                onClick={() => {
-                  saveRedondeoConfig(activeBizId, null, redondeoConfig?.mostrarModal ?? true);
-                  setRedondeoConfig(prev => ({ ...prev, valor: null }));
-                  onRedondeoChange?.(null);
-                  BusinessesAPI.update(Number(activeBizId), { props: { redondeo_precios: null } }).catch(() => { });
-                  window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_precios', value: null } }));
-                }}
-                sx={{ cursor: 'pointer' }}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <input
-                type="checkbox"
-                id="redondeo-quick-no-mostrar"
-                checked={!(redondeoConfig?.mostrarModal ?? true)}
-                onChange={(e) => {
-                  const noMostrar = e.target.checked;
-                  saveRedondeoConfig(activeBizId, redondeoConfig?.valor ?? null, !noMostrar);
-                  setRedondeoConfig(prev => ({ ...prev, mostrarModal: !noMostrar }));
-                  try { BusinessesAPI.update(Number(activeBizId), { props: { redondeo_mostrar_modal: !noMostrar } }); } catch { }
-                  window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'redondeo_mostrar_modal', value: !noMostrar } }));
-                }}
-                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--color-primary)' }}
-              />
-              <label htmlFor="redondeo-quick-no-mostrar" style={{ fontSize: '0.78rem', cursor: 'pointer', color: '#555' }}>
-                No volver a mostrar el aviso de aumento
-              </label>
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ px: 2, pb: 2 }}>
-            <Button size="small" variant="contained" onClick={() => setRedondeoQuickOpen(false)}>Listo</Button>
-          </DialogActions>
-        </Dialog>
-      )}
 
       {bulkPctDlg && (
         <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>
