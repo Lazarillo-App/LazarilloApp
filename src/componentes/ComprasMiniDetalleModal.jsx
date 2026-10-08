@@ -387,12 +387,19 @@ export function ComprasDetalleContenido({
     return extraItems;
   }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId]);
 
-  // Si el negocio ya tiene sucursales definidas, "sin sucursal" no es una categoría real:
-  // en la práctica son compras duplicadas del mismo dato ya asignado a su sucursal real
-  // (mismo comprobante, misma fecha, mismo importe). Se descartan para no inflar el
-  // total ni mostrar un "Principal" que no corresponde.
+  // Si el negocio ya tiene sucursales definidas, "sin sucursal" no es una categoría real
+  // CUANDO hay duplicación real: mismo dato ya asignado a su sucursal aparte (mismo
+  // comprobante, misma fecha, mismo importe). Pero "el negocio tiene sucursales
+  // configuradas" no significa que CADA compra individual tenga una — un insumo cuyas
+  // compras nunca se etiquetaron con sucursal (branch_id siempre null) no tiene ningún
+  // duplicado que descartar; filtrar igual tiraba las 6 compras reales y el modal
+  // quedaba vacío aunque el backend las devolviera bien (bug real, no de red: `items`
+  // llegaba con datos, pero este filtro las vaciaba antes de llegar a la tabla). Ahora
+  // el descarte solo corre si en el MISMO lote hay al menos una fila que sí trae
+  // branch_id (ahí sí hay duplicación real que limpiar).
   const sortedItems = useMemo(() => {
-    const base = (hasSucursales || dynamicBranches.length > 0)
+    const hayFilasConSucursal = displayItems.some(it => it.branch_id != null);
+    const base = (hasSucursales || dynamicBranches.length > 0) && hayFilasConSucursal
       ? displayItems.filter(it => it.branch_id != null)
       : displayItems;
     return [...base].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
