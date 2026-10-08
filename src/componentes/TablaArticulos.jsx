@@ -1371,6 +1371,15 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
+  // Al cambiar de agrupación, arrancar siempre desde arriba — antes quedaba en el
+  // mismo scroll (nivel de píxeles) de la agrupación anterior, así que si estabas
+  // mirando el final de una lista larga y cambiabas a otra agrupación más corta,
+  // podías caer en cualquier lado (o directo al final/vacío) en vez de arriba de todo.
+  const agrupIdScroll = String(agrupacionSeleccionada?.id ?? agrupacionSeleccionada?.nombre ?? agrupacionSeleccionada?.name ?? '');
+  useEffect(() => {
+    listRef.current?.scrollToTop?.();
+  }, [agrupIdScroll]);
+
   const afterMutation = useCallback((removedIds) => {
     const ids = (removedIds || []).map(Number).filter(Number.isFinite);
     if (!ids.length) { refetchLocal(); return; }

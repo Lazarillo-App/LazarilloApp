@@ -125,9 +125,14 @@ const VirtualList = forwardRef(function VirtualList(
       }
       if (idx >= 0) doScrollToIndex(idx);
     };
+    const doScrollToTop = () => {
+      if (scrollRef.current) scrollRef.current.scrollTo({ top: 0, behavior: 'auto' });
+      setScrollTop(0);
+    };
     return {
       scrollToIndex: doScrollToIndex,
       scrollToId: doScrollToId,
+      scrollToTop: doScrollToTop,
     };
   }, [getRowId, rowHeight, height, isFixed, offsets, heights]);
 
