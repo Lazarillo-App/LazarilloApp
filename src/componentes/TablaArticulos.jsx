@@ -842,7 +842,7 @@ export default function TablaArticulos({
     }
   }, [onBulkManualSave, onPriceConfigSave, baseById, manuales, priceConfig, redondeoConfig]);
 
-  const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey, forzarModal = false) => {
+  const triggerBulkPct = useCallback((pct, ids, inputRef, blockKey) => {
     if (pct == null || !Number.isFinite(Number(pct)) || Number(pct) === 0) return;
     const pctNum = Number(pct);
 
@@ -852,15 +852,14 @@ export default function TablaArticulos({
         priceConfig.byArticle?.[key]?.precioManual != null;
     });
 
-    const necesitaConfigurarRedondeo = !redondeoConfig?.valor;
-    const necesitaConfirmarManuales = idsConNuevoPrecio.length > 0 && (redondeoConfig?.mostrarModal ?? true);
+    // Regla única, sin casos especiales por alcance: si "no volver a mostrar" está
+    // activo, el modal NO aparece — ni en agrupación ni en rubro, punto. Si está
+    // apagado (mostrarModal=true), aparece cuando hay algo real para decidir: el
+    // redondeo todavía sin configurar, o precios manuales que se van a pisar.
+    const mostrarAviso = redondeoConfig?.mostrarModal ?? true;
+    const hayAlgoQueConfirmar = !redondeoConfig?.valor || idsConNuevoPrecio.length > 0;
 
-    // Sin razón para modal → aplicar directo. EXCEPTO si forzarModal (agrupación: un
-    // alcance mucho más grande que rubro — ahí sí o sí hay algún precio manual en el
-    // medio casi siempre, por eso el modal "ya aparecía solo"; en agrupación, con todo
-    // configurado y sin precios manuales en esa agrupación puntual, nunca aparecía y no
-    // había forma de ver/cambiar el redondeo antes de aplicar a TODA la agrupación).
-    if (!forzarModal && !necesitaConfigurarRedondeo && !necesitaConfirmarManuales) {
+    if (!mostrarAviso || !hayAlgoQueConfirmar) {
       executeBulkPct(pctNum, ids, 'todos');
       if (blockKey) {
         setBlockManuales(prev => { const n = { ...prev }; delete n[blockKey]; return n; });
@@ -877,7 +876,6 @@ export default function TablaArticulos({
       idsConNuevoPrecio,
       inputRef,
       blockKey,
-      motivoConfigRedondeo: necesitaConfigurarRedondeo,
     });
   }, [manuales, priceConfig, executeBulkPct, redondeoConfig]);
 
@@ -1670,10 +1668,7 @@ export default function TablaArticulos({
                         setFocusedPctKey(k => k === bkManual ? null : k);
                         const pct = e.target.value === '' ? null : Number(e.target.value);
                         if (pct == null) return;
-                        // Agrupación es un alcance mucho más grande que rubro — forzar que
-                        // siempre pase por el modal de confirmación (ahí se ve/cambia el
-                        // redondeo), no solo cuando hay algo puntual que pisar.
-                        triggerBulkPct(pct, row.ids, { current: e.target }, bkManual, true);
+                        triggerBulkPct(pct, row.ids, { current: e.target }, bkManual);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                       style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
