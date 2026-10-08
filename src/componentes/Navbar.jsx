@@ -216,10 +216,16 @@ export default function Navbar() {
           boxShadow: 'none',
         }}
       >
-        {/* Sin maxWidth: con "xl" (1536px) el contenido quedaba centrado con
-            franjas vacías a los costados en pantallas grandes/ultrawide,
-            mientras el resto de la app ocupa el ancho completo. */}
-        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
+        {/* Sin el maxWidth="xl" (1536px) de MUI: con eso el contenido quedaba
+            centrado con franjas vacías a los costados en pantallas grandes,
+            mientras el resto de la app ocupa el ancho completo. Pero del todo
+            sin tope (maxWidth={false} a secas) el logo y los links quedaban
+            pegados a la izquierda con un hueco creciente antes del selector de
+            negocio/avatar en pantallas grandes — mismo problema, en el medio
+            en vez de en los costados. 1800px cubre laptops/monitores comunes
+            sin ningún recorte; recién en ultrawide/4K+ aparece un margen, ahí
+            sí simétrico en los dos costados (no un hueco raro de un solo lado). */}
+        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
             {/* Logo */}
             <Box
