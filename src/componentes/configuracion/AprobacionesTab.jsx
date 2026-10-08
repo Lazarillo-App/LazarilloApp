@@ -136,6 +136,17 @@ function ProposalCard({ proposal, onDecided }) {
   const [revisionComment, setRevisionComment] = useState('');
 
   const esNueva = !proposal.payload_before;
+  // "Marcar a revisión" (desde Sectores o desde el header de una receta) crea la
+  // propuesta con payload_after = {} a propósito — es solo un flag de "revisar
+  // esto", todavía sin ningún cambio cargado. Aprobar ESO (antes posible, bug real
+  // que borró recetas: ver fix en approveProposal) no tiene nada que aplicar. Date
+  // de que distinguís por la ausencia de `items`, no por estar vacío (una propuesta
+  // real puede guardar una receta sin ingredientes a propósito).
+  const sinContenido = proposal.payload_after?.tipo !== 'insumo_nuevo' && (
+    !proposal.payload_after
+    || typeof proposal.payload_after !== 'object'
+    || !Object.prototype.hasOwnProperty.call(proposal.payload_after, 'items')
+  );
   const nombreDestino = proposal.payload_after?.nombre || proposal.receta_nombre_actual || `#${proposal.article_id || proposal.insumo_id}`;
   const proponente = proposal.created_by_name || proposal.created_by_email || 'Alguien del equipo';
   const inicial = proponente.trim().charAt(0).toUpperCase() || '?';
@@ -198,9 +209,11 @@ function ProposalCard({ proposal, onDecided }) {
           </Box>
         </Stack>
         <Stack direction="row" spacing={1} flexShrink={0}>
-          <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
-            Aprobar
-          </Button>
+          {!sinContenido && (
+            <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
+              Aprobar
+            </Button>
+          )}
           <Button size="small" variant="outlined" startIcon={<EditNoteIcon />} disabled={busy} onClick={() => setRevisionOpen(true)}>
             A revisión
           </Button>
@@ -210,7 +223,16 @@ function ProposalCard({ proposal, onDecided }) {
         </Stack>
       </Stack>
 
-      <ProposalDiff proposal={proposal} />
+      {sinContenido ? (
+        <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Todavía no tiene ningún cambio cargado — solo quedó marcada para que alguien la revise.
+            No hay nada que aprobar hasta que esa persona abra la receta, cargue el cambio y lo guarde.
+          </Typography>
+        </Box>
+      ) : (
+        <ProposalDiff proposal={proposal} />
+      )}
 
       {proposal.concurrentes > 1 && (
         <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#fff7e6', border: '1px solid #ffe2a8', borderRadius: 1.5 }}>

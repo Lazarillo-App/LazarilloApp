@@ -19,7 +19,7 @@ export async function obtenerPropuesta(businessId, id) {
 // POST /api/businesses/:businessId/receta-proposals/:id/approve
 export async function aprobarPropuesta(businessId, id, comment = '') {
   const resp = await httpBiz(`/receta-proposals/${id}/approve`, { method: 'POST', body: { comment } }, businessId);
-  if (!resp?.ok) throw new Error(resp?.error || 'Error aprobando la propuesta');
+  if (!resp?.ok) throw new Error(resp?.message || resp?.error || 'Error aprobando la propuesta');
   return resp;
 }
 
