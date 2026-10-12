@@ -2962,8 +2962,7 @@ export default function RecetaModal({
                       startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
                       onClick={addItem}
                       size="small"
-                      disabled={insumosLoading || !!(propuestaAbierta && propuestaAbierta.tieneContenido)}
-                      title={(propuestaAbierta && propuestaAbierta.tieneContenido) ? 'Hay cambios pendientes de aprobación: esperá a que se resuelvan' : undefined}
+                      disabled={insumosLoading}
                       variant="outlined"
                       sx={{ borderColor: PRIMARY, color: PRIMARY }}
                     >
