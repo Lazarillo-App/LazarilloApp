@@ -250,6 +250,11 @@ export default function ItemRow({
       setCrearInsumoOpen(true);
       return;
     }
+    // Fila recién agregada (AGREGAR INGREDIENTE): al elegir el insumo, desplegar
+    // de una el panel de avanzadas (Merma/Pedido/Tipo costo) de ESTA fila — antes
+    // había que abrirlo a mano cada vez. Las filas ya existentes (edición) no se
+    // tocan, solo la que se está agregando ahora.
+    if (wasAutoOpened.current) setShowAdvanced(true);
     // ── Modo artículo (promo): el "ins" es en realidad un artículo ──
     if (ins._tipo === 'articulo') {
       const costoArt = Number(ins.costoTotal) || Number(ins.precio) || 0;  // costo de producción: receta si tiene, sino precio

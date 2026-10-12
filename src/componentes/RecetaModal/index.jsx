@@ -500,9 +500,43 @@ export default function RecetaModal({
     setConfirmRompeRotos(null);
   }, []);
   const [tabResuelto, setTabResuelto] = useState(true);
+  // Lee el tab ACTUAL sin ser dependencia del efecto de abajo (si lo fuera, un
+  // click manual en una pestaña re-disparía esta resolución y la pisaría).
+  const tabRef = useRef(tab);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+  // true mientras no se resolvió ningún insumo todavía en esta apertura del
+  // modal — una vez resuelto el primero, cualquier cambio de artículo que
+  // llegue es navegación (flechas del header), no una apertura nueva.
+  const primeraResolucionRef = useRef(true);
   useEffect(() => {
-    if (!open) { tabResueltoParaRef.current = null; return; }
+    if (!open) { tabResueltoParaRef.current = null; primeraResolucionRef.current = true; return; }
     if (tabResueltoParaRef.current === articulo?.id) return; // ya resuelto para este artículo
+
+    // Navegando con las flechas del header: nunca volver a mostrar el selector.
+    // Merma/Equivalencias/Uso son "pegajosas" — se mantiene la misma pestaña sin
+    // importar el insumo siguiente; Receta/Compras siguen resolviéndose en
+    // cascada según si el insumo siguiente tiene receta o compras cargadas.
+    if (modoInsumo && !primeraResolucionRef.current) {
+      setEntradaElegida(true);
+      const tabActual = tabRef.current;
+      if (tabActual === 'receta' || tabActual === 'compras') {
+        const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+        if (insData) {
+          setTab(resolverTabRecetaCompras(insData));
+          tabResueltoParaRef.current = articulo?.id;
+          setTabResuelto(true);
+          setRecetaConfirmada(false);
+        } else {
+          setTabResuelto(false); // todavía no sabemos a qué tab ir — no pintar nada
+        }
+      } else {
+        tabResueltoParaRef.current = articulo?.id;
+        setTabResuelto(true);
+        setRecetaConfirmada(false);
+      }
+      return;
+    }
+
     setEntradaElegida(!modoInsumo || saltarSelector);
     // Buscador (lupa) del header: se abrió desde una pestaña puntual (ej. Merma) → se
     // mantiene esa misma pestaña en el insumo destino, en vez de re-adivinar Receta/Compras.
@@ -510,6 +544,7 @@ export default function RecetaModal({
     if (modoInsumo && saltarSelector && TABS_VALIDOS.includes(initialTab)) {
       setTab(initialTab);
       tabResueltoParaRef.current = articulo?.id;
+      primeraResolucionRef.current = false;
       setTabResuelto(true);
       setRecetaConfirmada(false);
       return;
@@ -523,12 +558,14 @@ export default function RecetaModal({
       if (insData) {
         setTab(resolverTabRecetaCompras(insData));
         tabResueltoParaRef.current = articulo?.id;
+        primeraResolucionRef.current = false;
         setTabResuelto(true);
       } else {
         setTabResuelto(false); // todavía no sabemos a qué tab ir — no pintar nada
       }
     } else {
       tabResueltoParaRef.current = articulo?.id;
+      primeraResolucionRef.current = false;
       setTabResuelto(true);
     }
     setRecetaConfirmada(false);
