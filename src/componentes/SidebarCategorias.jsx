@@ -129,6 +129,7 @@ function SidebarCategorias({
   onRenameGroup,
   metaById,
   getAmountForId,
+  soloConVentas = false,
   onMutateGroups,
   onRefetch,
   notify,
@@ -344,18 +345,25 @@ function SidebarCategorias({
     return false;
   }, [activeIds, categoriasSafe]);
 
+  // El "ojito" (soloConVentas, en TablaArticulos) filtra filas de la tabla —
+  // sin esto, un subrubro que se quedaba sin ningún artículo con ventas seguía
+  // apareciendo entero acá (el sidebar no se enteraba del filtro).
+  const pasaFiltroArticulo = useCallback((a) => {
+    const id = safeId(a);
+    if (activeIds && (id == null || !activeIds.has(id))) return false;
+    if (soloConVentas && resolveArticuloMonto(a, getAmountForId, metaById) <= 0) return false;
+    return true;
+  }, [activeIds, soloConVentas, getAmountForId, metaById]);
+
   const treeBySubrubro = useMemo(() => {
-    if (!activeIds) return categoriasSafe;
-    if (!activeIdsIntersectsTree) return [];
+    if (!activeIds && !soloConVentas) return categoriasSafe;
+    if (activeIds && !activeIdsIntersectsTree) return [];
     const pruned = categoriasSafe
       .map((sub) => {
         const cats = Array.isArray(sub?.categorias) ? sub.categorias : [];
         const keepCategorias = cats
           .map((c) => {
-            const arts = (Array.isArray(c?.articulos) ? c.articulos : []).filter((a) => {
-              const id = safeId(a);
-              return id != null && activeIds.has(id);
-            });
+            const arts = (Array.isArray(c?.articulos) ? c.articulos : []).filter(pasaFiltroArticulo);
             return { ...c, articulos: arts };
           })
           .filter((c) => (Array.isArray(c.articulos) ? c.articulos.length : 0) > 0);
@@ -378,7 +386,7 @@ function SidebarCategorias({
       return String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true });
     });
     return withVentas;
-  }, [categoriasSafe, activeIds, getAmountForId, metaById]);
+  }, [categoriasSafe, activeIds, activeIdsIntersectsTree, soloConVentas, pasaFiltroArticulo, getAmountForId, metaById]);
 
   const treeByCategoria = useMemo(() => {
     const catMap = new Map();
@@ -392,14 +400,7 @@ function SidebarCategorias({
     }
     const out = [];
     for (const [catName, arts] of catMap.entries()) {
-      const filtered = !activeIds
-        ? arts
-        : !activeIdsIntersectsTree
-          ? []
-          : arts.filter((a) => {
-            const id = safeId(a);
-            return id != null && activeIds.has(id);
-          });
+      let filtered = (activeIds && !activeIdsIntersectsTree) ? [] : arts.filter(pasaFiltroArticulo);
       if (filtered.length > 0) {
         let ventasMonto = 0;
         for (const art of filtered) ventasMonto += resolveArticuloMonto(art, getAmountForId, metaById);
@@ -411,7 +412,7 @@ function SidebarCategorias({
       return String(a.subrubro).localeCompare(String(b.subrubro), 'es', { sensitivity: 'base', numeric: true });
     });
     return out;
-  }, [categoriasSafe, activeIds, getAmountForId, metaById]);
+  }, [categoriasSafe, activeIds, activeIdsIntersectsTree, pasaFiltroArticulo, getAmountForId, metaById]);
 
   const todoVacio = agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada) &&
     !(activeIds instanceof Set && activeIds.size > 0);

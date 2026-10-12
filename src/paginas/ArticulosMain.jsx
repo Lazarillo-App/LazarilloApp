@@ -2774,6 +2774,7 @@ export default function ArticulosMain(props) {
             staff={!!isStaff}
             businessId={activeBizId}
             categorias={categorias}
+            soloConVentas={soloConVentas}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}
             agrupaciones={agrupacionesOrdenadas}
