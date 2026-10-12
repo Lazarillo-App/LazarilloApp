@@ -587,37 +587,48 @@ export default function ItemRow({
                       : `/${unidadStr}`;
                   })();
 
+                  const sinCompras = !elaborado && !tienePrecio;
+
                   const titleStr = (() => {
+                    if (superaPrecioVenta) return `⚠ Este costo supera el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad`;
                     if (elaborado) {
                       return tienePrecio
                         ? `Costo de receta elaborada: $${fmt(costoEnUnidadElegida)}/${unidadStr}`
                         : `Unidad base: ${unidadStr} (la receta elaborada aún no tiene costo calculado)`;
                     }
-                    return tienePrecio
-                      ? `Precio de DB: $${fmt(item.precioRefDB)}/${unidadStr} (fijo)`
-                      : `Unidad base: ${unidadStr} (insumo sin compras registradas)`;
+                    if (sinCompras) {
+                      return `⚠ Este insumo no tiene compras cargadas — el precio usado es una referencia manual, no un costo real.`;
+                    }
+                    return `Precio de DB: $${fmt(item.precioRefDB)}/${unidadStr} (fijo)`;
                   })();
 
                   return (
-                    <Chip
-                      label={label}
-                      size="small"
-                      sx={{
-                        height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
-                        bgcolor: superaPrecioVenta
-                          ? '#fef2f2'
-                          : elaborado
-                            ? '#f0fdf4'
-                            : (tienePrecio ? `${PRIMARY}18` : '#f1f5f9'),
-                        color: superaPrecioVenta
-                          ? '#ef4444'
-                          : elaborado
-                            ? '#16a34a'
-                            : (tienePrecio ? PRIMARY : '#64748b'),
-                        border: 'none',
-                      }}
-                      title={superaPrecioVenta ? `⚠ Este costo supera el precio de venta ($${fmt(precioVenta)}) — revisar cantidad/unidad` : titleStr}
-                    />
+                    <Tooltip title={titleStr} arrow placement="top">
+                      <Chip
+                        label={label}
+                        size="small"
+                        icon={sinCompras ? <WarningAmberIcon sx={{ fontSize: '0.8rem !important', color: '#d97706 !important' }} /> : undefined}
+                        sx={{
+                          height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
+                          bgcolor: superaPrecioVenta
+                            ? '#fef2f2'
+                            : elaborado
+                              ? '#f0fdf4'
+                              : sinCompras
+                                ? '#fffbeb'
+                                : (tienePrecio ? `${PRIMARY}18` : '#f1f5f9'),
+                          color: superaPrecioVenta
+                            ? '#ef4444'
+                            : elaborado
+                              ? '#16a34a'
+                              : sinCompras
+                                ? '#b45309'
+                                : (tienePrecio ? PRIMARY : '#64748b'),
+                          border: 'none',
+                          '& .MuiChip-icon': { ml: '2px' },
+                        }}
+                      />
+                    </Tooltip>
                   );
                 })()}
 
