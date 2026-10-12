@@ -1336,7 +1336,11 @@ export default function TablaArticulos({
 
   useEffect(() => {
     const id = Number(jumpToArticleId);
-    if (!Number.isFinite(id) || id <= 0) return;
+    // Los artículos manuales usan id negativo a propósito (esManual = id < 0,
+    // ver ArticuloAccionesMenu.jsx) — antes este guard los descartaba acá mismo
+    // (id <= 0), por eso el buscador los encontraba y seleccionaba la agrupación
+    // bien, pero el scroll nunca se disparaba.
+    if (!Number.isFinite(id) || id === 0) return;
     if (lastJumpedIdRef.current === id) return;
 
     let cancelled = false;

@@ -1908,7 +1908,9 @@ export default function ArticulosMain(props) {
 
   useEffect(() => {
     const id = Number(pendingJumpRef.current);
-    if (!Number.isFinite(id) || id <= 0) return;
+    // id !== 0 — acepta negativos (artículos manuales), mismo criterio que
+    // visibleIds/focusArticle más arriba.
+    if (!Number.isFinite(id) || id === 0) return;
 
     // timeoutId se reasigna en cada tick — el cleanup de abajo siempre cancela
     // el que esté pendiente en ESE momento (antes solo cancelaba el primero,
