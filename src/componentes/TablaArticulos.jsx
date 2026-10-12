@@ -1974,7 +1974,7 @@ export default function TablaArticulos({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
-            {selectionMode !== 'link' && isLinked && (
+            {!isStaff && selectionMode !== 'link' && isLinked && (
               <>
                 {linkGroupsList.filter(g => g.linkType === 'precio').map(g => (
                   <LinkChainIcon
