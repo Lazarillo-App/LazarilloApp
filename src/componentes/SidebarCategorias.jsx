@@ -240,6 +240,26 @@ function SidebarCategorias({
     // favorita / la primera), igual que los otros dos efectos de autoselección
     // que ya tienen este mismo guard en ArticulosMain.jsx.
     if (activeListId) return;
+    if (staff) {
+      // Sin selector para elegir otra cosa (está oculto para Staff) — la
+      // autoselección va siempre a "Todo" (todos los rubros permitidos de su
+      // sector, directo), nunca se queda pegada en una agrupación puntual vieja
+      // ni en la favorita del owner.
+      if (agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada)) return;
+      const todoIdNum = Number(todoGroupId);
+      const todoOpt = Number.isFinite(todoIdNum)
+        ? (agrupaciones || []).find((g) => Number(g?.id) === todoIdNum)
+        : null;
+      const fallback = todoOpt || (Array.isArray(opcionesSelect) ? opcionesSelect[0] : null) || null;
+      if (fallback) {
+        setAgrupacionSeleccionada?.(fallback);
+        setCategoriaSeleccionada?.(null);
+        setFiltroBusqueda?.('');
+        setBusqueda?.('');
+        onManualPick?.();
+      }
+      return;
+    }
     const opts = Array.isArray(opcionesSelect) ? opcionesSelect : [];
     const currentId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
     const existsInRaw = currentId != null &&
@@ -272,7 +292,7 @@ function SidebarCategorias({
     onManualPick?.();
   }, [opcionesSelect, agrupaciones, agrupacionSeleccionada, setAgrupacionSeleccionada,
     isMainDivision, todoGroupId, favoriteGroupId, setCategoriaSeleccionada,
-    setFiltroBusqueda, setBusqueda, onManualPick, activeListId]);
+    setFiltroBusqueda, setBusqueda, onManualPick, activeListId, staff]);
 
   useEffect(() => { setCategoriaSeleccionada?.(null); }, [divisionNum]);
 
@@ -534,8 +554,12 @@ function SidebarCategorias({
         </div>
         {sidebarMode === 'pendientes' && <PendientesPanel businessId={businessId} />}
 
-        {/* ── Select de agrupaciones (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && (
+        {/* ── Select de agrupaciones (solo en modo agrupaciones) ──
+            Para Staff no se muestra: elegir agrupación primero era un paso de más, y
+            encima podía mostrar agrupaciones sin ningún producto visible para su
+            sector. Un efecto más abajo lo deja siempre en "Todo" (todos los rubros
+            permitidos de su sector, directo, sin ese paso). */}
+        {sidebarMode === 'agrupaciones' && !staff && (
           <FormControl size="small" fullWidth sx={{ mb: 1 }}>
             <InputLabel>Agrupaciones</InputLabel>
             <Select
