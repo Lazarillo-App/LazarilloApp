@@ -80,12 +80,21 @@ function podarArbol(treeGlobal, idsPermitidos) {
 const esAgrupacionFlotante = (nombre) => /^Sin Agrupac|^Sin Agrupar|^Discontinuados|^Descontinuados/i.test(nombre || '');
 
 /* ─── Estado de selección: Map<agrupacionId, 'all' | Map<rubro, 'all' | Set<subrubro>>> ─── */
-function toggleAgrupacion(selected, agId) {
+// agId SIEMPRE se normaliza a Number acá — el id de agrupación vuelve de la DB a
+// veces como number y a veces como string (según el tipo de columna/driver), y un
+// sector guardado y recargado podía traer agrupacionId como string mientras
+// treesByAgrupacion está indexado por number: la Map nunca encontraba el match,
+// así que al editar el sector el árbol se veía vacío (aunque el scope guardado
+// fuera correcto — por eso el conteo de rubros, que no depende del árbol, sí daba
+// bien, pero el de artículos y los checks del árbol, que sí lo necesitan, no).
+function toggleAgrupacion(selected, agIdRaw) {
+  const agId = Number(agIdRaw);
   const next = new Map(selected);
   if (next.get(agId) === 'all') next.delete(agId); else next.set(agId, 'all');
   return next;
 }
-function toggleRubro(selected, agId, rubro, agTree) {
+function toggleRubro(selected, agIdRaw, rubro, agTree) {
+  const agId = Number(agIdRaw);
   const next = new Map(selected);
   const current = next.get(agId);
   const rubroMap = current === 'all'
@@ -100,7 +109,8 @@ function toggleRubro(selected, agId, rubro, agTree) {
   else next.set(agId, rubroMap);
   return next;
 }
-function toggleSubrubro(selected, agId, rubro, subrubro, agTree) {
+function toggleSubrubro(selected, agIdRaw, rubro, subrubro, agTree) {
+  const agId = Number(agIdRaw);
   const next = new Map(selected);
   const current = next.get(agId);
   const rubroMap = current === 'all'
@@ -139,7 +149,7 @@ function selectedToScope(selected) {
 function scopeToSelected(scope) {
   const selected = new Map();
   for (const item of scope || []) {
-    const agId = item.agrupacionId;
+    const agId = Number(item.agrupacionId);
     if (item.tipo === 'agrupacion') { selected.set(agId, 'all'); continue; }
     let m = selected.get(agId);
     if (!(m instanceof Map)) m = new Map();
@@ -229,7 +239,7 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrup
 
   const abierta = (!!q && tieneCoincidencias) || abiertaManual;
 
-  const val = selected.get(agrupacion.id);
+  const val = selected.get(Number(agrupacion.id));
   const checked = val === 'all';
   const indeterminate = val instanceof Map && val.size > 0;
   const articleCount = agTree.reduce((n, r) => n + r.categorias.reduce((m, c) => m + c.articulos.length, 0), 0);
@@ -401,12 +411,12 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
               <ArbolAgrupacion
                 key={ag.id}
                 agrupacion={ag}
-                agTree={treesByAgrupacion.get(ag.id) || []}
+                agTree={treesByAgrupacion.get(Number(ag.id)) || []}
                 selected={selected}
                 busqueda={busqueda}
                 onToggleAgrupacion={(agId) => setSelected((s) => toggleAgrupacion(s, agId))}
-                onToggleRubro={(agId, rubro) => setSelected((s) => toggleRubro(s, agId, rubro, treesByAgrupacion.get(agId) || []))}
-                onToggleSubrubro={(agId, rubro, sub) => setSelected((s) => toggleSubrubro(s, agId, rubro, sub, treesByAgrupacion.get(agId) || []))}
+                onToggleRubro={(agId, rubro) => setSelected((s) => toggleRubro(s, agId, rubro, treesByAgrupacion.get(Number(agId)) || []))}
+                onToggleSubrubro={(agId, rubro, sub) => setSelected((s) => toggleSubrubro(s, agId, rubro, sub, treesByAgrupacion.get(Number(agId)) || []))}
                 sueltos={sueltos}
                 onToggleArticuloSuelto={(a) => setSueltos((l) => (
                   l.some((x) => x.id === a.id) ? l.filter((x) => x.id !== a.id) : [...l, { id: a.id, nombre: a.nombre }]
@@ -581,7 +591,7 @@ export default function SectoresTab({ businessId }) {
   const treesByAgrupacion = React.useMemo(() => {
     const map = new Map();
     for (const ag of agrupaciones) {
-      map.set(ag.id, podarArbol(treeGlobal || [], idsDeAgrupacion(ag)));
+      map.set(Number(ag.id), podarArbol(treeGlobal || [], idsDeAgrupacion(ag)));
     }
     return map;
   }, [agrupaciones, treeGlobal]);
