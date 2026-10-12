@@ -794,10 +794,12 @@ export const insumoUsoList = async (insumoId, bizId) => {
   return data;
 };
 
-// Reasigna la merma de UN ítem puntual (una fila de la pestaña Uso), sin reabrir la receta.
-export const insumoUsoCambiarMerma = async (insumoId, itemId, mermaId, bizId) => {
+// Reasigna la(s) merma(s) de UN ítem puntual (una fila de la pestaña Uso), sin
+// reabrir la receta — puede ser más de una combinada (mismo criterio que el
+// multi-select de "avanzadas" en el editor). mermaIds=[] limpia la selección.
+export const insumoUsoCambiarMerma = async (insumoId, itemId, mermaIds, bizId) => {
   const res = await fetch(`${BASE}/insumos/${insumoId}/uso/${itemId}/merma`, {
-    method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify({ mermaId }),
+    method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify({ mermaIds: Array.isArray(mermaIds) ? mermaIds : [] }),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al cambiar la merma');
