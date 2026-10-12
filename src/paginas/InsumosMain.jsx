@@ -947,10 +947,20 @@ export default function InsumosMain() {
     }
 
     // Filtrar por vista (elaborados / no-elaborados)
-    // Prioridad: es_elaborado del insumo (campo individual).
-    // Fallback: es_elaborador del rubro (cuando el insumo no tiene el campo propio).
+    // Prioridad 1: ¿tiene una receta propia ACTIVA? Mismo criterio que ya usa el
+    // backend como "única fuente de verdad" en su propio filtro ?elaborados=true
+    // (receta_updated_at viene no-nulo solo cuando existe esa receta activa — ver
+    // insumosController.js). Antes esto dependía primero de es_elaborado, un flag
+    // que se puede desincronizar (ej. nunca se tocó en datos viejos), y si no
+    // estaba seteado caía en el rubro donde estuviera archivado el insumo — por
+    // eso un elaborado con receta real de verdad no aparecía para Staff salvo que
+    // ADEMÁS lo archivaran en un rubro puntual marcado como "elaborador" (ej.
+    // "mercadería"). Un elaborado tiene que verse SIEMPRE, sin importar el rubro.
+    // Prioridad 2: es_elaborado del insumo (campo individual, cuando no hay receta).
+    // Fallback: es_elaborador del rubro (cuando tampoco tiene el campo propio).
     if (!isDiscView) {
       base = base.filter((ins) => {
+        if (ins?.receta_updated_at != null) return effectiveVista === 'elaborados';
         if (ins?.es_elaborado === true) return effectiveVista === 'elaborados';
         if (ins?.es_elaborado === false) return effectiveVista === 'no-elaborados';
         const info = resolveRubroInfo(ins);
