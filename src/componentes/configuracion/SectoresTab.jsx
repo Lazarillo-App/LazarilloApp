@@ -198,7 +198,8 @@ function coincidenciasBusqueda(agTree, q) {
 }
 
 /* ─── Árbol tri-state de un sector ─── */
-function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrupacion, onToggleRubro, onToggleSubrubro }) {
+function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrupacion, onToggleRubro, onToggleSubrubro, sueltos, onToggleArticuloSuelto }) {
+  const sueltosIds = React.useMemo(() => new Set((sueltos || []).map((s) => Number(s.id))), [sueltos]);
   const [abiertaManual, setAbiertaManual] = React.useState(false);
   // Qué rubros tienen desplegada su lista de artículos (solo visual)
   const [rubrosVer, setRubrosVer] = React.useState({});
@@ -251,11 +252,19 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrup
                   </IconButton>
                 </Stack>
                 <Collapse in={!!rubrosVer[r.subrubro]}>
-                  <Box sx={{ pl: 5, pb: 0.5 }}>
+                  <Box sx={{ pl: 2.5, pb: 0.5 }}>
+                    {/* Mismo orden en el que ya vienen agrupados por categoría/subrubro —
+                        no se reordena nada, solo se agrega el check para sumarlos como
+                        "artículo suelto" sin tener que volver a buscarlos arriba. */}
                     {r.categorias.map((c) => c.articulos.map((a) => (
-                      <Typography key={a.id} sx={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.6 }}>
-                        {a.nombre} <span style={{ color: '#999' }}>· {c.categoria}</span>
-                      </Typography>
+                      <Stack key={a.id} direction="row" alignItems="center" sx={{ py: 0.1 }}>
+                        <Checkbox size="small" checked={sueltosIds.has(Number(a.id))}
+                          onChange={() => onToggleArticuloSuelto?.({ id: Number(a.id), nombre: a.nombre })}
+                          sx={{ p: 0.4, mr: 0.5 }} />
+                        <Typography sx={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.6 }}>
+                          {a.nombre} <span style={{ color: '#999' }}>· {c.categoria}</span>
+                        </Typography>
+                      </Stack>
                     )))}
                   </Box>
                 </Collapse>
@@ -398,6 +407,10 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
                 onToggleAgrupacion={(agId) => setSelected((s) => toggleAgrupacion(s, agId))}
                 onToggleRubro={(agId, rubro) => setSelected((s) => toggleRubro(s, agId, rubro, treesByAgrupacion.get(agId) || []))}
                 onToggleSubrubro={(agId, rubro, sub) => setSelected((s) => toggleSubrubro(s, agId, rubro, sub, treesByAgrupacion.get(agId) || []))}
+                sueltos={sueltos}
+                onToggleArticuloSuelto={(a) => setSueltos((l) => (
+                  l.some((x) => x.id === a.id) ? l.filter((x) => x.id !== a.id) : [...l, { id: a.id, nombre: a.nombre }]
+                ))}
               />
             ))}
           </Box>
