@@ -190,8 +190,8 @@ export default function InsumosMain() {
     });
   }, []);
 
-  const handleOpenRecetaElaborado = useCallback((insumo) => {
-    setRecetaInsumoModal(insumo);
+  const handleOpenRecetaElaborado = useCallback((insumo, opts = {}) => {
+    setRecetaInsumoModal({ ...insumo, ...opts });
   }, []);
 
   useEffect(() => {
@@ -977,10 +977,22 @@ export default function InsumosMain() {
     return base;
   }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, effectiveVista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
 
+  // El "ojito" (soloConCompras, solo tiene sentido en No elaborados) filtra
+  // filas en la tabla — antes el árbol de rubros del sidebar no se enteraba,
+  // así que un rubro que se quedaba sin ningún insumo con compras seguía
+  // apareciendo entero (con su conteo completo, ignorando el filtro).
+  const rubrosTreeBase = useMemo(() => {
+    if (!(soloConCompras && effectiveVista !== 'elaborados')) return filteredBase;
+    return filteredBase.filter((insumo) => {
+      const c = comprasMap.get(Number(insumo.id));
+      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
+    });
+  }, [filteredBase, soloConCompras, effectiveVista, comprasMap]);
+
   const rubrosTree = useMemo(() => {
-    if (!filteredBase.length) return [];
+    if (!rubrosTreeBase.length) return [];
     const map = new Map();
-    filteredBase.forEach((insumo) => {
+    rubrosTreeBase.forEach((insumo) => {
       let rubroNombre, rubroCodigo, esElaborador;
 
       if (rubrosMap.size > 0) {
@@ -1002,7 +1014,7 @@ export default function InsumosMain() {
       map.get(rubroNombre).insumos.push(insumo);
     });
     return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-  }, [filteredBase, rubrosMap, resolveRubroInfo]);
+  }, [rubrosTreeBase, rubrosMap, resolveRubroInfo]);
 
   const tableRows = useMemo(() => {
     const base = filteredBase || [];
@@ -1038,7 +1050,13 @@ export default function InsumosMain() {
     const idx = tableRowsFiltrados.findIndex((r) => Number(r.id) === Number(recetaInsumoModal?.id));
     if (idx === -1) return;
     const next = tableRowsFiltrados[dir === 'prev' ? idx - 1 : idx + 1];
-    if (next) setRecetaInsumoModal(next);
+    // Preservar la pestaña forzada (ej. "uso") al navegar con las flechas del
+    // modal — sin esto, pasar al siguiente insumo volvía a la cascada Receta/Compras.
+    if (next) setRecetaInsumoModal({
+      ...next,
+      initialTab: recetaInsumoModal?.initialTab || null,
+      saltarSelector: recetaInsumoModal?.saltarSelector || false,
+    });
   }, [tableRowsFiltrados, recetaInsumoModal]);
 
 
@@ -1820,7 +1838,8 @@ export default function InsumosMain() {
           open={!!recetaInsumoModal}
           onClose={() => setRecetaInsumoModal(null)}
           modoInsumo={true}
-          saltarSelector={!!isStaff}
+          saltarSelector={!!isStaff || !!recetaInsumoModal.saltarSelector}
+          initialTab={recetaInsumoModal.initialTab || null}
           onNavigate={navegarRecetaInsumo}
           canNavigate={navRecetaInsumo}
           articulo={{

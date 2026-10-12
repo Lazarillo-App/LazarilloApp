@@ -804,6 +804,16 @@ export const insumoUsoCambiarMerma = async (insumoId, itemId, mermaId, bizId) =>
   return data;
 };
 
+// Resumen liviano para el tooltip de la columna "Uso": top N recetas que usan
+// este insumo, ordenadas por venta del artículo (las de un elaborado sin venta
+// propia quedan al final). No reemplaza la pestaña "Uso" completa.
+export const insumoUsoResumen = async (insumoId, bizId, { limit = 5 } = {}) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/uso-resumen?limit=${limit}`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+  return data;
+};
+
 export const insumoGet = async (id, bizId) => {
   const res = await fetch(`${BASE}/insumos/${id}`, { headers: authHeaders(bizId) });
   const data = await res.json().catch(() => null);

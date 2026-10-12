@@ -16,6 +16,8 @@ import {
 } from "@mui/material";
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { useConfig } from '@/context/ConfigContext';
+import UsoInsumoCell from './UsoInsumoCell';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -265,6 +267,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   onToggleInsumo,
 }, ref) {
   const isElaborados = vista === "elaborados";
+  const { desperdicioGlobalPct } = useConfig();
   const listRef = useRef(null);
   const [rubros, setRubros] = useState([]);
 
@@ -379,12 +382,12 @@ const InsumosTable = forwardRef(function InsumosTable({
   // Columnas fijas (no se mueven): Código, Nombre, Unidad, Precio, [Branches dinámicas], Acciones
   const REORDERABLE_COLS_NO_ELAB = [
     { id: 'desperdicio', label: '% desperdicio default', width: '.7fr', sortKey: 'desperdicio' },
-    { id: 'enRecetas', label: 'Existe en Recetas', width: '.7fr', sortKey: 'enRecetas' },
+    { id: 'enRecetas', label: 'Uso', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.7fr', sortKey: 'total' },
     { id: 'compras', label: 'Compras', width: '.65fr', sortKey: 'total_compras' },
   ];
   const REORDERABLE_COLS_ELAB = [
-    { id: 'enRecetas', label: 'Existe en Recetas', width: '.7fr', sortKey: 'enRecetas' },
+    { id: 'enRecetas', label: 'Uso', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.6fr', sortKey: 'total' },
     { id: 'vencimiento', label: 'Vencimiento', width: '.6fr', sortKey: null },
     { id: 'fecha', label: 'Fecha', width: '.65fr', sortKey: 'fecha' },
@@ -523,13 +526,16 @@ const InsumosTable = forwardRef(function InsumosTable({
       case "unidades":
         return r.total_unidades_periodo ?? r.unidades_compradas ?? r.total_unidades ?? null;
       case "gastos": {
-        // Precio con merma default: precio × (1 + override de desperdicio del insumo).
-        // Solo si el insumo tiene override propio; si no, null → rayita (no repetir el costo).
+        // Precio con merma default: precio × (1 + % de desperdicio). Usa el
+        // override propio del insumo si tiene uno cargado; si no, cae al
+        // desperdicio global de Configuración > Insumos (mismo valor que ya
+        // se usa como fallback en el cálculo de costo de recetas).
         const override = num(r.desperdicio_pct_override ?? 0);
-        if (!(override > 0)) return null;
+        const pct = override > 0 ? override : num(desperdicioGlobalPct ?? 0);
+        if (!(pct > 0)) return null;
         const precio = num(getDisplayedPrice(r));
         if (!(precio > 0)) return null;
-        return precio * (1 + override / 100);
+        return precio * (1 + pct / 100);
       }
       case "ratio":
         return r.ratio_ventas ?? r.ratio ?? r.relacion_ventas ?? null;
@@ -942,7 +948,7 @@ const InsumosTable = forwardRef(function InsumosTable({
               if (col.id === 'enRecetas') {
                 return (
                   <div key="enRecetas" {...dragProps} onClick={() => toggleSort("enRecetas")} className="col-sortable" style={{ ...dragStyle, justifyContent: 'center' }}>
-                    Existe en Recetas {sortIcon("enRecetas")}
+                    Uso {sortIcon("enRecetas")}
                   </div>
                 );
               }
@@ -1259,6 +1265,18 @@ const InsumosTable = forwardRef(function InsumosTable({
                     <>
                       {/* Celdas reordenables (siguiendo el orden de visibleCols) */}
                       {visibleCols.map(col => {
+                        if (col.id === 'enRecetas') {
+                          return (
+                            <div key="enRecetas" style={{ textAlign: 'center' }}>
+                              <UsoInsumoCell
+                                n={Number(r.en_recetas ?? 0)}
+                                insumoId={r.id}
+                                businessId={originalBusinessId || businessId}
+                                onOpenUso={() => onOpenRecetaElaborado?.(r, { initialTab: 'uso', saltarSelector: true })}
+                              />
+                            </div>
+                          );
+                        }
                         if (col.id === 'total') {
                           return <div key="total">{renderTotalValue(r)}</div>;
                         }
@@ -1302,21 +1320,31 @@ const InsumosTable = forwardRef(function InsumosTable({
                       {visibleCols.map(col => {
                         if (col.id === 'desperdicio') {
                           const ov = num(r.desperdicio_pct_override ?? 0);
+                          const pct = ov > 0 ? ov : num(desperdicioGlobalPct ?? 0);
                           return (
                             <div key="desperdicio" style={{ textAlign: 'center' }}>
-                              {ov > 0
-                                ? <span style={{ fontWeight: 600 }}>{formatNumber(ov, 1)}%</span>
+                              {pct > 0
+                                ? (
+                                  <span
+                                    title={ov > 0 ? 'Desperdicio propio de este insumo' : 'Desperdicio global (Configuración > Insumos) — este insumo no tiene uno propio'}
+                                    style={{ fontWeight: ov > 0 ? 600 : 400, color: ov > 0 ? 'inherit' : '#64748b' }}
+                                  >
+                                    {formatNumber(pct, 1)}%
+                                  </span>
+                                )
                                 : <span style={{ color: '#94a3b8' }}>—</span>}
                             </div>
                           );
                         }
                         if (col.id === 'enRecetas') {
-                          const n = Number(r.en_recetas ?? 0);
                           return (
                             <div key="enRecetas" style={{ textAlign: 'center' }}>
-                              {n > 0
-                                ? <span style={{ fontWeight: 600 }}>{n}</span>
-                                : <span style={{ color: '#94a3b8' }}>—</span>}
+                              <UsoInsumoCell
+                                n={Number(r.en_recetas ?? 0)}
+                                insumoId={r.id}
+                                businessId={originalBusinessId || businessId}
+                                onOpenUso={() => onOpenRecetaElaborado?.(r, { initialTab: 'uso', saltarSelector: true })}
+                              />
                             </div>
                           );
                         }
