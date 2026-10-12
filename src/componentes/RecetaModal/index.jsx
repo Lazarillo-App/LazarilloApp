@@ -2883,6 +2883,26 @@ export default function RecetaModal({
                     </Box>
                   )}
 
+                  {/* Marcada a revisión: a diferencia de una propuesta real de un Staff
+                      (que sí trae un cambio concreto esperando aprobación), esto es solo
+                      un flag de "alguien pidió revisar esto" — se puede seguir editando
+                      normal, nunca se borra nada, y al guardar la marca se resuelve sola. */}
+                  {propuestaAbierta && !propuestaAbierta.tieneContenido && (
+                    <Box sx={{
+                      display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
+                      bgcolor: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 1.5,
+                      color: '#1e3a8a', fontSize: '0.82rem',
+                    }}>
+                      <span>🔎</span>
+                      <span>
+                        Esta receta está <strong>marcada para revisión</strong>
+                        {propuestaAbierta.asignadoA ? ` (asignada a ${propuestaAbierta.asignadoA})` : ''}
+                        {propuestaAbierta.adminComment ? ` — "${propuestaAbierta.adminComment}"` : ''}.
+                        {' '}Se puede editar normal; al guardar, la marca se resuelve sola.
+                      </span>
+                    </Box>
+                  )}
+
                   {itemsConUnidadRota.length > 0 && (
                     <Box sx={{
                       display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
@@ -2904,8 +2924,8 @@ export default function RecetaModal({
                       startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
                       onClick={addItem}
                       size="small"
-                      disabled={insumosLoading || !!propuestaAbierta}
-                      title={propuestaAbierta ? 'Hay cambios pendientes de aprobación: esperá a que se resuelvan' : undefined}
+                      disabled={insumosLoading || !!(propuestaAbierta && propuestaAbierta.tieneContenido)}
+                      title={(propuestaAbierta && propuestaAbierta.tieneContenido) ? 'Hay cambios pendientes de aprobación: esperá a que se resuelvan' : undefined}
                       variant="outlined"
                       sx={{ borderColor: PRIMARY, color: PRIMARY }}
                     >
