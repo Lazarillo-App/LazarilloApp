@@ -19,7 +19,6 @@ import { listarSectores, crearSector, actualizarSector, eliminarSector } from '@
 import { listarPendientes, aprobarPendiente, rechazarPendiente } from '@/servicios/apiAccesoEquipo';
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
-import { BASE } from '@/servicios/apiBase';
 
 const COLORES = ['#3b82f6', '#f59e0b', '#22c55e', '#a855f7', '#ef4444', '#64748b'];
 
@@ -187,14 +186,28 @@ function contarArticulos(selected, treesByAgrupacion) {
 
 // Qué rubros/categorías de esta agrupación coinciden con la búsqueda —
 // null en el Map = "todas las categorías del rubro" (coincidió el rubro entero).
+// Un solo buscador para todo el árbol (agrupación/rubro/subrubro/artículo): si no
+// coincide nada por nombre de rubro/subrubro, también se busca por nombre de
+// artículo — esa es la única forma de encontrar "la veggie" sin tener que abrir
+// cada rubro a mano.
 function coincidenciasBusqueda(agTree, q) {
   const rubros = new Map();
+  const articulos = new Set();
   for (const r of agTree) {
     if (r.subrubro.toLowerCase().includes(q)) { rubros.set(r.subrubro, null); continue; }
-    const cats = r.categorias.filter((c) => c.categoria.toLowerCase().includes(q)).map((c) => c.categoria);
+    const catsPorNombre = r.categorias.filter((c) => c.categoria.toLowerCase().includes(q)).map((c) => c.categoria);
+    const catsConArticulo = [];
+    for (const c of r.categorias) {
+      const matches = c.articulos.filter((a) => a.nombre.toLowerCase().includes(q));
+      if (matches.length) {
+        catsConArticulo.push(c.categoria);
+        matches.forEach((a) => articulos.add(Number(a.id)));
+      }
+    }
+    const cats = [...new Set([...catsPorNombre, ...catsConArticulo])];
     if (cats.length) rubros.set(r.subrubro, new Set(cats));
   }
-  return rubros;
+  return { rubros, articulos };
 }
 
 /* ─── Árbol tri-state de un sector ─── */
@@ -211,7 +224,7 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrup
     return coincidenciasBusqueda(agTree, q);
   }, [agTree, q, agNombreMatch]);
 
-  const tieneCoincidencias = !q || agNombreMatch || (filtro && filtro.size > 0);
+  const tieneCoincidencias = !q || agNombreMatch || (filtro && filtro.rubros.size > 0);
   if (!tieneCoincidencias) return null;
 
   const abierta = (!!q && tieneCoincidencias) || abiertaManual;
@@ -234,38 +247,48 @@ function ArbolAgrupacion({ agrupacion, agTree, selected, busqueda, onToggleAgrup
       <Collapse in={abierta}>
         <Box sx={{ pl: 5, pb: 1 }}>
           {agTree.map((r) => {
-            if (filtro && !filtro.has(r.subrubro)) return null;
-            const catSet = filtro?.get(r.subrubro);
+            if (filtro && !filtro.rubros.has(r.subrubro)) return null;
+            const catSet = filtro?.rubros?.get(r.subrubro);
 
             const rChecked = val === 'all' || (val instanceof Map && val.get(r.subrubro) === 'all');
             const rIndet = val instanceof Map && val.get(r.subrubro) instanceof Set && val.get(r.subrubro).size > 0;
             const rCount = r.categorias.reduce((n, c) => n + c.articulos.length, 0);
+            // Si la búsqueda encontró algo adentro de este rubro (nombre de rubro,
+            // de subrubro, o de un artículo), desplegarlo solo — antes había que
+            // acordarse de ir a buscar la flecha de "Ver artículos" a mano.
+            const verArticulos = !!rubrosVer[r.subrubro] || !!(filtro && catSet !== undefined);
             return (
               <Box key={r.subrubro}>
                 <Stack direction="row" alignItems="center">
+                  {/* La flecha de desplegar va SIEMPRE del lado izquierdo, igual que la
+                      de la agrupación — antes estaba del lado derecho acá y costaba
+                      encontrarla. */}
+                  <IconButton size="small" onClick={() => setRubrosVer((v) => ({ ...v, [r.subrubro]: !v[r.subrubro] }))} title="Ver artículos">
+                    {verArticulos ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                  </IconButton>
                   <Checkbox size="small" checked={rChecked} indeterminate={rIndet}
                     onChange={() => onToggleRubro(agrupacion.id, r.subrubro)} />
                   <Typography sx={{ fontSize: '0.78rem', flex: 1 }}>{r.subrubro}</Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>{rCount} art.</Typography>
-                  <IconButton size="small" onClick={() => setRubrosVer((v) => ({ ...v, [r.subrubro]: !v[r.subrubro] }))} title="Ver artículos">
-                    {rubrosVer[r.subrubro] ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
-                  </IconButton>
                 </Stack>
-                <Collapse in={!!rubrosVer[r.subrubro]}>
+                <Collapse in={verArticulos}>
                   <Box sx={{ pl: 2.5, pb: 0.5 }}>
                     {/* Mismo orden en el que ya vienen agrupados por categoría/subrubro —
                         no se reordena nada, solo se agrega el check para sumarlos como
                         "artículo suelto" sin tener que volver a buscarlos arriba. */}
-                    {r.categorias.map((c) => c.articulos.map((a) => (
-                      <Stack key={a.id} direction="row" alignItems="center" sx={{ py: 0.1 }}>
-                        <Checkbox size="small" checked={sueltosIds.has(Number(a.id))}
-                          onChange={() => onToggleArticuloSuelto?.({ id: Number(a.id), nombre: a.nombre })}
-                          sx={{ p: 0.4, mr: 0.5 }} />
-                        <Typography sx={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.6 }}>
-                          {a.nombre} <span style={{ color: '#999' }}>· {c.categoria}</span>
-                        </Typography>
-                      </Stack>
-                    )))}
+                    {r.categorias.map((c) => {
+                      if (catSet && !catSet.has(c.categoria)) return null;
+                      return c.articulos.map((a) => (
+                        <Stack key={a.id} direction="row" alignItems="center" sx={{ py: 0.1 }}>
+                          <Checkbox size="small" checked={sueltosIds.has(Number(a.id))}
+                            onChange={() => onToggleArticuloSuelto?.({ id: Number(a.id), nombre: a.nombre })}
+                            sx={{ p: 0.4, mr: 0.5 }} />
+                          <Typography sx={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.6 }}>
+                            {a.nombre} <span style={{ color: '#999' }}>· {c.categoria}</span>
+                          </Typography>
+                        </Stack>
+                      ));
+                    })}
                   </Box>
                 </Collapse>
                 {r.categorias.length > 1 && (
@@ -305,25 +328,6 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
   const [sueltos, setSueltos] = React.useState(() => (sector?.scope || [])
     .filter((i) => i.tipo === 'articulo' && i.articuloId)
     .map((i) => ({ id: Number(i.articuloId), nombre: i.articuloNombre || `Artículo ${i.articuloId}` })));
-  const [resultadosSueltos, setResultadosSueltos] = React.useState([]);
-  const [buscandoSueltos, setBuscandoSueltos] = React.useState('');
-
-  React.useEffect(() => {
-    const q = buscandoSueltos.trim();
-    if (q.length < 2 || !businessId) { setResultadosSueltos([]); return undefined; }
-    const t = setTimeout(async () => {
-      try {
-        const token = localStorage.getItem('token') || '';
-        const r = await fetch(`${BASE}/businesses/${businessId}/articles/search-padrino?q=${encodeURIComponent(q)}`, {
-          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
-        });
-        const d = await r.json();
-        setResultadosSueltos(d?.candidatos || []);
-      } catch { setResultadosSueltos([]); }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [buscandoSueltos, businessId]);
-
   const totalArticulos = contarArticulos(selected, treesByAgrupacion) + sueltos.length;
   const totalRubros = contarRubros(selected, treesByAgrupacion);
 
@@ -373,30 +377,26 @@ function EditorSector({ businessId, sector, agrupaciones, treesByAgrupacion, onG
                 {totalRubros} rubro{totalRubros !== 1 ? 's' : ''} · {totalArticulos} artículo{totalArticulos !== 1 ? 's' : ''}
               </Typography>
             </Stack>
+            {/* Un solo buscador para todo: agrupación, rubro, subrubro O artículo —
+                tipeá "veggie" y el árbol se abre solo hasta mostrarla, tildable ahí
+                mismo. Antes había un segundo buscador separado solo para artículos
+                sueltos, que quedaba redundante con el check en cada fila del árbol. */}
             <TextField
-              size="small" fullWidth placeholder="Buscar agrupación, rubro o subrubro…"
+              size="small" fullWidth placeholder="Buscar agrupación, rubro, subrubro o artículo…"
               value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
               sx={{ mb: 1.5 }}
             />
-            <Box sx={{ border: '1px dashed #d8dce6', borderRadius: 1.5, p: 1, mb: 1.5 }}>
-              <Typography variant="caption" fontWeight={700} color="text.secondary">ARTÍCULOS SUELTOS</Typography>
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ my: 0.75 }}>
-                {sueltos.map((a) => (
-                  <Chip key={a.id} size="small" label={a.nombre}
-                    onDelete={() => setSueltos((l) => l.filter((x) => x.id !== a.id))} />
-                ))}
-                {!sueltos.length && <Typography variant="caption" color="text.secondary">Ninguno todavía.</Typography>}
-              </Stack>
-              <TextField size="small" fullWidth placeholder="Buscar artículo para sumar…"
-                value={buscandoSueltos} onChange={(e) => setBuscandoSueltos(e.target.value)} />
-              {resultadosSueltos.map((c) => (
-                <Typography key={c.id} onClick={() => {
-                  setSueltos((l) => (l.some((x) => x.id === Number(c.id)) ? l : [...l, { id: Number(c.id), nombre: c.nombre }]));
-                }} sx={{ fontSize: '0.78rem', py: 0.5, px: 0.5, cursor: 'pointer', '&:hover': { bgcolor: '#f3f4f8' } }}>
-                  {c.nombre} <span style={{ color: '#999' }}>· {c.rubro || 'Sin rubro'}</span>
-                </Typography>
-              ))}
-            </Box>
+            {sueltos.length > 0 && (
+              <Box sx={{ border: '1px dashed #d8dce6', borderRadius: 1.5, p: 1, mb: 1.5 }}>
+                <Typography variant="caption" fontWeight={700} color="text.secondary">ARTÍCULOS SUELTOS</Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.75 }}>
+                  {sueltos.map((a) => (
+                    <Chip key={a.id} size="small" label={a.nombre}
+                      onDelete={() => setSueltos((l) => l.filter((x) => x.id !== a.id))} />
+                  ))}
+                </Stack>
+              </Box>
+            )}
             {agrupaciones.map((ag) => (
               <ArbolAgrupacion
                 key={ag.id}
