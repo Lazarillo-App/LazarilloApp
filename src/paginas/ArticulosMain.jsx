@@ -46,6 +46,8 @@ import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import SucursalSelector from '@/componentes/SucursalSelector';
 import ArticleListSelector from '../componentes/ArticleListSelector';
 import PriceListConfigModal from '../componentes/PriceListConfigModal';
+import KpiFoodCost, { kpiGeneralSemilla } from '@/componentes/KpiFoodCost';
+import { purchasesFoodCost } from '@/servicios/apiPurchases';
 import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
@@ -1235,6 +1237,98 @@ export default function ArticulosMain(props) {
     () => (agrupacionesRich || []).find(isDiscontinuadosGroup) || null,
     [agrupacionesRich]
   );
+
+  /* ════════════ KPI de Food Cost (barra de filtros) ════════════
+     Un artículo puede estar en más de una agrupación real (a diferencia del
+     árbol de un solo padre que asume el componente) — se cuenta en la
+     primera agrupación real que tenga (orden estable por id), excluyendo
+     Todo/Sin agrupación/Discontinuados; si no está en ninguna, "Sin
+     agrupación". Mismo criterio ya acordado para el lado de compras
+     (insumos) en el backend (purchasesController.js: exports.foodCost). */
+  const agrupacionDeArticuloFoodCost = useCallback((id) => {
+    const gidSet = agIndex?.byArticleId?.get(Number(id));
+    if (!gidSet || !gidSet.size) return 'Sin agrupación';
+    const ids = [...gidSet].map(Number).sort((a, b) => a - b);
+    for (const gid of ids) {
+      const g = (agrupaciones || []).find((x) => Number(x.id) === gid);
+      if (!g || esTodoGroup(g) || isDiscontinuadosGroup(g)) continue;
+      return g.nombre || 'Sin agrupación';
+    }
+    return 'Sin agrupación';
+  }, [agIndex, agrupaciones]);
+
+  // Árbol rubro/subrubro por artículo, ya cargado para el sidebar — se arma
+  // acá el array plano que necesita el KPI, sin pegarle al backend de nuevo.
+  const itemsVentaFoodCost = useMemo(() => {
+    const out = [];
+    for (const sub of categorias || []) {
+      const rubro = sub?.subrubro || 'Sin rubro';
+      for (const cat of sub?.categorias || []) {
+        const subrubro = cat?.categoria || 'Sin subrubro';
+        for (const a of cat?.articulos || []) {
+          const id = getArtId(a);
+          if (id == null) continue;
+          const { amount } = getVentasFromMap(ventasMap, id);
+          if (!(amount > 0)) continue;
+          out.push({
+            id: String(id),
+            nombre: a?.nombre || `#${id}`,
+            agrupacion: agrupacionDeArticuloFoodCost(id),
+            rubro,
+            subrubro,
+            importe: amount,
+          });
+        }
+      }
+    }
+    return out;
+  }, [categorias, ventasMap, agrupacionDeArticuloFoodCost]);
+
+  const [itemsCompraFoodCost, setItemsCompraFoodCost] = useState([]);
+  useEffect(() => {
+    if (!activeBizId || !periodo?.from || !periodo?.to) { setItemsCompraFoodCost([]); return; }
+    let vivo = true;
+    const branchParam = activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
+      : activeBranchFilter?.mode === 'main' ? 'none'
+      : 'all';
+    purchasesFoodCost(activeBizId, { from: periodo.from, to: periodo.to, branch_id: branchParam })
+      .then((items) => { if (vivo) setItemsCompraFoodCost((items || []).filter((i) => i.importe > 0)); })
+      .catch(() => { if (vivo) setItemsCompraFoodCost([]); });
+    return () => { vivo = false; };
+  }, [activeBizId, periodo?.from, periodo?.to, activeBranchFilter]);
+
+  const [kpisFoodCost, setKpisFoodCost] = useState([]);
+  const kpisFoodCostLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!activeBizId) return;
+    kpisFoodCostLoadedRef.current = false;
+    BusinessesAPI.getFoodCostKpis(activeBizId)
+      .then((kpis) => { kpisFoodCostLoadedRef.current = true; setKpisFoodCost(kpis.length ? kpis : [kpiGeneralSemilla()]); })
+      .catch(() => { kpisFoodCostLoadedRef.current = true; setKpisFoodCost([kpiGeneralSemilla()]); });
+  }, [activeBizId]);
+
+  const kpisFoodCostSaveTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(kpisFoodCostSaveTimerRef.current), []);
+  const handleKpisFoodCostChange = useCallback((nuevos) => {
+    setKpisFoodCost(nuevos);
+    // No guardar antes de que termine de cargar lo que ya había (evitaría
+    // pisar la config real con la semilla vacía en el primer render).
+    if (!kpisFoodCostLoadedRef.current || !activeBizId) return;
+    clearTimeout(kpisFoodCostSaveTimerRef.current);
+    kpisFoodCostSaveTimerRef.current = setTimeout(() => {
+      BusinessesAPI.update(activeBizId, { props: { food_cost_kpis: nuevos } })
+        .catch((e) => console.error('[food-cost-kpis] error guardando:', e));
+    }, 600);
+  }, [activeBizId]);
+
+  const periodoLabelFoodCost = useMemo(() => {
+    if (!periodo?.from || !periodo?.to) return '';
+    const f = (iso) => {
+      const [y, m, d] = String(iso).split('-');
+      return `${d}/${m}/${String(y).slice(2)}`;
+    };
+    return `${f(periodo.from)} — ${f(periodo.to)}`;
+  }, [periodo?.from, periodo?.to]);
 
   // Datos del negocio para el encabezado de la carta (branding + contacto)
   const negocioCarta = useMemo(() => {
@@ -2757,6 +2851,15 @@ export default function ArticulosMain(props) {
           >
             Diseño
           </Button>}
+          {!isStaff && (
+            <KpiFoodCost
+              ventas={itemsVentaFoodCost}
+              compras={itemsCompraFoodCost}
+              kpis={kpisFoodCost}
+              onChange={handleKpisFoodCostChange}
+              periodoLabel={periodoLabelFoodCost}
+            />
+          )}
         </div>
       </div>
 

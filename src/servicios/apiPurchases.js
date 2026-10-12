@@ -59,6 +59,22 @@ export async function purchasesList(bizId, {
   return data;
 }
 
+// GET /api/purchases/food-cost?from=&to=&branch_id=
+// Compras agregadas por insumo (con su rubro y agrupación ya resueltos) para
+// el KPI de Food Cost de Gestión de Artículos — ver KpiFoodCost.jsx.
+export async function purchasesFoodCost(bizId, { from, to, branch_id } = {}) {
+  const params = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  if (branch_id !== null && branch_id !== undefined) params.branch_id = branch_id;
+  const res = await fetch(`${BASE}/purchases/food-cost${qs(params)}`, {
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `Error ${res.status}`);
+  return Array.isArray(data.items) ? data.items : [];
+}
+
 // Descarga CSV y lo dispara como archivo
 export async function purchasesDownloadCsv(bizId, params = {}) {
   const res = await fetch(`${BASE}/purchases/export/csv${qs(params)}`, {

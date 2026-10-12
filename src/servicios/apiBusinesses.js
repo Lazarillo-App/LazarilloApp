@@ -325,6 +325,12 @@ export const BusinessesAPI = {
     http(`/businesses/${id}`, { method: 'PATCH', body, withBusinessId: false }),
   remove: (id) =>
     http(`/businesses/${id}`, { method: 'DELETE', withBusinessId: false }),
+  // KPI de Food Cost (Gestión de Artículos) — separado de /config para no
+  // engordar ese payload. Se guarda con update(id, { props: { food_cost_kpis } }).
+  getFoodCostKpis: async (id) => {
+    const r = await http(`/businesses/${id}/food-cost-kpis`, { withBusinessId: false });
+    return Array.isArray(r?.kpis) ? r.kpis : [];
+  },
 
   // Negocio activo: backend como verdad + sincroniza localStorage
   async getActive() {
