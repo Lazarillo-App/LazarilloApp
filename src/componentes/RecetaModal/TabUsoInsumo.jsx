@@ -5,6 +5,7 @@ import { Box, Typography, CircularProgress, Select, MenuItem, Button } from '@mu
 import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma } from '@/servicios/apiInsumos';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
+import GestionMermasPopover from './GestionMermasPopover';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 /* ════════════════════════════════════════
@@ -54,12 +55,14 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
 
   useEffect(() => { cargarUso(); }, [cargarUso]);
 
-  useEffect(() => {
+  const cargarMermas = useCallback(() => {
     if (!insumoId || !businessId) return;
     insumoMermasList(insumoId, businessId)
       .then(r => setMermas(Array.isArray(r?.data) ? r.data : []))
       .catch(() => setMermas([]));
   }, [insumoId, businessId]);
+
+  useEffect(() => { cargarMermas(); }, [cargarMermas]);
 
   const unidadBase = insumoData?.unidad_med || insumoData?.medida || 'u';
 
@@ -71,34 +74,46 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData }) {
       </Typography>
 
       {/* Modificar la merma de uno o varios productos/elaborados a la vez, desde acá
-          mismo — sin tener que ir insumo por insumo hasta la pestaña Merma. */}
-      {mermas.length > 0 && uso.length > 0 && (
+          mismo — sin tener que ir insumo por insumo hasta la pestaña Merma. El ícono
+          de gestión (agregar/editar/eliminar mermas) queda disponible aunque todavía
+          no haya ninguna cargada. */}
+      {uso.length > 0 && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-            Aplicar merma en estas recetas:
-          </Typography>
-          <Select MenuProps={downwardMenuProps()}
-            size="small"
-            displayEmpty
-            value={mermaElegidaId}
-            onChange={e => setMermaElegidaId(e.target.value)}
-            sx={{ fontSize: '0.8rem', minWidth: 160, '& .MuiSelect-select': { py: 0.4 } }}
-          >
-            <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>Elegir merma…</MenuItem>
-            {mermas.map(m => (
-              <MenuItem key={m.id} value={m.id} sx={{ fontSize: '0.8rem' }}>{m.nombre}</MenuItem>
-            ))}
-          </Select>
-          <Button
-            size="small" variant="outlined"
-            disabled={!mermaElegidaId}
-            onClick={() => {
-              const m = mermas.find(x => String(x.id) === String(mermaElegidaId));
-              if (m) setMermaParaAplicar(m);
-            }}
-          >
-            Aplicar…
-          </Button>
+          {mermas.length > 0 && (
+            <>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                Aplicar merma en estas recetas:
+              </Typography>
+              <Select MenuProps={downwardMenuProps()}
+                size="small"
+                displayEmpty
+                value={mermaElegidaId}
+                onChange={e => setMermaElegidaId(e.target.value)}
+                sx={{ fontSize: '0.8rem', minWidth: 160, '& .MuiSelect-select': { py: 0.4 } }}
+              >
+                <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>Elegir merma…</MenuItem>
+                {mermas.map(m => (
+                  <MenuItem key={m.id} value={m.id} sx={{ fontSize: '0.8rem' }}>{m.nombre}</MenuItem>
+                ))}
+              </Select>
+              <Button
+                size="small" variant="outlined"
+                disabled={!mermaElegidaId}
+                onClick={() => {
+                  const m = mermas.find(x => String(x.id) === String(mermaElegidaId));
+                  if (m) setMermaParaAplicar(m);
+                }}
+              >
+                Aplicar…
+              </Button>
+            </>
+          )}
+          <GestionMermasPopover
+            insumoId={insumoId}
+            businessId={businessId}
+            mermas={mermas}
+            onChanged={() => { cargarMermas(); avisarCambio(); }}
+          />
         </Box>
       )}
 
