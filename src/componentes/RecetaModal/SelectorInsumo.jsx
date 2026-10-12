@@ -17,6 +17,10 @@ export default function SelectorInsumo({ nombre, insumoId, onElegir }) {
       desc: 'Costeá el insumo por receta o por sus compras registradas.'
     },
     {
+      id: 'uso', titulo: 'Uso', icono: '🔗', bg: '#fef3e6',
+      desc: 'Mirá en qué recetas se usa este insumo, ordenadas por venta del artículo.'
+    },
+    {
       id: 'equivalencias', titulo: 'Equivalencias', icono: '⚖️', bg: '#eaf1fb',
       desc: 'Definí medidas propias (cuchara, dip, unidad) para convertir a gramos o ml en las recetas.'
     },
