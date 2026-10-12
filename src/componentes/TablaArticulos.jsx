@@ -397,6 +397,9 @@ export default function TablaArticulos({
   const [bulkPctDlg, setBulkPctDlg] = useState(null);
   const [clearDlg, setClearDlg] = useState(null);
   const [ventasVista, setVentasVista] = useState('U');
+  // Staff nunca ve facturación — además de ocultar el botón de cambiar a "$"
+  // más abajo, esto asegura que no quede en "$" por ningún otro camino.
+  useEffect(() => { if (isStaff && ventasVista !== 'U') setVentasVista('U'); }, [isStaff, ventasVista]);
   const [lastAppliedPct, setLastAppliedPct] = useState({});
   const [redondeoConfig, setRedondeoConfig] = useState({ valor: null, mostrarModal: true });
   // El input de % (agrupación/rubro) muestra como placeholder el último % aplicado —
@@ -2565,12 +2568,14 @@ export default function TablaArticulos({
                   >
                     👁
                   </span>
-                  <button
-                    onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
-                    title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
-                    style={{ padding: '0px 6px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5, fontSize: '0.64rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
-                    {ventasVista}
-                  </button>
+                  {!isStaff && (
+                    <button
+                      onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
+                      title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
+                      style={{ padding: '0px 6px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5, fontSize: '0.64rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
+                      {ventasVista}
+                    </button>
+                  )}
                 </span>
               </div>
 
