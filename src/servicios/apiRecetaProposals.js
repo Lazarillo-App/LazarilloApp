@@ -44,6 +44,14 @@ export async function listarMisPropuestas(businessId) {
   return resp.proposals || [];
 }
 
+// POST /api/businesses/:businessId/receta-proposals/insumo/:insumoId/discontinuar
+export async function proponerDiscontinuarInsumo(businessId, insumoId) {
+  const resp = await httpBiz(`/receta-proposals/insumo/${insumoId}/discontinuar`, { method: 'POST' }, businessId);
+  if (!resp?.ok) throw new Error(resp?.message || resp?.error || 'No se pudo enviar la propuesta');
+  try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento: el contador se actualiza al volver a abrir */ }
+  return resp;
+}
+
 // POST /api/businesses/:businessId/receta-proposals/marcar-revision
 export async function marcarARevision(businessId, items, comment, asignadoA = null) {
   const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment, asignadoA } }, businessId);

@@ -1276,25 +1276,24 @@ const InsumosTable = forwardRef(function InsumosTable({
                       })}
 
                       <div style={{ textAlign: "center" }}>
-                        {!isStaff && (
-                          <InsumoAccionesMenu
-                            insumo={r}
-                            groups={groups}
-                            selectedGroupId={selectedGroupId}
-                            discontinuadosGroupId={discontinuadosGroupId}
-                            todoGroupId={todoGroupId}
-                            onRefetch={handleAfterAction}
-                            onReloadCatalogo={onReloadCatalogo}
-                            notify={notify}
-                            onMutateGroups={onMutateGroups}
-                            onAfterMutation={handleAfterAction}
-                            onAfterToggleElaborado={onAfterToggleElaborado}
-                            onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
-                            onOpenRecetaElaborado={onOpenRecetaElaborado}
-                            onOpenEditModal={onOpenEditModal}
-                            businessId={originalBusinessId || businessId}
-                          />
-                        )}
+                        <InsumoAccionesMenu
+                          insumo={r}
+                          groups={groups}
+                          selectedGroupId={selectedGroupId}
+                          discontinuadosGroupId={discontinuadosGroupId}
+                          todoGroupId={todoGroupId}
+                          onRefetch={handleAfterAction}
+                          onReloadCatalogo={onReloadCatalogo}
+                          notify={notify}
+                          onMutateGroups={onMutateGroups}
+                          onAfterMutation={handleAfterAction}
+                          onAfterToggleElaborado={onAfterToggleElaborado}
+                          onCreateGroupFromInsumo={onOpenGroupModalForInsumo}
+                          onOpenRecetaElaborado={onOpenRecetaElaborado}
+                          onOpenEditModal={onOpenEditModal}
+                          businessId={originalBusinessId || businessId}
+                          staffMode={isStaff}
+                        />
                       </div>
                     </>
                   ) : (
@@ -1357,8 +1356,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         );
                       })}
                       <div style={{ textAlign: "center" }}>
-                        {!isStaff && (
-                          <InsumoAccionesMenu
+                        <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
                             selectedGroupId={selectedGroupId}
@@ -1374,8 +1372,8 @@ const InsumosTable = forwardRef(function InsumosTable({
                             onOpenRecetaElaborado={onOpenRecetaElaborado}
                             onOpenEditModal={onOpenEditModal}
                             businessId={originalBusinessId || businessId}
+                            staffMode={isStaff}
                           />
-                        )}
                       </div>
                     </>
                   )}

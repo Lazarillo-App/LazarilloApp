@@ -23,6 +23,7 @@ import {
   toggleInsumoElaborado,
   insumoDeleteManual,
 } from '../servicios/apiInsumos';
+import { proponerDiscontinuarInsumo } from '@/servicios/apiRecetaProposals';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -48,11 +49,17 @@ function InsumoAccionesMenu({
   onOpenRecetaElaborado,
   onOpenEditModal,
   businessId,
+  // Vista Operación, Fase 4: Staff solo ve "Discontinuar" y esa acción no se
+  // aplica directo — crea una propuesta que queda pendiente de aprobación
+  // (ver proponerDiscontinuarInsumo). El resto de las acciones de este menú
+  // siguen siendo de aplicación directa, por eso quedan ocultas en este modo.
+  staffMode = false,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
+  const [proponiendo, setProponiendo] = useState(false);
 
   const open = Boolean(anchorEl);
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
@@ -121,6 +128,25 @@ function InsumoAccionesMenu({
       setEliminando(false);
     }
   }, [esManual, insumoId, businessId, insumoNombre, notify, onReloadCatalogo]);
+
+  /* ========== DISCONTINUAR (Staff, vía propuesta) ========== */
+  async function proponerDiscontinuar() {
+    handleClose();
+    setProponiendo(true);
+    try {
+      await proponerDiscontinuarInsumo(businessId, insumoId);
+      notify?.(`Se propuso discontinuar "${insumoNombre}" — queda pendiente de aprobación.`, 'success');
+    } catch (e) {
+      console.error('PROPONER_DISCONTINUAR_ERROR', e);
+      if (e?.message?.toLowerCase().includes('pendiente')) {
+        notify?.('Ya hay una propuesta pendiente para este insumo.', 'info');
+      } else {
+        notify?.('No se pudo enviar la propuesta', 'error');
+      }
+    } finally {
+      setProponiendo(false);
+    }
+  }
 
   /* ========== DISCONTINUAR / REACTIVAR ========== */
   async function toggleDiscontinuar() {
@@ -312,82 +338,93 @@ function InsumoAccionesMenu({
 
   return (
     <>
-      <IconButton size="small" onClick={handleOpen}>
+      <IconButton size="small" onClick={handleOpen} disabled={staffMode && proponiendo}>
         <MoreVertIcon fontSize="small" />
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        {/* 1. Editar — mismo modal que la creación, en modo edición */}
-        <MenuItem onClick={() => { handleClose(); onOpenEditModal?.(insumo); }}>
-          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Editar insumo</ListItemText>
-        </MenuItem>
-        {/* 2. Discontinuar / Reactivar */}
-        <MenuItem onClick={toggleDiscontinuar}>
-          <ListItemIcon>
-            {isInDiscontinuados ? (
-              <VisibilityIcon fontSize="small" />
-            ) : (
-              <VisibilityOffIcon fontSize="small" />
-            )}
-          </ListItemIcon>
-          <ListItemText>
-            {isInDiscontinuados
-              ? 'Reactivar (quitar de Discontinuados)'
-              : 'Discontinuar'}
-          </ListItemText>
-        </MenuItem>
-
-        {/* 3. Quitar de esta agrupación */}
-        <MenuItem onClick={quitarDeActual} disabled={isTodoView}>
-          <ListItemIcon>
-            <UndoIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>
-            {isTodoView ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}
-          </ListItemText>
-        </MenuItem>
-
-        {/* 4. Marcar como elaborado (abre la receta) / ver receta si ya lo es */}
-        <MenuItem onClick={handleToggleElaborado}>
-          <ListItemIcon>
-            <BuildCircleIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>
-            {isElaborado ? 'Ver / editar receta' : 'Marcar como elaborado (cargar receta)'}
-          </ListItemText>
-        </MenuItem>
-
-        {/* 5. Mover a… */}
-        <MenuItem onClick={openMover}>
-          <ListItemIcon>
-            <DriveFileMoveIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Mover a…</ListItemText>
-        </MenuItem>
-
-        {/* 4. Crear agrupación */}
-        <MenuItem onClick={() => {
-          handleClose();
-          onCreateGroupFromInsumo?.(insumo);
-        }}>
-          <ListItemIcon>
-            <GroupAddIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>
-            Crear agrupación desde este insumo
-          </ListItemText>
-        </MenuItem>
-
-        {/* 5. Eliminar (solo manuales) */}
-        {esManual && (
-          <MenuItem
-            onClick={() => { handleClose(); setTimeout(() => setDlgEliminarOpen(true), 0); }}
-            sx={{ color: 'error.main' }}
-          >
-            <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
-            <ListItemText>Eliminar insumo</ListItemText>
+        {staffMode ? (
+          /* Staff: por ahora solo puede proponer discontinuar — no se aplica
+             directo, admin/owner la revisa desde la Bandeja de aprobaciones. */
+          <MenuItem onClick={proponerDiscontinuar} disabled={proponiendo}>
+            <ListItemIcon><VisibilityOffIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Discontinuar (a revisión)</ListItemText>
           </MenuItem>
+        ) : (
+          <>
+            {/* 1. Editar — mismo modal que la creación, en modo edición */}
+            <MenuItem onClick={() => { handleClose(); onOpenEditModal?.(insumo); }}>
+              <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Editar insumo</ListItemText>
+            </MenuItem>
+            {/* 2. Discontinuar / Reactivar */}
+            <MenuItem onClick={toggleDiscontinuar}>
+              <ListItemIcon>
+                {isInDiscontinuados ? (
+                  <VisibilityIcon fontSize="small" />
+                ) : (
+                  <VisibilityOffIcon fontSize="small" />
+                )}
+              </ListItemIcon>
+              <ListItemText>
+                {isInDiscontinuados
+                  ? 'Reactivar (quitar de Discontinuados)'
+                  : 'Discontinuar'}
+              </ListItemText>
+            </MenuItem>
+
+            {/* 3. Quitar de esta agrupación */}
+            <MenuItem onClick={quitarDeActual} disabled={isTodoView}>
+              <ListItemIcon>
+                <UndoIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>
+                {isTodoView ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}
+              </ListItemText>
+            </MenuItem>
+
+            {/* 4. Marcar como elaborado (abre la receta) / ver receta si ya lo es */}
+            <MenuItem onClick={handleToggleElaborado}>
+              <ListItemIcon>
+                <BuildCircleIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>
+                {isElaborado ? 'Ver / editar receta' : 'Marcar como elaborado (cargar receta)'}
+              </ListItemText>
+            </MenuItem>
+
+            {/* 5. Mover a… */}
+            <MenuItem onClick={openMover}>
+              <ListItemIcon>
+                <DriveFileMoveIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Mover a…</ListItemText>
+            </MenuItem>
+
+            {/* 4. Crear agrupación */}
+            <MenuItem onClick={() => {
+              handleClose();
+              onCreateGroupFromInsumo?.(insumo);
+            }}>
+              <ListItemIcon>
+                <GroupAddIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>
+                Crear agrupación desde este insumo
+              </ListItemText>
+            </MenuItem>
+
+            {/* 5. Eliminar (solo manuales) */}
+            {esManual && (
+              <MenuItem
+                onClick={() => { handleClose(); setTimeout(() => setDlgEliminarOpen(true), 0); }}
+                sx={{ color: 'error.main' }}
+              >
+                <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
+                <ListItemText>Eliminar insumo</ListItemText>
+              </MenuItem>
+            )}
+          </>
         )}
       </Menu>
 
