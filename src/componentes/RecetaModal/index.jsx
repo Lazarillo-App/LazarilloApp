@@ -2085,26 +2085,15 @@ export default function RecetaModal({
               )}
 
               <Box>
-                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                  <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
-                    {modoInsumo
-                      ? `${artNombre}${(() => {
-                        const insData = insumos.find(i => String(i.id) === String(articulo?.id));
-                        const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
-                        return u ? ` × ${canonicalUnit(u).toUpperCase()}` : '';
-                      })()}`
-                      : `${promoMode ? 'Promoción' : 'Receta'} — ${artNombre}`}
-                  </Typography>
-                  {modoInsumo && tab === 'compras' && onSaltarAInsumo && (
-                    <RankingChip
-                      ranking={comprasRanking}
-                      loading={comprasRankingLoading}
-                      activeInsumoId={articulo?.id}
-                      onPick={onSaltarAInsumo}
-                      variant="onPrimary"
-                    />
-                  )}
-                </Stack>
+                <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
+                  {modoInsumo
+                    ? `${artNombre}${(() => {
+                      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+                      const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
+                      return u ? ` × ${canonicalUnit(u).toUpperCase()}` : '';
+                    })()}`
+                    : `${promoMode ? 'Promoción' : 'Receta'} — ${artNombre}`}
+                </Typography>
                 {articulo?.id && (
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
                 )}
@@ -2119,7 +2108,17 @@ export default function RecetaModal({
               )}
             </Stack>
             {modoInsumo && entradaElegida && (
-              <Stack direction="row" spacing={0.5} sx={{ alignSelf: 'flex-end' }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ alignSelf: 'flex-end' }}>
+                {tab === 'compras' && onSaltarAInsumo && (
+                  <RankingChip
+                    ranking={comprasRanking}
+                    loading={comprasRankingLoading}
+                    activeInsumoId={articulo?.id}
+                    onPick={onSaltarAInsumo}
+                    variant="onPrimary"
+                  />
+                )}
+                <Stack direction="row" spacing={0.5}>
                 {[
                   { id: 'merma', label: 'MERMA' },
                   { id: 'receta', label: 'RECETA' },
@@ -2142,6 +2141,7 @@ export default function RecetaModal({
                     {t.label}
                   </Box>
                 ))}
+                </Stack>
               </Stack>
             )}
             <Stack direction="row" alignItems="center" spacing={0.5}>
