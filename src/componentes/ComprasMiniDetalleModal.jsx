@@ -340,6 +340,11 @@ export function RankingChip({ ranking, loading, activeInsumoId, onPick, variant 
           position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 20,
           width: 340, maxWidth: '90vw', border: '1px solid', borderColor: 'divider',
           borderRadius: 2, bgcolor: 'background.paper', boxShadow: 6, overflow: 'hidden',
+          // El chip puede vivir en un header de fondo oscuro (RecetaModal) con
+          // color de texto blanco heredado — sin esto, el texto de las filas
+          // (sin color propio) heredaba ese blanco y quedaba invisible sobre
+          // el fondo blanco del desplegable.
+          color: 'text.primary',
         }}>
           <Box sx={{ px: 2, py: 1.25, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
             <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '.05em', color: 'text.secondary' }}>

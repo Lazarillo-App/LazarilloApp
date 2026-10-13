@@ -2059,8 +2059,8 @@ export default function RecetaModal({
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '99vw', sm: '98vw', md: '1160px' },
-          maxWidth: '1240px',
+          width: { xs: '99vw', sm: '98vw', md: '1240px' },
+          maxWidth: '1340px',
           maxHeight: '94vh',
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
@@ -2072,9 +2072,13 @@ export default function RecetaModal({
             px: 3, py: 1.5,
             bgcolor: PRIMARY, color: ON_PRIMARY,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            // `gap` asegura un mínimo entre los 3 grupos (nombre, pestañas,
+            // iconos) aunque el ancho se agote y space-between no tenga más
+            // espacio sobrante para repartir — antes quedaban pegados.
+            gap: 2,
             flexShrink: 0,
           }}>
-            <Stack direction="row" alignItems="flex-start" spacing={1}>
+            <Stack direction="row" alignItems="flex-start" spacing={1.5}>
               {/* Flecha anterior — a la izquierda del nombre */}
               {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
