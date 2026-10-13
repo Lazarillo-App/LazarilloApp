@@ -18,9 +18,10 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BASE } from '../servicios/apiBase';
-import { purchasesRanking } from '../servicios/apiPurchases';
 import { useBranch } from '@/hooks/useBranch';
+import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import { downwardMenuProps } from '@/utils/menuProps';
+import SalesPickerIcon from './SalesPickerIcon';
 
 const fmtMoney = (v) => {
   const n = Number(v ?? 0);
@@ -270,7 +271,7 @@ const fmtCorto = (n) => {
    deja de existir en el DOM y un contains() sobre el target se resuelve
    solo, cerrando el panel cada vez que se toca algo de adentro.
 ══════════════════════════════════════════════════════════ */
-function RankingChip({ ranking, loading, activeInsumoId, onPick }) {
+export function RankingChip({ ranking, loading, activeInsumoId, onPick }) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef(null);
   const dentro = useRef(false);
@@ -428,8 +429,13 @@ export function ComprasDetalleContenido({
   facturacionPorMes = null,
   // Cambiar al insumo elegido en el ranking "Top por gasto", sin cerrar el
   // modal. Recibe la fila completa del ranking ({id, nombre, unidad_med, ...}).
-  // Opcional: sin esto, el chip del ranking simplemente no aparece.
+  // Opcional: sin esto, el chip del ranking simplemente no aparece (cuando
+  // este contenido corre dentro de RecetaModal, el chip vive en su header
+  // junto al nombre en vez de acá, así que este caller no pasa esta prop).
   onCambiarInsumo = null,
+  // Pisar el período consultado con un rango puntual ("📅 Fechas"). Recibe
+  // {from, to}. Opcional: sin esto, el botón simplemente no aparece.
+  onCambiarRango = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1', secondary: '#10b981' };
@@ -485,21 +491,11 @@ export function ComprasDetalleContenido({
   }, [open]); // eslint-disable-line
 
   // ─────────── Ranking "Top por gasto" (solo si hay con quién navegar) ───────────
-  const [ranking, setRanking] = useState(null);
-  const [rankingLoading, setRankingLoading] = useState(false);
-  useEffect(() => {
-    if (!open || !onCambiarInsumo || !businessId || !rango?.from || !rango?.to) {
-      setRanking(null);
-      return;
-    }
-    let vivo = true;
-    setRankingLoading(true);
-    purchasesRanking(businessId, { from: rango.from, to: rango.to, pin: insumoId, limit: 20 })
-      .then((r) => { if (vivo) setRanking(r); })
-      .catch(() => { if (vivo) setRanking(null); })
-      .finally(() => { if (vivo) setRankingLoading(false); });
-    return () => { vivo = false; };
-  }, [open, onCambiarInsumo, businessId, rango?.from, rango?.to, insumoId]);
+  // Acá se muestra inline (no hay un header propio para ponerlo al lado del
+  // nombre, a diferencia de cuando este contenido corre dentro de RecetaModal).
+  const { ranking, loading: rankingLoading } = useRankingPorGasto({
+    businessId, rango, insumoId, habilitado: open && !!onCambiarInsumo,
+  });
 
   // ─────────── Fetch estado de bonificación ───────────
   const fetchBonif = useCallback(async () => {
@@ -1250,6 +1246,15 @@ export function ComprasDetalleContenido({
             </Stack>
           )}
 
+          {/* Ajustar el período consultado a mano, sin salir del modal */}
+          {onCambiarRango && rango?.from && rango?.to && (
+            <SalesPickerIcon
+              value={{ mode: 'custom', from: rango.from, to: rango.to }}
+              onChange={(v) => onCambiarRango({ from: v.from, to: v.to })}
+              labelOverride="📅 Fechas"
+            />
+          )}
+
           {/* Selector de sucursal */}
           {(hasSucursales || dynamicBranches.length > 0) && (
             <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -1675,6 +1680,7 @@ export default function ComprasMiniDetalleModal({
   businesses = [],
   facturacionPorMes = null,
   onCambiarInsumo = null,
+  onCambiarRango = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1' };
@@ -1707,6 +1713,7 @@ export default function ComprasMiniDetalleModal({
           businesses={businesses}
           facturacionPorMes={facturacionPorMes}
           onCambiarInsumo={onCambiarInsumo}
+          onCambiarRango={onCambiarRango}
         />
       </DialogContent>
 

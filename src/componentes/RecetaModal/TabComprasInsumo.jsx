@@ -1,12 +1,18 @@
 // src/componentes/RecetaModal/TabComprasInsumo.jsx
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Box } from '@mui/material';
 import { BASE } from '@/servicios/apiBase';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { ComprasDetalleContenido } from '../ComprasMiniDetalleModal';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
 
-export default function TabComprasInsumo({ insumoId, businessId, insumoData, activeBizId = null, businesses = [], onCambiarInsumo = null }) {
+export default function TabComprasInsumo({
+  insumoId, businessId, insumoData, activeBizId = null, businesses = [],
+  // Rango del período consultado y callback para pisarlo con el botón "📅
+  // Fechas" del detalle — ambos viven en RecetaModal para sobrevivir el
+  // salto a otro insumo desde el ranking "Top por gasto" sin perderse.
+  rango, onCambiarRango = null,
+}) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [facturacionPorMes, setFacturacionPorMes] = useState(null);
@@ -18,14 +24,6 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData, act
   // de "Ramos", solo las del negocio raíz) — y sin `businesses` tampoco había forma de
   // elegir otra sucursal/negocio a mano, a diferencia del ícono de compras junto al precio.
   const comprasBizId = activeBizId || businessId;
-
-  // Rango amplio: todo el historial disponible del insumo
-  const rango = useMemo(() => {
-    const hoy = new Date();
-    const to = hoy.toISOString().slice(0, 10);
-    const from = `${hoy.getFullYear() - 5}-01-01`;
-    return { from, to };
-  }, []);
 
   useEffect(() => {
     if (!insumoId || !comprasBizId) return;
@@ -82,7 +80,7 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData, act
         businessId={comprasBizId}
         businesses={businesses}
         facturacionPorMes={facturacionPorMes}
-        onCambiarInsumo={onCambiarInsumo}
+        onCambiarRango={onCambiarRango}
       />
     </Box>
   );

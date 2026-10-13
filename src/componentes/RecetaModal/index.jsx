@@ -66,6 +66,8 @@ import ModalReemplazarInsumo from './ModalReemplazarInsumo';
 import TabMermaInsumo from './TabMermaInsumo';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
 import TabComprasInsumo from './TabComprasInsumo';
+import { RankingChip } from '../ComprasMiniDetalleModal';
+import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
@@ -121,6 +123,27 @@ export default function RecetaModal({
   const [tab, setTab] = useState('receta'); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
   // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
   const [entradaElegida, setEntradaElegida] = useState(!modoInsumo || saltarSelector);
+  // Rango de la pestaña Compras: por defecto los últimos 5 años, pero el botón
+  // "📅 Fechas" del detalle puede pisarlo con un rango puntual — se mantiene
+  // mientras el modal sigue abierto (incluso saltando de insumo vía el ranking
+  // "Top por gasto"), y se limpia recién al cerrar.
+  const comprasRangoDefault = useMemo(() => {
+    const hoy = new Date();
+    const to = hoy.toISOString().slice(0, 10);
+    const from = `${hoy.getFullYear() - 5}-01-01`;
+    return { from, to };
+  }, []);
+  const [comprasRangoOverride, setComprasRangoOverride] = useState(null);
+  const comprasRango = comprasRangoOverride || comprasRangoDefault;
+  useEffect(() => {
+    if (!open) setComprasRangoOverride(null);
+  }, [open]);
+  const { ranking: comprasRanking, loading: comprasRankingLoading } = useRankingPorGasto({
+    businessId: comprasBizId,
+    rango: comprasRango,
+    insumoId: articulo?.id,
+    habilitado: modoInsumo && tab === 'compras' && entradaElegida && !!onSaltarAInsumo,
+  });
   const [recetaConfirmada, setRecetaConfirmada] = useState(false);
   const [reemplazarModalOpen, setReemplazarModalOpen] = useState(false);
   const [reemplazarAviso, setReemplazarAviso] = useState(false);
@@ -2062,15 +2085,25 @@ export default function RecetaModal({
               )}
 
               <Box>
-                <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
-                  {modoInsumo
-                    ? `${artNombre}${(() => {
-                      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
-                      const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
-                      return u ? ` × ${canonicalUnit(u).toUpperCase()}` : '';
-                    })()}`
-                    : `${promoMode ? 'Promoción' : 'Receta'} — ${artNombre}`}
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                  <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
+                    {modoInsumo
+                      ? `${artNombre}${(() => {
+                        const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+                        const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
+                        return u ? ` × ${canonicalUnit(u).toUpperCase()}` : '';
+                      })()}`
+                      : `${promoMode ? 'Promoción' : 'Receta'} — ${artNombre}`}
+                  </Typography>
+                  {modoInsumo && tab === 'compras' && onSaltarAInsumo && (
+                    <RankingChip
+                      ranking={comprasRanking}
+                      loading={comprasRankingLoading}
+                      activeInsumoId={articulo?.id}
+                      onPick={onSaltarAInsumo}
+                    />
+                  )}
+                </Stack>
                 {articulo?.id && (
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
                 )}
@@ -2189,7 +2222,8 @@ export default function RecetaModal({
                 activeBizId={comprasBizId}
                 businesses={allBusinesses || []}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id))}
-                onCambiarInsumo={onSaltarAInsumo}
+                rango={comprasRango}
+                onCambiarRango={setComprasRangoOverride}
               />
 ) : modoInsumo && tab === 'equivalencias' ? (
               <TabEquivalenciasInsumo

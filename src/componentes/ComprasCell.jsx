@@ -1,5 +1,5 @@
 // src/componentes/ComprasCell.jsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { IconButton, Tooltip, Stack, Typography, CircularProgress } from '@mui/material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ComprasMiniDetalleModal from './ComprasMiniDetalleModal';
@@ -38,22 +38,28 @@ function ComprasCell({
   // Insumo activo dentro del modal — arranca en el de esta fila, pero puede
   // cambiar sin cerrar el modal (ranking "Top por gasto" → onCambiarInsumo).
   const [activeInsumo, setActiveInsumo] = useState(null);
+  // Rango activo dentro del modal — arranca en el período de la fila (from/to
+  // de la barra), pero el botón "📅 Fechas" del detalle puede pisarlo sin
+  // cerrar el modal ni afectar el período del resto de la tabla.
+  const [rangoOverride, setRangoOverride] = useState(null);
 
   const hasData = !!comprasEntry && (
     Number(comprasEntry.total ?? 0) !== 0 ||
     Number(comprasEntry.cantidad ?? 0) !== 0
   );
 
-  const fetchDetalle = useCallback(async (targetInsumoId) => {
-    if (!targetInsumoId || !from || !to) return;
+  const rangoEfectivo = useMemo(() => (
+    rangoOverride || { from: from ? String(from).slice(0, 10) : null, to: to ? String(to).slice(0, 10) : null }
+  ), [rangoOverride, from, to]);
+
+  const fetchDetalle = useCallback(async (targetInsumoId, rangoArg) => {
+    if (!targetInsumoId || !rangoArg?.from || !rangoArg?.to) return;
     setDetailLoading(true);
     setDetailItems([]);
     try {
       const token = localStorage.getItem('token');
       const bid   = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
-      const fromStr = String(from).slice(0, 10);
-      const toStr   = String(to).slice(0, 10);
-      const url = `${BASE}/purchases?insumo_id=${targetInsumoId}&from=${fromStr}&to=${toStr}&limit=500`;
+      const url = `${BASE}/purchases?insumo_id=${targetInsumoId}&from=${rangoArg.from}&to=${rangoArg.to}&limit=500`;
       const res = await fetch(url, {
         headers: {
           Authorization:   `Bearer ${token}`,
@@ -68,23 +74,22 @@ function ComprasCell({
     } finally {
       setDetailLoading(false);
     }
-  }, [from, to, businessId]);
+  }, [businessId]);
 
   const handleOpen = useCallback(async () => {
     if (!insumoId || !from || !to) return;
     setOpen(true);
+    setRangoOverride(null);
     setActiveInsumo({ id: insumoId, nombre: insumoNombre, unidad: insumoUnidad });
-    fetchDetalle(insumoId);
+    const rangoInicial = { from: String(from).slice(0, 10), to: String(to).slice(0, 10) };
+    fetchDetalle(insumoId, rangoInicial);
 
     // Facturación del negocio por mes, para el KPI "sobre facturación" del
     // modal — no depende del insumo activo, no hace falta repetirla al
     // cambiar de insumo dentro del mismo modal.
     try {
       const bid = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
-      const resp = await BusinessesAPI.salesMonthly(bid, {
-        from: String(from).slice(0, 10),
-        to: String(to).slice(0, 10),
-      });
+      const resp = await BusinessesAPI.salesMonthly(bid, rangoInicial);
       setFacturacionPorMes(resp?.porMes || null);
     } catch (e) {
       console.warn('[ComprasCell] Error cargando facturación por mes:', e.message);
@@ -95,14 +100,25 @@ function ComprasCell({
   const cambiarInsumo = useCallback((item) => {
     if (!item?.id) return;
     setActiveInsumo({ id: Number(item.id), nombre: item.nombre, unidad: item.unidad_med || '' });
-    fetchDetalle(item.id);
-  }, [fetchDetalle]);
+    fetchDetalle(item.id, rangoEfectivo);
+  }, [fetchDetalle, rangoEfectivo]);
+
+  const cambiarRango = useCallback((nuevoRango) => {
+    if (!nuevoRango?.from || !nuevoRango?.to) return;
+    setRangoOverride(nuevoRango);
+    if (activeInsumo?.id) fetchDetalle(activeInsumo.id, nuevoRango);
+    const bid = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
+    BusinessesAPI.salesMonthly(bid, nuevoRango)
+      .then((resp) => setFacturacionPorMes(resp?.porMes || null))
+      .catch(() => setFacturacionPorMes(null));
+  }, [activeInsumo, fetchDetalle, businessId]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
     setDetailItems([]);
     setFacturacionPorMes(null);
     setActiveInsumo(null);
+    setRangoOverride(null);
   }, []);
 
   return (
@@ -153,13 +169,14 @@ function ComprasCell({
           insumoId={activeInsumo.id}
           insumoNombre={activeInsumo.nombre}
           insumoUnidad={activeInsumo.unidad}
-          rango={{ from: String(from).slice(0, 10), to: String(to).slice(0, 10) }}
+          rango={rangoEfectivo}
           items={detailItems}
           loading={detailLoading}
           businessId={businessId}
           businesses={businesses}
           facturacionPorMes={facturacionPorMes}
           onCambiarInsumo={cambiarInsumo}
+          onCambiarRango={cambiarRango}
         />
       )}
     </>
