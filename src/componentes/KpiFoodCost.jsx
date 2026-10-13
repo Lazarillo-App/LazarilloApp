@@ -144,8 +144,6 @@ export default function KpiFoodCost({
   const valC = useMemo(() => validar(compras, kpis, "compras"), [compras, kpis]);
   const cuadra = valV.diferencia === 0 && valC.diferencia === 0;
 
-  if (!kpi) return null;
-
   /* ---- mutaciones ---- */
 
   const aplicar = (nuevos) => onChange?.(nuevos);
@@ -225,6 +223,13 @@ export default function KpiFoodCost({
     );
     return otro?.nombre ?? null;
   };
+
+  // Todos los hooks ya se llamaron arriba, sin importar si hay kpi o no — acá
+  // recién es seguro salir temprano (antes del primer render con kpis vacío,
+  // mientras BusinessesAPI.getFoodCostKpis todavía no resolvió, esto rompía
+  // las reglas de hooks: "disponible" quedaba sin declararse en ese render y
+  // React tiraba "Rendered more hooks than during the previous render").
+  if (!kpi) return null;
 
   /* ---- render ---- */
 
