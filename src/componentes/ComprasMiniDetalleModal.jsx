@@ -55,8 +55,204 @@ const AMBER = {
   strong: '#b45309',    // texto énfasis
 };
 
+// Cuántas compras muestra el modo por defecto. Mirar el precio de las últimas N
+// es lo que se usa en la práctica; el rango completo trae años y no dice nada.
+const ULTIMAS_N = 10;
+
+const precioUnit = (it) => {
+  if (!it) return 0;
+  const directo = Number(it.precio_unitario ?? it.precio ?? 0);
+  if (Number.isFinite(directo) && directo > 0) return directo;
+  const cant = Number(it.cantidad ?? 0);
+  const tot = Number(it.precio_total ?? it.importe ?? 0);
+  return cant > 0 ? tot / cant : 0;
+};
+
+const mesDe = (it) => String(it?.fecha ?? '').slice(0, 7);   // 'YYYY-MM'
+
+// Facturación que cubre el lote, sumando la de cada mes presente.
+// `facturacionPorMes` es opcional: si no llega, el ratio no se muestra.
+const facturacionDe = (arr, porMes) => {
+  if (!porMes) return 0;
+  const meses = new Set(arr.map(mesDe).filter(Boolean));
+  let t = 0;
+  meses.forEach((m) => { t += Number(porMes[m] ?? 0); });
+  return t;
+};
+
+const variacion = (actual, anterior) => {
+  if (anterior == null || !Number.isFinite(anterior) || anterior === 0) return null;
+  return ((actual - anterior) / anterior) * 100;
+};
+
+const fmtVar = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1).replace('.', ',')}%`;
+
+// Índices donde la serie cambia de dirección. Son las fechas que vale la pena
+// rotular: los extremos y los puntos de inflexión, no cada punto.
+const inflexiones = (v) => {
+  if (v.length < 2) return v.map((_, i) => i);
+  const signos = [];
+  let ultimo = 0;
+  for (let i = 1; i < v.length; i++) {
+    const d = v[i] - v[i - 1];
+    const sg = d > 0 ? 1 : d < 0 ? -1 : 0;
+    signos.push(sg || ultimo);
+    if (sg) ultimo = sg;
+  }
+  const out = new Set([0, v.length - 1]);
+  for (let j = 1; j < signos.length; j++) {
+    if (signos[j] !== signos[j - 1] && signos[j] !== 0 && signos[j - 1] !== 0) out.add(j);
+  }
+  return [...out].sort((a, b) => a - b);
+};
+
 // Ratios ofrecidos en el selector manual (spec §5.3 "O elegí otra")
 const RATIOS_MANUAL = [2, 3, 4];
+
+/* ══════════════════════════════════════════════════════════
+   Celda de KPI. Grilla de tres filas de alto fijo: así los rótulos, los
+   números y los pies quedan alineados entre celdas aunque el texto de una
+   sea más largo. Sin esto el pie se parte en dos renglones y empuja la celda.
+══════════════════════════════════════════════════════════ */
+function KpiCelda({ titulo, valor, pie, delta = null, deltaTexto = null, color }) {
+  const txt = deltaTexto ?? (delta != null ? fmtVar(delta) : null);
+  const colorDelta = deltaTexto
+    ? 'text.disabled'
+    : delta == null ? 'text.disabled' : delta > 0 ? '#C0392B' : '#2E8B57';
+  return (
+    <Box sx={{
+      px: 1.6, py: 1.2, flex: '1 1 118px', minWidth: 0,
+      borderLeft: '1px solid', borderColor: 'divider',
+      '&:first-of-type': { borderLeft: 'none' },
+      display: 'grid', gridTemplateRows: '12px 22px 14px', rowGap: 0.5, alignContent: 'start',
+    }}>
+      <Typography sx={{
+        fontSize: '0.53rem', fontWeight: 800, letterSpacing: '.06em',
+        color: 'text.disabled', lineHeight: '12px',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{titulo}</Typography>
+      <Typography sx={{
+        fontSize: '1.18rem', fontWeight: 700, lineHeight: '22px',
+        letterSpacing: '-.02em', color: color || 'text.primary',
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+      }}>{valor}</Typography>
+      <Typography component="div" sx={{
+        fontSize: '0.62rem', color: 'text.secondary', lineHeight: '14px',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {pie}
+        {txt && <Box component="span" sx={{ color: colorDelta, fontWeight: 700, ml: 0.6 }}>{txt}</Box>}
+      </Typography>
+    </Box>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   Gráfico de evolución. Canvas, sin librerías.
+   Rotula solo los puntos de inflexión y muestra un tooltip al pasar el mouse.
+══════════════════════════════════════════════════════════ */
+function EvolucionChart({ puntos, color, formato, alto = 70 }) {
+  const ref = useRef(null);
+  const ptsRef = useRef([]);
+  const [tip, setTip] = useState(null);
+
+  const dibujar = useCallback(() => {
+    const cv = ref.current;
+    if (!cv || !puntos.length) return;
+    const g = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth || 400;
+    const H = alto;
+    cv.width = W * dpr; cv.height = H * dpr;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+
+    const vals = puntos.map((p) => p.valor);
+    const mx = Math.max(...vals), mn = Math.min(...vals);
+    const colchon = mx === mn ? (Math.abs(mx) * 0.1 || 1) : (mx - mn) * 0.35;
+    const hi = mx + colchon, lo = Math.max(0, mn - colchon);
+    const L = 44, R = 8, T = 10, B = 16;
+    const w = W - L - R, h = H - T - B;
+    const px = (i) => L + (puntos.length < 2 ? w / 2 : (i * w) / (puntos.length - 1));
+    const py = (v) => T + h - ((v - lo) / (hi - lo || 1)) * h;
+
+    g.font = '8.5px -apple-system, Segoe UI, Helvetica, Arial';
+    g.strokeStyle = 'rgba(140,155,150,.22)';
+    g.fillStyle = '#8B9A95';
+    g.textAlign = 'right';
+    [0, 1].forEach((t) => {
+      const v = lo + (hi - lo) * t, y = Math.round(py(v)) + 0.5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
+      g.fillText(formato.eje(v), L - 6, y + 3);
+    });
+
+    g.beginPath();
+    puntos.forEach((p, i) => { const X = px(i), Y = py(p.valor); if (i) g.lineTo(X, Y); else g.moveTo(X, Y); });
+    g.lineTo(px(puntos.length - 1), T + h); g.lineTo(px(0), T + h); g.closePath();
+    g.fillStyle = `${color}20`; g.fill();
+
+    g.beginPath();
+    puntos.forEach((p, i) => { const X = px(i), Y = py(p.valor); if (i) g.lineTo(X, Y); else g.moveTo(X, Y); });
+    g.strokeStyle = color; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
+
+    puntos.forEach((p, i) => {
+      const X = px(i), Y = py(p.valor), esUlt = i === puntos.length - 1;
+      g.beginPath(); g.arc(X, Y, esUlt ? 4 : 2.6, 0, Math.PI * 2);
+      g.fillStyle = esUlt ? color : '#fff'; g.strokeStyle = color; g.lineWidth = 2;
+      g.fill(); if (!esUlt) g.stroke();
+    });
+
+    g.fillStyle = '#8B9A95';
+    let ultX = -99;
+    inflexiones(vals).forEach((i) => {
+      const X = px(i);
+      if (X - ultX < 44) return;
+      ultX = X;
+      g.textAlign = i === 0 ? 'left' : i === puntos.length - 1 ? 'right' : 'center';
+      g.fillText(puntos[i].etiqueta, i === 0 ? X - 4 : i === puntos.length - 1 ? X + 4 : X, H - 3);
+    });
+
+    ptsRef.current = puntos.map((p, i) => ({ x: px(i), y: py(p.valor), p }));
+  }, [puntos, color, formato, alto]);
+
+  useEffect(() => { dibujar(); }, [dibujar]);
+  useEffect(() => {
+    const onResize = () => dibujar();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [dibujar]);
+
+  const buscar = (e) => {
+    const cv = ref.current; if (!cv) return;
+    const b = cv.getBoundingClientRect();
+    const mx = e.clientX - b.left, my = e.clientY - b.top;
+    let mejor = null, dist = 1e9;
+    ptsRef.current.forEach((q) => {
+      const d = Math.hypot(q.x - mx, q.y - my);
+      if (d < dist) { dist = d; mejor = q; }
+    });
+    setTip(dist < 26 ? mejor : null);
+  };
+
+  return (
+    <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      <canvas ref={ref}
+        style={{ width: '100%', height: alto, display: 'block', cursor: 'crosshair' }}
+        onMouseMove={buscar} onMouseLeave={() => setTip(null)} />
+      {tip && (
+        <Box sx={{
+          position: 'absolute', left: tip.x, top: tip.y - 9, transform: 'translate(-50%,-100%)',
+          bgcolor: '#1F2933', color: '#fff', borderRadius: 1.2, px: 1.2, py: 0.6,
+          fontSize: '0.65rem', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 5,
+          boxShadow: '0 6px 18px rgba(16,30,26,.3)',
+        }}>
+          <b style={{ marginRight: 8 }}>{tip.p.etiqueta}</b>
+          <span style={{ color: '#7FD3A0', fontWeight: 700 }}>{formato.tip(tip.p.valor)}</span>
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 /* ══════════════════════════════════════════════════════════
    CONTENIDO reutilizable (sin Dialog). Se usa:
@@ -71,6 +267,10 @@ export function ComprasDetalleContenido({
   rango, items = [], loading = false,
   businessId,
   businesses = [],
+  // Facturación del negocio por mes: { '2026-07': 9200000, ... }
+  // Opcional: sin esto no se puede saber cuánto pesa la compra sobre lo vendido,
+  // así que ese KPI y esa serie del gráfico simplemente no se muestran.
+  facturacionPorMes = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1', secondary: '#10b981' };
@@ -104,6 +304,11 @@ export function ComprasDetalleContenido({
   const anchorRectRef = useRef(null); // cachea la posición del chip para que el popover no salte durante el re-render
 
   const [ratioCustom, setRatioCustom] = useState('');
+
+  // ─────────── KPI de compras (período, switch y serie del gráfico) ───────────
+  const [modoPeriodo, setModoPeriodo] = useState('ultimas');   // 'ultimas' | 'rango'
+  const [vistaKpi, setVistaKpi] = useState('kpi');             // 'kpi' | 'grafico'
+  const [serieGraf, setSerieGraf] = useState('precio');        // 'precio' | 'unidades' | 'ratio'
 
   // Ref para que fetchForBranch lea siempre el valor fresco sin ser dependencia del useCallback
   const dynamicBranchesRef = useRef([]);
@@ -437,14 +642,79 @@ export function ComprasDetalleContenido({
     `${it.factura ?? it.comprob ?? it.referencia ?? ''}__${it.purchase_id ?? ''}__${it._bizId ?? ''}`,
     []);
 
-  const totales = useMemo(() => {
+  // Las compras que realmente se muestran. Por defecto las últimas N: el rango
+  // completo trae años y el precio viejo no dice nada. No se vuelve a pedir al
+  // backend, `items` ya trajo todo el rango.
+  const itemsVisibles = useMemo(
+    () => (modoPeriodo === 'ultimas' ? sortedItems.slice(0, ULTIMAS_N) : sortedItems),
+    [sortedItems, modoPeriodo]);
+
+  // Ventana anterior del mismo tamaño, para la variación. Si no hay N compras
+  // hacia atrás no se compara: mejor nada que un número a medias.
+  const itemsPrevios = useMemo(
+    () => (modoPeriodo === 'ultimas' ? sortedItems.slice(ULTIMAS_N, ULTIMAS_N * 2) : []),
+    [sortedItems, modoPeriodo]);
+
+  const resumir = useCallback((arr) => {
     let cantidad = 0, importe = 0;
-    for (const it of sortedItems) {
+    for (const it of arr) {
       cantidad += Number(it.cantidad ?? 0);
       importe += Number(it.precio_total ?? it.importe ?? 0);
     }
-    return { cantidad, importe, facturas: sortedItems.length };
-  }, [sortedItems]);
+    const facturacion = facturacionDe(arr, facturacionPorMes);
+    return {
+      cantidad, importe, facturas: arr.length,
+      promedio: cantidad > 0 ? importe / cantidad : 0,   // ponderado por cantidad
+      ratio: facturacion > 0 ? (importe / facturacion) * 100 : null,
+    };
+  }, [facturacionPorMes]);
+
+  const totales = useMemo(() => resumir(itemsVisibles), [resumir, itemsVisibles]);
+  const previos = useMemo(
+    () => (itemsPrevios.length === ULTIMAS_N ? resumir(itemsPrevios) : null),
+    [resumir, itemsPrevios]);
+
+  const ultimoPrecio = useMemo(() => precioUnit(itemsVisibles[0]), [itemsVisibles]);
+  const picoPrecio = useMemo(
+    () => itemsVisibles.reduce((m, it) => Math.max(m, precioUnit(it)), 0),
+    [itemsVisibles]);
+
+  const SERIES = useMemo(() => ({
+    precio: {
+      label: 'Precio', color: '#2E8B57',
+      val: (it) => precioUnit(it),
+      eje: (v) => Math.round(v).toLocaleString('es-AR'),
+      tip: (v) => fmtMoney(v),
+    },
+    unidades: {
+      label: 'Unidades', color: '#3C9BD6',
+      val: (it) => Number(it.cantidad ?? 0),
+      eje: (v) => Math.round(v).toLocaleString('es-AR'),
+      tip: (v) => `${fmtNum(v, 0)} ${insumoUnidad || 'U'}`,
+    },
+    ratio: {
+      label: 'Sobre facturación', color: '#C77C0B',
+      val: (it) => {
+        const f = Number(facturacionPorMes?.[mesDe(it)] ?? 0);
+        return f > 0 ? (Number(it.precio_total ?? it.importe ?? 0) / f) * 100 : 0;
+      },
+      eje: (v) => fmtNum(v, 2),
+      tip: (v) => `${fmtNum(v, 2)} %`,
+    },
+  }), [insumoUnidad, facturacionPorMes]);
+
+  const seriesDisponibles = useMemo(
+    () => (facturacionPorMes ? ['precio', 'unidades', 'ratio'] : ['precio', 'unidades']),
+    [facturacionPorMes]);
+
+  const puntosGraf = useMemo(() => {
+    const S = SERIES[serieGraf] || SERIES.precio;
+    // el gráfico va de la compra más vieja a la más nueva
+    return [...itemsVisibles].reverse().map((it) => ({
+      etiqueta: String(it.fecha ?? '').slice(5, 10).split('-').reverse().join('/'),
+      valor: S.val(it),
+    }));
+  }, [itemsVisibles, serieGraf, SERIES]);
 
   const isLoading = loading || extraLoading || branchLoading || branchesLoading;
 
@@ -773,6 +1043,27 @@ export function ComprasDetalleContenido({
             </FormControl>
           )}
 
+          {/* Período: por defecto las últimas N compras.
+              No dispara fetch: `items` ya trae el rango completo. */}
+          {sortedItems.length > ULTIMAS_N && (
+            <Stack direction="row" sx={{
+              border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden',
+            }}>
+              {[['ultimas', `Últimas ${ULTIMAS_N}`], ['rango', 'Todo el período']].map(([v, lab]) => (
+                <Box key={v} onClick={() => setModoPeriodo(v)}
+                  sx={{
+                    px: 1.5, py: 0.8, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
+                    bgcolor: modoPeriodo === v ? themeColors.primary : 'transparent',
+                    color: modoPeriodo === v ? '#fff' : 'text.secondary',
+                    fontWeight: modoPeriodo === v ? 700 : 400,
+                    borderLeft: v === 'rango' ? '1px solid' : 'none', borderColor: 'divider',
+                  }}>
+                  {lab}
+                </Box>
+              ))}
+            </Stack>
+          )}
+
           {/* Selector de sucursal */}
           {(hasSucursales || dynamicBranches.length > 0) && (
             <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -820,35 +1111,126 @@ export function ComprasDetalleContenido({
         </Stack>
       </Stack>
 
-      {/* Chips de totales + chip de bonificación (alineado a la derecha, spec §5.1) */}
-      {!isLoading && (
-        <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
-          <Chip size="small" label={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`}
-            variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
-          <Chip size="small"
-            label={`${fmtNum(totales.cantidad)} ${insumoUnidad || 'unidades'}`}
-            variant="outlined" sx={{ color: themeColors.primary, borderColor: themeColors.primary }} />
-          <Chip size="small" label={`Total: ${fmtMoney(totales.importe)}`}
-            sx={{ bgcolor: `${themeColors.primary}15`, color: themeColors.primary, fontWeight: 700 }} />
-
-          {/* separador flexible: empuja el chip de promoción al borde derecho */}
-          <Box sx={{ flex: 1 }} />
-
-          {!bonifLoading && bonif && (
-            <Box ref={chipRef} sx={{ display: 'inline-flex' }}>
-              {renderChipBonif()}
-            </Box>
+      {/* ───────── Franja de KPI / gráfico ─────────
+          Reemplaza a los tres chips de totales. El switch de la derecha cambia
+          números por evolución sin sumar altura: los dos modos miden casi lo mismo. */}
+      {!isLoading && itemsVisibles.length > 0 && (
+        <Box sx={{
+          border: '1px solid', borderColor: 'divider', borderRadius: 2,
+          bgcolor: 'action.hover', display: 'flex', flexWrap: 'wrap', alignItems: 'stretch',
+        }}>
+          {vistaKpi === 'kpi' ? (
+            <>
+              <KpiCelda
+                titulo="TOTAL COMPRADO"
+                valor={fmtMoney(totales.importe)}
+                pie={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`} />
+              <KpiCelda
+                titulo="PRECIO PROMEDIO"
+                valor={fmtMoney(totales.promedio)}
+                pie="ponderado"
+                delta={previos ? variacion(totales.promedio, previos.promedio) : null} />
+              <KpiCelda
+                titulo="ÚLTIMO PRECIO"
+                valor={fmtMoney(ultimoPrecio)}
+                color="#2E8B57"
+                pie={picoPrecio > 0 && ultimoPrecio !== picoPrecio
+                  ? `${fmtVar(variacion(ultimoPrecio, picoPrecio))} del pico`
+                  : 'es el máximo'} />
+              <KpiCelda
+                titulo="UNIDADES"
+                valor={`${fmtNum(totales.cantidad, 0)} ${insumoUnidad || 'U'}`}
+                pie={`${fmtNum(totales.cantidad / Math.max(totales.facturas, 1), 0)} por compra`}
+                delta={previos ? variacion(totales.cantidad, previos.cantidad) : null} />
+              {totales.ratio != null && (
+                <KpiCelda
+                  titulo="SOBRE FACTURACIÓN"
+                  valor={`${fmtNum(totales.ratio, 2)} %`}
+                  pie="del período"
+                  deltaTexto={previos?.ratio != null
+                    ? `${totales.ratio - previos.ratio >= 0 ? '+' : '−'}${Math.abs(totales.ratio - previos.ratio).toFixed(2).replace('.', ',')} pts`
+                    : null} />
+              )}
+              {previos && (
+                <Typography variant="caption" sx={{
+                  alignSelf: 'center', color: 'text.disabled', px: 2,
+                  borderLeft: '1px solid', borderColor: 'divider', whiteSpace: 'nowrap',
+                }}>
+                  vs período anterior
+                </Typography>
+              )}
+            </>
+          ) : (
+            <>
+              <Stack direction="column" spacing={0.5} sx={{ p: 1.2, justifyContent: 'center', flex: '0 0 auto' }}>
+                {seriesDisponibles.map((k) => (
+                  <Box key={k} onClick={() => setSerieGraf(k)}
+                    sx={{
+                      px: 1.4, py: 0.5, borderRadius: 1, cursor: 'pointer', textAlign: 'center',
+                      fontSize: '0.7rem', whiteSpace: 'nowrap',
+                      border: '1px solid',
+                      borderColor: serieGraf === k ? themeColors.primary : 'divider',
+                      bgcolor: serieGraf === k ? themeColors.primary : 'background.paper',
+                      color: serieGraf === k ? '#fff' : 'text.secondary',
+                      fontWeight: serieGraf === k ? 700 : 400,
+                    }}>
+                    {SERIES[k].label}
+                  </Box>
+                ))}
+              </Stack>
+              <Stack direction="column" sx={{ flex: 1, minWidth: 0, pl: 1.5, py: 1 }}>
+                <Typography variant="caption" sx={{ textAlign: 'right', pr: 1, color: 'text.secondary' }}>
+                  {puntosGraf.length > 1 && (
+                    <>
+                      {SERIES[serieGraf].tip(puntosGraf[0].valor)}
+                      {' → '}
+                      <b>{SERIES[serieGraf].tip(puntosGraf[puntosGraf.length - 1].valor)}</b>
+                    </>
+                  )}
+                </Typography>
+                <EvolucionChart
+                  puntos={puntosGraf}
+                  color={SERIES[serieGraf].color}
+                  formato={{ eje: SERIES[serieGraf].eje, tip: SERIES[serieGraf].tip }} />
+              </Stack>
+            </>
           )}
+
+          <Stack direction="row" sx={{
+            alignSelf: 'center', mr: 1.2, ml: 'auto', border: '1px solid',
+            borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: 'background.paper',
+          }}>
+            {[['kpi', '▦'], ['grafico', '∿']].map(([v, ic]) => (
+              <Box key={v} onClick={() => setVistaKpi(v)}
+                sx={{
+                  px: 1.2, py: 0.7, cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1,
+                  bgcolor: vistaKpi === v ? themeColors.primary : 'transparent',
+                  color: vistaKpi === v ? '#fff' : 'text.secondary',
+                }}>
+                {ic}
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Chip de bonificación: pasa a su propia línea, alineado a la derecha */}
+      {!isLoading && !bonifLoading && bonif && (
+        <Stack direction="row" alignItems="center">
+          <Box sx={{ flex: 1 }} />
+          <Box ref={chipRef} sx={{ display: 'inline-flex' }}>
+            {renderChipBonif()}
+          </Box>
         </Stack>
       )}
 
       {/* Leyenda de negocios */}
-      {showBizColumn && !isLoading && sortedItems.length > 0 && (
+      {showBizColumn && !isLoading && itemsVisibles.length > 0 && (
         <Stack direction="row" spacing={1.5} flexWrap="wrap">
           {(selectedBiz === 'all'
             ? [Number(businessId), ...businesses.filter(b => Number(b.id) !== Number(businessId)).map(b => Number(b.id))]
             : [Number(selectedBiz)]
-          ).filter(id => sortedItems.some(r => Number(r._bizId) === id)).map(id => (
+          ).filter(id => itemsVisibles.some(r => Number(r._bizId) === id)).map(id => (
             <Stack key={id} direction="row" alignItems="center" spacing={0.5}>
               <span style={{
                 width: 12, height: 12, borderRadius: 3,
@@ -864,7 +1246,7 @@ export function ComprasDetalleContenido({
       )}
 
       {/* Leyenda de sucursales + referencia "Línea bonificada" */}
-      {showBranchColumn && !isLoading && sortedItems.length > 0 && (
+      {showBranchColumn && !isLoading && itemsVisibles.length > 0 && (
         <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
           {selectedBiz === 'all' && branchesByBiz
             ? Array.from(branchesByBiz.entries()).flatMap(([bizId, { bizName, bizColor, branches: bizBranches }]) => [
@@ -915,7 +1297,7 @@ export function ComprasDetalleContenido({
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedItems.map((it, i) => {
+              {itemsVisibles.map((it, i) => {
                 const bizId = Number(it._bizId);
                 const bizColor = bizColorMap.get(bizId) || themeColors.primary;
                 const branchId = it.branch_id ? String(it.branch_id) : 'main';
@@ -933,7 +1315,7 @@ export function ComprasDetalleContenido({
                 const aplicadaEnInsumo = bonif?.estado === 'aplicada';
 
                 // La fila anterior pertenece al mismo comprobante bonificado?
-                const prev = sortedItems[i - 1];
+                const prev = itemsVisibles[i - 1];
                 const esPrimeraDelGrupo = compTieneBonif &&
                   (!prev || keyDeItem(prev) !== keyDeItem(it));
 
@@ -1045,7 +1427,7 @@ export function ComprasDetalleContenido({
                 );
               })}
 
-              {sortedItems.length === 0 && (
+              {itemsVisibles.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={6 + (showBizColumn ? 1 : 0) + (showBranchColumn ? 1 : 0)}
@@ -1105,6 +1487,7 @@ export default function ComprasMiniDetalleModal({
   rango, items = [], loading = false,
   businessId,
   businesses = [],
+  facturacionPorMes = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1' };
@@ -1135,6 +1518,7 @@ export default function ComprasMiniDetalleModal({
           loading={loading}
           businessId={businessId}
           businesses={businesses}
+          facturacionPorMes={facturacionPorMes}
         />
       </DialogContent>
 
