@@ -18,6 +18,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BASE } from '../servicios/apiBase';
+import { purchasesRanking } from '../servicios/apiPurchases';
 import { useBranch } from '@/hooks/useBranch';
 import { downwardMenuProps } from '@/utils/menuProps';
 
@@ -254,6 +255,160 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
   );
 }
 
+const fmtCorto = (n) => {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return `$ ${(v / 1e6).toFixed(2).replace('.', ',')} M`;
+  if (v >= 1e3) return `$ ${Math.round(v / 1e3)} k`;
+  return fmtMoney(v);
+};
+
+/* ══════════════════════════════════════════════════════════
+   Chip "Top N por gasto" — ranking de insumos del período, con el
+   desplegable (rail) para saltar a otro sin cerrar el modal.
+   El cierre al hacer clic afuera usa una bandera en mousedown (no
+   contains() en el click): al re-renderizar la lista, el nodo clickeado
+   deja de existir en el DOM y un contains() sobre el target se resuelve
+   solo, cerrando el panel cada vez que se toca algo de adentro.
+══════════════════════════════════════════════════════════ */
+function RankingChip({ ranking, loading, activeInsumoId, onPick }) {
+  const [abierto, setAbierto] = useState(false);
+  const raiz = useRef(null);
+  const dentro = useRef(false);
+
+  useEffect(() => {
+    const down = (e) => (dentro.current = !!raiz.current?.contains(e.target));
+    const up = () => { if (!dentro.current) setAbierto(false); };
+    document.addEventListener('mousedown', down, true);
+    document.addEventListener('click', up);
+    return () => {
+      document.removeEventListener('mousedown', down, true);
+      document.removeEventListener('click', up);
+    };
+  }, []);
+
+  if (loading || !ranking || !ranking.items?.length) return null;
+
+  const { items, total_insumos: totalInsumos, total_gasto: totalGasto } = ranking;
+  const activeIdNum = Number(activeInsumoId);
+  const activo = items.find((it) => Number(it.id) === activeIdNum);
+  // Si el activo no vino en el top (quedó afuera del corte del backend), su fila
+  // igual llega gracias a `pin` — pero puede no estar entre las primeras N.
+  const topN = items.filter((it) => !activo || it.id !== activo.id || it.rank <= 20);
+  const fueraDelTop = activo && !topN.some((it) => it.id === activo.id);
+
+  const pctActivo = activo && totalGasto > 0 ? (activo.total / totalGasto) * 100 : null;
+  const top10Pct = totalGasto > 0
+    ? (topN.slice(0, 10).reduce((a, it) => a + it.total, 0) / totalGasto) * 100
+    : 0;
+
+  const label = activo
+    ? `#${activo.rank} de ${totalInsumos}${pctActivo != null ? ` · ${pctActivo.toFixed(1).replace('.', ',')}% del gasto` : ''}`
+    : `Top ${topN.length} por gasto`;
+
+  return (
+    <Box ref={raiz} sx={{ position: 'relative' }}>
+      <Box
+        onClick={() => setAbierto((a) => !a)}
+        sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none',
+          px: 1.25, py: 0.5, borderRadius: 999, fontSize: '0.78rem', fontWeight: 600,
+          border: '1px solid', borderColor: fueraDelTop ? '#fbbf24' : 'divider',
+          bgcolor: fueraDelTop ? '#fffbeb' : 'action.hover',
+          color: fueraDelTop ? '#92400e' : 'text.secondary',
+        }}
+      >
+        {label}
+        <Box component="span" sx={{ fontSize: '0.7rem', transition: 'transform .2s', transform: abierto ? 'rotate(180deg)' : 'none' }}>▾</Box>
+      </Box>
+
+      {abierto && (
+        <Box sx={{
+          position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 20,
+          width: 340, maxWidth: '90vw', border: '1px solid', borderColor: 'divider',
+          borderRadius: 2, bgcolor: 'background.paper', boxShadow: 6, overflow: 'hidden',
+        }}>
+          <Box sx={{ px: 2, py: 1.25, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '.05em', color: 'text.secondary' }}>
+              TOP {topN.length} POR GASTO DE COMPRA
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {fmtMoney(totalGasto)} en total · {totalInsumos} insumos
+            </Typography>
+          </Box>
+
+          <Box sx={{ maxHeight: 280, overflowY: 'auto' }}>
+            {topN.map((it) => {
+              const on = activo && it.id === activo.id;
+              const max = topN[0]?.total || 1;
+              return (
+                <Box
+                  key={it.id}
+                  onClick={() => { setAbierto(false); if (!on) onPick?.(it); }}
+                  sx={{
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 1,
+                    px: 2, py: 0.85, fontSize: '0.8rem', cursor: on ? 'default' : 'pointer',
+                    bgcolor: on ? 'action.selected' : 'transparent',
+                    borderLeft: on ? '3px solid' : '3px solid transparent',
+                    borderLeftColor: on ? 'var(--color-primary, #0369a1)' : 'transparent',
+                    borderBottom: '1px solid', borderBottomColor: 'divider',
+                    '&:last-child': { borderBottom: 'none' },
+                    '&:hover': on ? {} : { bgcolor: 'action.hover' },
+                  }}
+                >
+                  <Typography sx={{ width: 20, textAlign: 'right', fontSize: '0.72rem', color: 'text.disabled', flexShrink: 0 }}>
+                    {it.rank}
+                  </Typography>
+                  <Typography sx={{
+                    flex: 1, minWidth: 0, fontWeight: on ? 700 : 400,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {it.nombre}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary', flexShrink: 0 }}>
+                    {fmtCorto(it.total)}
+                  </Typography>
+                  <Box sx={{
+                    position: 'absolute', left: 0, bottom: 0, height: 2, opacity: 0.55,
+                    width: `${(it.total / max) * 100}%`, bgcolor: '#57BB7F',
+                  }} />
+                </Box>
+              );
+            })}
+          </Box>
+
+          {fueraDelTop && activo && (
+            <>
+              <Box sx={{ px: 2, pt: 1, pb: 0.25, fontSize: '0.64rem', fontWeight: 800, letterSpacing: '.05em', color: '#92400e', bgcolor: '#fffbeb' }}>
+                EL QUE ESTÁS VIENDO · fuera del top {topN.length}
+              </Box>
+              <Box sx={{
+                display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.85, fontSize: '0.8rem',
+                bgcolor: '#fffbeb',
+              }}>
+                <Typography sx={{ width: 20, textAlign: 'right', fontSize: '0.72rem', color: '#92400e', flexShrink: 0 }}>
+                  {activo.rank}
+                </Typography>
+                <Typography sx={{ flex: 1, minWidth: 0, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activo.nombre}
+                </Typography>
+                <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary', flexShrink: 0 }}>
+                  {fmtCorto(activo.total)}
+                </Typography>
+              </Box>
+            </>
+          )}
+
+          <Box sx={{ px: 2, py: 1, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'action.hover' }}>
+            <Typography variant="caption" color="text.secondary">
+              Los primeros 10 son el <b>{top10Pct.toFixed(0)}%</b> del gasto del período.
+            </Typography>
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════
    CONTENIDO reutilizable (sin Dialog). Se usa:
    - dentro de ComprasMiniDetalleModal (envuelto en Dialog)
@@ -271,6 +426,10 @@ export function ComprasDetalleContenido({
   // Opcional: sin esto no se puede saber cuánto pesa la compra sobre lo vendido,
   // así que ese KPI y esa serie del gráfico simplemente no se muestran.
   facturacionPorMes = null,
+  // Cambiar al insumo elegido en el ranking "Top por gasto", sin cerrar el
+  // modal. Recibe la fila completa del ranking ({id, nombre, unidad_med, ...}).
+  // Opcional: sin esto, el chip del ranking simplemente no aparece.
+  onCambiarInsumo = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1', secondary: '#10b981' };
@@ -324,6 +483,23 @@ export function ComprasDetalleContenido({
       setDynamicBranches(rawBranches || []);
     }
   }, [open]); // eslint-disable-line
+
+  // ─────────── Ranking "Top por gasto" (solo si hay con quién navegar) ───────────
+  const [ranking, setRanking] = useState(null);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  useEffect(() => {
+    if (!open || !onCambiarInsumo || !businessId || !rango?.from || !rango?.to) {
+      setRanking(null);
+      return;
+    }
+    let vivo = true;
+    setRankingLoading(true);
+    purchasesRanking(businessId, { from: rango.from, to: rango.to, pin: insumoId, limit: 20 })
+      .then((r) => { if (vivo) setRanking(r); })
+      .catch(() => { if (vivo) setRanking(null); })
+      .finally(() => { if (vivo) setRankingLoading(false); });
+    return () => { vivo = false; };
+  }, [open, onCambiarInsumo, businessId, rango?.from, rango?.to, insumoId]);
 
   // ─────────── Fetch estado de bonificación ───────────
   const fetchBonif = useCallback(async () => {
@@ -1009,11 +1185,21 @@ export function ComprasDetalleContenido({
 
       {/* Encabezado */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
-        {rango?.from && rango?.to && (
-          <Typography variant="body2" color="text.secondary">
-            📅 Período: {rango.from} — {rango.to}
-          </Typography>
-        )}
+        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+          {rango?.from && rango?.to && (
+            <Typography variant="body2" color="text.secondary">
+              📅 Período: {rango.from} — {rango.to}
+            </Typography>
+          )}
+          {onCambiarInsumo && (
+            <RankingChip
+              ranking={ranking}
+              loading={rankingLoading}
+              activeInsumoId={insumoId}
+              onPick={onCambiarInsumo}
+            />
+          )}
+        </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
           {/* Selector de negocio */}
@@ -1488,6 +1674,7 @@ export default function ComprasMiniDetalleModal({
   businessId,
   businesses = [],
   facturacionPorMes = null,
+  onCambiarInsumo = null,
 }) {
   const themeColors = useMemo(() => {
     if (typeof window === 'undefined') return { primary: '#0369a1' };
@@ -1519,6 +1706,7 @@ export default function ComprasMiniDetalleModal({
           businessId={businessId}
           businesses={businesses}
           facturacionPorMes={facturacionPorMes}
+          onCambiarInsumo={onCambiarInsumo}
         />
       </DialogContent>
 

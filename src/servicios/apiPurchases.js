@@ -75,6 +75,24 @@ export async function purchasesFoodCost(bizId, { from, to, branch_id } = {}) {
   return Array.isArray(data.items) ? data.items : [];
 }
 
+// GET /api/purchases/ranking?from=&to=&branch_id=&pin=&limit=
+// Ranking de insumos por gasto total del período — top N + (si queda afuera)
+// la fila del insumo que se está viendo, con su rank real. Ver ComprasMiniDetalleModal.jsx.
+export async function purchasesRanking(bizId, { from, to, branch_id, pin, limit = 20 } = {}) {
+  const params = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  if (branch_id !== null && branch_id !== undefined) params.branch_id = branch_id;
+  if (pin !== null && pin !== undefined) params.pin = pin;
+  if (limit) params.limit = limit;
+  const res = await fetch(`${BASE}/purchases/ranking${qs(params)}`, {
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `Error ${res.status}`);
+  return data;
+}
+
 // Descarga CSV y lo dispara como archivo
 export async function purchasesDownloadCsv(bizId, params = {}) {
   const res = await fetch(`${BASE}/purchases/export/csv${qs(params)}`, {

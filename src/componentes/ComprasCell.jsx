@@ -35,25 +35,25 @@ function ComprasCell({
   const [detailItems,   setDetailItems]   = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [facturacionPorMes, setFacturacionPorMes] = useState(null);
+  // Insumo activo dentro del modal — arranca en el de esta fila, pero puede
+  // cambiar sin cerrar el modal (ranking "Top por gasto" → onCambiarInsumo).
+  const [activeInsumo, setActiveInsumo] = useState(null);
 
   const hasData = !!comprasEntry && (
     Number(comprasEntry.total ?? 0) !== 0 ||
     Number(comprasEntry.cantidad ?? 0) !== 0
   );
 
-  const handleOpen = useCallback(async () => {
-    if (!insumoId || !from || !to) return;
-    setOpen(true);
+  const fetchDetalle = useCallback(async (targetInsumoId) => {
+    if (!targetInsumoId || !from || !to) return;
     setDetailLoading(true);
     setDetailItems([]);
-
     try {
       const token = localStorage.getItem('token');
       const bid   = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
-      // ✅ Sanitizar fechas por si acaso
       const fromStr = String(from).slice(0, 10);
       const toStr   = String(to).slice(0, 10);
-      const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${fromStr}&to=${toStr}&limit=500`;
+      const url = `${BASE}/purchases?insumo_id=${targetInsumoId}&from=${fromStr}&to=${toStr}&limit=500`;
       const res = await fetch(url, {
         headers: {
           Authorization:   `Bearer ${token}`,
@@ -68,10 +68,17 @@ function ComprasCell({
     } finally {
       setDetailLoading(false);
     }
+  }, [from, to, businessId]);
+
+  const handleOpen = useCallback(async () => {
+    if (!insumoId || !from || !to) return;
+    setOpen(true);
+    setActiveInsumo({ id: insumoId, nombre: insumoNombre, unidad: insumoUnidad });
+    fetchDetalle(insumoId);
 
     // Facturación del negocio por mes, para el KPI "sobre facturación" del
-    // modal — no bloquea la tabla de compras si falla, simplemente ese KPI
-    // y su serie no se muestran.
+    // modal — no depende del insumo activo, no hace falta repetirla al
+    // cambiar de insumo dentro del mismo modal.
     try {
       const bid = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
       const resp = await BusinessesAPI.salesMonthly(bid, {
@@ -83,12 +90,19 @@ function ComprasCell({
       console.warn('[ComprasCell] Error cargando facturación por mes:', e.message);
       setFacturacionPorMes(null);
     }
-  }, [insumoId, from, to, businessId]);
+  }, [insumoId, insumoNombre, insumoUnidad, from, to, businessId, fetchDetalle]);
+
+  const cambiarInsumo = useCallback((item) => {
+    if (!item?.id) return;
+    setActiveInsumo({ id: Number(item.id), nombre: item.nombre, unidad: item.unidad_med || '' });
+    fetchDetalle(item.id);
+  }, [fetchDetalle]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
     setDetailItems([]);
     setFacturacionPorMes(null);
+    setActiveInsumo(null);
   }, []);
 
   return (
@@ -132,19 +146,20 @@ function ComprasCell({
         </Tooltip>
       </Stack>
 
-      {open && (
+      {open && activeInsumo && (
         <ComprasMiniDetalleModal
           open={open}
           onClose={handleClose}
-          insumoId={insumoId}
-          insumoNombre={insumoNombre}
-          insumoUnidad={insumoUnidad}
+          insumoId={activeInsumo.id}
+          insumoNombre={activeInsumo.nombre}
+          insumoUnidad={activeInsumo.unidad}
           rango={{ from: String(from).slice(0, 10), to: String(to).slice(0, 10) }}
           items={detailItems}
           loading={detailLoading}
           businessId={businessId}
           businesses={businesses}
           facturacionPorMes={facturacionPorMes}
+          onCambiarInsumo={cambiarInsumo}
         />
       )}
     </>

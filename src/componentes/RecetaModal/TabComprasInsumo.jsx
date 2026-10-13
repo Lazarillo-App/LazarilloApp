@@ -6,7 +6,7 @@ import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { ComprasDetalleContenido } from '../ComprasMiniDetalleModal';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
 
-export default function TabComprasInsumo({ insumoId, businessId, insumoData, activeBizId = null, businesses = [] }) {
+export default function TabComprasInsumo({ insumoId, businessId, insumoData, activeBizId = null, businesses = [], onCambiarInsumo = null }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [facturacionPorMes, setFacturacionPorMes] = useState(null);
@@ -82,6 +82,7 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData, act
         businessId={comprasBizId}
         businesses={businesses}
         facturacionPorMes={facturacionPorMes}
+        onCambiarInsumo={onCambiarInsumo}
       />
     </Box>
   );

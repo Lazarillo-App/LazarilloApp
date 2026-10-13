@@ -273,6 +273,16 @@ export default function InsumosMain() {
   const effectiveVista = isStaff ? 'elaborados' : vista;
   const [reloadKey, setReloadKey] = useState(0);
   const [allInsumos, setAllInsumos] = useState([]);
+
+  // "Top por gasto" dentro de la pestaña Compras: saltar a otro insumo sin
+  // cerrar el modal. Si está en allInsumos (lo normal) usa esa fila completa;
+  // si no, arma una fila mínima con lo que ya trae el ranking (id/nombre/unidad).
+  const saltarAInsumo = useCallback((item) => {
+    if (!item?.id) return;
+    const real = allInsumos.find((ins) => Number(ins.id) === Number(item.id));
+    const base = real || { id: Number(item.id), nombre: item.nombre, unidad_med: item.unidad_med, precio_ref: 0 };
+    setRecetaInsumoModal({ ...base, initialTab: 'compras', saltarSelector: true });
+  }, [allInsumos]);
   const [rubrosMap, setRubrosMap] = useState(new Map());
   const [rubrosIdMap, setRubrosIdMap] = useState(new Map()); // id interno → rubroInfo
 
@@ -1842,6 +1852,7 @@ export default function InsumosMain() {
           initialTab={recetaInsumoModal.initialTab || null}
           onNavigate={navegarRecetaInsumo}
           canNavigate={navRecetaInsumo}
+          onSaltarAInsumo={saltarAInsumo}
           articulo={{
             id: recetaInsumoModal.id,
             nombre: recetaInsumoModal.nombre,

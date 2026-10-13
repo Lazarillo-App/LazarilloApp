@@ -91,6 +91,9 @@ export default function RecetaModal({
   onPriceConfigSave = null,
   onNavigate = null,
   canNavigate = { prev: false, next: false },
+  // "Top por gasto" dentro de la pestaña Compras (solo modoInsumo): saltar a
+  // otro insumo sin cerrar el modal. Recibe la fila del ranking {id, nombre, unidad_med}.
+  onSaltarAInsumo = null,
   priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   allArticulos = [],
   promoIds = new Set(),
@@ -2186,8 +2189,9 @@ export default function RecetaModal({
                 activeBizId={comprasBizId}
                 businesses={allBusinesses || []}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id))}
+                onCambiarInsumo={onSaltarAInsumo}
               />
-            ) : modoInsumo && tab === 'equivalencias' ? (
+) : modoInsumo && tab === 'equivalencias' ? (
               <TabEquivalenciasInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
