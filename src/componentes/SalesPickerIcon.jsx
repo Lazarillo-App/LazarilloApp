@@ -193,10 +193,11 @@ function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc
 // firstDate y loadingFirst vienen del padre — cada contexto (ventas/compras) fetchea el suyo
 export default function SalesPickerIcon({
   value, onChange, firstDate = null, loadingFirst = false, labelOverride = null,
-  // Botón compacto (solo ícono) en vez del botón ancho con el label del rango
-  // — mismo trigger/Popover, para lugares donde el botón de texto ocupa
-  // demasiado (ej. la barra de herramientas del detalle de compras).
-  iconOnly = false,
+  // Botón compacto (ícono + label corto, angosto) en vez del botón ancho
+  // pensado para mostrar el rango completo — mismo trigger/Popover, para
+  // lugares donde ese texto largo no entra (ej. al lado de "Últimas 10" en
+  // el detalle de compras).
+  compact = false,
 }) {
   const { mode, from, to } = value;
 
@@ -306,17 +307,22 @@ export default function SalesPickerIcon({
   return (
     <>
       <Tooltip title={rangeLabel}>
-        {iconOnly ? (
-          <IconButton
+        {compact ? (
+          <Button
             size="small"
             onClick={handleOpen}
+            variant="outlined"
+            startIcon={<DateRangeIcon sx={{ fontSize: 15 }} />}
             sx={{
-              border: '1px solid', borderColor: tc.primary, color: tc.primary,
+              textTransform: 'none', minWidth: 'auto', whiteSpace: 'nowrap',
+              borderColor: tc.primary, color: tc.primary,
               '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
+              padding: '5px 10px', fontSize: 12.5,
+              '& .MuiButton-startIcon': { mr: 0.5 },
             }}
           >
-            <DateRangeIcon fontSize="small" />
-          </IconButton>
+            {rangeLabel}
+          </Button>
         ) : (
           <Button
             size="small"

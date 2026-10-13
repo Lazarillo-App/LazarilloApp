@@ -2059,8 +2059,8 @@ export default function RecetaModal({
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '99vw', sm: '98vw', md: '1060px' },
-          maxWidth: '1140px',
+          width: { xs: '99vw', sm: '98vw', md: '1160px' },
+          maxWidth: '1240px',
           maxHeight: '94vh',
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
@@ -2084,7 +2084,7 @@ export default function RecetaModal({
                 </IconButton>
               )}
 
-              <Box>
+              <Box sx={{ minWidth: 260 }}>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
                   {modoInsumo
                     ? `${artNombre}${(() => {
