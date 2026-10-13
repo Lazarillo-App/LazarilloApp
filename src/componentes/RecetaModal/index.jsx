@@ -2101,6 +2101,7 @@ export default function RecetaModal({
                       loading={comprasRankingLoading}
                       activeInsumoId={articulo?.id}
                       onPick={onSaltarAInsumo}
+                      variant="onPrimary"
                     />
                   )}
                 </Stack>

@@ -191,7 +191,13 @@ function MiniCalendar({ viewDate, onViewChange, fromDate, toDate, onDayClick, tc
 
 /* ─── Componente principal ─── */
 // firstDate y loadingFirst vienen del padre — cada contexto (ventas/compras) fetchea el suyo
-export default function SalesPickerIcon({ value, onChange, firstDate = null, loadingFirst = false, labelOverride = null }) {
+export default function SalesPickerIcon({
+  value, onChange, firstDate = null, loadingFirst = false, labelOverride = null,
+  // Botón compacto (solo ícono) en vez del botón ancho con el label del rango
+  // — mismo trigger/Popover, para lugares donde el botón de texto ocupa
+  // demasiado (ej. la barra de herramientas del detalle de compras).
+  iconOnly = false,
+}) {
   const { mode, from, to } = value;
 
   const [anchorEl, setAnchorEl] = useState(null);
@@ -300,19 +306,32 @@ export default function SalesPickerIcon({ value, onChange, firstDate = null, loa
   return (
     <>
       <Tooltip title={rangeLabel}>
-        <Button
-          size="small"
-          onClick={handleOpen}
-          variant="outlined"
-          sx={{
-            textTransform: 'none', minWidth: 185, justifyContent: 'flex-start',
-            borderColor: tc.primary, color: tc.primary,
-            '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
-            padding: '7px 9px', fontSize: 13,
-          }}
-        >
-          {rangeLabel}
-        </Button>
+        {iconOnly ? (
+          <IconButton
+            size="small"
+            onClick={handleOpen}
+            sx={{
+              border: '1px solid', borderColor: tc.primary, color: tc.primary,
+              '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
+            }}
+          >
+            <DateRangeIcon fontSize="small" />
+          </IconButton>
+        ) : (
+          <Button
+            size="small"
+            onClick={handleOpen}
+            variant="outlined"
+            sx={{
+              textTransform: 'none', minWidth: 185, justifyContent: 'flex-start',
+              borderColor: tc.primary, color: tc.primary,
+              '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
+              padding: '7px 9px', fontSize: 13,
+            }}
+          >
+            {rangeLabel}
+          </Button>
+        )}
       </Tooltip>
 
       <Popover

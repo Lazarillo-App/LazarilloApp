@@ -271,7 +271,7 @@ const fmtCorto = (n) => {
    deja de existir en el DOM y un contains() sobre el target se resuelve
    solo, cerrando el panel cada vez que se toca algo de adentro.
 ══════════════════════════════════════════════════════════ */
-export function RankingChip({ ranking, loading, activeInsumoId, onPick }) {
+export function RankingChip({ ranking, loading, activeInsumoId, onPick, variant = 'default' }) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef(null);
   const dentro = useRef(false);
@@ -313,9 +313,20 @@ export function RankingChip({ ranking, loading, activeInsumoId, onPick }) {
         sx={{
           display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none',
           px: 1.25, py: 0.5, borderRadius: 999, fontSize: '0.78rem', fontWeight: 600,
-          border: '1px solid', borderColor: fueraDelTop ? '#fbbf24' : 'divider',
-          bgcolor: fueraDelTop ? '#fffbeb' : 'action.hover',
-          color: fueraDelTop ? '#92400e' : 'text.secondary',
+          // En el header de RecetaModal el fondo es oscuro (color de marca):
+          // los tonos grises por defecto (pensados para fondo claro) quedan
+          // invisibles ahí, así que ese caso usa blanco translúcido en su lugar.
+          ...(variant === 'onPrimary'
+            ? {
+              border: '1px solid', borderColor: fueraDelTop ? '#fbbf24' : 'rgba(255,255,255,0.5)',
+              bgcolor: fueraDelTop ? '#fffbeb' : 'rgba(255,255,255,0.15)',
+              color: fueraDelTop ? '#92400e' : '#fff',
+            }
+            : {
+              border: '1px solid', borderColor: fueraDelTop ? '#fbbf24' : 'divider',
+              bgcolor: fueraDelTop ? '#fffbeb' : 'action.hover',
+              color: fueraDelTop ? '#92400e' : 'text.secondary',
+            }),
         }}
       >
         {label}
@@ -1225,33 +1236,32 @@ export function ComprasDetalleContenido({
             </FormControl>
           )}
 
-          {/* Período: por defecto las últimas N compras.
-              No dispara fetch: `items` ya trae el rango completo. */}
+          {/* Último 10 vs todo el rango consultado: un solo botón, no un switch
+              de dos opciones — ver "todo el período" se resuelve eligiendo un
+              rango puntual con el calendario de al lado (ahí sí tiene sentido
+              ver todo lo que haya, no solo las últimas N). */}
           {sortedItems.length > ULTIMAS_N && (
-            <Stack direction="row" sx={{
-              border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden',
-            }}>
-              {[['ultimas', `Últimas ${ULTIMAS_N}`], ['rango', 'Todo el período']].map(([v, lab]) => (
-                <Box key={v} onClick={() => setModoPeriodo(v)}
-                  sx={{
-                    px: 1.5, py: 0.8, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
-                    bgcolor: modoPeriodo === v ? themeColors.primary : 'transparent',
-                    color: modoPeriodo === v ? '#fff' : 'text.secondary',
-                    fontWeight: modoPeriodo === v ? 700 : 400,
-                    borderLeft: v === 'rango' ? '1px solid' : 'none', borderColor: 'divider',
-                  }}>
-                  {lab}
-                </Box>
-              ))}
-            </Stack>
+            <Box onClick={() => setModoPeriodo('ultimas')}
+              sx={{
+                px: 1.5, py: 0.8, borderRadius: 1, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
+                border: '1px solid', borderColor: modoPeriodo === 'ultimas' ? themeColors.primary : 'divider',
+                bgcolor: modoPeriodo === 'ultimas' ? themeColors.primary : 'transparent',
+                color: modoPeriodo === 'ultimas' ? '#fff' : 'text.secondary',
+                fontWeight: modoPeriodo === 'ultimas' ? 700 : 400,
+              }}>
+              Últimas {ULTIMAS_N}
+            </Box>
           )}
 
-          {/* Ajustar el período consultado a mano, sin salir del modal */}
+          {/* Ajustar el período consultado a mano, sin salir del modal. Elegir
+              un rango acá muestra TODO lo que haya en esa ventana (no solo las
+              últimas N): si lo acotás a mano es porque querés verlo completo. */}
           {onCambiarRango && rango?.from && rango?.to && (
             <SalesPickerIcon
               value={{ mode: 'custom', from: rango.from, to: rango.to }}
-              onChange={(v) => onCambiarRango({ from: v.from, to: v.to })}
-              labelOverride="📅 Fechas"
+              onChange={(v) => { onCambiarRango({ from: v.from, to: v.to }); setModoPeriodo('rango'); }}
+              labelOverride="Fechas"
+              iconOnly
             />
           )}
 
