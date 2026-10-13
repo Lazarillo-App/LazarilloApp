@@ -2,12 +2,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Box } from '@mui/material';
 import { BASE } from '@/servicios/apiBase';
+import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { ComprasDetalleContenido } from '../ComprasMiniDetalleModal';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
 
 export default function TabComprasInsumo({ insumoId, businessId, insumoData, activeBizId = null, businesses = [] }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [facturacionPorMes, setFacturacionPorMes] = useState(null);
 
   // Las compras son transacciones por SUCURSAL, a diferencia de `businessId` acá (que es
   // el negocio raíz donde vive el catálogo del insumo, usado para CostoPreferidoSelector
@@ -45,6 +47,17 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData, act
     })();
   }, [insumoId, comprasBizId, rango]);
 
+  // Facturación del negocio por mes, para el KPI "sobre facturación" del
+  // detalle de compras — si falla, ese KPI y su serie simplemente no se ven.
+  useEffect(() => {
+    if (!comprasBizId) return;
+    let vivo = true;
+    BusinessesAPI.salesMonthly(comprasBizId, { from: rango.from, to: rango.to })
+      .then((resp) => { if (vivo) setFacturacionPorMes(resp?.porMes || null); })
+      .catch(() => { if (vivo) setFacturacionPorMes(null); });
+    return () => { vivo = false; };
+  }, [comprasBizId, rango]);
+
   return (
     <Box sx={{ py: 1 }}>
       {insumoData && (
@@ -68,6 +81,7 @@ export default function TabComprasInsumo({ insumoId, businessId, insumoData, act
         loading={loading}
         businessId={comprasBizId}
         businesses={businesses}
+        facturacionPorMes={facturacionPorMes}
       />
     </Box>
   );

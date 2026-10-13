@@ -4,6 +4,7 @@ import { IconButton, Tooltip, Stack, Typography, CircularProgress } from '@mui/m
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ComprasMiniDetalleModal from './ComprasMiniDetalleModal';
 import { BASE } from '../servicios/apiBase';
+import { BusinessesAPI } from '../servicios/apiBusinesses';
 
 const fmtNum = (v, d = 2) => {
   const n = Number(v ?? 0);
@@ -33,6 +34,7 @@ function ComprasCell({
   const [open,          setOpen]          = useState(false);
   const [detailItems,   setDetailItems]   = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [facturacionPorMes, setFacturacionPorMes] = useState(null);
 
   const hasData = !!comprasEntry && (
     Number(comprasEntry.total ?? 0) !== 0 ||
@@ -66,11 +68,27 @@ function ComprasCell({
     } finally {
       setDetailLoading(false);
     }
+
+    // Facturación del negocio por mes, para el KPI "sobre facturación" del
+    // modal — no bloquea la tabla de compras si falla, simplemente ese KPI
+    // y su serie no se muestran.
+    try {
+      const bid = businessId ?? localStorage.getItem('activeBusinessId') ?? '';
+      const resp = await BusinessesAPI.salesMonthly(bid, {
+        from: String(from).slice(0, 10),
+        to: String(to).slice(0, 10),
+      });
+      setFacturacionPorMes(resp?.porMes || null);
+    } catch (e) {
+      console.warn('[ComprasCell] Error cargando facturación por mes:', e.message);
+      setFacturacionPorMes(null);
+    }
   }, [insumoId, from, to, businessId]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
     setDetailItems([]);
+    setFacturacionPorMes(null);
   }, []);
 
   return (
@@ -126,6 +144,7 @@ function ComprasCell({
           loading={detailLoading}
           businessId={businessId}
           businesses={businesses}
+          facturacionPorMes={facturacionPorMes}
         />
       )}
     </>

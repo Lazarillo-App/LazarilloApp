@@ -503,6 +503,20 @@ export const BusinessesAPI = {
     );
   },
 
+  // Total de ventas del negocio por mes, sin desglose por artículo — para
+  // facturacionPorMes de ComprasMiniDetalleModal (KPI "sobre facturación").
+  salesMonthly: (businessId, { from, to, branch_id } = {}) => {
+    if (!businessId || !from || !to) {
+      throw new Error('salesMonthly requiere: businessId, from, to');
+    }
+    const qs = new URLSearchParams({ from, to });
+    if (branch_id !== null && branch_id !== undefined) qs.set('branch_id', branch_id);
+    return http(
+      `/businesses/${encodeURIComponent(businessId)}/sales/monthly?${qs.toString()}`,
+      { method: 'GET', withBusinessId: false }
+    );
+  },
+
   // Sync catálogo (Maxi → DB)
   syncNow: (id, body) =>
     http(`/businesses/${id}/sync`, {
