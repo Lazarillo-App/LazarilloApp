@@ -246,8 +246,13 @@ export default function SalesPickerIcon({
   const handleDayClick = useCallback((day) => {
     const d = ymd(day);
     if (selectingFrom) {
+      // Arranca como rango de 1 solo día (desde === hasta) para que "Aplicar"
+      // quede habilitado de entrada — antes dejaba "hasta" vacío hasta un
+      // segundo click, así que elegir un único día no parecía posible sin
+      // clickear dos veces la misma celda. Un segundo click en OTRO día
+      // sigue extendiendo el rango con la misma lógica de siempre.
       setCustomFrom(d);
-      setCustomTo('');
+      setCustomTo(d);
       setSelectingFrom(false);
     } else {
       if (d < customFrom) {
