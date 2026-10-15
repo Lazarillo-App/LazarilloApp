@@ -3536,6 +3536,20 @@ export default function RecetaModal({
             initialTab={elaborado.initialTab || null}
             activeBizId={comprasBizId}
             saltarSelector
+            // "Top por gasto" dentro de este nivel anidado (insumo abierto desde
+            // un ingrediente de la receta de un artículo): reemplaza ESTE nivel
+            // de la pila por el insumo elegido, en vez de apilar uno nuevo — el
+            // key de abajo incluye el id, así que cambiarlo remonta limpio el
+            // modal ya en la pestaña Compras, igual que el salto de nivel
+            // superior en InsumosMain.jsx (ver `saltarAInsumo`).
+            onSaltarAInsumo={(item) => {
+              if (!item?.id) return;
+              setElaboradosStack((prev) => {
+                const next = prev.slice();
+                next[stackIdx] = { id: Number(item.id), nombre: item.nombre, precio: 0, initialTab: 'compras' };
+                return next;
+              });
+            }}
             costoObjetivoExterno={elaborado.pctObjetivo != null ? Number(elaborado.pctObjetivo) : globalConfigObjetivo}
             onClose={() => {
               if (stackIdx === elaboradosStack.length - 1) {
