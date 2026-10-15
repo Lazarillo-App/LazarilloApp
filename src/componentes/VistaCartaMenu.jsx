@@ -215,11 +215,24 @@ function reconciliar(guardada, articulosPlano, modo) {
 
   // IDs de artículos que YA están ubicados en alguna sección de la maqueta
   const yaUbicados = new Set();
+  const pseudoGruposPresentes = new Set();
   for (const sec of Object.values(secciones)) {
-    for (const id of sec.itemIds) yaUbicados.add(String(id));
+    for (const id of sec.itemIds) {
+      yaUbicados.add(String(id));
+      if (String(id).startsWith("__grupo__")) pseudoGruposPresentes.add(String(id));
+    }
   }
-  // Miembros de una vinculación ya están representados por su fila agrupada: no son "nuevos".
-  for (const g of Object.values(guardada.gruposVinculados || {})) {
+  // Miembros de una vinculación ya están representados por su fila agrupada:
+  // no son "nuevos" — pero SOLO si esa fila fusionada sigue existiendo en
+  // alguna sección. Si la vinculación se borró/disolvió en el backend (o se
+  // la "quitó de la carta" a mano) y nada limpió todavía esta entrada vieja,
+  // sin este chequeo sus miembros quedaban escondidos para siempre: no están
+  // en ninguna sección real pero tampoco caen en el fallback de "nuevo" de
+  // abajo, así que el grupo entero desaparecía de la vista sin volver nunca.
+  const gruposVinculadosVigentes = {};
+  for (const [gid, g] of Object.entries(guardada.gruposVinculados || {})) {
+    if (!pseudoGruposPresentes.has("__grupo__" + gid)) continue;
+    gruposVinculadosVigentes[gid] = g;
     for (const id of g.memberIds || []) yaUbicados.add(String(id));
   }
 
@@ -286,7 +299,7 @@ function reconciliar(guardada, articulosPlano, modo) {
       items: guardada.pool?.items || [],
     },
     removidos: Array.from(removidos),
-    gruposVinculados: guardada.gruposVinculados || {},
+    gruposVinculados: gruposVinculadosVigentes,
   };
 }
 
@@ -321,6 +334,29 @@ function colocarGrupoVinculado(m, gid, memberIds, nombre) {
   const base = sec.itemIds.filter((id) => !miembros.includes(String(id)));
   base.splice(Math.min(primero, base.length), 0, "__grupo__" + gid);
   return { ...m, gruposVinculados, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: base } } };
+}
+
+// Vinculación que YA NO existe en el backend (se borró o se disolvió al sacar
+// un miembro y quedar solo 1) pero la carta todavía la tiene colocada: se le
+// borra la entrada y sus miembros reaparecen sueltos en el mismo lugar donde
+// estaba la fila fusionada. Si esa fila ya no está en ninguna sección (se la
+// "quitó de la carta" a mano), solo se limpia la entrada — los miembros
+// vuelven a aparecer agrupados por su rubro/agrupación natural en la próxima
+// reconciliación completa (ver `reconciliar`).
+function disolverGrupoVinculado(m, gid) {
+  const g = (m.gruposVinculados || {})[gid];
+  if (!g) return m;
+  const gruposVinculados = { ...m.gruposVinculados };
+  delete gruposVinculados[gid];
+  const pseudo = "__grupo__" + gid;
+  const secId = Object.keys(m.secciones).find((s) => (m.secciones[s].itemIds || []).some((id) => String(id) === pseudo));
+  if (!secId) return { ...m, gruposVinculados };
+  const sec = m.secciones[secId];
+  const pos = sec.itemIds.findIndex((id) => String(id) === pseudo);
+  const miembros = (g.memberIds || []).map(String);
+  const itemIds = sec.itemIds.slice();
+  itemIds.splice(pos, 1, ...miembros);
+  return { ...m, gruposVinculados, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
 }
 
 // Ancho mínimo para que "double" se vea como 2 líneas — con menos de 3px el
@@ -911,6 +947,15 @@ export default function VistaCartaMenu({
     return maquetaVacia(articulos, modo);
   });
 
+  // `setMaqueta` es estable (deps `[]`): ahora que hay una sola maqueta (no una
+  // por modo), no necesita leer `modo` para saber dónde escribir. Declarado acá
+  // arriba (no donde se usaba antes, más abajo) porque `renombrarEnCarta` lo
+  // necesita y un `const` referenciado antes de su propia declaración en el
+  // mismo componente explota en tiempo de ejecución (temporal dead zone).
+  const setMaqueta = useCallback((updater) => {
+    setMaquetaState((actual) => (typeof updater === "function" ? updater(actual) : updater));
+  }, []);
+
   // Los títulos de sección (rubro/agrupación) se guardan dentro de la carta, así
   // que al normalizar nombres en la base quedaban con el formato viejo hasta
   // recargar. Se re-alinean con el nombre actual, sin tocar títulos que la
@@ -961,10 +1006,26 @@ export default function VistaCartaMenu({
     return m;
   }, [articulos, nombresEditados]);
   const renombrarEnCarta = useCallback(async (id, nombre) => {
+    // La fila fusionada de una vinculación ("__grupo__<gid>") no es un artículo
+    // real: su nombre vive en maqueta.gruposVinculados[gid].name, no en la DB
+    // de artículos. Antes esto caía igual en onRenombrarArticulo, que exige un
+    // id numérico real — con un pseudo-id devolvía `false` en silencio y el
+    // nombre tipiado se revertía sin aviso (el campo "parecía" editable pero
+    // nunca guardaba nada).
+    const sid = String(id);
+    if (sid.startsWith("__grupo__")) {
+      const gid = sid.replace("__grupo__", "");
+      setMaqueta((m) => {
+        const g = (m.gruposVinculados || {})[gid];
+        if (!g) return m;
+        return { ...m, gruposVinculados: { ...m.gruposVinculados, [gid]: { ...g, name: nombre } } };
+      });
+      return;
+    }
     setNombresEditados((prev) => ({ ...prev, [String(id)]: nombre }));
     const ok = await onRenombrarArticulo?.(id, nombre);
     if (ok === false) setNombresEditados((prev) => { const n = { ...prev }; delete n[String(id)]; return n; });
-  }, [onRenombrarArticulo]);
+  }, [onRenombrarArticulo, setMaqueta]);
   // Índice inverso artículo→agrupación (para "grupoDelArt" en cada fila del menú).
   // Antes era un .find()+.some() recorriendo TODAS las agrupaciones por CADA
   // artículo visible, en cada render — con muchos artículos, eso es el costo
@@ -1006,7 +1067,11 @@ export default function VistaCartaMenu({
         : "Sin artículos agrupados en la carta";
       m.set(pseudoId, {
         id: pseudoId,
-        nombre: grupo.name || "Vinculación sin nombre",
+        // `??` (no `||`): una vinculación recién creada arranca con nombre ""
+        // a propósito (se edita a mano con el ✎, ver más abajo) y debe
+        // mostrarse vacía, no con un texto de relleno — el fallback es solo
+        // para datos viejos que de verdad no tengan el campo.
+        nombre: grupo.name ?? "Vinculación sin nombre",
         precio: miembros[0].precio,
         descripcion: desc != null && desc !== "" ? desc : textoAgrupados,
         rubro: miembros[0].rubro,
@@ -1018,17 +1083,17 @@ export default function VistaCartaMenu({
     return m;
   }, [artByIdBase, descripciones, maqueta.gruposVinculados]);
 
-  // `setMaqueta` es estable (deps `[]`): ahora que hay una sola maqueta (no una
-  // por modo), no necesita leer `modo` para saber dónde escribir.
-  const setMaqueta = useCallback((updater) => {
-    setMaquetaState((actual) => (typeof updater === "function" ? updater(actual) : updater));
-  }, []);
-
   // ── Vinculaciones de la tabla ──────────────────────────────────────────────
   // Las vinculaciones creadas en la tabla viven en el backend. En la carta se muestran
   // agrupadas: las nuevas piden un título (una sola vez) y las ya conocidas siguen sus
   // miembros reales.
   const [linkGroups, setLinkGroups] = useState([]);
+  // Distingue "todavía no se cargaron las vinculaciones" (linkGroups=[] inicial,
+  // antes de que resuelva el fetch) de "se cargaron y de verdad no hay
+  // ninguna" — sin esto, el efecto de abajo no podía limpiar vinculaciones
+  // huérfanas sin arriesgarse a correr una vez con el [] inicial y borrar todo
+  // antes de que llegara el dato real.
+  const [linksLoaded, setLinksLoaded] = useState(false);
   const [gruposAbiertos, setGruposAbiertos] = useState({});
   const linksProcesadosRef = useRef(new Set());
   useEffect(() => {
@@ -1040,6 +1105,7 @@ export default function VistaCartaMenu({
         const r = await LinksAPI.getAll(activeBizId);
         if (vivo) setLinkGroups(r?.groups || []);
       } catch { /* sin vinculaciones: la carta igual funciona */ }
+      finally { if (vivo) setLinksLoaded(true); }
     };
     cargar();
     window.addEventListener("article:links-changed", cargar);
@@ -1047,11 +1113,11 @@ export default function VistaCartaMenu({
   }, [activeBizId]);
 
   useEffect(() => {
-    if (!linkGroups.length) return undefined;
-    let vivo = true;
+    if (!linksLoaded) return undefined;
     const gv = maqueta.gruposVinculados || {};
     const actualizar = {};
     const pendientes = [];
+    const vigentes = new Set(linkGroups.map((g) => String(g.id)));
     for (const g of linkGroups) {
       const gid = String(g.id);
       const memberIds = (g.members || []).map((x) => Number(x.article_id)).filter(Number.isFinite);
@@ -1060,10 +1126,15 @@ export default function VistaCartaMenu({
         const prev = (gv[gid].memberIds || []).map(Number);
         if (prev.length !== memberIds.length || prev.some((x, i) => x !== memberIds[i])) actualizar[gid] = memberIds;
       } else if (!linksProcesadosRef.current.has(gid)) {
-        pendientes.push({ gid, memberIds, nombre: g.name || "" });
+        pendientes.push({ gid, memberIds });
       }
     }
-    if (Object.keys(actualizar).length) {
+    // Vinculaciones que la carta todavía tiene colocadas pero que ya no están
+    // en el backend (se borraron, o se disolvieron al sacarles un miembro y
+    // quedar solo 1) — sin esto quedaban huérfanas para siempre (ver el fix
+    // en `reconciliar`) y el grupo entero desaparecía de la vista.
+    const huerfanos = Object.keys(gv).filter((gid) => !vigentes.has(gid));
+    if (Object.keys(actualizar).length || huerfanos.length) {
       setMaqueta((m) => {
         let out = m;
         for (const [gid, memberIds] of Object.entries(actualizar)) {
@@ -1075,24 +1146,21 @@ export default function VistaCartaMenu({
             gid, excl
           );
         }
+        for (const gid of huerfanos) out = disolverGrupoVinculado(out, gid);
         return out;
       });
     }
-    (async () => {
-      for (const p of pendientes) {
-        if (!vivo) return;
-        linksProcesadosRef.current.add(p.gid);
-        const r = await showPrompt(`Esta vinculación tiene ${p.memberIds.length} artículos. ¿Cómo se llama en la carta? (ej: Gaseosas)`, p.nombre);
-        if (!vivo) return;
-        const nombre = (r || "").trim() || p.nombre.trim() || "Vinculación";
-        setMaqueta((m) => colocarGrupoVinculado(m, p.gid, p.memberIds, nombre));
-        const nombres = p.memberIds.map((id) => artByIdBase.get(String(id))?.nombre).filter(Boolean).join(", ");
-        if (nombres) setDescripciones((d) => ({ ...d, ["__grupo__" + p.gid]: nombres }));
-      }
-    })();
-    return () => { vivo = false; };
+    // Las vinculaciones recién creadas se colocan directo, sin nombre: antes
+    // acá se interrumpía con un popup pidiendo "¿Cómo se llama?" apenas se
+    // entraba a Vista Diseño, que además era poco específico (no mostraba qué
+    // artículos son). Ahora el título sale vacío y se edita a mano con el ✎
+    // del lienzo, cuando la usuaria quiera.
+    for (const p of pendientes) {
+      linksProcesadosRef.current.add(p.gid);
+      setMaqueta((m) => colocarGrupoVinculado(m, p.gid, p.memberIds, ""));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkGroups]);
+  }, [linkGroups, linksLoaded]);
 
   // ── Reconciliación en vivo (modelo espejo) ──────────────────────────────────
   // La maqueta se arma una sola vez (useState inicial). Si después cambia la
