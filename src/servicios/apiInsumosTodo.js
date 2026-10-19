@@ -10,11 +10,12 @@ import {
   insumoGroupAddExclusions,
   insumoGroupRemoveExclusions,
 } from './apiInsumos';
-import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 const esTodoNombre = (nombre) => esTodoGroup({ nombre });
 const esDiscNombre = (nombre) => esDiscontinuadosGroup({ nombre });
 const esElabNombre = (nombre) => esElaboradosGroup({ nombre });
+const esTop20Nombre = (nombre) => esTop20Group({ nombre });
 
 function assertBusinessId(businessId, fnName) {
   const n = Number(businessId);
@@ -136,6 +137,29 @@ export async function ensureElaboradosInsumos(businessId) {
 }
 
 /**
+ * Asegura que existe un grupo "Top 20" para insumos (POR NEGOCIO). Igual que
+ * Elaborados: fila real solo para tener id/aparecer en el desplegable, el
+ * contenido (los 20 insumos con más gasto de compra en el período elegido)
+ * se calcula en el frontend — ver InsumosMain.jsx.
+ */
+export async function ensureTop20Insumos(businessId) {
+  const bId = assertBusinessId(businessId, 'ensureTop20Insumos');
+
+  const res = await insumoGroupsList(bId);
+  const groups = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+
+  const top20Group = groups.find((g) => esTop20Nombre(g?.nombre));
+  if (top20Group) return top20Group;
+
+  const created = await insumoGroupCreate(bId, {
+    nombre: 'Top 20',
+    descripcion: 'Insumos con mayor gasto de compra en el período — contenido calculado automáticamente',
+  });
+
+  return created?.data || created;
+}
+
+/**
  * Helper para detectar si un grupo es TODO
  */
 export function isTodoGroup(g) {
@@ -154,4 +178,11 @@ export function isDiscontinuadosGroup(g) {
  */
 export function isElaboradosGroup(g) {
   return esElabNombre(g?.nombre);
+}
+
+/**
+ * Helper para detectar si un grupo es Top 20
+ */
+export function isTop20Group(g) {
+  return esTop20Nombre(g?.nombre);
 }

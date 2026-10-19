@@ -24,7 +24,7 @@ import {
   insumoDeleteManual,
 } from '../servicios/apiInsumos';
 import { proponerDiscontinuarInsumo } from '@/servicios/apiRecetaProposals';
-import { esDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
+import { esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 const getNum = (v) => Number(v ?? 0);
 
@@ -81,10 +81,11 @@ function InsumoAccionesMenu({
     return items.some((item) => Number(item.insumo_id ?? item.id) === insumoId);
   }, [groups, insumoId, discontinuadosGroupId]);
 
-  // ✅ Grupos destino (excepto el actual y "Elaborados" — su membresía se
-  // calcula sola, nunca se asigna a mano; ofrecerlo acá sería un no-op confuso)
+  // ✅ Grupos destino (excepto el actual y "Elaborados"/"Top 20" — su
+  // membresía se calcula sola, nunca se asigna a mano; ofrecerlos acá sería
+  // un no-op confuso)
   const gruposDestino = useMemo(
-    () => groups.filter((g) => Number(g.id) !== currentGroupId && !esElaboradosGroup(g)),
+    () => groups.filter((g) => Number(g.id) !== currentGroupId && !esElaboradosGroup(g) && !esTop20Group(g)),
     [groups, currentGroupId]
   );
 

@@ -29,8 +29,9 @@ import {
   getExclusionesInsumos,
   ensureDiscontinuadosInsumos,
   ensureElaboradosInsumos,
+  ensureTop20Insumos,
 } from '../servicios/apiInsumosTodo';
-import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esInsumoElaborado } from '@/utils/insumoGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esTop20Group, esInsumoElaborado } from '@/utils/insumoGruposEspeciales';
 import {
   notifyGroupRenamed,
   notifyGroupDeleted,
@@ -46,7 +47,7 @@ import { usePersistUiActions } from '@/hooks/usePersistUiActions';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import { useFirstDate } from '../hooks/useFirstDate';
-import { purchasesSync, purchasesList, purchasesDownloadCsv, purchasesDownloadCsvByIds, buildComprasMap } from '../servicios/apiPurchases';
+import { purchasesSync, purchasesList, purchasesDownloadCsv, purchasesDownloadCsvByIds, buildComprasMap, purchasesRanking } from '../servicios/apiPurchases';
 import ComprasActionsMenu from '../componentes/ComprasActionsMenu.jsx';
 import UploadComprasModal from '../componentes/UploadComprasModal.jsx';
 import UploadInsumosModal from '../componentes/UploadInsumosModal.jsx';
@@ -268,6 +269,10 @@ export default function InsumosMain() {
   // fila real en backend, membresía calculada (ver esInsumoElaborado), nunca
   // asignada a mano.
   const [elaboradosGroupId, setElaboradosGroupId] = useState(null);
+  // Agrupación fija "Top 20" — misma mecánica que Elaborados (fila real,
+  // membresía calculada en frontend a partir del ranking de compras del
+  // período elegido en `rangoCompras`), pero sin ningún ícono de gestión.
+  const [top20GroupId, setTop20GroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
 
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -665,13 +670,13 @@ export default function InsumosMain() {
     if (isMainDivision) {
       const assignedSet = new Set(assignedInsumoGroupIds || []);
       return (groups || []).filter((g) => {
-        if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return true;
+        if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g) || esTop20Group(g)) return true;
         return !assignedSet.has(Number(g?.id));
       });
     }
     const activeSet = new Set(activeDivisionInsumoGroupIds || []);
     return (groups || []).filter((g) => {
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return true;
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g) || esTop20Group(g)) return true;
       return activeSet.has(Number(g?.id));
     });
   }, [groups, isSubnegocio, isMainDivision, activeDivisionInsumoGroupIds, assignedInsumoGroupIds]);
@@ -746,7 +751,7 @@ export default function InsumosMain() {
      imperativo aparte, con su propio guard de carrera para cambios rápidos de negocio. */
   const ensureRunRef = useRef(0);
   useEffect(() => {
-    if (!businessId) { setTodoGroupId(null); setElaboradosGroupId(null); setExcludedIds(new Set()); return; }
+    if (!businessId) { setTodoGroupId(null); setElaboradosGroupId(null); setTop20GroupId(null); setExcludedIds(new Set()); return; }
     const runId = ++ensureRunRef.current;
     let isCancelled = false;
     const safe = (fn) => { if (isCancelled || ensureRunRef.current !== runId) return; fn(); };
@@ -761,6 +766,11 @@ export default function InsumosMain() {
           const elabGroup = await ensureElaboradosInsumos(resolvedBizId);
           if (isSubneg) { try { await ensureElaboradosInsumos(businessId); } catch { } }
           safe(() => setElaboradosGroupId(elabGroup?.id || null));
+        } catch { }
+        try {
+          const top20Group = await ensureTop20Insumos(resolvedBizId);
+          if (isSubneg) { try { await ensureTop20Insumos(businessId); } catch { } }
+          safe(() => setTop20GroupId(top20Group?.id || null));
         } catch { }
         const todoGroup = await ensureTodoInsumos(resolvedBizId);
         if (isCancelled || ensureRunRef.current !== runId) return;
@@ -837,6 +847,38 @@ export default function InsumosMain() {
     return res;
   }, [inactiveIdSet, insumoById, resolveRubroInfo]);
 
+  // Ranking de compras del período elegido en `rangoCompras` — fuente de la
+  // membresía de "Top 20". Se recalcula solo al cambiar de negocio o de rango
+  // (no depende de la agrupación seleccionada). limit:40 de margen para que,
+  // tras excluir discontinuados/elaborados, sigan quedando hasta 20 reales.
+  const [top20RankingRaw, setTop20RankingRaw] = useState([]);
+  useEffect(() => {
+    if (!resolvedBizId || !rangoCompras?.from || !rangoCompras?.to) { setTop20RankingRaw([]); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await purchasesRanking(resolvedBizId, { from: rangoCompras.from, to: rangoCompras.to, limit: 40 });
+        if (cancel) return;
+        setTop20RankingRaw(Array.isArray(res?.items) ? res.items : []);
+      } catch (e) {
+        if (!cancel) setTop20RankingRaw([]);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [resolvedBizId, rangoCompras?.from, rangoCompras?.to]);
+
+  const idsTop20Insumos = useMemo(() => {
+    const out = [];
+    for (const it of top20RankingRaw) {
+      const id = Number(it?.id);
+      if (!Number.isFinite(id)) continue;
+      if (discontinuadosIds.has(id)) continue;
+      if (idsElaboradosActivos.has(id)) continue;
+      out.push(id);
+    }
+    return new Set(out.slice(0, 20));
+  }, [top20RankingRaw, discontinuadosIds, idsElaboradosActivos]);
+
   const idsSinAgrupActivos = useMemo(() => {
     const res = new Set();
     activeIdSet.forEach((id) => { if (!excludedIds.has(id) && !idsEnOtras.has(id) && !idsElaboradosActivos.has(id)) res.add(id); });
@@ -861,6 +903,10 @@ export default function InsumosMain() {
     () => !!elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId),
     [elaboradosGroupId, selectedGroupId]
   );
+  const isTop20View = useMemo(
+    () => !!top20GroupId && Number(selectedGroupId) === Number(top20GroupId),
+    [top20GroupId, selectedGroupId]
+  );
 
   const sidebarBase = useMemo(() => {
     if (isDiscView) return (baseAll || []).filter((i) => discontinuadosIds.has(Number(i.id)));
@@ -877,6 +923,9 @@ export default function InsumosMain() {
     if (esDiscontinuadosGroup(g)) return discontinuadosIds;
     // Elaborados: universo global calculado, cruza cualquier agrupación real.
     if (esElaboradosGroup(g)) return isDiscView ? idsElaboradosInactivos : idsElaboradosActivos;
+    // Top 20: ranking de compras del período — siempre activos, no tiene
+    // vista "inactiva" (un discontinuado nunca entra acá).
+    if (esTop20Group(g)) return idsTop20Insumos;
     if (todoGroupId && gId === Number(todoGroupId)) return isDiscView ? idsSinAgrupInactivos : idsSinAgrupActivos;
     // Agrupación real cualquiera: igual que siempre, menos los elaborados —
     // un insumo elaborado ya no debe aparecer acá aunque el backend lo tenga
@@ -890,7 +939,8 @@ export default function InsumosMain() {
     });
     return s;
   }, [selectedGroupId, groupsScoped, todoGroupId, isDiscView, activeIdSet, inactiveIdSet,
-      idsSinAgrupActivos, idsSinAgrupInactivos, idsElaboradosActivos, idsElaboradosInactivos, discontinuadosIds]);
+      idsSinAgrupActivos, idsSinAgrupInactivos, idsElaboradosActivos, idsElaboradosInactivos,
+      idsTop20Insumos, discontinuadosIds]);
 
   const filteredBase = useMemo(() => {
     const hasActiveList = activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0;
@@ -1006,7 +1056,7 @@ export default function InsumosMain() {
   const insumosGroupIndex = useMemo(() => {
     const byInsumoId = new Map();
     (groupsScoped || []).forEach((g) => {
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return;
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g) || esTop20Group(g)) return;
       (g.items || g.insumos || []).forEach((item) => {
         const id = Number(item.insumo_id ?? item.id);
         if (!Number.isFinite(id)) return;
@@ -1041,7 +1091,7 @@ export default function InsumosMain() {
     // los datos reales (favorita, sin-agrupación) terminaran de cargar, no debe
     // quedar bloqueado ahí para siempre — por eso el guard usa la misma ventana de
     // "pick manual reciente" que ya usa el resto de este efecto, no un bloqueo total.
-    if (currentSel && esDiscontinuadosGroup(currentSel) && (Date.now() - lastManualPickRef.current < 5000)) return;
+    if (currentSel && (esDiscontinuadosGroup(currentSel) || esTop20Group(currentSel)) && (Date.now() - lastManualPickRef.current < 5000)) return;
 
     // ── Sin Agrupación tiene insumos ──
     if (!todoEmpty && todoId) {
@@ -1075,9 +1125,9 @@ export default function InsumosMain() {
     }
 
     if (currentGroups.length > 0) {
-      // Discontinuados/Elaborados nunca deben quedar como destino automático
-      // — solo se llega ahí por elección explícita del usuario.
-      const firstGroup = currentGroups.find((g) => !esDiscontinuadosGroup(g) && !esElaboradosGroup(g)) || currentGroups[0];
+      // Discontinuados/Elaborados/Top 20 nunca deben quedar como destino
+      // automático — solo se llega ahí por elección explícita del usuario.
+      const firstGroup = currentGroups.find((g) => !esDiscontinuadosGroup(g) && !esElaboradosGroup(g) && !esTop20Group(g)) || currentGroups[0];
       if (!currentSelId || Number(currentSelId) !== Number(firstGroup.id)) {
         setSelectedGroupId(firstGroup.id);
         setRubroSeleccionado(null);
@@ -1236,7 +1286,7 @@ export default function InsumosMain() {
   }, [resolvedBizId, favoriteGroupId, notify, selectedGroupId]);
 
   const handleRenameGroup = useCallback(async (group) => {
-    if (!group || esDiscontinuadosGroup(group)) return null;
+    if (!group || esDiscontinuadosGroup(group) || esTop20Group(group)) return null;
     const currentName = String(group.nombre || '');
     const isTodo = esTodoGroup(group);
     const nuevo = await showPrompt(
@@ -1604,6 +1654,7 @@ export default function InsumosMain() {
             onRenameGroup={isStaff ? undefined : handleRenameGroup}
             todoGroupId={todoGroupId}
             elaboradosGroupId={elaboradosGroupId}
+            top20GroupId={top20GroupId}
             idsSinAgrupCount={idsSinAgrupActivos.size}
             onMutateGroups={onMutateGroups}
             onRefetch={loadGroups}
@@ -1628,6 +1679,7 @@ export default function InsumosMain() {
             idsSinAgrupCount={idsSinAgrupActivos.size}
             idsSinAgrupSet={idsSinAgrupActivos}
             idsElaboradosSet={idsElaboradosActivos}
+            idsTop20Set={idsTop20Insumos}
             comprasMap={comprasMap}
           />
         </div>
@@ -1649,6 +1701,7 @@ export default function InsumosMain() {
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
             elaboradosGroupId={elaboradosGroupId}
+            top20GroupId={top20GroupId}
             onOpenGroupModalForInsumo={isStaff ? undefined : handleOpenGroupModalForInsumo}
             onCreateGroupFromRubro={isStaff ? undefined : handleOpenGroupModalForRubro}
             rubrosMap={rubrosMap}

@@ -23,7 +23,7 @@ import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
 import { showConfirm } from '@/servicios/appConfirm';
 import { downwardMenuProps } from '@/utils/menuProps';
-import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 const safeId = (insumo) => {
   const raw = insumo?.id ?? insumo?.insumo_id ?? insumo?.codigo;
@@ -100,6 +100,7 @@ function InsumosSidebar({
 
   todoGroupId,
   elaboradosGroupId = null,
+  top20GroupId = null,
   idsSinAgrupCount,
 
   onMutateGroups,
@@ -131,6 +132,7 @@ function InsumosSidebar({
   onClearInsumoList,
   idsSinAgrupSet,
   idsElaboradosSet,
+  idsTop20Set,
   comprasMap,
 }) {
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
@@ -158,6 +160,9 @@ function InsumosSidebar({
     const elabIdNum = Number(elaboradosGroupId);
     const elaborados = Number.isFinite(elabIdNum) ? arr.find((g) => Number(g.id) === elabIdNum) : null;
 
+    const top20IdNum = Number(top20GroupId);
+    const top20 = Number.isFinite(top20IdNum) ? arr.find((g) => Number(g.id) === top20IdNum) : null;
+
     const discontinuados = arr.filter(esDiscontinuadosGroup);
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
 
@@ -169,6 +174,7 @@ function InsumosSidebar({
       if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
       if (elaborados && idNum === Number(elaborados.id)) return false;
+      if (top20 && idNum === Number(top20.id)) return false;
       if (discIds.has(idNum)) return false;
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
@@ -191,13 +197,14 @@ function InsumosSidebar({
     const todoCount = idsSinAgrupCount ?? 0;
 
     const ordered = [];
+    if (isMainDivision && top20) ordered.push(top20);                  // siempre primero de todos
     if (isMainDivision && todo && todoCount > 0) ordered.push(todo);   // primero si tiene insumos
     ordered.push(...middle);
     if (isMainDivision && elaborados) ordered.push(elaborados);        // siempre acá, fijo (nunca salta)
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [groups, todoGroupId, elaboradosGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
+  }, [groups, todoGroupId, elaboradosGroupId, top20GroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
 
   const selectedGroupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
@@ -249,12 +256,13 @@ function InsumosSidebar({
   const activeIds = useMemo(() => {
     const isTodoSelected = todoGroupId && Number(selectedGroupId) === Number(todoGroupId);
     const isElabSelected = elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId);
+    const isTop20Selected = top20GroupId && Number(selectedGroupId) === Number(top20GroupId);
 
-    // "Elaborados" (igual que Sin-agrupación): su membresía se calcula, no
+    // "Elaborados"/"Top 20" (igual que Sin-agrupación): su membresía se calcula, no
     // viene de `group.items` — si `visibleIds` da un Set vacío (negocio sin
-    // elaborados todavía) no hay que caer al fallback de abajo, que buscaría
+    // elaborados/compras todavía) no hay que caer al fallback de abajo, que buscaría
     // en items y mostraría algo incorrecto.
-    if (isTodoSelected || isElabSelected) {
+    if (isTodoSelected || isElabSelected || isTop20Selected) {
       return visibleIds instanceof Set ? visibleIds : new Set();
     }
 
@@ -273,7 +281,7 @@ function InsumosSidebar({
         .map((item) => Number(item.insumo_id ?? item.id))
         .filter((n) => Number.isFinite(n) && n > 0)
     );
-  }, [visibleIds, selectedGroupId, groups, todoGroupId, elaboradosGroupId]);
+  }, [visibleIds, selectedGroupId, groups, todoGroupId, elaboradosGroupId, top20GroupId]);
 
   /* ── Catálogo rubros ── */
   const catalogRubros = useMemo(() => {
@@ -316,6 +324,7 @@ function InsumosSidebar({
     if (!comprasMap || typeof comprasMap.get !== 'function') return m;
     const todoIdNum = Number(todoGroupId);
     const elabIdNum = Number(elaboradosGroupId);
+    const top20IdNum = Number(top20GroupId);
 
     for (const g of opcionesSelect || []) {
       if (esDiscontinuadosGroup(g)) continue;
@@ -327,6 +336,9 @@ function InsumosSidebar({
       } else if (Number.isFinite(elabIdNum) && Number(g.id) === elabIdNum) {
         // Elaborados: ídem, membresía calculada, no viene de g.items
         ids = Array.from(idsElaboradosSet || []);
+      } else if (Number.isFinite(top20IdNum) && Number(g.id) === top20IdNum) {
+        // Top 20: ídem, membresía calculada (ranking de compras), no viene de g.items
+        ids = Array.from(idsTop20Set || []);
       } else {
         const items = g.items || g.insumos || [];
         ids = items.map(it => Number(it.insumo_id ?? it.id)).filter(n => Number.isFinite(n) && n > 0);
@@ -340,7 +352,7 @@ function InsumosSidebar({
       m.set(Number(g.id), total);
     }
     return m;
-  }, [opcionesSelect, comprasMap, todoGroupId, idsSinAgrupSet, elaboradosGroupId, idsElaboradosSet]);
+  }, [opcionesSelect, comprasMap, todoGroupId, idsSinAgrupSet, elaboradosGroupId, idsElaboradosSet, top20GroupId, idsTop20Set]);
 
   /* ── Tree por rubro — el filtro elaborados/no-elaborados ya viene resuelto desde InsumosMain ── */
   const treeByRubro = useMemo(() => {
@@ -626,7 +638,7 @@ function InsumosSidebar({
                 return (
                   <MenuItem key={g.id} value={Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                      <span style={{ fontStyle: esDiscontinuadosGroup(g) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
+                      <span style={{ fontStyle: (esDiscontinuadosGroup(g) || esTop20Group(g)) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
                         {g.nombre}
                         {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
                           <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
@@ -650,8 +662,9 @@ function InsumosSidebar({
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
                           const isElab = esElaboradosGroup(g);
+                          const isTop20 = esTop20Group(g);
 
-                          if (isDisc) return null;
+                          if (isDisc || isTop20) return null;
 
                           if (isElab) {
                             // Su contenido se calcula (igual que Sin agrupación), no se

@@ -20,6 +20,8 @@ export const esDiscontinuadosGroup = (g) => {
 
 export const esElaboradosGroup = (g) => norm(g?.nombre) === 'elaborados';
 
+export const esTop20Group = (g) => norm(g?.nombre) === 'top 20';
+
 // Criterio canónico, con prioridad: receta real activa > flag individual >
 // flag del rubro > nombre del rubro que sugiera "elaborado". `resolveRubroInfo`
 // recibe el insumo y devuelve { nombre, es_elaborador } o null (mismo shape

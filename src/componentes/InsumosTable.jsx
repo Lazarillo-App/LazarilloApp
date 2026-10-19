@@ -18,7 +18,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useConfig } from '@/context/ConfigContext';
 import UsoInsumoCell from './UsoInsumoCell';
-import { esTodoGroup, esDiscontinuadosGroup } from '@/utils/insumoGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -215,6 +215,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   selectedGroupId = null,
   discontinuadosGroupId = null,
   elaboradosGroupId = null,
+  top20GroupId = null,
   onOpenGroupModalForInsumo,
   onCreateGroupFromRubro,
   rubrosMap = new Map(),
@@ -844,6 +845,11 @@ const InsumosTable = forwardRef(function InsumosTable({
   const isTodoView =
     todoGroupId && selectedGroupId && Number(selectedGroupId) === Number(todoGroupId);
 
+  // Top 20 es automática y de solo lectura — sin ningún ícono de gestión,
+  // ni por rubro ni por insumo (no hay membresía persistida que editar).
+  const isTop20View =
+    !!top20GroupId && !!selectedGroupId && Number(selectedGroupId) === Number(top20GroupId);
+
   if (loading) {
     return <p style={{ padding: 16 }}>Cargando insumos...</p>;
   }
@@ -1119,7 +1125,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                       </span>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <InsumoRubroAccionesMenu
+                        {!isTop20View && <InsumoRubroAccionesMenu
                           rubroLabel={row.label || "Sin rubro"}
                           rubroCodigo={row.codigo || null}
                           isElaborado={row.isElaborado}
@@ -1140,7 +1146,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           onAfterRubroUpdate={handleAfterAction}
                           businessId={originalBusinessId || businessId}
                           onAfterToggleElaboradoBulk={onAfterToggleElaboradoBulk}
-                        />
+                        />}
                       </div>
                     </div>
                   </div>
@@ -1279,7 +1285,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                       })}
 
                       <div style={{ textAlign: "center" }}>
-                        <InsumoAccionesMenu
+                        {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
                           selectedGroupId={selectedGroupId}
@@ -1296,7 +1302,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           onOpenEditModal={onOpenEditModal}
                           businessId={originalBusinessId || businessId}
                           staffMode={isStaff}
-                        />
+                        />}
                       </div>
                     </>
                   ) : (
@@ -1369,7 +1375,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         );
                       })}
                       <div style={{ textAlign: "center" }}>
-                        <InsumoAccionesMenu
+                        {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
                             selectedGroupId={selectedGroupId}
@@ -1386,7 +1392,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                             onOpenEditModal={onOpenEditModal}
                             businessId={originalBusinessId || businessId}
                             staffMode={isStaff}
-                          />
+                          />}
                       </div>
                     </>
                   )}

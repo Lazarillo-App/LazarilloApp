@@ -34,7 +34,7 @@ import {
 
 import { addExclusionesInsumos } from "../servicios/apiInsumosTodo";
 import { BASE } from '@/servicios/apiBase';
-import { esDiscontinuadosGroup as isDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
+import { esDiscontinuadosGroup as isDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 export default function InsumoRubroAccionesMenu({
   rubroLabel,
@@ -137,7 +137,7 @@ export default function InsumoRubroAccionesMenu({
     () =>
       (groups || [])
         .filter((g) => g?.id)
-        .filter((g) => Number(g.id) !== currentGroupId && !esElaboradosGroup(g)),
+        .filter((g) => Number(g.id) !== currentGroupId && !esElaboradosGroup(g) && !esTop20Group(g)),
     [groups, currentGroupId]
   );
 
