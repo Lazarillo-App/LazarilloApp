@@ -710,6 +710,25 @@ export default function ArticulosMain(props) {
       else realUpdates.push({ artId, precioManual: Number(u.precioManual) });
     }
 
+    // Mismo guard de secuencia que handlePriceConfigSave (comparten el mismo
+    // estado priceConfig) — sin esto, un guardado de rubro/agrupación en
+    // vuelo podía resolver DESPUÉS de uno más nuevo (ej. borrar justo
+    // después de tipear el %) y pisarle el resultado, el "necesito 2 clicks"
+    // reportado en el botón ✕ de rubro/agrupación.
+    const mySeq = ++priceConfigSaveSeqRef.current;
+
+    // Optimista: reflejar YA el cambio en el estado local, igual que ya hace
+    // handlePriceConfigSave para el caso individual.
+    setPriceConfig(prev => {
+      const byArticle = { ...(prev.byArticle || {}) };
+      realUpdates.forEach(({ artId, precioManual }) => {
+        const key = String(artId);
+        byArticle[key] = { ...(byArticle[key] || {}), precioManual };
+      });
+      deletes.forEach(({ artId }) => { delete byArticle[String(artId)]; });
+      return { ...prev, byArticle };
+    });
+
     try {
       const token = localStorage.getItem('token') || '';
       await fetch(`${BASE}/businesses/${bizId}/article-price-config/bulk`, {
@@ -722,6 +741,7 @@ export default function ArticulosMain(props) {
         body: JSON.stringify({ updates: realUpdates, deletes }),
       });
       const r = await PriceConfigAPI.getAll(bizId);
+      if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
       setPriceConfig({
         byArticle: r?.byArticle || {},
         byRubro: r?.byRubro || {},

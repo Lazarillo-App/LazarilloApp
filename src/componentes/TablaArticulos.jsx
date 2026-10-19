@@ -557,12 +557,18 @@ export default function TablaArticulos({
   const [sortDir, setSortDir] = useState("desc");
   const sortByRef = React.useRef(sortBy);
   const bulkSetIdsRef = useRef(new Set());
-  // Precio pre-cargado (no un placeholder real): el select() al foco no alcanzaba
-  // (según el navegador/teclado, puede no dejar nada seleccionado) — así que ahora
-  // se vacía directo el campo al entrar, guardando el valor de antes acá para
-  // restaurarlo si el usuario hace foco y se va sin tipear nada (no se interpreta
-  // como "borrar el precio").
-  const precioFocoOriginalRef = useRef({});
+  // Celda de "nuevo precio" (favorita): qué fila está enfocada ahora mismo y
+  // si ya se tipeó algo desde que se enfocó — mientras está enfocada y sin
+  // tocar, el input se ve vacío (para poder escribir directo) pero el precio
+  // real sigue en `manuales`/`rawManual` sin tocarse, mostrado como
+  // placeholder gris — antes se borraba el estado real al enfocar y se
+  // reconstruía a mano en el blur (ver precioFocoOriginalRef, ya no existe).
+  const [focusedManualId, setFocusedManualId] = useState(null);
+  const manualTocadoRef = useRef(new Set());
+  // Valor real al momento de enfocar cada fila (no el que va quedando en
+  // `manuales` mientras se tipea) — el blur lo compara contra ESTO para
+  // saber si hay un cambio real que guardar, no contra sí mismo.
+  const valorAlEnfocarRef = useRef({});
   React.useEffect(() => { sortByRef.current = sortBy; }, [sortBy]);
 
   const toggleSort = useCallback((k) => {
@@ -814,9 +820,11 @@ export default function TablaArticulos({
       }
 
       const art = baseById.get(artId);
-      // Base = precio actual (manual si existe, sino precio de la favorita)
-      const manualActual = num(manuales[String(artId)] ?? priceConfig.byArticle?.[String(artId)]?.precioManual);
-      const base = manualActual > 0 ? manualActual : num(art?.precio ?? 0);
+      // Base SIEMPRE el precio real del artículo (nunca la columna "nuevo
+      // precio" ya calculada por un % anterior) — aplicar un % por rubro
+      // después de uno por agrupación debe partir del mismo precio de lista
+      // en ambos casos, no encadenarse sobre el resultado previo.
+      const base = num(art?.precio ?? 0);
 
       if (base > 0) {
         const precioCalculado = base * (1 + pct / 100);
@@ -1694,6 +1702,7 @@ export default function TablaArticulos({
                   <ClearBtn
                     onClick={() => {
                       setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
+                      setLastAppliedPct(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
                       setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
                       if (onBulkManualSave) {
                         onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
@@ -1849,6 +1858,7 @@ export default function TablaArticulos({
                   </div>
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
+                    setLastAppliedPct(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
                     setManuales(prev => { const next = { ...prev }; ids.forEach(id => { delete next[String(id)]; }); return next; });
                     if (onBulkManualSave) {
                       onBulkManualSave(ids.map(artId => ({ artId, precioManual: null })));
@@ -2311,9 +2321,12 @@ export default function TablaArticulos({
                     {/* Contenedor de ancho fijo: input centrado, botones absolutos a los lados.
                         El layout no cambia entre estados — solo aparece/desaparece contenido. */}
                     <div style={{ position: 'relative', width: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {/* Paso − (izquierda, absoluto): solo con valor, visible en hover de fila */}
+                      {/* Paso − (izquierda, absoluto): solo con valor, visible en hover de fila.
+                          tabIndex=-1: fuera del orden de tabulación — Tab desde el input de
+                          precio debe ir derecho al input de la fila de abajo, no pasar por
+                          estos botones de paso/limpiar de la misma fila. */}
                       {tieneValor && (
-                        <button className="np-step" style={{ ...stepBtnStyle, position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)' }}
+                        <button className="np-step" tabIndex={-1} style={{ ...stepBtnStyle, position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)' }}
                           title="Bajar un paso"
                           onClick={(e) => { e.stopPropagation(); commitValor((valorNum || 0) - (paso || 1), usarChipIds.has(id)); }}>−</button>
                       )}
@@ -2321,6 +2334,7 @@ export default function TablaArticulos({
                       {/* Chip USAR: campo vacío + excedido. Ocupa el centro (mismo lugar que el input) */}
                       {mostrarChipUsar ? (
                         <button
+                          tabIndex={-1}
                           onClick={(e) => { e.stopPropagation(); commitValor(sugRedondeado, true); }}
                           title={`Usar el sugerido: ${fmtCurrency(sugRedondeado)}`}
                           style={{ padding: '3px 9px', borderRadius: 5, border: '1px solid #e8b4ae', background: '#fbe3e0', color: '#c0392b', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: '.02em' }}>
@@ -2333,34 +2347,40 @@ export default function TablaArticulos({
                           <input
                             type="text"
                             value={(() => {
+                              // Enfocado y todavía sin tipear nada: input vacío (para poder
+                              // escribir directo) — el precio real NO se toca, sigue en
+                              // `manuales`/`rawManual`, y se muestra como placeholder abajo.
+                              if (focusedManualId === id && !manualTocadoRef.current.has(id)) return '';
                               if (rawManual === '' || rawManual == null) return '';
                               const n = Number(String(rawManual).replace(/\./g, ''));
                               return Number.isFinite(n) ? n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : String(rawManual);
                             })()}
+                            placeholder={
+                              focusedManualId === id && !manualTocadoRef.current.has(id) && tieneValor
+                                ? (Number.isFinite(valorNum) ? valorNum.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '')
+                                : undefined
+                            }
                             onFocus={() => {
-                              // Vacía el campo al entrar (el valor que se ve no es un
-                              // placeholder, es el precio real ya cargado) para poder
-                              // tipear directo sin borrarlo a mano antes. Si se va sin
-                              // escribir nada, el onBlur restaura esto en vez de
-                              // interpretarlo como "querés borrar el precio".
-                              precioFocoOriginalRef.current[id] = rawManual;
-                              setManuales(s => ({ ...s, [id]: '' }));
+                              manualTocadoRef.current.delete(id);
+                              valorAlEnfocarRef.current[id] = tieneValor ? valorNum : null;
+                              setFocusedManualId(id);
                             }}
                             onChange={(e) => {
+                              manualTocadoRef.current.add(id);
                               const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                               setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
                               setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
                             }}
                             onBlur={(e) => {
+                              setFocusedManualId(f => f === id ? null : f);
+                              manualTocadoRef.current.delete(id);
                               const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
-                              const original = precioFocoOriginalRef.current[id];
-                              delete precioFocoOriginalRef.current[id];
-                              if (raw === '' && original !== undefined && original !== '' && original != null) {
-                                // Entró y salió sin tipear nada — volver al precio de antes.
-                                setManuales(s => ({ ...s, [id]: original }));
-                                return;
-                              }
                               const val = raw === '' ? null : Number(raw);
+                              const original = valorAlEnfocarRef.current[id] ?? null;
+                              delete valorAlEnfocarRef.current[id];
+                              // Sin cambio real (no se tipeó nada, o se volvió a dejar igual):
+                              // no disparar un guardado de más.
+                              if (val === original) return;
                               bulkSetIdsRef.current.delete(Number(id));
                               if (val === null) {
                                 setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
@@ -2385,13 +2405,13 @@ export default function TablaArticulos({
                           input reguarda el valor viejo justo antes de que commitValor lo borre —
                           quedaba una carrera de red donde el primer click "no hacía nada" hasta
                           reintentar. Con preventDefault el input nunca pierde el foco, así que ese
-                          onBlur no llega a dispararse. */}
+                          onBlur no llega a dispararse. tabIndex=-1: ver nota del botón "−" de arriba. */}
                       {tieneValor && (
                         <span style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 3 }}>
-                          <button className="np-step" style={stepBtnStyle} title="Subir un paso"
+                          <button className="np-step" tabIndex={-1} style={stepBtnStyle} title="Subir un paso"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={(e) => { e.stopPropagation(); commitValor((valorNum || 0) + (paso || 1), usarChipIds.has(id)); }}>+</button>
-                          <button className="np-step" style={stepBtnStyle} title="Vaciar (volver al precio de lista)"
+                          <button className="np-step" tabIndex={-1} style={stepBtnStyle} title="Vaciar (volver al precio de lista)"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={(e) => { e.stopPropagation(); commitValor(null); }}>✕</button>
                         </span>
