@@ -12,7 +12,7 @@ const NUEVA_MERMA = '__nueva__';
 /* ════════════════════════════════════════
    TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
-export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMerma }) {
+export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMerma, onReemplazar }) {
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mermas, setMermas] = useState([]);
@@ -74,10 +74,19 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
 
   return (
     <Box sx={{ py: 1 }}>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        Recetas donde se usa <b>{insumoData?.nombre || 'este insumo'}</b>
-        {uso.length > 0 && ` · ${uso.length} ${uso.length === 1 ? 'receta' : 'recetas'}`}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="body2" color="text.secondary">
+          Recetas donde se usa <b>{insumoData?.nombre || 'este insumo'}</b>
+          {uso.length > 0 && ` · ${uso.length} ${uso.length === 1 ? 'receta' : 'recetas'}`}
+        </Typography>
+        {/* Acá (no en el selector de entrada) es donde en los hechos se decide si
+            reemplazar el insumo: viendo en qué recetas se usa y por cuánto pesan. */}
+        {onReemplazar && (
+          <Button size="small" variant="outlined" onClick={onReemplazar} sx={{ flexShrink: 0 }}>
+            🔁 Reemplazar insumo
+          </Button>
+        )}
+      </Box>
 
       {/* Modificar la merma de uno o varios productos/elaborados a la vez, desde acá
           mismo — sin tener que ir insumo por insumo hasta la pestaña Merma. */}

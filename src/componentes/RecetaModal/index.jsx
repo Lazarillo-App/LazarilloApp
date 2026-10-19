@@ -2250,6 +2250,7 @@ export default function RecetaModal({
                 businessId={insumoBizId}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
                 onIrAMerma={() => setTab('merma')}
+                onReemplazar={() => setReemplazarModalOpen(true)}
               />
             ) : (() => {
               // Cartel de advertencia: insumo con compras que aún no tiene receta
