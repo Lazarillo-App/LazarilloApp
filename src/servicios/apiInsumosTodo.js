@@ -10,24 +10,11 @@ import {
   insumoGroupAddExclusions,
   insumoGroupRemoveExclusions,
 } from './apiInsumos';
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
 
-const normUpper = (s) => String(s || '').trim().toUpperCase();
-
-const esTodoNombre = (nombre) => {
-  const n = normUpper(nombre);
-  return (
-    n === 'TODO' ||
-    n === 'SIN AGRUPACION' ||
-    n === 'SIN AGRUPACIÓN' ||
-    n === 'SIN AGRUPAR' ||
-    n === 'SIN GRUPO'
-  );
-};
-
-const esDiscNombre = (nombre) => {
-  const n = normUpper(nombre);
-  return n === 'DISCONTINUADOS' || n === 'DESCONTINUADOS';
-};
+const esTodoNombre = (nombre) => esTodoGroup({ nombre });
+const esDiscNombre = (nombre) => esDiscontinuadosGroup({ nombre });
+const esElabNombre = (nombre) => esElaboradosGroup({ nombre });
 
 function assertBusinessId(businessId, fnName) {
   const n = Number(businessId);
@@ -125,6 +112,30 @@ export async function ensureDiscontinuadosInsumos(businessId) {
 }
 
 /**
+ * Asegura que existe un grupo "Elaborados" para insumos (POR NEGOCIO). A
+ * diferencia de Discontinuados, su contenido no se asigna a mano acá: se
+ * calcula en el frontend con `esInsumoElaborado` (ver insumoGruposEspeciales.js)
+ * — esta fila solo le da un id real para aparecer en el desplegable con
+ * favorito, igual que las demás agrupaciones fijas.
+ */
+export async function ensureElaboradosInsumos(businessId) {
+  const bId = assertBusinessId(businessId, 'ensureElaboradosInsumos');
+
+  const res = await insumoGroupsList(bId);
+  const groups = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+
+  const elabGroup = groups.find((g) => esElabNombre(g?.nombre));
+  if (elabGroup) return elabGroup;
+
+  const created = await insumoGroupCreate(bId, {
+    nombre: 'Elaborados',
+    descripcion: 'Insumos elaborados (con receta propia) — contenido calculado automáticamente',
+  });
+
+  return created?.data || created;
+}
+
+/**
  * Helper para detectar si un grupo es TODO
  */
 export function isTodoGroup(g) {
@@ -136,4 +147,11 @@ export function isTodoGroup(g) {
  */
 export function isDiscontinuadosGroup(g) {
   return esDiscNombre(g?.nombre);
+}
+
+/**
+ * Helper para detectar si un grupo es Elaborados
+ */
+export function isElaboradosGroup(g) {
+  return esElabNombre(g?.nombre);
 }

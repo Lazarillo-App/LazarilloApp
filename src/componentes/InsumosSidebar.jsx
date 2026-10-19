@@ -7,7 +7,6 @@ import { usePendientesCount, marcarPendientesVistos } from '@/hooks/usePendiente
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   FormControl, InputLabel, Select, MenuItem,
-  ToggleButtonGroup, ToggleButton,
   IconButton, Tooltip, Box, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -24,29 +23,12 @@ import { notifyGroupMovedToDivision } from '../servicios/notifyGroupActions';
 import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@/servicios/apiDivisions';
 import { showConfirm } from '@/servicios/appConfirm';
 import { downwardMenuProps } from '@/utils/menuProps';
-
-const norm = (s) => String(s || '').trim().toLowerCase();
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup } from '@/utils/insumoGruposEspeciales';
 
 const safeId = (insumo) => {
   const raw = insumo?.id ?? insumo?.insumo_id ?? insumo?.codigo;
   const id = Number(raw);
   return Number.isFinite(id) && id > 0 ? id : null;
-};
-
-const esTodoGroup = (g) => {
-  const n = norm(g?.nombre);
-  return (
-    n === 'todo' ||
-    n === 'sin agrupacion' ||
-    n === 'sin agrupación' ||
-    n === 'sin agrupar' ||
-    n === 'sin grupo'
-  );
-};
-
-const esDiscontinuadosGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'discontinuados' || n === 'descontinuados';
 };
 
 const fmtCurrency = (v) => {
@@ -61,11 +43,6 @@ const fmtCurrency = (v) => {
   } catch {
     return String(v || '');
   }
-};
-
-const nombreSugieraElaborado = (nombre) => {
-  const n = norm(nombre || '');
-  return n.includes('elaborado') || n.includes('elaborados');
 };
 
 const resolveInsumoMonto = (insumo, metaById) => {
@@ -109,8 +86,6 @@ function InsumosSidebar({
 
   businessId,
   originalBusinessId,
-  vista,
-  onVistaChange,
 
   groups = [],
   groupsLoading,
@@ -124,6 +99,7 @@ function InsumosSidebar({
   onRenameGroup,
 
   todoGroupId,
+  elaboradosGroupId = null,
   idsSinAgrupCount,
 
   onMutateGroups,
@@ -154,6 +130,7 @@ function InsumosSidebar({
   refetchAssignedGroups,
   onClearInsumoList,
   idsSinAgrupSet,
+  idsElaboradosSet,
   comprasMap,
 }) {
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
@@ -178,6 +155,9 @@ function InsumosSidebar({
     const todoIdNum = Number(todoGroupId);
     const todo = Number.isFinite(todoIdNum) ? arr.find((g) => Number(g.id) === todoIdNum) : null;
 
+    const elabIdNum = Number(elaboradosGroupId);
+    const elaborados = Number.isFinite(elabIdNum) ? arr.find((g) => Number(g.id) === elabIdNum) : null;
+
     const discontinuados = arr.filter(esDiscontinuadosGroup);
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
 
@@ -188,6 +168,7 @@ function InsumosSidebar({
       const idNum = Number(g?.id);
       if (!Number.isFinite(idNum) || idNum <= 0) return false;
       if (todo && idNum === Number(todo.id)) return false;
+      if (elaborados && idNum === Number(elaborados.id)) return false;
       if (discIds.has(idNum)) return false;
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
@@ -212,10 +193,11 @@ function InsumosSidebar({
     const ordered = [];
     if (isMainDivision && todo && todoCount > 0) ordered.push(todo);   // primero si tiene insumos
     ordered.push(...middle);
+    if (isMainDivision && elaborados) ordered.push(elaborados);        // siempre acá, fijo (nunca salta)
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [groups, todoGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
+  }, [groups, todoGroupId, elaboradosGroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
 
   const selectedGroupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
@@ -266,8 +248,13 @@ function InsumosSidebar({
   /* ── ActiveIds ── */
   const activeIds = useMemo(() => {
     const isTodoSelected = todoGroupId && Number(selectedGroupId) === Number(todoGroupId);
+    const isElabSelected = elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId);
 
-    if (isTodoSelected) {
+    // "Elaborados" (igual que Sin-agrupación): su membresía se calcula, no
+    // viene de `group.items` — si `visibleIds` da un Set vacío (negocio sin
+    // elaborados todavía) no hay que caer al fallback de abajo, que buscaría
+    // en items y mostraría algo incorrecto.
+    if (isTodoSelected || isElabSelected) {
       return visibleIds instanceof Set ? visibleIds : new Set();
     }
 
@@ -286,7 +273,7 @@ function InsumosSidebar({
         .map((item) => Number(item.insumo_id ?? item.id))
         .filter((n) => Number.isFinite(n) && n > 0)
     );
-  }, [visibleIds, selectedGroupId, groups, todoGroupId]);
+  }, [visibleIds, selectedGroupId, groups, todoGroupId, elaboradosGroupId]);
 
   /* ── Catálogo rubros ── */
   const catalogRubros = useMemo(() => {
@@ -328,6 +315,7 @@ function InsumosSidebar({
     const m = new Map();
     if (!comprasMap || typeof comprasMap.get !== 'function') return m;
     const todoIdNum = Number(todoGroupId);
+    const elabIdNum = Number(elaboradosGroupId);
 
     for (const g of opcionesSelect || []) {
       if (esDiscontinuadosGroup(g)) continue;
@@ -336,6 +324,9 @@ function InsumosSidebar({
       if (Number.isFinite(todoIdNum) && Number(g.id) === todoIdNum) {
         // Sin Agrupación: los IDs vienen calculados desde InsumosMain
         ids = Array.from(idsSinAgrupSet || []);
+      } else if (Number.isFinite(elabIdNum) && Number(g.id) === elabIdNum) {
+        // Elaborados: ídem, membresía calculada, no viene de g.items
+        ids = Array.from(idsElaboradosSet || []);
       } else {
         const items = g.items || g.insumos || [];
         ids = items.map(it => Number(it.insumo_id ?? it.id)).filter(n => Number.isFinite(n) && n > 0);
@@ -349,9 +340,9 @@ function InsumosSidebar({
       m.set(Number(g.id), total);
     }
     return m;
-  }, [opcionesSelect, comprasMap, todoGroupId, idsSinAgrupSet]);
+  }, [opcionesSelect, comprasMap, todoGroupId, idsSinAgrupSet, elaboradosGroupId, idsElaboradosSet]);
 
-  /* ── Tree por rubro — usa `vista` (prop de InsumosMain, ya filtrada) ── */
+  /* ── Tree por rubro — el filtro elaborados/no-elaborados ya viene resuelto desde InsumosMain ── */
   const treeByRubro = useMemo(() => {
     const isTodoSelected = todoGroupId && Number(selectedGroupId) === Number(todoGroupId);
     const keepEmpty = activeIds === null && !isTodoSelected;
@@ -373,45 +364,10 @@ function InsumosSidebar({
       }));
     }
 
-    // El filtro por elaborados/no-elaborados ya lo aplica InsumosMain en filteredBase
-    // que es lo que llega como `rubros` prop. Solo necesitamos filtrar el catálogo
-    // cuando keepEmpty=true (sin grupo seleccionado)
-    let rubrosFiltrados = baseRubros;
-    if (keepEmpty) {
-      if (vista === 'elaborados') {
-        rubrosFiltrados = rubrosFiltrados.map((rubro) => {
-          // Filtrar insumos por es_elaborado primero, luego por es_elaborador del rubro
-          const insumosElaborados = (rubro.insumos || []).filter((ins) => {
-            if (ins?.es_elaborado === true) return true;
-            if (ins?.es_elaborado === false) return false;
-            const info = rubrosMap?.get(String(rubro.codigo || ''));
-            return info?.es_elaborador === true || nombreSugieraElaborado(rubro.nombre);
-          });
-          return { ...rubro, insumos: insumosElaborados };
-        }).filter((rubro) => {
-          const insumosFiltrados = rubro.insumos || [];
-          const info = rubrosMap?.get(String(rubro.codigo || ''));
-          // Mantener el rubro si tiene insumos elaborados O si el rubro entero es elaborador
-          return insumosFiltrados.length > 0 || info?.es_elaborador === true || nombreSugieraElaborado(rubro.nombre);
-        });
-      } else if (vista === 'no-elaborados') {
-        rubrosFiltrados = rubrosFiltrados.map((rubro) => {
-          // Filtrar insumos no elaborados
-          const insumosNoElab = (rubro.insumos || []).filter((ins) => {
-            if (ins?.es_elaborado === true) return false;
-            if (ins?.es_elaborado === false) return true;
-            const info = rubrosMap?.get(String(rubro.codigo || ''));
-            return info?.es_elaborador !== true && !nombreSugieraElaborado(rubro.nombre);
-          });
-          return { ...rubro, insumos: insumosNoElab };
-        }).filter((rubro) => {
-          const insumosFiltrados = rubro.insumos || [];
-          const info = rubrosMap?.get(String(rubro.codigo || ''));
-          // Mantener el rubro si tiene insumos no elaborados O si el rubro no es elaborador
-          return insumosFiltrados.length > 0 || (info?.es_elaborador !== true && !nombreSugieraElaborado(rubro.nombre));
-        });
-      }
-    }
+    // El filtro por elaborados/no-elaborados ya lo aplica InsumosMain en
+    // filteredBase (que es lo que llega acá como `rubros`/`activeIds`), ya no
+    // hace falta un filtro aparte por `vista` ni siquiera cuando keepEmpty.
+    const rubrosFiltrados = baseRubros;
 
     const pruned = rubrosFiltrados.map((rubro) => {
       const insumos = Array.isArray(rubro?.insumos) ? rubro.insumos : [];
@@ -443,7 +399,7 @@ function InsumosSidebar({
     });
 
     return withMonto;
-  }, [catalogRubros, rubrosSafe, vista, rubrosMap, activeIds, metaById, todoGroupId, selectedGroupId, getComprasAmount]);
+  }, [catalogRubros, rubrosSafe, rubrosMap, activeIds, metaById, todoGroupId, selectedGroupId, getComprasAmount]);
 
   const totalGrupoCompras = useMemo(
     () => (treeByRubro || []).reduce((acc, r) => acc + (r.__ventasMonto || 0), 0),
@@ -693,8 +649,29 @@ function InsumosSidebar({
                         {(() => {
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
+                          const isElab = esElaboradosGroup(g);
 
                           if (isDisc) return null;
+
+                          if (isElab) {
+                            // Su contenido se calcula (igual que Sin agrupación), no se
+                            // asigna a mano — por eso no tiene ni "editar membresía" ni
+                            // renombrar/eliminar (perdería el matching por nombre). Sí
+                            // tiene sentido marcarla favorita, como cualquier otra.
+                            return (
+                              onSetFavorite && (
+                                <Tooltip title={Number(favoriteGroupId) === Number(g.id) ? 'Quitar como favorita' : 'Marcar como favorita'} disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "offset", options: { offset: [0, 8] } }] } } }}>
+                                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSetFavorite(g.id); }}>
+                                    {Number(favoriteGroupId) === Number(g.id) ? (
+                                      <StarIcon fontSize="inherit" color="warning" />
+                                    ) : (
+                                      <StarBorderIcon fontSize="inherit" />
+                                    )}
+                                  </IconButton>
+                                </Tooltip>
+                              )
+                            );
+                          }
 
                           if (isTodo) {
                             return (
@@ -791,25 +768,6 @@ function InsumosSidebar({
               })}
             </Select>
           </FormControl>}
-
-          {/* Toggle elaborados / no-elaborados — sin onVistaChange (Staff, Fase 4:
-              solo ve elaborados) ni el toggle tiene sentido, se oculta entero. */}
-          {onVistaChange && (
-            <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={vista}
-                onChange={(_, val) => {
-                  if (!val) return;
-                  onVistaChange?.(val);
-                }}
-              >
-                <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
-                <ToggleButton value="elaborados">Elaborados</ToggleButton>
-              </ToggleButtonGroup>
-            </div>
-          )}
         </>
         )}
       </div>

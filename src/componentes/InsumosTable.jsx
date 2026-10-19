@@ -18,6 +18,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useConfig } from '@/context/ConfigContext';
 import UsoInsumoCell from './UsoInsumoCell';
+import { esTodoGroup, esDiscontinuadosGroup } from '@/utils/insumoGruposEspeciales';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -45,22 +46,6 @@ const formatDate = (d) => {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "-";
   return dt.toLocaleDateString("es-AR");
-};
-
-const esTodoGroup = (g) => {
-  const n = norm(g?.nombre);
-  return (
-    n === 'todo' ||
-    n === 'sin agrupacion' ||
-    n === 'sin agrupación' ||
-    n === 'sin agrupar' ||
-    n === 'sin grupo'
-  );
-};
-
-const esDiscontinuadosGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'discontinuados' || n === 'descontinuados';
 };
 
 const resolveInsumoMonto = (insumo, metaById) => {
@@ -224,12 +209,12 @@ const InsumosTable = forwardRef(function InsumosTable({
   onOpenEditModal,
   onDelete,
   noBusiness = false,
-  vista = "no-elaborados",
   businessId,
   originalBusinessId,
   groups = [],
   selectedGroupId = null,
   discontinuadosGroupId = null,
+  elaboradosGroupId = null,
   onOpenGroupModalForInsumo,
   onCreateGroupFromRubro,
   rubrosMap = new Map(),
@@ -266,7 +251,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   selectedInsumoIds = new Set(),
   onToggleInsumo,
 }, ref) {
-  const isElaborados = vista === "elaborados";
+  const isElaborados = !!elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId);
   const { desperdicioGlobalPct } = useConfig();
   const listRef = useRef(null);
   const [rubros, setRubros] = useState([]);
@@ -561,7 +546,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   useEffect(() => {
     setSortBy("nombre");
     setSortDir("asc");
-  }, [vista]);
+  }, [isElaborados]);
 
   const toggleSort = (key) => {
     if (sortBy === key) {

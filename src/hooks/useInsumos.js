@@ -351,44 +351,7 @@ export function useInvalidateInsumos() {
   };
 }
 
-/* ================== HELPERS PARA GRUPOS ESPECIALES ================== */
-
-/**
- * Helper para detectar grupo "Todo"
- */
-export function isTodoGroup(group) {
-  if (!group) return false;
-  const nombre = String(group.nombre || '').trim().toUpperCase();
-  return (
-    nombre === 'TODO' ||
-    nombre === 'SIN AGRUPACION' ||
-    nombre === 'SIN AGRUPACIÓN' ||
-    nombre === 'SIN AGRUPAR' ||
-    nombre === 'SIN GRUPO'
-  );
-}
-
-/**
- * Helper para detectar grupo "Discontinuados"
- */
-export function isDiscontinuadosGroup(group) {
-  if (!group) return false;
-  const nombre = String(group.nombre || '').trim().toUpperCase();
-  return nombre === 'DISCONTINUADOS' || nombre === 'DESCONTINUADOS';
-}
-
-/**
- * Hook para obtener IDs de grupos especiales
- */
-export function useSpecialGroupIds() {
-  const { data } = useInsumoGroups();
-  const groups = data?.data || [];
-
-  const todoGroup = groups.find(isTodoGroup);
-  const discontinuadosGroup = groups.find(isDiscontinuadosGroup);
-
-  return {
-    todoGroupId: todoGroup?.id || null,
-    discontinuadosGroupId: discontinuadosGroup?.id || null,
-  };
-}
+// Nota: `isTodoGroup`/`isDiscontinuadosGroup`/`useSpecialGroupIds` que vivían
+// acá se eliminaron — código muerto (nadie los importaba desde este hook).
+// El matching por nombre de las agrupaciones fijas (Todo/Discontinuados/
+// Elaborados) vive ahora en src/utils/insumoGruposEspeciales.js.

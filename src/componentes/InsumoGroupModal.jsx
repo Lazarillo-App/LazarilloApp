@@ -9,8 +9,6 @@ import {
     DialogActions,
     Button,
     TextField,
-    ToggleButtonGroup,
-    ToggleButton,
     Accordion,
     AccordionSummary,
     AccordionDetails,
@@ -51,7 +49,10 @@ export default function InsumoGroupModal({
     rubrosMap: rubrosMapProp = null,
     allInsumos: allInsumosProp = null,
 }) {
-    const [vista, setVista] = useState("no-elaborados");
+    // Los insumos elaborados viven en su propia agrupación fija "Elaborados"
+    // (calculada, no asignable a mano) — este modal de agrupar a mano ya no
+    // ofrece verlos/agregarlos, así que esta vista queda fija.
+    const vista = "no-elaborados";
     const [loading, setLoading] = useState(false);
     const [rubros, setRubros] = useState([]);
     const [rows, setRows] = useState([]);
@@ -348,25 +349,6 @@ export default function InsumoGroupModal({
                         Insumo origen: <strong>{insumo.nombre}</strong>
                     </Typography>
                 )}
-
-                {/* Toggle elaborados / no elaborados */}
-                <div style={{ marginBottom: 12 }}>
-                    <Typography variant="body2" sx={{ mb: 0.5 }}>
-                        Vista de insumos
-                    </Typography>
-                    <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={vista}
-                        onChange={(_, v) => {
-                            if (!v) return;
-                            setVista(v);
-                        }}
-                    >
-                        <ToggleButton value="no-elaborados">No elaborados</ToggleButton>
-                        <ToggleButton value="elaborados">Elaborados</ToggleButton>
-                    </ToggleButtonGroup>
-                </div>
 
                 {/* Crear nueva agrupación */}
                 <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>

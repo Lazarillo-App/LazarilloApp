@@ -28,7 +28,9 @@ import {
   ensureTodoInsumos,
   getExclusionesInsumos,
   ensureDiscontinuadosInsumos,
+  ensureElaboradosInsumos,
 } from '../servicios/apiInsumosTodo';
+import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esInsumoElaborado } from '@/utils/insumoGruposEspeciales';
 import {
   notifyGroupRenamed,
   notifyGroupDeleted,
@@ -67,10 +69,6 @@ import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
 
 const getFavKey = (bizId) => `favInsumoGroupId_${bizId || 'default'}`;
-const VIEW_KEY = 'lazarillo:insumosViewMode';
-const DEFAULT_VISTA = 'no-elaborados';
-
-const norm = (s) => String(s || '').trim().toLowerCase();
 
 const normalize = (s) =>
   String(s || '')
@@ -105,38 +103,6 @@ function scoreMatch(nombre, query) {
   if (idx !== -1) return { tier: 2, pos: idx, len: q.length };
   return { tier: 999, pos: 999, len: 999 };
 }
-
-const esTodoGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' || n === 'sin agrupar' || n === 'sin grupo';
-};
-
-const esDiscontinuadosGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'discontinuados' || n === 'descontinuados';
-};
-
-const vistaForInsumo = (insumo, rubrosMap, rubroNombreToInfo, rubrosIdMap) => {
-  // Prioridad 1: campo propio del insumo
-  if (insumo?.es_elaborado === true) return 'elaborados';
-  if (insumo?.es_elaborado === false) return 'no-elaborados';
-  // Prioridad 2: buscar info del rubro por código Maxi
-  const codigoCrudo = String(insumo?.rubro_codigo || insumo?.rubro || '');
-  if (codigoCrudo) {
-    const porCodigo = rubrosMap?.get(codigoCrudo);
-    if (porCodigo) return porCodigo.es_elaborador === true ? 'elaborados' : 'no-elaborados';
-    // Prioridad 3: puede ser un ID interno
-    const porId = rubrosIdMap?.get(codigoCrudo);
-    if (porId) return porId.es_elaborador === true ? 'elaborados' : 'no-elaborados';
-  }
-  // Prioridad 4: buscar por nombre
-  const nombreCrudo = String(insumo?.rubro_nombre || insumo?.rubroNombre || '');
-  if (nombreCrudo && rubroNombreToInfo) {
-    const porNombre = rubroNombreToInfo.get(nombreCrudo);
-    if (porNombre) return porNombre.es_elaborador === true ? 'elaborados' : 'no-elaborados';
-  }
-  return 'no-elaborados';
-};
 
 export default function InsumosMain() {
   const biz = useBusiness() || {};
@@ -265,12 +231,6 @@ export default function InsumosMain() {
 
   /* ── Estado básico ── */
   const [rubroSeleccionado, setRubroSeleccionado] = useState(null);
-  // vista: 'elaborados' | 'no-elaborados' — se actualiza al cambiar de agrupación
-  const [vista, setVista] = useState(DEFAULT_VISTA);
-  // Staff solo gestiona elaborados (Vista Operación, Fase 4) — fuerza la vista
-  // sin importar lo que haya quedado guardado en localStorage/backend para
-  // este usuario de una sesión anterior.
-  const effectiveVista = isStaff ? 'elaborados' : vista;
   const [reloadKey, setReloadKey] = useState(0);
   const [allInsumos, setAllInsumos] = useState([]);
 
@@ -304,6 +264,10 @@ export default function InsumosMain() {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [favoriteGroupId, setFavoriteGroupId] = useState(null);
   const [todoGroupId, setTodoGroupId] = useState(null);
+  // Agrupación fija "Elaborados" — igual patrón que todoGroupId/discontinuados:
+  // fila real en backend, membresía calculada (ver esInsumoElaborado), nunca
+  // asignada a mano.
+  const [elaboradosGroupId, setElaboradosGroupId] = useState(null);
   const [excludedIds, setExcludedIds] = useState(new Set());
 
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -340,53 +304,6 @@ export default function InsumosMain() {
   const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
 
   usePersistUiActions(businessId);
-
-  /* ── View mode por agrupación ── */
-  // viewModeByGroup: { [insumoGroupId]: 'elaborados' | 'no-elaborados' }
-  const [viewModeByGroup, setViewModeByGroup] = useState({});
-
-  // Cargar preferencias al montar o cambiar negocio — limpiar antes para no mostrar prefs viejas
-  useEffect(() => {
-    setViewModeByGroup({}); // limpiar inmediatamente al cambiar negocio
-    if (!resolvedBizId) return;
-    (async () => {
-      try {
-        // ✅ scope:'insumo' para no mezclar con prefs de artículos
-        const resp = await BusinessesAPI.getViewPrefs(resolvedBizId, { scope: 'insumo' });
-        setViewModeByGroup(resp?.byInsumoGroup || resp?.byGroup || {});
-      } catch { setViewModeByGroup({}); }
-    })();
-  }, [resolvedBizId]);
-
-  // Cuando cambia la agrupación seleccionada → aplicar la vista guardada
-  useEffect(() => {
-    if (!selectedGroupId) return;
-    const saved = viewModeByGroup[Number(selectedGroupId)];
-    if (saved === 'elaborados' || saved === 'no-elaborados') {
-      setVista(saved);
-    } else {
-      // Sin preferencia guardada → default
-      setVista(DEFAULT_VISTA);
-    }
-  }, [selectedGroupId]); // Solo cuando cambia selectedGroupId, no viewModeByGroup para evitar loops
-
-  // Handler del toggle: actualiza vista + persiste en backend
-  const handleChangeListMode = useCallback(
-    (mode) => {
-      if (mode !== 'elaborados' && mode !== 'no-elaborados') return;
-      setVista(mode);
-      const groupId = Number(selectedGroupId);
-      if (resolvedBizId && Number.isFinite(groupId) && groupId > 0) {
-        setViewModeByGroup((prev) => ({ ...prev, [groupId]: mode }));
-        BusinessesAPI.saveViewPref(resolvedBizId, {
-          scope: 'insumo',
-          agrupacionId: groupId,
-          viewMode: mode,
-        }).catch(() => { });
-      }
-    },
-    [selectedGroupId, resolvedBizId]
-  );
 
   const handleAfterToggleElaboradoBulk = useCallback((ids, nuevoValor) => {
     const idSet = new Set(ids.map(Number));
@@ -748,13 +665,13 @@ export default function InsumosMain() {
     if (isMainDivision) {
       const assignedSet = new Set(assignedInsumoGroupIds || []);
       return (groups || []).filter((g) => {
-        if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return true;
+        if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return true;
         return !assignedSet.has(Number(g?.id));
       });
     }
     const activeSet = new Set(activeDivisionInsumoGroupIds || []);
     return (groups || []).filter((g) => {
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return true;
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return true;
       return activeSet.has(Number(g?.id));
     });
   }, [groups, isSubnegocio, isMainDivision, activeDivisionInsumoGroupIds, assignedInsumoGroupIds]);
@@ -829,7 +746,7 @@ export default function InsumosMain() {
      imperativo aparte, con su propio guard de carrera para cambios rápidos de negocio. */
   const ensureRunRef = useRef(0);
   useEffect(() => {
-    if (!businessId) { setTodoGroupId(null); setExcludedIds(new Set()); return; }
+    if (!businessId) { setTodoGroupId(null); setElaboradosGroupId(null); setExcludedIds(new Set()); return; }
     const runId = ++ensureRunRef.current;
     let isCancelled = false;
     const safe = (fn) => { if (isCancelled || ensureRunRef.current !== runId) return; fn(); };
@@ -840,11 +757,17 @@ export default function InsumosMain() {
         if (isSubneg) {
           try { await ensureDiscontinuadosInsumos(businessId); } catch { }
         }
+        try {
+          const elabGroup = await ensureElaboradosInsumos(resolvedBizId);
+          if (isSubneg) { try { await ensureElaboradosInsumos(businessId); } catch { } }
+          safe(() => setElaboradosGroupId(elabGroup?.id || null));
+        } catch { }
         const todoGroup = await ensureTodoInsumos(resolvedBizId);
         if (isCancelled || ensureRunRef.current !== runId) return;
         safe(() => setTodoGroupId(todoGroup?.id || null));
-        // Por si ensureTodoInsumos/ensureDiscontinuadosInsumos crearon un grupo nuevo:
-        // invalidar para que useInsumoGroups lo traiga sin depender de un reload completo.
+        // Por si ensureTodoInsumos/ensureDiscontinuadosInsumos/ensureElaboradosInsumos
+        // crearon un grupo nuevo: invalidar para que useInsumoGroups lo traiga sin
+        // depender de un reload completo.
         queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(resolvedBizId) || 0] });
         if (isSubneg) queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(businessId) || 0] });
         if (todoGroup?.id) {
@@ -860,57 +783,6 @@ export default function InsumosMain() {
     })();
     return () => { isCancelled = true; };
   }, [businessId, resolvedBizId, isSubneg, reloadKey, queryClient]);
-
-  /* ── IDs sin agrupación ── */
-  const activeIdSet = useMemo(() => new Set(baseActivos.map((i) => Number(i.id)).filter(Number.isFinite)), [baseActivos]);
-  const inactiveIdSet = useMemo(() => new Set(baseInactivos.map((i) => Number(i.id)).filter(Number.isFinite)), [baseInactivos]);
-  const idsEnOtras = useMemo(() => new Set(
-    (groups || []).filter((g) => !esTodoGroup(g) && !esDiscontinuadosGroup(g))
-      .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
-      .filter((n) => Number.isFinite(n) && n > 0)
-  ), [groups]);
-
-  const idsSinAgrupActivos = useMemo(() => {
-    const res = new Set();
-    activeIdSet.forEach((id) => { if (!excludedIds.has(id) && !idsEnOtras.has(id)) res.add(id); });
-    return res;
-  }, [activeIdSet, excludedIds, idsEnOtras]);
-
-  const idsSinAgrupInactivos = useMemo(() => {
-    const res = new Set();
-    inactiveIdSet.forEach((id) => { if (!excludedIds.has(id) && !idsEnOtras.has(id)) res.add(id); });
-    return res;
-  }, [inactiveIdSet, excludedIds, idsEnOtras]);
-
-  /* ── Vista y tabla ── */
-  const selectedGroup = useMemo(() => {
-    const id = Number(selectedGroupId);
-    if (!Number.isFinite(id) || id <= 0) return null;
-    return (groupsScoped || []).find((g) => Number(g.id) === id) || null;
-  }, [selectedGroupId, groupsScoped]);
-
-  const isDiscView = useMemo(() => selectedGroup ? esDiscontinuadosGroup(selectedGroup) : false, [selectedGroup]);
-
-  const sidebarBase = useMemo(() => {
-    if (isDiscView) return (baseAll || []).filter((i) => discontinuadosIds.has(Number(i.id)));
-    return baseActivos;
-  }, [isDiscView, baseAll, baseActivos, discontinuadosIds]);
-
-  const visibleIds = useMemo(() => {
-    if (!selectedGroupId) return null;
-    const gId = Number(selectedGroupId);
-    const g = groupsScoped.find((x) => Number(x.id) === gId);
-    if (!g) return null;
-    if (esDiscontinuadosGroup(g)) return discontinuadosIds;
-    if (todoGroupId && gId === Number(todoGroupId)) return isDiscView ? idsSinAgrupInactivos : idsSinAgrupActivos;
-    const baseSet = isDiscView ? inactiveIdSet : activeIdSet;
-    const s = new Set();
-    (g.items || g.insumos || []).forEach((it) => {
-      const id = Number(it.insumo_id ?? it.id);
-      if (Number.isFinite(id) && baseSet.has(id)) s.add(id);
-    });
-    return s;
-  }, [selectedGroupId, groupsScoped, todoGroupId, isDiscView, activeIdSet, inactiveIdSet, idsSinAgrupActivos, idsSinAgrupInactivos, discontinuadosIds]);
 
   // Helper: resuelve el rubroInfo correcto dado un insumo.
   // Nivel 1: busca por código Maxi en rubrosMap.
@@ -934,6 +806,92 @@ export default function InsumosMain() {
     return null;
   }, [rubrosMap, rubrosIdMap, rubroNombreToInfo]);
 
+  /* ── IDs sin agrupación ── */
+  const activeIdSet = useMemo(() => new Set(baseActivos.map((i) => Number(i.id)).filter(Number.isFinite)), [baseActivos]);
+  const inactiveIdSet = useMemo(() => new Set(baseInactivos.map((i) => Number(i.id)).filter(Number.isFinite)), [baseInactivos]);
+  const idsEnOtras = useMemo(() => new Set(
+    (groups || []).filter((g) => !esTodoGroup(g) && !esDiscontinuadosGroup(g))
+      .flatMap((g) => (g.items || g.insumos || []).map((i) => Number(i.insumo_id ?? i.id)))
+      .filter((n) => Number.isFinite(n) && n > 0)
+  ), [groups]);
+
+  // Map id→insumo para no hacer .find() dentro de cada loop de abajo.
+  const insumoById = useMemo(() => {
+    const m = new Map();
+    baseAll.forEach((ins) => { const id = Number(ins?.id); if (Number.isFinite(id)) m.set(id, ins); });
+    return m;
+  }, [baseAll]);
+
+  // Membresía de la agrupación fija "Elaborados" — calculada (igual que Sin
+  // agrupación), nunca asignada a mano. Un elaborado vive SOLO acá: se resta
+  // de cualquier otra agrupación real y de "Sin agrupación" más abajo.
+  const idsElaboradosActivos = useMemo(() => {
+    const res = new Set();
+    activeIdSet.forEach((id) => { const ins = insumoById.get(id); if (ins && esInsumoElaborado(ins, resolveRubroInfo)) res.add(id); });
+    return res;
+  }, [activeIdSet, insumoById, resolveRubroInfo]);
+
+  const idsElaboradosInactivos = useMemo(() => {
+    const res = new Set();
+    inactiveIdSet.forEach((id) => { const ins = insumoById.get(id); if (ins && esInsumoElaborado(ins, resolveRubroInfo)) res.add(id); });
+    return res;
+  }, [inactiveIdSet, insumoById, resolveRubroInfo]);
+
+  const idsSinAgrupActivos = useMemo(() => {
+    const res = new Set();
+    activeIdSet.forEach((id) => { if (!excludedIds.has(id) && !idsEnOtras.has(id) && !idsElaboradosActivos.has(id)) res.add(id); });
+    return res;
+  }, [activeIdSet, excludedIds, idsEnOtras, idsElaboradosActivos]);
+
+  const idsSinAgrupInactivos = useMemo(() => {
+    const res = new Set();
+    inactiveIdSet.forEach((id) => { if (!excludedIds.has(id) && !idsEnOtras.has(id) && !idsElaboradosInactivos.has(id)) res.add(id); });
+    return res;
+  }, [inactiveIdSet, excludedIds, idsEnOtras, idsElaboradosInactivos]);
+
+  /* ── Vista y tabla ── */
+  const selectedGroup = useMemo(() => {
+    const id = Number(selectedGroupId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return (groupsScoped || []).find((g) => Number(g.id) === id) || null;
+  }, [selectedGroupId, groupsScoped]);
+
+  const isDiscView = useMemo(() => selectedGroup ? esDiscontinuadosGroup(selectedGroup) : false, [selectedGroup]);
+  const isElaboradosView = useMemo(
+    () => !!elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId),
+    [elaboradosGroupId, selectedGroupId]
+  );
+
+  const sidebarBase = useMemo(() => {
+    if (isDiscView) return (baseAll || []).filter((i) => discontinuadosIds.has(Number(i.id)));
+    return baseActivos;
+  }, [isDiscView, baseAll, baseActivos, discontinuadosIds]);
+
+  const visibleIds = useMemo(() => {
+    if (!selectedGroupId) return null;
+    const gId = Number(selectedGroupId);
+    const g = groupsScoped.find((x) => Number(x.id) === gId);
+    if (!g) return null;
+    // Discontinuados: bypass intacto, muestra todo lo que tenga asignado sin
+    // distinción elaborado/no-elaborado.
+    if (esDiscontinuadosGroup(g)) return discontinuadosIds;
+    // Elaborados: universo global calculado, cruza cualquier agrupación real.
+    if (esElaboradosGroup(g)) return isDiscView ? idsElaboradosInactivos : idsElaboradosActivos;
+    if (todoGroupId && gId === Number(todoGroupId)) return isDiscView ? idsSinAgrupInactivos : idsSinAgrupActivos;
+    // Agrupación real cualquiera: igual que siempre, menos los elaborados —
+    // un insumo elaborado ya no debe aparecer acá aunque el backend lo tenga
+    // asignado (vive únicamente en "Elaborados").
+    const baseSet = isDiscView ? inactiveIdSet : activeIdSet;
+    const elaboradosSet = isDiscView ? idsElaboradosInactivos : idsElaboradosActivos;
+    const s = new Set();
+    (g.items || g.insumos || []).forEach((it) => {
+      const id = Number(it.insumo_id ?? it.id);
+      if (Number.isFinite(id) && baseSet.has(id) && !elaboradosSet.has(id)) s.add(id);
+    });
+    return s;
+  }, [selectedGroupId, groupsScoped, todoGroupId, isDiscView, activeIdSet, inactiveIdSet,
+      idsSinAgrupActivos, idsSinAgrupInactivos, idsElaboradosActivos, idsElaboradosInactivos, discontinuadosIds]);
+
   const filteredBase = useMemo(() => {
     const hasActiveList = activeInsumoListId && activeInsumoListItems instanceof Set && activeInsumoListItems.size > 0;
 
@@ -943,61 +901,31 @@ export default function InsumosMain() {
     // ignorando el filtro de agrupación/visibleIds
     const effectiveIds = hasActiveList ? activeInsumoListItems : visibleIds;
 
-    let base = !effectiveIds ? baseForFilter : (baseForFilter || []).filter((ins) => {
+    // El filtrado elaborados/no-elaborados ya queda resuelto en `visibleIds`
+    // (la agrupación fija "Elaborados" tiene su propio set global calculado,
+    // y cualquier otra agrupación ya viene sin elaborados) — no hace falta un
+    // post-filtro por vista acá.
+    const base = !effectiveIds ? baseForFilter : (baseForFilter || []).filter((ins) => {
       const id = Number(ins?.id);
       if (!Number.isFinite(id) || !effectiveIds.has(id)) return false;
       if (!isDiscView && discontinuadosIds.has(id)) return false;
       return true;
     });
-    if (base.length > 0) {
-      const sample2 = base.find(i => String(i.rubro_nombre || '').toLowerCase().includes('elaborado'));
-      if (sample2) {
-        const info = resolveRubroInfo(sample2);
-      }
-    }
-
-    // Filtrar por vista (elaborados / no-elaborados)
-    // Prioridad 1: ¿tiene una receta propia ACTIVA? Mismo criterio que ya usa el
-    // backend como "única fuente de verdad" en su propio filtro ?elaborados=true
-    // (receta_updated_at viene no-nulo solo cuando existe esa receta activa — ver
-    // insumosController.js). Antes esto dependía primero de es_elaborado, un flag
-    // que se puede desincronizar (ej. nunca se tocó en datos viejos), y si no
-    // estaba seteado caía en el rubro donde estuviera archivado el insumo — por
-    // eso un elaborado con receta real de verdad no aparecía para Staff salvo que
-    // ADEMÁS lo archivaran en un rubro puntual marcado como "elaborador" (ej.
-    // "mercadería"). Un elaborado tiene que verse SIEMPRE, sin importar el rubro.
-    // Prioridad 2: es_elaborado del insumo (campo individual, cuando no hay receta).
-    // Fallback: es_elaborador del rubro (cuando tampoco tiene el campo propio).
-    if (!isDiscView) {
-      base = base.filter((ins) => {
-        if (ins?.receta_updated_at != null) return effectiveVista === 'elaborados';
-        if (ins?.es_elaborado === true) return effectiveVista === 'elaborados';
-        if (ins?.es_elaborado === false) return effectiveVista === 'no-elaborados';
-        const info = resolveRubroInfo(ins);
-        const esElaboradorPorFlag = info?.es_elaborador === true;
-        // Fallback por nombre del rubro si no tiene flag
-        const nombreRubro = info?.nombre || String(ins?.rubro_nombre || ins?.rubroNombre || '');
-        const esElaboradorPorNombre = norm(nombreRubro).includes('elaborado');
-        const esElaborador = esElaboradorPorFlag || esElaboradorPorNombre;
-        if (effectiveVista === 'elaborados') return esElaborador;
-        return !esElaborador;
-      });
-    }
 
     return base;
-  }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, effectiveVista, resolveRubroInfo, activeInsumoListId, activeInsumoListItems]);
+  }, [sidebarBase, baseActivos, visibleIds, isDiscView, discontinuadosIds, activeInsumoListId, activeInsumoListItems]);
 
   // El "ojito" (soloConCompras, solo tiene sentido en No elaborados) filtra
   // filas en la tabla — antes el árbol de rubros del sidebar no se enteraba,
   // así que un rubro que se quedaba sin ningún insumo con compras seguía
   // apareciendo entero (con su conteo completo, ignorando el filtro).
   const rubrosTreeBase = useMemo(() => {
-    if (!(soloConCompras && effectiveVista !== 'elaborados')) return filteredBase;
+    if (!(soloConCompras && !isElaboradosView)) return filteredBase;
     return filteredBase.filter((insumo) => {
       const c = comprasMap.get(Number(insumo.id));
       return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
     });
-  }, [filteredBase, soloConCompras, effectiveVista, comprasMap]);
+  }, [filteredBase, soloConCompras, isElaboradosView, comprasMap]);
 
   const rubrosTree = useMemo(() => {
     if (!rubrosTreeBase.length) return [];
@@ -1078,7 +1006,7 @@ export default function InsumosMain() {
   const insumosGroupIndex = useMemo(() => {
     const byInsumoId = new Map();
     (groupsScoped || []).forEach((g) => {
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) return;
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g)) return;
       (g.items || g.insumos || []).forEach((item) => {
         const id = Number(item.insumo_id ?? item.id);
         if (!Number.isFinite(id)) return;
@@ -1098,6 +1026,9 @@ export default function InsumosMain() {
   useEffect(() => { groupsScopedRef.current = groupsScoped; }, [groupsScoped]);
 
   useEffect(() => {
+    // Staff queda fijo en "Elaborados" vía su propio efecto dedicado, más
+    // abajo — este no debe pisarlo con la autoselección normal.
+    if (isStaff) return;
     const todoId = todoGroupId;
     const todoEmpty = idsSinAgrupActivos.size === 0;
 
@@ -1144,15 +1075,27 @@ export default function InsumosMain() {
     }
 
     if (currentGroups.length > 0) {
-      // Discontinuados nunca debe quedar como destino automático — solo se llega
-      // ahí por elección explícita del usuario.
-      const firstGroup = currentGroups.find((g) => !esDiscontinuadosGroup(g)) || currentGroups[0];
+      // Discontinuados/Elaborados nunca deben quedar como destino automático
+      // — solo se llega ahí por elección explícita del usuario.
+      const firstGroup = currentGroups.find((g) => !esDiscontinuadosGroup(g) && !esElaboradosGroup(g)) || currentGroups[0];
       if (!currentSelId || Number(currentSelId) !== Number(firstGroup.id)) {
         setSelectedGroupId(firstGroup.id);
         setRubroSeleccionado(null);
       }
     }
-  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId]);
+  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId, isStaff]);
+
+  // Staff (Vista Operación) siempre fijo en la agrupación fija "Elaborados",
+  // sin pasar por el Select (que de todos modos no ve) ni por la
+  // autoselección normal de arriba.
+  useEffect(() => {
+    if (!isStaff) return;
+    if (!Number.isFinite(Number(elaboradosGroupId)) || Number(elaboradosGroupId) <= 0) return;
+    if (Number(selectedGroupId) !== Number(elaboradosGroupId)) {
+      setSelectedGroupId(Number(elaboradosGroupId));
+      setRubroSeleccionado(null);
+    }
+  }, [isStaff, elaboradosGroupId, selectedGroupId]);
 
   useEffect(() => {
     if (!rubroSeleccionado) return;
@@ -1194,24 +1137,21 @@ export default function InsumosMain() {
     const groupsSet = insumosGroupIndex.byInsumoId.get(id) || new Set();
     const allGroups = groupsScoped || [];
     let targetGroupId = null;
-    if (preferGroupId != null) { const prefNum = Number(preferGroupId); if (Number.isFinite(prefNum) && allGroups.some((g) => Number(g.id) === prefNum)) targetGroupId = prefNum; }
-    if (!targetGroupId && groupsSet.size > 0) { for (const gid of groupsSet) { const n = Number(gid); if (Number.isFinite(n) && n > 0) { targetGroupId = n; break; } } }
-    if (!targetGroupId && Number.isFinite(Number(todoGroupId)) && Number(todoGroupId) > 0) targetGroupId = Number(todoGroupId);
-    if (insumo && rubrosMap?.size) {
-      const nextVista = vistaForInsumo(insumo, rubrosMap, rubroNombreToInfo, rubrosIdMap);
-      if (nextVista && nextVista !== vista) {
-        setVista(nextVista);
-        // Actualizar viewModeByGroup para que el useEffect de selectedGroupId no lo pise
-        if (targetGroupId && Number.isFinite(Number(targetGroupId))) {
-          setViewModeByGroup((prev) => ({ ...prev, [Number(targetGroupId)]: nextVista }));
-        }
-      }
+    // Un elaborado SIEMPRE salta a la agrupación fija "Elaborados", sin
+    // importar a qué agrupación real esté asignado en backend — mismo
+    // criterio canónico que decide su membresía en visibleIds.
+    if (insumo && esInsumoElaborado(insumo, resolveRubroInfo) && Number.isFinite(Number(elaboradosGroupId)) && Number(elaboradosGroupId) > 0) {
+      targetGroupId = Number(elaboradosGroupId);
+    } else {
+      if (preferGroupId != null) { const prefNum = Number(preferGroupId); if (Number.isFinite(prefNum) && allGroups.some((g) => Number(g.id) === prefNum)) targetGroupId = prefNum; }
+      if (!targetGroupId && groupsSet.size > 0) { for (const gid of groupsSet) { const n = Number(gid); if (Number.isFinite(n) && n > 0) { targetGroupId = n; break; } } }
+      if (!targetGroupId && Number.isFinite(Number(todoGroupId)) && Number(todoGroupId) > 0) targetGroupId = Number(todoGroupId);
     }
     const shouldChangeGroup = !opts.stay && targetGroupId && (!selectedGroupId || Number(selectedGroupId) !== Number(targetGroupId));
     if (shouldChangeGroup) { markManualPick(); setSelectedGroupId(targetGroupId); setRubroSeleccionado(null); } else { setRubroSeleccionado(null); }
     setSelectedInsumoId(id); setJumpToInsumoId(id);
     setTimeout(() => setJumpToInsumoId(null), 1400);
-  }, [baseAll, groupsScoped, insumosGroupIndex, todoGroupId, selectedGroupId, rubrosMap, rubrosIdMap, rubroNombreToInfo, vista]);
+  }, [baseAll, groupsScoped, insumosGroupIndex, todoGroupId, elaboradosGroupId, selectedGroupId, resolveRubroInfo]);
 
     useEffect(() => {
     if (!businessId) return;
@@ -1653,8 +1593,6 @@ export default function InsumosMain() {
             setRubroSeleccionado={setRubroSeleccionado}
             businessId={resolvedBizId}
             originalBusinessId={businessId}
-            vista={effectiveVista}
-            onVistaChange={isStaff ? undefined : handleChangeListMode}
             groups={groupsScoped}
             groupsLoading={groupsLoading}
             selectedGroupId={selectedGroupId}
@@ -1665,6 +1603,7 @@ export default function InsumosMain() {
             onDeleteGroup={isStaff ? undefined : handleDeleteGroup}
             onRenameGroup={isStaff ? undefined : handleRenameGroup}
             todoGroupId={todoGroupId}
+            elaboradosGroupId={elaboradosGroupId}
             idsSinAgrupCount={idsSinAgrupActivos.size}
             onMutateGroups={onMutateGroups}
             onRefetch={loadGroups}
@@ -1688,6 +1627,7 @@ export default function InsumosMain() {
             onClearInsumoList={clearInsumoList}
             idsSinAgrupCount={idsSinAgrupActivos.size}
             idsSinAgrupSet={idsSinAgrupActivos}
+            idsElaboradosSet={idsElaboradosActivos}
             comprasMap={comprasMap}
           />
         </div>
@@ -1702,13 +1642,13 @@ export default function InsumosMain() {
             onOpenEditModal={(ins) => setInsumoEditando(ins)}
             onDelete={() => { }}
             noBusiness={!businessId}
-            vista={effectiveVista}
             isStaff={isStaff}
             businessId={resolvedBizId}
             originalBusinessId={businessId}
             groups={groupsScoped}
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
+            elaboradosGroupId={elaboradosGroupId}
             onOpenGroupModalForInsumo={isStaff ? undefined : handleOpenGroupModalForInsumo}
             onCreateGroupFromRubro={isStaff ? undefined : handleOpenGroupModalForRubro}
             rubrosMap={rubrosMap}
