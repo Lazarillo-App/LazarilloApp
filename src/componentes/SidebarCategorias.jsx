@@ -308,7 +308,11 @@ function SidebarCategorias({
 
   const activeIds = useMemo(() => {
     const g = agrupacionSeleccionada;
-    if (g && esTodoGroup(g)) {
+    if (g && (esTodoGroup(g) || esTop20Group(g))) {
+      // Igual que "Sin agrupación": membresía calculada, no viene de
+      // `g.articulos` (que para estas agrupaciones fijas siempre está vacío)
+      // sino de `visibleIds` — sin esto, el árbol de rubros/subrubros del
+      // costado quedaba vacío al elegir "Top 20".
       return visibleIds instanceof Set ? visibleIds : new Set();
     }
     if (!g) return null;
