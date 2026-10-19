@@ -853,11 +853,17 @@ export default function InsumosMain() {
   // tras excluir discontinuados/elaborados, sigan quedando hasta 20 reales.
   const [top20RankingRaw, setTop20RankingRaw] = useState([]);
   useEffect(() => {
-    if (!resolvedBizId || !rangoCompras?.from || !rangoCompras?.to) { setTop20RankingRaw([]); return; }
+    if (!businessId || !rangoCompras?.from || !rangoCompras?.to) { setTop20RankingRaw([]); return; }
     let cancel = false;
+    // Mismo scoping que el efecto de comprasMap de arriba: compras viven en
+    // el negocio raíz (businessId), filtradas por la misma sucursal activa.
+    const filter = activeBranchFilter;
+    let branch_id = null;
+    if (filter?.mode === 'main') branch_id = 'none';
+    else if (filter?.mode === 'branch') branch_id = filter.branchId;
     (async () => {
       try {
-        const res = await purchasesRanking(resolvedBizId, { from: rangoCompras.from, to: rangoCompras.to, limit: 40 });
+        const res = await purchasesRanking(businessId, { from: rangoCompras.from, to: rangoCompras.to, branch_id, limit: 40 });
         if (cancel) return;
         setTop20RankingRaw(Array.isArray(res?.items) ? res.items : []);
       } catch (e) {
@@ -865,7 +871,7 @@ export default function InsumosMain() {
       }
     })();
     return () => { cancel = true; };
-  }, [resolvedBizId, rangoCompras?.from, rangoCompras?.to]);
+  }, [businessId, rangoCompras?.from, rangoCompras?.to, activeBranchFilter]);
 
   const idsTop20Insumos = useMemo(() => {
     const out = [];
