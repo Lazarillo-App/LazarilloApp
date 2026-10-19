@@ -2251,6 +2251,15 @@ export default function RecetaModal({
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
                 onIrAMerma={() => setTab('merma')}
                 onReemplazar={() => setReemplazarModalOpen(true)}
+                onAbrirReceta={async (u) => {
+                  if (!u?.owner_id) return;
+                  await autoSave();
+                  pushElaborado(
+                    u.es_elaborado
+                      ? { id: u.owner_id, nombre: u.nombre, precio: 0, initialTab: 'receta' }
+                      : { id: u.owner_id, nombre: u.nombre, precio: 0, esArticulo: true }
+                  );
+                }}
               />
             ) : (() => {
               // Cartel de advertencia: insumo con compras que aún no tiene receta

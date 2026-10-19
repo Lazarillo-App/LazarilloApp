@@ -1,8 +1,8 @@
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider } from '@mui/material';
-import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma } from '@/servicios/apiInsumos';
+import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma, insumoUsoCambiarCantidad } from '@/servicios/apiInsumos';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 import { downwardMenuProps } from '@/utils/menuProps';
@@ -12,13 +12,38 @@ const NUEVA_MERMA = '__nueva__';
 /* ════════════════════════════════════════
    TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
-export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMerma, onReemplazar }) {
+export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMerma, onReemplazar, onAbrirReceta }) {
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mermas, setMermas] = useState([]);
   const [mermaElegidaId, setMermaElegidaId] = useState('');
   const [mermaParaAplicar, setMermaParaAplicar] = useState(null);
   const [cambiandoItemId, setCambiandoItemId] = useState(null);
+  const [editandoCantidadId, setEditandoCantidadId] = useState(null);
+  const [cantidadDraft, setCantidadDraft] = useState('');
+  const [sortBy, setSortBy] = useState(null); // 'codigo' | 'nombre' | 'cantidad' | 'merma'
+  const [sortDir, setSortDir] = useState('asc');
+
+  const toggleSort = (key) => {
+    if (sortBy === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
+
+  const usoOrdenado = useMemo(() => {
+    if (!sortBy) return uso;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (u) => {
+      if (sortBy === 'cantidad') return Number(u.cantidad) || 0;
+      if (sortBy === 'codigo') return String(u.codigo || '');
+      if (sortBy === 'merma') return String(u.merma_nombre || '');
+      return String(u.nombre || '');
+    };
+    return [...uso].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'es', { sensitivity: 'base' }) * dir;
+    });
+  }, [uso, sortBy, sortDir]);
 
   const avisarCambio = () => {
     try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId } })); } catch { }
@@ -48,6 +73,33 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
     } finally {
       setCambiandoItemId(null);
     }
+  };
+
+  // Corrige la cantidad de una fila puntual, sin reabrir la receta — mismo
+  // criterio optimista que cambiarMermaFila (si falla, revierte la fila).
+  const cambiarCantidadFila = async (u, nuevaCantidad) => {
+    const anterior = u.cantidad;
+    setUso(prev => prev.map(x => x.item_id === u.item_id ? { ...x, cantidad: nuevaCantidad } : x));
+    setCambiandoItemId(u.item_id);
+    try {
+      await insumoUsoCambiarCantidad(insumoId, u.item_id, nuevaCantidad, businessId);
+      avisarCambio();
+    } catch {
+      setUso(prev => prev.map(x => x.item_id === u.item_id ? { ...x, cantidad: anterior } : x));
+    } finally {
+      setCambiandoItemId(null);
+    }
+  };
+
+  const abrirEdicionCantidad = (u) => {
+    setEditandoCantidadId(u.item_id);
+    setCantidadDraft(String(u.cantidad ?? ''));
+  };
+
+  const confirmarEdicionCantidad = (u) => {
+    const n = Number(String(cantidadDraft).replace(',', '.'));
+    setEditandoCantidadId(null);
+    if (Number.isFinite(n) && n > 0 && n !== u.cantidad) cambiarCantidadFila(u, n);
   };
 
   const cargarUso = useCallback(() => {
@@ -130,40 +182,112 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
         </Box>
       ) : (
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
-          {/* Header */}
+          {/* Header — clickeable para ordenar de mayor a menor y viceversa */}
           <Box sx={{
             display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
             px: 1.5, py: 1, bgcolor: `${PRIMARY}0d`, borderBottom: '1px solid', borderColor: 'divider',
             fontWeight: 700, fontSize: '0.75rem', color: PRIMARY,
           }}>
-            <div>Código art.</div>
-            <div>Nombre</div>
-            <div style={{ textAlign: 'right' }}>Cantidad</div>
-            <div>Merma</div>
+            {[
+              ['codigo', 'Código art.', 'left'],
+              ['nombre', 'Nombre', 'left'],
+              ['cantidad', 'Cantidad', 'right'],
+              ['merma', 'Merma', 'left'],
+            ].map(([key, label, align]) => (
+              <div
+                key={key}
+                onClick={() => toggleSort(key)}
+                style={{
+                  cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center',
+                  gap: 3, justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                {label}
+                <span style={{ fontSize: '0.65rem', opacity: sortBy === key ? 1 : 0.3 }}>
+                  {sortBy === key ? (sortDir === 'asc' ? '▲' : '▼') : '▲'}
+                </span>
+              </div>
+            ))}
           </Box>
           {/* Filas */}
-          {uso.map((u, i) => (
+          {usoOrdenado.map((u, i) => (
             <Box key={u.item_id ?? i} sx={{
               display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
               px: 1.5, py: 1, alignItems: 'center',
-              borderBottom: i < uso.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
+              borderBottom: i < usoOrdenado.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
               fontSize: '0.82rem',
               '&:hover': { bgcolor: '#f8fafc' },
             }}>
-              <div style={{ color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
-                {u.codigo || '—'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-                {u.es_elaborado && (
-                  <span title="Insumo elaborado" style={{ color: '#6366f1', fontSize: '0.7rem', flexShrink: 0 }}>●</span>
-                )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {u.nombre}
-                </span>
-              </div>
-              <div style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                {Number(u.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {u.unidad || unidadBase}
-              </div>
+              {(() => {
+                const puedeAbrir = !!onAbrirReceta && u.owner_id != null;
+                const abrir = () => puedeAbrir && onAbrirReceta(u);
+                return (
+                  <>
+                    <div
+                      onClick={abrir}
+                      title={puedeAbrir ? 'Abrir esta receta' : undefined}
+                      style={{
+                        color: '#64748b', fontVariantNumeric: 'tabular-nums',
+                        cursor: puedeAbrir ? 'pointer' : 'default',
+                      }}
+                    >
+                      {u.codigo || '—'}
+                    </div>
+                    <div
+                      onClick={abrir}
+                      title={puedeAbrir ? 'Abrir esta receta' : undefined}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden',
+                        cursor: puedeAbrir ? 'pointer' : 'default',
+                      }}
+                    >
+                      {u.es_elaborado && (
+                        <span title="Insumo elaborado" style={{ color: '#6366f1', fontSize: '0.7rem', flexShrink: 0 }}>●</span>
+                      )}
+                      <span style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        textDecoration: puedeAbrir ? 'underline' : 'none', textDecorationColor: '#cbd5e1',
+                      }}>
+                        {u.nombre}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
+              {editandoCantidadId === u.item_id ? (
+                <input
+                  autoFocus
+                  type="text"
+                  inputMode="decimal"
+                  value={cantidadDraft}
+                  onChange={(e) => setCantidadDraft(e.target.value)}
+                  onBlur={() => confirmarEdicionCantidad(u)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') { setEditandoCantidadId(null); }
+                  }}
+                  style={{
+                    width: '100%', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    border: '1px solid', borderColor: PRIMARY, borderRadius: 4, padding: '2px 6px',
+                    fontSize: '0.82rem', boxSizing: 'border-box',
+                  }}
+                />
+              ) : (
+                <div
+                  onClick={() => { if (cambiandoItemId !== u.item_id) abrirEdicionCantidad(u); }}
+                  title="Click para corregir la cantidad"
+                  style={{
+                    textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    cursor: cambiandoItemId === u.item_id ? 'default' : 'pointer',
+                    opacity: cambiandoItemId === u.item_id ? 0.5 : 1,
+                    borderBottom: '1px dashed transparent',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = '#cbd5e1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                >
+                  {Number(u.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {u.unidad || unidadBase}
+                </div>
+              )}
               {(() => {
                 const sel = Array.isArray(u.merma_ids) ? u.merma_ids.map(String) : [];
                 return (

@@ -806,6 +806,17 @@ export const insumoUsoCambiarMerma = async (insumoId, itemId, mermaIds, bizId) =
   return data;
 };
 
+// Corrige la cantidad de UN ítem puntual (una fila de la pestaña Uso), sin
+// reabrir la receta — mismo criterio que insumoUsoCambiarMerma.
+export const insumoUsoCambiarCantidad = async (insumoId, itemId, cantidad, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/uso/${itemId}/cantidad`, {
+    method: 'PUT', headers: authHeaders(bizId), body: JSON.stringify({ cantidad: Number(cantidad) }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al cambiar la cantidad');
+  return data;
+};
+
 // Resumen liviano para el tooltip de la columna "Uso": top N recetas que usan
 // este insumo, ordenadas por venta del artículo (las de un elaborado sin venta
 // propia quedan al final). No reemplaza la pestaña "Uso" completa.
