@@ -55,6 +55,11 @@ const esPromoGroup = (g) => {
   return n === 'promociones';
 };
 
+const esTop20Group = (g) => {
+  const n = norm(groupLabel(g));
+  return n === 'top 20';
+};
+
 const labelAgrup = (g) => groupLabel(g);
 
 const safeId = (a) => {
@@ -190,6 +195,8 @@ function SidebarCategorias({
     const discIds = new Set(discontinuados.map((g) => Number(g.id)));
     const promo = arr.find(esPromoGroup) || null;
     const promoId = promo ? Number(promo.id) : null;
+    const top20 = arr.find(esTop20Group) || null;
+    const top20Id = top20 ? Number(top20.id) : null;
     const assignedSet = new Set((assignedAgrupacionIds || []).map(Number));
     const activeSet = new Set((activeDivisionAgrupacionIds || []).map(Number));
     const middle = arr.filter((g) => {
@@ -198,6 +205,7 @@ function SidebarCategorias({
       if (todo && idNum === Number(todo.id)) return false;
       if (discIds.has(idNum)) return false;
       if (promoId != null && idNum === promoId) return false;
+      if (top20Id != null && idNum === top20Id) return false;
       if (isMainDivision) return !assignedSet.has(idNum);
       return activeSet.has(idNum);
     });
@@ -215,6 +223,7 @@ function SidebarCategorias({
     }
     const todoCount = todo ? (todoCountOverride[todo.id] ?? todo.articulos?.length ?? 0) : 0;
     const ordered = [];
+    if (top20) ordered.push(top20);
     if (isMainDivision && todo && todoCount > 0) ordered.push(todo);
     ordered.push(...middle);
     if (isMainDivision && todo && todoCount === 0) ordered.push(todo);
@@ -600,8 +609,8 @@ function SidebarCategorias({
                   <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
                       <span style={{
-                        fontStyle: (esDiscontinuadosGroup(g) || esTodoGroup(g) || esPromoGroup(g)) ? 'italic' : 'normal',
-                        fontWeight: (esTodoGroup(g) || esPromoGroup(g)) ? 700 : undefined,
+                        fontStyle: (esDiscontinuadosGroup(g) || esTodoGroup(g) || esPromoGroup(g) || esTop20Group(g)) ? 'italic' : 'normal',
+                        fontWeight: (esTodoGroup(g) || esPromoGroup(g) || esTop20Group(g)) ? 700 : undefined,
                         color: esDiscontinuadosGroup(g) ? '#555' : 'inherit'
                       }}>
                         {labelAgrup(g)}
@@ -621,7 +630,8 @@ function SidebarCategorias({
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
                           const isPromo = esPromoGroup(g);
-                          if (isDisc || isPromo) return null;
+                          const isTop20 = esTop20Group(g);
+                          if (isDisc || isPromo || isTop20) return null;
                           if (isTodo) {
                             return onRenameGroup && (
                               <Tooltip title='' disableInteractive placement="bottom" slotProps={{ popper: { popperOptions: { modifiers: [{ name: "flip", enabled: false }, { name: "offset", options: { offset: [0, 8] } }] } } }}>

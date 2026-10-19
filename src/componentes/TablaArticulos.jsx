@@ -117,6 +117,11 @@ const esDiscontinuadosGroup = (g) => {
   return n === "DISCONTINUADOS" || n === "DESCONTINUADOS";
 };
 
+const esTop20Group = (g) => {
+  const n = String(g?.nombre || "").trim().toUpperCase();
+  return n === "TOP 20";
+};
+
 const TABLE_TEXT = "#111827";
 const TABLE_MUTED = "#6b7280";
 const SECTION_TEXT = "#374151";
@@ -1020,6 +1025,10 @@ export default function TablaArticulos({
     } else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
         base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
+      } else if (esTop20Group(agrupacionSeleccionada)) {
+        // Top 20 es una agrupación virtual: no guarda articulos propios, la
+        // membresía llega vía `visibleIds` (= filterIds más abajo).
+        base = allArticulos;
       } else {
         const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
         base = arr.length > 0 ? arr.map((x) => {
@@ -1126,7 +1135,7 @@ export default function TablaArticulos({
     for (const g of (fuente || [])) {
       // "Mover a otro rubro" solo tiene sentido entre agrupaciones reales —
       // Sin Agrupación/Discontinuados no son destinos válidos.
-      if (esTodoGroup(g) || esDiscontinuadosGroup(g)) continue;
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esTop20Group(g)) continue;
       const agrupacionId = Number(g?.id);
       const agrupacionNombre = g?.nombre ?? g?.name ?? '';
       for (const a of (g?.articulos || [])) {
@@ -1152,7 +1161,7 @@ export default function TablaArticulos({
     };
     let total = 0;
     for (const g of agrupaciones || []) {
-      if (esTodoGroup(g) || isDisc(g)) continue;
+      if (esTodoGroup(g) || isDisc(g) || esTop20Group(g)) continue;
       for (const a of (g.articulos || [])) {
         const id = getId(a);
         if (id) total += getVentasAmount(id);
@@ -1431,6 +1440,9 @@ export default function TablaArticulos({
   const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
   const ITEM_H = 50;
   const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
+  // Top 20 es una vista automática y de solo lectura — sin gestión manual
+  // de ningún tipo, ni siquiera "quitar"/"mover" por artículo o por bloque.
+  const isTop20View = agrupSelView ? esTop20Group(agrupSelView) : false;
 
   const currentVisibleArticleIds = useMemo(
     () => flatRows.filter(r => r.kind === "item").map(r => getId(r.art)).filter(Boolean),
@@ -1870,6 +1882,7 @@ export default function TablaArticulos({
               );
             }
             if (col.id === 'acciones') {
+              if (isTop20View) return <div key="acciones" />;
               return (
                 <SubrubroAccionesMenu
                   key="acciones"
@@ -2434,6 +2447,7 @@ export default function TablaArticulos({
             }
 
             case 'acciones': {
+              if (isTop20View) return <div key="acciones" />;
               const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
               return (
                 <div key="acciones" style={{ textAlign: 'center' }}>

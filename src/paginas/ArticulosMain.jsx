@@ -14,6 +14,8 @@ import { BusinessesAPI, httpBiz, RecetasAPI, PriceConfigAPI } from "../servicios
 import { BASE } from "../servicios/apiBase";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
+import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group } from '../utils/articuloGruposEspeciales';
+import { ensureTop20 } from '../servicios/apiAgrupacionesTodo';
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
 import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem, Divider } from '@mui/material';
@@ -92,22 +94,6 @@ const normalize = (s) =>
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-
-const esTodoGroup = (g) => {
-  const n = norm(g?.nombre);
-  return (
-    n === 'todo' ||
-    n === 'sin agrupacion' ||
-    n === 'sin agrupación' ||
-    n === 'sin agrupar' ||
-    n === 'sin grupo'
-  );
-};
-
-const isDiscontinuadosGroup = (g) => {
-  const n = norm(g?.nombre);
-  return n === 'discontinuados' || n === 'descontinuados';
-};
 
 const isRealTodoGroup = (g, todoId) => {
   if (!g) return false;
@@ -811,6 +797,30 @@ export default function ArticulosMain(props) {
     };
   }, [activeBizId, queryClient]);
 
+  // Agrupación fija "Top 20" — automática, sin gestión manual. Fila real en
+  // backend (para que tenga un id y aparezca en el desplegable), membresía
+  // calculada acá mismo a partir de ventasMap del período ya elegido arriba
+  // (no un período propio — ver top20Ids más abajo).
+  const [top20GroupId, setTop20GroupId] = useState(null);
+  useEffect(() => {
+    if (!activeBizId) { setTop20GroupId(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const top20 = await ensureTop20(activeBizId);
+        if (cancel) return;
+        setTop20GroupId(top20?.id || null);
+        // Si la fila recién se creó, hace falta un refetch para que aparezca
+        // en `agrupaciones` (el fetch normal no la va a traer hasta la
+        // próxima carga si ya estaba en caché sin ella).
+        await refetchAgrupaciones?.();
+      } catch (e) {
+        if (!cancel) setTop20GroupId(null);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [activeBizId, refetchAgrupaciones]);
+
   const [todoInfo, setTodoInfo] = useState({
     todoGroupId: null,
     idsSinAgrupCount: 0,
@@ -1271,7 +1281,7 @@ export default function ArticulosMain(props) {
     const ids = [...gidSet].map(Number).sort((a, b) => a - b);
     for (const gid of ids) {
       const g = (agrupaciones || []).find((x) => Number(x.id) === gid);
-      if (!g || esTodoGroup(g) || isDiscontinuadosGroup(g)) continue;
+      if (!g || esTodoGroup(g) || isDiscontinuadosGroup(g) || esTop20Group(g)) continue;
       return g.nombre || 'Sin agrupación';
     }
     return 'Sin agrupación';
@@ -1385,6 +1395,24 @@ export default function ArticulosMain(props) {
     return localDiscIds;
   }, [discIds, localDiscIds]);
 
+  // Membresía de "Top 20": hasta 20 artículos por facturación ($) del período
+  // YA elegido arriba (periodo/ventasMap, no uno propio), sin discontinuados.
+  const top20Ids = useMemo(() => {
+    if (!ventasMap || !ventasMap.size) return new Set();
+    const pares = [];
+    // ventasMap trae cada artículo con clave numérica Y de texto (ver
+    // getVentasFromMap/useSalesData.js) — solo se recorren las numéricas
+    // para no contar cada uno 2 veces.
+    ventasMap.forEach((v, k) => {
+      if (typeof k !== 'number') return;
+      if (effectiveDiscIds.has(k)) return;
+      const amount = Number(v?.amount) || 0;
+      if (amount > 0) pares.push([k, amount]);
+    });
+    pares.sort((a, b) => b[1] - a[1]);
+    return new Set(pares.slice(0, 20).map(([id]) => id));
+  }, [ventasMap, effectiveDiscIds]);
+
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
 
@@ -1397,7 +1425,7 @@ export default function ArticulosMain(props) {
     // 1) Mapa articuloId -> nombre de agrupación (de las agrupaciones reales)
     const agrupDeArticulo = new Map();
     for (const g of agrupacionesRich || []) {
-      if (esTodoGroup(g) || isDiscontinuadosGroup(g)) continue;
+      if (esTodoGroup(g) || isDiscontinuadosGroup(g) || esTop20Group(g)) continue;
       for (const a of (g.articulos || [])) {
         const id = Number(a?.id ?? a?.article_id);
         if (Number.isFinite(id) && !agrupDeArticulo.has(id)) {
@@ -1666,6 +1694,10 @@ export default function ArticulosMain(props) {
     const sel = agrupacionSeleccionada;
     if (!sel) return null;
 
+    if (esTop20Group(sel)) {
+      return top20Ids;
+    }
+
     if (isDiscontinuadosGroup(sel)) {
       return discIds;
     }
@@ -1702,7 +1734,7 @@ export default function ArticulosMain(props) {
       s.add(id);
     }
     return s;
-  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds]);
+  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids]);
 
   // Si hay lista activa en el sidebar → usar esos IDs como filtro
   const effectiveVisibleIds = useMemo(() => {
@@ -2374,13 +2406,14 @@ export default function ArticulosMain(props) {
 
     const currentSel = agrupSelRef.current;
 
-    if (currentSel && isDiscontinuadosGroup(currentSel)) return;
+    if (currentSel && (isDiscontinuadosGroup(currentSel) || esTop20Group(currentSel))) return;
 
     // ── Si ya hay una agrupación real seleccionada y válida → no tocar ──
     // Esto evita que cualquier mutación que cambie agrupacionesRich fuerce
     // la navegación a Sin Agrupación mientras el usuario está trabajando.
     const selEsAgrupacionReal = currentSel &&
       !isDiscontinuadosGroup(currentSel) &&
+      !esTop20Group(currentSel) &&
       todoId && Number(currentSel.id) !== Number(todoId) &&
       (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
 
@@ -2459,7 +2492,8 @@ export default function ArticulosMain(props) {
     if (!group || !group.id) return;
     if (
       Number(group.id) === Number(todoInfo?.todoGroupId) ||
-      isDiscontinuadosGroup(group)
+      isDiscontinuadosGroup(group) ||
+      esTop20Group(group)
     ) {
       return;
     }
@@ -2486,8 +2520,9 @@ export default function ArticulosMain(props) {
     const currentName = String(group.nombre || '');
     const isTodo = esTodoGroup(group);
     const isDisc = isDiscontinuadosGroup(group);
+    const isTop20 = esTop20Group(group);
 
-    if (isDisc) return null;
+    if (isDisc || isTop20) return null;
 
     const promptMsg = isTodo
       ? 'Nombre para la nueva agrupación (los artículos de "Sin Agrupación" se moverán aquí):'

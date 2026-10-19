@@ -21,6 +21,24 @@ export async function ensureTodo(overrideBizId) {
   throw new Error('No se pudo asegurar la agrupación TODO');
 }
 
+// Asegura que exista la agrupación fija "Top 20" (automática, membresía
+// calculada en el frontend — ver ArticulosMain.jsx)
+export async function ensureTop20(overrideBizId) {
+  try {
+    const data = await httpBiz('/agrupaciones/top20', { method: 'PUT' }, overrideBizId);
+    if (data?.id) return data;
+  } catch (_) {
+    // fallback
+  }
+
+  const list = await httpBiz('/agrupaciones', {}, overrideBizId);
+  const arr = Array.isArray(list) ? list : (list?.data || []);
+  const top20 = arr.find(g => String(g?.nombre).trim().toLowerCase() === 'top 20');
+  if (top20?.id) return top20;
+
+  throw new Error('No se pudo asegurar la agrupación Top 20');
+}
+
 // Exclusiones
 export async function getExclusiones(grupoId, overrideBizId) {
   const data = await httpBiz(`/agrupaciones/${grupoId}/exclusiones`, {}, overrideBizId);

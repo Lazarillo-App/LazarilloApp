@@ -38,6 +38,7 @@ const esTodoGroup = (g) => {
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' ||
     n === 'sin agrupar' || n === 'sin grupo';
 };
+const esTop20Group = (g) => norm(g?.nombre) === 'top 20';
 
 const safeUUID = () => {
   try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch { }
@@ -95,7 +96,7 @@ function useAgrupacionesBiz(bizId) {
     setLoading(true);
     obtenerAgrupaciones(id).then(({ list }) => {
       if (!alive) return;
-      const reales = (list || []).filter(g => !esTodoGroup(g) && !isDiscontinuadosGroup(g));
+      const reales = (list || []).filter(g => !esTodoGroup(g) && !isDiscontinuadosGroup(g) && !esTop20Group(g));
       setAgrupaciones(reales);
     }).catch(() => {
       if (alive) setAgrupaciones([]);
