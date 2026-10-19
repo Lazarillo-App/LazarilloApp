@@ -1,8 +1,10 @@
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider } from '@mui/material';
-import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma, insumoUsoCambiarCantidad } from '@/servicios/apiInsumos';
+import { Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider, IconButton, Tooltip } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma, insumoUsoCambiarCantidad, insumoUsoQuitar } from '@/servicios/apiInsumos';
+import { showConfirm } from '@/servicios/appConfirm';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 import { downwardMenuProps } from '@/utils/menuProps';
@@ -23,6 +25,8 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
   const [cantidadDraft, setCantidadDraft] = useState('');
   const [sortBy, setSortBy] = useState(null); // 'codigo' | 'nombre' | 'cantidad' | 'merma'
   const [sortDir, setSortDir] = useState('asc');
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [quitando, setQuitando] = useState(false);
 
   const toggleSort = (key) => {
     if (sortBy === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -88,6 +92,43 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
       setUso(prev => prev.map(x => x.item_id === u.item_id ? { ...x, cantidad: anterior } : x));
     } finally {
       setCambiandoItemId(null);
+    }
+  };
+
+  const toggleSeleccion = (itemId) => {
+    setSeleccionados(prev => {
+      const n = new Set(prev);
+      if (n.has(itemId)) n.delete(itemId); else n.add(itemId);
+      return n;
+    });
+  };
+
+  // Saca el insumo de una o varias recetas de un plumazo — optimista (las filas
+  // desaparecen ya) con revert si el pedido falla.
+  const quitarDeRecetas = async (itemIds) => {
+    const idsNum = itemIds.map(Number).filter(Number.isFinite);
+    if (!idsNum.length) return;
+    const nombres = uso.filter(u => idsNum.includes(u.item_id)).map(u => u.nombre);
+    const plural = idsNum.length > 1;
+    const ok = await showConfirm(
+      plural
+        ? `¿Quitar ${insumoData?.nombre || 'este insumo'} de ${idsNum.length} recetas (${nombres.join(', ')})?`
+        : `¿Quitar ${insumoData?.nombre || 'este insumo'} de "${nombres[0] || 'esta receta'}"?`,
+      { danger: true }
+    );
+    if (!ok) return;
+
+    const anterior = uso;
+    setUso(prev => prev.filter(x => !idsNum.includes(x.item_id)));
+    setSeleccionados(prev => { const n = new Set(prev); idsNum.forEach(id => n.delete(id)); return n; });
+    setQuitando(true);
+    try {
+      await insumoUsoQuitar(insumoId, idsNum, businessId);
+      avisarCambio();
+    } catch {
+      setUso(anterior);
+    } finally {
+      setQuitando(false);
     }
   };
 
@@ -172,6 +213,23 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
         </Box>
       )}
 
+      {/* Selección múltiple: quitar el insumo de varias recetas de una — las
+          filas tildadas con el checkbox de la izquierda. */}
+      {seleccionados.size > 0 && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {seleccionados.size} {seleccionados.size === 1 ? 'receta seleccionada' : 'recetas seleccionadas'}
+          </Typography>
+          <Button
+            size="small" variant="outlined" color="error"
+            disabled={quitando}
+            onClick={() => quitarDeRecetas(Array.from(seleccionados))}
+          >
+            🗑 Quitar de {seleccionados.size > 1 ? `las ${seleccionados.size} recetas` : 'esta receta'}
+          </Button>
+        </Box>
+      )}
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress size={28} />
@@ -184,10 +242,19 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
           {/* Header — clickeable para ordenar de mayor a menor y viceversa */}
           <Box sx={{
-            display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
+            display: 'grid', gridTemplateColumns: '28px 90px 1fr 130px 170px 32px', gap: 1,
             px: 1.5, py: 1, bgcolor: `${PRIMARY}0d`, borderBottom: '1px solid', borderColor: 'divider',
-            fontWeight: 700, fontSize: '0.75rem', color: PRIMARY,
+            fontWeight: 700, fontSize: '0.75rem', color: PRIMARY, alignItems: 'center',
           }}>
+            <Checkbox
+              size="small"
+              checked={usoOrdenado.length > 0 && seleccionados.size === usoOrdenado.length}
+              indeterminate={seleccionados.size > 0 && seleccionados.size < usoOrdenado.length}
+              onChange={() => setSeleccionados(prev =>
+                prev.size === usoOrdenado.length ? new Set() : new Set(usoOrdenado.map(u => u.item_id))
+              )}
+              sx={{ p: 0.25 }}
+            />
             {[
               ['codigo', 'Código art.', 'left'],
               ['nombre', 'Nombre', 'left'],
@@ -208,16 +275,23 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
                 </span>
               </div>
             ))}
+            <div />
           </Box>
           {/* Filas */}
           {usoOrdenado.map((u, i) => (
             <Box key={u.item_id ?? i} sx={{
-              display: 'grid', gridTemplateColumns: '90px 1fr 130px 170px', gap: 1,
+              display: 'grid', gridTemplateColumns: '28px 90px 1fr 130px 170px 32px', gap: 1,
               px: 1.5, py: 1, alignItems: 'center',
               borderBottom: i < usoOrdenado.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
               fontSize: '0.82rem',
               '&:hover': { bgcolor: '#f8fafc' },
             }}>
+              <Checkbox
+                size="small"
+                checked={seleccionados.has(u.item_id)}
+                onChange={() => toggleSeleccion(u.item_id)}
+                sx={{ p: 0.25 }}
+              />
               {(() => {
                 const puedeAbrir = !!onAbrirReceta && u.owner_id != null;
                 const abrir = () => puedeAbrir && onAbrirReceta(u);
@@ -335,6 +409,14 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
                   </Select>
                 );
               })()}
+              <Tooltip title="Quitar de esta receta">
+                <span>
+                  <IconButton size="small" disabled={quitando} onClick={() => quitarDeRecetas([u.item_id])}
+                    sx={{ color: 'error.main', opacity: 0.5, p: 0.25, '&:hover': { opacity: 1 } }}>
+                    <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Box>
           ))}
         </Box>

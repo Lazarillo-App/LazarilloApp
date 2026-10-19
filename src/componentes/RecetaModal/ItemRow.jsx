@@ -46,6 +46,9 @@ export default function ItemRow({
   searchOpen,
   onSearchOpen,
   onSearchClose,
+  advancedOpen,
+  onAdvancedOpen,
+  onAdvancedClose,
   gridTemplate = '20px 1.8fr 68px 66px 80px 28px 1fr 28px 28px',
   esPromo = false,
   getPrecioSinPromo = null,
@@ -71,7 +74,7 @@ export default function ItemRow({
   const [precioManualVal, setPrecioManualVal] = useState('');
   const [precioManualSaving, setPrecioManualSaving] = useState(false);
   const [notasOpen, setNotasOpen] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const showAdvanced = !!advancedOpen;
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const searchInputRef = useRef(null);
   const cantidadRef = useRef(null);
@@ -254,7 +257,7 @@ export default function ItemRow({
     // de una el panel de avanzadas (Merma/Pedido/Tipo costo) de ESTA fila — antes
     // había que abrirlo a mano cada vez. Las filas ya existentes (edición) no se
     // tocan, solo la que se está agregando ahora.
-    if (wasAutoOpened.current) setShowAdvanced(true);
+    if (wasAutoOpened.current) onAdvancedOpen?.();
     // ── Modo artículo (promo): el "ins" es en realidad un artículo ──
     if (ins._tipo === 'articulo') {
       const costoArt = Number(ins.costoTotal) || Number(ins.precio) || 0;  // costo de producción: receta si tiene, sino precio
@@ -1027,7 +1030,7 @@ export default function ItemRow({
             <Box
               onClick={sinPrecioEditable
                 ? () => { setPrecioManualVal(''); setPrecioManualEdit(true); }
-                : (abrirMermaAlClick ? () => setShowAdvanced(true) : undefined)}
+                : (abrirMermaAlClick ? () => onAdvancedOpen?.() : undefined)}
               sx={{
                 display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
                 border: '1px solid', borderColor: unidadInvalida ? '#fdba74' : (superaPrecioVenta ? '#fecaca' : 'divider'),
@@ -1070,7 +1073,7 @@ export default function ItemRow({
         )}
         {/* ── Botón avanzadas + fecha + eliminar ── */}
         <Tooltip title={showAdvanced ? 'Ocultar avanzadas' : 'Merma · Pedido · Tipo costo'}>
-          <IconButton size="small" onClick={() => setShowAdvanced(v => !v)}
+          <IconButton size="small" onClick={() => showAdvanced ? onAdvancedClose?.() : onAdvancedOpen?.()}
             sx={{
               p: '3px',
               color: showAdvanced ? PRIMARY : (item.merma === false || item.pedido === false || tipoCosto !== 'total') ? '#f59e0b' : 'text.disabled',
@@ -1245,7 +1248,7 @@ export default function ItemRow({
           <Box sx={{ ml: 'auto' }}>
             <Typography
               variant="caption"
-              onClick={() => setShowAdvanced(false)}
+              onClick={() => onAdvancedClose?.()}
               sx={{ fontSize: '0.7rem', color: 'text.disabled', cursor: 'pointer', '&:hover': { color: PRIMARY } }}
             >
               cerrar ✕

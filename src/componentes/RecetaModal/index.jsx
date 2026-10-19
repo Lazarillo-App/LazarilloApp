@@ -186,6 +186,9 @@ export default function RecetaModal({
     } finally { setEnviandoRev(false); }
   };
   const [openSearchIdx, setOpenSearchIdx] = useState(null);
+  // Panel "avanzadas" (Merma/Pedido/Secreto/Tipo) de cada ingrediente — un solo
+  // índice abierto a la vez: al abrir uno nuevo, el anterior se cierra solo.
+  const [openAdvancedIdx, setOpenAdvancedIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
   // Edición directa del % objetivo con doble click, al lado de la barrita
   const [editandoObjetivo, setEditandoObjetivo] = useState(false);
@@ -2953,6 +2956,9 @@ export default function RecetaModal({
                               searchOpen={openSearchIdx === realIndex}
                               onSearchOpen={() => setOpenSearchIdx(realIndex)}
                               onSearchClose={() => setOpenSearchIdx(null)}
+                              advancedOpen={openAdvancedIdx === realIndex}
+                              onAdvancedOpen={() => setOpenAdvancedIdx(realIndex)}
+                              onAdvancedClose={() => setOpenAdvancedIdx(f => f === realIndex ? null : f)}
                               soloConCompras={soloConCompras}
                               onToggleSoloConCompras={toggleSoloConCompras}
                               appConfigDesperdicio={appConfig.desperdicioGlobalPct ?? 5}

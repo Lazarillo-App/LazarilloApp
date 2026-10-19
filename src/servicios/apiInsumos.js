@@ -817,6 +817,17 @@ export const insumoUsoCambiarCantidad = async (insumoId, itemId, cantidad, bizId
   return data;
 };
 
+// Saca el insumo de una o varias recetas (filas de la pestaña Uso) de un
+// plumazo — itemIds puede traer uno solo o varios, mismo endpoint para ambos.
+export const insumoUsoQuitar = async (insumoId, itemIds, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/uso/quitar`, {
+    method: 'POST', headers: authHeaders(bizId), body: JSON.stringify({ itemIds: Array.isArray(itemIds) ? itemIds : [itemIds] }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al quitar el insumo de la receta');
+  return data;
+};
+
 // Resumen liviano para el tooltip de la columna "Uso": top N recetas que usan
 // este insumo, ordenadas por venta del artículo (las de un elaborado sin venta
 // propia quedan al final). No reemplaza la pestaña "Uso" completa.
