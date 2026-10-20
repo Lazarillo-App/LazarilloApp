@@ -131,7 +131,7 @@ function ProposalDiff({ proposal }) {
   );
 }
 
-function ProposalCard({ proposal, onDecided, currentUserId }) {
+function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
   const [busy, setBusy] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionComment, setRevisionComment] = useState('');
@@ -153,7 +153,14 @@ function ProposalCard({ proposal, onDecided, currentUserId }) {
     || typeof proposal.payload_after !== 'object'
     || !Object.prototype.hasOwnProperty.call(proposal.payload_after, 'items')
   );
-  const nombreDestino = proposal.payload_after?.nombre || proposal.receta_nombre_actual || `#${proposal.article_id || proposal.insumo_id}`;
+  // receta_nombre_actual viene NULL cuando todavía no existe receta (ej. una
+  // "receta nueva" marcada a revisión sin cargar nada) — en ese caso el
+  // backend igual resuelve el nombre real del insumo/artículo (insumo_nombre/
+  // articulo_nombre, vía LEFT JOIN), así que antes de caer al "#id" en bruto
+  // hay que probarlos.
+  const nombreDestino = proposal.payload_after?.nombre || proposal.receta_nombre_actual
+    || proposal.insumo_nombre || proposal.articulo_nombre
+    || `#${proposal.article_id || proposal.insumo_id}`;
   const proponente = proposal.created_by_name || proposal.created_by_email || 'Alguien del equipo';
   const inicial = proponente.trim().charAt(0).toUpperCase() || '?';
 
@@ -203,7 +210,11 @@ function ProposalCard({ proposal, onDecided, currentUserId }) {
             {inicial}
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
-            <Typography fontWeight={700} fontSize="0.95rem">
+            <Typography
+              fontWeight={700} fontSize="0.95rem"
+              onClick={onAbrirReceta ? () => onAbrirReceta(proposal) : undefined}
+              sx={onAbrirReceta ? { cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, width: 'fit-content' } : undefined}
+            >
               {nombreDestino} — {esNueva ? 'receta nueva' : 'cambio en la receta'}
             </Typography>
             <Typography variant="caption" color="text.secondary">{subtitulo}</Typography>
@@ -275,7 +286,7 @@ function ProposalCard({ proposal, onDecided, currentUserId }) {
   );
 }
 
-export default function AprobacionesTab({ businessId, onCountChange }) {
+export default function AprobacionesTab({ businessId, onCountChange, onAbrirReceta }) {
   const { user } = useAuth() || {};
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -322,7 +333,7 @@ export default function AprobacionesTab({ businessId, onCountChange }) {
       ) : (
         <Stack spacing={1.5}>
           {proposals.map(p => (
-            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} />
+            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} onAbrirReceta={onAbrirReceta} />
           ))}
         </Stack>
       )}

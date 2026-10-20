@@ -778,7 +778,18 @@ export default function ConfiguracionMain() {
           {/* TAB 6 — APROBACIONES (owner/admin) — Vista Operación, Fase 3 */}
           {puedeGestionarNegocio && (
             <TabPanel value={tab} index={6}>
-              <AprobacionesTab businessId={businessId} onCountChange={setPendingProposalsCount} />
+              <AprobacionesTab
+                businessId={businessId}
+                onCountChange={setPendingProposalsCount}
+                onAbrirReceta={(p) => {
+                  const esElaborado = !!p.insumo_id;
+                  const id = esElaborado ? p.insumo_id : p.article_id;
+                  if (!id) return;
+                  const nombre = p.payload_after?.nombre || p.receta_nombre_actual
+                    || p.insumo_nombre || p.articulo_nombre || '';
+                  setRecetaModalData({ id, nombre, esElaborado });
+                }}
+              />
             </TabPanel>
           )}
         </>
@@ -852,6 +863,13 @@ export default function ConfiguracionMain() {
           activeBizId={businessId}
           recetasElaborados={{}}
           onSaved={() => setRecetaModalData(null)}
+          {...(recetaModalData.esElaborado ? {
+            modoInsumo: true,
+            saltarSelector: true,
+            initialTab: 'receta',
+            getRecetaUrl: `${BASE}/businesses/${businessId}/insumos/${recetaModalData.id}/receta`,
+            saveRecetaUrl: `${BASE}/businesses/${businessId}/insumos/${recetaModalData.id}/receta`,
+          } : {})}
         />
       )}
     </Box>
