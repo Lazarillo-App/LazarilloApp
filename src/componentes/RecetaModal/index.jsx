@@ -1277,25 +1277,36 @@ export default function RecetaModal({
     items.reduce((acc, it) => acc + (itemsConUnidadRota.includes(it) ? 0 : calcCostoItem(it)), 0),
     [items, calcCostoItem, itemsConUnidadRota]);
 
+  // El costo de un elaborado SIEMPRE se expresa por litro o por kilo, nunca por
+  // mL/gr — más allá de en qué unidad se haya cargado el rendimiento del lote
+  // (ver mismo criterio en costoRecetaService.js, backend). Un rendimiento de
+  // "400 ml" divide por 0.4 (litros), no por 400 — si no, el costo quedaba 1000
+  // veces más chico del real y parecía "por mL" en vez de "por L".
+  const unidadCanonicaRend = (rendimientoUnidad === 'ml' || rendimientoUnidad === 'lt') ? 'lt'
+    : (rendimientoUnidad === 'gr' || rendimientoUnidad === 'kg') ? 'kg'
+    : rendimientoUnidad;
+  const divisorRendCanonico = useMemo(() => {
+    const raw = Number(rendimiento) || 1;
+    if (rendimientoUnidad === 'ml' || rendimientoUnidad === 'gr') return raw / 1000;
+    return raw;
+  }, [rendimiento, rendimientoUnidad]);
+
   // Label para el cuadro "Costo / unidad" según el rendimiento del lote
   const labelPorUnidad = useMemo(() => {
     const unidadStr = {
       porcion: 'porción',
       u: 'unidad',
       lt: 'litro',
-      ml: 'ml',
       kg: 'kilo',
-      gr: 'gr',
-    }[rendimientoUnidad] || 'porción';
-    // El divisor del costo es SIEMPRE la cantidad de rendimiento
-    return `Costo / ${unidadStr} (÷${Number(rendimiento) || 1})`;
-  }, [rendimiento, rendimientoUnidad]);
+    }[unidadCanonicaRend] || 'porción';
+    return `Costo / ${unidadStr} (÷${fmt(divisorRendCanonico)})`;
+  }, [divisorRendCanonico, unidadCanonicaRend]);
 
   // El bloque "Rendimiento del lote" confunde si siempre está a la vista — se muestra
   // minimizado salvo que la receta ya tenga un rendimiento distinto del default (1
   // porción, sin equivalente) o el usuario lo haya abierto a mano. Es solo una cuestión
   // de visibilidad: rendimiento/rendimientoUnidad/rendimientoPeso no cambian, así que
-  // el cálculo de costo (costoXRendimiento, divisorRend, etc. más abajo) no se ve afectado.
+  // el cálculo de costo (costoXRendimiento, divisorRendCanonico, etc. más abajo) no se ve afectado.
   const rendimientoNoDefault = Number(rendimiento) !== 1 || rendimientoUnidad !== 'porcion' || rendimientoPeso != null;
   const rendimientoOpen = rendimientoManualOpen != null ? rendimientoManualOpen : rendimientoNoDefault;
 
@@ -1387,9 +1398,9 @@ export default function RecetaModal({
   }, [hayCambiosSinGuardar, receta, costoTotal]);
 
   // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
-  // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente).
-  const divisorRend = Number(rendimiento) || 1;
-  const costoXRendimiento = divisorRend > 0 ? costoTotalMostrado / divisorRend : 0;
+  // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente),
+  // ya canonicalizado a litro/kilo cuando el rendimiento se cargó en ml/gr (ver arriba).
+  const costoXRendimiento = divisorRendCanonico > 0 ? costoTotalMostrado / divisorRendCanonico : 0;
   // Redondeado con el mismo criterio elegido en Configuración (múltiplo más cercano),
   // igual que los precios manuales/aumentos masivos en la tabla de artículos.
   const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
@@ -1570,8 +1581,21 @@ export default function RecetaModal({
         try {
           const r = await insumoUsoList(articulo.id, insumoBizId);
           const usos = Array.isArray(r?.uso) ? r.uso : [];
+          const opcionesAntes = unidadesValidasElaborado(antes);
           const opcionesNuevas = unidadesValidasElaborado({ rendimientoUnidad, rendimientoPeso, unidadPeso });
-          const rotos = usos.filter(u => u.unidad && !opcionesNuevas.includes(canonicalUnit(u.unidad)));
+          // Solo avisar por ingredientes que ESTE cambio deja inválidos — no por los
+          // que ya estaban rotos de antes (ej. un ingrediente en "gr" sobre un
+          // rendimiento que ya rendía en volumen). Sin esto, cambiar de unidad sin
+          // tocar la familia (ml→lt, gr→kg — mismas opciones válidas) disparaba la
+          // misma alarma que una ruptura real, por una inconsistencia que no tenía
+          // nada que ver con el cambio que se acababa de hacer.
+          const rotos = usos.filter(u => {
+            if (!u.unidad) return false;
+            const u_u = canonicalUnit(u.unidad);
+            const eraValida = opcionesAntes.includes(u_u);
+            const esValidaAhora = opcionesNuevas.includes(u_u);
+            return eraValida && !esValidaAhora;
+          });
           if (rotos.length > 0) {
             const ok = await confirmarRompeUnidades(rotos);
             if (!ok) return;
