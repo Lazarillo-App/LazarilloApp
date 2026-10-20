@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import {
   listarPropuestas, aprobarPropuesta, rechazarPropuesta, pedirRevisionPropuesta,
@@ -189,9 +190,13 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
     () => aprobarPropuesta(proposal.business_id, proposal.id),
     'Propuesta aprobada y aplicada',
   );
+  // Sin contenido (solo "marcada a revisión", sin cambio propuesto) no hay
+  // nada que aprobar NI nada que rechazar — la acción real acá es sacarla de
+  // la bandeja porque ya se resolvió (se revisó y no hace falta nada más),
+  // no "rechazar" algo que nunca se llegó a proponer.
   const handleRechazar = () => runAction(
     () => rechazarPropuesta(proposal.business_id, proposal.id),
-    'Propuesta rechazada',
+    sinContenido ? 'Revisión finalizada' : 'Propuesta rechazada',
   );
   const handlePedirRevision = async () => {
     if (!revisionComment.trim()) return;
@@ -236,9 +241,15 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
               A revisión
             </Button>
           )}
-          <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
-            Rechazar
-          </Button>
+          {sinContenido ? (
+            <Button size="small" variant="outlined" startIcon={<TaskAltIcon />} disabled={busy} onClick={handleRechazar}>
+              Finalizar revisión
+            </Button>
+          ) : (
+            <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
+              Rechazar
+            </Button>
+          )}
         </Stack>
       </Stack>
 
