@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Modal, Box, Typography, TextField, Button, IconButton, Stack,
-  Autocomplete, CircularProgress, Tooltip,
+  Autocomplete, CircularProgress,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
@@ -180,8 +180,9 @@ function BloquePasos({ pasos, setPasos, label }) {
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx.current != null) mover(dragIdx.current, i); dragIdx.current = null; }}
               sx={titulo ? {
-                borderBottom: '2px solid', borderColor: PRIMARY,
-                px: 1, py: 0.5, cursor: editandoIdx === i ? 'default' : 'grab',
+                mt: i > 0 ? 1.5 : 0,
+                borderTop: '2px solid', borderColor: PRIMARY,
+                px: 1, pt: 1, pb: 0.25, cursor: editandoIdx === i ? 'default' : 'grab',
               } : {
                 border: '1px solid', borderColor: 'divider', borderRadius: 1.5,
                 px: 1, py: 0.75, bgcolor: 'background.paper', cursor: editandoIdx === i ? 'default' : 'grab',
@@ -197,6 +198,7 @@ function BloquePasos({ pasos, setPasos, label }) {
                   {contadorPaso}
                 </Box>
               )}
+              {titulo && <TitleIcon sx={{ fontSize: 16, color: PRIMARY }} />}
               {editandoIdx === i ? (
                 <TextField
                   variant="standard"
@@ -236,17 +238,31 @@ function BloquePasos({ pasos, setPasos, label }) {
           );
         })}
       </Stack>
+      <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+        <Button
+          size="small"
+          variant={nuevoEsTitulo ? 'outlined' : 'contained'}
+          onClick={() => setNuevoEsTitulo(false)}
+          sx={!nuevoEsTitulo ? { bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } } : { color: PRIMARY, borderColor: PRIMARY }}
+        >
+          + Paso
+        </Button>
+        <Button
+          size="small"
+          variant={nuevoEsTitulo ? 'contained' : 'outlined'}
+          startIcon={<TitleIcon fontSize="small" />}
+          onClick={() => setNuevoEsTitulo(true)}
+          sx={nuevoEsTitulo ? { bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } } : { color: PRIMARY, borderColor: PRIMARY }}
+        >
+          + Título (separador de sección)
+        </Button>
+      </Stack>
       <Box
         sx={{
-          mt: 0.75, border: '1px dashed', borderColor: 'divider', borderRadius: 1.5,
+          mt: 0.5, border: '1px dashed', borderColor: nuevoEsTitulo ? PRIMARY : 'divider', borderRadius: 1.5,
           display: 'flex', alignItems: 'center', gap: 0.5, px: 1,
         }}
       >
-        <Tooltip title={nuevoEsTitulo ? 'Agregando un título (separador) — click para volver a paso numerado' : 'Click para agregar un título (separador) en vez de un paso'}>
-          <IconButton size="small" onClick={() => setNuevoEsTitulo(v => !v)} sx={{ color: nuevoEsTitulo ? PRIMARY : 'text.disabled' }}>
-            <TitleIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
         <TextField
           variant="standard"
           placeholder={nuevoEsTitulo ? 'Agregar título…' : 'Agregar paso…'}
