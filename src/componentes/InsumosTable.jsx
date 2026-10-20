@@ -1302,6 +1302,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           onOpenEditModal={onOpenEditModal}
                           businessId={originalBusinessId || businessId}
                           staffMode={isStaff}
+                          rubrosMap={rubrosMap}
                         />}
                       </div>
                     </>
@@ -1392,6 +1393,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                             onOpenEditModal={onOpenEditModal}
                             businessId={originalBusinessId || businessId}
                             staffMode={isStaff}
+                            rubrosMap={rubrosMap}
                           />}
                       </div>
                     </>

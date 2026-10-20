@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Autocomplete
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -22,6 +22,7 @@ import {
   insumoGroupReplaceItems,
   toggleInsumoElaborado,
   insumoDeleteManual,
+  insumoUpdate,
 } from '../servicios/apiInsumos';
 import { proponerDiscontinuarInsumo } from '@/servicios/apiRecetaProposals';
 import { esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
@@ -44,6 +45,7 @@ function InsumoAccionesMenu({
   onOpenRecetaElaborado,
   onOpenEditModal,
   businessId,
+  rubrosMap,
   // Vista Operación, Fase 4: Staff solo ve "Discontinuar" y esa acción no se
   // aplica directo — crea una propuesta que queda pendiente de aprobación
   // (ver proponerDiscontinuarInsumo). El resto de las acciones de este menú
@@ -55,6 +57,9 @@ function InsumoAccionesMenu({
   const [destId, setDestId] = useState('');
   const [isMoving, setIsMoving] = useState(false);
   const [proponiendo, setProponiendo] = useState(false);
+  const [dlgMoverRubroOpen, setDlgMoverRubroOpen] = useState(false);
+  const [nuevoRubro, setNuevoRubro] = useState('');
+  const [movingRubro, setMovingRubro] = useState(false);
 
   const open = Boolean(anchorEl);
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
@@ -95,6 +100,50 @@ function InsumoAccionesMenu({
   }, [handleClose]);
 
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
+
+  // ── Mover a otro rubro (categoría del insumo, independiente de la
+  // agrupación) ── mismo criterio de resolución de etiqueta que
+  // InsumosTable.jsx (getRubroLabel): código → rubrosMap → nombre.
+  const rubroActual = useMemo(() => {
+    const code = insumo?.rubro_codigo ?? insumo?.rubroCodigo ?? insumo?.codigo_rubro ?? insumo?.rubro ?? null;
+    if (code != null && rubrosMap?.get) {
+      const info = rubrosMap.get(String(code));
+      if (info?.nombre) return info.nombre;
+    }
+    return insumo?.rubro_nombre || insumo?.rubroNombre || (code != null ? String(code) : '');
+  }, [insumo, rubrosMap]);
+
+  const rubrosDisponibles = useMemo(() => {
+    if (!rubrosMap?.values) return [];
+    return Array.from(rubrosMap.values())
+      .map((r) => r.nombre)
+      .filter((n) => n && n !== rubroActual)
+      .sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }));
+  }, [rubrosMap, rubroActual]);
+
+  const openMoverRubro = useCallback(() => {
+    setNuevoRubro('');
+    handleClose();
+    setTimeout(() => setDlgMoverRubroOpen(true), 0);
+  }, [handleClose]);
+
+  const ejecutarMoverRubro = useCallback(async () => {
+    const destino = nuevoRubro.trim();
+    if (!destino || destino === rubroActual) { setDlgMoverRubroOpen(false); return; }
+    setMovingRubro(true);
+    try {
+      await insumoUpdate(insumoId, { rubro: destino }, businessId);
+      notify?.(`"${insumoNombre}" movido a "${destino}"`, 'success');
+      window.dispatchEvent(new CustomEvent('insumos:updated'));
+      await onReloadCatalogo?.();
+      setDlgMoverRubroOpen(false);
+    } catch (e) {
+      console.error('MOVER_RUBRO_INSUMO_ERROR', e);
+      notify?.(e.message || 'No se pudo mover el insumo de rubro', 'error');
+    } finally {
+      setMovingRubro(false);
+    }
+  }, [nuevoRubro, rubroActual, insumoId, businessId, insumoNombre, notify, onReloadCatalogo]);
 
   /* ========== MARCAR COMO ELABORADO (abre la receta) ==========
      Un insumo solo debe ser "elaborado" cuando tiene una receta propia cargada —
@@ -354,6 +403,11 @@ function InsumoAccionesMenu({
               <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Editar insumo</ListItemText>
             </MenuItem>
+            {/* 1.5. Mover a otro rubro — cambia la categoría del insumo, no su agrupación */}
+            <MenuItem onClick={openMoverRubro}>
+              <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Mover a otro rubro…</ListItemText>
+            </MenuItem>
             {/* 2. Discontinuar / Reactivar */}
             <MenuItem onClick={toggleDiscontinuar}>
               <ListItemIcon>
@@ -390,12 +444,12 @@ function InsumoAccionesMenu({
               </ListItemText>
             </MenuItem>
 
-            {/* 5. Mover a… */}
+            {/* 5. Mover a otra agrupación */}
             <MenuItem onClick={openMover}>
               <ListItemIcon>
                 <DriveFileMoveIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Mover a…</ListItemText>
+              <ListItemText>Mover a otra agrupación…</ListItemText>
             </MenuItem>
 
             {/* 4. Crear agrupación */}
@@ -426,6 +480,41 @@ function InsumoAccionesMenu({
       </Menu>
 
       {/* Dialog Mover */}
+      {/* Dialog Mover a otro rubro */}
+      <Dialog open={dlgMoverRubroOpen} onClose={() => !movingRubro && setDlgMoverRubroOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
+        <DialogContent>
+          <Autocomplete
+            freeSolo
+            options={rubrosDisponibles}
+            value={nuevoRubro}
+            onInputChange={(e, val) => setNuevoRubro(val)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                autoFocus
+                label="Nuevo rubro"
+                helperText={rubroActual ? `Rubro actual: ${rubroActual}` : undefined}
+                fullWidth
+                sx={{ mt: 1 }}
+              />
+            )}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlgMoverRubroOpen(false)} disabled={movingRubro}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={ejecutarMoverRubro}
+            variant="contained"
+            disabled={!nuevoRubro.trim() || movingRubro}
+          >
+            {movingRubro ? 'Moviendo…' : 'Mover'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={dlgMoverOpen} onClose={closeMover} keepMounted>
         <DialogTitle>Mover insumo #{insumo?.id} a…</DialogTitle>
         <DialogContent>

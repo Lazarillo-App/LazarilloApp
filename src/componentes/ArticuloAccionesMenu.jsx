@@ -797,7 +797,7 @@ function ArticuloAccionesMenu({
         )}
         <MenuItem onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Mover a…</ListItemText>
+          <ListItemText>Mover a otra agrupación…</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => {
           handleClose();
