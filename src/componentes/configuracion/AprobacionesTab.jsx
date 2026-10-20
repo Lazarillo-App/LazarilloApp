@@ -14,6 +14,7 @@ import {
   listarPropuestas, aprobarPropuesta, rechazarPropuesta, pedirRevisionPropuesta,
 } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
+import { useAuth } from '@/context/AuthContext';
 
 const fmtNum = (v) => {
   if (v == null || v === '') return '—';
@@ -130,10 +131,15 @@ function ProposalDiff({ proposal }) {
   );
 }
 
-function ProposalCard({ proposal, onDecided }) {
+function ProposalCard({ proposal, onDecided, currentUserId }) {
   const [busy, setBusy] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionComment, setRevisionComment] = useState('');
+  // Pedir revisión le manda un mensaje al proponente para que corrija — no tiene
+  // sentido cuando el que está revisando (admin/owner) es la misma persona que
+  // propuso el cambio (ej. un admin que también carga recetas): terminaría
+  // pidiéndose una revisión a sí mismo.
+  const esPropia = currentUserId != null && Number(proposal.created_by_user_id) === Number(currentUserId);
 
   const esNueva = !proposal.payload_before;
   // "Marcar a revisión" (desde Sectores o desde el header de una receta) crea la
@@ -214,9 +220,11 @@ function ProposalCard({ proposal, onDecided }) {
               Aprobar
             </Button>
           )}
-          <Button size="small" variant="outlined" startIcon={<EditNoteIcon />} disabled={busy} onClick={() => setRevisionOpen(true)}>
-            A revisión
-          </Button>
+          {!esPropia && (
+            <Button size="small" variant="outlined" startIcon={<EditNoteIcon />} disabled={busy} onClick={() => setRevisionOpen(true)}>
+              A revisión
+            </Button>
+          )}
           <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
             Rechazar
           </Button>
@@ -268,6 +276,7 @@ function ProposalCard({ proposal, onDecided }) {
 }
 
 export default function AprobacionesTab({ businessId, onCountChange }) {
+  const { user } = useAuth() || {};
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -313,7 +322,7 @@ export default function AprobacionesTab({ businessId, onCountChange }) {
       ) : (
         <Stack spacing={1.5}>
           {proposals.map(p => (
-            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} />
+            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} />
           ))}
         </Stack>
       )}
