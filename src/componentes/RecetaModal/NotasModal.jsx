@@ -30,9 +30,13 @@ function authHeaders(businessId) {
 }
 
 /* ════════════════════════════════════════
-   BLOQUE: Método de cocción/servicio + Temperatura + Tiempo
+   BLOQUE: Método de cocción + Temperatura + Tiempo
+   + Almacenamiento en freezer/heladera
 ════════════════════════════════════════ */
-function BloqueMetodo({ businessId, metodo, setMetodo, temperatura, setTemperatura, tiempoMin, setTiempoMin }) {
+function BloqueMetodo({
+  businessId, metodo, setMetodo, temperatura, setTemperatura, tiempoMin, setTiempoMin,
+  almacenamientoFreezer, setAlmacenamientoFreezer, almacenamientoHeladera, setAlmacenamientoHeladera,
+}) {
   const [opciones, setOpciones] = useState([]);
 
   useEffect(() => {
@@ -53,37 +57,55 @@ function BloqueMetodo({ businessId, metodo, setMetodo, temperatura, setTemperatu
   };
 
   return (
-    <Stack direction="row" spacing={1.5}>
-      <Autocomplete
-        freeSolo
-        size="small"
-        fullWidth
-        options={opciones}
-        value={metodo || ''}
-        onChange={(_, v) => { const val = v || ''; setMetodo(val); if (val) crearMetodoNuevo(val); }}
-        onInputChange={(_, v, reason) => { if (reason === 'input') setMetodo(v); }}
-        onBlur={() => { if (metodo) crearMetodoNuevo(metodo); }}
-        renderInput={(params) => <TextField {...params} label="Método de cocción / servicio" />}
-        sx={{ flex: 2 }}
-      />
-      <TextField
-        size="small"
-        label="Temperatura"
-        type="number"
-        value={temperatura}
-        onChange={e => setTemperatura(e.target.value)}
-        InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary">°C</Typography> }}
-        sx={{ width: 130 }}
-      />
-      <TextField
-        size="small"
-        label="Tiempo"
-        type="number"
-        value={tiempoMin}
-        onChange={e => setTiempoMin(e.target.value)}
-        InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary">min</Typography> }}
-        sx={{ width: 120 }}
-      />
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1.5}>
+        <Autocomplete
+          freeSolo
+          size="small"
+          fullWidth
+          options={opciones}
+          value={metodo || ''}
+          onChange={(_, v) => { const val = v || ''; setMetodo(val); if (val) crearMetodoNuevo(val); }}
+          onInputChange={(_, v, reason) => { if (reason === 'input') setMetodo(v); }}
+          onBlur={() => { if (metodo) crearMetodoNuevo(metodo); }}
+          renderInput={(params) => <TextField {...params} label="Método de cocción" />}
+          sx={{ flex: 2 }}
+        />
+        <TextField
+          size="small"
+          label="Temperatura"
+          type="number"
+          value={temperatura}
+          onChange={e => setTemperatura(e.target.value)}
+          InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary">°C</Typography> }}
+          sx={{ width: 130 }}
+        />
+        <TextField
+          size="small"
+          label="Tiempo"
+          type="number"
+          value={tiempoMin}
+          onChange={e => setTiempoMin(e.target.value)}
+          InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary">min</Typography> }}
+          sx={{ width: 120 }}
+        />
+      </Stack>
+      <Stack direction="row" spacing={1.5}>
+        <TextField
+          size="small" fullWidth
+          label="Método de almacenamiento en freezer"
+          value={almacenamientoFreezer}
+          onChange={e => setAlmacenamientoFreezer(e.target.value)}
+          sx={{ flex: 1 }}
+        />
+        <TextField
+          size="small" fullWidth
+          label="Método de almacenamiento en heladera"
+          value={almacenamientoHeladera}
+          onChange={e => setAlmacenamientoHeladera(e.target.value)}
+          sx={{ flex: 1 }}
+        />
+      </Stack>
     </Stack>
   );
 }
@@ -442,6 +464,8 @@ export default function NotasModal({
   temperatura: temperaturaInicial = '',
   tiempoMin: tiempoInicial = '',
   pasos: pasosIniciales = [],
+  almacenamientoFreezer: almacenamientoFreezerInicial = '',
+  almacenamientoHeladera: almacenamientoHeladeraInicial = '',
   observacionesUrl = null,
   recetaExiste = false,
 }) {
@@ -456,17 +480,22 @@ export default function NotasModal({
   const [temperatura, setTemperatura] = useState(temperaturaInicial || '');
   const [tiempoMin, setTiempoMin] = useState(tiempoInicial || '');
   const [pasos, setPasos] = useState(Array.isArray(pasosIniciales) ? pasosIniciales : []);
+  const [almacenamientoFreezer, setAlmacenamientoFreezer] = useState(almacenamientoFreezerInicial || '');
+  const [almacenamientoHeladera, setAlmacenamientoHeladera] = useState(almacenamientoHeladeraInicial || '');
 
   const initialFotosRef = useRef(
     Array.isArray(fotos) && fotos.length ? fotos.filter(Boolean).slice(0, 6) : (foto ? [foto] : [])
   );
-  const initialPrepRef = useRef({ metodo: metodoInicial || '', temperatura: temperaturaInicial || '', tiempoMin: tiempoInicial || '', pasos: pasosIniciales || [] });
+  const initialPrepRef = useRef({
+    metodo: metodoInicial || '', temperatura: temperaturaInicial || '', tiempoMin: tiempoInicial || '', pasos: pasosIniciales || [],
+    almacenamientoFreezer: almacenamientoFreezerInicial || '', almacenamientoHeladera: almacenamientoHeladeraInicial || '',
+  });
 
-  const construirPrep = () => ({ metodoCoccion: metodo, temperatura, tiempoMin, pasos });
+  const construirPrep = () => ({ metodoCoccion: metodo, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera });
 
   // Cierre "accidental" (X, click afuera): guarda solo si cambió algo
   const handleCloseGuardando = () => {
-    const cambioPrep = JSON.stringify({ metodo, temperatura, tiempoMin, pasos })
+    const cambioPrep = JSON.stringify({ metodo, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera })
       !== JSON.stringify(initialPrepRef.current);
     const cambioFotos = JSON.stringify(localFotos) !== JSON.stringify(initialFotosRef.current);
     if (cambioPrep || cambioFotos) {
@@ -538,6 +567,8 @@ export default function NotasModal({
               metodo={metodo} setMetodo={setMetodo}
               temperatura={temperatura} setTemperatura={setTemperatura}
               tiempoMin={tiempoMin} setTiempoMin={setTiempoMin}
+              almacenamientoFreezer={almacenamientoFreezer} setAlmacenamientoFreezer={setAlmacenamientoFreezer}
+              almacenamientoHeladera={almacenamientoHeladera} setAlmacenamientoHeladera={setAlmacenamientoHeladera}
             />
 
             <BloquePasos pasos={pasos} setPasos={setPasos} label={pasosLabel} />

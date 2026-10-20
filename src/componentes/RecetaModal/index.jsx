@@ -223,6 +223,8 @@ export default function RecetaModal({
   const [temperatura, setTemperatura] = useState('');
   const [tiempoMin, setTiempoMin] = useState('');
   const [pasos, setPasos] = useState([]);
+  const [almacenamientoFreezer, setAlmacenamientoFreezer] = useState('');
+  const [almacenamientoHeladera, setAlmacenamientoHeladera] = useState('');
 
   // Base de la receta (articles/:id/receta o insumos/:id/receta, según el modo) —
   // misma resolución que ya usa handleSave para postUrl. Se reutiliza para
@@ -944,6 +946,8 @@ export default function RecetaModal({
           setTemperatura(rec.temperatura != null ? String(rec.temperatura) : '');
           setTiempoMin(rec.tiempo_min != null ? String(rec.tiempo_min) : '');
           setPasos(Array.isArray(rec.pasos) ? rec.pasos : []);
+          setAlmacenamientoFreezer(rec.almacenamiento_freezer || '');
+          setAlmacenamientoHeladera(rec.almacenamiento_heladera || '');
           setItems((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
@@ -1331,6 +1335,8 @@ export default function RecetaModal({
     temperatura: temperatura !== '' ? Number(temperatura) : null,
     tiempoMin: tiempoMin !== '' ? Number(tiempoMin) : null,
     pasos: pasos || [],
+    almacenamientoFreezer: almacenamientoFreezer || '',
+    almacenamientoHeladera: almacenamientoHeladera || '',
     pctCostoIdeal,
     items: items
       .filter(it => it.supplyId || it.articleRefId)
@@ -1347,7 +1353,7 @@ export default function RecetaModal({
         observaciones: it.observaciones || '',
         fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : [],
       })),
-  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, pctCostoIdeal, items]);
+  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera, pctCostoIdeal, items]);
 
   const pristineSnapshotRef = useRef(null);
   // Bump-only: fuerza a re-evaluar hayCambiosSinGuardar DESPUÉS de que el efecto de
@@ -1622,6 +1628,8 @@ export default function RecetaModal({
       temperatura: temperatura !== '' ? Number(temperatura) : null,
       tiempoMin: tiempoMin !== '' ? Number(tiempoMin) : null,
       pasos,
+      almacenamientoFreezer,
+      almacenamientoHeladera,
       items: itemsOrdenados.map(it => {
         let precioRefDbItem = Number(it.precioRefDB) || 0;
         // ── Costo unitario CON merma: derivado de calcCostoItem (única fuente de verdad
@@ -3338,6 +3346,8 @@ export default function RecetaModal({
             temperatura={temperatura}
             tiempoMin={tiempoMin}
             pasos={pasos}
+            almacenamientoFreezer={almacenamientoFreezer}
+            almacenamientoHeladera={almacenamientoHeladera}
             observacionesUrl={recetaBaseUrl ? `${recetaBaseUrl}/observaciones` : null}
             recetaExiste={!!receta?.id}
             onSave={(n, fArr, ts, prep) => {
@@ -3350,6 +3360,8 @@ export default function RecetaModal({
                 setTemperatura(prep.temperatura ?? '');
                 setTiempoMin(prep.tiempoMin ?? '');
                 setPasos(Array.isArray(prep.pasos) ? prep.pasos : []);
+                setAlmacenamientoFreezer(prep.almacenamientoFreezer ?? '');
+                setAlmacenamientoHeladera(prep.almacenamientoHeladera ?? '');
               }
             }}
             onClose={() => setNotasModalOpen(false)}
