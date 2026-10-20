@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Modal, Box, Typography, TextField, Button, IconButton, Stack,
-  Autocomplete, CircularProgress,
+  Autocomplete, CircularProgress, Tooltip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
@@ -12,10 +12,13 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import AddIcon from '@mui/icons-material/Add';
+import TitleIcon from '@mui/icons-material/Title';
 import { BASE } from '@/servicios/apiBase';
 import { PRIMARY, ON_PRIMARY, fmtDate } from './helpers';
 import { useFotoUploadQR } from './useFotoUploadQR';
 import EditorFotoModal from './EditorFotoModal';
+import { useAuth } from '@/context/AuthContext';
+import { useAccess } from '@/context/AccessContext';
 
 function authHeaders(businessId) {
   const token = localStorage.getItem('token') || '';
@@ -88,8 +91,17 @@ function BloqueMetodo({ businessId, metodo, setMetodo, temperatura, setTemperatu
 /* ════════════════════════════════════════
    BLOQUE: Paso a paso reordenable
 ════════════════════════════════════════ */
+// Un "paso" que arranca con este prefijo es un TÍTULO (separador de sección,
+// ej. "Preparación", "Cocción") — no es un paso numerado, solo organiza visualmente
+// los pasos reales que vienen abajo. Se guarda así (string con prefijo) para no
+// tener que tocar el schema de `recetas.pasos` (array de strings tal cual).
+const TITULO_PREFIX = '## ';
+const esTitulo = (p) => typeof p === 'string' && p.startsWith(TITULO_PREFIX);
+const textoVisiblePaso = (p) => esTitulo(p) ? p.slice(TITULO_PREFIX.length) : p;
+
 function BloquePasos({ pasos, setPasos, label }) {
   const [nuevo, setNuevo] = useState('');
+  const [nuevoEsTitulo, setNuevoEsTitulo] = useState(false);
   const [editandoIdx, setEditandoIdx] = useState(null);
   const [editTexto, setEditTexto] = useState('');
   const dragIdx = useRef(null);
@@ -97,7 +109,7 @@ function BloquePasos({ pasos, setPasos, label }) {
   const agregar = () => {
     const limpio = nuevo.trim();
     if (!limpio) return;
-    setPasos(prev => [...prev, limpio]);
+    setPasos(prev => [...prev, nuevoEsTitulo ? `${TITULO_PREFIX}${limpio}` : limpio]);
     setNuevo('');
   };
   const quitar = (i) => setPasos(prev => prev.filter((_, idx) => idx !== i));
@@ -110,13 +122,21 @@ function BloquePasos({ pasos, setPasos, label }) {
       return arr;
     });
   };
-  const empezarEdicion = (i) => { setEditandoIdx(i); setEditTexto(pasos[i]); };
+  const empezarEdicion = (i) => { setEditandoIdx(i); setEditTexto(textoVisiblePaso(pasos[i])); };
   const confirmarEdicion = () => {
     const limpio = editTexto.trim();
-    if (limpio) setPasos(prev => prev.map((p, idx) => (idx === editandoIdx ? limpio : p)));
+    if (limpio) {
+      setPasos(prev => prev.map((p, idx) => {
+        if (idx !== editandoIdx) return p;
+        return esTitulo(p) ? `${TITULO_PREFIX}${limpio}` : limpio;
+      }));
+    }
     setEditandoIdx(null);
   };
   const cancelarEdicion = () => setEditandoIdx(null);
+
+  // Numeración continua de los pasos reales — los títulos no cuentan.
+  let contadorPaso = 0;
 
   return (
     <Box>
@@ -124,67 +144,90 @@ function BloquePasos({ pasos, setPasos, label }) {
         {label}
       </Typography>
       <Stack spacing={0.5} sx={{ mt: 1 }}>
-        {pasos.map((p, i) => (
-          <Stack
-            key={i}
-            direction="row"
-            alignItems="center"
-            spacing={1}
-            draggable={editandoIdx !== i}
-            onDragStart={() => { dragIdx.current = i; }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => { if (dragIdx.current != null) mover(dragIdx.current, i); dragIdx.current = null; }}
-            sx={{
-              border: '1px solid', borderColor: 'divider', borderRadius: 1.5,
-              px: 1, py: 0.75, bgcolor: 'background.paper', cursor: editandoIdx === i ? 'default' : 'grab',
-            }}
-          >
-            <DragIndicatorIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-            <Box sx={{
-              width: 22, height: 22, borderRadius: '50%', bgcolor: 'action.selected',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
-            }}>
-              {i + 1}
-            </Box>
-            {editandoIdx === i ? (
-              <TextField
-                variant="standard"
-                fullWidth
-                autoFocus
-                value={editTexto}
-                onChange={(e) => setEditTexto(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); confirmarEdicion(); }
-                  if (e.key === 'Escape') { e.preventDefault(); cancelarEdicion(); }
-                }}
-                onBlur={confirmarEdicion}
-                InputProps={{ disableUnderline: true, sx: { fontSize: '0.85rem' } }}
-                sx={{ flex: 1 }}
-              />
-            ) : (
-              <Typography variant="body2" sx={{ flex: 1, fontSize: '0.85rem' }}>{p}</Typography>
-            )}
-            {editandoIdx !== i && (
-              <IconButton size="small" onClick={() => empezarEdicion(i)}>
-                <EditIcon sx={{ fontSize: 15 }} />
+        {pasos.map((p, i) => {
+          const titulo = esTitulo(p);
+          if (!titulo) contadorPaso++;
+          return (
+            <Stack
+              key={i}
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              draggable={editandoIdx !== i}
+              onDragStart={() => { dragIdx.current = i; }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => { if (dragIdx.current != null) mover(dragIdx.current, i); dragIdx.current = null; }}
+              sx={titulo ? {
+                borderBottom: '2px solid', borderColor: PRIMARY,
+                px: 1, py: 0.5, cursor: editandoIdx === i ? 'default' : 'grab',
+              } : {
+                border: '1px solid', borderColor: 'divider', borderRadius: 1.5,
+                px: 1, py: 0.75, bgcolor: 'background.paper', cursor: editandoIdx === i ? 'default' : 'grab',
+              }}
+            >
+              <DragIndicatorIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+              {!titulo && (
+                <Box sx={{
+                  width: 22, height: 22, borderRadius: '50%', bgcolor: 'action.selected',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+                }}>
+                  {contadorPaso}
+                </Box>
+              )}
+              {editandoIdx === i ? (
+                <TextField
+                  variant="standard"
+                  fullWidth
+                  autoFocus
+                  value={editTexto}
+                  onChange={(e) => setEditTexto(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); confirmarEdicion(); }
+                    if (e.key === 'Escape') { e.preventDefault(); cancelarEdicion(); }
+                  }}
+                  onBlur={confirmarEdicion}
+                  InputProps={{ disableUnderline: true, sx: { fontSize: '0.85rem' } }}
+                  sx={{ flex: 1 }}
+                />
+              ) : (
+                <Typography variant="body2" sx={{
+                  flex: 1,
+                  fontSize: titulo ? '0.8rem' : '0.85rem',
+                  fontWeight: titulo ? 800 : 400,
+                  textTransform: titulo ? 'uppercase' : 'none',
+                  letterSpacing: titulo ? '0.05em' : 'normal',
+                  color: titulo ? PRIMARY : 'inherit',
+                }}>
+                  {textoVisiblePaso(p)}
+                </Typography>
+              )}
+              {editandoIdx !== i && (
+                <IconButton size="small" onClick={() => empezarEdicion(i)}>
+                  <EditIcon sx={{ fontSize: 15 }} />
+                </IconButton>
+              )}
+              <IconButton size="small" onClick={() => quitar(i)}>
+                <CloseIcon sx={{ fontSize: 15 }} />
               </IconButton>
-            )}
-            <IconButton size="small" onClick={() => quitar(i)}>
-              <CloseIcon sx={{ fontSize: 15 }} />
-            </IconButton>
-          </Stack>
-        ))}
+            </Stack>
+          );
+        })}
       </Stack>
       <Box
         sx={{
           mt: 0.75, border: '1px dashed', borderColor: 'divider', borderRadius: 1.5,
-          display: 'flex', alignItems: 'center', gap: 1, px: 1,
+          display: 'flex', alignItems: 'center', gap: 0.5, px: 1,
         }}
       >
+        <Tooltip title={nuevoEsTitulo ? 'Agregando un título (separador) — click para volver a paso numerado' : 'Click para agregar un título (separador) en vez de un paso'}>
+          <IconButton size="small" onClick={() => setNuevoEsTitulo(v => !v)} sx={{ color: nuevoEsTitulo ? PRIMARY : 'text.disabled' }}>
+            <TitleIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <TextField
           variant="standard"
-          placeholder="Agregar paso…"
+          placeholder={nuevoEsTitulo ? 'Agregar título…' : 'Agregar paso…'}
           fullWidth
           value={nuevo}
           onChange={e => setNuevo(e.target.value)}
@@ -203,11 +246,17 @@ function BloquePasos({ pasos, setPasos, label }) {
    BLOQUE: Observaciones — hilo de comentarios (autor + fecha)
 ════════════════════════════════════════ */
 function BloqueObservaciones({ observacionesUrl, businessId, recetaExiste }) {
+  const { user } = useAuth() || {};
+  const { isOwner, isAdmin } = useAccess() || {};
+  const puedeModerar = isOwner || isAdmin;
   const [lista, setLista] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const [editandoId, setEditandoId] = useState(null);
+  const [editTexto, setEditTexto] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   const cargar = useCallback(() => {
     if (!observacionesUrl || !recetaExiste) return;
@@ -241,6 +290,42 @@ function BloqueObservaciones({ observacionesUrl, businessId, recetaExiste }) {
     }
   };
 
+  const empezarEdicion = (o) => { setEditandoId(o.id); setEditTexto(o.texto); };
+  const cancelarEdicion = () => setEditandoId(null);
+
+  const confirmarEdicion = async (o) => {
+    const limpio = editTexto.trim();
+    if (!limpio || limpio === o.texto) { setEditandoId(null); return; }
+    setGuardandoEdicion(true);
+    try {
+      const res = await fetch(`${observacionesUrl}/${o.id}`, {
+        method: 'PUT', headers: authHeaders(businessId), body: JSON.stringify({ texto: limpio }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json?.observacion) {
+        setLista(prev => prev.map(x => x.id === o.id ? json.observacion : x));
+      }
+      setEditandoId(null);
+    } catch {
+      setError('No se pudo editar la observación');
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
+
+  const eliminar = async (o) => {
+    try {
+      const res = await fetch(`${observacionesUrl}/${o.id}`, {
+        method: 'DELETE', headers: authHeaders(businessId),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setLista(prev => prev.filter(x => x.id !== o.id));
+    } catch {
+      setError('No se pudo eliminar la observación');
+    }
+  };
+
   return (
     <Box>
       <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.04em' }}>
@@ -261,14 +346,60 @@ function BloqueObservaciones({ observacionesUrl, businessId, recetaExiste }) {
             Todavía no hay observaciones.
           </Typography>
         ) : (
-          lista.map((o, i) => (
-            <Box key={o.id} sx={{ px: 1.5, py: 1, borderBottom: i < lista.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
-              <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{o.texto}</Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                <strong>{o.autor_alias_snapshot || 'Alguien'}</strong> · {fmtDate(o.created_at) || ''}
-              </Typography>
-            </Box>
-          ))
+          lista.map((o, i) => {
+            const esMia = user?.id != null && Number(o.user_id) === Number(user.id);
+            const puedeEditar = esMia;
+            const puedeBorrar = esMia || puedeModerar;
+            return (
+              <Box key={o.id} sx={{ px: 1.5, py: 1, borderBottom: i < lista.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                {editandoId === o.id ? (
+                  <Stack spacing={0.5}>
+                    <TextField
+                      variant="standard" fullWidth multiline autoFocus
+                      value={editTexto}
+                      onChange={e => setEditTexto(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmarEdicion(o); }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelarEdicion(); }
+                      }}
+                      disabled={guardandoEdicion}
+                      InputProps={{ sx: { fontSize: '0.85rem' } }}
+                    />
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Button size="small" onClick={cancelarEdicion} disabled={guardandoEdicion}>Cancelar</Button>
+                      <Button size="small" variant="contained" onClick={() => confirmarEdicion(o)} disabled={guardandoEdicion || !editTexto.trim()}
+                        sx={{ bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
+                        Guardar
+                      </Button>
+                    </Stack>
+                  </Stack>
+                ) : (
+                  <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{o.texto}</Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        <strong>{o.autor_alias_snapshot || 'Alguien'}</strong> · {fmtDate(o.created_at) || ''}
+                      </Typography>
+                    </Box>
+                    {(puedeEditar || puedeBorrar) && (
+                      <Stack direction="row" spacing={0.25} flexShrink={0}>
+                        {puedeEditar && (
+                          <IconButton size="small" onClick={() => empezarEdicion(o)}>
+                            <EditIcon sx={{ fontSize: 15 }} />
+                          </IconButton>
+                        )}
+                        {puedeBorrar && (
+                          <IconButton size="small" onClick={() => eliminar(o)}>
+                            <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                          </IconButton>
+                        )}
+                      </Stack>
+                    )}
+                  </Stack>
+                )}
+              </Box>
+            );
+          })
         )}
       </Box>
       {recetaExiste && (
