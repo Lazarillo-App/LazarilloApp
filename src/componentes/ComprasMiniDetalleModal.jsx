@@ -70,6 +70,39 @@ const precioUnit = (it) => {
   return cant > 0 ? tot / cant : 0;
 };
 
+// Agrupa las líneas de un mismo comprobante. Una compra con 2+1 llega como dos
+// filas —la facturada y la bonificada a $ 0— y tratarlas por separado rompe
+// todo lo que mire precios: el último precio da el de factura y el gráfico
+// dibuja un diente de sierra entre 0 y el precio real.
+const keyComprob = (it) =>
+  `${it.factura ?? it.comprob ?? it.referencia ?? ''}__${it.purchase_id ?? ''}__${it._bizId ?? ''}`;
+
+// Pliega las filas en compras: una entrada por comprobante, con el importe
+// total y TODAS las unidades recibidas (facturadas + bonificadas).
+const plegarCompras = (arr) => {
+  const map = new Map();
+  for (const it of arr) {
+    const k = keyComprob(it);
+    if (!map.has(k)) {
+      map.set(k, { key: k, fecha: it.fecha, importe: 0, unidades: 0, bonificadas: 0, filas: 0 });
+    }
+    const g = map.get(k);
+    const cant = Number(it.cantidad ?? 0);
+    const total = Number(it.precio_total ?? it.importe ?? 0);
+    g.importe += total;
+    g.unidades += cant;
+    if (total === 0) g.bonificadas += cant;
+    g.filas += 1;
+    // la fecha del comprobante es la más vieja de sus líneas
+    if (it.fecha && (!g.fecha || it.fecha < g.fecha)) g.fecha = it.fecha;
+  }
+  return [...map.values()].map((g) => ({
+    ...g,
+    // Precio real de esa compra: lo pagado sobre lo recibido.
+    precio: g.unidades > 0 ? g.importe / g.unidades : 0,
+  }));
+};
+
 const mesDe = (it) => String(it?.fecha ?? '').slice(0, 7);   // 'YYYY-MM'
 
 // Facturación que cubre el lote, sumando la de cada mes presente.
@@ -85,6 +118,15 @@ const facturacionDe = (arr, porMes) => {
 const variacion = (actual, anterior) => {
   if (anterior == null || !Number.isFinite(anterior) || anterior === 0) return null;
   return ((actual - anterior) / anterior) * 100;
+};
+
+// Totales grandes: los centavos en una cifra de seis dígitos son ruido.
+// A partir del millón pasa a millones con un decimal.
+const fmtCompacto = (n) => {
+  const v = Number(n ?? 0);
+  if (!Number.isFinite(v)) return '$ 0';
+  if (Math.abs(v) >= 1_000_000) return `$ ${(v / 1_000_000).toFixed(1).replace('.', ',')} M`;
+  return `$ ${Math.round(v).toLocaleString('es-AR')}`;
 };
 
 const fmtVar = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1).replace('.', ',')}%`;
@@ -153,7 +195,9 @@ function KpiCelda({ titulo, valor, pie, delta = null, deltaTexto = null, color }
    Gráfico de evolución. Canvas, sin librerías.
    Rotula solo los puntos de inflexión y muestra un tooltip al pasar el mouse.
 ══════════════════════════════════════════════════════════ */
-function EvolucionChart({ puntos, color, formato, alto = 70 }) {
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+function EvolucionChart({ puntos, color, formato, alto = 70, tipo = 'linea' }) {
   const ref = useRef(null);
   const ptsRef = useRef([]);
   const [tip, setTip] = useState(null);
@@ -162,6 +206,7 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
     const cv = ref.current;
     if (!cv || !puntos.length) return;
     const g = cv.getContext('2d');
+    if (!g) return;   // sin contexto 2D no hay nada que dibujar
     const dpr = window.devicePixelRatio || 1;
     const W = cv.clientWidth || 400;
     const H = alto;
@@ -172,13 +217,39 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
     const vals = puntos.map((p) => p.valor);
     const mx = Math.max(...vals), mn = Math.min(...vals);
     const colchon = mx === mn ? (Math.abs(mx) * 0.1 || 1) : (mx - mn) * 0.35;
-    const hi = mx + colchon, lo = Math.max(0, mn - colchon);
-    const L = 44, R = 8, T = 10, B = 16;
+    const hi = mx + colchon;
+    // En barras el eje tiene que arrancar en cero: con la base cortada, el alto
+    // de la barra deja de ser proporcional al valor y el gráfico miente.
+    const lo = tipo === 'barra' ? 0 : Math.max(0, mn - colchon);
+    // En barras hace falta aire arriba para el valor; en línea, abajo para las
+    // dos filas del eje: las fechas de los quiebres y los nombres de mes.
+    const L = 44, R = 8;
+    const T = tipo === 'barra' ? 28 : 10;
+    const B = tipo === 'barra' ? 16 : 28;
     const w = W - L - R, h = H - T - B;
     const px = (i) => L + (puntos.length < 2 ? w / 2 : (i * w) / (puntos.length - 1));
     const py = (v) => T + h - ((v - lo) / (hi - lo || 1)) * h;
 
     g.font = '8.5px -apple-system, Segoe UI, Helvetica, Arial';
+
+    // Bandas por mes. El fondo alterna en cada cambio de mes y el nombre va
+    // centrado en su banda. No depende de cuántos puntos tenga el mes, así que
+    // con muchas compras las etiquetas no se pisan.
+    if (tipo !== 'barra' && puntos.length && puntos[0].bloque?.mes) {
+      let ini = 0, k = 0;
+      for (let q = 1; q <= puntos.length; q++) {
+        if (q === puntos.length || puntos[q].bloque?.mes !== puntos[ini].bloque?.mes) {
+          const xf = q === puntos.length ? W - R : (px(q - 1) + px(q)) / 2;
+          const xi = ini === 0 ? L : (px(ini - 1) + px(ini)) / 2;
+          if (k % 2 === 0) { g.fillStyle = 'rgba(140,165,155,.09)'; g.fillRect(xi, T, xf - xi, h + 12); }
+          g.fillStyle = '#9AA8A3';
+          g.textAlign = 'center';
+          g.fillText(MESES_CORTOS[Number(puntos[ini].bloque.mes.slice(5, 7)) - 1] ?? '', (xi + xf) / 2, H - 3);
+          ini = q; k++;
+        }
+      }
+    }
+
     g.strokeStyle = 'rgba(140,155,150,.22)';
     g.fillStyle = '#8B9A95';
     g.textAlign = 'right';
@@ -187,6 +258,52 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
       g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
       g.fillText(formato.eje(v), L - 6, y + 3);
     });
+
+    if (tipo === 'barra') {
+      // Vista por mes: barras. La última se pinta llena para ubicar el mes en curso.
+      const paso = w / puntos.length;
+      const bw = Math.min(46, paso * 0.62);
+      g.textAlign = 'center';
+      puntos.forEach((p, i) => {
+        const X = L + paso * i + paso / 2;
+        const alt = Math.max(0, T + h - py(p.valor));
+        const Y = T + h - alt;
+        g.fillStyle = i === puntos.length - 1 ? color : `${color}66`;
+        g.beginPath();
+        if (g.roundRect) g.roundRect(X - bw / 2, Y, bw, alt, [3, 3, 0, 0]);
+        else g.rect(X - bw / 2, Y, bw, alt);
+        g.fill();
+        g.fillStyle = '#8B9A95';
+        g.fillText(p.etiqueta, X, H - 3);
+        // El valor va arriba y no adentro: con barras cortas no entra.
+        // Con muchos meses las etiquetas se pisan, así que se saltea una de
+        // por medio (el último mes siempre se muestra).
+        const apretado = paso < 52;
+        if (!apretado || i % 2 === 1 || i === puntos.length - 1) {
+          g.fillStyle = i === puntos.length - 1 ? '#13703E' : '#6B7C76';
+          g.font = 'bold 9px -apple-system, Segoe UI, Helvetica, Arial';
+          g.fillText(formato.corto ? formato.corto(p.valor) : formato.eje(p.valor), X, Y - 14);
+
+          // Variación contra el mes anterior: el alto muestra la forma, esto
+          // muestra cuánto. Sin el número hay que estimarlo a ojo.
+          const ant = puntos[i - 1]?.valor;
+          if (i > 0 && ant) {
+            const dv = ((p.valor - ant) / ant) * 100;
+            // en precio y ratio subir es malo; en unidades es neutro
+            g.fillStyle = formato.neutro
+              ? '#8B9A95'
+              : (dv > 0 ? '#C0392B' : dv < 0 ? '#1E9E59' : '#8B9A95');
+            g.font = 'bold 8px -apple-system, Segoe UI, Helvetica, Arial';
+            g.fillText(`${dv >= 0 ? '+' : '−'}${Math.abs(dv).toFixed(1).replace('.', ',')}%`, X, Y - 4);
+          }
+          g.font = '8.5px -apple-system, Segoe UI, Helvetica, Arial';
+        }
+      });
+      ptsRef.current = puntos.map((p, i) => ({
+        x: L + paso * i + paso / 2, y: py(p.valor), p,
+      }));
+      return;
+    }
 
     g.beginPath();
     puntos.forEach((p, i) => { const X = px(i), Y = py(p.valor); if (i) g.lineTo(X, Y); else g.moveTo(X, Y); });
@@ -204,18 +321,18 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
       g.fill(); if (!esUlt) g.stroke();
     });
 
-    g.fillStyle = '#8B9A95';
+    g.fillStyle = '#5A6A72';
     let ultX = -99;
     inflexiones(vals).forEach((i) => {
       const X = px(i);
-      if (X - ultX < 44) return;
+      if (X - ultX < 40) return;
       ultX = X;
       g.textAlign = i === 0 ? 'left' : i === puntos.length - 1 ? 'right' : 'center';
-      g.fillText(puntos[i].etiqueta, i === 0 ? X - 4 : i === puntos.length - 1 ? X + 4 : X, H - 3);
+      g.fillText(puntos[i].etiqueta, i === 0 ? X - 3 : i === puntos.length - 1 ? X + 3 : X, H - 16);
     });
 
     ptsRef.current = puntos.map((p, i) => ({ x: px(i), y: py(p.valor), p }));
-  }, [puntos, color, formato, alto]);
+  }, [puntos, color, formato, alto, tipo]);
 
   useEffect(() => { dibujar(); }, [dibujar]);
   useEffect(() => {
@@ -245,11 +362,18 @@ function EvolucionChart({ puntos, color, formato, alto = 70 }) {
         <Box sx={{
           position: 'absolute', left: tip.x, top: tip.y - 9, transform: 'translate(-50%,-100%)',
           bgcolor: '#1F2933', color: '#fff', borderRadius: 1.2, px: 1.2, py: 0.6,
-          fontSize: '0.65rem', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 5,
+          fontSize: '0.65rem', lineHeight: 1.55, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 5,
           boxShadow: '0 6px 18px rgba(16,30,26,.3)',
         }}>
-          <b style={{ marginRight: 8 }}>{tip.p.etiqueta}</b>
-          <span style={{ color: '#7FD3A0', fontWeight: 700 }}>{formato.tip(tip.p.valor)}</span>
+          <b>{tip.p.etiqueta}</b>
+          {tip.p.bloque?.comprobante && (
+            <span style={{ color: '#9AA8A3', marginLeft: 7 }}>{tip.p.bloque.comprobante}</span>
+          )}
+          {formato.detalle ? (
+            <div style={{ marginTop: 2 }}>{formato.detalle(tip.p.bloque)}</div>
+          ) : (
+            <span style={{ color: '#7FD3A0', fontWeight: 700, marginLeft: 8 }}>{formato.tip(tip.p.valor)}</span>
+          )}
         </Box>
       )}
     </Box>
@@ -492,6 +616,7 @@ export function ComprasDetalleContenido({
   const [modoPeriodo, setModoPeriodo] = useState('ultimas');   // 'ultimas' | 'rango'
   const [vistaKpi, setVistaKpi] = useState('kpi');             // 'kpi' | 'grafico'
   const [serieGraf, setSerieGraf] = useState('precio');        // 'precio' | 'unidades' | 'ratio'
+  const [granGraf, setGranGraf] = useState('mes');             // 'compra' | 'mes'
 
   // Ref para que fetchForBranch lea siempre el valor fresco sin ser dependencia del useCallback
   const dynamicBranchesRef = useRef([]);
@@ -835,15 +960,39 @@ export function ComprasDetalleContenido({
   // Las compras que realmente se muestran. Por defecto las últimas N: el rango
   // completo trae años y el precio viejo no dice nada. No se vuelve a pedir al
   // backend, `items` ya trajo todo el rango.
-  const itemsVisibles = useMemo(
-    () => (modoPeriodo === 'ultimas' ? sortedItems.slice(0, ULTIMAS_N) : sortedItems),
-    [sortedItems, modoPeriodo]);
+  // "Últimas N" son N COMPROBANTES, no N filas. Una compra con bonificación
+  // llega como dos filas, así que cortar por filas traía la mitad de las
+  // compras y el KPI igual decía "10 compras".
+  const itemsVisibles = useMemo(() => {
+    if (modoPeriodo !== 'ultimas') return sortedItems;
+    const vistos = [];
+    const out = [];
+    for (const it of sortedItems) {
+      const k = keyComprob(it);
+      if (!vistos.includes(k)) {
+        if (vistos.length >= ULTIMAS_N) break;
+        vistos.push(k);
+      }
+      out.push(it);
+    }
+    return out;
+  }, [sortedItems, modoPeriodo]);
 
   // Ventana anterior del mismo tamaño, para la variación. Si no hay N compras
   // hacia atrás no se compara: mejor nada que un número a medias.
-  const itemsPrevios = useMemo(
-    () => (modoPeriodo === 'ultimas' ? sortedItems.slice(ULTIMAS_N, ULTIMAS_N * 2) : []),
-    [sortedItems, modoPeriodo]);
+  const itemsPrevios = useMemo(() => {
+    if (modoPeriodo !== 'ultimas') return [];
+    const vistos = [];
+    const out = [];
+    for (const it of sortedItems) {
+      const k = keyComprob(it);
+      if (!vistos.includes(k)) vistos.push(k);
+      const n = vistos.length;
+      if (n > ULTIMAS_N && n <= ULTIMAS_N * 2) out.push(it);
+      if (n > ULTIMAS_N * 2) break;
+    }
+    return out;
+  }, [sortedItems, modoPeriodo]);
 
   const resumir = useCallback((arr) => {
     let cantidad = 0, importe = 0;
@@ -853,58 +1002,109 @@ export function ComprasDetalleContenido({
     }
     const facturacion = facturacionDe(arr, facturacionPorMes);
     return {
-      cantidad, importe, facturas: arr.length,
+      cantidad, importe,
+      // comprobantes, no filas: con bonificación una compra son dos filas
+      facturas: new Set(arr.map(keyComprob)).size,
       promedio: cantidad > 0 ? importe / cantidad : 0,   // ponderado por cantidad
       ratio: facturacion > 0 ? (importe / facturacion) * 100 : null,
     };
   }, [facturacionPorMes]);
 
   const totales = useMemo(() => resumir(itemsVisibles), [resumir, itemsVisibles]);
-  const previos = useMemo(
-    () => (itemsPrevios.length === ULTIMAS_N ? resumir(itemsPrevios) : null),
-    [resumir, itemsPrevios]);
+  const previos = useMemo(() => {
+    if (!itemsPrevios.length) return null;
+    const r = resumir(itemsPrevios);
+    // solo se compara contra una ventana completa del mismo tamaño
+    return r.facturas === ULTIMAS_N ? r : null;
+  }, [resumir, itemsPrevios]);
 
-  const ultimoPrecio = useMemo(() => precioUnit(itemsVisibles[0]), [itemsVisibles]);
+  // Compras plegadas: una entrada por comprobante, con las bonificadas adentro.
+  // Todo lo que mire precios sale de acá y no de las filas sueltas.
+  const comprasVisibles = useMemo(() => {
+    const cs = plegarCompras(itemsVisibles);
+    return cs.sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+  }, [itemsVisibles]);
+
+  // El precio de la última compra es lo pagado sobre lo recibido, no el de
+  // factura: si el comprobante trae 24 facturadas + 12 bonificadas, se pagaron
+  // 36 unidades. Antes mostraba el precio de factura e ignoraba la promoción.
+  const ultimaCompra = comprasVisibles[0] ?? null;
+  const ultimoPrecio = ultimaCompra ? ultimaCompra.precio : 0;
+  const ultimaTieneBonif = !!(ultimaCompra && ultimaCompra.bonificadas > 0);
   const picoPrecio = useMemo(
-    () => itemsVisibles.reduce((m, it) => Math.max(m, precioUnit(it)), 0),
-    [itemsVisibles]);
+    () => comprasVisibles.reduce((m, c) => Math.max(m, c.precio), 0),
+    [comprasVisibles]);
 
+  // Las tres series toman un bloque ya agregado ({importe, unidades, mes}),
+  // sea una compra o un mes entero. Así la misma serie sirve en las dos vistas.
   const SERIES = useMemo(() => ({
     precio: {
       label: 'Precio', color: '#2E8B57',
-      val: (it) => precioUnit(it),
+      val: (b) => (b.unidades > 0 ? b.importe / b.unidades : 0),
       eje: (v) => Math.round(v).toLocaleString('es-AR'),
       tip: (v) => fmtMoney(v),
+      corto: (v) => fmtCompacto(v),
     },
     unidades: {
       label: 'Unidades', color: '#3C9BD6',
-      val: (it) => Number(it.cantidad ?? 0),
+      val: (b) => b.unidades,
       eje: (v) => Math.round(v).toLocaleString('es-AR'),
       tip: (v) => `${fmtNum(v, 0)} ${insumoUnidad || 'U'}`,
+      corto: (v) => `${fmtNum(v, 0)} ${insumoUnidad || 'U'}`,
     },
     ratio: {
-      label: 'Sobre facturación', color: '#C77C0B',
-      val: (it) => {
-        const f = Number(facturacionPorMes?.[mesDe(it)] ?? 0);
-        return f > 0 ? (Number(it.precio_total ?? it.importe ?? 0) / f) * 100 : 0;
+      label: 'Ratio ventas', color: '#C77C0B',
+      val: (b) => {
+        const f = Number(b.facturacion ?? 0);
+        return f > 0 ? (b.importe / f) * 100 : 0;
       },
       eje: (v) => fmtNum(v, 2),
-      tip: (v) => `${fmtNum(v, 2)} %`,
+      tip: (v) => `${fmtNum(v, 2)}%`,
+      corto: (v) => `${fmtNum(v, 2)}%`,
     },
-  }), [insumoUnidad, facturacionPorMes]);
+  }), [insumoUnidad]);
 
   const seriesDisponibles = useMemo(
     () => (facturacionPorMes ? ['precio', 'unidades', 'ratio'] : ['precio', 'unidades']),
     [facturacionPorMes]);
 
+  const bloquesGraf = useMemo(() => {
+    if (granGraf === 'compra') {
+      // una entrada por comprobante, de la más vieja a la más nueva
+      return [...comprasVisibles].reverse().map((c) => ({
+        etiqueta: String(c.fecha ?? '').slice(5, 10).split('-').reverse().join('/'),
+        mes: String(c.fecha ?? '').slice(0, 7),
+        comprobante: c.key.split('__')[0] || '',
+        importe: c.importe,
+        unidades: c.unidades,
+        facturacion: Number(facturacionPorMes?.[String(c.fecha ?? '').slice(0, 7)] ?? 0),
+      }));
+    }
+    // por mes: se suma todo lo del mes, incluidas las bonificadas
+    const map = new Map();
+    for (const c of comprasVisibles) {
+      const m = String(c.fecha ?? '').slice(0, 7);
+      if (!m) continue;
+      if (!map.has(m)) map.set(m, { mes: m, importe: 0, unidades: 0 });
+      const g = map.get(m);
+      g.importe += c.importe;
+      g.unidades += c.unidades;
+    }
+    return [...map.values()]
+      .sort((a, b) => a.mes.localeCompare(b.mes))
+      .map((g) => ({
+        ...g,
+        etiqueta: MESES_CORTOS[Number(g.mes.slice(5, 7)) - 1] ?? g.mes,
+        facturacion: Number(facturacionPorMes?.[g.mes] ?? 0),
+      }));
+  }, [comprasVisibles, granGraf, facturacionPorMes]);
+
   const puntosGraf = useMemo(() => {
     const S = SERIES[serieGraf] || SERIES.precio;
-    // el gráfico va de la compra más vieja a la más nueva
-    return [...itemsVisibles].reverse().map((it) => ({
-      etiqueta: String(it.fecha ?? '').slice(5, 10).split('-').reverse().join('/'),
-      valor: S.val(it),
-    }));
-  }, [itemsVisibles, serieGraf, SERIES]);
+    // se arrastra el bloque entero: el tooltip muestra las tres medidas y las
+    // bandas del eje necesitan saber a qué mes pertenece cada punto
+    return bloquesGraf.map((b) => ({ etiqueta: b.etiqueta, valor: S.val(b), bloque: b }));
+  }, [bloquesGraf, serieGraf, SERIES]);
 
   const isLoading = loading || extraLoading || branchLoading || branchesLoading;
 
@@ -1200,11 +1400,7 @@ export function ComprasDetalleContenido({
       {/* Encabezado */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-          {rango?.from && rango?.to && (
-            <Typography variant="body2" color="text.secondary">
-              📅 Período: {rango.from} — {rango.to}
-            </Typography>
-          )}
+
           {onCambiarInsumo && (
             <RankingChip
               ranking={ranking}
@@ -1214,11 +1410,17 @@ export function ComprasDetalleContenido({
             />
           )}
 
-          {/* Último 10 vs todo el rango consultado: un solo botón, no un switch
-              de dos opciones — ver "todo el período" se resuelve eligiendo un
-              rango puntual con el calendario de al lado (ahí sí tiene sentido
-              ver todo lo que haya, no solo las últimas N). */}
-          {sortedItems.length > ULTIMAS_N && (
+          {/* ───────── Período ─────────
+              El rótulo "Período: 2021-01-01 — …" no va más: contradecía al
+              botón activo, porque "Últimas N" corta por cantidad de
+              comprobantes y no por fecha. El rango se muestra solo cuando se
+              elige uno a mano.
+
+              "Últimas N" se muestra SIEMPRE que el modo sea 'rango', aunque el
+              rango elegido traiga pocas compras: antes se renderizaba con
+              sortedItems.length > N y al acotar la fecha desaparecía, dejando
+              al usuario sin forma de volver. */}
+          {(sortedItems.length > ULTIMAS_N || modoPeriodo === 'rango') && (
             <Box onClick={() => setModoPeriodo('ultimas')}
               sx={{
                 px: 1.5, py: 0.8, borderRadius: 1, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
@@ -1231,9 +1433,7 @@ export function ComprasDetalleContenido({
             </Box>
           )}
 
-          {/* Ajustar el período consultado a mano, sin salir del modal. Elegir
-              un rango acá muestra TODO lo que haya en esa ventana (no solo las
-              últimas N): si lo acotás a mano es porque querés verlo completo. */}
+          {/* El selector de fechas queda tal cual estaba. */}
           {onCambiarRango && rango?.from && rango?.to && (
             <SalesPickerIcon
               value={{ mode: 'custom', from: rango.from, to: rango.to }}
@@ -1241,6 +1441,14 @@ export function ComprasDetalleContenido({
               labelOverride="Fechas"
               compact
             />
+          )}
+
+          {/* Con un rango elegido a mano sí se muestra cuál es y cuántas
+              compras entraron; con "Últimas N" la fecha no aporta nada. */}
+          {modoPeriodo === 'rango' && rango?.from && rango?.to && (
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {fmtFecha(rango.from)} — {fmtFecha(rango.to)} · {comprasVisibles.length} compra{comprasVisibles.length !== 1 ? 's' : ''}
+            </Typography>
           )}
         </Stack>
 
@@ -1331,7 +1539,7 @@ export function ComprasDetalleContenido({
             <>
               <KpiCelda
                 titulo="TOTAL COMPRADO"
-                valor={fmtMoney(totales.importe)}
+                valor={fmtCompacto(totales.importe)}
                 pie={`${totales.facturas} compra${totales.facturas !== 1 ? 's' : ''}`} />
               <KpiCelda
                 titulo="PRECIO PROMEDIO"
@@ -1342,9 +1550,11 @@ export function ComprasDetalleContenido({
                 titulo="ÚLTIMO PRECIO"
                 valor={fmtMoney(ultimoPrecio)}
                 color="#2E8B57"
-                pie={picoPrecio > 0 && ultimoPrecio !== picoPrecio
-                  ? `${fmtVar(variacion(ultimoPrecio, picoPrecio))} del pico`
-                  : 'es el máximo'} />
+                pie={ultimaTieneBonif
+                  ? 'con bonificadas'
+                  : (picoPrecio > 0 && ultimoPrecio !== picoPrecio
+                    ? `${fmtVar(variacion(ultimoPrecio, picoPrecio))} del pico`
+                    : 'es el máximo')} />
               <KpiCelda
                 titulo="UNIDADES"
                 valor={`${fmtNum(totales.cantidad, 0)} ${insumoUnidad || 'U'}`}
@@ -1352,8 +1562,8 @@ export function ComprasDetalleContenido({
                 delta={previos ? variacion(totales.cantidad, previos.cantidad) : null} />
               {totales.ratio != null && (
                 <KpiCelda
-                  titulo="SOBRE FACTURACIÓN"
-                  valor={`${fmtNum(totales.ratio, 2)} %`}
+                  titulo="RATIO VENTAS"
+                  valor={`${fmtNum(totales.ratio, 2)}%`}
                   pie="del período"
                   deltaTexto={previos?.ratio != null
                     ? `${totales.ratio - previos.ratio >= 0 ? '+' : '−'}${Math.abs(totales.ratio - previos.ratio).toFixed(2).replace('.', ',')} pts`
@@ -1386,8 +1596,14 @@ export function ComprasDetalleContenido({
                   </Box>
                 ))}
               </Stack>
-              <Stack direction="column" sx={{ flex: 1, minWidth: 0, pl: 1.5, py: 1 }}>
+              <Stack direction="column" sx={{ flex: 1, minWidth: 0, pl: 1.5, py: 1, pr: 1 }}>
                 <Typography variant="caption" sx={{ textAlign: 'right', pr: 1, color: 'text.secondary' }}>
+                  {/* el recorrido punta a punta es de la serie elegida, no del
+                      importe: si dice "total $ X" con las barras mostrando
+                      precio, el subtítulo no describe lo que se está viendo */}
+                  {granGraf === 'mes' && bloquesGraf.length > 0 && (
+                    <>{bloquesGraf.length} mes{bloquesGraf.length !== 1 ? 'es' : ''}{puntosGraf.length > 1 ? ' · ' : ''}</>
+                  )}
                   {puntosGraf.length > 1 && (
                     <>
                       {SERIES[serieGraf].tip(puntosGraf[0].valor)}
@@ -1396,10 +1612,59 @@ export function ComprasDetalleContenido({
                     </>
                   )}
                 </Typography>
+
                 <EvolucionChart
                   puntos={puntosGraf}
+                  tipo={granGraf === 'mes' ? 'barra' : 'linea'}
                   color={SERIES[serieGraf].color}
-                  formato={{ eje: SERIES[serieGraf].eje, tip: SERIES[serieGraf].tip }} />
+                  formato={{
+                    eje: SERIES[serieGraf].eje,
+                    tip: SERIES[serieGraf].tip,
+                    corto: SERIES[serieGraf].corto,
+                    // comprar más unidades no es bueno ni malo; que suba el
+                    // precio o el ratio sí
+                    neutro: serieGraf === 'unidades',
+                    // una compra o un mes tienen las tres medidas: mostrarlas
+                    // juntas evita tener que cambiar de serie para compararlas
+                    detalle: (b) => (b ? (
+                      <>
+                        <span style={{ color: '#9AA8A3' }}>precio </span>
+                        <b style={{ color: '#7FD3A0' }}>{SERIES.precio.tip(SERIES.precio.val(b))}</b>
+                        <span style={{ color: '#9AA8A3' }}>  cant. </span>
+                        <b style={{ color: '#7FD3A0' }}>{SERIES.unidades.tip(SERIES.unidades.val(b))}</b>
+                        {b.facturacion > 0 && (
+                          <>
+                            <span style={{ color: '#9AA8A3' }}>  ratio </span>
+                            <b style={{ color: '#7FD3A0' }}>{SERIES.ratio.tip(SERIES.ratio.val(b))}</b>
+                          </>
+                        )}
+                      </>
+                    ) : null),
+                  }} />
+
+                {/* Granularidad: abajo a la derecha y en horizontal, para que se
+                    lea por debajo de Precio / Unidades / Ratio ventas, que son
+                    las que eligen QUÉ se mide. Esto solo elige cada cuánto. */}
+                <Stack direction="row" justifyContent="flex-end" sx={{ mt: 0.5 }}>
+                  <Stack direction="row" sx={{
+                    border: '1px solid', borderColor: 'divider',
+                    borderRadius: 1, overflow: 'hidden',
+                  }}>
+                    {[['compra', 'Por compra'], ['mes', 'Por mes']].map(([v, lab], n) => (
+                      <Box key={v} onClick={() => setGranGraf(v)}
+                        sx={{
+                          px: 1.2, py: 0.35, cursor: 'pointer', fontSize: '0.62rem', whiteSpace: 'nowrap',
+                          borderLeft: n ? '1px solid' : 'none', borderColor: 'divider',
+                          bgcolor: granGraf === v ? `${themeColors.primary}1A` : 'transparent',
+                          color: granGraf === v ? themeColors.primary : 'text.secondary',
+                          fontWeight: granGraf === v ? 700 : 400,
+                          boxShadow: granGraf === v ? `inset 0 -2px 0 ${themeColors.primary}` : 'none',
+                        }}>
+                        {lab}
+                      </Box>
+                    ))}
+                  </Stack>
+                </Stack>
               </Stack>
             </>
           )}
@@ -1657,7 +1922,7 @@ export function ComprasDetalleContenido({
           <Typography variant="body1" sx={{ flex: 1, fontWeight: 600 }}>
             Total del período:{' '}
             <span style={{ color: themeColors.primary, fontSize: '1.05rem' }}>
-              {fmtMoney(totales.importe)}
+              {fmtCompacto(totales.importe)}
             </span>
             <span style={{ color: '#94a3b8', fontSize: '0.85rem', marginLeft: 8 }}>
               · {fmtNum(totales.cantidad)} {insumoUnidad || 'unidades'}
