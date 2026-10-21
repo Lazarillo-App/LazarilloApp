@@ -1,9 +1,15 @@
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider, IconButton, Tooltip } from '@mui/material';
+import {
+  Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider, IconButton, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack,
+} from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { insumoUsoList, insumoMermasList, insumoUsoCambiarMerma, insumoUsoCambiarCantidad, insumoUsoQuitar } from '@/servicios/apiInsumos';
+import {
+  insumoUsoList, insumoMermasList, insumoUsoCambiarMerma, insumoUsoCambiarCantidad, insumoUsoQuitar,
+  insumoMermaCreate,
+} from '@/servicios/apiInsumos';
 import { showConfirm } from '@/servicios/appConfirm';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
@@ -14,7 +20,7 @@ const NUEVA_MERMA = '__nueva__';
 /* ════════════════════════════════════════
    TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
-export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMerma, onReemplazar, onAbrirReceta }) {
+export default function TabUsoInsumo({ insumoId, businessId, insumoData, onReemplazar, onAbrirReceta }) {
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mermas, setMermas] = useState([]);
@@ -27,6 +33,14 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
   const [sortDir, setSortDir] = useState('asc');
   const [seleccionados, setSeleccionados] = useState(new Set());
   const [quitando, setQuitando] = useState(false);
+
+  // Mini-modal "+ Nueva merma…" disparado desde el Select de una fila puntual:
+  // crea la merma en el catálogo del insumo y la deja aplicada a ESA receta,
+  // sin navegar a la pestaña Merma (eso es lo que onIrAMerma hacía antes).
+  const [mermaNuevaParaItemId, setMermaNuevaParaItemId] = useState(null);
+  const [mermaNuevaIdsExistentes, setMermaNuevaIdsExistentes] = useState([]);
+  const [nuevaMermaDraft, setNuevaMermaDraft] = useState({ nombre: '', peso_inicial: '', peso_final: '' });
+  const [guardandoMermaNueva, setGuardandoMermaNueva] = useState(false);
 
   const toggleSort = (key) => {
     if (sortBy === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -58,10 +72,13 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
 
   // nuevosIds: array de ids de merma combinadas (igual que el multi-select de
   // "avanzadas" en el editor de receta) — [] limpia la selección de esta fila.
-  const cambiarMermaFila = async (u, nuevosIds) => {
+  // `catalogo` es opcional: por defecto usa el estado `mermas`, pero al crear
+  // una merma nueva hace falta pasarle el catálogo YA actualizado (el estado
+  // recién seteado todavía no se refleja en este closure).
+  const cambiarMermaFila = async (u, nuevosIds, catalogo = mermas) => {
     const anterior = { merma_id: u.merma_id, merma_ids: u.merma_ids, merma_nombre: u.merma_nombre };
     const nombres = nuevosIds
-      .map(id => mermas.find(m => Number(m.id) === Number(id))?.nombre)
+      .map(id => catalogo.find(m => Number(m.id) === Number(id))?.nombre)
       .filter(Boolean)
       .join(' + ');
     setUso(prev => prev.map(x => x.item_id === u.item_id
@@ -164,6 +181,31 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
   useEffect(() => { cargarMermas(); }, [cargarMermas]);
 
   const unidadBase = insumoData?.unidad_med || insumoData?.medida || 'u';
+
+  const guardarNuevaMerma = async () => {
+    const nombre = nuevaMermaDraft.nombre.trim();
+    const pesoInicial = Number(String(nuevaMermaDraft.peso_inicial).replace(',', '.'));
+    const pesoFinal = Number(String(nuevaMermaDraft.peso_final).replace(',', '.'));
+    if (!nombre || !(pesoInicial > 0) || !(pesoFinal > 0) || mermaNuevaParaItemId == null) return;
+    const fila = uso.find(x => x.item_id === mermaNuevaParaItemId);
+    if (!fila) { setMermaNuevaParaItemId(null); return; }
+
+    setGuardandoMermaNueva(true);
+    try {
+      const res = await insumoMermaCreate(insumoId, { nombre, peso_inicial: pesoInicial, peso_final: pesoFinal }, businessId);
+      const creada = res?.data;
+      if (!creada?.id) throw new Error('La merma se creó sin id');
+      const catalogoActualizado = [...mermas, creada];
+      setMermas(catalogoActualizado);
+      await cambiarMermaFila(fila, [...mermaNuevaIdsExistentes, creada.id], catalogoActualizado);
+      setMermaNuevaParaItemId(null);
+      setNuevaMermaDraft({ nombre: '', peso_inicial: '', peso_final: '' });
+    } catch {
+      // se deja el modal abierto para reintentar
+    } finally {
+      setGuardandoMermaNueva(false);
+    }
+  };
 
   return (
     <Box sx={{ py: 1 }}>
@@ -374,7 +416,11 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
                       const raw = e.target.value;
                       const arr = typeof raw === 'string' ? raw.split(',') : raw;
                       if (arr.includes(NUEVA_MERMA)) {
-                        onIrAMerma?.();
+                        // Mini-modal in-place: la merma queda aplicada a ESTA receta
+                        // puntual, sin navegar a la pestaña Merma (ver guardarNuevaMerma).
+                        setMermaNuevaParaItemId(u.item_id);
+                        setMermaNuevaIdsExistentes(arr.filter(x => x !== NUEVA_MERMA).map(Number));
+                        setNuevaMermaDraft({ nombre: '', peso_inicial: '', peso_final: '' });
                         return; // no persistir el sentinel ni tocar la fila
                       }
                       cambiarMermaFila(u, arr.filter(x => x !== '').map(Number));
@@ -420,6 +466,54 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onIrAMe
             </Box>
           ))}
         </Box>
+      )}
+
+      {mermaNuevaParaItemId != null && (
+        <Dialog open onClose={() => !guardandoMermaNueva && setMermaNuevaParaItemId(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontSize: '1rem' }}>
+            Nueva merma de {insumoData?.nombre || 'este insumo'}
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              <TextField
+                label="Nombre" size="small" fullWidth autoFocus
+                value={nuevaMermaDraft.nombre}
+                onChange={(e) => setNuevaMermaDraft((d) => ({ ...d, nombre: e.target.value }))}
+              />
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  label="Peso inicial" size="small" fullWidth
+                  type="text" inputMode="decimal"
+                  value={nuevaMermaDraft.peso_inicial}
+                  onChange={(e) => setNuevaMermaDraft((d) => ({ ...d, peso_inicial: e.target.value }))}
+                />
+                <TextField
+                  label="Peso final" size="small" fullWidth
+                  type="text" inputMode="decimal"
+                  value={nuevaMermaDraft.peso_final}
+                  onChange={(e) => setNuevaMermaDraft((d) => ({ ...d, peso_final: e.target.value }))}
+                />
+              </Stack>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setMermaNuevaParaItemId(null)} disabled={guardandoMermaNueva}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              disabled={
+                guardandoMermaNueva
+                || !nuevaMermaDraft.nombre.trim()
+                || !(Number(String(nuevaMermaDraft.peso_inicial).replace(',', '.')) > 0)
+                || !(Number(String(nuevaMermaDraft.peso_final).replace(',', '.')) > 0)
+              }
+              onClick={guardarNuevaMerma}
+            >
+              Guardar
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
 
       {mermaParaAplicar && (
