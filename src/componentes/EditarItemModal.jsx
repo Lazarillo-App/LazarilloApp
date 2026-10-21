@@ -3,8 +3,19 @@ import {
   Dialog, DialogContent, Box, Stack, Typography, TextField, Checkbox,
   Button, IconButton, Paper, Popper, ClickAwayListener, InputAdornment, Divider,
 } from '@mui/material';
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
 import SelectorBuscable from './SelectorBuscable';
 import { showConfirm } from '@/servicios/appConfirm';
+
+// Mismos tokens que RecetaModal/helpers.js — los colores del negocio, no el
+// tema genérico de MUI. Se duplican acá (son 2 líneas) para no acoplar este
+// componente compartido a la carpeta de RecetaModal.
+const PRIMARY = 'var(--color-primary, #3b82f6)';
+const ON_PRIMARY = 'var(--on-primary, #fff)';
 
 /* ──────────────────────────────────────────────────────────────
    EditarItemModal — Lazarillo Gestión
@@ -258,47 +269,40 @@ export default function EditarItemModal({
     <Dialog open={!!open} onClose={cerrar} maxWidth="md" fullWidth
       PaperProps={{ sx: { borderRadius: 2, overflow: 'visible' } }}>
 
-      {/* ───────── encabezado: navegación, posición y buscador ───────── */}
-      <Stack direction="row" alignItems="center" spacing={1.4}
-        sx={{ bgcolor: 'primary.light', px: 2, py: 1.2, borderRadius: '8px 8px 0 0' }}>
+      {/* ───────── encabezado: navegación, posición y buscador ─────────
+          Mismo estilo y lugar que el header de RecetaModal: flecha
+          anterior a la izquierda del nombre, flecha siguiente a la
+          derecha, colores del negocio (no el tema genérico de MUI). */}
+      <Stack direction="row" alignItems="center" spacing={2}
+        sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, px: 3, py: 1.5, borderRadius: '8px 8px 0 0', gap: 2 }}>
 
-        <Stack direction="row" sx={{
-          border: '1px solid rgba(0,0,0,.18)', borderRadius: 1,
-          overflow: 'hidden', bgcolor: 'rgba(255,255,255,.35)',
-        }}>
-          <Box onClick={() => irA(i - 1)} title="Anterior (←)"
-            sx={{ px: 1.1, py: 0.4, cursor: 'pointer', fontSize: 15, lineHeight: 1.2,
-              '&:hover': { bgcolor: 'rgba(255,255,255,.6)' } }}>‹</Box>
-          <Box onClick={() => irA(i + 1)} title="Siguiente (→)"
-            sx={{ px: 1.1, py: 0.4, cursor: 'pointer', fontSize: 15, lineHeight: 1.2,
-              borderLeft: '1px solid rgba(0,0,0,.18)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,.6)' } }}>›</Box>
-        </Stack>
+        <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+          <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: i > 0 ? 1 : 0.3 }}
+            disabled={i <= 0} title="Anterior (←)" onClick={() => irA(i - 1)}>
+            <KeyboardArrowLeftIcon />
+          </IconButton>
 
-        <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, lineHeight: 1.2 }}>
-            {cfg.titulo}
-          </Typography>
-          <Typography sx={{ fontSize: '0.72rem', opacity: .75, fontVariantNumeric: 'tabular-nums' }}>
-            #{item.id ?? item.codigo}{item.rubro ? ` · ${item.rubro}` : ''}
-          </Typography>
-        </Box>
-
-        {items.length > 1 && (
-          <Box sx={{
-            bgcolor: 'rgba(255,255,255,.45)', borderRadius: 3, px: 1.2, py: 0.3,
-            fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {i + 1} de {items.length}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+              {cfg.titulo}
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              #{item.id ?? item.codigo}{item.rubro ? ` · ${item.rubro}` : ''}
+            </Typography>
           </Box>
-        )}
+
+          <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: i < items.length - 1 ? 1 : 0.3 }}
+            disabled={i >= items.length - 1} title="Siguiente (→)" onClick={() => irA(i + 1)}>
+            <KeyboardArrowRightIcon />
+          </IconButton>
+        </Stack>
 
         <Box sx={{ flex: 1 }} />
 
         <Box ref={lupaRef} sx={{ position: 'relative' }}>
-          <Box onClick={() => setBuscando((b) => !b)} title="Buscar"
-            sx={{ cursor: 'pointer', fontSize: 15, px: 0.5 }}>🔍</Box>
+          <IconButton size="small" onClick={() => setBuscando((b) => !b)} title="Buscar" sx={{ color: 'inherit' }}>
+            <SearchIcon fontSize="small" />
+          </IconButton>
           <Popper open={buscando} anchorEl={lupaRef.current} placement="bottom-end" style={{ zIndex: 1400 }}>
             <ClickAwayListener onClickAway={() => setBuscando(false)}>
               <Paper elevation={8} sx={{ mt: 1, width: 350, borderRadius: 1.5, overflow: 'hidden' }}>
@@ -349,7 +353,9 @@ export default function EditarItemModal({
           </Popper>
         </Box>
 
-        <Box onClick={cerrar} sx={{ cursor: 'pointer', fontSize: 15, px: 0.5 }}>✕</Box>
+        <IconButton size="small" onClick={cerrar} sx={{ color: 'inherit' }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
       </Stack>
 
       {/* ───────── cuerpo ───────── */}
@@ -470,7 +476,9 @@ export default function EditarItemModal({
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
               <TextField label="Código" size="small" disabled
-                value={item.id ?? item.codigo ?? ''} sx={{ width: { sm: 150 } }} />
+                value={item.id ?? item.codigo ?? ''} sx={{ width: { sm: 110 } }} />
+              <TextField label="Código Maxi" size="small" disabled
+                value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 110 } }} />
               <TextField label="Nombre original" size="small" disabled fullWidth
                 value={item.nombreOriginal ?? item.nombre ?? ''} />
             </Stack>
@@ -535,7 +543,8 @@ export default function EditarItemModal({
       <Divider />
       <Stack direction="row" alignItems="center" spacing={1.6} sx={{ px: 2, py: 1.4 }}>
         {onBorrar && (
-          <Button size="small" color="error" onClick={() => onBorrar(item.id ?? item.codigo)}>
+          <Button size="small" color="error" startIcon={<DeleteOutlineIcon fontSize="small" />}
+            onClick={() => onBorrar(item.id ?? item.codigo)}>
             Borrar
           </Button>
         )}

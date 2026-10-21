@@ -18,7 +18,6 @@ import { emitUiAction } from '@/servicios/uiEvents';
 import { httpBiz, BusinessesAPI } from '../servicios/apiBusinesses';
 import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
-import { ArticuloNuevoModal } from './configuracion/ABMModals';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
@@ -262,6 +261,7 @@ function ArticuloAccionesMenu({
   priceListsByList = {},
   rubrosDisponibles = [],
     accionesOcultas = [],
+  onEditar,
 }) {
   // ── Estado UI ──────────────────────────────────────────────────────────────
   const [anchorEl, setAnchorEl] = useState(null);
@@ -272,7 +272,6 @@ function ArticuloAccionesMenu({
   const [dlgReactivarOpen, setDlgReactivarOpen] = useState(false);
   const [origenReactivar, setOrigenReactivar] = useState(null);
   const [excluirOpen, setExcluirOpen] = useState(false);
-  const [editArticuloOpen, setEditArticuloOpen] = useState(false);
   const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [dlgMoverRubroOpen, setDlgMoverRubroOpen] = useState(false);
@@ -350,10 +349,16 @@ function ArticuloAccionesMenu({
   }, [handleClose]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
 
+  // El modal de edición ahora vive una sola vez en TablaArticulos.jsx
+  // (EditarItemModal, con navegación ‹ › sobre la lista filtrada/ordenada
+  // completa) — acá solo se avisa qué artículo abrir, igual que ya hace el
+  // código-como-link. Antes este menú abría su PROPIA copia de
+  // ArticuloNuevoModal, scopeada a un solo artículo, lo que dejaba el menú
+  // ⋮ y el código abriendo dos modales distintos.
   const abrirEditarArticulo = useCallback(() => {
     handleClose();
-    setTimeout(() => setEditArticuloOpen(true), 0);
-  }, [handleClose]);
+    onEditar?.(articulo);
+  }, [handleClose, onEditar, articulo]);
 
   const pushUi = useCallback((payload) => {
     try {
@@ -979,19 +984,6 @@ function ArticuloAccionesMenu({
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* ── Editar artículo completo (nombre/rubro/subrubro/precio) ── */}
-      <ArticuloNuevoModal
-        open={editArticuloOpen}
-        onClose={() => setEditArticuloOpen(false)}
-        businessId={effectiveBusinessId}
-        articulo={articulo}
-        onCreated={() => {
-          notify?.('Artículo actualizado', 'success');
-          window.dispatchEvent(new CustomEvent('articulos:updated'));
-          onAfterMutation?.([articuloIdNum]);
-        }}
-      />
 
       {/* ── Diálogo de confirmación de eliminación ── */}
       <Dialog open={dlgEliminarOpen} onClose={() => !eliminando && setDlgEliminarOpen(false)} maxWidth="xs" fullWidth>

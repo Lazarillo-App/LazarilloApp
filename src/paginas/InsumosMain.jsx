@@ -22,6 +22,7 @@ import {
   insumoGroupAddMultipleItems,
   insumoGroupRemoveItem,
   insumoGroupCreateOrMove,
+  insumoDeleteManual,
 } from '../servicios/apiInsumos';
 import { applyMutation } from '../utils/groupMutations';
 import {
@@ -1896,6 +1897,21 @@ export default function InsumosMain() {
             await guardarEdicionInsumo(datos);
             forceRefresh();
           }}
+          // Igual que InsumoAccionesMenu: solo se puede borrar un insumo
+          // manual (no sincronizado con Maxi) — si no es manual, onBorrar
+          // queda undefined y el botón directamente no aparece.
+          onBorrar={
+            String(insumosOrdenados.find((x) => String(x.id) === String(insumoEditando?.id))?.origen || '').toLowerCase() === 'manual'
+              ? async (id) => {
+                  const ok = await showConfirm(`¿Seguro que querés eliminar este insumo? Esta acción no se puede deshacer.`, { danger: true });
+                  if (!ok) return;
+                  await insumoDeleteManual(Number(id), resolvedBizId);
+                  setInsumoEditando(null);
+                  forceRefresh();
+                  window.dispatchEvent(new CustomEvent('insumos:updated'));
+                }
+              : undefined
+          }
         />
       )}
 

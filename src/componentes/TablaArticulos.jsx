@@ -19,6 +19,7 @@ import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
 import { BusinessesAPI, RecetasAPI, invalidateHttpCache, httpBiz } from "@/servicios/apiBusinesses";
 import EditarItemModal from "./EditarItemModal";
+import { showConfirm } from "@/servicios/appConfirm";
 import LinkChainIcon from "./LinkChainIcon";
 import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
@@ -2532,6 +2533,7 @@ export default function TablaArticulos({
                 <div key="acciones" style={{ textAlign: 'center' }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
+                    onEditar={(art) => setEditandoArticuloId(getId(art))}
                     esPromo={esPromo}
                     onCrearPromo={(art) => {
                       setRecetaArticulo({
@@ -2585,6 +2587,21 @@ export default function TablaArticulos({
           onClose={() => setEditandoArticuloId(null)}
           onNavegar={(id) => setEditandoArticuloId(id)}
           onGuardar={guardarEdicionArticulo}
+          // Igual que ArticuloAccionesMenu: solo se puede borrar un artículo
+          // manual (id negativo) — si no, onBorrar queda undefined y el
+          // botón directamente no aparece.
+          onBorrar={
+            Number(editandoArticuloId) < 0
+              ? async (id) => {
+                  const ok = await showConfirm('¿Seguro que querés eliminar este artículo? Esta acción no se puede deshacer.', { danger: true });
+                  if (!ok) return;
+                  await BusinessesAPI.deleteManualArticle(activeBizId, Number(id));
+                  setEditandoArticuloId(null);
+                  refetchLocal();
+                  window.dispatchEvent(new CustomEvent('articulos:updated'));
+                }
+              : undefined
+          }
         />
       )}
       {recetaArticulo && (
