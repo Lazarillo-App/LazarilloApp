@@ -11,8 +11,8 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PercentIcon from '@mui/icons-material/Percent';
-import StarIcon from '@mui/icons-material/Star';
-import StarOutlineIcon from '@mui/icons-material/StarOutline';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import FiberManualRecordOutlinedIcon from '@mui/icons-material/FiberManualRecordOutlined';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -200,7 +200,7 @@ export default function PriceListConfigModal({
 
       <DialogContent sx={{ pt: 1 }}>
         <Alert severity="info" sx={{ mb: 2, py: 0.5, fontSize: '0.78rem' }}>
-          La lista <strong>favorita</strong> (★) define los precios base. Las otras listas aplican un <strong>descuento (↓)</strong> o <strong>recargo (↑)</strong> sobre la favorita.
+          La lista marcada como <strong>base</strong> define los precios de partida. Las otras listas aplican un <strong>descuento (↓)</strong> o <strong>recargo (↑)</strong> sobre esa base.
         </Alert>
         {conteos._base > 0 && (
           <Box sx={{
@@ -267,13 +267,13 @@ export default function PriceListConfigModal({
                   opacity: isSaving ? 0.7 : 1,
                   transition: 'background 0.15s, opacity 0.15s',
                 }}>
-                  {/* Estrella favorita */}
-                  <Tooltip title={isFav ? 'Lista favorita (precio base)' : 'No es la favorita'}>
+                  {/* Indicador de lista base */}
+                  <Tooltip title={isFav ? 'Lista base (de referencia)' : 'No es la base'}>
                     <Box sx={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: isFav ? '#f59e0b' : '#d1d5db',
+                      color: isFav ? PRIMARY : '#d1d5db',
                     }}>
-                      {isFav ? <StarIcon sx={{ fontSize: 18 }} /> : <StarOutlineIcon sx={{ fontSize: 18 }} />}
+                      {isFav ? <FiberManualRecordIcon sx={{ fontSize: 14 }} /> : <FiberManualRecordOutlinedIcon sx={{ fontSize: 14 }} />}
                     </Box>
                   </Tooltip>
 
@@ -325,8 +325,8 @@ export default function PriceListConfigModal({
                   {/* Tipo (descuento/recargo) — solo afecta el signo interno de ajuste_pct */}
                   {isFav ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', height: 32 }}>
-                      <Chip label="Base" size="small" icon={<StarIcon sx={{ fontSize: 12 }} />}
-                        sx={{ bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: '0.7rem', height: 22 }} />
+                      <Chip label="Base" size="small"
+                        sx={{ bgcolor: `${PRIMARY}1a`, color: PRIMARY, fontWeight: 700, fontSize: '0.7rem', height: 22 }} />
                     </Box>
                   ) : (() => {
                     const ajusteNum = Number(list.ajuste_pct) || 0;

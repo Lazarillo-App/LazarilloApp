@@ -248,6 +248,18 @@ export default function EditarItemModal({
 
   if (!item) return null;
 
+  // Un ítem manual no tiene código de Maxi real — lo que hoy vive en
+  // `codigo_maxi` para un manual es en realidad el código Lazarillo visible
+  // en la tabla (ej. "L1"), y `id` es solo el id interno de la fila, no un
+  // código para mostrar. En artículos el manual se reconoce por id negativo
+  // (mismo criterio que la columna Código de TablaArticulos.jsx).
+  const esManual = item.origen === 'manual' || (tipo === 'articulo' && Number(item.id) < 0);
+  const codigoLazarilloMostrar = esManual
+    ? (tipo === 'articulo'
+      ? `L${item.id}`
+      : (item.codigo_mostrar || item.codigo_maxi || item.codigo || item.id))
+    : (item.id ?? item.codigo ?? '');
+
   const faltan = vacio(d.nombre) || vacio(d.rubro) || (tipo === 'insumo' && vacio(d.unidad));
 
   const guardar = () => {
@@ -388,7 +400,8 @@ export default function EditarItemModal({
 
             {/* Precios por lista, debajo de la foto. Solo en artículo:
                 un insumo tiene un precio de referencia y nada más.
-                Se carga únicamente la base; las derivadas se calculan. */}
+                Puramente informativo — muestra cómo queda el precio en cada
+                lista configurada, para comparar; no se edita ninguna acá. */}
             {tipo === 'articulo' && listas.length > 0 && (
               <Box sx={{ mt: 1.6, border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
                 <Typography sx={{
@@ -406,7 +419,7 @@ export default function EditarItemModal({
                     <Stack key={l.id} direction="row" alignItems="center" spacing={.8}
                       sx={{ px: 1.1, py: .6, borderBottom: '1px solid', borderColor: 'divider' }}>
 
-                      <Box sx={{ width: 8, height: 8, borderRadius: .4, flex: '0 0 8px',
+                      <Box sx={{ width: 9, height: 9, borderRadius: '50%', flex: '0 0 9px',
                         bgcolor: l.color || 'grey.400' }} />
 
                       <Typography noWrap sx={{ fontSize: '0.6rem', color: 'text.secondary', flex: 1, minWidth: 0 }}>
@@ -414,41 +427,24 @@ export default function EditarItemModal({
                       </Typography>
 
                       <Typography sx={{
-                        fontSize: '0.56rem', fontWeight: 700, flex: '0 0 auto',
-                        color: esBase ? '#B07B23' : 'text.disabled',
+                        fontSize: '0.56rem', fontWeight: 700, flex: '0 0 auto', color: 'text.disabled',
                       }}>
-                        {esBase ? '★' : `${l.tipo === 'descuento' ? '−' : '+'}${l.valor}%`}
+                        {esBase ? 'base' : `${l.tipo === 'descuento' ? '−' : '+'}${l.valor}%`}
                       </Typography>
 
-                      {esBase ? (
-                        <TextField
-                          size="small" placeholder="—"
-                          value={d.precioBase ?? ''}
-                          onChange={(e) => set('precioBase', e.target.value)}
-                          slotProps={{
-                            input: {
-                              startAdornment: <InputAdornment position="start"
-                                sx={{ mr: .4, '& p': { fontSize: '0.64rem' } }}>$</InputAdornment>,
-                              sx: { fontSize: '0.74rem' },
-                            },
-                            htmlInput: { style: { textAlign: 'right', padding: '3px 0' } },
-                          }}
-                          sx={{ width: 94, flex: '0 0 94px' }} />
-                      ) : (
-                        <Stack direction="row" alignItems="center" spacing={.5}
-                          sx={{
-                            width: 94, flex: '0 0 94px', border: '1px dashed', borderColor: 'divider',
-                            borderRadius: 1, px: .8, py: .45, bgcolor: 'action.hover',
-                          }}>
-                          <Typography sx={{ fontSize: '0.62rem', color: 'text.disabled' }}>$</Typography>
-                          <Typography sx={{
-                            flex: 1, textAlign: 'right', fontSize: '0.74rem', color: 'text.secondary',
-                            fontVariantNumeric: 'tabular-nums',
-                          }}>
-                            {v == null ? '—' : Math.round(v).toLocaleString('es-AR')}
-                          </Typography>
-                        </Stack>
-                      )}
+                      <Stack direction="row" alignItems="center" spacing={.5}
+                        sx={{
+                          width: 94, flex: '0 0 94px', border: '1px dashed', borderColor: 'divider',
+                          borderRadius: 1, px: .8, py: .45, bgcolor: 'action.hover',
+                        }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: 'text.disabled' }}>$</Typography>
+                        <Typography sx={{
+                          flex: 1, textAlign: 'right', fontSize: '0.74rem', color: 'text.secondary',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {v == null ? '—' : Math.round(v).toLocaleString('es-AR')}
+                        </Typography>
+                      </Stack>
                     </Stack>
                   );
                 })}
@@ -457,8 +453,7 @@ export default function EditarItemModal({
                   px: 1.1, py: .8, fontSize: '0.55rem', color: 'text.disabled',
                   lineHeight: 1.45, bgcolor: 'action.hover',
                 }}>
-                  Solo se carga la lista base. Las demás se calculan con el descuento
-                  o recargo configurado en Lazarillo.
+                  Solo para comparar — el precio se edita desde la tabla, no acá.
                 </Typography>
               </Box>
             )}
@@ -475,10 +470,12 @@ export default function EditarItemModal({
             </Stack>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
-              <TextField label="Código" size="small" disabled
-                value={item.id ?? item.codigo ?? ''} sx={{ width: { sm: 110 } }} />
-              <TextField label="Código Maxi" size="small" disabled
-                value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 110 } }} />
+              <TextField label="Cod. Lazarillo" size="small" disabled
+                value={codigoLazarilloMostrar} sx={{ width: { sm: 120 } }} />
+              {!esManual && (
+                <TextField label="Cod. Maxi" size="small" disabled
+                  value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 120 } }} />
+              )}
               <TextField label="Nombre original" size="small" disabled fullWidth
                 value={item.nombreOriginal ?? item.nombre ?? ''} />
             </Stack>

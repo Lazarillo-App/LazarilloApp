@@ -9,7 +9,6 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CheckIcon from '@mui/icons-material/Check';
-import StarIcon from '@mui/icons-material/Star';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 const DEFAULT_COLORS = ['#2492C8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -30,7 +29,6 @@ export default function ArticleListSelector({
   const currentIdx = lists.findIndex(l => Number(l.id) === Number(currentListId));
   const label = current?.name || 'Lista';
   const color = currentIdx >= 0 ? colorFor(current, currentIdx) : 'var(--color-primary)';
-  const isFav = current?.is_favorite === true;
 
   const handleSelect = (id) => {
     onChange?.(Number(id));
@@ -59,7 +57,10 @@ export default function ArticleListSelector({
           '&:hover': { opacity: 1, textDecoration: '', textDecorationThickness: '1.5px', textUnderlineOffset: '3px' },
         }}
       >
-        {isFav && <StarIcon sx={{ fontSize: 15, color: '#f59e0b' }} />}
+        <Box sx={{
+          width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+          backgroundColor: color, border: '1.5px solid rgba(0,0,0,0.15)',
+        }} />
         <span>{label}</span>
         <ExpandMoreIcon sx={{ fontSize: 16, opacity: 0.6 }} />
       </Box>
@@ -96,31 +97,18 @@ export default function ArticleListSelector({
               sx={{ pl: 2, pr: 1 }}
             >
               <ListItemIcon sx={{ minWidth: 32 }}>
-                {list.is_favorite ? (
-                  <StarIcon sx={{ fontSize: 16, color: '#f59e0b' }} />
-                ) : (
-                  <Box sx={{
-                    width: 14, height: 14, borderRadius: '50%',
-                    backgroundColor: dotColor,
-                    border: '1.5px solid rgba(0,0,0,0.15)',
-                    flexShrink: 0,
-                  }} />
-                )}
+                <Box sx={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  backgroundColor: dotColor,
+                  border: '1.5px solid rgba(0,0,0,0.15)',
+                  flexShrink: 0,
+                }} />
               </ListItemIcon>
               <ListItemText
-                primary={
-                  <span style={{ fontSize: '0.85rem' }}>
-                    {list.name}
-                    {list.is_favorite && (
-                      <span style={{ fontSize: '0.7rem', opacity: 0.6, marginLeft: 6 }}>
-                        Favorita
-                      </span>
-                    )}
-                  </span>
-                }
+                primary={<span style={{ fontSize: '0.85rem' }}>{list.name}</span>}
                 secondary={
                   !list.is_favorite && Number(list.ajuste_pct) !== 0
-                    ? `${Number(list.ajuste_pct) > 0 ? '+' : ''}${list.ajuste_pct}% sobre favorita`
+                    ? `${Number(list.ajuste_pct) > 0 ? '+' : ''}${list.ajuste_pct}% sobre lista base`
                     : null
                 }
                 secondaryTypographyProps={{ sx: { fontSize: '0.72rem', color: 'text.secondary' } }}
