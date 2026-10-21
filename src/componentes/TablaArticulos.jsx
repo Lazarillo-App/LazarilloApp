@@ -35,6 +35,9 @@ import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
 
 /* ---------------- utils ---------------- */
+// Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
+// para listas de precio sin color propio asignado.
+const DEFAULT_LIST_COLORS = ['#2492C8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const clean = (s) => String(s ?? "").trim();
 const isSin = (s) => {
   const v = clean(s).toLowerCase();
@@ -1568,13 +1571,15 @@ export default function TablaArticulos({
   }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack]);
 
   // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
-  // {id,nombre,tipo,valor,color} que espera EditarItemModal.
-  const listasParaEditModal = useMemo(() => (priceLists || []).map((l) => ({
+  // {id,nombre,tipo,valor,color} que espera EditarItemModal. Misma paleta
+  // de respaldo (por índice) que ArticleListSelector/PriceListConfigModal,
+  // para que una lista sin color propio se vea igual en los 3 lugares.
+  const listasParaEditModal = useMemo(() => (priceLists || []).map((l, idx) => ({
     id: l.id,
     nombre: l.name,
     tipo: l.is_favorite ? 'base' : (Number(l.ajuste_pct) < 0 ? 'descuento' : 'recargo'),
     valor: Math.abs(Number(l.ajuste_pct) || 0),
-    color: l.color || undefined,
+    color: l.color || DEFAULT_LIST_COLORS[idx % DEFAULT_LIST_COLORS.length],
   })), [priceLists]);
 
   const getPrecioManualArticulo = useCallback((a) => {

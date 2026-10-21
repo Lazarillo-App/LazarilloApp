@@ -488,21 +488,21 @@ export default function EditarItemModal({
             <SelectorBuscable
               label="Agrupación" value={d.agrupacion} opciones={agrupaciones}
               onChange={(v) => set('agrupacion', v)}
-              onCrear={onCrearAgrupacion}
+              onCrear={(nombre) => { if (nombre) set('agrupacion', nombre); onCrearAgrupacion?.(nombre); }}
               textoCrear="Crear agrupación nueva…" />
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
               <SelectorBuscable
                 label="Rubro" requerido value={d.rubro} opciones={rubroNombres}
                 onChange={setRubro}
-                onCrear={onCrearRubro}
+                onCrear={(nombre) => { if (nombre) setRubro(nombre); onCrearRubro?.(nombre); }}
                 textoCrear="Crear rubro nuevo…" />
 
               {tipo === 'articulo' ? (
                 <SelectorBuscable
                   label="Subrubro" value={d.subrubro} opciones={subrubrosDelRubro}
                   onChange={(v) => set('subrubro', v)}
-                  onCrear={onCrearSubrubro}
+                  onCrear={(nombre) => { if (nombre) set('subrubro', nombre); onCrearSubrubro?.(nombre); }}
                   textoCrear="Crear subrubro nuevo…" />
               ) : (
                 <SelectorBuscable
