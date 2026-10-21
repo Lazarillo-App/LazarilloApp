@@ -17,7 +17,8 @@ import VentasCell from "./VentasCell";
 import VirtualList from "./shared/VirtualList";
 import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
-import { BusinessesAPI, RecetasAPI, invalidateHttpCache } from "@/servicios/apiBusinesses";
+import { BusinessesAPI, RecetasAPI, invalidateHttpCache, httpBiz } from "@/servicios/apiBusinesses";
+import EditarItemModal from "./EditarItemModal";
 import LinkChainIcon from "./LinkChainIcon";
 import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
@@ -498,6 +499,20 @@ export default function TablaArticulos({
 
   const { organization } = useOrganization() || {};
   const appConfig = useConfig();
+
+  // ── Modal de edición (código-como-link, ver EditarItemModal.jsx) ──
+  const [editandoArticuloId, setEditandoArticuloId] = useState(null);
+  const [rubrosParaEditModal, setRubrosParaEditModal] = useState([]);
+  useEffect(() => {
+    if (editandoArticuloId == null || !activeBizId) return;
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/businesses/${activeBizId}/rubros`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) },
+    })
+      .then((r) => r.json())
+      .then((d) => setRubrosParaEditModal(d?.categorias || []))
+      .catch(() => setRubrosParaEditModal([]));
+  }, [editandoArticuloId, activeBizId]);
 
   // Refetch cuando se crea un artículo manual desde Configuración
   useEffect(() => {
@@ -1504,6 +1519,56 @@ export default function TablaArticulos({
     setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
   }, [recetaArticulo, flatRows, promoIds, promoGroupIds, getObjetivoArticulo, agrupacionSeleccionada]);
 
+  // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,
+  // mismo patrón que navReceta/navegarReceta de arriba ──
+  const itemsParaEditModal = useMemo(
+    () => flatRows.filter((r) => r.kind === "item").map((r) => r.art),
+    [flatRows]);
+
+  // A diferencia de currentGroupId en ArticuloAccionesMenu (que asume que se
+  // está parado adentro de la agrupación actual del artículo), el código-link
+  // puede abrirse desde cualquier vista — hay que buscar la agrupación real.
+  const agrupacionActualDeArticulo = useCallback((articuloId) => {
+    for (const g of (agrupaciones || [])) {
+      if ((g.articulos || []).some((a) => Number(getId(a)) === Number(articuloId))) return g.nombre ?? g.name ?? null;
+    }
+    return null;
+  }, [agrupaciones]);
+
+  const guardarEdicionArticulo = useCallback(async (datos) => {
+    const idNum = Number(datos.id);
+    await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
+      method: 'PATCH',
+      body: {
+        nombre: datos.nombre,
+        rubro: datos.rubro,
+        subrubro: datos.subrubro || null,
+        precio: datos.precioBase ?? 0,
+      },
+    }, activeBizId);
+
+    const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
+    const agrupacionNueva = (datos.agrupacion || '').trim();
+    if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
+      await httpBiz('/agrupaciones/create-or-move', {
+        method: 'POST', body: { nombre: agrupacionNueva, ids: [idNum] },
+      }, activeBizId);
+    }
+
+    setEditandoArticuloId(null);
+    openSnack?.('Artículo actualizado', 'success');
+    refetchLocal();
+  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack]);
+
+  // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
+  // {id,nombre,tipo,valor,color} que espera EditarItemModal.
+  const listasParaEditModal = useMemo(() => (priceLists || []).map((l) => ({
+    id: l.id,
+    nombre: l.name,
+    tipo: l.is_favorite ? 'base' : (Number(l.ajuste_pct) < 0 ? 'descuento' : 'recargo'),
+    valor: Math.abs(Number(l.ajuste_pct) || 0),
+    color: l.color || undefined,
+  })), [priceLists]);
 
   const getPrecioManualArticulo = useCallback((a) => {
     const id = String(getId(a));
@@ -2015,10 +2080,18 @@ export default function TablaArticulos({
               </>
             )}
           </span>
-          {(a.origen === 'manual' || Number(id) < 0)
-            ? <span title="Artículo cargado manualmente en Lazarillo" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>L{id}</span>
-            : <span>{id}</span>
-          }
+          <span
+            onClick={(e) => { e.stopPropagation(); setEditandoArticuloId(id); }}
+            title="Editar artículo"
+            style={{
+              cursor: 'pointer',
+              color: (a.origen === 'manual' || Number(id) < 0) ? 'var(--color-primary)' : '#3C9BD6',
+              fontWeight: (a.origen === 'manual' || Number(id) < 0) ? 700 : 600,
+              textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2,
+            }}
+          >
+            {(a.origen === 'manual' || Number(id) < 0) ? `L${id}` : id}
+          </span>
         </div>
 
         <div onClick={() => {
@@ -2494,6 +2567,20 @@ export default function TablaArticulos({
 
   return (
     <>
+      {editandoArticuloId != null && (
+        <EditarItemModal
+          open
+          tipo="articulo"
+          items={itemsParaEditModal}
+          itemId={editandoArticuloId}
+          agrupaciones={agrupaciones}
+          rubros={rubrosParaEditModal}
+          listas={listasParaEditModal}
+          onClose={() => setEditandoArticuloId(null)}
+          onNavegar={(id) => setEditandoArticuloId(id)}
+          onGuardar={guardarEdicionArticulo}
+        />
+      )}
       {recetaArticulo && (
         <RecetaModal
           open={!!recetaArticulo} onClose={() => {setRecetaArticulo(null); }}
