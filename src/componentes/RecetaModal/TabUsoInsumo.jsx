@@ -20,7 +20,7 @@ const NUEVA_MERMA = '__nueva__';
 /* ════════════════════════════════════════
    TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
-export default function TabUsoInsumo({ insumoId, businessId, insumoData, onReemplazar, onAbrirReceta }) {
+export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5, onReemplazar, onAbrirReceta }) {
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mermas, setMermas] = useState([]);
@@ -181,6 +181,19 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onReemp
   useEffect(() => { cargarMermas(); }, [cargarMermas]);
 
   const unidadBase = insumoData?.unidad_med || insumoData?.medida || 'u';
+
+  // Mismas fórmulas que TabMermaInsumo.jsx (ahí el % y el $ ya se muestran
+  // para las mermas existentes): precio de compra del insumo con el
+  // desperdicio global ya aplicado, y el costo que queda por unidad
+  // UTILIZABLE con una merma de peso_inicial→peso_final puntual.
+  const precioCompra = Number(insumoData?.precio_ref)
+    || Number(insumoData?.precio_ultima_compra)
+    || Number(insumoData?.precio_promedio)
+    || Number(insumoData?.precio)
+    || 0;
+  const precioConGlobal = precioCompra * (1 + (Number(desperdicioGlobalPct) || 0) / 100);
+  const pctMermaPreview = (bruto, neto) => (Number(bruto) > 0 ? ((Number(bruto) - Number(neto)) / Number(bruto)) * 100 : 0);
+  const precioConMermaPreview = (bruto, neto) => (Number(neto) > 0 ? precioConGlobal * (Number(bruto) / Number(neto)) : 0);
 
   const guardarNuevaMerma = async () => {
     const nombre = nuevaMermaDraft.nombre.trim();
@@ -494,6 +507,33 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, onReemp
                   onChange={(e) => setNuevaMermaDraft((d) => ({ ...d, peso_final: e.target.value }))}
                 />
               </Stack>
+              {/* Preview en vivo: mismo cálculo que la pestaña Merma (precio de
+                  compra con el desperdicio global ya aplicado, × bruto/neto). */}
+              {(() => {
+                const bruto = Number(String(nuevaMermaDraft.peso_inicial).replace(',', '.'));
+                const neto = Number(String(nuevaMermaDraft.peso_final).replace(',', '.'));
+                const hayPesos = bruto > 0 && neto > 0;
+                return (
+                  <Box sx={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    px: 1.5, py: 1, borderRadius: 1, bgcolor: 'action.hover',
+                    fontSize: '0.8rem',
+                  }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {precioCompra > 0
+                        ? `Merma: ${hayPesos ? `${pctMermaPreview(bruto, neto).toFixed(1)}%` : '—'}`
+                        : 'Sin precio de referencia cargado para este insumo'}
+                    </Typography>
+                    {precioCompra > 0 && (
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {hayPesos
+                          ? `$ ${precioConMermaPreview(bruto, neto).toLocaleString('es-AR', { maximumFractionDigits: 2 })} / ${unidadBase}`
+                          : '—'}
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })()}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>

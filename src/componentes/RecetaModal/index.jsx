@@ -2284,7 +2284,7 @@ export default function RecetaModal({
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
                 insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
-                onIrAMerma={() => setTab('merma')}
+                desperdicioGlobalPct={appConfig.desperdicioGlobalPct ?? 5}
                 onReemplazar={() => setReemplazarModalOpen(true)}
                 onAbrirReceta={async (u) => {
                   if (!u?.owner_id) return;
