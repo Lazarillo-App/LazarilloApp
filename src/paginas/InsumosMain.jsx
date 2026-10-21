@@ -59,6 +59,7 @@ import { useBranch } from '@/hooks/useBranch';
 import { BASE } from '@/servicios/apiBase';
 import RecetaModal from '../componentes/RecetaModal';
 import { InsumoNuevoModal, ArticuloNuevoModal } from '../componentes/configuracion/ABMModals';
+import EditarItemModal from '../componentes/EditarItemModal';
 import UploadArticulosModal from '../componentes/UploadArticulosModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
@@ -290,9 +291,74 @@ export default function InsumosMain() {
   const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
   const [nuevoInsumoOpen, setNuevoInsumoOpen] = useState(false);
-  // Insumo a editar: mismo modal que la creación (InsumoNuevoModal), en modo
-  // edición — reemplaza el mini-diálogo de "Editar nombre" que tenía InsumoAccionesMenu.
+  // Insumo a editar — EditarItemModal (navegación ‹ ›, buscador, selectores
+  // con buscador), en reemplazo del modo edición de InsumoNuevoModal. El modo
+  // alta de InsumoNuevoModal (nuevoInsumoOpen) sigue sin tocarse.
   const [insumoEditando, setInsumoEditando] = useState(null);
+  // Lista tal como la ve el usuario (agrupada por rubro, ordenada), reportada
+  // hacia arriba por InsumosTable porque ese orden se arma adentro de ella.
+  const [insumosOrdenados, setInsumosOrdenados] = useState([]);
+  const [rubrosParaEditModalInsumo, setRubrosParaEditModalInsumo] = useState([]);
+  const [agrupacionesParaEditModalInsumo, setAgrupacionesParaEditModalInsumo] = useState([]);
+  useEffect(() => {
+    if (!insumoEditando || !resolvedBizId) return;
+    const token = localStorage.getItem('token') || '';
+    const headers = { Authorization: `Bearer ${token}`, 'X-Business-Id': String(resolvedBizId) };
+    fetch(`${BASE}/insumos/maxi/rubros`, { headers })
+      .then((r) => r.json()).catch(() => ({}))
+      .then((d) => setRubrosParaEditModalInsumo((d?.items || []).map((r) => r.nombre)));
+    fetch(`${BASE}/insumos/groups`, { headers })
+      .then((r) => r.json()).catch(() => ({}))
+      .then((d) => {
+        const n = (s) => String(s || '').trim().toLowerCase();
+        const items = (d?.data || [])
+          .filter((g) => {
+            const gn = n(g.nombre);
+            if (['todo', 'sin agrupacion', 'sin agrupación', 'sin agrupar', 'sin grupo'].includes(gn)) return false;
+            if (gn.includes('discontinu')) return false;
+            return true;
+          })
+          .map((g) => ({ id: g.id, nombre: g.nombre }));
+        setAgrupacionesParaEditModalInsumo(items);
+      });
+  }, [insumoEditando, resolvedBizId]);
+
+  // A qué agrupación pertenece HOY el insumo (buscando en groups, no en la
+  // vista actual: el código-link puede abrirse desde cualquier filtro).
+  const agrupacionActualDeInsumo = useCallback((insumoId) => {
+    for (const g of (groups || [])) {
+      const items = g.items || g.insumos || [];
+      if (items.some((i) => Number(i.id ?? i) === Number(insumoId))) return g.nombre;
+    }
+    return null;
+  }, [groups]);
+
+  const guardarEdicionInsumo = useCallback(async (datos) => {
+    const idNum = Number(datos.id);
+    await fetch(`${BASE}/insumos/${idNum}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        'X-Business-Id': String(resolvedBizId),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        nombre: datos.nombre,
+        rubro: datos.rubro,
+        unidadMed: datos.unidad || 'u',
+        precioRef: datos.precio ?? null,
+      }),
+    });
+
+    const agrupacionOriginal = agrupacionActualDeInsumo(idNum);
+    const agrupacionNueva = (datos.agrupacion || '').trim();
+    if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
+      await insumoGroupCreateOrMove(agrupacionNueva, [idNum], resolvedBizId);
+    }
+
+    setInsumoEditando(null);
+    window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: idNum } }));
+  }, [resolvedBizId, agrupacionActualDeInsumo]);
   const [revisionMasivaOpen, setRevisionMasivaOpen] = useState(false);
   useEffect(() => {
     const abrir = (e) => {
@@ -1698,6 +1764,7 @@ export default function InsumosMain() {
             loading={false}
             onEdit={() => { }}
             onOpenEditModal={(ins) => setInsumoEditando(ins)}
+            onItemsOrdenados={setInsumosOrdenados}
             onDelete={() => { }}
             noBusiness={!businessId}
             isStaff={isStaff}
@@ -1815,16 +1882,22 @@ export default function InsumosMain() {
         }}
       />
 
-      <InsumoNuevoModal
-        open={!!insumoEditando}
-        insumo={insumoEditando}
-        onClose={() => setInsumoEditando(null)}
-        businessId={resolvedBizId}
-        onCreated={() => {
-          forceRefresh();
-          window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: insumoEditando?.id } }));
-        }}
-      />
+      {!!insumoEditando && (
+        <EditarItemModal
+          open
+          tipo="insumo"
+          items={insumosOrdenados}
+          itemId={insumoEditando?.id}
+          agrupaciones={agrupacionesParaEditModalInsumo}
+          rubros={rubrosParaEditModalInsumo}
+          onClose={() => setInsumoEditando(null)}
+          onNavegar={(id) => setInsumoEditando((prev) => ({ ...(prev || {}), id }))}
+          onGuardar={async (datos) => {
+            await guardarEdicionInsumo(datos);
+            forceRefresh();
+          }}
+        />
+      )}
 
       {/* ── Botón "+ Agregar" unificado: crear/cargar artículos sin salir de Insumos ── */}
       <ArticuloNuevoModal

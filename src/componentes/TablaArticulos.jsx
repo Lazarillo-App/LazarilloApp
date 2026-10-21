@@ -1522,7 +1522,13 @@ export default function TablaArticulos({
   // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,
   // mismo patrón que navReceta/navegarReceta de arriba ──
   const itemsParaEditModal = useMemo(
-    () => flatRows.filter((r) => r.kind === "item").map((r) => r.art),
+    () => flatRows.filter((r) => r.kind === "item").map((r) => {
+      const a = r.art;
+      // Nomenclatura invertida histórica (ver ABMModals.jsx:604-607): en
+      // maxi_articles la columna `subrubro` es el "Rubro" que ve el usuario,
+      // y `categoria` es el "Subrubro".
+      return { ...a, id: getId(a), rubro: a.subrubro || '', subrubro: a.categoria || '' };
+    }),
     [flatRows]);
 
   // A diferencia de currentGroupId en ArticuloAccionesMenu (que asume que se

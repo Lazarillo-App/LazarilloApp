@@ -207,6 +207,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   loading = false,
   onEdit,
   onOpenEditModal,
+  onItemsOrdenados,
   onDelete,
   noBusiness = false,
   businessId,
@@ -781,6 +782,25 @@ const InsumosTable = forwardRef(function InsumosTable({
     return out;
   }, [groupedRows, agrupacionInfo]);
 
+  // EditarItemModal necesita recorrer EXACTAMENTE lo que el usuario ve (este
+  // orden agrupado por rubro + el sort/filtro de esta tabla), no el maestro
+  // crudo que le llega a InsumosMain por props — se avisa hacia arriba porque
+  // el estado del modal vive en InsumosMain, no acá.
+  const itemsOrdenados = useMemo(
+    () => flatRows.filter((r) => r.type === "insumo").map((r) => {
+      const d = r.data;
+      // EditarItemModal espera nombres genéricos (rubro/unidad/precio); los
+      // datos crudos del insumo usan rubro_nombre/unidad_med/precio_ref.
+      return {
+        ...d,
+        rubro: d.rubro_nombre || d.rubroNombre || d.rubro || '',
+        unidad: d.unidad_med || d.unidad || '',
+        precio: d.precio_ref ?? d.precio ?? '',
+      };
+    }),
+    [flatRows]);
+  useEffect(() => { onItemsOrdenados?.(itemsOrdenados); }, [itemsOrdenados, onItemsOrdenados]);
+
   const idToIndex = useMemo(() => {
     const m = new Map();
     flatRows.forEach((row, i) => {
@@ -1189,7 +1209,16 @@ const InsumosTable = forwardRef(function InsumosTable({
                       style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--color-primary, #1976d2)' }}
                     />
                   )}
-                  <div>{displayCode(r)}</div>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); onOpenEditModal?.(r); }}
+                    title="Editar insumo"
+                    style={{
+                      cursor: 'pointer', color: '#3C9BD6', fontWeight: 600,
+                      textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2,
+                    }}
+                  >
+                    {displayCode(r)}
+                  </div>
 
                   {/* Nombre: con indicador si tiene receta cargada */}
                   <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
