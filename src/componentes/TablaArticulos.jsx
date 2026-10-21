@@ -1591,7 +1591,6 @@ export default function TablaArticulos({
   }, [manuales, priceConfig]);
 
   // ── Color de la lista activa (para teñir UI) ──
-  const DEFAULT_LIST_COLORS = ['#2492C8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
   const currentListColor = useMemo(() => {
     if (!currentPriceList) return 'var(--color-primary)';
     if (currentPriceList.color) return currentPriceList.color;
