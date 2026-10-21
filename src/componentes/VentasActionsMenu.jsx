@@ -10,12 +10,12 @@ import {
     Typography,
     Box,
     Chip,
+    Tooltip,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SyncIcon from '@mui/icons-material/Sync';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import Badge from '@mui/material/Badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -72,6 +72,24 @@ export default function VentasActionsMenu({
         if (onExport) onExport();
     };
 
+    // El aviso tenía dos íconos (badge "!" arriba del botón y un triángulo
+    // adentro) que disparaban con la MISMA condición (alertaVentas?.hayAlerta)
+    // y ninguno explicaba qué pasaba al pasar el mouse — quedó uno solo (el
+    // badge), con un tooltip que dice cuántos días hace que no hay ventas
+    // sincronizadas y desde cuándo.
+    const tooltipAlerta = useMemo(() => {
+        if (!alertaVentas?.hayAlerta) return '';
+        const dias = alertaVentas.diasSinVentas;
+        const desde = dias != null ? `Hace ${dias} día${dias === 1 ? '' : 's'} que no se sincronizan ventas` : 'No hay ventas sincronizadas';
+        let ultima = '';
+        try {
+            if (alertaVentas.ultimaVenta) {
+                ultima = ` (última: ${format(new Date(alertaVentas.ultimaVenta), 'dd/MM/yyyy', { locale: es })})`;
+            }
+        } catch { /* fecha inválida, se omite */ }
+        return `${desde}${ultima}. Hacé clic para sincronizar.`;
+    }, [alertaVentas]);
+
     // Formatear rango para mostrar
     const rangoLabel = useMemo(() => {
         if (!rango?.from || !rango?.to) return 'Sin período';
@@ -89,34 +107,33 @@ export default function VentasActionsMenu({
 
     return (
         <>
-            <Badge
-                badgeContent={alertaVentas?.hayAlerta ? '!' : null}
-                color="warning"
-                sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', minWidth: 16, height: 16, fontWeight: 700 } }}
-            >
-                <Button
-                    variant="contained"
-                    startIcon={<SyncIcon />}
-                    onClick={handleClick}
-                    disabled={disabled}
-                    sx={{
-                        textTransform: 'none',
-                        bgcolor: themeColors.primary,
-                        color: themeColors.onPrimary,
-                        '&:hover': {
-                            bgcolor: themeColors.primary,
-                            filter: 'brightness(0.9)',
-                        },
-                        boxShadow: 2,
-                        padding: '7.5px 9px',
-                    }}
+            <Tooltip title={tooltipAlerta} arrow disableHoverListener={!alertaVentas?.hayAlerta}>
+                <Badge
+                    badgeContent={alertaVentas?.hayAlerta ? '!' : null}
+                    color="warning"
+                    sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', minWidth: 16, height: 16, fontWeight: 700 } }}
                 >
-                    Gestionar ventas
-                    {alertaVentas?.hayAlerta && (
-                        <WarningAmberIcon sx={{ fontSize: 14, ml: 0.5, color: '#fbbf24' }} />
-                    )}
-                </Button>
-            </Badge>
+                    <Button
+                        variant="contained"
+                        startIcon={<SyncIcon />}
+                        onClick={handleClick}
+                        disabled={disabled}
+                        sx={{
+                            textTransform: 'none',
+                            bgcolor: themeColors.primary,
+                            color: themeColors.onPrimary,
+                            '&:hover': {
+                                bgcolor: themeColors.primary,
+                                filter: 'brightness(0.9)',
+                            },
+                            boxShadow: 2,
+                            padding: '7.5px 9px',
+                        }}
+                    >
+                        Gestionar ventas
+                    </Button>
+                </Badge>
+            </Tooltip>
 
             <Menu
                 anchorEl={anchorEl}
