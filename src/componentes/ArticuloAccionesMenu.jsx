@@ -343,7 +343,7 @@ function ArticuloAccionesMenu({
   }, [agrupaciones, articuloIdNum, discontinuadosId]);
 
   const agrupacionesLocalesParaMover = useMemo(() => {
-    return (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g));
+    return (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g) && !esTop20Group(g));
   }, [agrupaciones]);
 
   // ── Handlers básicos ───────────────────────────────────────────────────────

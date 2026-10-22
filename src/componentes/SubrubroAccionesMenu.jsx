@@ -34,6 +34,9 @@ const esTodoGroup = (g) => {
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupación' ||
     n === 'sin agrupar' || n === 'sin grupo';
 };
+// Top 20 es automática (ranking de ventas, se recalcula sola) — nunca es un
+// destino válido para mover/asignar artículos a mano.
+const esTop20Group = (g) => norm(g?.nombre) === 'top 20';
 
 const mapRowToArticle = (row) => {
   const raw = row?.raw || {};
@@ -86,7 +89,7 @@ function useAgrupacionesBiz(bizId) {
     setLoading(true);
     obtenerAgrupaciones(id).then(({ list }) => {
       if (!alive) return;
-      const reales = (list || []).filter(g => !esTodoGroup(g) && !isDiscontinuadosGroup(g));
+      const reales = (list || []).filter(g => !esTodoGroup(g) && !isDiscontinuadosGroup(g) && !esTop20Group(g));
       setAgrupaciones(reales);
     }).catch(() => {
       if (alive) setAgrupaciones([]);
@@ -363,7 +366,7 @@ function SubrubroAccionesMenu({
 
   // Agrupaciones locales para el modal Mover (sin Discontinuados)
   const agrupacionesLocalesParaMover = useMemo(
-    () => (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g)),
+    () => (agrupaciones || []).filter(g => !isDiscontinuadosGroup(g) && !esTop20Group(g)),
     [agrupaciones]
   );
 
