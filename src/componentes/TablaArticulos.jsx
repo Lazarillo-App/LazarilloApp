@@ -2049,7 +2049,7 @@ export default function TablaArticulos({
             if (col.id === 'acciones') {
               if (isTop20View) return <div key="acciones" />;
               return (
-                <div key="acciones" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <div key="acciones" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <SubrubroAccionesMenu
                   subrubro={groupKeyName}
                   todosArticulos={categorias}
@@ -2625,7 +2625,7 @@ export default function TablaArticulos({
               if (isTop20View) return <div key="acciones" />;
               const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
               return (
-                <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
                     onEditar={(art) => setEditandoArticuloId(getId(art))}
