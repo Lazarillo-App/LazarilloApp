@@ -1414,6 +1414,8 @@ export default function TablaArticulos({
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
 
+  const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
+
   // Al cambiar de agrupación, arrancar siempre desde arriba — antes quedaba en el
   // mismo scroll (nivel de píxeles) de la agrupación anterior, así que si estabas
   // mirando el final de una lista larga y cambiabas a otra agrupación más corta,
@@ -1447,9 +1449,14 @@ export default function TablaArticulos({
   const gridTemplate = useMemo(() => {
     const check = '28px ';
     const branchCols = hasBranches ? branches.map(() => '.28fr').join(' ') + ' ' : '';
-    const dynCols = visibleCols.map(c => c.width).join(' ');
+    // En Sin Agrupación, la columna de acciones también tiene que alojar el
+    // botón de "Mover a X"/"Elegir agrupación" (texto, no solo el ⋮) — si no,
+    // queda apretada contra la columna de "Nuevo precio" de al lado.
+    const dynCols = visibleCols
+      .map(c => (c.id === 'acciones' && isTodo ? 'minmax(170px, 1.4fr)' : c.width))
+      .join(' ');
     return `${check}minmax(56px, 90px) minmax(0, .5fr) minmax(90px, 130px) ${branchCols}${dynCols}`;
-  }, [hasBranches, branches, visibleCols]);
+  }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
   // las 6 filas que comparten `gridTemplate` (zonas, header, secciones, ítems, sticky)
@@ -1458,7 +1465,6 @@ export default function TablaArticulos({
 
   const cellNum = { textAlign: "left", fontVariantNumeric: "tabular-nums", color: TABLE_TEXT };
   const ITEM_H = 50;
-  const isTodo = agrupSelView ? esTodoGroup(agrupSelView) : false;
   // Top 20 es una vista automática y de solo lectura — sin gestión manual
   // de ningún tipo, ni siquiera "quitar"/"mover" por artículo o por bloque.
   const isTop20View = agrupSelView ? esTop20Group(agrupSelView) : false;
@@ -2049,8 +2055,8 @@ export default function TablaArticulos({
             if (col.id === 'acciones') {
               if (isTop20View) return <div key="acciones" />;
               return (
+                <div key="acciones" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <SubrubroAccionesMenu
-                  key="acciones"
                   subrubro={groupKeyName}
                   todosArticulos={categorias}
                   onMutateGroups={onMutateGroups}
@@ -2075,6 +2081,7 @@ export default function TablaArticulos({
                   priceListsByList={priceListsByList}
                   rootBizId={rootBizId}
                 />
+                </div>
               );
             }
             return <div key={col.id} />;
