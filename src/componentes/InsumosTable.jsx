@@ -1215,11 +1215,6 @@ const InsumosTable = forwardRef(function InsumosTable({
                             rubro sin agrupar
                           </span>
                         )}
-                        {repartoDeRubro && repartoDeRubro.length > 1 && (
-                          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309' }}>
-                            repartido entre {repartoDeRubro.length} agrupaciones
-                          </span>
-                        )}
                       </span>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

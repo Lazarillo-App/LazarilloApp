@@ -1962,13 +1962,7 @@ export default function TablaArticulos({
                   </span>
                 );
               }
-              if (reparto.length > 1) {
-                return (
-                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309' }}>
-                    repartido entre {reparto.length} agrupaciones
-                  </span>
-                );
-              }
+              if (reparto.length > 1) return null;
               return (
                 <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309', fontWeight: 600 }}>
                   rubro sin agrupar
@@ -2904,7 +2898,9 @@ export default function TablaArticulos({
                   );
                   case 'acciones': return (
                     <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      {!isStaff && (
+                      {/* En Sin Agrupación ese espacio lo usan los botones de
+                          "Mover a…" — el panel de columnas no se usa ahí. */}
+                      {!isStaff && !isTodo && (
                         <IconButton
                           size="small"
                           onClick={() => setColDlgOpen(true)}
