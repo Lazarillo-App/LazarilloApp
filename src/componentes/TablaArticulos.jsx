@@ -1569,6 +1569,49 @@ export default function TablaArticulos({
     return out;
   }, [agrupaciones, campoRepartoActual]);
 
+  // Resumen para el aviso de Sin Agrupación: cuántos artículos hay en total y
+  // cuántos de ellos tienen un destino sin ambigüedad (su rubro/subrubro vive
+  // en una única agrupación real hoy), agrupados por destino para el botón
+  // de mover todos juntos de una.
+  const resumenSinAgrupacionArticulos = useMemo(() => {
+    if (!isTodo) return null;
+    let total = 0, conDestino = 0;
+    const porDestino = new Map();
+    (flatRows || []).filter((r) => r.kind === "header").forEach((h) => {
+      const key = String((campoRepartoActual === "subrubro" ? h.subrubro : h.categoria) || '').trim().toLowerCase();
+      const dest = repartoPorGrupoKey.get(key) || [];
+      const ids = h.ids || [];
+      total += ids.length;
+      if (dest.length === 1) {
+        conDestino += ids.length;
+        const groupKey = Number(dest[0].groupId);
+        if (!porDestino.has(groupKey)) porDestino.set(groupKey, { nombre: dest[0].nombre, ids: [] });
+        porDestino.get(groupKey).ids.push(...ids);
+      }
+    });
+    return { total, conDestino, porDestino };
+  }, [isTodo, flatRows, campoRepartoActual, repartoPorGrupoKey]);
+
+  const [moviendoBulkArticulos, setMoviendoBulkArticulos] = useState(false);
+  const moverTodosConDestinoArticulos = useCallback(async () => {
+    if (!resumenSinAgrupacionArticulos?.porDestino?.size) return;
+    setMoviendoBulkArticulos(true);
+    try {
+      for (const [, info] of resumenSinAgrupacionArticulos.porDestino) {
+        await httpBiz('/agrupaciones/create-or-move', {
+          method: 'POST', body: { nombre: info.nombre, ids: info.ids },
+        }, activeBizId);
+      }
+      openSnack?.(`Movidos ${resumenSinAgrupacionArticulos.conDestino} artículos`, 'success');
+      refetchLocal();
+    } catch (e) {
+      console.error('MOVER_BULK_SIN_AGRUPACION_ARTICULOS_ERROR', e);
+      openSnack?.('No se pudieron mover todos los artículos', 'error');
+    } finally {
+      setMoviendoBulkArticulos(false);
+    }
+  }, [resumenSinAgrupacionArticulos, activeBizId, openSnack, refetchLocal]);
+
   const guardarEdicionArticulo = useCallback(async (datos) => {
     const idNum = Number(datos.id);
     await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
@@ -1903,6 +1946,28 @@ export default function TablaArticulos({
                   · objetivo {fmt(objR, 0)}%
                 </span>
               ) : null;
+            })()}
+            {isTodo && (() => {
+              const reparto = repartoPorGrupoKey.get(String(groupKeyName || '').trim().toLowerCase()) || [];
+              if (reparto.length === 1) {
+                return (
+                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>
+                    pertenece a <strong style={{ color: '#15803d' }}>{reparto[0].nombre}</strong>
+                  </span>
+                );
+              }
+              if (reparto.length > 1) {
+                return (
+                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309' }}>
+                    repartido entre {reparto.length} agrupaciones
+                  </span>
+                );
+              }
+              return (
+                <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309', fontWeight: 600 }}>
+                  rubro sin agrupar
+                </span>
+              );
             })()}
           </div>
 
@@ -2559,10 +2624,11 @@ export default function TablaArticulos({
               if (isTop20View) return <div key="acciones" />;
               const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
               return (
-                <div key="acciones" style={{ textAlign: 'center' }}>
+                <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
                     onEditar={(art) => setEditandoArticuloId(getId(art))}
+                    reparto={isTodo ? (repartoPorGrupoKey.get(String(a?.[campoRepartoActual] || '').trim().toLowerCase()) || []) : undefined}
                     esPromo={esPromo}
                     onCrearPromo={(art) => {
                       setRecetaArticulo({
@@ -2662,6 +2728,27 @@ export default function TablaArticulos({
       <div className="tabla-articulos-container" style={{ height: "100%" }}>
         <div ref={tablaWrapRef} style={{ height: "100%", width: "100%" }}>
           <div ref={tablaHeaderRef} className="table-col-header">
+            {isTodo && resumenSinAgrupacionArticulos && resumenSinAgrupacionArticulos.total > 0 && (
+              <Box sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                px: 1.75, py: 1, mb: 1, borderRadius: 2,
+                bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.85rem',
+              }}>
+                <span>
+                  ⚠️ Hay <strong>{resumenSinAgrupacionArticulos.total}</strong> artículo{resumenSinAgrupacionArticulos.total === 1 ? '' : 's'} sin agrupación.
+                  {resumenSinAgrupacionArticulos.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
+                </span>
+                {resumenSinAgrupacionArticulos.conDestino > 0 && (
+                  <Button
+                    size="small" variant="outlined" color="warning"
+                    onClick={moverTodosConDestinoArticulos} disabled={moviendoBulkArticulos}
+                    sx={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}
+                  >
+                    {moviendoBulkArticulos ? 'Moviendo…' : `Mover los ${resumenSinAgrupacionArticulos.conDestino} que tienen destino`}
+                  </Button>
+                )}
+              </Box>
+            )}
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
             <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'stretch' }}>
               <div />

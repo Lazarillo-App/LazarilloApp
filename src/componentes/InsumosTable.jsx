@@ -4,7 +4,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import InsumoAccionesMenu from "./InsumoAccionesMenu";
 import InsumoRubroAccionesMenu from "./InsumoRubroAccionesMenu";
-import { insumosRubrosList } from "../servicios/apiInsumos";
+import { insumosRubrosList, insumoGroupAddMultipleItems } from "../servicios/apiInsumos";
 import VirtualList from "./shared/VirtualList";
 import ComprasCell from './ComprasCell';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -871,6 +871,46 @@ const InsumosTable = forwardRef(function InsumosTable({
   const isTop20View =
     !!top20GroupId && !!selectedGroupId && Number(selectedGroupId) === Number(top20GroupId);
 
+  // Resumen para el aviso de Sin Agrupación: cuántos insumos hay en total y
+  // cuántos de ellos tienen un destino sin ambigüedad (su rubro vive en una
+  // única agrupación real hoy), agrupados por destino para el botón de mover
+  // todos juntos de una.
+  const resumenSinAgrupacion = useMemo(() => {
+    if (!isTodoView) return null;
+    let total = 0, conDestino = 0;
+    const porDestino = new Map();
+    groupedRows.forEach((group) => {
+      const dest = repartoPorRubro?.get(norm(group.label)) || [];
+      const n = group.rows.length;
+      total += n;
+      if (dest.length === 1) {
+        conDestino += n;
+        const key = Number(dest[0].groupId);
+        if (!porDestino.has(key)) porDestino.set(key, { nombre: dest[0].nombre, ids: [] });
+        group.rows.forEach((r) => porDestino.get(key).ids.push(Number(r.id)));
+      }
+    });
+    return { total, conDestino, porDestino };
+  }, [isTodoView, groupedRows, repartoPorRubro]);
+
+  const [moviendoBulk, setMoviendoBulk] = useState(false);
+  const moverTodosConDestino = useCallback(async () => {
+    if (!resumenSinAgrupacion?.porDestino?.size) return;
+    setMoviendoBulk(true);
+    try {
+      for (const [groupId, info] of resumenSinAgrupacion.porDestino) {
+        await insumoGroupAddMultipleItems(groupId, info.ids, originalBusinessId || businessId);
+      }
+      notify?.(`Movidos ${resumenSinAgrupacion.conDestino} insumos`, 'success');
+      await handleAfterAction();
+    } catch (e) {
+      console.error('MOVER_BULK_SIN_AGRUPACION_ERROR', e);
+      notify?.('No se pudieron mover todos los insumos', 'error');
+    } finally {
+      setMoviendoBulk(false);
+    }
+  }, [resumenSinAgrupacion, originalBusinessId, businessId, notify, handleAfterAction]);
+
   if (loading) {
     return <p style={{ padding: 16 }}>Cargando insumos...</p>;
   }
@@ -882,6 +922,27 @@ const InsumosTable = forwardRef(function InsumosTable({
       <div ref={tablaWrapRef} style={{ height: '100%', width: "100%", position: "relative" }}>
         {/* HEADER sticky */}
         <div ref={tablaHeaderRef} className="table-col-header">
+          {isTodoView && resumenSinAgrupacion && resumenSinAgrupacion.total > 0 && (
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              px: 1.75, py: 1, mb: 1, borderRadius: 2,
+              bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.85rem',
+            }}>
+              <span>
+                ⚠️ Hay <strong>{resumenSinAgrupacion.total}</strong> insumo{resumenSinAgrupacion.total === 1 ? '' : 's'} sin agrupación.
+                {resumenSinAgrupacion.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
+              </span>
+              {resumenSinAgrupacion.conDestino > 0 && (
+                <Button
+                  size="small" variant="outlined" color="warning"
+                  onClick={moverTodosConDestino} disabled={moviendoBulk}
+                  sx={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}
+                >
+                  {moviendoBulk ? 'Moviendo…' : `Mover los ${resumenSinAgrupacion.conDestino} que tienen destino`}
+                </Button>
+              )}
+            </Box>
+          )}
           <div
             className="table-col-header-inner"
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
@@ -1113,6 +1174,7 @@ const InsumosTable = forwardRef(function InsumosTable({
 
               // ── HEADER DE RUBRO ──
               if (row.type === "rubro") {
+                const repartoDeRubro = isTodoView ? (repartoPorRubro?.get(norm(row.label)) || []) : null;
 
                 return (
                   <div
@@ -1143,6 +1205,21 @@ const InsumosTable = forwardRef(function InsumosTable({
                             ⚡ mixto
                           </span>
                         )}
+                        {repartoDeRubro && repartoDeRubro.length === 1 && (
+                          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>
+                            pertenece a <strong style={{ color: '#15803d' }}>{repartoDeRubro[0].nombre}</strong>
+                          </span>
+                        )}
+                        {repartoDeRubro && repartoDeRubro.length === 0 && (
+                          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309', fontWeight: 600 }}>
+                            rubro sin agrupar
+                          </span>
+                        )}
+                        {repartoDeRubro && repartoDeRubro.length > 1 && (
+                          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309' }}>
+                            repartido entre {repartoDeRubro.length} agrupaciones
+                          </span>
+                        )}
                       </span>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1154,7 +1231,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           elaboradoState={row.elaboradoState}
                           insumoIds={row.rows.map((r) => r.id)}
                           groups={groups}
-                          reparto={isTodoView ? (repartoPorRubro?.get(norm(row.label)) || []) : undefined}
+                          reparto={repartoDeRubro ?? undefined}
                           selectedGroupId={selectedGroupId}
                           discontinuadosGroupId={discontinuadosGroupId}
                           onRefetch={handleAfterAction}
@@ -1177,6 +1254,9 @@ const InsumosTable = forwardRef(function InsumosTable({
 
               // ── FILA DE INSUMO ──
               const r = row.data;
+              const repartoDelInsumo = isTodoView
+                ? (repartoPorRubro?.get(norm(r.rubro_nombre || r.rubroNombre || '')) || [])
+                : null;
 
               const isSelected = Number(r.id) === Number(selectedInsumoId);
               const shouldHighlight = jumpToInsumoId && Number(r.id) === Number(jumpToInsumoId);
@@ -1315,10 +1395,11 @@ const InsumosTable = forwardRef(function InsumosTable({
                         return null;
                       })}
 
-                      <div style={{ textAlign: "center" }}>
+                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
+                          reparto={repartoDelInsumo ?? undefined}
                           selectedGroupId={selectedGroupId}
                           discontinuadosGroupId={discontinuadosGroupId}
                           todoGroupId={todoGroupId}
@@ -1406,10 +1487,11 @@ const InsumosTable = forwardRef(function InsumosTable({
                           </div>
                         );
                       })}
-                      <div style={{ textAlign: "center" }}>
+                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
+                            reparto={repartoDelInsumo ?? undefined}
                             selectedGroupId={selectedGroupId}
                             discontinuadosGroupId={discontinuadosGroupId}
                             todoGroupId={todoGroupId}

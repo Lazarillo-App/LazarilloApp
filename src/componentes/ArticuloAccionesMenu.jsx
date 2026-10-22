@@ -262,6 +262,10 @@ function ArticuloAccionesMenu({
   rubrosDisponibles = [],
     accionesOcultas = [],
   onEditar,
+  // En qué agrupaciones reales ya tiene artículos el rubro de ESTE artículo
+  // hoy — [{groupId, nombre, count}]. Solo tiene sentido en Sin Agrupación:
+  // si hay una única, el botón inline mueve directo; si no, abre el selector.
+  reparto = undefined,
 }) {
   // ── Estado UI ──────────────────────────────────────────────────────────────
   const [anchorEl, setAnchorEl] = useState(null);
@@ -769,8 +773,33 @@ function ArticuloAccionesMenu({
   // "Quitar de esta agrupación" y "Crear promoción").
   const ocultas = useMemo(() => new Set(accionesOcultas || []), [accionesOcultas]);
 
+  const moverInlineDirecto = useCallback(() => {
+    if (!Array.isArray(reparto) || reparto.length !== 1) return;
+    ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
+  }, [reparto, agrupBizId]);
+
   return (
     <>
+      {isTodo && Array.isArray(reparto) && (
+        reparto.length === 1 ? (
+          <Button
+            size="small" variant="outlined" color="success"
+            onClick={moverInlineDirecto}
+            disabled={isMoving}
+            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+          >
+            → Mover a {reparto[0].nombre}
+          </Button>
+        ) : (
+          <Button
+            size="small" variant="outlined" color="warning"
+            onClick={openMover}
+            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+          >
+            {reparto.length > 1 ? '⚠ Elegir agrupación' : '⚠ Artículo sin agrupar'}
+          </Button>
+        )
+      )}
       <IconButton size="small" onClick={handleOpen}>
         <MoreVertIcon fontSize="small" />
       </IconButton>

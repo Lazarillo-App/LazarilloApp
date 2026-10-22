@@ -32,6 +32,10 @@ const getNum = (v) => Number(v ?? 0);
 function InsumoAccionesMenu({
   insumo,
   groups = [],
+  // En qué agrupaciones reales ya tiene insumos el rubro de ESTE insumo hoy
+  // — [{groupId, nombre, count}]. Solo tiene sentido en Sin Agrupación: si
+  // hay una única, el botón inline mueve directo; si no, abre el selector.
+  reparto = undefined,
   selectedGroupId,
   discontinuadosGroupId,
   todoGroupId,
@@ -292,10 +296,9 @@ function InsumoAccionesMenu({
   }
 
   /* ========== MOVER A OTRA AGRUPACIÓN ========== */
-  async function mover() {
-    if (!destId) return;
+  async function ejecutarMoverA(toId) {
+    if (!toId) return;
 
-    const toId = Number(destId);
     const fromId = !isTodoView && currentGroupId ? currentGroupId : null;
 
     if (fromId && fromId === toId) {
@@ -382,8 +385,41 @@ function InsumoAccionesMenu({
     }
   }
 
+  function mover() { return ejecutarMoverA(Number(destId)); }
+
+  // Si el rubro de este insumo ya vive en una única agrupación real hoy,
+  // mover directo ahí sin preguntar; si está repartido entre 2+, o es nuevo
+  // (no vive en ninguna), abrir el selector de siempre.
+  const openMoverInline = useCallback(() => {
+    if (Array.isArray(reparto) && reparto.length === 1) {
+      ejecutarMoverA(Number(reparto[0].groupId));
+      return;
+    }
+    openMover();
+  }, [reparto, openMover]);
+
   return (
     <>
+      {isTodoView && Array.isArray(reparto) && (
+        reparto.length === 1 ? (
+          <Button
+            size="small" variant="outlined" color="success"
+            onClick={() => ejecutarMoverA(Number(reparto[0].groupId))}
+            disabled={isMoving}
+            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+          >
+            → Mover a {reparto[0].nombre}
+          </Button>
+        ) : (
+          <Button
+            size="small" variant="outlined" color="warning"
+            onClick={openMoverInline}
+            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+          >
+            {reparto.length > 1 ? '⚠ Elegir agrupación' : '⚠ Insumo sin agrupar'}
+          </Button>
+        )
+      )}
       <IconButton size="small" onClick={handleOpen} disabled={staffMode && proponiendo}>
         <MoreVertIcon fontSize="small" />
       </IconButton>

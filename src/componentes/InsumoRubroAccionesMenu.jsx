@@ -398,6 +398,26 @@ export default function InsumoRubroAccionesMenu({
   /* ========== RENDER ========== */
   return (
     <>
+      {isTodoView && Array.isArray(reparto) && (
+        reparto.length === 1 ? (
+          <Button
+            size="small" variant="outlined" color="success"
+            onClick={() => ejecutarMoverA(Number(reparto[0].groupId))}
+            disabled={isMoving}
+            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+          >
+            {normalizedIds.length > 1 ? `Mover los ${normalizedIds.length} →` : 'Mover →'}
+          </Button>
+        ) : (
+          <Button
+            size="small" variant="outlined" color="warning"
+            onClick={openMover}
+            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+          >
+            {reparto.length > 1 ? 'Elegir agrupación →' : 'Seleccionar agrupación →'}
+          </Button>
+        )
+      )}
       <IconButton
         size="small"
         onClick={handleMenuOpen}

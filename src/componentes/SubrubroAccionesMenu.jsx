@@ -680,6 +680,26 @@ function SubrubroAccionesMenu({
 
   return (
     <>
+      {isTodo && Array.isArray(reparto) && (
+        reparto.length === 1 ? (
+          <Button
+            size="small" variant="outlined" color="success"
+            onClick={() => ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre })}
+            disabled={isMoving}
+            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+          >
+            {allArticleIdsForSub.length > 1 ? `Mover los ${allArticleIdsForSub.length} →` : 'Mover →'}
+          </Button>
+        ) : (
+          <Button
+            size="small" variant="outlined" color="warning"
+            onClick={openMover}
+            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+          >
+            {reparto.length > 1 ? 'Elegir agrupación →' : 'Seleccionar agrupación →'}
+          </Button>
+        )
+      )}
       <IconButton size="small" onClick={handleOpen} title="Acciones de subrubro">
         <MoreVertIcon fontSize="small" />
       </IconButton>
