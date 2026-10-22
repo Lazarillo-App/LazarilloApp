@@ -1545,6 +1545,30 @@ export default function TablaArticulos({
     return null;
   }, [agrupaciones]);
 
+  // Para cada valor de rubro/subrubro (según el modo de encabezado activo,
+  // normalizado), en qué agrupaciones reales ya tiene artículos hoy y cuántos
+  // — usado por "Mover a…" en Sin Agrupación: si el grupo ya vive en una sola
+  // agrupación, mueve directo ahí sin preguntar; si está repartido entre 2+,
+  // abre el selector de siempre.
+  const campoRepartoActual = tableHeaderMode === "cat-first" ? "subrubro" : "categoria";
+  const repartoPorGrupoKey = useMemo(() => {
+    const out = new Map();
+    for (const g of (agrupaciones || [])) {
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esTop20Group(g)) continue;
+      const counts = new Map();
+      (g.articulos || []).forEach((a) => {
+        const key = String(a?.[campoRepartoActual] || '').trim().toLowerCase();
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      counts.forEach((count, key) => {
+        if (!out.has(key)) out.set(key, []);
+        out.get(key).push({ groupId: g.id, nombre: g.nombre ?? g.name, count });
+      });
+    }
+    return out;
+  }, [agrupaciones, campoRepartoActual]);
+
   const guardarEdicionArticulo = useCallback(async (datos) => {
     const idNum = Number(datos.id);
     await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
@@ -1967,6 +1991,7 @@ export default function TablaArticulos({
                   onMutateGroups={onMutateGroups}
                   baseById={baseById}
                   isTodo={isTodo}
+                  reparto={isTodo ? (repartoPorGrupoKey.get(String(groupKeyName || '').trim().toLowerCase()) || []) : undefined}
                   agrupaciones={agrupaciones}
                   idsAsignadosGlobal={idsAsignadosGlobal}
                   agrupacionSeleccionada={agrupacionSeleccionada}

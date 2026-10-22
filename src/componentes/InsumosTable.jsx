@@ -213,6 +213,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   businessId,
   originalBusinessId,
   groups = [],
+  repartoPorRubro = null,
   selectedGroupId = null,
   discontinuadosGroupId = null,
   elaboradosGroupId = null,
@@ -1153,6 +1154,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           elaboradoState={row.elaboradoState}
                           insumoIds={row.rows.map((r) => r.id)}
                           groups={groups}
+                          reparto={isTodoView ? (repartoPorRubro?.get(norm(row.label)) || []) : undefined}
                           selectedGroupId={selectedGroupId}
                           discontinuadosGroupId={discontinuadosGroupId}
                           onRefetch={handleAfterAction}

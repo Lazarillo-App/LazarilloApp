@@ -41,6 +41,11 @@ export default function InsumoRubroAccionesMenu({
   rubroCodigo,
   insumoIds = [],
   groups = [],
+  // En qué agrupaciones reales ya tiene insumos este rubro hoy, y cuántos —
+  // [{groupId, nombre, count}]. Solo tiene sentido en Sin Agrupación: si el
+  // rubro ya vive en una única agrupación, "Mover a…" mueve directo ahí sin
+  // preguntar; si está repartido entre 2+, abre el selector de siempre.
+  reparto = undefined,
   selectedGroupId = null,
   discontinuadosGroupId = null,
   onRefetch,
@@ -227,20 +232,13 @@ export default function InsumoRubroAccionesMenu({
   };
 
   /* ========== MOVER (CON BULK) ========== */
-  const openMover = useCallback(() => {
-    handleMenuClose();
-    setTimeout(() => setDlgMoverOpen(true), 0);
-  }, [handleMenuClose]);
-
   const closeMover = useCallback(() => {
     setDlgMoverOpen(false);
     setDestId("");
   }, []);
 
-  const handleMover = async () => {
-    if (!normalizedIds.length || !destId) return;
-
-    const toId = Number(destId);
+  const ejecutarMoverA = useCallback(async (toId) => {
+    if (!normalizedIds.length || !toId) return;
 
     if (currentGroupId && currentGroupId === toId) {
       notify?.("Ya está en esa agrupación", "info");
@@ -272,7 +270,21 @@ export default function InsumoRubroAccionesMenu({
       setIsMoving(false);
       closeMover();
     }
-  };
+  }, [normalizedIds, currentGroupId, notify, closeMover, businessId, todoGroupId, labelCount, onReloadCatalogo, onRefetch]);
+
+  // Si el rubro ya vive en una única agrupación real hoy, mover directo ahí
+  // sin preguntar; si está repartido entre 2+, o es nuevo (no vive en
+  // ninguna), abrir el selector de siempre.
+  const openMover = useCallback(() => {
+    handleMenuClose();
+    if (Array.isArray(reparto) && reparto.length === 1) {
+      ejecutarMoverA(Number(reparto[0].groupId));
+      return;
+    }
+    setTimeout(() => setDlgMoverOpen(true), 0);
+  }, [handleMenuClose, reparto, ejecutarMoverA]);
+
+  const handleMover = () => ejecutarMoverA(Number(destId));
 
   /* ========== QUITAR DE AGRUPACIÓN ACTUAL ========== */
   const handleQuitarDeActual = async () => {

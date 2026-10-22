@@ -238,6 +238,11 @@ function SubrubroAccionesMenu({
   priceLists = [],
   priceListsByList = {},
     accionesOcultas = [],
+  // En qué agrupaciones reales ya tiene artículos este rubro/subrubro hoy, y
+  // cuántos — [{groupId, nombre, count}]. Solo tiene sentido en Sin
+  // Agrupación: si ya vive en una única agrupación, "Mover a…" mueve directo
+  // ahí sin preguntar; si está repartido entre 2+, abre el selector de siempre.
+  reparto = undefined,
 }) {
   const effectiveBusinessId = businessId ?? localStorage.getItem('activeBusinessId') ??
     localStorage.getItem('effectiveBusinessId') ?? null;
@@ -362,7 +367,14 @@ function SubrubroAccionesMenu({
     [agrupaciones]
   );
 
-  const openMover = useCallback(() => { handleClose(); setTimeout(() => setDlgMoverOpen(true), 0); }, [handleClose]);
+  const openMover = useCallback(() => {
+    handleClose();
+    if (Array.isArray(reparto) && reparto.length === 1) {
+      ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
+      return;
+    }
+    setTimeout(() => setDlgMoverOpen(true), 0);
+  }, [handleClose, reparto, agrupBizId]);
   const closeMover = useCallback(() => setDlgMoverOpen(false), []);
   const discBizId = rootBizId || agrupBizId;
 

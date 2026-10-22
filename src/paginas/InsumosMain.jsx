@@ -748,6 +748,40 @@ export default function InsumosMain() {
     });
   }, [groups, isSubnegocio, isMainDivision, activeDivisionInsumoGroupIds, assignedInsumoGroupIds]);
 
+  // id → rubro (normalizado), para cruzar membresía de agrupaciones por rubro.
+  const rubroPorInsumoId = useMemo(() => {
+    const m = new Map();
+    (allInsumos || []).forEach((i) => {
+      const id = Number(i?.id);
+      if (!Number.isFinite(id)) return;
+      const rubro = String(i?.rubro_nombre || i?.rubroNombre || i?.rubro || '').trim().toLowerCase();
+      if (rubro) m.set(id, rubro);
+    });
+    return m;
+  }, [allInsumos]);
+
+  // Para cada rubro (normalizado): en qué agrupaciones reales ya tiene insumos
+  // hoy, y cuántos — usado por "Mover a…" en Sin Agrupación para mover directo
+  // si el rubro vive en una sola, o abrir el selector si está repartido.
+  const repartoPorRubro = useMemo(() => {
+    const out = new Map();
+    for (const g of (groupsScoped || [])) {
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esElaboradosGroup(g) || esTop20Group(g)) continue;
+      const counts = new Map();
+      (g.items || g.insumos || []).forEach((it) => {
+        const id = Number(it?.insumo_id ?? it?.id);
+        const rubro = rubroPorInsumoId.get(id);
+        if (!rubro) return;
+        counts.set(rubro, (counts.get(rubro) || 0) + 1);
+      });
+      counts.forEach((count, rubro) => {
+        if (!out.has(rubro)) out.set(rubro, []);
+        out.get(rubro).push({ groupId: g.id, nombre: g.nombre ?? g.name, count });
+      });
+    }
+    return out;
+  }, [groupsScoped, rubroPorInsumoId]);
+
   /* ── Recarga principal — cacheada (React Query) ──
      Antes esto era un único useEffect que, en CADA montaje (cada navegación de vuelta a
      /insumos), volvía a pedir rubros + los 2000+ insumos + grupos desde cero. Ahora las
@@ -1772,6 +1806,7 @@ export default function InsumosMain() {
             businessId={resolvedBizId}
             originalBusinessId={businessId}
             groups={groupsScoped}
+            repartoPorRubro={repartoPorRubro}
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
             elaboradosGroupId={elaboradosGroupId}
