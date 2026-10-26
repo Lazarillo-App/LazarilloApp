@@ -75,6 +75,22 @@ export async function purchasesFoodCost(bizId, { from, to, branch_id } = {}) {
   return Array.isArray(data.items) ? data.items : [];
 }
 
+// GET /api/purchases/food-cost-monthly?from=&to=&branch_id=
+// Igual que purchasesFoodCost pero partido mes a mes — [{mes:'2026-01', items:[...]}]
+// para el gráfico de evolución de KpiFoodCost.jsx (prop `porMes`).
+export async function purchasesFoodCostMonthly(bizId, { from, to, branch_id } = {}) {
+  const params = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  if (branch_id !== null && branch_id !== undefined) params.branch_id = branch_id;
+  const res = await fetch(`${BASE}/purchases/food-cost-monthly${qs(params)}`, {
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `Error ${res.status}`);
+  return Array.isArray(data.months) ? data.months : [];
+}
+
 // GET /api/purchases/ranking?from=&to=&branch_id=&pin=&limit=
 // Ranking de insumos por gasto total del período — top N + (si queda afuera)
 // la fila del insumo que se está viendo, con su rank real. Ver ComprasMiniDetalleModal.jsx.

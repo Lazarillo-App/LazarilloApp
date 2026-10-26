@@ -11,7 +11,7 @@ import SalesPickerIcon from '../componentes/SalesPickerIcon';
 import { lastNDaysUntilYesterday, daysByMode } from '../utils/fechas';
 import { useBusiness } from '../context/BusinessContext';
 import { BusinessesAPI, httpBiz, RecetasAPI, PriceConfigAPI } from "../servicios/apiBusinesses";
-import { BASE } from "../servicios/apiBase";
+import { BASE, api } from "../servicios/apiBase";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
 import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group } from '../utils/articuloGruposEspeciales';
@@ -49,7 +49,7 @@ import SucursalSelector from '@/componentes/SucursalSelector';
 import ArticleListSelector from '../componentes/ArticleListSelector';
 import PriceListConfigModal from '../componentes/PriceListConfigModal';
 import KpiFoodCost, { kpiGeneralSemilla } from '@/componentes/KpiFoodCost';
-import { purchasesFoodCost } from '@/servicios/apiPurchases';
+import { purchasesFoodCost, purchasesFoodCostMonthly } from '@/servicios/apiPurchases';
 import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
@@ -1326,6 +1326,88 @@ export default function ArticulosMain(props) {
       .catch(() => { if (vivo) setItemsCompraFoodCost([]); });
     return () => { vivo = false; };
   }, [activeBizId, periodo?.from, periodo?.to, activeBranchFilter]);
+
+  // Evolución mes a mes para el gráfico de KpiFoodCost (prop `porMes`). Es
+  // aparte del período filtrado de arriba: siempre mira los últimos 13 meses
+  // terminando en el mes del período actual, para tener 12 meses de promedio
+  // además del mes que se está mirando.
+  const [ventasPorMesFoodCost, setVentasPorMesFoodCost] = useState([]);
+  const [comprasPorMesFoodCost, setComprasPorMesFoodCost] = useState([]);
+  useEffect(() => {
+    if (!activeBizId) { setVentasPorMesFoodCost([]); setComprasPorMesFoodCost([]); return; }
+    let vivo = true;
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const to = periodo?.to || hoyISO;
+    const [toY, toM] = to.slice(0, 7).split('-').map(Number);
+    const from = new Date(toY, toM - 1 - 12, 1).toISOString().slice(0, 10);
+    const branchParam = activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
+      : activeBranchFilter?.mode === 'main' ? 'none'
+      : 'all';
+
+    // Ventas: mismo endpoint que useSalesData (día a día por artículo), pero
+    // en vez de resumir TODO el rango en un solo total, se agrupa por mes acá
+    // y se cruza con `categorias` (rubro/subrubro) igual que itemsVentaFoodCost.
+    (async () => {
+      try {
+        const branchQS = branchParam && branchParam !== 'all' ? `&branch_id=${branchParam}` : '';
+        const data = await api(`/businesses/${activeBizId}/sales/items?from=${from}&to=${to}${branchQS}`);
+        if (!vivo) return;
+        const porMes = new Map(); // 'YYYY-MM' -> Map(articleId -> importe)
+        (data?.items || []).forEach((r) => {
+          const id = Number(r.article_id);
+          const mes = String(r.day || '').slice(0, 7);
+          if (!Number.isFinite(id) || !mes) return;
+          if (!porMes.has(mes)) porMes.set(mes, new Map());
+          const m = porMes.get(mes);
+          m.set(id, (m.get(id) || 0) + Number(r.amount || 0));
+        });
+        const meses = [...porMes.entries()].map(([mes, amounts]) => {
+          const ventas = [];
+          for (const sub of categorias || []) {
+            const rubro = sub?.subrubro || 'Sin rubro';
+            for (const cat of sub?.categorias || []) {
+              const subrubro = cat?.categoria || 'Sin subrubro';
+              for (const a of cat?.articulos || []) {
+                const aid = getArtId(a);
+                if (aid == null) continue;
+                const amount = amounts.get(Number(aid)) || 0;
+                if (!(amount > 0)) continue;
+                ventas.push({
+                  id: String(aid), nombre: a?.nombre || `#${aid}`,
+                  agrupacion: agrupacionDeArticuloFoodCost(aid),
+                  rubro, subrubro, importe: amount,
+                });
+              }
+            }
+          }
+          return { mes, ventas };
+        });
+        setVentasPorMesFoodCost(meses);
+      } catch {
+        if (vivo) setVentasPorMesFoodCost([]);
+      }
+    })();
+
+    purchasesFoodCostMonthly(activeBizId, { from, to, branch_id: branchParam })
+      .then((months) => { if (vivo) setComprasPorMesFoodCost(months); })
+      .catch(() => { if (vivo) setComprasPorMesFoodCost([]); });
+
+    return () => { vivo = false; };
+  }, [activeBizId, periodo?.to, activeBranchFilter, categorias, agrupacionDeArticuloFoodCost]);
+
+  // Un solo array {mes, ventas, compras} — la forma que espera KpiFoodCost.
+  const porMesFoodCost = useMemo(() => {
+    const byMes = new Map();
+    ventasPorMesFoodCost.forEach(({ mes, ventas }) => {
+      if (!byMes.has(mes)) byMes.set(mes, { mes, ventas: [], compras: [] });
+      byMes.get(mes).ventas = ventas;
+    });
+    comprasPorMesFoodCost.forEach(({ mes, items }) => {
+      if (!byMes.has(mes)) byMes.set(mes, { mes, ventas: [], compras: [] });
+      byMes.get(mes).compras = items;
+    });
+    return [...byMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+  }, [ventasPorMesFoodCost, comprasPorMesFoodCost]);
 
   const [kpisFoodCost, setKpisFoodCost] = useState([]);
   const kpisFoodCostLoadedRef = useRef(false);
@@ -2913,6 +2995,7 @@ export default function ArticulosMain(props) {
               kpis={kpisFoodCost}
               onChange={handleKpisFoodCostChange}
               periodoLabel={periodoLabelFoodCost}
+              porMes={porMesFoodCost}
             />
           )}
         </div>
