@@ -1192,7 +1192,7 @@ export default function KpiFoodCost({
 
       {abierto && (
         <div
-          className="kfc-panel"
+          className={`kfc-panel${modo === "config" ? " kfc-modocfg" : ""}`}
           ref={panelRef}
           onScroll={(e) => {
             const v = e.currentTarget.scrollTop > 220;
@@ -1515,13 +1515,17 @@ const CSS = `
 
 .kfc-panel{position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:860px;max-width:94vw;
   border:1px solid #DCE6E2;border-radius:10px;background:#F6F9F8;box-shadow:0 12px 36px rgba(20,34,30,.19);
-  /* Alto FIJO (no max-height): el tamaño del panel no depende de cuánto
-     contenido tenga — siempre el mismo porte, grande, y lo que no entra
-     scrollea ADENTRO (los tabs arriba y el pie con Guardar quedan sticky
-     dentro de ese scroll, siempre visibles). El panel es absolute bajo el
-     botón que lo abre, no fixed al viewport: por eso el tope sigue atado a
-     100dvh, para no empujarlo más abajo de lo que la página deja ver. */
-  height:min(calc(100dvh - 90px),700px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
+  /* Por defecto (resumen/gráfico, contenido corto) el panel se ajusta al
+     contenido, con este tope como techo. El panel es absolute bajo el botón
+     que lo abre, no fixed al viewport: el tope sigue atado a 100dvh para no
+     empujarlo más abajo de lo que la página deja ver. */
+  max-height:min(calc(100dvh - 90px),700px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
+/* Modo Configurar: contenido largo (listas de rubros/subrubros) — ahí SÍ
+   conviene alto FIJO en vez de max-height, así el panel no se encoge ni se
+   estira con cada tilde y el pie con Guardar queda en el mismo lugar; lo
+   que no entra scrollea adentro (tabs arriba y pie abajo quedan sticky
+   dentro de ese scroll, siempre visibles). */
+.kfc-panel.kfc-modocfg{height:min(calc(100dvh - 110px),670px);}
 .kfc-tabs{display:flex;gap:6px;padding:9px 14px;border-bottom:1px solid #EEF1F3;flex-wrap:wrap;
   align-items:center;position:sticky;top:0;background:#F6F9F8;z-index:3;}
 .kfc-tbk{border:1px solid #E1E6EA;border-radius:16px;padding:5px 13px;font-size:12px;color:#7D8A88;cursor:pointer;white-space:nowrap;}
