@@ -1504,11 +1504,14 @@ const CSS = `
 .kfc-arrow{color:#8B9A95;font-size:13px;transition:transform .3s;}
 .kfc-arrow.ab{transform:rotate(180deg);}
 
-.kfc-panel{position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:742px;max-width:94vw;
+.kfc-panel{position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:860px;max-width:94vw;
   border:1px solid #DCE6E2;border-radius:10px;background:#F6F9F8;box-shadow:0 12px 36px rgba(20,34,30,.19);
-  /* El tope viejo de 540px cortaba la lista: el contenido del modo Configurar
-     mide ~710px y se veían 6 filas de 11. */
-  max-height:min(calc(100dvh - 78px),760px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
+  /* Más ancho (742→860) para que Ventas/Compras respiren sin wrappear tanto,
+     y menos alto tope — el panel es absolute bajo el botón que lo abre, no
+     fixed al viewport, así que si queda más alto que el espacio visible de
+     la página el botón de guardar (sticky al fondo DEL PANEL) termina fuera
+     de la pantalla igual, sin que ningún scroll interno lo traiga de vuelta. */
+  max-height:min(calc(100dvh - 120px),620px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
 .kfc-tabs{display:flex;gap:6px;padding:9px 14px;border-bottom:1px solid #EEF1F3;flex-wrap:wrap;
   align-items:center;position:sticky;top:0;background:#F6F9F8;z-index:3;}
 .kfc-tbk{border:1px solid #E1E6EA;border-radius:16px;padding:5px 13px;font-size:12px;color:#7D8A88;cursor:pointer;white-space:nowrap;}
