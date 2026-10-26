@@ -1,5 +1,6 @@
 // src/componentes/KpiFoodCost.jsx
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { showConfirm } from "@/servicios/appConfirm";
 
 /* ──────────────────────────────────────────────────────────────
    KPI de Food Cost — Lazarillo Gestión
@@ -1431,12 +1432,20 @@ export default function KpiFoodCost({
                 {!kpi.general && (
                   <span
                     className="kfc-del"
-                    onClick={() => {
+                    onClick={async () => {
+                      // Borra sin avisar y sin vuelta atrás — un clic de más acá
+                      // (fácil de confundir con otro botón del pie) se llevaba
+                      // el KPI entero sin que nadie se diera cuenta.
+                      const ok = await showConfirm(
+                        `¿Eliminar el KPI "${kpi.nombre}"? Esta acción no se puede deshacer.`,
+                        { danger: true }
+                      );
+                      if (!ok) return;
                       const resto = kpis.filter((k) => k.id !== kpi.id);
                       setActual(resto[0]?.id);
                       aplicar(resto);
                     }}
-                  >
+                  >🗑
                     Eliminar este KPI
                   </span>
                 )}
@@ -1506,12 +1515,13 @@ const CSS = `
 
 .kfc-panel{position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:860px;max-width:94vw;
   border:1px solid #DCE6E2;border-radius:10px;background:#F6F9F8;box-shadow:0 12px 36px rgba(20,34,30,.19);
-  /* Más ancho (742→860) para que Ventas/Compras respiren sin wrappear tanto,
-     y menos alto tope — el panel es absolute bajo el botón que lo abre, no
-     fixed al viewport, así que si queda más alto que el espacio visible de
-     la página el botón de guardar (sticky al fondo DEL PANEL) termina fuera
-     de la pantalla igual, sin que ningún scroll interno lo traiga de vuelta. */
-  max-height:min(calc(100dvh - 120px),620px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
+  /* Alto FIJO (no max-height): el tamaño del panel no depende de cuánto
+     contenido tenga — siempre el mismo porte, grande, y lo que no entra
+     scrollea ADENTRO (los tabs arriba y el pie con Guardar quedan sticky
+     dentro de ese scroll, siempre visibles). El panel es absolute bajo el
+     botón que lo abre, no fixed al viewport: por eso el tope sigue atado a
+     100dvh, para no empujarlo más abajo de lo que la página deja ver. */
+  height:min(calc(100dvh - 90px),700px);overflow-y:auto;overscroll-behavior:contain;cursor:default;}
 .kfc-tabs{display:flex;gap:6px;padding:9px 14px;border-bottom:1px solid #EEF1F3;flex-wrap:wrap;
   align-items:center;position:sticky;top:0;background:#F6F9F8;z-index:3;}
 .kfc-tbk{border:1px solid #E1E6EA;border-radius:16px;padding:5px 13px;font-size:12px;color:#7D8A88;cursor:pointer;white-space:nowrap;}
@@ -1810,7 +1820,10 @@ const CSS = `
 
 .kfc-cfoot{display:flex;gap:11px;align-items:center;padding:8px 16px;border-top:1px solid #EEF1F3;
   position:sticky;bottom:0;background:#F6F9F8;}
-.kfc-del{font-size:11.5px;color:#C0392B;cursor:pointer;}
+.kfc-del{font-size:11.5px;font-weight:600;color:#C0392B;cursor:pointer;white-space:nowrap;
+  border:1px solid #F0C9C0;background:#FDF4F2;border-radius:16px;padding:5px 13px;
+  display:inline-flex;align-items:center;gap:6px;}
+.kfc-del:hover{background:#FAE1DA;}
 /* A la derecha, lejos de "Eliminar este KPI": no conviene poner un botón
    de navegación al lado de uno destructivo. */
 .kfc-bup{margin-left:auto;font-size:11.5px;font-weight:600;color:#3C9BD6;cursor:pointer;
