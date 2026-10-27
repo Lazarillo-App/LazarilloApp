@@ -1598,6 +1598,16 @@ export default function TablaArticulos({
     return { total, conDestino, porDestino };
   }, [isTodo, flatRows, campoRepartoActual, repartoPorGrupoKey]);
 
+  // Mismo criterio que InsumosTable.jsx: el catálogo y las agrupaciones se
+  // recargan por separado, así que este resumen puede saltar por una
+  // fracción de segundo mientras se asientan — se muestra recién cuando el
+  // valor se mantuvo igual un rato.
+  const [resumenEstableArticulos, setResumenEstableArticulos] = useState(resumenSinAgrupacionArticulos);
+  useEffect(() => {
+    const t = setTimeout(() => setResumenEstableArticulos(resumenSinAgrupacionArticulos), 400);
+    return () => clearTimeout(t);
+  }, [resumenSinAgrupacionArticulos]);
+
   const [moviendoBulkArticulos, setMoviendoBulkArticulos] = useState(false);
   const moverTodosConDestinoArticulos = useCallback(async () => {
     if (!resumenSinAgrupacionArticulos?.porDestino?.size) return;
@@ -2729,23 +2739,23 @@ export default function TablaArticulos({
       <div className="tabla-articulos-container" style={{ height: "100%" }}>
         <div ref={tablaWrapRef} style={{ height: "100%", width: "100%" }}>
           <div ref={tablaHeaderRef} className="table-col-header">
-            {isTodo && resumenSinAgrupacionArticulos && resumenSinAgrupacionArticulos.total > 0 && (
+            {isTodo && resumenEstableArticulos && resumenEstableArticulos.total > 0 && (
               <Box sx={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 px: 1.75, py: 1, mb: 1, borderRadius: 2,
                 bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.85rem',
               }}>
                 <span>
-                  ⚠️ Hay <strong>{resumenSinAgrupacionArticulos.total}</strong> artículo{resumenSinAgrupacionArticulos.total === 1 ? '' : 's'} sin agrupación.
-                  {resumenSinAgrupacionArticulos.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
+                  ⚠️ Hay <strong>{resumenEstableArticulos.total}</strong> artículo{resumenEstableArticulos.total === 1 ? '' : 's'} sin agrupación.
+                  {resumenEstableArticulos.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
                 </span>
-                {resumenSinAgrupacionArticulos.conDestino > 0 && (
+                {resumenEstableArticulos.conDestino > 0 && (
                   <Button
                     size="small" variant="outlined" color="warning"
                     onClick={moverTodosConDestinoArticulos} disabled={moviendoBulkArticulos}
                     sx={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}
                   >
-                    {moviendoBulkArticulos ? 'Moviendo…' : `Mover los ${resumenSinAgrupacionArticulos.conDestino} que tienen destino`}
+                    {moviendoBulkArticulos ? 'Moviendo…' : `Mover los ${resumenEstableArticulos.conDestino} que tienen destino`}
                   </Button>
                 )}
               </Box>

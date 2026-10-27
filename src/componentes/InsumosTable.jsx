@@ -893,6 +893,18 @@ const InsumosTable = forwardRef(function InsumosTable({
     return { total, conDestino, porDestino };
   }, [isTodoView, groupedRows, repartoPorRubro]);
 
+  // El catálogo de insumos y las agrupaciones se recargan por separado (dos
+  // queries distintas) — en el instante entre que uno ya llegó y el otro
+  // todavía no, este resumen puede calcular mal por una fracción de segundo
+  // (ej. "778 sin agrupación" saltando antes de asentarse en el número real).
+  // Se muestra recién cuando el valor se mantuvo igual un rato, así ese
+  // salto de un solo render nunca llega a pintarse.
+  const [resumenEstable, setResumenEstable] = useState(resumenSinAgrupacion);
+  useEffect(() => {
+    const t = setTimeout(() => setResumenEstable(resumenSinAgrupacion), 400);
+    return () => clearTimeout(t);
+  }, [resumenSinAgrupacion]);
+
   const [moviendoBulk, setMoviendoBulk] = useState(false);
   const moverTodosConDestino = useCallback(async () => {
     if (!resumenSinAgrupacion?.porDestino?.size) return;
@@ -922,23 +934,23 @@ const InsumosTable = forwardRef(function InsumosTable({
       <div ref={tablaWrapRef} style={{ height: '100%', width: "100%", position: "relative" }}>
         {/* HEADER sticky */}
         <div ref={tablaHeaderRef} className="table-col-header">
-          {isTodoView && resumenSinAgrupacion && resumenSinAgrupacion.total > 0 && (
+          {isTodoView && resumenEstable && resumenEstable.total > 0 && (
             <Box sx={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
               px: 1.75, py: 1, mb: 1, borderRadius: 2,
               bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.85rem',
             }}>
               <span>
-                ⚠️ Hay <strong>{resumenSinAgrupacion.total}</strong> insumo{resumenSinAgrupacion.total === 1 ? '' : 's'} sin agrupación.
-                {resumenSinAgrupacion.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
+                ⚠️ Hay <strong>{resumenEstable.total}</strong> insumo{resumenEstable.total === 1 ? '' : 's'} sin agrupación.
+                {resumenEstable.conDestino > 0 ? ' Su rubro ya pertenece a una, así que se pueden acomodar.' : ''}
               </span>
-              {resumenSinAgrupacion.conDestino > 0 && (
+              {resumenEstable.conDestino > 0 && (
                 <Button
                   size="small" variant="outlined" color="warning"
                   onClick={moverTodosConDestino} disabled={moviendoBulk}
                   sx={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}
                 >
-                  {moviendoBulk ? 'Moviendo…' : `Mover los ${resumenSinAgrupacion.conDestino} que tienen destino`}
+                  {moviendoBulk ? 'Moviendo…' : `Mover los ${resumenEstable.conDestino} que tienen destino`}
                 </Button>
               )}
             </Box>
