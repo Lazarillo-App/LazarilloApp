@@ -149,6 +149,20 @@ export async function createOrMoveAgrupacion(businessId, payload) {
   return unwrapOne(resp, 'Error create-or-move');
 }
 
+// POST /api/agrupaciones/group-rules
+// Regla persistente rubro→agrupación: la próxima vez que un artículo de ese
+// rubro llegue por sync de Maxi (y no esté ya en otra agrupación), se asigna
+// solo a `groupId` — ver autoGroupAssignment.js::applyArticuloGroupRules.
+export async function articuloGroupRuleUpsert(businessId, rubro, groupId) {
+  const resp = await httpBiz(
+    `/agrupaciones/group-rules`,
+    { method: 'POST', body: { rubro, group_id: groupId } },
+    businessId
+  );
+  if (resp?.ok) return resp;
+  throw new Error(resp?.error || 'Error al guardar la regla de rubro');
+}
+
 // POST /api/businesses/:businessId/agrupaciones/:groupId/assign-division
 // body: { divisionId: number | null }
 export async function assignAgrupacionToDivision(businessId, groupId, divisionId) {

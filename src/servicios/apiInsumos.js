@@ -680,7 +680,31 @@ export const insumoGroupCreateOrMove = async (nombre, ids, bizId) => {
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al crear/mover agrupación');
   }
-  
+
+  return data;
+};
+
+/**
+ * POST /api/insumos/group-rules
+ * Guarda la regla persistente rubro→agrupación: la próxima vez que un
+ * insumo de ese rubro llegue por sync de Maxi (y no esté ya en otra
+ * agrupación), se asigna solo a `groupId` — ver autoAssignNewInsumos.js.
+ */
+export const insumoGroupRuleUpsert = async (rubroCodigo, groupId, esElaborador, bizId) => {
+  const url = `${BASE}/insumos/group-rules`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify({ rubro_codigo: rubroCodigo, group_id: groupId, es_elaborador: !!esElaborador }),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'Error al guardar la regla de rubro');
+  }
+
   return data;
 };
 
@@ -939,7 +963,8 @@ export default {
   insumoGroupCreate,
   insumoGroupUpdate,
   insumoGroupDelete,
-  
+  insumoGroupRuleUpsert,
+
   // Items
   insumoGroupAddItem,
   insumoGroupAddMultipleItems,

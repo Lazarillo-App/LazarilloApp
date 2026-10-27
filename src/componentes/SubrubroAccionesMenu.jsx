@@ -18,7 +18,7 @@ import { addExclusiones } from '../servicios/apiAgrupacionesTodo';
 import AgrupacionCreateModal from './AgrupacionCreateModal';
 import { useBusiness } from '../context/BusinessContext';
 import { useOrganization } from '../context/OrganizationContext';
-import { obtenerAgrupaciones } from '../servicios/apiAgrupaciones';
+import { obtenerAgrupaciones, articuloGroupRuleUpsert } from '../servicios/apiAgrupaciones';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ExcluirListasModal from './ExcluirListasModal';
 
@@ -430,6 +430,20 @@ function SubrubroAccionesMenu({
         // Mutación optimista: quitar del grupo origen local
         if (fromId) {
           onMutateGroups?.({ type: 'remove', groupId: fromId, ids });
+        }
+      }
+
+      // Mover un rubro ENTERO desde Sin Agrupación es una decisión permanente
+      // ("este rubro, de ahora en más, va a X") — se guarda como regla para
+      // que los artículos de ese rubro que entren después por sync de Maxi se
+      // asignen solos. Solo tiene sentido con treeMode 'cat-first' (ahí el
+      // encabezado ES el "Rubro" de la UI = columna subrubro, que es lo que
+      // matchea applyArticuloGroupRules) y dentro del mismo negocio.
+      if (isTodo && isSameBiz && treeMode === 'cat-first' && subDisplayName) {
+        try {
+          await articuloGroupRuleUpsert(agrupBizId, subDisplayName, toId);
+        } catch (ruleErr) {
+          console.warn('No se pudo guardar la regla de rubro:', ruleErr);
         }
       }
 

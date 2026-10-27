@@ -30,6 +30,7 @@ import {
   insumoGroupRemoveItem,
   toggleInsumosElaboradosBulk,
   insumosRubroUpdate,
+  insumoGroupRuleUpsert,
 } from "../servicios/apiInsumos";
 
 import { addExclusionesInsumos } from "../servicios/apiInsumosTodo";
@@ -260,6 +261,18 @@ export default function InsumoRubroAccionesMenu({
         }
       }
 
+      // Mover un rubro ENTERO desde Sin Agrupación es una decisión permanente
+      // ("este rubro, de ahora en más, va a X") — se guarda como regla para
+      // que los insumos de ese rubro que entren después por sync de Maxi se
+      // asignen solos, sin volver a pasar por Sin Agrupación.
+      if (isTodoView && rubroCodigo) {
+        try {
+          await insumoGroupRuleUpsert(rubroCodigo, toId, isElaborado, businessId);
+        } catch (ruleErr) {
+          console.warn("No se pudo guardar la regla de rubro:", ruleErr);
+        }
+      }
+
       notify?.(`Rubro movido (${labelCount})`, "success");
       await onReloadCatalogo?.();
       await onRefetch?.();
@@ -270,7 +283,7 @@ export default function InsumoRubroAccionesMenu({
       setIsMoving(false);
       closeMover();
     }
-  }, [normalizedIds, currentGroupId, notify, closeMover, businessId, todoGroupId, labelCount, onReloadCatalogo, onRefetch]);
+  }, [normalizedIds, currentGroupId, notify, closeMover, businessId, todoGroupId, labelCount, onReloadCatalogo, onRefetch, isTodoView, rubroCodigo, isElaborado]);
 
   // Si el rubro ya vive en una única agrupación real hoy, mover directo ahí
   // sin preguntar; si está repartido entre 2+, o es nuevo (no vive en
