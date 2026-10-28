@@ -10,7 +10,10 @@ import { http } from '../servicios/apiBusinesses';
 export function useNotifications({
   businessId,
   autoRefresh = true,
-  refreshInterval = 30000,
+  // 30s era demasiado seguido para un puntito de notificaciones (acumula
+  // cientos de pedidos en una sesión larga, carga innecesaria sobre una
+  // base con recursos muy limitados) — 3 minutos alcanza de sobra.
+  refreshInterval = 180000,
   mode = 'full',
 }) {
   const [notifications, setNotifications] = useState([]);
@@ -237,12 +240,15 @@ export function useNotifications({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
 
-  // Auto-refresh del puntito (y si querés, también del listado cuando el panel lo llame)
+  // Auto-refresh del puntito (y si querés, también del listado cuando el panel lo llame).
+  // Se salta el tick si la pestaña está en segundo plano — no tiene sentido
+  // pedirle a la base algo que nadie va a ver.
   useEffect(() => {
     if (!autoRefresh) return;
     if (!businessId) return;
 
     const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       fetchUnreadCount();
     }, refreshInterval);
 
