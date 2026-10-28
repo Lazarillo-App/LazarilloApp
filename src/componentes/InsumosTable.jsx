@@ -214,6 +214,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   originalBusinessId,
   groups = [],
   repartoPorRubro = null,
+  catalogoRecargando = false,
   selectedGroupId = null,
   discontinuadosGroupId = null,
   elaboradosGroupId = null,
@@ -894,16 +895,17 @@ const InsumosTable = forwardRef(function InsumosTable({
   }, [isTodoView, groupedRows, repartoPorRubro]);
 
   // El catálogo de insumos y las agrupaciones se recargan por separado (dos
-  // queries distintas) — en el instante entre que uno ya llegó y el otro
-  // todavía no, este resumen puede calcular mal por una fracción de segundo
-  // (ej. "778 sin agrupación" saltando antes de asentarse en el número real).
-  // Se muestra recién cuando el valor se mantuvo igual un rato, así ese
-  // salto de un solo render nunca llega a pintarse.
+  // queries distintas) — mientras CUALQUIERA de las dos está recargando
+  // (catalogoRecargando), este resumen puede calcular mal por una fracción
+  // de segundo (ej. "778 sin agrupación" saltando antes de asentarse en el
+  // número real). En vez de esperar un tiempo fijo (que además demora la
+  // actualización real), se congela el último valor estable mientras
+  // recarga y se actualiza apenas termina — nunca llega a pintarse el salto.
   const [resumenEstable, setResumenEstable] = useState(resumenSinAgrupacion);
   useEffect(() => {
-    const t = setTimeout(() => setResumenEstable(resumenSinAgrupacion), 400);
-    return () => clearTimeout(t);
-  }, [resumenSinAgrupacion]);
+    if (catalogoRecargando) return;
+    setResumenEstable(resumenSinAgrupacion);
+  }, [resumenSinAgrupacion, catalogoRecargando]);
 
   const [moviendoBulk, setMoviendoBulk] = useState(false);
   const moverTodosConDestino = useCallback(async () => {

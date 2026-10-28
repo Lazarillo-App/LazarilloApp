@@ -513,17 +513,30 @@ export default function EditarItemModal({
             </Stack>
 
             {tipo === 'articulo' ? (
-              /* crece hasta emparejar el alto de la columna de la foto, así las
-                 dos terminan a la misma altura y no queda un hueco al costado */
-              <TextField
-                label="Descripción para el menú" size="small" fullWidth multiline minRows={3}
-                placeholder="Cómo se describe el producto en la carta…"
-                value={d.descripcion ?? ''} onChange={(e) => set('descripcion', e.target.value)}
-                sx={{
-                  flex: 1,
-                  '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' },
-                  '& textarea': { height: '100% !important', overflow: 'auto !important' },
-                }} />
+              <Stack spacing={1.4} sx={{ flex: 1 }}>
+                {/* Un artículo manual no sincroniza desde Maxi ni tiene listas
+                    de precio derivadas armadas todavía — a diferencia del
+                    bloque de "Precios por lista" (solo lectura, pensado para
+                    comparar contra la tabla), acá se edita directo. */}
+                {esManual && (
+                  <TextField
+                    label="Precio" size="small"
+                    value={d.precioBase ?? ''} onChange={(e) => set('precioBase', e.target.value)}
+                    sx={{ width: { xs: '100%', sm: 240 } }}
+                    slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }} />
+                )}
+                {/* crece hasta emparejar el alto de la columna de la foto, así las
+                   dos terminan a la misma altura y no queda un hueco al costado */}
+                <TextField
+                  label="Descripción para el menú" size="small" fullWidth multiline minRows={3}
+                  placeholder="Cómo se describe el producto en la carta…"
+                  value={d.descripcion ?? ''} onChange={(e) => set('descripcion', e.target.value)}
+                  sx={{
+                    flex: 1,
+                    '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' },
+                    '& textarea': { height: '100% !important', overflow: 'auto !important' },
+                  }} />
+              </Stack>
             ) : (
               <Stack direction="row" spacing={1.4}>
                 <TextField

@@ -287,6 +287,7 @@ export default function TablaArticulos({
   agrupacionSeleccionada,
   agrupaciones = [],
   agrupacionesAll = null,
+  agrupacionesLoading = false,
   categoriaSeleccionada,
   refetchAgrupaciones,
   fechaDesdeProp,
@@ -651,7 +652,15 @@ export default function TablaArticulos({
   const {
     data: articlesTreeData,
     isError: articlesTreeError,
+    isFetching: articlesTreeFetching,
   } = useArticlesTree(activeBizIdNum);
+
+  // Señal real de "todavía cargando" para congelar el aviso de Sin
+  // Agrupación (ver más abajo) — mientras el árbol de artículos o las
+  // agrupaciones están en vuelo, un artículo real puede aparecer
+  // momentáneamente "sin agrupación" solo porque su agrupación no llegó
+  // todavía, no porque de verdad le falte.
+  const catalogoRecargando = articlesTreeFetching || agrupacionesLoading;
 
   // Derivado directo del query (no estado+efecto): con el estado viejo, cada
   // montaje pintaba un frame con categorias=[] antes de que el efecto corriera
@@ -1600,13 +1609,17 @@ export default function TablaArticulos({
 
   // Mismo criterio que InsumosTable.jsx: el catálogo y las agrupaciones se
   // recargan por separado, así que este resumen puede saltar por una
-  // fracción de segundo mientras se asientan — se muestra recién cuando el
-  // valor se mantuvo igual un rato.
+  // fracción de segundo mientras se asientan. Antes se esperaba un timer
+  // fijo de 400ms — pero si la carga real tarda más que eso (base lenta,
+  // reintentos), el valor "estable" se actualizaba de nuevo a mitad de
+  // carga y el aviso parpadeaba igual. Ahora se congela el último valor
+  // mientras `catalogoRecargando` sea true, y se actualiza al toque (sin
+  // timer) apenas termina de cargar.
   const [resumenEstableArticulos, setResumenEstableArticulos] = useState(resumenSinAgrupacionArticulos);
   useEffect(() => {
-    const t = setTimeout(() => setResumenEstableArticulos(resumenSinAgrupacionArticulos), 400);
-    return () => clearTimeout(t);
-  }, [resumenSinAgrupacionArticulos]);
+    if (catalogoRecargando) return;
+    setResumenEstableArticulos(resumenSinAgrupacionArticulos);
+  }, [resumenSinAgrupacionArticulos, catalogoRecargando]);
 
   const [moviendoBulkArticulos, setMoviendoBulkArticulos] = useState(false);
   const moverTodosConDestinoArticulos = useCallback(async () => {

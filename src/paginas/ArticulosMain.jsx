@@ -429,6 +429,10 @@ export default function ArticulosMain(props) {
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
 
   const [orgAssignedIds, setOrgAssignedIds] = React.useState(null);
+  // Señal real de "agrupaciones todavía cargando" — usada para congelar el
+  // aviso de Sin Agrupación mientras tanto (ver TablaArticulos), en vez de
+  // un timer fijo que igual parpadeaba.
+  const [agrupacionesLoading, setAgrupacionesLoading] = React.useState(false);
 
   const handleRangoChange = useCallback((nuevoRango) => {
     setRango(nuevoRango);
@@ -464,6 +468,7 @@ export default function ArticulosMain(props) {
       return [];
     }
 
+    setAgrupacionesLoading(true);
     try {
       const { list, orgAssignedIds: assigned } = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
 
@@ -492,6 +497,8 @@ export default function ArticulosMain(props) {
       setAgrupaciones([]);
       setOrgAssignedIds(null);
       return [];
+    } finally {
+      setAgrupacionesLoading(false);
     }
   }, [activeBizId, activeDivisionId, queryClient]);
 
@@ -3084,6 +3091,7 @@ export default function ArticulosMain(props) {
             ventasMapByBranch={{}}
             filtroBusqueda={''}
             agrupaciones={agrupacionesOrdenadas}
+            agrupacionesLoading={agrupacionesLoading}
             orgAssignedIds={orgAssignedIds}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}

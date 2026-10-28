@@ -794,11 +794,17 @@ export default function InsumosMain() {
   const businessIdNum = Number(businessId) || 0;
 
   const { data: rubrosData } = useInsumosRubros(resolvedBizIdNum);
-  const { data: insumosListData } = useInsumosList({
+  const { data: insumosListData, isFetching: insumosListFetching } = useInsumosList({
     page: 1, limit: 999999, search: '', bizIdOverride: resolvedBizIdNum,
   });
-  const { data: groupsData } = useInsumoGroups(resolvedBizIdNum);
+  const { data: groupsData, isFetching: groupsFetching } = useInsumoGroups(resolvedBizIdNum);
   const { data: groupsActiveBizData } = useInsumoGroups(isSubneg ? businessIdNum : 0);
+  // El catálogo y las agrupaciones son dos queries separadas que pueden
+  // resolver en momentos distintos — mientras CUALQUIERA de las dos está
+  // recargando, el resumen de "Sin Agrupación" puede calcular un número
+  // transitorio incorrecto. Se pasa a InsumosTable para que recién muestre
+  // el aviso cuando las dos terminaron, no después de un tiempo fijo.
+  const catalogoRecargando = insumosListFetching || groupsFetching;
 
   // useLayoutEffect (no useEffect): corre sincrónico ANTES del pintado del
   // navegador — con useEffect, cada montaje (cambiar de pestaña, volver con el
@@ -1807,6 +1813,7 @@ export default function InsumosMain() {
             originalBusinessId={businessId}
             groups={groupsScoped}
             repartoPorRubro={repartoPorRubro}
+            catalogoRecargando={catalogoRecargando}
             selectedGroupId={selectedGroupId}
             discontinuadosGroupId={discontinuadosGroupId}
             elaboradosGroupId={elaboradosGroupId}
