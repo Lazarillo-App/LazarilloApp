@@ -440,6 +440,15 @@ export default function RecetaModal({
   const [lupaQuery, setLupaQuery] = useState('');
   const [lupaResults, setLupaResults] = useState([]);
   const [lupaLoading, setLupaLoading] = useState(false);
+  const lupaInputRef = useRef(null);
+  // El Popover de MUI le gana la carrera al autoFocus del TextField (mismo
+  // problema que el campo "rubro nuevo" en ABMModals.jsx) — forzar el foco
+  // después de que el propio Popover termine su manejo de foco.
+  useEffect(() => {
+    if (!lupaAnchor) return;
+    const t = setTimeout(() => lupaInputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [lupaAnchor]);
 
   const buscarLupa = useCallback(async (q) => {
     if (!q || !q.trim()) { setLupaResults([]); return; }
@@ -3522,6 +3531,7 @@ export default function RecetaModal({
           fullWidth
           size="small"
           autoFocus
+          inputRef={lupaInputRef}
           placeholder={modoInsumo ? 'Buscar insumo…' : 'Buscar artículo…'}
           value={lupaQuery}
           onChange={(e) => { setLupaQuery(e.target.value); buscarLupa(e.target.value); }}
