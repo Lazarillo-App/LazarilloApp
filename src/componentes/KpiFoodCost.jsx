@@ -231,14 +231,20 @@ function BarrasMes({ datos, serie, foco }) {
         g.fillText(fmtV(d[serie]), X, Y - 15);
         const ant = datos[i - 1]?.[serie];
         if (i > 0 && ant) {
-          const dv = ((d[serie] - ant) / ant) * 100;
+          // Food cost ya es un % — mostrar "cambio % del cambio %" (ej. de
+          // 36,4% a 42,8% daba "+17,5%") confundía más de lo que aclaraba.
+          // Acá se muestra la diferencia en puntos (+6,4 pts), que es lo que
+          // se espera leer. Compras/ventas son montos, ahí el cambio relativo
+          // sigue siendo la lectura correcta.
+          const esPuntos = serie === "foodcost";
+          const dv = esPuntos ? (d[serie] - ant) : ((d[serie] - ant) / ant) * 100;
           // en food cost y en compras subir es malo; en ventas es al revés
           const sube = dv > 0;
           g.fillStyle = serie === "ventas"
             ? (sube ? "#2E8B57" : "#C0392B")
             : (sube ? "#C0392B" : "#2E8B57");
           g.font = "bold 9.5px -apple-system, Segoe UI, Helvetica, Arial";
-          g.fillText((dv >= 0 ? "+" : "−") + d1(Math.abs(dv)) + "%", X, Y - 3);
+          g.fillText((dv >= 0 ? "+" : "−") + d1(Math.abs(dv)) + (esPuntos ? " pts" : "%"), X, Y - 3);
         }
         g.font = "9.5px -apple-system, Segoe UI, Helvetica, Arial";
       }
