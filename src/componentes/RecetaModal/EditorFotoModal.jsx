@@ -31,6 +31,10 @@ export default function EditorFotoModal({ imagenSrc, onConfirmar, onCancelar }) 
     }
   };
 
+  // Sin recorte: deja pasar la imagen entera (la vista ya la muestra con
+  // object-fit:contain + marco, no hace falta forzar un cuadrado).
+  const usarCompleta = () => onConfirmar(imagenSrc);
+
   return (
     <Modal open onClose={onCancelar}>
       <Box sx={{
@@ -76,10 +80,14 @@ export default function EditorFotoModal({ imagenSrc, onConfirmar, onCancelar }) 
             </Button>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button size="small" color="inherit" onClick={onCancelar} disabled={procesando}>Cancelar</Button>
+              <Button size="small" variant="outlined" onClick={usarCompleta} disabled={procesando}
+                sx={{ borderColor: PRIMARY, color: PRIMARY }}>
+                Usar completa
+              </Button>
               <Button size="small" variant="contained" onClick={confirmar} disabled={procesando || !croppedAreaPixels}
                 startIcon={procesando ? <CircularProgress size={14} color="inherit" /> : null}
                 sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { bgcolor: PRIMARY, filter: 'brightness(0.9)' } }}>
-                {procesando ? 'Procesando…' : 'Usar foto'}
+                {procesando ? 'Procesando…' : 'Recortar'}
               </Button>
             </Box>
           </Box>
