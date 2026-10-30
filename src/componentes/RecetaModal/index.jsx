@@ -2350,13 +2350,13 @@ export default function RecetaModal({
                         position: 'relative', width: '100%', aspectRatio: '1 / 1',
                         borderRadius: 1.5, overflow: 'hidden',
                         border: '1px solid', borderColor: 'divider',
-                        bgcolor: foto ? 'transparent' : `${PRIMARY}08`,
+                        bgcolor: `${PRIMARY}08`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         '&:hover': { borderColor: PRIMARY },
                         transition: 'border-color 0.15s',
                       }}>
                         {foto ? (
-                          <img src={foto} alt="Foto receta" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          <img src={foto} alt="Foto receta" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                         ) : (
                           <Box sx={{ textAlign: 'center', px: 1 }}>
                             <ImageIcon sx={{ fontSize: 32, color: `${PRIMARY}80` }} />

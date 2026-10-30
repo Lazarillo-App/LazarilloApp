@@ -598,11 +598,11 @@ export default function NotasModal({
             {/* Foto */}
             {localFotos.length > 0 ? (
               <Box>
-                <Box sx={{ position: 'relative', borderRadius: 1.5, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ position: 'relative', borderRadius: 1.5, overflow: 'hidden', border: '1px solid', borderColor: 'divider', bgcolor: '#f1f5f9' }}>
                   <img
                     src={localFotos[fotoActiva]}
                     alt={`Foto receta ${fotoActiva + 1}`}
-                    style={{ width: '100%', maxHeight: 280, objectFit: 'cover', display: 'block' }}
+                    style={{ width: '100%', height: 280, objectFit: 'contain', display: 'block' }}
                   />
                   <IconButton
                     size="small"

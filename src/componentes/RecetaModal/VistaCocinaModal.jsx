@@ -51,8 +51,8 @@ export default function VistaCocinaModal({ nombre, rendimiento, items, notas, fo
 
           {/* ── 1. Foto al inicio si hay ── */}
           {foto && (
-            <Box sx={{ mb: 2.5, borderRadius: 1.5, overflow: 'hidden', boxShadow: 2 }}>
-              <img src={foto} alt="Foto receta" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', display: 'block' }} />
+            <Box sx={{ mb: 2.5, borderRadius: 1.5, overflow: 'hidden', boxShadow: 2, bgcolor: '#f1f5f9' }}>
+              <img src={foto} alt="Foto receta" style={{ width: '100%', height: 240, objectFit: 'contain', display: 'block' }} />
             </Box>
           )}
 
