@@ -17,6 +17,8 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LotesPanel from './LotesPanel';
 import LotesPanelArticulos from './LotesPanelArticulos';
 import DeleteRecetasModal from './DeleteRecetasModal';
+import RecetasImportModal from '../RecetasImportModal';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import PriceListConfigModal from '../PriceListConfigModal';
@@ -194,6 +196,7 @@ export default function ConfigArticulosTab({
   const [savedRedondeo, setSavedRedondeo] = React.useState(config?.redondeo_precios ?? null);
   const [savedCostoIdeal, setSavedCostoIdeal] = React.useState(config?.articulos_costo_ideal ?? '');
   const [deleteRecetasOpen, setDeleteRecetasOpen] = React.useState(false);
+  const [recetasImportOpen, setRecetasImportOpen] = React.useState(false);
   const [pricelistsModalOpen, setPricelistsModalOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -393,6 +396,21 @@ export default function ConfigArticulosTab({
             </Card>
           </Grid>
 
+          <Grid size={{ xs: 12, md: 7 }}>
+            <Card>
+              <CardHeader icon={<MenuBookIcon />} title="Importar paso a paso + foto de recetas" subtitle="Desde un ZIP con pares .txt + imagen" />
+              <CardBody>
+                <Stack spacing={2}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
+                    Subí un .zip con el método de preparación (.txt) y la foto de cada plato, mismo nombre de archivo.
+                    Solo actualiza recetas que ya existen — las que no tengan receta previa quedan listadas para revisar.
+                  </Typography>
+                  <PrimaryBtn icon={<MenuBookIcon />} label="Importar paso a paso" onClick={() => setRecetasImportOpen(true)} tc={tc} />
+                </Stack>
+              </CardBody>
+            </Card>
+          </Grid>
+
           <Grid size={{ xs: 12 }}>
             <LotesPanelArticulos businessId={businessId} />
           </Grid>
@@ -472,6 +490,13 @@ export default function ConfigArticulosTab({
         businessId={businessId}
         tipo="articulo"
         themeColor={tc}
+      />
+
+      {/* Modal de import masivo de recetas (sync Maxi / CSV / paso a paso ZIP) */}
+      <RecetasImportModal
+        open={recetasImportOpen}
+        onClose={() => setRecetasImportOpen(false)}
+        businessId={businessId}
       />
 
       {/* Dialog de confirmación */}

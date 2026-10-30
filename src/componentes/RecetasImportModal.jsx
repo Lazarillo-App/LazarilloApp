@@ -209,6 +209,134 @@ function CsvTab({ businessId, themeColors, onSuccess }) {
   );
 }
 
+/* ── Tab Paso a paso + foto (ZIP) ───────────────────────────────────── */
+function PasosZipTab({ businessId, themeColors }) {
+  const [file,       setFile]       = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [preview,    setPreview]    = useState(null);
+  const [aplicado,   setAplicado]   = useState(null);
+  const [error,      setError]      = useState(null);
+
+  const enviar = async (aplicar) => {
+    if (!file) return;
+    setLoading(true); setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${BASE}/businesses/${businessId}/recetas/import-pasos-zip?aplicar=${aplicar ? 'true' : 'false'}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
+      );
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || data.error || 'Error al procesar el ZIP');
+      if (aplicar) setAplicado(data);
+      else setPreview(data);
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const reporte = aplicado || preview;
+
+  return (
+    <Box sx={{ py: 2 }}>
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2" fontWeight="bold" gutterBottom>
+          Paso a paso + foto desde un ZIP
+        </Typography>
+        <Typography variant="caption" display="block">
+          Subí un .zip con pares de archivo .txt (paso a paso) + imagen, mismo nombre base,
+          formato <code>Categoria_CODIGO_NOMBRE.ext</code> (ej. "Comidas_432_TORRE CONTAINER.txt" / ".jpg").
+          Solo actualiza recetas que YA existen — no crea recetas nuevas.
+        </Typography>
+      </Alert>
+
+      {!file && (
+        <Box sx={{ border: `2px dashed ${themeColors.primary}`, borderRadius: 2, p: 5,
+          textAlign: 'center', cursor: 'pointer', bgcolor: `${themeColors.primary}08`,
+          '&:hover': { bgcolor: `${themeColors.primary}15` } }}
+          onClick={() => document.getElementById('recetas-pasos-zip-input').click()}>
+          <CloudUploadIcon sx={{ fontSize: 64, color: themeColors.primary, mb: 2 }} />
+          <Typography variant="h6" color="primary" fontWeight="medium">Seleccioná el .zip</Typography>
+          <input id="recetas-pasos-zip-input" type="file" accept=".zip"
+            style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files[0]; if (f) { setFile(f); setPreview(null); setAplicado(null); setError(null); } }} />
+        </Box>
+      )}
+
+      {file && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          <Typography variant="body2" fontWeight="medium">📦 {file.name}</Typography>
+        </Alert>
+      )}
+
+      {loading && <LinearProgress sx={{ height: 10, borderRadius: 1, mb: 2 }} />}
+
+      {reporte && (
+        <Box>
+          <Alert severity={aplicado ? 'success' : 'info'} icon={aplicado ? <CheckCircleIcon /> : undefined} sx={{ mb: 2 }}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              {aplicado ? '✅ Aplicado' : 'Vista previa (todavía no se guardó nada)'}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+              <Chip label={`${reporte.resumen.ok} OK`} color="success" size="small" />
+              {reporte.resumen.nombreSospechoso > 0 && <Chip icon={<WarningAmberIcon />} label={`${reporte.resumen.nombreSospechoso} nombre no coincide`} color="warning" size="small" />}
+              {reporte.resumen.sinReceta > 0 && <Chip label={`${reporte.resumen.sinReceta} sin receta previa`} color="warning" size="small" />}
+              {reporte.resumen.codigoNoEncontrado > 0 && <Chip label={`${reporte.resumen.codigoNoEncontrado} código no encontrado`} color="error" size="small" />}
+              {reporte.resumen.sinTxt > 0 && <Chip label={`${reporte.resumen.sinTxt} sin .txt`} color="error" size="small" />}
+            </Box>
+          </Alert>
+
+          {['nombreSospechoso', 'sinReceta', 'codigoNoEncontrado', 'sinTxt'].map((clave) => (
+            reporte.detalle[clave]?.length > 0 && (
+              <Box key={clave} sx={{ mb: 2, maxHeight: 160, overflowY: 'auto', border: '1px solid #e0e0e0', borderRadius: 1, p: 1 }}>
+                <Typography variant="caption" fontWeight="bold" display="block" sx={{ mb: 0.5 }}>
+                  {clave === 'nombreSospechoso' && 'Para revisar — el nombre del archivo no coincide con el del artículo:'}
+                  {clave === 'sinReceta' && 'Sin receta previa (no se tocó, hay que crearla antes):'}
+                  {clave === 'codigoNoEncontrado' && 'Código no encontrado en el catálogo del negocio:'}
+                  {clave === 'sinTxt' && 'Tiene imagen pero no archivo .txt:'}
+                </Typography>
+                {reporte.detalle[clave].map((it, i) => (
+                  <Typography key={i} variant="caption" display="block" color="text.secondary">
+                    {it.archivo}{it.nombreReceta ? ` — receta: "${it.nombreReceta}"` : ''}{it.nombreArchivo ? ` (archivo dice: "${it.nombreArchivo}")` : ''}
+                  </Typography>
+                ))}
+              </Box>
+            )
+          ))}
+        </Box>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          <Typography variant="body2"><strong>Error:</strong> {error}</Typography>
+        </Alert>
+      )}
+
+      <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
+        {!aplicado ? (
+          <>
+            <Button onClick={() => enviar(false)} disabled={!file || loading} variant="outlined"
+              fullWidth startIcon={loading ? null : <CloudUploadIcon />}>
+              {preview ? 'Volver a previsualizar' : 'Previsualizar'}
+            </Button>
+            {preview && (
+              <Button onClick={() => enviar(true)} disabled={loading} variant="contained" fullWidth
+                sx={{ bgcolor: themeColors.primary, '&:hover': { filter: 'brightness(0.9)' } }}>
+                Aplicar cambios ({reporte.resumen.ok + reporte.resumen.nombreSospechoso})
+              </Button>
+            )}
+          </>
+        ) : (
+          <Button onClick={() => { setFile(null); setPreview(null); setAplicado(null); }} variant="outlined" fullWidth>
+            Importar otro ZIP
+          </Button>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 /* ── Modal principal ─────────────────────────────────────────────────── */
 export default function RecetasImportModal({ open, onClose, businessId, onSuccess }) {
   const [tab, setTab] = useState(0);
@@ -234,9 +362,11 @@ export default function RecetasImportModal({ open, onClose, businessId, onSucces
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}>
           <Tab icon={<SyncIcon fontSize="small" />} iconPosition="start" label="Sync MaxiRest" />
           <Tab icon={<CloudUploadIcon fontSize="small" />} iconPosition="start" label="Subir CSV" />
+          <Tab icon={<MenuBookIcon fontSize="small" />} iconPosition="start" label="Paso a paso (ZIP)" />
         </Tabs>
-        {tab === 0 && <SyncTab businessId={businessId} themeColors={themeColors} />}
-        {tab === 1 && <CsvTab  businessId={businessId} themeColors={themeColors} onSuccess={onSuccess} />}
+        {tab === 0 && <SyncTab     businessId={businessId} themeColors={themeColors} />}
+        {tab === 1 && <CsvTab      businessId={businessId} themeColors={themeColors} onSuccess={onSuccess} />}
+        {tab === 2 && <PasosZipTab businessId={businessId} themeColors={themeColors} />}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} variant="outlined" color="inherit">Cerrar</Button>
