@@ -1,5 +1,5 @@
 // src/componentes/KpiFoodCost.jsx
-import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { showConfirm } from "@/servicios/appConfirm";
 
 /* ──────────────────────────────────────────────────────────────
@@ -923,6 +923,28 @@ export default function KpiFoodCost({
     };
   }, []);
 
+  // Lugar del panel. Con la pantalla angosta la barra de filtros se parte y
+  // el chip cae al renglón de abajo, pegado a la izquierda: anclado a su
+  // borde derecho el panel (860px) se salía de la pantalla por la izquierda
+  // y por abajo. Se mide al abrir (y al cambiar el tamaño de la ventana) y se
+  // corre lo justo para que entre entero.
+  const [posPanel, setPosPanel] = useState(null);
+  useLayoutEffect(() => {
+    if (!abierto) return undefined;
+    const medir = () => {
+      const caja = raiz.current?.getBoundingClientRect();
+      if (!caja) return;
+      const vw = document.documentElement.clientWidth || window.innerWidth;
+      const ancho = Math.min(860, vw * 0.94);
+      const izq = Math.max(8, Math.min(caja.right - ancho, vw - ancho - 8));
+      const libre = window.innerHeight - (caja.bottom + 7) - 12;
+      setPosPanel({ left: Math.round(izq - caja.left), alto: Math.max(320, Math.round(libre)) });
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [abierto, modo]);
+
   // Si cambia el negocio activo y llegan otros kpis (otro id[0]), seguir el actual.
   useEffect(() => {
     if (!kpis.some((k) => k.id === actual)) setActual(kpis[0]?.id);
@@ -1200,6 +1222,11 @@ export default function KpiFoodCost({
         <div
           className={`kfc-panel${modo === "config" ? " kfc-modocfg" : ""}`}
           ref={panelRef}
+          style={posPanel ? {
+            left: posPanel.left, right: "auto",
+            maxHeight: Math.min(700, posPanel.alto),
+            ...(modo === "config" ? { height: Math.min(670, posPanel.alto) } : null),
+          } : undefined}
           onScroll={(e) => {
             const v = e.currentTarget.scrollTop > 220;
             setLejos((a) => (a === v ? a : v));

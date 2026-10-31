@@ -65,8 +65,17 @@ export function useSalesData({
       const branchParam = branchId && branchId !== 'main' ? `&branch_id=${branchId}`
                         : branchId === 'main'             ? `&branch_id=main`
                         : '';
+      // Siempre /summary: trae UNA fila por artículo con el total del período.
+      // Antes, con MaxiRest activo, se pedía /items (una fila por artículo y
+      // por DÍA) y el armado de abajo pisaba cada día con el siguiente: cada
+      // artículo quedaba con las ventas de un solo día (el más viejo del
+      // rango). Eso rompía la columna Ventas y el KPI de food cost (Bar,
+      // 01/08–29/10/26: $16,4 M en vez de $261,6 M → 502% en vez de ~31%).
+      // Sin `source` el backend suma todas las fuentes, igual que /items, y
+      // además respeta branch_id (que /items ignoraba). Son ~20 veces menos
+      // filas para bajar.
       const url = MAXI_ENABLED
-        ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/items?from=${from}&to=${to}${branchParam}`
+        ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}${branchParam}`
         : `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv${branchParam}`;
 
       const response = await fetch(url, {
@@ -109,7 +118,10 @@ export function useSalesData({
 
         if (!Number.isFinite(qty) || !Number.isFinite(amount)) continue;
 
-        map.set(id, { qty, amount });
+        // Se acumula: si alguna vez llegan varias filas del mismo artículo
+        // (por día o por fuente) se suman, no se pisan.
+        const prev = map.get(id);
+        map.set(id, prev ? { qty: prev.qty + qty, amount: prev.amount + amount } : { qty, amount });
       }
 
       // Duplicar keys como string para compatibilidad
