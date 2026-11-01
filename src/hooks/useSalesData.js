@@ -1,5 +1,6 @@
 // src/hooks/useSalesData.js
 import { useState, useEffect, useRef, useCallback } from "react";
+import { BASE } from "@/servicios/apiBase";
 
 /**
  * ✅ OPTIMIZADO: Usa /summary en lugar de /items
@@ -75,8 +76,8 @@ export function useSalesData({
       // además respeta branch_id (que /items ignoraba). Son ~20 veces menos
       // filas para bajar.
       const url = MAXI_ENABLED
-        ? `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}${branchParam}`
-        : `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv${branchParam}`;
+        ? `${BASE}/businesses/${businessId}/sales/summary?from=${from}&to=${to}${branchParam}`
+        : `${BASE}/businesses/${businessId}/sales/summary?from=${from}&to=${to}&source=csv${branchParam}`;
 
       const response = await fetch(url, {
         headers: {

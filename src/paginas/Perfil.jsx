@@ -36,7 +36,7 @@ import InvitarMiembroModal from '@/componentes/InvitarMiembroModal';
 import EditarAccesoModal from '@/componentes/EditarAccesoModal';
 import AccesoEquipoModal from '@/componentes/AccesoEquipoModal';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
-import { syncAll, isMaxiConfigured } from '@/servicios/syncservice';
+import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
   listMembers, resendInvitation, revokeAssignment,

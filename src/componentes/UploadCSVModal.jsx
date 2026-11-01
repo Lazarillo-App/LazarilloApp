@@ -29,6 +29,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import { downwardMenuProps } from '@/utils/menuProps';
+import { BASE } from '@/servicios/apiBase';
 
 // Modal de instrucciones
 function InstructionsModal({ open, onClose, image1Url, image2Url, themeColors }) {
@@ -234,7 +235,7 @@ export default function UploadCSVModal({
 
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `https://lazarilloapp-backend.onrender.com/api/businesses/${businessId}/sales/import-csv`,
+        `${BASE}/businesses/${businessId}/sales/import-csv`,
         {
           method: 'POST',
           headers: {
