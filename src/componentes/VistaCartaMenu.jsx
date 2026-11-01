@@ -764,7 +764,7 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
     ? await capturarAjustadaAUnaHoja(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, medidasExport(cfg), bgH)
     : await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
 
-  const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "·H" : ""})`;
+  const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
   const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
 
   if (cfg.fmt === "png") {
@@ -815,7 +815,7 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
     }
     onProgress?.(lista.length, lista.length);
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    dl(zipBlob, `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "·H" : ""}).zip`);
+    dl(zipBlob, `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""}).zip`);
     return;
   }
 
@@ -831,7 +831,7 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
     agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0, !!cfg.fitOnePage);
   }
   onProgress?.(lista.length, lista.length);
-  dl(pdf.output("blob"), `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "·H" : ""}).pdf`);
+  dl(pdf.output("blob"), `${nombreBase} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""}).pdf`);
 }
 
 
