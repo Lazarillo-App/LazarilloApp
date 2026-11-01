@@ -1546,6 +1546,9 @@ export default function ArticulosMain(props) {
             sub: String(a.categoria ?? cat.categoria ?? '').trim(),
             agrupacion: agrupDeArticulo.get(id) || '',
             descripcion: a.descripcion || '',
+            // true = la descripción viene tal cual de MaxiRest (no hay una
+            // propia de Lazarillo): Vista Diseño la puede ocultar con su switch.
+            descripcionMaxi: !a.descripcion_propia && !!a.descripcion_original,
           });
         }
       }

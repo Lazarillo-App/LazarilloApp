@@ -24,6 +24,7 @@ import { assignInsumoGroupToDivision as assignInsumoGroupToDivisionAPI } from '@
 import { showConfirm } from '@/servicios/appConfirm';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
+import { nombreAgrupacionVisible, estiloAgrupacion } from '@/utils/agrupacionNombre';
 
 const safeId = (insumo) => {
   const raw = insumo?.id ?? insumo?.insumo_id ?? insumo?.codigo;
@@ -194,14 +195,13 @@ function InsumosSidebar({
       middle.sort((a, b) => montoDeGrupo(b) - montoDeGrupo(a));
     }
 
-    const todoCount = idsSinAgrupCount ?? 0;
-
+    // Mismo orden que Menú: Top 20 → Sin agrupación → Elaborados → las del
+    // negocio (por monto) → Discontinuados, al final de todo.
     const ordered = [];
-    if (isMainDivision && top20) ordered.push(top20);                  // siempre primero de todos
-    if (isMainDivision && todo && todoCount > 0) ordered.push(todo);   // primero si tiene insumos
+    if (isMainDivision && top20) ordered.push(top20);
+    if (isMainDivision && todo) ordered.push(todo);
+    if (isMainDivision && elaborados) ordered.push(elaborados);
     ordered.push(...middle);
-    if (isMainDivision && elaborados) ordered.push(elaborados);        // siempre acá, fijo (nunca salta)
-    if (isMainDivision && todo && todoCount === 0) ordered.push(todo); // al final si está vacío
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
   }, [groups, todoGroupId, elaboradosGroupId, top20GroupId, assignedGroupIds, activeDivisionGroupIds, isMainDivision, idsSinAgrupCount, comprasMap]);
@@ -626,7 +626,7 @@ function InsumosSidebar({
               onChange={handleGroupChange}
               renderValue={(value) => {
                 const g = opcionesSelect.find((x) => Number(x.id) === Number(value));
-                return g ? g.nombre : 'Sin agrupación';
+                return g ? nombreAgrupacionVisible(g) : 'Sin agrupación';
               }}
               MenuProps={downwardMenuProps()}
             >
@@ -638,13 +638,17 @@ function InsumosSidebar({
                 return (
                   <MenuItem key={g.id} value={Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                      <span style={{ fontStyle: (esDiscontinuadosGroup(g) || esTop20Group(g)) ? 'italic' : 'normal', color: esDiscontinuadosGroup(g) ? '#555' : 'inherit' }}>
-                        {g.nombre}
+                      <span style={estiloAgrupacion({
+                        top20: esTop20Group(g),
+                        sistema: esTodoGroup(g) || esElaboradosGroup(g),
+                        discontinuados: esDiscontinuadosGroup(g),
+                      })}>
+                        {nombreAgrupacionVisible(g)}
                         {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
                           <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
                         )}
                         {monto > 0 && !esDiscontinuadosGroup(g) && (
-                          <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600, fontStyle: 'normal' }}>
                             {fmtCurrency(monto)}
                             {pct != null && (
                               <span style={{ color: '#6b7280', fontWeight: 500 }}> ({pct.toFixed(1).replace('.', ',')}%)</span>

@@ -531,6 +531,23 @@ export default function EditarItemModal({
                   label="Descripción para el menú" size="small" fullWidth multiline minRows={3}
                   placeholder="Cómo se describe el producto en la carta…"
                   value={d.descripcion ?? ''} onChange={(e) => set('descripcion', e.target.value)}
+                  // De dónde sale lo que se ve: la de MaxiRest (viene sola) o la
+                  // propia de Lazarillo (la que se escribió acá). La propia no
+                  // la pisa el sync; se puede volver a la de MaxiRest.
+                  helperText={item?.descripcion_original ? (
+                    String(d.descripcion ?? '').trim() === String(item.descripcion_original).trim()
+                      ? 'Tomada de MaxiRest. Si la cambiás, queda la tuya.'
+                      : (
+                        <span>
+                          Descripción propia.{' '}
+                          <span role="button" tabIndex={0}
+                            style={{ color: PRIMARY, cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={() => set('descripcion', item.descripcion_original)}>
+                            Volver a la de MaxiRest
+                          </span>
+                        </span>
+                      )
+                  ) : undefined}
                   sx={{
                     flex: 1,
                     '& .MuiInputBase-root': { height: '100%', alignItems: 'flex-start' },

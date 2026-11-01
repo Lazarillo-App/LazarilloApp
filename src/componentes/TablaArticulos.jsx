@@ -1643,14 +1643,23 @@ export default function TablaArticulos({
 
   const guardarEdicionArticulo = useCallback(async (datos) => {
     const idNum = Number(datos.id);
+    const body = {
+      nombre: datos.nombre,
+      rubro: datos.rubro,
+      subrubro: datos.subrubro || null,
+      precio: datos.precioBase ?? 0,
+    };
+    // Descripción: antes el campo no se guardaba. Se manda solo si cambió.
+    // Igual a la de MaxiRest (o vacía) = sin descripción propia (null), así
+    // sigue a MaxiRest si allá la cambian.
+    const art = itemsParaEditModal.find((x) => Number(x.id) === idNum);
+    const original = String(art?.descripcion_original ?? '').trim();
+    const antes = String(art?.descripcion_propia ?? art?.descripcion_original ?? '').trim();
+    const ahora = String(datos.descripcion ?? '').trim();
+    if (ahora !== antes) body.descripcion = (!ahora || ahora === original) ? null : ahora;
     await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
       method: 'PATCH',
-      body: {
-        nombre: datos.nombre,
-        rubro: datos.rubro,
-        subrubro: datos.subrubro || null,
-        precio: datos.precioBase ?? 0,
-      },
+      body,
     }, activeBizId);
 
     const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
@@ -1664,7 +1673,7 @@ export default function TablaArticulos({
     setEditandoArticuloId(null);
     openSnack?.('Artículo actualizado', 'success');
     refetchLocal();
-  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack]);
+  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, itemsParaEditModal]);
 
   // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
   // {id,nombre,tipo,valor,color} que espera EditarItemModal. Misma paleta

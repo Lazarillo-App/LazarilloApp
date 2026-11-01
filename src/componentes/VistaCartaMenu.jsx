@@ -18,6 +18,7 @@ import { showPrompt } from "../servicios/appPrompt";
 import { BASE } from "../servicios/apiBase";
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import { useNormalizarNombres } from "../hooks/useNormalizarNombres";
+import { nombreAgrupacionVisible } from "../utils/agrupacionNombre";
 
 // Feature flag: imagen decorativa por hoja (fondo/banner/esquina). Implementada y
 // funcionando, pero oculta del botón de la toolbar a pedido de la usuaria (2026-09)
@@ -182,6 +183,21 @@ function reconciliar(guardada, articulosPlano, modo) {
   // Artículos que el usuario sacó a mano de la carta (quitarItem/quitarBloque):
   // no deben resucitar como "nuevos" cada vez que se reconcilia (ej: al recargar la página).
   const removidos = new Set((guardada.removidos || []).map(String));
+  // Cartas guardadas antes del arreglo: una vinculación quitada quedaba anotada
+  // como "__grupo__<gid>" en removidos. Se pasa al formato nuevo (sus artículos
+  // a Sacados, la vinculación marcada `quitado`). Si ya no queda la entrada de
+  // la vinculación, solo se limpia el pseudo-id.
+  const gruposGuardados = { ...(guardada.gruposVinculados || {}) };
+  for (const r of Array.from(removidos)) {
+    if (!r.startsWith("__grupo__")) continue;
+    removidos.delete(r);
+    const gid = r.slice("__grupo__".length);
+    const g = gruposGuardados[gid];
+    if (!g) continue;
+    const excl = new Set((g.excluidos || []).map(String));
+    for (const mid of g.memberIds || []) if (!excl.has(String(mid))) removidos.add(String(mid));
+    gruposGuardados[gid] = { ...g, quitado: true };
+  }
 
   // Clonar la maqueta guardada (profundo simple)
   const hojas = (guardada.hojas || []).map((h) => ({
@@ -230,7 +246,10 @@ function reconciliar(guardada, articulosPlano, modo) {
   // en ninguna sección real pero tampoco caen en el fallback de "nuevo" de
   // abajo, así que el grupo entero desaparecía de la vista sin volver nunca.
   const gruposVinculadosVigentes = {};
-  for (const [gid, g] of Object.entries(guardada.gruposVinculados || {})) {
+  for (const [gid, g] of Object.entries(gruposGuardados)) {
+    // Quitada a mano de la carta: se conserva la entrada (para que no se
+    // vuelva a colocar sola) pero sus artículos no cuentan como ubicados.
+    if (g.quitado) { gruposVinculadosVigentes[gid] = g; continue; }
     if (!pseudoGruposPresentes.has("__grupo__" + gid)) continue;
     gruposVinculadosVigentes[gid] = g;
     for (const id of g.memberIds || []) yaUbicados.add(String(id));
@@ -301,6 +320,33 @@ function reconciliar(guardada, articulosPlano, modo) {
     removidos: Array.from(removidos),
     gruposVinculados: gruposVinculadosVigentes,
   };
+}
+
+// Sacar de la carta una lista de ids que puede incluir filas de vinculación
+// ("__grupo__<gid>"). La fila agrupada no es un artículo: si se la anotaba tal
+// cual en `removidos`, no aparecía en "Sacados" (que lista artículos) y no
+// había forma de volver a ponerla. Ahora sus artículos (los que estaban dentro
+// de la fila, no los ya excluidos que se ven sueltos) pasan a "Sacados" uno
+// por uno, y la vinculación queda marcada `quitado` para que no se vuelva a
+// colocar sola. Se pueden traer de vuelta de a uno, como artículos sueltos.
+function anotarQuitados(m, ids) {
+  const gruposVinculados = { ...(m.gruposVinculados || {}) };
+  const sueltos = [];
+  for (const id of ids) {
+    const sid = String(id);
+    if (sid.startsWith("__grupo__")) {
+      const gid = sid.slice("__grupo__".length);
+      const g = gruposVinculados[gid];
+      if (!g) continue;
+      const excl = new Set((g.excluidos || []).map(String));
+      for (const mid of g.memberIds || []) if (!excl.has(String(mid))) sueltos.push(String(mid));
+      gruposVinculados[gid] = { ...g, quitado: true };
+    } else if (!sid.startsWith("__sep__")) {
+      sueltos.push(sid);
+    }
+  }
+  const removidos = Array.from(new Set([...(m.removidos || []).map(String), ...sueltos]));
+  return { removidos, gruposVinculados };
 }
 
 // Quitar artículos de una vinculación SOLO en la carta: los excluidos vuelven a
@@ -611,6 +657,31 @@ function combinarCanvasPng(cv, footerCv, diseno, negocio) {
 // falta, lo achica proporcionalmente (cuerpo + pie) para que entre siempre en UNA
 // sola pagina — evita el caso de "un poquito mas de una hoja" (una segunda pagina
 // casi vacia con el sobrante de la primera).
+// "Ajustar a 1 hoja" sin deformar. Antes se comprimía solo la altura de la
+// imagen para que entrara en la página y el ancho quedaba igual: letras, logo
+// y precios salían estirados a lo ancho. Ahora la hoja se vuelve a armar MÁS
+// ANCHA (columnas más anchas = menos renglones = menos alto) hasta que su
+// proporción entre en la página, y después se achica TODO por igual. Resultado:
+// ocupa el ancho completo, entra en una hoja y nada se deforma (la letra queda
+// más chica, que es lo que significa ajustar).
+async function capturarAjustadaAUnaHoja(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, m, bgH) {
+  const objetivo = m.contentHmm / m.contentWmm; // alto/ancho que entra en la página
+  const capturar = (k) => capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos,
+    Math.round(m.renderWpx * k), Math.round(m.framePad * k), Math.round(m.gapPx * k), bgH);
+  const proporcion = ({ cv, footerCv }) => (cv.height + (footerCv ? footerCv.height : 0)) / cv.width;
+  let k = 1;
+  let res = await capturar(k);
+  let p = proporcion(res);
+  for (let i = 0; i < 6 && p > objetivo * 1.001; i++) {
+    // Ensanchar en proporción a lo que sobra (el exponente frena el salto:
+    // encabezado y pie no se achican al ensanchar), y un 2% extra por las dudas.
+    k *= Math.pow(p / objetivo, 0.75) * 1.02;
+    res = await capturar(k);
+    p = proporcion(res);
+  }
+  return res;
+}
+
 function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, esPrimerHojaGlobal, fitOnePage = false) {
   const bgH = diseno.bg || "#ffffff";
   const pxPerMm = cv.width / contentWmm;
@@ -625,16 +696,19 @@ function agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, conten
     // nunca hubo desborde horizontal (el canvas ya se capturó al ancho exacto de
     // la hoja). Ahora el ancho siempre ocupa todo el contentWmm — solo se
     // comprime la altura lo necesario para entrar en una página.
+    // Escala PAREJA en ancho y alto (nunca deformar). Si la hoja ya se armó
+    // con capturarAjustadaAUnaHoja, entra a lo ancho completo; si aun así no
+    // entrara, se achica más y queda centrada.
     const bodyHmmRaw = cv.height / pxPerMm;
     const scale = Math.min(1, contentHmm / (bodyHmmRaw + footerHmm));
-    const imgWmm = contentWmm;
+    const imgWmm = contentWmm * scale;
     const imgHmm = bodyHmmRaw * scale;
+    const x = margLat + (contentWmm - imgWmm) / 2;
     if (bgH.toLowerCase() !== "#ffffff") { pdf.setFillColor(bgH); pdf.rect(0, 0, wmm, hmm, "F"); }
-    pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert, imgWmm, imgHmm);
+    pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", x, margVert, imgWmm, imgHmm);
     if (footerCv) {
-      const footWmm = contentWmm;
       const footHmm = footerHmm * scale;
-      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", margLat, margVert + contentHmm - footHmm, footWmm, footHmm);
+      pdf.addImage(footerCv.toDataURL("image/jpeg", 0.92), "JPEG", x, margVert + contentHmm - footHmm, imgWmm, footHmm);
     }
     dibujarMarcoPdf(pdf, diseno.frame, negocio?.accent || "#7a1f3d", margLat, margVert, contentWmm, contentHmm);
     return;
@@ -686,7 +760,9 @@ async function exportarHoja(hoja, secciones, artById, diseno, negocio, showLogo,
   await ensureLibs();
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { } }
 
-  const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
+  const { cv, footerCv } = (cfg.fmt !== "png" && cfg.fitOnePage)
+    ? await capturarAjustadaAUnaHoja(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, medidasExport(cfg), bgH)
+    : await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
 
   const fname = `${clean(hoja.nombre) || "carta"} (${cfg.size}${cfg.orient === "h" ? "\u00b7H" : ""})`;
   const dl = (blob, name) => { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); };
@@ -749,7 +825,9 @@ async function exportarTodasLasHojas(hojas, secciones, artById, diseno, negocio,
   for (let i = 0; i < lista.length; i++) {
     onProgress?.(i, lista.length);
     const hoja = lista[i];
-    const { cv, footerCv } = await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
+    const { cv, footerCv } = cfg.fitOnePage
+      ? await capturarAjustadaAUnaHoja(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, medidasExport(cfg), bgH)
+      : await capturarHojaCanvas(hoja, secciones, artById, diseno, negocio, showLogo, showNombre, iconos, renderWpx, framePad, gapPx, bgH);
     agregarHojaAlPdf(pdf, cv, footerCv, wmm, hmm, margLat, margVert, contentWmm, contentHmm, diseno, negocio, i === 0, !!cfg.fitOnePage);
   }
   onProgress?.(lista.length, lista.length);
@@ -836,6 +914,8 @@ export default function VistaCartaMenu({
   // Última dirección usada para "ordenar por precio" por sección — solo para
   // mostrar la flecha correcta en el botón (asc/desc), no se persiste.
   const [ordenPrecioDir, setOrdenPrecioDir] = useState({});
+  // Grupos de "Sacados" desplegados (por título) — para devolver de a uno.
+  const [sacadosAbiertos, setSacadosAbiertos] = useState({});
   // Ídem para "ordenar por nombre" (A→Z / Z→A) por sección.
   const [ordenNombreDir, setOrdenNombreDir] = useState({});
   // Estado de guardado: "idle" | "saving" | "saved"
@@ -1050,9 +1130,15 @@ export default function VistaCartaMenu({
   // editar descripción) la trate como un artículo más, sin casos especiales.
   const artById = useMemo(() => {
     const m = new Map();
+    // Switch "Descripción de MaxiRest" (Estilos): apagado oculta solo la que
+    // viene tal cual de MaxiRest. La escrita en la carta, la propia de
+    // Lazarillo (modal del artículo) y la de las vinculaciones se ven siempre.
+    const ocultarMaxi = diseno.descMaxi === false;
     for (const [id, a] of artByIdBase) {
       const desc = descripciones[id];
-      m.set(id, desc != null && desc !== "" ? { ...a, descripcion: desc } : a);
+      if (desc != null && desc !== "") m.set(id, { ...a, descripcion: desc });
+      else if (ocultarMaxi && a.descripcionMaxi) m.set(id, { ...a, descripcion: "" });
+      else m.set(id, a);
     }
     const gruposVinculados = maqueta.gruposVinculados || {};
     for (const [gid, grupo] of Object.entries(gruposVinculados)) {
@@ -1081,7 +1167,7 @@ export default function VistaCartaMenu({
       });
     }
     return m;
-  }, [artByIdBase, descripciones, maqueta.gruposVinculados]);
+  }, [artByIdBase, descripciones, maqueta.gruposVinculados, diseno.descMaxi]);
 
   // ── Vinculaciones de la tabla ──────────────────────────────────────────────
   // Las vinculaciones creadas en la tabla viven en el backend. En la carta se muestran
@@ -1499,8 +1585,8 @@ export default function VistaCartaMenu({
         ? sec.ordenRubros.filter((b) => b !== rubro)
         : sec.ordenRubros;
       // Recordar lo quitado para que reconciliar() no lo reinserte como "nuevo" al recargar.
-      const removidos = Array.from(new Set([...(m.removidos || []), ...aQuitar]));
-      return { ...m, removidos, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ...(ordenRubros ? { ordenRubros } : {}) } } };
+      const { removidos, gruposVinculados } = anotarQuitados(m, aQuitar);
+      return { ...m, removidos, gruposVinculados, secciones: { ...m.secciones, [secId]: { ...sec, itemIds, ...(ordenRubros ? { ordenRubros } : {}) } } };
     });
   }, [setMaqueta]);
 
@@ -1512,7 +1598,7 @@ export default function VistaCartaMenu({
     setMaqueta((m) => {
       const sec = m.secciones[secId];
       if (!sec) return m;
-      const removidos = m.removidos && m.removidos.includes(artId) ? m.removidos : [...(m.removidos || []), artId];
+      const { removidos, gruposVinculados } = anotarQuitados(m, [artId]);
       // Si la sección se subdivide en bloques (rubro/sub en modo agrupación) y
       // todavía no tiene un orden de rubros persistido, lo congelamos ANTES de
       // sacar el ítem: si no, el bloque del ítem sacado puede perder su posición
@@ -1541,6 +1627,7 @@ export default function VistaCartaMenu({
       return {
         ...m,
         removidos,
+        gruposVinculados,
         secciones: {
           ...m.secciones,
           [secId]: {
@@ -1753,6 +1840,42 @@ export default function VistaCartaMenu({
           return dir === "desc" ? -cmp : cmp;
         });
       return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds: [...items, ...seps] } } };
+    });
+  }, [setMaqueta, artById]);
+
+  // Ordenar SOLO los artículos de un rubro (bloque) dentro de su sección, por
+  // precio o por nombre. Los artículos del bloque se reacomodan en los mismos
+  // lugares que ya ocupaban, así el resto de la sección (otros rubros,
+  // separadores, el orden de los bloques) no se mueve. No sale al exportar:
+  // es solo el orden en que se arma la carta.
+  const ordenarBloque = useCallback((secId, perteneceAlBloque, criterio, dir) => {
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const posiciones = [];
+      sec.itemIds.forEach((id, i) => {
+        if (!String(id).startsWith("__sep__") && perteneceAlBloque(id)) posiciones.push(i);
+      });
+      if (posiciones.length < 2) return m;
+      const valor = (id) => {
+        const a = artById.get(String(id));
+        if (criterio === "precio") return a && a.precio != null && a.precio !== "" ? Number(a.precio) : null;
+        return clean(a?.nombre || "");
+      };
+      const ordenados = posiciones.map((i) => sec.itemIds[i]).sort((x, y) => {
+        const vx = valor(x), vy = valor(y);
+        if (criterio === "precio") {
+          if (vx == null && vy == null) return 0;
+          if (vx == null) return 1;
+          if (vy == null) return -1;
+          return dir === "desc" ? vy - vx : vx - vy;
+        }
+        const cmp = vx.localeCompare(vy, "es");
+        return dir === "desc" ? -cmp : cmp;
+      });
+      const itemIds = sec.itemIds.slice();
+      posiciones.forEach((pos, j) => { itemIds[pos] = ordenados[j]; });
+      return { ...m, secciones: { ...m.secciones, [secId]: { ...sec, itemIds } } };
     });
   }, [setMaqueta, artById]);
 
@@ -2327,6 +2450,21 @@ export default function VistaCartaMenu({
                 </div>
               </div>
 
+              {/* Descripciones: la de MaxiRest viene sola en cada artículo que
+                  la tenga cargada; acá se puede apagar para la carta entera. */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>Descripciones</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "#2a2320", cursor: "pointer" }}>
+                  <input type="checkbox" checked={diseno.descMaxi !== false}
+                    onChange={(e) => setDiseno((d) => ({ ...d, descMaxi: e.target.checked }))}
+                    style={{ accentColor: accent }} />
+                  Mostrar la descripción de MaxiRest
+                </label>
+                <div style={{ fontSize: 11, color: "#888", marginTop: 4, lineHeight: 1.35 }}>
+                  Las que escribís en la carta o en el artículo, y las de las vinculaciones, se ven siempre.
+                </div>
+              </div>
+
               {/* Normalizar nombres: misma acción de Configuración (cambia de
                   verdad artículos/insumos/rubros/subrubros), disponible acá
                   también para no tener que salir de Vista Diseño a hacerlo. */}
@@ -2489,7 +2627,7 @@ export default function VistaCartaMenu({
                     title="Arrastrá a una columna de la carta"
                     style={{ display: "flex", alignItems: "center", gap: 6, cursor: "grab", padding: "7px 10px", borderRadius: 8, fontSize: 12.5, background: "#fff", border: "1px solid #eae7e0" }}>
                     <span style={{ fontSize: 11 }}>▦</span>
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titulo}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modo === "rubro" ? titulo : nombreAgrupacionVisible(titulo)}</span>
                     <span style={{ fontSize: 10.5, color: "#aaa" }}>{count}</span>
                   </div>
                 ))}
@@ -2503,20 +2641,45 @@ export default function VistaCartaMenu({
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
                   Sacados ({removidosPorTitulo.reduce((n, r) => n + r.ids.length, 0)})
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 200, paddingRight: 4 }}>
-                  {removidosPorTitulo.map(({ titulo, ids }) => (
-                    <div key={titulo}
-                      title="Volver a poner estos artículos en la carta"
-                      style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderRadius: 8, fontSize: 12.5, background: "#fff", border: "1px dashed #d8d3ca" }}>
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#777" }}>{titulo}</span>
-                      <span style={{ fontSize: 10.5, color: "#aaa" }}>{ids.length}</span>
-                      <button onClick={() => restaurarRemovidos(titulo, ids)}
-                        title="Devolver a la carta"
-                        style={{ border: "none", background: "none", color: accent, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, fontWeight: 700 }}>
-                        ↩
-                      </button>
-                    </div>
-                  ))}
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 320, paddingRight: 4 }}>
+                  {/* Cada grupo se despliega (›) para devolver artículos de a uno;
+                      el ↩ del grupo los devuelve todos juntos, como antes. */}
+                  {removidosPorTitulo.map(({ titulo, ids }) => {
+                    const abierto = !!sacadosAbiertos[titulo];
+                    const nombres = ids
+                      .map((id) => ({ id, nombre: clean(artByIdBase.get(String(id))?.nombre) || `#${id}` }))
+                      .sort((x, y) => x.nombre.localeCompare(y.nombre, "es"));
+                    return (
+                      <div key={titulo} style={{ borderRadius: 8, background: "#fff", border: "1px dashed #d8d3ca" }}>
+                        <div onClick={() => setSacadosAbiertos((o) => ({ ...o, [titulo]: !o[titulo] }))}
+                          title={abierto ? "Ocultar artículos" : "Ver los artículos para devolverlos de a uno"}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
+                          <span style={{ color: "#aaa", fontSize: 12, width: 10, display: "inline-block", transform: abierto ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#777" }}>{modo === "rubro" ? titulo : nombreAgrupacionVisible(titulo)}</span>
+                          <span style={{ fontSize: 10.5, color: "#aaa" }}>{ids.length}</span>
+                          <button onClick={(e) => { e.stopPropagation(); restaurarRemovidos(titulo, ids); }}
+                            title="Devolver todos a la carta"
+                            style={{ border: "none", background: "none", color: accent, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, fontWeight: 700 }}>
+                            ↩
+                          </button>
+                        </div>
+                        {abierto && (
+                          <div style={{ borderTop: "1px dashed #eae7e0", padding: "4px 0" }}>
+                            {nombres.map(({ id, nombre }) => (
+                              <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 26px", fontSize: 12 }}>
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#555" }} title={nombre}>{nombre}</span>
+                                <button onClick={() => restaurarRemovidos(titulo, [id])}
+                                  title="Devolver este artículo a la carta"
+                                  style={{ border: "none", background: "none", color: accent, cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, fontWeight: 700 }}>
+                                  ↩
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -3074,6 +3237,28 @@ export default function VistaCartaMenu({
                                               onMouseDown={(e) => e.stopPropagation()}
                                               onClick={(e) => e.stopPropagation()}
                                               onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                              {/* Orden dentro de este rubro: mismo criterio y estilo que el
+                                                  $↑ / A↑ de la sección, pero solo para sus artículos. */}
+                                              {[["precio", "$", ordenPrecioDir, setOrdenPrecioDir], ["nombre", "A", ordenNombreDir, setOrdenNombreDir]].map(([crit, signo, dirs, setDirs]) => {
+                                                const clave = `${sid}|${rubroDeEste}`;
+                                                const asc = dirs[clave] === "asc";
+                                                return (
+                                                  <button key={crit}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      const dir = asc ? "desc" : "asc";
+                                                      setDirs((p) => ({ ...p, [clave]: dir }));
+                                                      ordenarBloque(sid, (id) => ((artById.get(String(id))?.[campoBloque]) || "Otros").toString() === rubroDeEste, crit, dir);
+                                                    }}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    title={`Ordenar "${bloqueActual}" por ${crit} (próximo clic: ${crit === "precio" ? (asc ? "descendente" : "ascendente") : (asc ? "Z→A" : "A→Z")}) — no se ve al exportar`}
+                                                    style={{ border: "none", background: "none", color: "#ccc", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "0 3px", fontWeight: 700, textTransform: "none" }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.color = accent}
+                                                    onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}>
+                                                    {signo}{asc ? "↓" : "↑"}
+                                                  </button>
+                                                );
+                                              })}
                                               {activeBizId && (
                                                 <SubrubroAccionesMenu
                                                   subrubro={rubroDeEste}

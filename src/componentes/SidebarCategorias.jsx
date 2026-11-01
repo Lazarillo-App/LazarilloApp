@@ -2,6 +2,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import { nombreAgrupacionVisible, estiloAgrupacion } from '@/utils/agrupacionNombre';
 import {
   FormControl,
   InputLabel,
@@ -61,6 +62,8 @@ const esTop20Group = (g) => {
 };
 
 const labelAgrup = (g) => groupLabel(g);
+// Lo que se ve en la lista (no el nombre guardado): ver utils/agrupacionNombre.js
+const labelVisible = (g) => nombreAgrupacionVisible(g);
 
 const safeId = (a) => {
   const raw =
@@ -222,16 +225,14 @@ function SidebarCategorias({
       middle.sort((a, b) => montoDeAgrup(b) - montoDeAgrup(a));
     }
     const todoCount = todo ? (todoCountOverride[todo.id] ?? todo.articulos?.length ?? 0) : 0;
+    // Mismo orden que Insumos: Top 20 → Sin agrupación → Promociones → las del
+    // negocio (por monto) → Discontinuados, al final de todo.
     const ordered = [];
     if (top20) ordered.push(top20);
-    if (isMainDivision && todo && todoCount > 0) ordered.push(todo);
+    if (isMainDivision && todo) ordered.push(todo);
+    if (isMainDivision && promo) ordered.push(promo);
     ordered.push(...middle);
-    if (isMainDivision && todo && todoCount === 0) ordered.push(todo);
-    // Promociones: siempre visible, arriba de Discontinuados. Si no existe, entrada virtual.
-    if (isMainDivision) {
-      if (promo) ordered.push(promo);
-      ordered.push(...discontinuados);
-    }
+    if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
   }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision, getAmountForId]);
   const selectedAgrupValue = useMemo(() => {
@@ -586,7 +587,7 @@ function SidebarCategorias({
               onChange={handleAgrupacionChange}
               renderValue={(value) => {
                 const g = opcionesSelect.find((x) => String(x.id) === String(value));
-                return g ? labelAgrup(g) : 'Sin agrupación';
+                return g ? labelVisible(g) : 'Sin agrupación';
               }}
               MenuProps={downwardMenuProps()}
             >
@@ -612,14 +613,14 @@ function SidebarCategorias({
                 return (
                   <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                      <span style={{
-                        fontStyle: (esDiscontinuadosGroup(g) || esTodoGroup(g) || esPromoGroup(g) || esTop20Group(g)) ? 'italic' : 'normal',
-                        fontWeight: (esTodoGroup(g) || esPromoGroup(g) || esTop20Group(g)) ? 700 : undefined,
-                        color: esDiscontinuadosGroup(g) ? '#555' : 'inherit'
-                      }}>
-                        {labelAgrup(g)}
+                      <span style={estiloAgrupacion({
+                        top20: esTop20Group(g),
+                        sistema: esTodoGroup(g) || esPromoGroup(g),
+                        discontinuados: esDiscontinuadosGroup(g),
+                      })}>
+                        {labelVisible(g)}
                         {!staff && gMonto > 0 && !esDiscontinuadosGroup(g) && (
-                          <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600, fontStyle: 'normal' }}>
                             {fmtCurrency(gMonto)}
                             {gPct && <span style={{ color: 'var(--color-text-secondary, #6b7280)', fontWeight: 500 }}> ({gPct}%)</span>}
                           </span>
