@@ -896,3 +896,35 @@ input[type="number"]:focus {
   height: 14px;
   flex-shrink: 0;
 }
+/* ── Insumos: títulos de columna en hasta 2 líneas (con minmax(0,fr) en la
+      grilla ya no ensanchan su columna y desalinean las filas) ── */
+.insumos-header > * { min-width: 0; }
+.insumos-header .col-sortable { white-space: normal; line-height: 1.15; }
+
+/* ── Casillas de selección: mismo tamaño y sin margen en todas las filas,
+      así quedan en la misma línea vertical (encabezado, rubro y artículo) ── */
+.tabla-articulos-container input[type="checkbox"],
+.table-col-header-inner input[type="checkbox"],
+.table-section-row input[type="checkbox"],
+.table-item-row input[type="checkbox"] {
+  width: 14px; height: 14px; margin: 0; flex-shrink: 0; cursor: pointer;
+  accent-color: #0369a1;
+}
+
+/* ── Barra de filtros/acciones: todos los controles del mismo alto ── */
+.lz-barra { align-items: center; }
+.lz-barra .MuiButton-root,
+.lz-barra .MuiInputBase-root,
+.lz-barra .kfc-chip {
+  height: 38px !important; min-height: 38px !important;
+  box-sizing: border-box; padding-top: 0 !important; padding-bottom: 0 !important;
+}
+.lz-barra .MuiInputBase-root input { padding-top: 0 !important; padding-bottom: 0 !important; }
+
+/* ── Pestañas Agrupaciones / Listas / Pendientes: alto parejo y el contador
+      centrado; el margen de abajo deja lugar a la etiqueta del selector ── */
+.lz-tabs > button {
+  height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 2px; padding: 0 4px !important; line-height: 1; white-space: nowrap;
+}
+.lz-tabs > button span { line-height: 16px; }
