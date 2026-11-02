@@ -79,7 +79,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -301,6 +301,17 @@ export default function InsumosMain() {
   // Lista tal como la ve el usuario (agrupada por rubro, ordenada), reportada
   // hacia arriba por InsumosTable porque ese orden se arma adentro de ella.
   const [insumosOrdenados, setInsumosOrdenados] = useState([]);
+  // Todo el negocio para el buscador del modal (mismo mapeo que
+  // InsumosTable.itemsOrdenados); los que están en la vista usan su fila.
+  const todosInsumosParaEditModal = useMemo(() => {
+    const enVista = new Map(insumosOrdenados.map((x) => [String(x.id), x]));
+    return (allInsumos || []).map((d) => enVista.get(String(d.id)) || {
+      ...d,
+      rubro: d.rubro_nombre || d.rubroNombre || d.rubro || '',
+      unidad: d.unidad_med || d.unidad || '',
+      precio: d.precio_ref ?? d.precio ?? '',
+    });
+  }, [allInsumos, insumosOrdenados]);
   const [rubrosParaEditModalInsumo, setRubrosParaEditModalInsumo] = useState([]);
   const [agrupacionesParaEditModalInsumo, setAgrupacionesParaEditModalInsumo] = useState([]);
   useEffect(() => {
@@ -1866,6 +1877,7 @@ export default function InsumosMain() {
           open
           tipo="insumo"
           items={insumosOrdenados}
+          todos={todosInsumosParaEditModal}
           itemId={insumoEditando?.id}
           agrupaciones={agrupacionesParaEditModalInsumo}
           rubros={rubrosParaEditModalInsumo}
