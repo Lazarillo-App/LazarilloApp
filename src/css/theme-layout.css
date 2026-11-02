@@ -943,3 +943,26 @@ input[type="number"]:focus {
   background: #fff; color: #1e293b; box-shadow: 0 1px 2px rgba(15,23,42,.12);
 }
 .lz-tabs > button span { line-height: 16px; }
+
+/* ── Sectores redondeados (estilo del Panel de Gestión) — Artículos e Insumos.
+      Se activa con ESTILO_TARJETAS en GestionLayout.jsx (clase .lz-tarjetas);
+      sin esa clase, todo queda como antes. Solo estilos: no cambia nada de
+      lo que se ve dentro de la tabla (colores de filas, avisos, ventas U/$,
+      ojito, referencias de Costo %). ── */
+.lz-tarjetas { background: #EEF1F5; gap: 12px !important; }
+.lz-tarjetas > .lz-barra-marco {
+  margin: 12px 12px 0; padding: 10px 12px !important;
+  background: #fff; border: 1px solid #e4e4e7; border-radius: 14px;
+}
+.lz-tarjetas .lz-sectores {
+  gap: 12px !important; margin: 0 12px 12px; align-items: stretch !important;
+  border-radius: 0 !important; box-shadow: none !important; overflow: visible !important;
+  background: transparent;
+}
+.lz-tarjetas .lz-sectores > * {
+  background: #fff !important; border: 1px solid #e4e4e7 !important;
+  border-radius: 14px; min-height: 0;
+  /* recorta las esquinas sin tocar el scroll de adentro (overflow lo rompería) */
+  clip-path: inset(0 round 14px);
+}
+
