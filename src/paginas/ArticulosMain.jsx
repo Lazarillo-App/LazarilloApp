@@ -429,6 +429,7 @@ export default function ArticulosMain(props) {
   const markManualPick = useCallback(() => { lastManualPickRef.current = Date.now(); }, []);
 
   const [orgAssignedIds, setOrgAssignedIds] = React.useState(null);
+  const [orgGroups, setOrgGroups] = React.useState(null);
   // Señal real de "agrupaciones todavía cargando" — usada para congelar el
   // aviso de Sin Agrupación mientras tanto (ver TablaArticulos), en vez de
   // un timer fijo que igual parpadeaba.
@@ -465,23 +466,25 @@ export default function ArticulosMain(props) {
     if (!activeBizId) {
       setAgrupaciones([]);
       setOrgAssignedIds(null);
+      setOrgGroups(null);
       return [];
     }
 
     setAgrupacionesLoading(true);
     try {
-      const { list, orgAssignedIds: assigned } = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
+      const { list, orgAssignedIds: assigned, orgGroups: otrosGrupos } = await obtenerAgrupaciones(activeBizId, activeDivisionId ?? null);
 
       // Filtrar agrupaciones movidas a otro negocio
       const filtered = (list || []).filter(ag => !ag.moved_to_business_id);
 
       if (Array.isArray(filtered)) setAgrupaciones(filtered);
       setOrgAssignedIds(assigned);
+      setOrgGroups(otrosGrupos);
       // Mantener la cache de React Query sincronizada con este refresco explícito,
       // para que una futura navegación de vuelta a /menu no la pise con el snapshot viejo.
       queryClient.setQueryData(
         qk.agrupaciones(Number(activeBizId) || 0, activeDivisionId ?? null),
-        { filtered, orgAssignedIds: assigned }
+        { filtered, orgAssignedIds: assigned, orgGroups: otrosGrupos }
       );
 
       // Restaurar scroll después de que React aplique los cambios al DOM
@@ -496,6 +499,7 @@ export default function ArticulosMain(props) {
       console.error('[ArticulosMain] ❌ Error cargando agrupaciones:', e);
       setAgrupaciones([]);
       setOrgAssignedIds(null);
+      setOrgGroups(null);
       return [];
     } finally {
       setAgrupacionesLoading(false);
@@ -555,11 +559,26 @@ export default function ArticulosMain(props) {
   const activeBizIdNum = Number(activeBizId) || 0;
   const { data: agrupacionesData } = useAgrupacionesQuery(activeBizIdNum, activeDivisionId ?? null);
   useEffect(() => {
-    if (!activeBizId) { setAgrupaciones([]); setOrgAssignedIds(null); return; }
+    if (!activeBizId) { setAgrupaciones([]); setOrgAssignedIds(null); setOrgGroups(null); return; }
     if (!agrupacionesData) return;
     setAgrupaciones(agrupacionesData.filtered || []);
     setOrgAssignedIds(agrupacionesData.orgAssignedIds);
+    setOrgGroups(agrupacionesData.orgGroups ?? null);
   }, [activeBizId, agrupacionesData]);
+
+  // Agrupaciones de los otros negocios de la org, con un nombre corto del negocio
+  // para mostrar al lado del destino: las palabras que no comparte con el negocio
+  // activo ("CONTAINER FC" visto desde "CONTAINER BAR" → "FC").
+  const orgGroupsUI = useMemo(() => {
+    if (!Array.isArray(orgGroups) || !orgGroups.length) return null;
+    const activo = (allBusinesses || []).find((b) => String(b.id) === String(activeBizId));
+    const palabrasActivo = new Set(String(activo?.name || '').toUpperCase().split(/\s+/).filter(Boolean));
+    return orgGroups.map((g) => {
+      const nombre = String(g.business_name || '').trim();
+      const propias = nombre.toUpperCase().split(/\s+/).filter((w) => w && !palabrasActivo.has(w));
+      return { ...g, business_short: propias.length ? propias.join(' ') : nombre };
+    });
+  }, [orgGroups, allBusinesses, activeBizId]);
 
   // ── Costos de receta y article-price-config, cacheados (React Query) ──
   // Cada negocio (principal o sub) tiene sus propias recetas y price_config. Antes
@@ -3096,6 +3115,7 @@ export default function ArticulosMain(props) {
             agrupaciones={agrupacionesOrdenadas}
             agrupacionesLoading={agrupacionesLoading}
             orgAssignedIds={orgAssignedIds}
+            orgGroups={orgGroupsUI}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             categoriaSeleccionada={categoriaSeleccionada}

@@ -373,7 +373,7 @@ function SubrubroAccionesMenu({
   const openMover = useCallback(() => {
     handleClose();
     if (Array.isArray(reparto) && reparto.length === 1) {
-      ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
+      ejecutarMover({ bizId: reparto[0].bizId ?? agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
       return;
     }
     setTimeout(() => setDlgMoverOpen(true), 0);
@@ -701,7 +701,7 @@ function SubrubroAccionesMenu({
         reparto.length === 1 ? (
           <Button
             size="small" variant="outlined" color="success"
-            onClick={() => ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre })}
+            onClick={() => ejecutarMover({ bizId: reparto[0].bizId ?? agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre })}
             disabled={isMoving}
             sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
           >

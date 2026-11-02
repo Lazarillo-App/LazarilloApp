@@ -33,6 +33,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
+import ChipNegocio from "./ChipNegocio";
 
 /* ---------------- utils ---------------- */
 // Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
@@ -313,6 +314,7 @@ export default function TablaArticulos({
   onDiscontinuarBloque,
   discIds: discIdsProp,
   orgAssignedIds = null,
+  orgGroups = null,
   recetasCostos = {},
   priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   globalCostoIdeal = 30,
@@ -1581,8 +1583,27 @@ export default function TablaArticulos({
         out.get(key).push({ groupId: g.id, nombre: g.nombre ?? g.name, count });
       });
     }
+    // Agrupaciones de los OTROS negocios de la org (subnegocios): si el rubro
+    // vive allá, el destino es ese negocio. Se marcan con bizId para que el
+    // mover use el camino entre negocios (move-cross-biz).
+    for (const g of (orgGroups || [])) {
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esTop20Group(g)) continue;
+      const counts = new Map();
+      (g.ids || []).forEach((id) => {
+        const key = String(baseById.get(Number(id))?.[campoRepartoActual] || '').trim().toLowerCase();
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      counts.forEach((count, key) => {
+        if (!out.has(key)) out.set(key, []);
+        out.get(key).push({
+          groupId: g.id, nombre: g.nombre, count,
+          bizId: Number(g.business_id), bizNombre: g.business_short || g.business_name || '',
+        });
+      });
+    }
     return out;
-  }, [agrupaciones, campoRepartoActual]);
+  }, [agrupaciones, orgGroups, baseById, campoRepartoActual]);
 
   // Resumen para el aviso de Sin Agrupación: cuántos artículos hay en total y
   // cuántos de ellos tienen un destino sin ambigüedad (su rubro/subrubro vive
@@ -1600,7 +1621,7 @@ export default function TablaArticulos({
       if (dest.length === 1) {
         conDestino += ids.length;
         const groupKey = Number(dest[0].groupId);
-        if (!porDestino.has(groupKey)) porDestino.set(groupKey, { nombre: dest[0].nombre, ids: [] });
+        if (!porDestino.has(groupKey)) porDestino.set(groupKey, { nombre: dest[0].nombre, groupId: groupKey, bizId: dest[0].bizId ?? null, ids: [] });
         porDestino.get(groupKey).ids.push(...ids);
       }
     });
@@ -1627,9 +1648,17 @@ export default function TablaArticulos({
     setMoviendoBulkArticulos(true);
     try {
       for (const [, info] of resumenSinAgrupacionArticulos.porDestino) {
-        await httpBiz('/agrupaciones/create-or-move', {
-          method: 'POST', body: { nombre: info.nombre, ids: info.ids },
-        }, activeBizId);
+        if (info.bizId) {
+          // Destino en otro negocio de la org: lo quita de todas las demás
+          // agrupaciones de la org y lo agrega al destino (sin duplicar).
+          await httpBiz('/agrupaciones/move-cross-biz', {
+            method: 'POST', body: { articleIds: info.ids, toGroupId: info.groupId, toBizId: info.bizId },
+          }, activeBizId);
+        } else {
+          await httpBiz('/agrupaciones/create-or-move', {
+            method: 'POST', body: { nombre: info.nombre, ids: info.ids },
+          }, activeBizId);
+        }
       }
       openSnack?.(`Movidos ${resumenSinAgrupacionArticulos.conDestino} artículos`, 'success');
       refetchLocal();
@@ -1991,6 +2020,7 @@ export default function TablaArticulos({
                 return (
                   <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>
                     pertenece a <strong style={{ color: '#15803d' }}>{reparto[0].nombre}</strong>
+                    {reparto[0].bizNombre ? <ChipNegocio nombre={reparto[0].bizNombre} /> : null}
                   </span>
                 );
               }
