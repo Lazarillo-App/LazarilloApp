@@ -10,6 +10,12 @@ export function fmtARS(value) {
   return value != null ? ARS.format(value) : '—';
 }
 
+const ARS_DECIMAL = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function fmtARSDecimal(value) {
+  return value != null ? ARS_DECIMAL.format(value) : '—';
+}
+
 // MaxiRest guarda muchos nombres en MAYÚSCULAS: se muestran como título; el resto, tal cual.
 export function normalize(s) {
   if (!s) return '—';

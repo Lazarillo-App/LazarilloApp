@@ -33,4 +33,21 @@ export const GestionAPI = {
       ...resto,
       months: months?.length ? months.join(',') : undefined,
     })}`),
+
+  // ── Resultados, tarjetas KPI y bloque Operación (paso 3) ──
+  // Todos llevan `sucursal` (undefined = todas, 'principal', o el id de la sucursal).
+  proyeccion: ({ year, sucursal }) => api(`${base()}/dashboard/proyeccion${qs({ year, sucursal })}`),
+  equilibrio: ({ year, sucursal }) => api(`${base()}/dashboard/equilibrio${qs({ year, sucursal })}`),
+  equilibrioVariables: ({ anio, mes, sucursal }) => api(`${base()}/dashboard/equilibrio/variables${qs({ anio, mes, sucursal })}`),
+  guardarEquilibrioVariables: (cambios) => api(`${base()}/dashboard/equilibrio/variables`, { method: 'PUT', body: { cambios } }),
+  flujoCaja: ({ anio, sucursal }) => api(`${base()}/dashboard/flujo-caja${qs({ anio, sucursal })}`),
+  guardarFlujoCaja: ({ sucursal, anio, mes, monto }) =>
+    api(`${base()}/dashboard/flujo-caja${qs({ sucursal })}`, { method: 'PUT', body: { anio, mes, monto } }),
+  diferenciaCaja: ({ year, sucursal }) => api(`${base()}/dashboard/diferencia-caja${qs({ year, sucursal })}`),
+  canasta: ({ anio, mes, sucursal }) => api(`${base()}/dashboard/canasta${qs({ anio, mes, sucursal })}`),
+  aumento: (metodo, { fecha, sucursal }) =>
+    api(`${base()}/dashboard/canasta/aumentos${qs({ sucursal })}`, { method: metodo, body: { fecha } }),
+  anual: ({ anio, sucursal }) => api(`${base()}/m/anual${qs({ anio, sucursal })}`),
+  actualizado: ({ sucursal }) => api(`${base()}/dashboard/actualizado${qs({ sucursal })}`),
+  rangoAnios: ({ sucursal }) => api(`${base()}/dashboard/rango-anios${qs({ sucursal })}`),
 };

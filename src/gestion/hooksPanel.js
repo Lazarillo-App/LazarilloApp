@@ -1,0 +1,161 @@
+// src/gestion/hooksPanel.js
+// Hooks del bloque Operación, Resultados y tarjetas KPI (port de lazarillo_gestion/hooks:
+// use-proyeccion-ingresos, use-egresos-proyeccion, use-equilibrio, use-equilibrio-variables,
+// use-diferencia-caja, use-canasta y las consultas de /m/anual, flujo-caja y actualizado).
+// Mismas claves de caché entre hooks que piden lo mismo, como en gestion.
+//
+// Diferencia con gestion: "lo que falta cargar" (Sin carga) todavía no está portado, así que la
+// proyección de egresos se calcula sin esa parte y los meses cerrados no muestran faltantes.
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { GestionAPI } from '@/servicios/apiGestion';
+import { egresosProyectados } from '@/gestion/egresosProy';
+import { MESES_IDX } from '@/gestion/formato';
+import { usePanelGestion } from '@/gestion/panelContext';
+
+// Proyección de cierre del mes con ventas incompletas (mismos filtros que la fila Ingresos).
+// null cuando no hay mes para proyectar.
+export function useProyeccionIngresos() {
+  const { businessId, year, sucursal } = usePanelGestion();
+  const { data } = useQuery({
+    queryKey: ['gestionProyeccion', businessId, year, sucursal],
+    queryFn: () => GestionAPI.proyeccion({ year, sucursal }),
+    enabled: !!businessId,
+    staleTime: 5 * 60_000,
+  });
+  return data?.proyeccion ?? null;
+}
+
+// El año mes a mes (ventas y gastos por rubro). Lo comparten las tarjetas y la proyección de egresos.
+export function useAnual(anio, enabled = true) {
+  const { businessId, sucursal } = usePanelGestion();
+  return useQuery({
+    queryKey: ['gestionAnual', businessId, sucursal, anio],
+    queryFn: () => GestionAPI.anual({ anio, sucursal }),
+    enabled: !!businessId && enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
+// Fila Egresos: proyección del mes en curso (Económica, sin búsqueda).
+export function useEgresosProyeccion(egresosPorMes) {
+  const { year, modo } = usePanelGestion();
+  const proy = useProyeccionIngresos();
+  const activo = modo === 'economica';
+  const mesProy = activo && proy && proy.anio === year ? proy.mes : null;
+  const { data: anual } = useAnual(year, !!mesProy);
+  const proyectado = mesProy && anual && egresosPorMes[mesProy] != null
+    ? egresosProyectados({ anual: anual.meses, mesProy, ventasProy: proy.proyeccion, cargadoPivot: egresosPorMes[mesProy], sinCargar: [] })
+    : null;
+  // Meses cerrados con algo sin cargar: pendiente del módulo Sin carga.
+  const faltan = {};
+  return { proyectado, ventasProy: proyectado ? proy.proyeccion : null, faltan };
+}
+
+// Gastos variables por mes para la fila "Punto de equilibrio" (solo en la Económica).
+export function useEquilibrio() {
+  const { businessId, year, sucursal, modo } = usePanelGestion();
+  const activo = modo === 'economica';
+  const { data } = useQuery({
+    queryKey: ['gestionEquilibrio', businessId, year, sucursal],
+    queryFn: () => GestionAPI.equilibrio({ year, sucursal }),
+    enabled: !!businessId && activo,
+    staleTime: 10 * 60_000,
+  });
+  return { data: activo ? data ?? null : null, activo };
+}
+
+// Configuración de gastos variables del equilibrio. Con ref = mes de referencia trae además los
+// gastos por concepto de la sucursal elegida (para el antes → después del ⚙).
+export function useEquilibrioVariables(ref) {
+  const { businessId, sucursal } = usePanelGestion();
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['gestionEquilibrioVariables', businessId, ref?.anio ?? null, ref?.mes ?? null, ref ? sucursal : null],
+    queryFn: () => GestionAPI.equilibrioVariables({ anio: ref?.anio, mes: ref?.mes, sucursal: ref ? sucursal : undefined }),
+    enabled: !!businessId,
+    staleTime: 60_000,
+  });
+  // Devuelve null si salió bien, o el mensaje de error.
+  async function guardar(cambios) {
+    if (!cambios.length) return null;
+    try {
+      await GestionAPI.guardarEquilibrioVariables(cambios);
+    } catch (e) {
+      return e?.message || 'No se pudo guardar';
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['gestionEquilibrioVariables'] }),
+      queryClient.invalidateQueries({ queryKey: ['gestionEquilibrio'] }),
+    ]);
+    return null;
+  }
+  return { variables: data?.variables ?? null, gastos: data?.gastos ?? null, isLoading, guardar };
+}
+
+const MES_VACIO = { valor: null, acumulado: null };
+
+// Diferencia de caja por mes + acumulado (todo se calcula en el back, un request).
+export function useDiferenciaCaja() {
+  const { businessId, year, sucursal } = usePanelGestion();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['gestionDiferenciaCaja', businessId, year, sucursal],
+    queryFn: () => GestionAPI.diferenciaCaja({ year, sucursal }),
+    enabled: !!businessId,
+    staleTime: 30_000,
+  });
+  const diferenciaPorMes = {};
+  for (const mes of MESES_IDX) diferenciaPorMes[mes] = data?.diferenciaPorMes?.[mes] ?? MES_VACIO;
+  return { diferenciaPorMes, isLoading, isError };
+}
+
+// Disponible en caja (arqueos) del año.
+export function useFlujoCaja() {
+  const { businessId, year, sucursal } = usePanelGestion();
+  return useQuery({
+    queryKey: ['gestionFlujoCaja', businessId, year, sucursal],
+    queryFn: () => GestionAPI.flujoCaja({ anio: year, sucursal }),
+    enabled: !!businessId,
+  });
+}
+
+// Canasta hasta el mes de referencia (el último cerrado). Se recalcula poco: 1 h.
+// Los aumentos de la carta se anotan por sucursal: con "todas" solo si el negocio no tiene
+// otras sucursales (lo resuelve el back).
+export function useCanasta(ref) {
+  const { businessId, sucursal } = usePanelGestion();
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['gestionCanasta', businessId, ref?.anio ?? null, ref?.mes ?? null, sucursal],
+    queryFn: () => GestionAPI.canasta({ anio: ref.anio, mes: ref.mes, sucursal }),
+    enabled: !!businessId && !!ref,
+    staleTime: 60 * 60_000,
+  });
+  // Devuelve null si salió bien, o el mensaje de error.
+  async function aumento(metodo, fecha) {
+    try {
+      await GestionAPI.aumento(metodo, { fecha, sucursal });
+    } catch {
+      return 'No se pudo guardar el aumento';
+    }
+    await queryClient.invalidateQueries({ queryKey: ['gestionCanasta'] });
+    return null;
+  }
+  return {
+    data: data ?? null,
+    isLoading,
+    agregarAumento: (f) => aumento('POST', f),
+    quitarAumento: (f) => aumento('DELETE', f),
+  };
+}
+
+// "Actualizado al …": último día con ventas y con compras, y la última lectura del kit.
+export function useActualizado() {
+  const { businessId, sucursal } = usePanelGestion();
+  return useQuery({
+    queryKey: ['gestionActualizado', businessId, sucursal],
+    queryFn: () => GestionAPI.actualizado({ sucursal }),
+    enabled: !!businessId,
+    staleTime: 5 * 60_000,
+  });
+}
