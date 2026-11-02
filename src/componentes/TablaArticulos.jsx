@@ -1692,17 +1692,25 @@ export default function TablaArticulos({
     const antes = String(art?.descripcion_propia ?? art?.descripcion_original ?? '').trim();
     const ahora = String(datos.descripcion ?? '').trim();
     if (ahora !== antes) body.descripcion = (!ahora || ahora === original) ? null : ahora;
-    await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
-      method: 'PATCH',
-      body,
-    }, activeBizId);
-
-    const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
-    const agrupacionNueva = (datos.agrupacion || '').trim();
-    if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
-      await httpBiz('/agrupaciones/create-or-move', {
-        method: 'POST', body: { nombre: agrupacionNueva, ids: [idNum] },
+    // httpBiz ya antepone /businesses/:id — antes se mandaba de nuevo acá
+    // (/businesses/147/businesses/147/articles/…) → 404 y no guardaba nada,
+    // sin avisar. Si falla, el modal queda abierto y se avisa.
+    try {
+      await httpBiz(`/articles/${idNum}`, {
+        method: 'PATCH',
+        body,
       }, activeBizId);
+
+      const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
+      const agrupacionNueva = (datos.agrupacion || '').trim();
+      if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
+        await httpBiz('/agrupaciones/create-or-move', {
+          method: 'POST', body: { nombre: agrupacionNueva, ids: [idNum] },
+        }, activeBizId);
+      }
+    } catch (e) {
+      openSnack?.(`No se pudo guardar: ${e?.message || 'error'}`, 'error');
+      return;
     }
 
     setEditandoArticuloId(null);
