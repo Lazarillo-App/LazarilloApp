@@ -57,7 +57,7 @@ function CodesPanel() {
   };
 
   const handleDeactivate = async (id) => {
-    if (!(await showConfirm('¿Desactivar este cupón?', { danger: true }))) return;
+    if (!(await showConfirm('¿Desactivar este cupón?', { danger: true, confirmText: 'Desactivar' }))) return;
     try { await AccessAPI.deactivateCode(id); await load(); showNotify('✅ Cupón desactivado'); } catch { showNotify('❌ Error'); }
   };
 

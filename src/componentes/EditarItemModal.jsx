@@ -102,10 +102,16 @@ function numOrNull(raw) {
   return Number.isFinite(n) ? n : null;
 }
 
+const keyDe = (x) => String(x?.id ?? x?.codigo);
+
 export default function EditarItemModal({
   open,
   tipo = 'articulo',
   items = [],                 // la lista de la tabla, en su orden y con su filtro
+  // Todo el negocio (opcional). El buscador busca acá además de en `items`;
+  // si se elige uno que no está en la vista, las flechas pasan a recorrer
+  // todo el negocio.
+  todos = null,
   itemId,                     // código del que se abre
   agrupaciones = [],
   // string[] | {nombre, subrubros: string[]}[] — si cada rubro trae sus
@@ -134,14 +140,21 @@ export default function EditarItemModal({
 }) {
   const cfg = CFG[tipo] ?? CFG.articulo;
 
+  // Lista que recorren las flechas: la de la vista; si el ítem abierto no
+  // está ahí (se eligió del buscador en otro sector), todo el negocio.
+  const lista = useMemo(() => {
+    if (!todos?.length || items.some((x) => keyDe(x) === String(itemId))) return items;
+    return todos;
+  }, [items, todos, itemId]);
+
   const idx = useMemo(
-    () => Math.max(0, items.findIndex((x) => String(x.id ?? x.codigo) === String(itemId))),
-    [items, itemId]);
+    () => Math.max(0, lista.findIndex((x) => keyDe(x) === String(itemId))),
+    [lista, itemId]);
 
   const [i, setI] = useState(idx);
   useEffect(() => { setI(idx); }, [idx]);
 
-  const item = items[i];
+  const item = lista[i] ?? lista[idx];
 
   // ── borrador local: no se toca el item hasta guardar ──
   const [d, setD] = useState({});
@@ -192,22 +205,22 @@ export default function EditarItemModal({
   // Confirma antes de perder cambios sin guardar — navegar (‹ ›, buscador) o
   // cerrar descartaba el borrador en silencio; con la navegación rápida entre
   // ítems que esto habilita, era fácil perder una edición sin darse cuenta.
-  const confirmarSiSucio = useCallback(async (mensaje) => {
+  const confirmarSiSucio = useCallback(async (mensaje, confirmText = 'Descartar') => {
     if (!sucio) return true;
-    return showConfirm(mensaje, { danger: true });
+    return showConfirm(mensaje, { danger: true, confirmText });
   }, [sucio]);
 
   // ── navegación ──
   const irA = useCallback(async (n) => {
-    if (!items.length) return;
+    if (!lista.length) return;
     if (!(await confirmarSiSucio('Tenés cambios sin guardar en este ítem. ¿Descartarlos y continuar?'))) return;
-    const t = (n + items.length) % items.length;
+    const t = (n + lista.length) % lista.length;
     setI(t);
-    onNavegar?.(items[t].id ?? items[t].codigo);
-  }, [items, onNavegar, confirmarSiSucio]);
+    onNavegar?.(lista[t].id ?? lista[t].codigo);
+  }, [lista, onNavegar, confirmarSiSucio]);
 
   const cerrar = useCallback(async () => {
-    if (!(await confirmarSiSucio('Tenés cambios sin guardar. ¿Cerrar igual?'))) return;
+    if (!(await confirmarSiSucio('Tenés cambios sin guardar. ¿Cerrar igual?', 'Cerrar sin guardar'))) return;
     onClose?.();
   }, [confirmarSiSucio, onClose]);
 
@@ -218,22 +231,28 @@ export default function EditarItemModal({
   const qRef = useRef(null);
   useEffect(() => { if (buscando) setTimeout(() => qRef.current?.focus(), 30); else setQ(''); }, [buscando]);
 
+  // Primero lo que está en la vista (en su orden), después el resto del
+  // negocio. Antes buscaba solo en la vista (ej. dentro de "Top 20").
   const resultados = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return items
-      .map((x, n) => ({ x, n }))
-      .filter(({ x }) => !t
-        || String(x.id ?? x.codigo).includes(t)
-        || String(x.nombre ?? '').toLowerCase().includes(t))
-      .slice(0, 50);
-  }, [items, q]);
+    const coincide = (x) => !t
+      || String(x.id ?? x.codigo).includes(t)
+      || String(x.nombre ?? '').toLowerCase().includes(t);
+    const enVista = lista.map((x, n) => ({ x, n })).filter(({ x }) => coincide(x));
+    if (!t || !todos?.length || lista === todos) return enVista.slice(0, 50);
+    const vistos = new Set(lista.map(keyDe));
+    const fuera = todos.filter((x) => !vistos.has(keyDe(x)) && coincide(x))
+      .map((x) => ({ x, n: -1, fuera: true }));
+    return [...enVista, ...fuera].slice(0, 50);
+  }, [lista, todos, q]);
 
-  const irAResultado = useCallback(async (n) => {
+  const irAResultado = useCallback(async (r) => {
     if (!(await confirmarSiSucio('Tenés cambios sin guardar en este ítem. ¿Descartarlos y continuar?'))) return;
-    setI(n);
     setBuscando(false);
-    onNavegar?.(items[n].id ?? items[n].codigo);
-  }, [items, onNavegar, confirmarSiSucio]);
+    if (r.fuera) { onNavegar?.(r.x.id ?? r.x.codigo); return; }
+    setI(r.n);
+    onNavegar?.(lista[r.n].id ?? lista[r.n].codigo);
+  }, [lista, onNavegar, confirmarSiSucio]);
 
   useEffect(() => {
     if (!open) return;
@@ -303,8 +322,8 @@ export default function EditarItemModal({
             </Typography>
           </Box>
 
-          <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: i < items.length - 1 ? 1 : 0.3 }}
-            disabled={i >= items.length - 1} title="Siguiente (→)" onClick={() => irA(i + 1)}>
+          <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: i < lista.length - 1 ? 1 : 0.3 }}
+            disabled={i >= lista.length - 1} title="Siguiente (→)" onClick={() => irA(i + 1)}>
             <KeyboardArrowRightIcon />
           </IconButton>
         </Stack>
@@ -337,13 +356,21 @@ export default function EditarItemModal({
                     <Typography sx={{ px: 1.6, py: 1.4, fontSize: '0.8rem', color: 'text.secondary' }}>
                       Sin resultados
                     </Typography>
-                  ) : resultados.map(({ x, n }) => (
-                    <Stack key={x.id ?? x.codigo} direction="row" spacing={1.2}
-                      onClick={() => irAResultado(n)}
+                  ) : resultados.map((r, k) => { const { x, n, fuera } = r; return (
+                    <React.Fragment key={x.id ?? x.codigo}>
+                    {fuera && !resultados[k - 1]?.fuera && (
+                      <Typography sx={{ px: 1.6, py: 0.6, fontSize: '0.66rem', fontWeight: 700,
+                        letterSpacing: '.06em', textTransform: 'uppercase', color: 'text.disabled',
+                        bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
+                        {k === 0 ? 'No está en esta vista · resto del negocio' : 'Resto del negocio'}
+                      </Typography>
+                    )}
+                    <Stack direction="row" spacing={1.2}
+                      onClick={() => irAResultado(r)}
                       sx={{
                         px: 1.6, py: 0.9, cursor: 'pointer', borderBottom: '1px solid',
                         borderColor: 'divider', '&:hover': { bgcolor: 'action.hover' },
-                        bgcolor: n === i ? 'action.selected' : 'transparent',
+                        bgcolor: !fuera && n === i ? 'action.selected' : 'transparent',
                       }}>
                       <Typography sx={{ fontSize: '0.76rem', color: 'text.secondary',
                         width: 52, flex: '0 0 52px', fontVariantNumeric: 'tabular-nums' }}>
@@ -358,7 +385,8 @@ export default function EditarItemModal({
                         )}
                       </Box>
                     </Stack>
-                  ))}
+                    </React.Fragment>
+                  ); })}
                 </Box>
               </Paper>
             </ClickAwayListener>

@@ -117,7 +117,7 @@ function RecetaIcon({ filled = false, size = 14 }) {
 // ─────────────────────────────────────────────
 // Modal de configuración de columnas
 // ─────────────────────────────────────────────
-function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
+function ColOrderModal({ open, cols, onSave, onClose, isElaborados, labels = {} }) {
   const [local, setLocal] = React.useState(cols);
   const dragIdx = React.useRef(null);
 
@@ -144,7 +144,7 @@ function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
             py: 0.75, px: 1.5, mb: 0.5, borderRadius: 1,
             bgcolor: 'action.hover', opacity: 0.55,
           }}>
-            <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{f}</Typography>
+            <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{f === 'Precio' ? (labels.precio || f) : f}</Typography>
             <Chip label="fija" size="small" sx={{ fontSize: '0.65rem', height: 16 }} />
           </Box>
         ))}
@@ -171,7 +171,9 @@ function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
                 '&:hover': { borderColor: 'var(--color-primary)', bgcolor: 'action.hover' },
               }}>
               <Typography sx={{ color: 'text.disabled', mr: 0.5, fontSize: '1rem', lineHeight: 1 }}>⠿</Typography>
-              <Typography variant="body2" sx={{ flex: 1 }}>{col.label}</Typography>
+              {/* Mismo nombre que el título de la columna en la tabla (ej. "Total"
+                  se ve como "Precio con merma default ($)" según el modo). */}
+              <Typography variant="body2" sx={{ flex: 1 }}>{labels[col.id] || col.label}</Typography>
               <Button
                 size="small"
                 variant={col.visible ? 'contained' : 'outlined'}
@@ -1587,6 +1589,7 @@ const InsumosTable = forwardRef(function InsumosTable({
         )}
       </div>
       <ColOrderModal
+        labels={{ total: totalHeaderLabel, precio: precioHeaderLabel }}
         open={colDlgOpen}
         cols={colConfig}
         onSave={saveColConfig}

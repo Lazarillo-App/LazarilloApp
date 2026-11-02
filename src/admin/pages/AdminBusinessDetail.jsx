@@ -73,7 +73,7 @@ export default function AdminBusinessDetail() {
         showAlert('Negocio reactivado.', 'success');
       } catch { showAlert('No se pudo reactivar.', 'error'); }
     } else {
-      if (!(await showConfirm(`¿Pausar "${business.name}"? No se pierde nada, pero deja de usarse hasta reactivarlo.`, { danger: true }))) return;
+      if (!(await showConfirm(`¿Pausar "${business.name}"? No se pierde nada, pero deja de usarse hasta reactivarlo.`, { danger: true, confirmText: 'Pausar' }))) return;
       try {
         await AdminAPI.pauseBusiness(id);
         await load();
@@ -83,7 +83,7 @@ export default function AdminBusinessDetail() {
   };
 
   const handleRevoke = async (m) => {
-    if (!(await showConfirm(`¿Sacar a ${m.alias || m.name || m.email} del staff de este negocio?`, { danger: true }))) return;
+    if (!(await showConfirm(`¿Sacar a ${m.alias || m.name || m.email} del staff de este negocio?`, { danger: true, confirmText: 'Sacar' }))) return;
     try {
       await AdminAPI.revokeAssignment(m.id);
       await load();
