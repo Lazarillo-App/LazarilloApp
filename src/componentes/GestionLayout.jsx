@@ -1,0 +1,48 @@
+// src/componentes/GestionLayout.jsx
+// Marco común de Menú e Insumos: la barra (BarraGestion) queda montada arriba
+// y solo cambia la página de abajo (<Outlet />). Así, al pasar de Menú a
+// Insumos (o al revés) la barra no se vuelve a cargar.
+//
+// La vista Diseño de Menú (/menu?vista=diseno) va a pantalla completa, sin
+// barra; el árbol de elementos es el mismo (solo cambian estilos) para que
+// pasar de Tabla a Diseño no desmonte la página.
+import React, { useEffect, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import BarraGestion from './BarraGestion';
+import { BarraGestionProvider } from '@/context/BarraGestionContext';
+
+export default function GestionLayout() {
+  const location = useLocation();
+  const diseno = location.pathname.startsWith('/menu')
+    && new URLSearchParams(location.search).get('vista') === 'diseno';
+
+  // Alto real del header (medido, igual que hacían las páginas).
+  const [navHeight, setNavHeight] = useState(86);
+  useEffect(() => {
+    const el = document.querySelector('.MuiAppBar-root');
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const recalcular = () => setNavHeight(el.getBoundingClientRect().height || 86);
+    recalcular();
+    const ro = new ResizeObserver(recalcular);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <BarraGestionProvider>
+      <div
+        style={diseno ? undefined : {
+          position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden',
+        }}
+      >
+        <div style={{ display: diseno ? 'none' : 'block', padding: '12px 8px 0 8px', flexShrink: 0 }}>
+          <BarraGestion />
+        </div>
+        <div style={diseno ? undefined : { position: 'relative', flex: 1, minHeight: 0 }}>
+          <Outlet />
+        </div>
+      </div>
+    </BarraGestionProvider>
+  );
+}

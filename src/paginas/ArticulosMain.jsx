@@ -18,7 +18,7 @@ import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Gro
 import { ensureTop20 } from '../servicios/apiAgrupacionesTodo';
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
-import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem, Divider } from '@mui/material';
+import { Snackbar, Alert, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, Stack, Menu, MenuItem, Divider, Tooltip } from '@mui/material';
 import { emitUiAction } from '../servicios/uiEvents';
 import { clearVentasCache } from '../servicios/apiVentas';
 import { downloadVentasCSV } from '../servicios/apiVentas';
@@ -62,6 +62,7 @@ import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import VistaCartaMenu from '../componentes/VistaCartaMenu';
 import { useAccess } from '@/context/AccessContext';
+import { useBarraGestion, useRegistrarBarra } from '@/context/BarraGestionContext';
 import '../css/global.css';
 import '../css/theme-layout.css';
 
@@ -217,20 +218,11 @@ export default function ArticulosMain(props) {
   // Inicializar rango con valores reales desde el inicio
   const RANGO_KEY = 'lazarillo:rangoVentas';
 
-  const [rango, setRango] = useState(() => {
-    try {
-      const saved = localStorage.getItem(RANGO_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Validar que tenga la forma correcta
-        if (parsed?.from && parsed?.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from)) {
-          return parsed;
-        }
-      }
-    } catch { }
-    const def = lastNDaysUntilYesterday(daysByMode('7'));
-    return { mode: '7', from: def.from, to: def.to };
-  });
+  // El período de ventas vive en la barra única (BarraGestionContext) para que
+  // no se pierda ni se recargue al pasar a Insumos y volver.
+  const barraGestion = useBarraGestion();
+  const rango = barraGestion.rangoVentas;
+  const setRango = barraGestion.setRangoVentas;
 
   const periodo = useMemo(() => {
     if (rango.from && rango.to) {
@@ -611,6 +603,7 @@ export default function ArticulosMain(props) {
       saveRedondeoConfig(activeBizIdNum, configNegocio.config.redondeo_precios, mostrarModal);
     }
     setAlertaVentas(alertaVentasRes || null);
+    barraGestion.setAlertaVentas?.(alertaVentasRes || null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBizId, costsConfigData]);
 
@@ -2455,6 +2448,43 @@ export default function ArticulosMain(props) {
     );
   }, [opcionesGlobales, opcionesBuscador]);
 
+  // ── Barra única (BarraGestion): buscador y acciones de esta página ──
+  useRegistrarBarra('menu', {
+    placeholder: 'Buscar artículos, insumos…',
+    opciones: opcionesGlobalesFiltradas,
+    value: searchText,
+  }, {
+    onBuscar: (v) => setSearchText(v || ''),
+    onPick: (opt) => {
+      const id = Number(opt?.id);
+      if (!Number.isFinite(id)) return;
+      setFiltroBusqueda('');
+      setSearchText('');
+      if (opt?.tipo === 'insumo') {
+        // Cambio de página → navegar a Insumos con el id
+        try { sessionStorage.setItem('pendingFocusInsumo', String(id)); } catch { }
+        navigate('/insumos');
+      } else {
+        focusArticle(id);
+      }
+    },
+    agregar: (tipo) => {
+      if (tipo === 'articulo') setAgregarArticuloOpen(true);
+      else if (tipo === 'loteArticulos') { setUploadArticulosMode('articulos'); setUploadArticulosOpen(true); }
+      else if (tipo === 'insumo') setAgregarInsumoOpen(true);
+      else if (tipo === 'loteInsumos') setUploadInsumosOpen(true);
+    },
+    importar: () => setUploadModalOpen(true),
+  });
+
+  // "Importar ventas" elegido desde Insumos: la barra navega hasta acá y deja
+  // la acción pendiente.
+  useEffect(() => {
+    if (barraGestion.accionPendiente !== 'importarVentas') return;
+    barraGestion.setAccionPendiente(null);
+    setUploadModalOpen(true);
+  }, [barraGestion.accionPendiente]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const labelById = useMemo(() => {
     const m = new Map();
     (categorias || []).forEach(sub =>
@@ -2847,29 +2877,64 @@ export default function ArticulosMain(props) {
   }
 
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
+  // La barra (período, sucursal, buscador, food cost, Ventas/Compras, + Agregar)
+  // vive en GestionLayout y no se desmonta al cambiar de página; acá solo van
+  // los botones propios de Menú, dibujados en el hueco de la barra.
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 16,
-      position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
       overflow: 'hidden',
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-          <Box sx={{ display: 'flex', gap: 2, ml: 'auto', order: 2, alignItems: 'center' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
-              Costo poco confiable
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
-              Excedido sobre el objetivo
-            </span>
-          </Box>
-          {/* Sin título: "Menú" ya está marcado en el header (pedido de Diego). */}
-          {/* El selector de lista de precios pasó al título de la columna Precio. */}
-        </Box>
+      {barraGestion.slotEl && ReactDOM.createPortal(
+        <>
+          {!isStaff && (
+            <SelectionToolbar
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              saving={selectionSaving}
+              existingLists={lists}
+              onToggleMode={toggleMode}
+              onClearSelection={clearSelection}
+              onCreateList={createList}
+              onAddToList={addToExistingList}
+              onCreateLink={createLink}
+              editingGroup={editingGroup}
+              onSaveEditLink={saveEditLink}
+              onDeleteList={deleteList}
+              onDownloadList={handleDownloadList}
+            />
+          )}
+          <Tooltip
+            arrow
+            title={
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, p: 0.5 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
+                  Costo poco confiable
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
+                  Excedido sobre el objetivo
+                </span>
+              </Box>
+            }
+          >
+            <span
+              aria-label="Referencias de colores"
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 22, height: 22, borderRadius: '50%', border: '1px solid #cbd5e1',
+                color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'help', flexShrink: 0,
+              }}
+            >i</span>
+          </Tooltip>
+        </>,
+        barraGestion.slotEl,
+      )}
 
-        {isSyncing && (
+      {isSyncing && (
+        <div style={{ padding: '0 8px', flexShrink: 0 }}>
           <Alert
             severity="info"
             icon={false}
@@ -2896,135 +2961,8 @@ export default function ArticulosMain(props) {
               {syncMsg && <span style={{ color: '#555', fontSize: '0.85em' }}>— {syncMsg}</span>}
             </span>
           </Alert>
-        )}
-
-        <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SalesPickerIcon
-            value={rango}
-            onChange={handleRangoChange}
-            firstDate={firstDateVentas}
-            loadingFirst={loadingFirstVentas}
-            labelOverride={activeBranchFilter?.mode === 'all' ? '' : null}
-          />
-          {!isStaff && (
-            <VentasActionsMenu
-              rango={rango}
-              onImport={() => setUploadModalOpen(true)}
-              onExport={handleDownloadVentasCsv}
-              disabled={!activeBizId || ventasLoading}
-              allBusinesses={allBusinesses}
-              activeBizId={activeBizId}
-              branches={rawBranches || []}
-              lists={lists}
-              activeListId={activeListId}
-              activeListItems={activeListItems}
-              alertaVentas={alertaVentas}
-            />
-          )}
-          <SucursalSelector variant="inline" />
-          {!isStaff && (
-            <SelectionToolbar
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              saving={selectionSaving}
-              existingLists={lists}
-              onToggleMode={toggleMode}
-              onClearSelection={clearSelection}
-              onCreateList={createList}
-              onAddToList={addToExistingList}
-              onCreateLink={createLink}
-              editingGroup={editingGroup}
-              onSaveEditLink={saveEditLink}
-              onDeleteList={deleteList}
-              onDownloadList={handleDownloadList}
-            />
-          )}
-          <div style={{ minWidth: 260, maxWidth: 360 }}>
-            <Buscador
-              placeholder="Buscar artículos, insumos…"
-              opciones={opcionesGlobalesFiltradas}
-              value={searchText}
-              onChange={(v) => setSearchText(v || '')}
-              clearOnPick={false}
-              autoFocusAfterPick
-              noResultsText="Sin resultados"
-              onPick={(opt) => {
-                const id = Number(opt?.id);
-                if (!Number.isFinite(id)) return;
-                setFiltroBusqueda('');
-                setSearchText('');
-
-                if (opt?.tipo === 'insumo') {
-                  // Cambio de página → navegar a Insumos con el id
-                  try { sessionStorage.setItem('pendingFocusInsumo', String(id)); } catch { }
-                  navigate('/insumos');
-                } else {
-                  focusArticle(id);
-                }
-              }}
-            />
-          </div>
-
-          {/* Botón + Agregar */}
-          <div>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={e => setAgregarMenuAnchor(e.currentTarget)}
-              sx={{
-                background: '#2492C8',
-                '&:hover': { background: '#1a7aaa' },
-                borderRadius: '8px',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                whiteSpace: 'nowrap',
-                px: 2,
-              }}
-            >
-              + Agregar
-            </Button>
-            <Menu
-              anchorEl={agregarMenuAnchor}
-              open={Boolean(agregarMenuAnchor)}
-              onClose={() => setAgregarMenuAnchor(null)}
-              PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
-            >
-              <MenuItem onClick={() => {
-                setAgregarMenuAnchor(null);
-                setAgregarArticuloOpen(true);
-              }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>📄</span> Un artículo
-              </MenuItem>
-              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosMode('articulos'); setUploadArticulosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setAgregarInsumoOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>🧂</span> Un insumo
-              </MenuItem>
-              <MenuItem onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}>
-                <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
-              </MenuItem>
-            </Menu>
-          </div>
-
-          {/* El botón Diseño pasó al desplegable "Menú ▾" del header. */}
-          {!isStaff && (
-            <KpiFoodCost
-              ventas={itemsVentaFoodCost}
-              compras={itemsCompraFoodCost}
-              kpis={kpisFoodCost}
-              onChange={handleKpisFoodCostChange}
-              periodoLabel={periodoLabelFoodCost}
-              porMes={porMesFoodCost}
-            />
-          )}
         </div>
-      </div>
+      )}
 
       <div style={{
         display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
