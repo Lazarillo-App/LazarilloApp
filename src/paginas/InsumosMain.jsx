@@ -3,6 +3,8 @@
 // src/paginas/InsumosMain.jsx
 
 import { showAlert } from '../servicios/appAlert';
+import KpiFoodCost from '@/componentes/KpiFoodCost';
+import { useFoodCostKpi } from '@/hooks/useFoodCostKpi';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
 import MarcarRevisionDialog from '../componentes/MarcarRevisionDialog';
@@ -403,6 +405,13 @@ export default function InsumosMain() {
     } catch { }
     const def = lastNDaysUntilYesterday(daysByMode('30'));
     return { mode: '30', from: def.from, to: def.to };
+  });
+
+  // KPI de food cost también en Insumos (mismo período que las compras).
+  const { activeBranchFilter: branchFilterFoodCost } = useBranch() || {};
+  const foodCost = useFoodCostKpi({
+    bizId: businessId, from: rangoCompras?.from, to: rangoCompras?.to,
+    activeBranchFilter: branchFilterFoodCost,
   });
 
   const handleRangoComprasChange = useCallback((nuevoRango) => {
@@ -1607,9 +1616,13 @@ export default function InsumosMain() {
       overflow: 'hidden',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
-        <h2 style={{ margin: 0 }}>
-          {titulo}
-        </h2>
+        {/* "Insumos" ya está marcado en el menú de arriba: el título solo
+            aparece si hay una división activa (para saber en cuál estás). */}
+        {!isMainDivision && activeDivisionName && (
+          <h2 style={{ margin: 0 }}>
+            {titulo}
+          </h2>
+        )}
 
         <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
@@ -1737,6 +1750,16 @@ export default function InsumosMain() {
               )}
             </Menu>
           </div>
+          {!isStaff && (
+            <KpiFoodCost
+              ventas={foodCost.ventas}
+              compras={foodCost.compras}
+              kpis={foodCost.kpis}
+              onChange={foodCost.onChange}
+              periodoLabel={foodCost.periodoLabel}
+              porMes={foodCost.porMes}
+            />
+          )}
         </div>
       </div>
 

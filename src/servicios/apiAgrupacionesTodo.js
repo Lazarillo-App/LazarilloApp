@@ -3,7 +3,29 @@
 import { httpBiz } from './apiBusinesses';
 
 // Asegura que exista la agrupación "TODO"
-export async function ensureTodo(overrideBizId) {
+// Las agrupaciones TODO y Top 20 se "aseguran" con un PUT idempotente que se
+// disparaba en CADA entrada a Menú (~1,5 s cada uno con la app cargando).
+// Una vez asegurada, en la misma sesión se reutiliza el resultado.
+const _aseguradas = new Map();
+function _claveBiz(kind, overrideBizId) {
+  let biz = overrideBizId;
+  if (biz == null) { try { biz = localStorage.getItem('activeBusinessId'); } catch { biz = ''; } }
+  return `${kind}:${biz ?? ''}`;
+}
+function _unaVez(kind, overrideBizId, fn) {
+  const k = _claveBiz(kind, overrideBizId);
+  if (!_aseguradas.has(k)) {
+    const p = fn().catch((e) => { _aseguradas.delete(k); throw e; });
+    _aseguradas.set(k, p);
+  }
+  return _aseguradas.get(k);
+}
+
+export function ensureTodo(overrideBizId) {
+  return _unaVez('todo', overrideBizId, () => _ensureTodo(overrideBizId));
+}
+
+async function _ensureTodo(overrideBizId) {
   // 1) PUT idempotente
   try {
     const data = await httpBiz('/agrupaciones/todo', { method: 'PUT' }, overrideBizId);
@@ -23,7 +45,11 @@ export async function ensureTodo(overrideBizId) {
 
 // Asegura que exista la agrupación fija "Top 20" (automática, membresía
 // calculada en el frontend — ver ArticulosMain.jsx)
-export async function ensureTop20(overrideBizId) {
+export function ensureTop20(overrideBizId) {
+  return _unaVez('top20', overrideBizId, () => _ensureTop20(overrideBizId));
+}
+
+async function _ensureTop20(overrideBizId) {
   try {
     const data = await httpBiz('/agrupaciones/top20', { method: 'PUT' }, overrideBizId);
     if (data?.id) return data;

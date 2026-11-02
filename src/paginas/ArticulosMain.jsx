@@ -2865,8 +2865,7 @@ export default function ArticulosMain(props) {
               Excedido sobre el objetivo
             </span>
           </Box>
-          <h2 style={{ margin: 0 }}>
-            Gestión de Artículos</h2>
+          {/* Sin título: "Menú" ya está marcado en el header (pedido de Diego). */}
           {priceLists.length > 0 && (
             <ArticleListSelector
               lists={priceLists}
