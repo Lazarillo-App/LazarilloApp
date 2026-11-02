@@ -432,7 +432,7 @@ export default function TablaArticulos({
   const REORDERABLE_COLS = [
     { id: 'costo', label: 'Costo', width: '.35fr' },
     { id: 'precio', label: 'Precio', width: '.35fr' },
-    { id: 'rentabilidad', label: 'Rentabilidad', width: '250px' },
+    { id: 'rentabilidad', label: 'Costo %', width: '250px' },
     { id: 'manual', label: 'Nuevo precio', width: '.35fr' },
     { id: 'acciones', label: 'Acciones', width: '.2fr' },
   ];
@@ -1555,6 +1555,31 @@ export default function TablaArticulos({
     }),
     [flatRows]);
 
+  // Todo el negocio, para el buscador del modal (antes buscaba solo en la
+  // vista: parado en "Top 20" no encontraba nada fuera de ahí). Mismo mapeo
+  // de rubro/subrubro que arriba. Los que están en la vista usan su fila
+  // (ya enriquecida); el resto sale del árbol de artículos.
+  const todosParaEditModal = useMemo(() => {
+    const enVista = new Map(itemsParaEditModal.map((x) => [String(x.id), x]));
+    const out = [];
+    const vistos = new Set();
+    for (const sub of (categorias || [])) {
+      for (const cat of (sub?.categorias || [])) {
+        for (const a of (cat?.articulos || [])) {
+          const id = String(getId(a));
+          if (vistos.has(id)) continue;
+          vistos.add(id);
+          out.push(enVista.get(id) || {
+            ...a, id: getId(a),
+            rubro: a.subrubro || sub.subrubro || '',
+            subrubro: a.categoria || cat.categoria || '',
+          });
+        }
+      }
+    }
+    return out;
+  }, [categorias, itemsParaEditModal]);
+
   // A diferencia de currentGroupId en ArticuloAccionesMenu (que asume que se
   // está parado adentro de la agrupación actual del artículo), el código-link
   // puede abrirse desde cualquier vista — hay que buscar la agrupación real.
@@ -1687,7 +1712,7 @@ export default function TablaArticulos({
     // Descripción: antes el campo no se guardaba. Se manda solo si cambió.
     // Igual a la de MaxiRest (o vacía) = sin descripción propia (null), así
     // sigue a MaxiRest si allá la cambian.
-    const art = itemsParaEditModal.find((x) => Number(x.id) === idNum);
+    const art = todosParaEditModal.find((x) => Number(x.id) === idNum);
     const original = String(art?.descripcion_original ?? '').trim();
     const antes = String(art?.descripcion_propia ?? art?.descripcion_original ?? '').trim();
     const ahora = String(datos.descripcion ?? '').trim();
@@ -1716,7 +1741,7 @@ export default function TablaArticulos({
     setEditandoArticuloId(null);
     openSnack?.('Artículo actualizado', 'success');
     refetchLocal();
-  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, itemsParaEditModal]);
+  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, todosParaEditModal]);
 
   // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
   // {id,nombre,tipo,valor,color} que espera EditarItemModal. Misma paleta
@@ -2762,6 +2787,7 @@ export default function TablaArticulos({
           open
           tipo="articulo"
           items={itemsParaEditModal}
+          todos={todosParaEditModal}
           itemId={editandoArticuloId}
           agrupaciones={agrupaciones}
           rubros={rubrosParaEditModal}
