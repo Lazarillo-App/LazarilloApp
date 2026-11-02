@@ -72,6 +72,7 @@ export default function Navbar() {
   const [modulosOpen, setModulosOpen] = React.useState(false);
 
   const navigate = useNavigate();
+  const [menuVistaEl, setMenuVistaEl] = useState(null);
   const location = useLocation();
 
   // Detectar en qué sector estamos para navegar directo al tab correcto
@@ -281,27 +282,17 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  {location.pathname.startsWith('/rrhh') ? (
-                    [
-                      <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>
-                        Cronogramas
-                      </MenuItem>,
-                      <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
-                      <MenuItem key="rrhh-nom" disabled>Nómina · Próximamente</MenuItem>,
-                    ]
-                  ) : (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     Menú
                   </MenuItem>
-                  )}
 
-                  {!isAppAdmin && !location.pathname.startsWith('/rrhh') && (
+                  {!isAppAdmin && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
+                  {!isAppAdmin && !isStaff && (
                     <MenuItem onClick={() => {
                       setNavEl(null);
                       const t = getConfigTab();
@@ -324,23 +315,6 @@ export default function Navbar() {
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
               {(() => {
                 const path = location.pathname;
-                // Dentro del módulo RRHH la navegación muestra sus secciones
-                // (como Recetas muestra Menú · Insumos). Liquidación y Nómina
-                // son las etapas 2 y 3: quedan a la vista como "Próximamente".
-                if (path.startsWith('/rrhh')) {
-                  const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
-                  return (
-                    <>
-                      <Button color="inherit"
-                        sx={{ color: 'inherit', position: 'relative', '&::after': { content: '""', position: 'absolute', left: 8, right: 8, bottom: 2, height: 2, borderRadius: 2, background: 'var(--on-primary)' } }}
-                        component={NavLink} to="/rrhh/cronogramas">
-                        Cronogramas
-                      </Button>
-                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Liquidación</Button></Tooltip>
-                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Nómina</Button></Tooltip>
-                    </>
-                  );
-                }
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
                 const enConfig = path.includes('/configuracion');
@@ -353,11 +327,56 @@ export default function Navbar() {
                 } : {};
                 return (
                   <>
-                    <Button color="inherit"
-                      sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
-                      component={NavLink} to="/menu">
-                      Menú
-                    </Button>
+                    {isStaff || isAppAdmin ? (
+                      <Button color="inherit"
+                        sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
+                        component={NavLink} to="/menu">
+                        Menú
+                      </Button>
+                    ) : (() => {
+                      // "Menú ▾": Tabla / Diseño (antes Diseño era un botón suelto
+                      // en la barra de Gestión de Artículos). La vista va en la URL
+                      // (?vista=diseno) para que se pueda elegir desde cualquier pantalla.
+                      const enDiseno = enMenu && new URLSearchParams(location.search).get('vista') === 'diseno';
+                      const ir = (diseno) => { setMenuVistaEl(null); navigate(diseno ? '/menu?vista=diseno' : '/menu'); };
+                      const opSx = { gap: 1.25, py: 1, px: 1.25, borderRadius: 1.5, mx: 0.75, alignItems: 'center' };
+                      const icSx = (on) => ({
+                        width: 28, height: 28, borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 15, background: on ? '#5BC2EA' : '#f1f5f9', color: on ? '#fff' : '#334155', flexShrink: 0,
+                      });
+                      return (
+                        <>
+                          <Button color="inherit"
+                            sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
+                            onClick={(e) => setMenuVistaEl(e.currentTarget)}
+                            aria-haspopup="menu">
+                            Menú ▾
+                            {enMenu && (
+                              <span style={{ marginLeft: 6, fontSize: '0.75em', fontWeight: 600, opacity: 0.75, textTransform: 'none' }}>
+                                · {enDiseno ? 'Diseño' : 'Tabla'}
+                              </span>
+                            )}
+                          </Button>
+                          <Menu anchorEl={menuVistaEl} open={Boolean(menuVistaEl)} onClose={() => setMenuVistaEl(null)}
+                            PaperProps={{ sx: { borderRadius: 2.5, minWidth: 250, mt: 0.5, py: 0.5, boxShadow: '0 8px 24px rgba(0,0,0,.18)' } }}>
+                            <MenuItem onClick={() => ir(false)} selected={enMenu && !enDiseno} sx={opSx}>
+                              <span style={icSx(enMenu && !enDiseno)}>☰</span>
+                              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                                <b style={{ fontSize: 13 }}>Tabla</b>
+                                <span style={{ fontSize: 11, color: '#64748b' }}>Precios, costos y food cost</span>
+                              </span>
+                            </MenuItem>
+                            <MenuItem onClick={() => ir(true)} selected={enDiseno} sx={opSx}>
+                              <span style={icSx(enDiseno)}>🖼</span>
+                              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                                <b style={{ fontSize: 13 }}>Diseño</b>
+                                <span style={{ fontSize: 11, color: '#64748b' }}>Carta para imprimir o compartir</span>
+                              </span>
+                            </MenuItem>
+                          </Menu>
+                        </>
+                      );
+                    })()}
                     {!isAppAdmin && (
                       <Button color="inherit"
                         sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}

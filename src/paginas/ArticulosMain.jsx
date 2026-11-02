@@ -54,7 +54,7 @@ import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { qk, STALE } from '@/lib/reactQueryClient';
 import { useArticleCostsAndConfig } from '@/hooks/useArticleCostsAndConfig';
@@ -1538,7 +1538,13 @@ export default function ArticulosMain(props) {
   // y hay subnegocios creados (created_from === 'from_group')
 
   // ── Estado del switch tabla ↔ carta ──
-  const [vistaCarta, setVistaCarta] = useState(false);
+  // Vista Diseño: vive en la URL (?vista=diseno) para que el desplegable
+  // "Menú ▾" del header la pueda abrir desde cualquier pantalla.
+  const locationMenu = useLocation();
+  const vistaCarta = new URLSearchParams(locationMenu.search).get('vista') === 'diseno';
+  const setVistaCarta = useCallback((v) => {
+    navigate(v ? `${locationMenu.pathname}?vista=diseno` : locationMenu.pathname);
+  }, [navigate, locationMenu.pathname]);
 
   // Aplana el árbol real de artículos al shape que consume la carta.
   // Cada artículo lleva su agrupación real (si pertenece a alguna) para el modo "por agrupación".
@@ -3014,22 +3020,7 @@ export default function ArticulosMain(props) {
             </Menu>
           </div>
 
-          {!isStaff && <Button
-            variant="outlined"
-            size="small"
-            onClick={() => setVistaCarta(true)}
-            sx={{
-              borderColor: 'var(--color-primary)',
-              color: 'var(--color-primary)',
-              borderRadius: '8px',
-              fontWeight: 700,
-              fontSize: '0.82rem',
-              whiteSpace: 'nowrap',
-              px: 2,
-            }}
-          >
-            Diseño
-          </Button>}
+          {/* El botón Diseño pasó al desplegable "Menú ▾" del header. */}
           {!isStaff && (
             <KpiFoodCost
               ventas={itemsVentaFoodCost}
