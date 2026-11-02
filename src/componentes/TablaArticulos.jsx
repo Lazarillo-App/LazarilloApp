@@ -1592,7 +1592,10 @@ export default function TablaArticulos({
       if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esTop20Group(g)) continue;
       const counts = new Map();
       (g.ids || []).forEach((id) => {
-        const key = String(baseById.get(Number(id))?.[campoRepartoActual] || '').trim().toLowerCase();
+        // El árbol de este negocio no trae los artículos que viven en otro
+        // subnegocio: el rubro viene del back (g.rubros); baseById de respaldo.
+        const info = g.rubros?.[id] || baseById.get(Number(id));
+        const key = String(info?.[campoRepartoActual] || '').trim().toLowerCase();
         if (!key) return;
         counts.set(key, (counts.get(key) || 0) + 1);
       });
