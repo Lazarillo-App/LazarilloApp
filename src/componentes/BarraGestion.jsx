@@ -15,7 +15,6 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import SalesPickerIcon from './SalesPickerIcon';
-import SucursalSelector from './SucursalSelector';
 import Buscador from './Buscador.jsx';
 import KpiFoodCost from './KpiFoodCost';
 import { useBarraGestion, useDatosBarra } from '@/context/BarraGestionContext';
@@ -158,8 +157,6 @@ export default function BarraGestion() {
           minWidth: 160, '&:hover': { borderColor: '#2492C8', bgcolor: 'rgba(36,146,200,0.06)' },
         }}
       />
-
-      <SucursalSelector variant="inline" />
 
       {/* Botones propios de cada página (selección, listas, referencias). */}
       <span ref={setSlotEl} style={{ display: 'contents' }} />

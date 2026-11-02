@@ -22,8 +22,16 @@ export default function GestionLayout() {
     const el = document.querySelector('.MuiAppBar-root');
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     // bottom (no height): si hay algo arriba del header, la barra igual
-    // arranca justo debajo y la separación arriba/abajo queda pareja.
-    const recalcular = () => setNavHeight(el.getBoundingClientRect().bottom || 86);
+    // arranca justo debajo. Se divide por el zoom global de la app (#root
+    // tiene zoom 0.9 en global.css): getBoundingClientRect da px ya
+    // achicados y el `top` de abajo se vuelve a achicar → la barra quedaba
+    // ~8 px metida debajo del header y la separación de arriba se veía más
+    // fina que la de abajo.
+    const recalcular = () => {
+      const r = el.getBoundingClientRect();
+      const z = el.offsetHeight ? r.height / el.offsetHeight : 1;
+      setNavHeight((r.bottom || 86) / (z || 1));
+    };
     recalcular();
     const ro = new ResizeObserver(recalcular);
     ro.observe(el);

@@ -11,6 +11,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
+import SucursalesChips from './SucursalesChips';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
@@ -317,7 +318,8 @@ export default function Navbar() {
             </Box>
 
 {/* Desktop – links */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 0.25, py: 0.5 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {(() => {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
@@ -400,6 +402,13 @@ export default function Navbar() {
                   Admin
                 </Button>
               )}
+            </Box>
+            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú). */}
+            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')) && (
+              <Box sx={{ pl: 1, pb: 0.25 }}>
+                <SucursalesChips />
+              </Box>
+            )}
             </Box>
 
             {/* Selector negocio/división */}
