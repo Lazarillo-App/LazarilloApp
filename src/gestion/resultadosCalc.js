@@ -127,12 +127,13 @@ export const RESULT_COLORS = {
   noData:   "#bdbbb2",
 };
 
-// Fondo + texto para el heatmap de Ingresos/Ganancia — los 3 tonos de RESULT_COLORS son
-// suficientemente oscuros (luminancia BT.601 < 150) como para llevar siempre texto blanco.
+// Fondo + texto para el heatmap de Ingresos/Ganancia. En gestion era el color lleno con texto
+// blanco; en Lazarillo va en tono suave (fondo claro + número en el color de la banda), en
+// sintonía con el resto de las tablas de la app (pedido de la usuaria, 2026-11-02).
 const FILL_BAND = {
-  negative: { background: RESULT_COLORS.negative, foreground: "#ffffff" },
-  neutral:  { background: RESULT_COLORS.neutral,  foreground: "#ffffff" },
-  positive: { background: RESULT_COLORS.positive, foreground: "#ffffff" },
+  negative: { background: "#FCEBEB", foreground: "#B42318" },
+  neutral:  { background: "#FAF5D7", foreground: "#7A6A00" },
+  positive: { background: "#E6F4EC", foreground: "#0F7A46" },
 };
 
 // Cuantiza un ratio 0..1 a 3 bandas discretas en vez de un degradé continuo — "que el cuadro
