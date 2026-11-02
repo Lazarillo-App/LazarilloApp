@@ -281,17 +281,27 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
+                  {location.pathname.startsWith('/rrhh') ? (
+                    [
+                      <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>
+                        Cronogramas
+                      </MenuItem>,
+                      <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
+                      <MenuItem key="rrhh-nom" disabled>Nómina · Próximamente</MenuItem>,
+                    ]
+                  ) : (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     Menú
                   </MenuItem>
+                  )}
 
-                  {!isAppAdmin && (
+                  {!isAppAdmin && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && !isStaff && (
+                  {!isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem onClick={() => {
                       setNavEl(null);
                       const t = getConfigTab();
@@ -314,6 +324,23 @@ export default function Navbar() {
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
               {(() => {
                 const path = location.pathname;
+                // Dentro del módulo RRHH la navegación muestra sus secciones
+                // (como Recetas muestra Menú · Insumos). Liquidación y Nómina
+                // son las etapas 2 y 3: quedan a la vista como "Próximamente".
+                if (path.startsWith('/rrhh')) {
+                  const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
+                  return (
+                    <>
+                      <Button color="inherit"
+                        sx={{ color: 'inherit', position: 'relative', '&::after': { content: '""', position: 'absolute', left: 8, right: 8, bottom: 2, height: 2, borderRadius: 2, background: 'var(--on-primary)' } }}
+                        component={NavLink} to="/rrhh/cronogramas">
+                        Cronogramas
+                      </Button>
+                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Liquidación</Button></Tooltip>
+                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Nómina</Button></Tooltip>
+                    </>
+                  );
+                }
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
                 const enConfig = path.includes('/configuracion');
