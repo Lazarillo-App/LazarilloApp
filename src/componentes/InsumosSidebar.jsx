@@ -782,7 +782,13 @@ function InsumosSidebar({
 
       {/* ── Lista de rubros/subrubros — esta sí scrollea; el select y el
            toggle de arriba quedan fijos dentro del bloque sticky. ── */}
-      {activeTab === 'agrupaciones' && (
+      {/* Top 20: lista simple, sin rubros que navegar (pedido de Diego, 02/11). */}
+      {activeTab === 'agrupaciones' && top20GroupId && Number(selectedGroupId) === Number(top20GroupId) && (
+        <div style={{ padding: '4px 14px 8px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45 }}>
+          Los 20 insumos con más gasto en compras ($) en el período elegido arriba.
+        </div>
+      )}
+      {activeTab === 'agrupaciones' && !(top20GroupId && Number(selectedGroupId) === Number(top20GroupId)) && (
         <>
           <ul className="sidebar-draggable-list">
             {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}

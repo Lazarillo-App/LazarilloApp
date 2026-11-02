@@ -805,8 +805,16 @@ function SidebarCategorias({
           </div>
         )}
 
+        {/* Top 20: lista simple, sin divisiones (pedido de Diego, 02/11) — no
+            hay rubros que navegar; en su lugar, qué es el Top 20. */}
+        {sidebarMode === 'agrupaciones' && esTop20Group(agrupacionSeleccionada) && (
+          <div style={{ padding: '4px 4px 8px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45 }}>
+            Los 20 artículos que más facturaron ($) en el período elegido arriba.
+          </div>
+        )}
+
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && !staff && (
+        {sidebarMode === 'agrupaciones' && !staff && !esTop20Group(agrupacionSeleccionada) && (
           <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ToggleButtonGroup
               size="small" exclusive value={localListMode}
@@ -821,7 +829,7 @@ function SidebarCategorias({
       </div>
 
       {/* ── Lista de rubros/subrubros (solo en modo agrupaciones) ── */}
-      {sidebarMode === 'agrupaciones' && (
+      {sidebarMode === 'agrupaciones' && !esTop20Group(agrupacionSeleccionada) && (
         <ul className="sidebar-draggable-list">
           {loading && <li style={{ opacity: 0.7 }}>Cargando {localListMode === 'by-categoria' ? 'categorías' : 'subrubros'}…</li>}
           {!loading && listaParaMostrar.map((sub) => {

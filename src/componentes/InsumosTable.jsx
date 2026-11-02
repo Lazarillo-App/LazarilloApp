@@ -221,6 +221,8 @@ const InsumosTable = forwardRef(function InsumosTable({
   discontinuadosGroupId = null,
   elaboradosGroupId = null,
   top20GroupId = null,
+  // Map id → puesto (1 = más gasto) del Top 20; viene del ranking de compras.
+  puestosTop20 = null,
   onOpenGroupModalForInsumo,
   onCreateGroupFromRubro,
   rubrosMap = new Map(),
@@ -780,6 +782,20 @@ const InsumosTable = forwardRef(function InsumosTable({
       });
     }
 
+    // Top 20: sin divisiones (pedido de Diego, 02/11) — una sola lista
+    // ordenada por puesto (1 = el de más gasto en compras).
+    const enTop20 = !!top20GroupId && !!selectedGroupId && Number(selectedGroupId) === Number(top20GroupId);
+    if (enTop20) {
+      const todos = groupedRows.flatMap((g) => g.rows);
+      const p = (r) => puestosTop20?.get(Number(r.id)) ?? 999;
+      todos.sort((a, b) => p(a) - p(b));
+      todos.forEach((r) => out.push({
+        type: "insumo", data: r, key: `insumo-${r.id}`,
+        puesto: puestosTop20?.get(Number(r.id)) ?? null,
+      }));
+      return out;
+    }
+
     groupedRows.forEach((group) => {
       const elaboradoState = calcElaboradoState(group.rows);
 
@@ -806,7 +822,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     });
 
     return out;
-  }, [groupedRows, agrupacionInfo]);
+  }, [groupedRows, agrupacionInfo, top20GroupId, selectedGroupId, puestosTop20]);
 
   const idsVisibles = useMemo(
     () => flatRows.filter((r) => r.type === "insumo").map((r) => Number(r.data?.id)).filter(Number.isFinite),
@@ -1365,12 +1381,15 @@ const InsumosTable = forwardRef(function InsumosTable({
                     className="c-keep"
                     onClick={(e) => { e.stopPropagation(); onOpenEditModal?.(r); }}
                     title="Editar insumo"
-                    style={{
-                      cursor: 'pointer', color: '#3C9BD6', fontWeight: 600,
-                      textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2,
-                    }}
+                    style={{ cursor: 'pointer', color: '#3C9BD6', fontWeight: 600 }}
                   >
-                    {displayCode(r)}
+                    {/* Top 20: puesto por gasto, en gris */}
+                    {row.puesto != null && (
+                      <span title="Puesto en el Top 20 por gasto en compras ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', marginRight: 6 }}>{row.puesto}</span>
+                    )}
+                    <span style={{ textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2 }}>
+                      {displayCode(r)}
+                    </span>
                   </div>
 
                   {/* Nombre: con indicador si tiene receta cargada */}

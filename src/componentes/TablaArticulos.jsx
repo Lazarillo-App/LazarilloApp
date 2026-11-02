@@ -1258,6 +1258,28 @@ export default function TablaArticulos({
       });
     }
 
+    // Top 20: sin divisiones (pedido de Diego, 02/11) — una sola lista,
+    // cada fila con su puesto por facturación ($): 1 = el que más facturó.
+    if (esTop20Group(agrupacionSeleccionada)) {
+      const todos = sections.flatMap((sec) => sec.arts.map((a) => ({ a, sec })));
+      const puesto = new Map(
+        todos.map(({ a }) => getId(a))
+          .sort((x, y) => getVentasAmount(y) - getVentasAmount(x))
+          .map((id, k) => [id, k + 1]));
+      todos.sort((x, y) => cmp(x.a, y.a));
+      for (const { a, sec } of todos) {
+        const id = getId(a);
+        rows.push({
+          kind: "item",
+          key: `I|${sec.categoria}|${sec.subrubro}|${id}`,
+          categoria: sec.categoria, subrubro: sec.subrubro,
+          puesto: puesto.get(id),
+          art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+        });
+      }
+      return rows;
+    }
+
     for (const sec of sections) {
       const { categoria, subrubro, arts } = sec;
       rows.push({
@@ -2278,6 +2300,10 @@ export default function TablaArticulos({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
+            {/* Top 20: puesto por facturación, en gris */}
+            {row.puesto != null && !(!isStaff && selectionMode !== 'link' && isLinked) && (
+              <span title="Puesto en el Top 20 por facturación ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
+            )}
             {!isStaff && selectionMode !== 'link' && isLinked && (
               <>
                 {linkGroupsList.filter(g => g.linkType === 'precio').map(g => (
@@ -2894,7 +2920,7 @@ export default function TablaArticulos({
                     i++;
                   } else if (col.id === 'manual') {
                     zonas.push(
-                      <div key={`z-aj-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#16a34a', background: 'rgba(87,187,127,0.1)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>TU AJUSTE</div>
+                      <div key={`z-aj-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#16a34a', background: 'rgba(87,187,127,0.1)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>NUEVO PRECIO</div>
                     );
                     i++;
                   } else {
@@ -2983,13 +3009,19 @@ export default function TablaArticulos({
                 };
 
                 switch (col.id) {
-                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}{precioHeaderExtra ? (
-                    // Selector de lista de precios: vive en el título de la columna
-                    // que cambia (antes estaba al lado del título de la página).
-                    <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                      {precioHeaderExtra}
-                    </span>
-                  ) : null}</div>;
+                  case 'precio': return (
+                    // Debajo, chico, de qué lista es el precio (como "costo actual |
+                    // objetivo" en Costo %). El selector de lista vive en Nuevo
+                    // precio (pedido de Diego, 02/11).
+                    <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                      <span>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      {currentPriceList?.name && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          lista: {currentPriceList.name}
+                        </span>
+                      )}
+                    </div>
+                  );
                   case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'rentabilidad': return (
@@ -3024,10 +3056,17 @@ export default function TablaArticulos({
                       ? currentPriceList.name
                       : 'Nuevo precio';
                     const headerColor = !isPriceListFavorite ? currentListColor : undefined;
+                    // El título de la columna es el selector de lista (antes estaba
+                    // en Precio); arriba la franja dice NUEVO PRECIO.
                     return (
                       <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
                         style={{ ...dragIndicatorStyle, justifyContent: 'center', textAlign: 'center', color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
-                        {headerLabel}{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                        {precioHeaderExtra ? (
+                          <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                            {React.isValidElement(precioHeaderExtra) ? React.cloneElement(precioHeaderExtra, { enTitulo: true }) : precioHeaderExtra}
+                          </span>
+                        ) : headerLabel}
+                        {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                       </div>
                     );
                   }
