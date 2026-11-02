@@ -26,4 +26,11 @@ export const GestionAPI = {
       months: months?.length ? months.join(',') : undefined,
       agrupacion: agrupacion && agrupacion !== 'concepto' ? agrupacion : undefined,
     })}`),
+
+  // Pivot de Ventas (tipo → forma de cobro). params: { year, sucursal, months:[..] }
+  pivotVentas: ({ months, ...resto }) =>
+    api(`${base()}/dashboard/pivot-ventas${qs({
+      ...resto,
+      months: months?.length ? months.join(',') : undefined,
+    })}`),
 };
