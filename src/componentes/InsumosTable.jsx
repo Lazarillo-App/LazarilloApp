@@ -383,7 +383,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     { id: 'enRecetas', label: 'Uso', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.6fr', sortKey: 'total' },
     { id: 'vencimiento', label: 'Vencimiento', width: '.6fr', sortKey: null },
-    { id: 'fecha', label: 'Fecha', width: '.65fr', sortKey: 'fecha' },
+    { id: 'fecha', label: 'Últ. modificación', width: '.65fr', sortKey: 'fecha' },
   ];
 
   const colStorageKey = isElaborados ? 'insumos_col_order_elab' : 'insumos_col_order_no_elab';
@@ -1087,8 +1087,9 @@ const InsumosTable = forwardRef(function InsumosTable({
               }
               if (col.id === 'fecha') {
                 return (
-                  <div key="fecha" {...dragProps} onClick={() => toggleSort("fecha")} className="col-sortable" style={dragStyle}>
-                    Fecha {sortIcon("fecha")}
+                  <div key="fecha" {...dragProps} onClick={() => toggleSort("fecha")} className="col-sortable" style={dragStyle}
+                    title="Fecha del último cambio del insumo: precio, receta o datos">
+                    Últ. modificación {sortIcon("fecha")}
                   </div>
                 );
               }
