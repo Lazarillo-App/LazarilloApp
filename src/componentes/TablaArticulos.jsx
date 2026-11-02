@@ -1771,6 +1771,15 @@ export default function TablaArticulos({
     saveColConfig(next);
   }, [colConfig, saveColConfig]);
 
+  // Ajuste % de agrupación / rubro: la caja va en la MISMA columna que el
+  // "Nuevo precio" de las filas, centrada y con el mismo ancho, para que
+  // queden alineadas (pedido de Diego, 02/11). La etiqueta ocupa las columnas
+  // de datos de la izquierda y la X queda pegada a la derecha de la caja.
+  const COLS_SIN_DATO_EN_HEADER = ['precio', 'costo', 'rentabilidad', 'objetivo', 'sugerido', 'ganancia', 'costoPct', 'sinPromo'];
+  const spanEtiquetaAjuste = Math.max(1, visibleCols.filter(c => COLS_SIN_DATO_EN_HEADER.includes(c.id)).length);
+  const enListaNoFavorita = !isPriceListFavorite && !!calcPrecioPorLista;
+  const ANCHO_CAJA_PRECIO = enListaNoFavorita ? 85 : 160;
+
   const ClearBtn = ({ onClick, visible = true }) => {
     if (!visible) return null;
     return (
@@ -1907,9 +1916,12 @@ export default function TablaArticulos({
             }
             if (col.id === 'manual') {
               return (
-                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                <React.Fragment key="manual">
+                <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>AJUSTAR AGRUPACIÓN</span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
+                </div>
+                <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: ANCHO_CAJA_PRECIO }}>
                     <input
                       type="number"
                       value={blockManuales[bkManual] ?? ''}
@@ -1923,10 +1935,11 @@ export default function TablaArticulos({
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkManual);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
+                      style={{ flex: 1, minWidth: 0, width: '100%', fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <span style={{ position: 'absolute', left: `calc(50% + ${ANCHO_CAJA_PRECIO / 2 + 4}px)`, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}>
                   <ClearBtn
                     onClick={() => {
                       setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
@@ -1938,7 +1951,9 @@ export default function TablaArticulos({
                         ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
                       }
                     }} />
+                  </span>
                 </div>
+                </React.Fragment>
               );
             }
             if (col.id === 'acciones') {
@@ -2064,11 +2079,14 @@ export default function TablaArticulos({
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const bkRubroMan = `rubro-man-${rubroKeyManual}`;
               return (
-                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                <React.Fragment key="manual">
+                <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>
-                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO ' : 'AJUSTAR SUBRUBRO '}
+                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO'}
                   </span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
+                </div>
+                <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: ANCHO_CAJA_PRECIO }}>
                     <input
                       type="number"
                       value={blockManuales[bkRubroMan] ?? ''}
@@ -2082,10 +2100,11 @@ export default function TablaArticulos({
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkRubroMan);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
+                      style={{ flex: 1, minWidth: 0, width: '100%', fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <span style={{ position: 'absolute', left: `calc(50% + ${ANCHO_CAJA_PRECIO / 2 + 4}px)`, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}>
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
                     setLastAppliedPct(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
@@ -2096,7 +2115,9 @@ export default function TablaArticulos({
                       ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
                     }
                   }} />
+                  </span>
                 </div>
+                </React.Fragment>
               );
             }
             if (col.id === 'acciones') {
@@ -2405,7 +2426,7 @@ export default function TablaArticulos({
                 // Si está excluido → mostrar gris, no editable
                 if (excluido) {
                   return (
-                    <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                    <div key="manual" style={{ ...cellNum, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                       <div
                         title="Excluido — usa precio de la lista favorita"
                         style={{
@@ -2428,7 +2449,7 @@ export default function TablaArticulos({
                 const valorMostrado = localOverride !== undefined ? localOverride : precioFinal;
 
                 return (
-                  <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                  <div key="manual" style={{ ...cellNum, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center',
                       border: `1px solid ${currentListColor}50`,
@@ -2930,7 +2951,7 @@ export default function TablaArticulos({
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'rentabilidad': return (
                     <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
-                      style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'flex-end', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                      style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
                       <span>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
@@ -2947,7 +2968,7 @@ export default function TablaArticulos({
                     const headerColor = !isPriceListFavorite ? currentListColor : undefined;
                     return (
                       <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
-                        style={{ ...dragIndicatorStyle, color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
+                        style={{ ...dragIndicatorStyle, justifyContent: 'center', textAlign: 'center', color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
                         {headerLabel}{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                       </div>
                     );
