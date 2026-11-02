@@ -33,6 +33,7 @@ import LazarilloLanding from './paginas/LazarilloLanding';
 import Register from './paginas/Register';
 import Perfil from './paginas/Perfil';
 import Inicio from './paginas/Inicio';
+import RrhhCronogramas from './paginas/RrhhCronogramas';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import RequireActiveAccount from './routing/RequireActiveAccount';
 import Activar from './paginas/Activar';
@@ -272,6 +273,8 @@ export default function App() {
                     <Insumos />
                   }
                 />
+                {/* ── RRHH › Cronogramas (Etapa 1) ── */}
+                <Route path="/rrhh/cronogramas" element={<RrhhCronogramas />} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/inicio" element={<Inicio />} />
                 <Route path="/configuracion" element={<RequireAdminOrOwner><ConfiguracionMain /></RequireAdminOrOwner>} />
