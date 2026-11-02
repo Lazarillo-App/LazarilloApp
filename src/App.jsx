@@ -10,6 +10,7 @@ import Insumos from './paginas/InsumosMain';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
+import GestionLayout from './componentes/GestionLayout';
 import ConfiguracionMain from './paginas/ConfiguracionMain';
 import RequireAdminOrOwner from './componentes/RequireAdminOrOwner';
 import ForgotPassword from './paginas/ForgotPassword';
@@ -246,6 +247,8 @@ export default function App() {
               <Route path="/seleccionar-negocio" element={<SelectorNegocio />} />
 
               <Route element={<OnboardingGuard />}>
+                {/* Menú e Insumos comparten la barra (no se recarga al pasar de una a otra) */}
+                <Route element={<GestionLayout />}>
                 <Route
                   path="/menu"
                   element={
@@ -264,14 +267,15 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="/agrupacioneslist"
-                  element={<AgrupacionesList agrupaciones={agrupaciones} />}
-                />
-                <Route
                   path="/insumos"
                   element={
                     <Insumos />
                   }
+                />
+                </Route>
+                <Route
+                  path="/agrupacioneslist"
+                  element={<AgrupacionesList agrupaciones={agrupaciones} />}
                 />
                 {/* ── RRHH › Cronogramas (Etapa 1) ── */}
                 <Route path="/rrhh/cronogramas" element={<RrhhCronogramas />} />
