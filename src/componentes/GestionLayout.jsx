@@ -6,13 +6,20 @@
 // La vista Diseño de Menú (/menu?vista=diseno) va a pantalla completa, sin
 // barra; el árbol de elementos es el mismo (solo cambian estilos) para que
 // pasar de Tabla a Diseño no desmonte la página.
-import React, { useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useOutlet } from 'react-router-dom';
 import BarraGestion from './BarraGestion';
 import { BarraGestionProvider } from '@/context/BarraGestionContext';
 
 export default function GestionLayout() {
   const location = useLocation();
+  // Páginas "vivas": la que ya se abrió una vez queda montada (oculta) al
+  // pasar a la otra. Volver a Artículos / Menú (diseño) desde Insumos ya no
+  // recarga todo — antes ArticulosMain se armaba de cero cada vez y tardaba.
+  const outlet = useOutlet();
+  const pagina = location.pathname.startsWith('/insumos') ? 'insumos' : 'menu';
+  const vivas = useRef({});
+  if (outlet) vivas.current[pagina] = outlet;
   const diseno = location.pathname.startsWith('/menu')
     && new URLSearchParams(location.search).get('vista') === 'diseno';
 
@@ -50,7 +57,15 @@ export default function GestionLayout() {
           <BarraGestion />
         </div>
         <div style={diseno ? undefined : { position: 'relative', flex: 1, minHeight: 0 }}>
-          <Outlet />
+          {Object.entries(vivas.current).map(([k, el]) => {
+            const activa = k === pagina;
+            // Oculta con visibility (no display:none): así no pierde el scroll
+            // ni el tamaño medido de la tabla virtualizada.
+            const st = !activa ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, visibility: 'hidden', pointerEvents: 'none', overflow: 'hidden' }
+              : diseno ? undefined
+                : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
+            return <div key={k} style={st}>{el}</div>;
+          })}
         </div>
       </div>
     </BarraGestionProvider>

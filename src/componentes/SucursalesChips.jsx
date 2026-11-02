@@ -47,6 +47,8 @@ export default function SucursalesChips() {
   const [hover, setHover] = useState(null);
 
   const lista = branches || [];
+  // Siempre se ven (aunque haya una sola): si no, en un negocio con una
+  // sola sucursal no aparecía nada (pedido de Diego).
   const varias = lista.length > 1;
   const esTodas = activeBranchId === null || activeBranchId === undefined;
 
@@ -55,23 +57,26 @@ export default function SucursalesChips() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {varias && (
+      {lista.length > 0 && (
         <>
-          <button type="button" onClick={() => setActiveBranch?.(null)}
-            style={{ ...CHIP, ...(esTodas ? CHIP_ON : null) }}>
-            Todas
-          </button>
+          {varias && (
+            <button type="button" onClick={() => setActiveBranch?.(null)}
+              style={{ ...CHIP, ...(esTodas ? CHIP_ON : null) }}>
+              Todas
+            </button>
+          )}
           {lista.map((b) => {
-            const on = !esTodas && String(activeBranchId) === String(b.id);
+            // Con una sola sucursal, esa es la que se ve siempre (queda marcada).
+            const on = varias ? (!esTodas && String(activeBranchId) === String(b.id)) : true;
             const color = b.color || (b.isMain ? 'var(--color-primary)' : '#1976d2');
             return (
               <button key={b.id} type="button"
-                onClick={() => setActiveBranch?.(b.id)}
+                onClick={() => setActiveBranch?.(varias ? b.id : null)}
                 onMouseEnter={() => setHover(b.id)} onMouseLeave={() => setHover(null)}
                 title={b.isMain ? `${b.name} (principal)` : b.name}
                 style={{ ...CHIP, ...(on ? CHIP_ON : null) }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, border: '1px solid rgba(0,0,0,.15)' }} />
-                {b.name}
+                {b.name || 'Todas'}
                 {!isStaff && hover === b.id && (
                   <EditIcon onClick={(e) => abrirEdicion(e, b)} titleAccess="Editar sucursal"
                     sx={{ fontSize: 12, ml: 0.25, opacity: 0.75, '&:hover': { opacity: 1 } }} />

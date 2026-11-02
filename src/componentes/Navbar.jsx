@@ -318,7 +318,7 @@ export default function Navbar() {
             </Box>
 
 {/* Desktop – links */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 0.25, py: 0.5 }}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 1, py: 0.75 }}>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {(() => {
                 const path = location.pathname;
