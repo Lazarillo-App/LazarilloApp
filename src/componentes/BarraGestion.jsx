@@ -153,6 +153,10 @@ export default function BarraGestion() {
         firstDate={fd.firstDate}
         loadingFirst={fd.loadingFirst}
         labelOverride={esMenu && activeBranchFilter?.mode === 'all' ? '' : null}
+        buttonSx={{
+          borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', borderColor: '#2492C8', color: '#2492C8',
+          minWidth: 160, '&:hover': { borderColor: '#2492C8', bgcolor: 'rgba(36,146,200,0.06)' },
+        }}
       />
 
       <SucursalSelector variant="inline" />

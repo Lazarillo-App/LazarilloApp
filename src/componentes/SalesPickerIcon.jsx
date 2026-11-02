@@ -198,6 +198,10 @@ export default function SalesPickerIcon({
   // lugares donde ese texto largo no entra (ej. al lado de "Últimas 10" en
   // el detalle de compras).
   compact = false,
+  // Estilo del botón (no del popover): en la barra de Menú/Insumos va igual
+  // que "Ventas / Compras" para no mezclar colores; el popover sigue con el
+  // color del negocio.
+  buttonSx = null,
 }) {
   const { mode, from, to } = value;
 
@@ -338,6 +342,7 @@ export default function SalesPickerIcon({
               borderColor: tc.primary, color: tc.primary,
               '&:hover': { borderColor: tc.primary, bgcolor: `${tc.primary}10` },
               padding: '7px 9px', fontSize: 13,
+              ...(buttonSx || {}),
             }}
           >
             {rangeLabel}
