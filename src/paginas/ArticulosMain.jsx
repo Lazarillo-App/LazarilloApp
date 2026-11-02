@@ -1697,6 +1697,7 @@ export default function ArticulosMain(props) {
     },
     [getAmountForId, todoInfo?.todoGroupId]
   );
+
   const agrupacionesOrdenadas = useMemo(() => {
     const list = Array.isArray(agrupacionesRich) ? [...agrupacionesRich] : [];
 
