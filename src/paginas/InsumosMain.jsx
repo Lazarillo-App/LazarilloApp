@@ -1199,6 +1199,19 @@ export default function InsumosMain() {
   const groupsScopedRef = useRef(groupsScoped);
   useEffect(() => { groupsScopedRef.current = groupsScoped; }, [groupsScoped]);
 
+  // Última agrupación elegida, por negocio (pedido de Diego, 02/11): al
+  // volver, Insumos abre donde lo dejaste. Se restaura una vez, apenas están
+  // las agrupaciones, y recién después se empieza a guardar.
+  const ultimaAgrupKey = `lazarillo:ultimaAgrup:insumos:${businessId || 'default'}`;
+  const ultimaRestauradaRef = useRef(false);
+  useEffect(() => { ultimaRestauradaRef.current = false; }, [businessId]);
+  useEffect(() => {
+    if (!ultimaRestauradaRef.current) return;
+    const id = Number(selectedGroupId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    try { localStorage.setItem(ultimaAgrupKey, String(id)); } catch { /* sin storage */ }
+  }, [selectedGroupId, ultimaAgrupKey]);
+
   useEffect(() => {
     // Staff queda fijo en "Elaborados" vía su propio efecto dedicado, más
     // abajo — este no debe pisarlo con la autoselección normal.
@@ -1210,6 +1223,21 @@ export default function InsumosMain() {
     if (!currentGroups.length) return;
     const currentSelId = selectedGroupIdRef.current;
     const currentSel = selectedGroupRef.current;
+
+    // Primera vez que están las agrupaciones: abrir la última elegida.
+    if (!ultimaRestauradaRef.current) {
+      ultimaRestauradaRef.current = true;
+      let ultimaId = null;
+      try { ultimaId = Number(localStorage.getItem(ultimaAgrupKey)) || null; } catch { /* sin storage */ }
+      if (ultimaId && (currentGroups.some((g) => Number(g?.id) === ultimaId) || Number(todoId) === ultimaId)) {
+        if (Number(currentSelId) !== ultimaId) {
+          markManualPick();
+          setSelectedGroupId(ultimaId);
+          setRubroSeleccionado(null);
+        }
+        return;
+      }
+    }
     // Si el usuario ELIGIÓ Discontinuados a mano (hace poco), no lo sacamos de ahí.
     // Pero si "cayó" en Discontinuados solo porque este efecto corrió ANTES de que
     // los datos reales (favorita, sin-agrupación) terminaran de cargar, no debe
@@ -1257,7 +1285,7 @@ export default function InsumosMain() {
         setRubroSeleccionado(null);
       }
     }
-  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId, isStaff]);
+  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId, isStaff, groupsScoped.length, ultimaAgrupKey]);
 
   // Staff (Vista Operación) siempre fijo en la agrupación fija "Elaborados",
   // sin pasar por el Select (que de todos modos no ve) ni por la
