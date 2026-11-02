@@ -235,9 +235,6 @@ export default function GestionPanel() {
             <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
               <SearchIcon sx={{ fontSize: 15 }} />
               <span>Buscar</span>
-              <Box component="kbd" sx={{ display: { xs: 'none', sm: 'inline-flex' }, height: 20, alignItems: 'center', px: 0.75, borderRadius: 0.5, border: 1, borderColor: 'divider', bgcolor: 'grey.50', fontFamily: 'monospace', fontSize: 10, color: 'text.disabled' }}>
-                Ctrl K
-              </Box>
             </Box>
           </Stack>
         )}
