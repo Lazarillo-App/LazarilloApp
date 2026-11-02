@@ -1578,7 +1578,9 @@ export default function InsumosMain() {
   }, [forceRefresh]);
 
   const titulo = useMemo(() => {
-    const base = businessName ? `Insumos — ${businessName}` : 'Insumos';
+    // Los insumos son globales: ni el negocio (ya está en el header) ni la
+    // sucursal van en el título.
+    const base = 'Insumos';
     if (!isMainDivision && activeDivisionName) return `${base} › ${activeDivisionName}`;
     return base;
   }, [businessName, isMainDivision, activeDivisionName]);
@@ -1607,18 +1609,9 @@ export default function InsumosMain() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
         <h2 style={{ margin: 0 }}>
           {titulo}
-          {activeBranch && (
-            <span style={{
-              marginLeft: 10, fontSize: '0.6em', fontWeight: 500,
-              color: activeBranch.color || 'var(--color-primary)',
-              verticalAlign: 'middle',
-            }}>
-              — {activeBranch.name}
-            </span>
-          )}
         </h2>
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
             value={rangoCompras}
             onChange={handleRangoComprasChange}
@@ -1845,6 +1838,8 @@ export default function InsumosMain() {
             selectionMode={isStaff ? null : insumoSelectionMode}
             selectedInsumoIds={selectedInsumoIds}
             onToggleInsumo={isStaff ? undefined : toggleInsumoSelected}
+            allowSelect={!isStaff}
+            onToggleMode={isStaff ? undefined : toggleInsumoMode}
           />
         </div>
       </div>
