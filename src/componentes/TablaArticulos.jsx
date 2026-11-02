@@ -1810,7 +1810,7 @@ export default function TablaArticulos({
           fontSize: "0.82rem", fontWeight: 600,
           background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
           borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-          padding: "0 4px",
+          padding: "0 8px",
           boxShadow: "inset 4px 0 0 var(--color-primary)",
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
