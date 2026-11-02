@@ -302,6 +302,8 @@ export default function RrhhCronogramas() {
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const saveTimer = useRef(null);
+  const pendienteRef = useRef(null); // { semanaId, body } del guardado programado
+  const putEnVuelo = useRef(null);   // promesa del PUT en tránsito
   const filasRef = useRef(filas);
   filasRef.current = filas;
 
@@ -357,7 +359,10 @@ export default function RrhhCronogramas() {
     if (!espacio) return;
     let alive = true;
     setCargandoSemana(true);
-    RrhhAPI.getSemana(semanaId, espacio.id)
+    // Primero persistir lo que quedó pendiente del espacio/semana anterior:
+    // así este GET (y el del regreso) ya encuentran todo guardado.
+    Promise.resolve(flushRef.current())
+      .then(() => RrhhAPI.getSemana(semanaId, espacio.id))
       .then((r) => {
         if (!alive) return;
         if (r.found) {
@@ -403,16 +408,24 @@ export default function RrhhCronogramas() {
     };
   }, [espacio, fechaInicio]);
 
+  // El guardado pendiente viaja con SU snapshot (semana + body del espacio en
+  // el que se editó): aunque dispare tarde o el usuario ya esté en otra solapa,
+  // guarda exactamente lo que se tocó y nunca el estado de otro espacio.
   const guardarAhora = useCallback(async () => {
-    if (!espacio) return;
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    const p = pendienteRef.current;
+    if (!p) return;
+    pendienteRef.current = null;
     setGuardado('guardando');
     try {
-      const r = await RrhhAPI.putSemana(semanaId, armarBody(filasRef.current));
-      setGuardado('ok');
-      setSemanaExiste(true);
+      putEnVuelo.current = RrhhAPI.putSemana(p.semanaId, p.body);
+      const r = await putEnVuelo.current;
+      // Si mientras viajaba el PUT se tocó algo más, hay otro pendiente: no pisar su cartel.
+      setGuardado((g) => (pendienteRef.current ? g : 'ok'));
+      setSemanaExiste((v) => v || (p.semanaId === semanaId && p.body.espacioId === espacio?.id));
       setSemanasIdx((prev) => {
-        if (prev.some((s) => s.semana === semanaId && s.espacioId === espacio.id)) return prev;
-        return [...prev, { id: r?.semana?.id, espacioId: espacio.id, semana: semanaId, fechaInicio }];
+        if (prev.some((s) => s.semana === p.semanaId && s.espacioId === p.body.espacioId)) return prev;
+        return [...prev, { id: r?.semana?.id, espacioId: p.body.espacioId, semana: p.semanaId, fechaInicio: p.body.fechaInicio }];
       });
     } catch (e) {
       setGuardado('error');
@@ -422,18 +435,30 @@ export default function RrhhCronogramas() {
         avisar(e?.data?.message || e.message || 'No se pudo guardar la semana.', 'error');
       }
     }
-  }, [espacio, semanaId, armarBody, avisar, fechaInicio]);
+  }, [espacio, semanaId, avisar]);
 
-  const programarGuardado = useCallback(() => {
+  // Despacha YA el guardado pendiente (si lo hay). Se usa al cambiar de
+  // espacio/semana y al desmontar, para que nada quede sin persistir.
+  const flushPendiente = useCallback(async () => {
+    if (pendienteRef.current) await guardarAhora();
+    else if (putEnVuelo.current) await putEnVuelo.current.catch(() => {});
+  }, [guardarAhora]);
+  const flushRef = useRef(flushPendiente);
+  flushRef.current = flushPendiente;
+
+  const programarGuardado = useCallback((filasSnapshot) => {
     setGuardado('pendiente');
+    pendienteRef.current = { semanaId, body: armarBody(filasSnapshot) };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(guardarAhora, 1200);
-  }, [guardarAhora]);
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  }, [semanaId, armarBody, guardarAhora]);
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    flushRef.current();            // mejor esfuerzo al salir de la página
+  }, []);
 
   const mutarFilas = useCallback((fn) => {
-    setFilas((prev) => { const next = fn(prev); filasRef.current = next; return next; });
-    programarGuardado();
+    setFilas((prev) => { const next = fn(prev); filasRef.current = next; programarGuardado(next); return next; });
   }, [programarGuardado]);
 
   /* ── acciones de grilla ── */
