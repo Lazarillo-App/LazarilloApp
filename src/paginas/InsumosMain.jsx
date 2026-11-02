@@ -998,6 +998,10 @@ export default function InsumosMain() {
     }
     return new Set(out.slice(0, 20));
   }, [top20RankingRaw, discontinuadosIds, idsElaboradosActivos]);
+  // Puesto de cada uno (el Set conserva el orden del ranking).
+  const puestosTop20Insumos = useMemo(
+    () => new Map([...idsTop20Insumos].map((id, k) => [id, k + 1])),
+    [idsTop20Insumos]);
 
   const idsSinAgrupActivos = useMemo(() => {
     const res = new Set();
@@ -1744,6 +1748,7 @@ export default function InsumosMain() {
 
         <div id="insumos-scroll" style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
+            puestosTop20={puestosTop20Insumos}
             branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}
             rows={tableRowsFiltrados}
