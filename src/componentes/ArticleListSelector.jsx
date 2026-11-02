@@ -22,6 +22,8 @@ export default function ArticleListSelector({
   onChange,
   onOpenConfig,
   compact = false,
+  // En el título de una columna: sin margen izquierdo y un poco más ancho.
+  enTitulo = false,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -52,8 +54,8 @@ export default function ArticleListSelector({
           display: 'inline-flex', alignItems: 'center', gap: 0.5,
           background: 'transparent', border: 'none', cursor: 'pointer',
           color, fontWeight: 700, fontSize: compact ? '0.7rem' : '0.95rem',
-          fontFamily: 'inherit', padding: compact ? '1px 7px' : 0, ml: compact ? 0.75 : 1.5,
-          ...(compact ? { background: 'rgba(36,146,200,0.10)', borderRadius: '10px', maxWidth: 120, textTransform: 'none' } : {}),
+          fontFamily: 'inherit', padding: compact ? '1px 7px' : 0, ml: enTitulo ? 0 : (compact ? 0.75 : 1.5),
+          ...(compact ? { background: 'rgba(36,146,200,0.10)', borderRadius: '10px', maxWidth: enTitulo ? 150 : 120, textTransform: 'none' } : {}),
           opacity: 0.95,
           transition: 'opacity 0.15s',
           '&:hover': { opacity: 1, textDecoration: '', textDecorationThickness: '1.5px', textUnderlineOffset: '3px' },
