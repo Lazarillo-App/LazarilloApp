@@ -21,7 +21,9 @@ export default function GestionLayout() {
   useEffect(() => {
     const el = document.querySelector('.MuiAppBar-root');
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const recalcular = () => setNavHeight(el.getBoundingClientRect().height || 86);
+    // bottom (no height): si hay algo arriba del header, la barra igual
+    // arranca justo debajo y la separación arriba/abajo queda pareja.
+    const recalcular = () => setNavHeight(el.getBoundingClientRect().bottom || 86);
     recalcular();
     const ro = new ResizeObserver(recalcular);
     ro.observe(el);
@@ -33,10 +35,10 @@ export default function GestionLayout() {
       <div
         style={diseno ? undefined : {
           position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
-          display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column', gap: 14, overflow: 'hidden',
         }}
       >
-        <div style={{ display: diseno ? 'none' : 'block', padding: '12px 8px 0 8px', flexShrink: 0 }}>
+        <div style={{ display: diseno ? 'none' : 'block', padding: '14px 8px 0 8px', flexShrink: 0 }}>
           <BarraGestion />
         </div>
         <div style={diseno ? undefined : { position: 'relative', flex: 1, minHeight: 0 }}>

@@ -21,7 +21,7 @@ import { BusinessesAPI, RecetasAPI, invalidateHttpCache, httpBiz } from "@/servi
 import EditarItemModal from "./EditarItemModal";
 import { showConfirm } from "@/servicios/appConfirm";
 import LinkChainIcon from "./LinkChainIcon";
-import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
+import { IconButton, Tooltip } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
@@ -2952,7 +2952,22 @@ export default function TablaArticulos({
                   case 'rentabilidad': return (
                     <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
                       style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
-                      <span>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      {/* Referencias de colores de las filas: tooltip sobre el título
+                          (antes era un ⓘ suelto en la barra). */}
+                      <Tooltip arrow placement="top" title={
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 2 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
+                            Fila ámbar: costo poco confiable
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
+                            Fila roja: excedido sobre el objetivo
+                          </span>
+                        </span>
+                      }>
+                        <span style={{ cursor: 'help' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      </Tooltip>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
                         costo actual

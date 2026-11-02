@@ -900,6 +900,9 @@ input[type="number"]:focus {
       grilla ya no ensanchan su columna y desalinean las filas) ── */
 .insumos-header > * { min-width: 0; }
 .insumos-header .col-sortable { white-space: normal; line-height: 1.15; }
+/* Insumos: títulos y datos centrados salvo Código y Nombre (y casilla /
+   acciones), igual que en Artículos — pedido de Diego 02/11. */
+.lz-centrar > :not(.c-keep):not(.row-left-bar) { text-align: center !important; justify-content: center !important; }
 
 /* ── Casillas de selección: mismo tamaño y sin margen en todas las filas,
       así quedan en la misma línea vertical (encabezado, rubro y artículo) ── */
