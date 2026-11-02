@@ -18,7 +18,7 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación',
     modules: [
-      { id: 'tableros', label: 'Tableros', emoji: '📈', to: null },
+      { id: 'tableros', label: 'Panel de Gestión', emoji: '📈', to: '/gestion' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
     ],
   },
