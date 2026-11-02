@@ -314,6 +314,7 @@ export default function TablaArticulos({
   discIds: discIdsProp,
   orgAssignedIds = null,
   orgGroups = null,
+  precioHeaderExtra = null,
   recetasCostos = {},
   priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   globalCostoIdeal = 30,
@@ -2299,7 +2300,7 @@ export default function TablaArticulos({
               const gananciaCruda = num(a.precio) - costoArticulo;
               const gananciaAct = pasoRedondeo > 0 ? Math.round(gananciaCruda / pasoRedondeo) * pasoRedondeo : Math.round(gananciaCruda);
               return (
-                <div key="precio" style={{ ...cellNum, lineHeight: 1.15 }}>
+                <div key="precio" style={{ ...cellNum, textAlign: 'center', lineHeight: 1.15 }}>
                   <div>{fmtCurrency(num(a.precio))}</div>
                   {costoArticulo > 0 && (
                     <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600 }}>
@@ -2319,7 +2320,7 @@ export default function TablaArticulos({
               // de venta): el cliente lo probó y prefiere ver el costo real, sin importar
               // cuánto "afee" el número. Mismo criterio que ya usa RecetaModal.
               return (
-                <div key="costo" style={{ ...cellNum, color: TABLE_TEXT, lineHeight: 1.15 }}>
+                <div key="costo" style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, lineHeight: 1.15 }}>
                   <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
                   {sugerido > 0 && (
                     <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
@@ -2918,8 +2919,14 @@ export default function TablaArticulos({
                 };
 
                 switch (col.id) {
-                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'flex-start', background: 'rgba(148,163,184,0.06)' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
-                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'flex-start', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}{precioHeaderExtra ? (
+                    // Selector de lista de precios: vive en el título de la columna
+                    // que cambia (antes estaba al lado del título de la página).
+                    <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                      {precioHeaderExtra}
+                    </span>
+                  ) : null}</div>;
+                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'rentabilidad': return (
                     <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
