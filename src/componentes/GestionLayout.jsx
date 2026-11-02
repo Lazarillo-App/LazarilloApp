@@ -11,6 +11,12 @@ import { useLocation, useOutlet } from 'react-router-dom';
 import BarraGestion from './BarraGestion';
 import { BarraGestionProvider } from '@/context/BarraGestionContext';
 
+// Estilo "sectores redondeados" (tomado del Panel de Gestión, pedido de Diego
+// 02/11): fondo gris claro y cada bloque — barra, agrupaciones, tabla — en su
+// tarjeta blanca con borde fino. Todo el estilo vive en theme-layout.css bajo
+// .lz-tarjetas: para volver al aspecto anterior alcanza con poner false acá.
+const ESTILO_TARJETAS = true;
+
 export default function GestionLayout() {
   const location = useLocation();
   // Páginas "vivas": la que ya se abrió una vez queda montada (oculta) al
@@ -48,12 +54,13 @@ export default function GestionLayout() {
   return (
     <BarraGestionProvider>
       <div
+        className={ESTILO_TARJETAS && !diseno ? 'lz-tarjetas' : undefined}
         style={diseno ? undefined : {
           position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
           display: 'flex', flexDirection: 'column', gap: 14, overflow: 'hidden',
         }}
       >
-        <div style={{ display: diseno ? 'none' : 'block', padding: '14px 8px 0 8px', flexShrink: 0 }}>
+        <div className="lz-barra-marco" style={{ display: diseno ? 'none' : 'block', padding: '14px 8px 0 8px', flexShrink: 0 }}>
           <BarraGestion />
         </div>
         <div style={diseno ? undefined : { position: 'relative', flex: 1, minHeight: 0 }}>
