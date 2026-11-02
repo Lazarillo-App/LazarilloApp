@@ -984,11 +984,11 @@ const InsumosTable = forwardRef(function InsumosTable({
             </Box>
           )}
           <div
-            className="table-col-header-inner insumos-header"
+            className="table-col-header-inner insumos-header lz-centrar"
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
           >
             {puedeSeleccionar && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="c-keep" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <input type="checkbox"
                   checked={!!selectionMode && idsVisibles.length > 0 && idsVisibles.every((id) => selectedInsumoIds.has(id))}
                   onChange={() => {
@@ -1000,10 +1000,10 @@ const InsumosTable = forwardRef(function InsumosTable({
                 />
               </div>
             )}
-            <div onClick={() => toggleSort("codigo")} className="col-sortable">
+            <div onClick={() => toggleSort("codigo")} className="col-sortable c-keep">
               Código {sortIcon("codigo")}
             </div>
-            <div onClick={() => toggleSort("nombre")} className="col-sortable">
+            <div onClick={() => toggleSort("nombre")} className="col-sortable c-keep">
               Nombre {sortIcon("nombre")}
             </div>
             <div onClick={() => toggleSort("unidad")} className="col-sortable">
@@ -1329,7 +1329,7 @@ const InsumosTable = forwardRef(function InsumosTable({
               return (
                 <div
                   data-insumo-id={r.id}
-                  className={`table-item-row${isSelected ? " is-selected" : ""}${shouldHighlight ? " highlight-jump" : ""}`}
+                  className={`table-item-row lz-centrar${isSelected ? " is-selected" : ""}${shouldHighlight ? " highlight-jump" : ""}`}
                   style={{
                     ...style,
                     display: "grid",
@@ -1344,7 +1344,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                 >
                   {isSelected && <div className="row-left-bar" />}
                   {puedeSeleccionar && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div className="c-keep" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {/* Igual que en Artículos: la columna queda reservada y la
                           casilla aparece al arrancar la selección desde el encabezado. */}
                       {selectionMode && <input
@@ -1359,6 +1359,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                     </div>
                   )}
                   <div
+                    className="c-keep"
                     onClick={(e) => { e.stopPropagation(); onOpenEditModal?.(r); }}
                     title="Editar insumo"
                     style={{
@@ -1370,7 +1371,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   </div>
 
                   {/* Nombre: con indicador si tiene receta cargada */}
-                  <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                  <div className="c-keep" title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 36, flexShrink: 0, justifyContent: 'flex-start' }}>
                       {(r.es_elaborado || r.tiene_receta) && (
                         <span
@@ -1462,7 +1463,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         return null;
                       })}
 
-                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
@@ -1554,7 +1555,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           </div>
                         );
                       })}
-                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
