@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
+import { SX_BOTON_2L, LineaDestino } from './ChipNegocio';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
@@ -703,17 +704,19 @@ function SubrubroAccionesMenu({
             size="small" variant="outlined" color="success"
             onClick={() => ejecutarMover({ bizId: reparto[0].bizId ?? agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre })}
             disabled={isMoving}
-            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+            sx={SX_BOTON_2L}
           >
-            {allArticleIdsForSub.length > 1 ? `Mover los ${allArticleIdsForSub.length} →` : 'Mover →'}
+            <span>{allArticleIdsForSub.length > 1 ? `→ Mover ${allArticleIdsForSub.length} a` : '→ Mover a'}</span>
+            <LineaDestino nombre={reparto[0].nombre} bizNombre={reparto[0].bizNombre} />
           </Button>
         ) : (
           <Button
             size="small" variant="outlined" color="warning"
             onClick={openMover}
-            sx={{ fontSize: '0.72rem', py: 0.2, lineHeight: 1.4, whiteSpace: 'nowrap' }}
+            sx={SX_BOTON_2L}
           >
-            {reparto.length > 1 ? 'Elegir agrupación →' : 'Seleccionar agrupación →'}
+            <span>{reparto.length > 1 ? 'Elegir' : 'Seleccionar'}</span>
+            <span>agrupación</span>
           </Button>
         )
       )}
