@@ -2905,30 +2905,6 @@ export default function ArticulosMain(props) {
               onDownloadList={handleDownloadList}
             />
           )}
-          <Tooltip
-            arrow
-            title={
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, p: 0.5 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
-                  Costo poco confiable
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
-                  Excedido sobre el objetivo
-                </span>
-              </Box>
-            }
-          >
-            <span
-              aria-label="Referencias de colores"
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 22, height: 22, borderRadius: '50%', border: '1px solid #cbd5e1',
-                color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'help', flexShrink: 0,
-              }}
-            >i</span>
-          </Tooltip>
         </>,
         barraGestion.slotEl,
       )}
