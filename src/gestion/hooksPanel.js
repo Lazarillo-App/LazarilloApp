@@ -37,11 +37,12 @@ export function useAnual(anio, enabled = true) {
   });
 }
 
-// Fila Egresos: proyección del mes en curso (Económica, sin búsqueda).
+// Fila Egresos: proyección del mes en curso (Económica, sin búsqueda: con un filtro de
+// proveedor/concepto la proyección por rubro no tiene sentido).
 export function useEgresosProyeccion(egresosPorMes) {
-  const { year, modo } = usePanelGestion();
+  const { year, modo, busquedaActiva } = usePanelGestion();
   const proy = useProyeccionIngresos();
-  const activo = modo === 'economica';
+  const activo = modo === 'economica' && !busquedaActiva;
   const mesProy = activo && proy && proy.anio === year ? proy.mes : null;
   const { data: anual } = useAnual(year, !!mesProy);
   const proyectado = mesProy && anual && egresosPorMes[mesProy] != null
@@ -52,10 +53,11 @@ export function useEgresosProyeccion(egresosPorMes) {
   return { proyectado, ventasProy: proyectado ? proy.proyeccion : null, faltan };
 }
 
-// Gastos variables por mes para la fila "Punto de equilibrio" (solo en la Económica).
+// Gastos variables por mes para la fila "Punto de equilibrio" (solo en la Económica y sin
+// búsqueda: con un filtro los egresos de la fila ya no son todos los gastos).
 export function useEquilibrio() {
-  const { businessId, year, sucursal, modo } = usePanelGestion();
-  const activo = modo === 'economica';
+  const { businessId, year, sucursal, modo, busquedaActiva } = usePanelGestion();
+  const activo = modo === 'economica' && !busquedaActiva;
   const { data } = useQuery({
     queryKey: ['gestionEquilibrio', businessId, year, sucursal],
     queryFn: () => GestionAPI.equilibrio({ year, sucursal }),

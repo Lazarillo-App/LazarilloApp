@@ -50,4 +50,14 @@ export const GestionAPI = {
   anual: ({ anio, sucursal }) => api(`${base()}/m/anual${qs({ anio, sucursal })}`),
   actualizado: ({ sucursal }) => api(`${base()}/dashboard/actualizado${qs({ sucursal })}`),
   rangoAnios: ({ sucursal }) => api(`${base()}/dashboard/rango-anios${qs({ sucursal })}`),
+
+  // ── Buscador (⌘K) y rubros visibles ──
+  // Sugerencias: sin q, las de la sucursal que se mira; con q, todo el negocio (cada una dice en
+  // qué sucursales tiene compras). Observaciones e importes: todo el negocio, cualquier año.
+  sugerencias: ({ q, sucursal }) => api(`${base()}/search/suggestions${qs({ q, sucursal })}`),
+  observaciones: (q) => api(`${base()}/search/observaciones${qs({ q })}`),
+  importes: (q) => api(`${base()}/search/importe${qs({ q })}`),
+  rubrosVisibles: (field) => api(`${base()}/config/rubros-dashboard${qs({ field })}`),
+  guardarRubroVisible: ({ codigo, visible, field }) =>
+    api(`${base()}/config/rubros-dashboard`, { method: 'PATCH', body: { codigo, visible, field } }),
 };

@@ -31,3 +31,10 @@ export const sxTablaPanel = (t) => ({
   // La 1ª columna del encabezado conserva su línea divisoria.
   '& thead th:first-of-type': { boxShadow: `1px 0 0 0 ${t.palette.divider} !important` },
 });
+
+// Botones de la barra de filtros del Panel (BOTON de dashboard-filters.tsx).
+export const sxBotonBarra = {
+  all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 32, px: 1.5, display: 'inline-flex', alignItems: 'center', gap: 0.75,
+  borderRadius: 2, border: 1, borderColor: 'divider', bgcolor: 'background.paper', fontSize: 14, color: 'text.primary', flexShrink: 0,
+  '&:hover': { borderColor: 'grey.400' },
+};

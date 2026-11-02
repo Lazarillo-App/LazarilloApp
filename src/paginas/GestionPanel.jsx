@@ -9,20 +9,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Select, MenuItem, Chip, Stack, Tooltip, Button,
+  Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import CloseIcon from '@mui/icons-material/Close';
+import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import GroupsIcon from '@mui/icons-material/Groups';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
+import { MAIN_BRANCH_ID } from '@/context/BranchContext';
 import { GestionAPI, sucursalParam } from '@/servicios/apiGestion';
 import PivotCompras from '@/componentes/gestion/PivotCompras';
 import PivotVentas from '@/componentes/gestion/PivotVentas';
 import PivotResultados from '@/componentes/gestion/PivotResultados';
 import KpiTarjetas from '@/componentes/gestion/KpiTarjetas';
 import ActualizadoAl from '@/componentes/gestion/ActualizadoAl';
+import FiltroPeriodo from '@/componentes/gestion/FiltroPeriodo';
+import BuscadorPanel from '@/componentes/gestion/BuscadorPanel';
+import RubrosConfig from '@/componentes/gestion/RubrosConfig';
+import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
+import { sxBotonBarra } from '@/gestion/estilos';
 import { PanelGestionContext } from '@/gestion/panelContext';
-import { MESES, MESES_IDX } from '@/gestion/formato';
+import { MESES_IDX } from '@/gestion/formato';
 
 const ANIO_ACTUAL = new Date().getFullYear();
 
@@ -37,7 +46,7 @@ const TABS = [
 const claveEstado = (bizId) => `gestion:panel:${bizId || 'default'}`;
 const ESTADO_INICIAL = {
   year: ANIO_ACTUAL, meses: [], tab: 'compras', agrupacion: 'concepto', modoCelda: 'importe',
-  modo: 'economica', sort: { col: 1, dir: 'desc' },
+  modo: 'economica', sort: { col: 1, dir: 'desc' }, mostrarTarjetas: true,
 };
 
 function leerEstado(bizId) {
@@ -62,11 +71,14 @@ const sxGrupo = {
 
 export default function GestionPanel() {
   const { activeBusinessId, active } = useBusiness() || {};
-  const { activeBranchFilter, activeBranch, branches } = useBranch() || {};
+  const { activeBranchFilter, activeBranch, branches, setActiveBranch } = useBranch() || {};
   const [estado, setEstado] = useState(() => leerEstado(activeBusinessId));
+  // Filtro del buscador ({ param, value, label }): no se recuerda entre visitas, como en gestion.
+  const [busqueda, setBusqueda] = useState(null);
+  const [buscadorAbierto, setBuscadorAbierto] = useState(false);
 
   // Al cambiar de negocio, sus propias preferencias.
-  useEffect(() => { setEstado(leerEstado(activeBusinessId)); }, [activeBusinessId]);
+  useEffect(() => { setEstado(leerEstado(activeBusinessId)); setBusqueda(null); }, [activeBusinessId]);
   useEffect(() => { guardarEstado(activeBusinessId, estado); }, [activeBusinessId, estado]);
 
   const cambiar = (parcial) => setEstado((e) => ({ ...e, ...parcial }));
@@ -85,9 +97,28 @@ export default function GestionPanel() {
   // Caja concreta para lo que se carga por sucursal (arqueos, aumentos de la carta): la elegida o,
   // con "todas", la principal si el negocio no tiene otras sucursales.
   const sucursalCaja = sucursal !== undefined ? sucursal : (branches?.length ?? 1) <= 1 ? 'principal' : undefined;
+  // La búsqueda filtra Compras y Resultados (Ventas no tiene buscador).
+  const busquedaActiva = estado.tab !== 'ventas' && busqueda ? busqueda : null;
   const panel = useMemo(() => ({
-    businessId: activeBusinessId, year: estado.year, sucursal, sucursalCaja, modo: estado.modo,
-  }), [activeBusinessId, estado.year, sucursal, sucursalCaja, estado.modo]);
+    businessId: activeBusinessId, year: estado.year, sucursal, sucursalCaja, modo: estado.modo, busquedaActiva: !!busquedaActiva,
+  }), [activeBusinessId, estado.year, sucursal, sucursalCaja, estado.modo, busquedaActiva]);
+
+  // ⌘K / Ctrl+K abre el buscador (no en Ventas).
+  useEffect(() => {
+    if (estado.tab === 'ventas') return undefined;
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setBuscadorAbierto(true); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [estado.tab]);
+
+  // Elegir un resultado: filtra y, si vive en otra sucursal u otro año, va hasta ahí.
+  const elegirBusqueda = ({ param, value, label, anio, sucursal: destino }) => {
+    setBusqueda({ param, value, label });
+    if (anio != null) cambiar({ year: anio });
+    if (destino !== undefined && setActiveBranch) setActiveBranch(destino === null ? MAIN_BRANCH_ID : destino);
+  };
 
   // Años navegables: desde el primer dato importado hasta el actual (rango-anios de gestion).
   const rango = useQuery({
@@ -96,11 +127,6 @@ export default function GestionPanel() {
     queryFn: () => GestionAPI.rangoAnios({ sucursal }),
     staleTime: 10 * 60 * 1000,
   });
-  const anios = useMemo(() => {
-    const max = Math.max(rango.data?.maxYear ?? ANIO_ACTUAL, estado.year);
-    const min = Math.min(rango.data?.minYear ?? ANIO_ACTUAL - 1, estado.year);
-    return Array.from({ length: max - min + 1 }, (_, i) => max - i);
-  }, [rango.data, estado.year]);
   const columnas = estado.meses.length ? estado.meses : MESES_IDX;
 
   const paramsCompras = useMemo(() => ({
@@ -109,7 +135,8 @@ export default function GestionPanel() {
     months: estado.meses,
     agrupacion: estado.agrupacion,
     modo: estado.modo === 'financiera' ? 'financiera' : undefined,
-  }), [estado.year, sucursal, estado.meses, estado.agrupacion, estado.modo]);
+    ...(busquedaActiva ? { [busquedaActiva.param]: busquedaActiva.value } : {}),
+  }), [estado.year, sucursal, estado.meses, estado.agrupacion, estado.modo, busquedaActiva]);
   const paramsVentas = useMemo(() => ({ year: estado.year, sucursal, months: estado.meses }), [estado.year, sucursal, estado.meses]);
 
   // Compras y, en Resultados, la fila Egresos del bloque Operación (vista por concepto).
@@ -167,34 +194,59 @@ export default function GestionPanel() {
             <Box sx={{ display: { xs: 'inline-flex', md: 'none' }, maxWidth: '100%' }}><ActualizadoAl nombre={nombreActualizado} /></Box>
           </Stack>
         </Box>
-        {/* Switch Económica / Financiera, arriba, a la altura del título. */}
-        <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
-          <ToggleButtonGroup size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
-            <ToggleButton value="economica">Económica</ToggleButton>
-            <ToggleButton value="financiera">Financiera</ToggleButton>
-          </ToggleButtonGroup>
-        </Tooltip>
+        <Stack direction="row" alignItems="center" gap={1}>
+          {/* Ocultar / mostrar las tarjetas: quedan título, filtros, buscador y la tabla. */}
+          <Tooltip title={estado.mostrarTarjetas ? 'Ocultar tarjetas' : 'Mostrar tarjetas'}>
+            <IconButton
+              size="small" onClick={() => cambiar({ mostrarTarjetas: !estado.mostrarTarjetas })}
+              aria-pressed={!estado.mostrarTarjetas}
+              sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider', ...(estado.mostrarTarjetas ? {} : { bgcolor: 'grey.100', color: 'text.primary' }) }}
+            >
+              <ViewQuiltOutlinedIcon sx={{ fontSize: 17 }} />
+            </IconButton>
+          </Tooltip>
+          {/* Switch Económica / Financiera, arriba, a la altura del título. */}
+          <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
+            <ToggleButtonGroup size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
+              <ToggleButton value="economica">Económica</ToggleButton>
+              <ToggleButton value="financiera">Financiera</ToggleButton>
+            </ToggleButtonGroup>
+          </Tooltip>
+        </Stack>
       </Stack>
 
+      {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
+          derecha. La sucursal se elige en el selector global de la app, no acá. */}
       <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: 3, pb: 2 }}>
-        <Select size="small" value={estado.year} onChange={(e) => cambiar({ year: Number(e.target.value) })}>
-          {anios.map((a) => <MenuItem key={a} value={a}>{a}</MenuItem>)}
-        </Select>
-        {MESES_IDX.map((m) => (
-          <Chip
-            key={m}
-            label={MESES[m - 1]}
-            size="small"
-            color={estado.meses.includes(m) ? 'primary' : 'default'}
-            variant={estado.meses.includes(m) ? 'filled' : 'outlined'}
-            onClick={() => toggleMes(m)}
-          />
-        ))}
-        {estado.meses.length > 0 && <Button size="small" onClick={() => cambiar({ meses: [] })}>Todo el año</Button>}
+        <FiltroPeriodo
+          year={estado.year}
+          meses={estado.meses}
+          minYear={rango.data?.minYear ?? undefined}
+          maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
+          onYear={(year) => cambiar({ year })}
+          onToggleMes={toggleMes}
+          onTodoElAnio={() => cambiar({ meses: [] })}
+        />
+        {estado.tab !== 'ventas' && (
+          <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
+            {estado.tab === 'resultados'
+              ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
+              : <RubrosConfig key="dash" />}
+            <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
+              <SearchIcon sx={{ fontSize: 15 }} />
+              <span>Buscar</span>
+              <Box component="kbd" sx={{ display: { xs: 'none', sm: 'inline-flex' }, height: 20, alignItems: 'center', px: 0.75, borderRadius: 0.5, border: 1, borderColor: 'divider', bgcolor: 'grey.50', fontFamily: 'monospace', fontSize: 10, color: 'text.disabled' }}>
+                Ctrl K
+              </Box>
+            </Box>
+          </Stack>
+        )}
       </Stack>
+      {busquedaActiva && <ChipBusqueda busqueda={busquedaActiva} onQuitar={() => setBusqueda(null)} />}
+      <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      <KpiTarjetas />
+      {estado.mostrarTarjetas && <KpiTarjetas />}
 
       <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -262,5 +314,21 @@ export default function GestionPanel() {
       </Paper>
     </Box>
     </PanelGestionContext.Provider>
+  );
+}
+
+// Chip del filtro activo del buscador ("Proveedor: X  ×").
+function ChipBusqueda({ busqueda, onQuitar }) {
+  const t = TIPOS[TIPO_DE_PARAM[busqueda.param]];
+  return (
+    <Box sx={{ display: 'flex', mt: -1, mb: 2 }}>
+      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, pl: 1, pr: 0.5, py: 0.25, borderRadius: 999, fontSize: 12, border: 1, borderColor: t.bg, bgcolor: t.bg }}>
+        <Box component="span" sx={{ fontWeight: 500, color: t.color }}>{t.label}:</Box>
+        <Box component="span" sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{busqueda.label}</Box>
+        <IconButton size="small" aria-label={'Quitar filtro ' + t.label} onClick={onQuitar} sx={{ p: 0.25, color: t.color }}>
+          <CloseIcon sx={{ fontSize: 11 }} />
+        </IconButton>
+      </Box>
+    </Box>
   );
 }

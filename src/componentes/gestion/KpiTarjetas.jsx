@@ -25,7 +25,7 @@ const pc = (x) => (x == null ? '—' : `${(x * 100).toLocaleString('es-AR', { mi
 const ppTxt = (d) => `${d > 0 ? '▲' : '▼'} ${Math.abs(d).toLocaleString('es-AR', { maximumFractionDigits: 1 })}`;
 
 export default function KpiTarjetas() {
-  const { year, modo, sucursalCaja } = usePanelGestion();
+  const { year, modo, sucursalCaja, busquedaActiva } = usePanelGestion();
   const { data: anual } = useAnual(year);
   const { data: anualAnt } = useAnual(year - 1);
   const { data: eq } = useEquilibrio();
@@ -36,11 +36,11 @@ export default function KpiTarjetas() {
   const [aviso, setAviso] = useState(null);
   // Canasta del último mes cerrado: se pide acá arriba porque los hooks no pueden ir después de un return.
   const hoy = new Date();
-  const mc = anual && modo === 'economica' ? mesCerrado(anual.meses, year, { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 }) : null;
+  const mc = anual && modo === 'economica' && !busquedaActiva ? mesCerrado(anual.meses, year, { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 }) : null;
   const canasta = useCanasta(mc ? { anio: year, mes: mc } : null);
   const rc = canasta.data && canasta.data.componentes.length ? resumirCanasta(canasta.data) : null;
 
-  if (modo !== 'economica') return null;
+  if (modo !== 'economica' || busquedaActiva) return null;
   const anteriorDic = anualAnt?.meses.find((m) => m.mes === 12) ?? null;
   const t = anual && mc ? tarjetasDelMes(anual.meses, mc, eq ? eq.porMes[mc]?.total ?? 0 : null, mc === 1 ? anteriorDic : undefined) : null;
   if (!anual || !t) return null;
