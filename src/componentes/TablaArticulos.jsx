@@ -1284,7 +1284,7 @@ export default function TablaArticulos({
   }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
-  const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : 42), []);
+  const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
 
   // Offset acumulado de cada fila — para saber qué sección está en el tope sin lag
   const rowOffsets = useMemo(() => {
@@ -1803,9 +1803,13 @@ export default function TablaArticulos({
     );
   };
 
-  const renderRow = ({ row, index, style }) => {
+  const renderRow = ({ row, index, style, enTitulo = false }) => {
 
     if (row.kind === "agrupacion-header") {
+      // La agrupación ya no va como fila de la tabla: se dibuja como TÍTULO
+      // de la tarjeta, arriba de las columnas (pedido de Diego 02/11, opción
+      // A). En la lista virtual queda con alto 0.
+      if (!enTitulo) return null;
       const agrupId = String(agrupacionSeleccionada?.id || '');
       const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
       const objValDb = cfgAgrup.objetivo != null ? String(cfgAgrup.objetivo) : '';
@@ -1814,14 +1818,14 @@ export default function TablaArticulos({
       const ids = row.ids || [];
 
       return (
-        <div key={row.key} style={{
+        <div key={row.key} className="lz-titulo-agrup" style={{
           ...style, display: "grid", alignItems: "center",
           gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP,
           fontSize: "0.82rem", fontWeight: 600,
-          background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
-          borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-          padding: "0 8px",
-          boxShadow: "inset 4px 0 0 var(--color-primary)",
+          background: "#fff", minHeight: 52,
+          borderBottom: "1px solid #e4e4e7",
+          // ocupa todo el ancho de arriba del encabezado (que tiene padding 8px)
+          margin: "-8px -8px 8px", padding: "0 8px",
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             {selectionMode && (
@@ -1862,7 +1866,7 @@ export default function TablaArticulos({
             onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
-            {row.nombre}
+            <span style={{ fontFamily: 'Sora, Archivo, sans-serif', fontSize: '1rem', fontWeight: 700, color: '#15213E' }}>{row.nombre}</span>
             {(() => {
               const objA = priceConfig.byAgrupacion?.[agrupId]?.objetivo;
               return objA != null ? (
@@ -2824,6 +2828,11 @@ export default function TablaArticulos({
                 )}
               </Box>
             )}
+            {/* Título de la tarjeta: la agrupación elegida (antes era la primera fila de la tabla) */}
+            {(() => {
+              const ag = flatRows.find((r) => r.kind === 'agrupacion-header');
+              return ag ? renderRow({ row: ag, index: -1, style: {}, enTitulo: true }) : null;
+            })()}
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
             <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'stretch' }}>
               <div />
@@ -3043,7 +3052,7 @@ export default function TablaArticulos({
               )}
               <div onScroll={handleScroll}>
                 <VirtualList
-                  ref={listRef} rows={flatRows} rowHeight={(row) => (row?.kind === 'item' ? 60 : 42)}
+                  ref={listRef} rows={flatRows} rowHeight={rowH}
                   onScrollTop={handleScrollTop}
                   height={listHeight}
                   overscan={8} onVisibleItemsIds={handleVisibleIds}
