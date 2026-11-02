@@ -351,11 +351,6 @@ export default function Navbar() {
                             onClick={(e) => setMenuVistaEl(e.currentTarget)}
                             aria-haspopup="menu">
                             Menú ▾
-                            {enMenu && (
-                              <span style={{ marginLeft: 6, fontSize: '0.75em', fontWeight: 600, opacity: 0.75, textTransform: 'none' }}>
-                                · {enDiseno ? 'Diseño' : 'Tabla'}
-                              </span>
-                            )}
                           </Button>
                           <Menu anchorEl={menuVistaEl} open={Boolean(menuVistaEl)} onClose={() => setMenuVistaEl(null)}
                             PaperProps={{ sx: { borderRadius: 2.5, minWidth: 250, mt: 0.5, py: 0.5, boxShadow: '0 8px 24px rgba(0,0,0,.18)' } }}>
