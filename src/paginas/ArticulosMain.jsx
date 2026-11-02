@@ -90,7 +90,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -105,7 +105,7 @@ const isRealTodoGroup = (g, todoId) => {
 const esTodoGroupByName = (g) => {
   if (!g) return false;
   const n = String(g.nombre || g.name || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupar' || n === 'sin grupo';
 };
 
@@ -1878,7 +1878,7 @@ export default function ArticulosMain(props) {
         }
       }
 
-      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       const esGlobalGroup = (gid) => {
         const g = allGroups.find(x => Number(x.id) === Number(gid));
         const n = normN(g?.nombre);
@@ -2254,7 +2254,7 @@ export default function ArticulosMain(props) {
   //   - está en sus agrupaciones locales, O
   //   - NO está asignado a ningún subnegocio (está en sin agrupar del principal)
   const idsNegocioActivo = useMemo(() => {
-    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const esGlobal = (g) => {
       const n = normNombre(g?.nombre);
       return n === 'sin agrupacion' || n === 'discontinuados' || n === 'descontinuados';
