@@ -55,8 +55,8 @@ import { useBranch } from '@/hooks/useBranch';
 import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { qk } from '@/lib/reactQueryClient';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { qk, STALE } from '@/lib/reactQueryClient';
 import { useArticleCostsAndConfig } from '@/hooks/useArticleCostsAndConfig';
 import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
@@ -1357,11 +1357,13 @@ export default function ArticulosMain(props) {
   // aparte del período filtrado de arriba: siempre mira los últimos 13 meses
   // terminando en el mes del período actual, para tener 12 meses de promedio
   // además del mes que se está mirando.
-  const [ventasPorMesFoodCost, setVentasPorMesFoodCost] = useState([]);
-  const [comprasPorMesFoodCost, setComprasPorMesFoodCost] = useState([]);
-  useEffect(() => {
-    if (!activeBizId) { setVentasPorMesFoodCost([]); setComprasPorMesFoodCost([]); return; }
-    let vivo = true;
+  // Antes era un useEffect que bajaba /sales/items de 13 meses (~48 mil filas
+  // en el Bar) en CADA montaje y además se re-disparaba cuando llegaban
+  // `categorias` y las agrupaciones (2-3 descargas por entrada a Menú, sin
+  // caché). Ahora la descarga va cacheada (React Query) y ya agregada por
+  // mes × artículo; el cruce con rubros/agrupaciones es un useMemo barato.
+  const mesesFoodCostParams = useMemo(() => {
+    if (!activeBizId) return null;
     const hoyISO = new Date().toISOString().slice(0, 10);
     const to = periodo?.to || hoyISO;
     const [toY, toM] = to.slice(0, 7).split('-').map(Number);
@@ -1369,57 +1371,68 @@ export default function ArticulosMain(props) {
     const branchParam = activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId
       : activeBranchFilter?.mode === 'main' ? 'none'
       : 'all';
+    return { bizId: Number(activeBizId), from, to, branchParam };
+  }, [activeBizId, periodo?.to, activeBranchFilter]);
 
-    // Ventas: mismo endpoint que useSalesData (día a día por artículo), pero
-    // en vez de resumir TODO el rango en un solo total, se agrupa por mes acá
-    // y se cruza con `categorias` (rubro/subrubro) igual que itemsVentaFoodCost.
-    (async () => {
-      try {
-        const branchQS = branchParam && branchParam !== 'all' ? `&branch_id=${branchParam}` : '';
-        const data = await api(`/businesses/${activeBizId}/sales/items?from=${from}&to=${to}${branchQS}`);
-        if (!vivo) return;
-        const porMes = new Map(); // 'YYYY-MM' -> Map(articleId -> importe)
-        (data?.items || []).forEach((r) => {
-          const id = Number(r.article_id);
-          const mes = String(r.day || '').slice(0, 7);
-          if (!Number.isFinite(id) || !mes) return;
-          if (!porMes.has(mes)) porMes.set(mes, new Map());
-          const m = porMes.get(mes);
-          m.set(id, (m.get(id) || 0) + Number(r.amount || 0));
-        });
-        const meses = [...porMes.entries()].map(([mes, amounts]) => {
-          const ventas = [];
-          for (const sub of categorias || []) {
-            const rubro = sub?.subrubro || 'Sin rubro';
-            for (const cat of sub?.categorias || []) {
-              const subrubro = cat?.categoria || 'Sin subrubro';
-              for (const a of cat?.articulos || []) {
-                const aid = getArtId(a);
-                if (aid == null) continue;
-                const amount = amounts.get(Number(aid)) || 0;
-                if (!(amount > 0)) continue;
-                ventas.push({
-                  id: String(aid), nombre: a?.nombre || `#${aid}`,
-                  agrupacion: agrupacionDeArticuloFoodCost(aid),
-                  rubro, subrubro, importe: amount,
-                });
-              }
-            }
+  const { data: ventasMesPorArticulo } = useQuery({
+    enabled: !!mesesFoodCostParams,
+    queryKey: ['fcVentasMes', mesesFoodCostParams?.bizId, mesesFoodCostParams?.from, mesesFoodCostParams?.to, mesesFoodCostParams?.branchParam],
+    staleTime: STALE.SALES,
+    gcTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      const { bizId, from, to, branchParam } = mesesFoodCostParams;
+      const branchQS = branchParam && branchParam !== 'all' ? `&branch_id=${branchParam}` : '';
+      // por=mes: el back ya lo devuelve sumado por mes × artículo (~6 mil filas
+      // en vez de ~48 mil); si el back no lo soporta, igual se suma acá abajo.
+      const data = await api(`/businesses/${bizId}/sales/items?from=${from}&to=${to}${branchQS}&por=mes`);
+      const porMes = {}; // 'YYYY-MM' -> { articleId: importe }
+      (data?.items || []).forEach((r) => {
+        const id = Number(r.article_id);
+        const mes = String(r.day || '').slice(0, 7);
+        if (!Number.isFinite(id) || !mes) return;
+        const m = (porMes[mes] ||= {});
+        m[id] = (m[id] || 0) + Number(r.amount || 0);
+      });
+      return porMes;
+    },
+  });
+
+  const { data: comprasPorMesFoodCostData } = useQuery({
+    enabled: !!mesesFoodCostParams,
+    queryKey: ['fcComprasMes', mesesFoodCostParams?.bizId, mesesFoodCostParams?.from, mesesFoodCostParams?.to, mesesFoodCostParams?.branchParam],
+    staleTime: STALE.SALES,
+    gcTime: 30 * 60 * 1000,
+    queryFn: () => {
+      const { bizId, from, to, branchParam } = mesesFoodCostParams;
+      return purchasesFoodCostMonthly(bizId, { from, to, branch_id: branchParam });
+    },
+  });
+  const comprasPorMesFoodCost = activeBizId ? (comprasPorMesFoodCostData || []) : [];
+
+  const ventasPorMesFoodCost = useMemo(() => {
+    if (!activeBizId || !ventasMesPorArticulo) return [];
+    return Object.entries(ventasMesPorArticulo).map(([mes, amounts]) => {
+      const ventas = [];
+      for (const sub of categorias || []) {
+        const rubro = sub?.subrubro || 'Sin rubro';
+        for (const cat of sub?.categorias || []) {
+          const subrubro = cat?.categoria || 'Sin subrubro';
+          for (const a of cat?.articulos || []) {
+            const aid = getArtId(a);
+            if (aid == null) continue;
+            const amount = amounts[Number(aid)] || 0;
+            if (!(amount > 0)) continue;
+            ventas.push({
+              id: String(aid), nombre: a?.nombre || `#${aid}`,
+              agrupacion: agrupacionDeArticuloFoodCost(aid),
+              rubro, subrubro, importe: amount,
+            });
           }
-          return { mes, ventas };
-        });
-        setVentasPorMesFoodCost(meses);
-      } catch {
-        if (vivo) setVentasPorMesFoodCost([]);
+        }
       }
-    })();
-
-    purchasesFoodCostMonthly(activeBizId, { from, to, branch_id: branchParam })
-      .then((months) => { if (vivo) setComprasPorMesFoodCost(months); })
-      .catch(() => { if (vivo) setComprasPorMesFoodCost([]); });
-
-    return () => { vivo = false; };
-  }, [activeBizId, periodo?.to, activeBranchFilter, categorias, agrupacionDeArticuloFoodCost]);
+      return { mes, ventas };
+    });
+  }, [activeBizId, ventasMesPorArticulo, categorias, agrupacionDeArticuloFoodCost]);
 
   // Un solo array {mes, ventas, compras} — la forma que espera KpiFoodCost.
   const porMesFoodCost = useMemo(() => {
