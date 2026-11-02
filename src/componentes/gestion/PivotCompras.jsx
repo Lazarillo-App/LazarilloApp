@@ -19,7 +19,7 @@ import {
 } from '@/gestion/pivotUtils';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
-import { MUTED, sxStickyNombre, sxNum } from '@/gestion/estilos';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel } from '@/gestion/estilos';
 import {
   PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
 } from './piezasPivot';
@@ -264,7 +264,7 @@ export default function PivotCompras({
 
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0, '& td, & th': { borderBottomColor: 'divider' } }}>
+      <Table size="small" sx={sxTablaPanel}>
         <TableHead>
           <TableRow>
             <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 200 }, whiteSpace: 'nowrap' }}>
@@ -282,6 +282,8 @@ export default function PivotCompras({
               % {pctMode === 'ingresos' ? 'ing' : 'egr'}
             </TableCell>
           </TableRow>
+        </TableHead>
+        <TableBody>
           <KpiBlock
             months={months}
             ingresosPorMes={ingresosPorMes}
@@ -291,8 +293,8 @@ export default function PivotCompras({
             ingresosReady={ingresosReady}
           />
           <SectionDivider label="Gastos por rubro" icon={LayersIcon} colSpan={colSpan} />
-        </TableHead>
-        <TableBody>{filas.map(renderFila)}</TableBody>
+          {filas.map(renderFila)}
+        </TableBody>
         <TableFooter>
           <TableRow sx={{ '& td': { bgcolor: MUTED, fontWeight: 600, fontSize: 15, color: 'text.primary', borderTop: 2, borderTopColor: 'divider', py: 1.5 } }}>
             <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2 }}>Total gastos</TableCell>

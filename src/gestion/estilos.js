@@ -12,3 +12,22 @@ export const sxStickyNombre = (bg = 'background.paper') => ({
 
 // Celdas numéricas: a la derecha, cifras tabulares, sin cortar.
 export const sxNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+
+// Tabla del Panel. El CSS global (theme-layout.css: `thead th`) pinta los encabezados con el color
+// del negocio, redondeados y con !important; acá el encabezado es el gris de gestion (bg-muted).
+// Va con más especificidad que el global para poder pisarlo.
+export const sxTablaPanel = (t) => ({
+  borderCollapse: 'separate',
+  borderSpacing: 0,
+  '& td, & th': { borderBottomColor: t.palette.divider },
+  '& thead th': {
+    background: `${t.palette.grey[100]} !important`,
+    color: t.palette.text.secondary,
+    boxShadow: 'none',
+    borderRadius: 0,
+    whiteSpace: 'nowrap',
+    wordBreak: 'normal',
+  },
+  // La 1ª columna del encabezado conserva su línea divisoria.
+  '& thead th:first-of-type': { boxShadow: `1px 0 0 0 ${t.palette.divider} !important` },
+});

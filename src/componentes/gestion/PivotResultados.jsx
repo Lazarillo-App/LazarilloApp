@@ -27,7 +27,7 @@ import {
   RESULT_COLORS, pctSobreIngresos, parseMontoARS, montoNoGuardable, sumarDiferenciaCajaVisible,
   heatmapFillZeroAnchored, heatmapTextZeroAnchored,
 } from '@/gestion/resultadosCalc';
-import { MUTED, sxStickyNombre, sxNum } from '@/gestion/estilos';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel } from '@/gestion/estilos';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { useDiferenciaCaja, useFlujoCaja } from '@/gestion/hooksPanel';
 import { usePanelGestion } from '@/gestion/panelContext';
@@ -129,7 +129,7 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
 
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0, '& td, & th': { borderBottomColor: 'divider' } }}>
+      <Table size="small" sx={sxTablaPanel}>
         <TableHead>
           <TableRow>
             <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 240 }, whiteSpace: 'nowrap' }}>
@@ -139,6 +139,8 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
             <CabeceraOrden col="total" label="Total" total sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />
             <TableCell sx={{ ...sxNum, position: 'sticky', top: 0, zIndex: 2, bgcolor: MUTED, px: 1.5, py: 1.5, minWidth: 64, fontWeight: 500, color: 'text.secondary' }}>% ing</TableCell>
           </TableRow>
+        </TableHead>
+        <TableBody>
           <KpiBlock
             months={months}
             ingresosPorMes={ingresosPorMes}
@@ -160,8 +162,6 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
             colSpan={colSpan}
           />
           <Espacio colSpan={colSpan} />
-        </TableHead>
-        <TableBody>
           <SectionDivider label="Detalle" icon={AccountTreeIcon} colSpan={colSpan} />
           {filas.length === 0 ? (
             <TableRow>

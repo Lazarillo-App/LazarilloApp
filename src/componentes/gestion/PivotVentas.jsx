@@ -8,7 +8,7 @@ import { Box, Table, TableHead, TableBody, TableFooter, TableRow, TableCell } fr
 import { alpha } from '@mui/material/styles';
 import { flattenRows, sortPivotRows } from '@/gestion/pivotUtils';
 import { fmtARS, normalize } from '@/gestion/formato';
-import { MUTED, sxStickyNombre, sxNum } from '@/gestion/estilos';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel } from '@/gestion/estilos';
 import { PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden } from './piezasPivot';
 
 export default function PivotVentas({ data, isLoading, error, year, months, sort, onSort }) {
@@ -40,7 +40,7 @@ export default function PivotVentas({ data, isLoading, error, year, months, sort
 
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" sx={{ borderCollapse: 'separate', borderSpacing: 0, '& td, & th': { borderBottomColor: 'divider' } }}>
+      <Table size="small" sx={sxTablaPanel}>
         <TableHead>
           <TableRow>
             <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 240 }, whiteSpace: 'nowrap' }}>
