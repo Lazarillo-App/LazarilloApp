@@ -2866,14 +2866,7 @@ export default function ArticulosMain(props) {
             </span>
           </Box>
           {/* Sin título: "Menú" ya está marcado en el header (pedido de Diego). */}
-          {priceLists.length > 0 && (
-            <ArticleListSelector
-              lists={priceLists}
-              currentListId={currentPriceListId}
-              onChange={setCurrentPriceList}
-              onOpenConfig={() => setPriceListsConfigOpen(true)}
-            />
-          )}
+          {/* El selector de lista de precios pasó al título de la columna Precio. */}
         </Box>
 
         {isSyncing && (
@@ -3119,6 +3112,14 @@ export default function ArticulosMain(props) {
             agrupacionesLoading={agrupacionesLoading}
             orgAssignedIds={orgAssignedIds}
             orgGroups={orgGroupsUI}
+            precioHeaderExtra={priceLists.length > 0 ? (
+              <ArticleListSelector compact
+                lists={priceLists}
+                currentListId={currentPriceListId}
+                onChange={setCurrentPriceList}
+                onOpenConfig={() => setPriceListsConfigOpen(true)}
+              />
+            ) : null}
             agrupacionSeleccionada={agrupacionSeleccionada}
             setAgrupacionSeleccionada={setAgrupacionSeleccionada}
             categoriaSeleccionada={categoriaSeleccionada}
