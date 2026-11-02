@@ -33,7 +33,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
-import ChipNegocio from "./ChipNegocio";
 
 /* ---------------- utils ---------------- */
 // Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
@@ -1464,9 +1463,12 @@ export default function TablaArticulos({
     // botón de "Mover a X"/"Elegir agrupación" (texto, no solo el ⋮) — si no,
     // queda apretada contra la columna de "Nuevo precio" de al lado.
     const dynCols = visibleCols
-      .map(c => (c.id === 'acciones' && isTodo ? 'minmax(170px, 1.4fr)' : c.width))
+      .map(c => (c.id === 'acciones' && isTodo ? '154px' : c.width))
       .join(' ');
-    return `${check}minmax(56px, 90px) minmax(0, .5fr) minmax(90px, 130px) ${branchCols}${dynCols}`;
+    // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
+    // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre.
+    const nombreCol = isTodo ? 'minmax(0, 1fr)' : 'minmax(0, .5fr)';
+    return `${check}minmax(56px, 90px) ${nombreCol} minmax(90px, 130px) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
@@ -2014,23 +2016,8 @@ export default function TablaArticulos({
                 </span>
               ) : null;
             })()}
-            {isTodo && (() => {
-              const reparto = repartoPorGrupoKey.get(String(groupKeyName || '').trim().toLowerCase()) || [];
-              if (reparto.length === 1) {
-                return (
-                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#64748b', fontWeight: 400 }}>
-                    pertenece a <strong style={{ color: '#15803d' }}>{reparto[0].nombre}</strong>
-                    {reparto[0].bizNombre ? <ChipNegocio nombre={reparto[0].bizNombre} /> : null}
-                  </span>
-                );
-              }
-              if (reparto.length > 1) return null;
-              return (
-                <span style={{ marginLeft: 8, fontSize: '0.78rem', color: '#b45309', fontWeight: 600 }}>
-                  rubro sin agrupar
-                </span>
-              );
-            })()}
+            {/* El destino del rubro lo dice el botón de la derecha ("→ Mover a / X"):
+                acá no se repite, así el nombre del rubro no se corta en 2 líneas. */}
           </div>
 
           <div style={{ ...cellNum, textAlign: 'center' }}>
@@ -2275,7 +2262,7 @@ export default function TablaArticulos({
           <span style={{
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0,
-          }}>{a.nombre}</span>
+          }} title={a.nombre}>{a.nombre}</span>
         </div>
 
         <div style={{ ...cellNum, textAlign: 'center' }}>
