@@ -23,7 +23,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgrupaciones';
 import ExcluirListasModal from './ExcluirListasModal';
-import ChipNegocio from './ChipNegocio';
+import { SX_BOTON_2L, LineaDestino } from './ChipNegocio';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 const getNum = (v) => Number(v ?? 0);
@@ -787,18 +787,19 @@ function ArticuloAccionesMenu({
             size="small" variant="outlined" color="success"
             onClick={moverInlineDirecto}
             disabled={isMoving}
-            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+            sx={SX_BOTON_2L}
           >
-            → Mover a {reparto[0].nombre}
-            {reparto[0].bizNombre ? <ChipNegocio nombre={reparto[0].bizNombre} /> : null}
+            <span>→ Mover a</span>
+            <LineaDestino nombre={reparto[0].nombre} bizNombre={reparto[0].bizNombre} />
           </Button>
         ) : (
           <Button
             size="small" variant="outlined" color="warning"
             onClick={openMover}
-            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+            sx={SX_BOTON_2L}
           >
-            {reparto.length > 1 ? '⚠ Elegir agrupación' : '⚠ Artículo sin agrupar'}
+            <span>{reparto.length > 1 ? '⚠ Elegir' : '⚠ Artículo'}</span>
+            <span>{reparto.length > 1 ? 'agrupación' : 'sin agrupar'}</span>
           </Button>
         )
       )}
