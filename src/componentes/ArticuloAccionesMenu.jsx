@@ -23,6 +23,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import { useBusiness } from '../context/BusinessContext';
 import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgrupaciones';
 import ExcluirListasModal from './ExcluirListasModal';
+import ChipNegocio from './ChipNegocio';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 const getNum = (v) => Number(v ?? 0);
@@ -775,7 +776,7 @@ function ArticuloAccionesMenu({
 
   const moverInlineDirecto = useCallback(() => {
     if (!Array.isArray(reparto) || reparto.length !== 1) return;
-    ejecutarMover({ bizId: agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
+    ejecutarMover({ bizId: reparto[0].bizId ?? agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
   }, [reparto, agrupBizId]);
 
   return (
@@ -789,6 +790,7 @@ function ArticuloAccionesMenu({
             sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
           >
             → Mover a {reparto[0].nombre}
+            {reparto[0].bizNombre ? <ChipNegocio nombre={reparto[0].bizNombre} /> : null}
           </Button>
         ) : (
           <Button
