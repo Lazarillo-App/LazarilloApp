@@ -17,6 +17,7 @@
 import React, {
   createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
+import { useLocation } from 'react-router-dom';
 import { lastNDaysUntilYesterday, daysByMode } from '@/utils/fechas';
 
 const Ctx = createContext(null);
@@ -76,16 +77,20 @@ export function BarraGestionProvider({ children }) {
   const [alertaVentas, setAlertaVentas] = useState(null);
 
   const [slotEl, setSlotEl] = useState(null);
+  // Las dos páginas pueden estar montadas a la vez (GestionLayout las deja
+  // vivas): solo la activa dibuja sus botones en la barra.
+  const { pathname } = useLocation();
+  const paginaActiva = pathname.startsWith('/insumos') ? 'insumos' : 'menu';
   const [accionPendiente, setAccionPendiente] = useState(null);
 
   const value = useMemo(() => ({
     rangoVentas, setRangoVentas, rangoCompras, setRangoCompras,
     setDatosPagina, handlersRef,
     alertaVentas, setAlertaVentas,
-    slotEl, setSlotEl,
+    slotEl, setSlotEl, paginaActiva,
     accionPendiente, setAccionPendiente,
   }), [rangoVentas, setRangoVentas, rangoCompras, setRangoCompras, setDatosPagina,
-    alertaVentas, slotEl, accionPendiente]);
+    alertaVentas, slotEl, paginaActiva, accionPendiente]);
 
   return (
     <Ctx.Provider value={value}>

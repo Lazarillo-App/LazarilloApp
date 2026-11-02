@@ -296,6 +296,19 @@ export default function ArticulosMain(props) {
         : null,   // modo 'all' → suma total de todas las sucursales
   });
 
+  // "Solo con ventas" (el ojito) no filtra cuando la sucursal/período no tiene
+  // NINGUNA venta cargada (ej. FC San Justo sin ventas sincronizadas): antes
+  // dejaba la tabla y el panel vacíos ("No hay artículos") aunque los
+  // artículos son los mismos en todas las sucursales — ahora se ven con 0.
+  const hayVentasEnVista = useMemo(() => {
+    if (ventasLoading) return true;
+    const m = ventasMap;
+    if (!m) return false;
+    if (m instanceof Map) return m.size > 0;
+    return Object.keys(m).length > 0;
+  }, [ventasMap, ventasLoading]);
+  const soloConVentasEfectivo = soloConVentas && hayVentasEnVista;
+
   const [viewModeGlobal, setViewModeGlobal] = useState(() => {
     if (typeof window === 'undefined') return 'by-subrubro';
     const raw = localStorage.getItem(VIEW_KEY);
@@ -2418,7 +2431,10 @@ export default function ArticulosMain(props) {
   useEffect(() => {
     const handler = (e) => {
       const id = Number(e?.detail?.id);
-      if (Number.isFinite(id)) focusArticle(id);
+      if (Number.isFinite(id)) {
+        try { sessionStorage.removeItem('pendingFocusArticulo'); } catch { }
+        focusArticle(id);
+      }
     };
     window.addEventListener('focus:pendingArticulo', handler);
     return () => window.removeEventListener('focus:pendingArticulo', handler);
@@ -2464,6 +2480,8 @@ export default function ArticulosMain(props) {
         // Cambio de página → navegar a Insumos con el id
         try { sessionStorage.setItem('pendingFocusInsumo', String(id)); } catch { }
         navigate('/insumos');
+        // Si Insumos ya está montado (queda vivo), no remonta: avisarle.
+        setTimeout(() => window.dispatchEvent(new CustomEvent('focus:pendingInsumo', { detail: { id } })), 60);
       } else {
         focusArticle(id);
       }
@@ -2886,7 +2904,7 @@ export default function ArticulosMain(props) {
       position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
       overflow: 'hidden',
     }}>
-      {barraGestion.slotEl && ReactDOM.createPortal(
+      {barraGestion.slotEl && barraGestion.paginaActiva === 'menu' && ReactDOM.createPortal(
         <>
           {!isStaff && (
             <SelectionToolbar
@@ -2956,7 +2974,7 @@ export default function ArticulosMain(props) {
             staff={!!isStaff}
             businessId={activeBizId}
             categorias={categorias}
-            soloConVentas={soloConVentas}
+            soloConVentas={soloConVentasEfectivo}
             categoriaSeleccionada={categoriaSeleccionada}
             setCategoriaSeleccionada={setCategoriaSeleccionada}
             agrupaciones={agrupacionesOrdenadas}
@@ -3099,7 +3117,7 @@ export default function ArticulosMain(props) {
             isPriceListFavorite={isPriceListFavorite}
             calcPrecioPorLista={calcPrecioPorLista}
             currentPriceList={currentPriceList}
-            soloConVentas={soloConVentas}
+            soloConVentas={soloConVentasEfectivo}
             onToggleSoloConVentas={toggleSoloConVentas}
           />
         </div>
