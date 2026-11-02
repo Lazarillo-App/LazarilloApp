@@ -1337,7 +1337,10 @@ export default function InsumosMain() {
   useEffect(() => {
     const handler = (e) => {
       const id = Number(e?.detail?.id);
-      if (Number.isFinite(id)) focusInsumo(id);
+      if (Number.isFinite(id)) {
+        try { sessionStorage.removeItem('pendingFocusInsumo'); } catch { }
+        focusInsumo(id);
+      }
     };
     window.addEventListener('focus:pendingInsumo', handler);
     return () => window.removeEventListener('focus:pendingInsumo', handler);
@@ -1609,6 +1612,8 @@ export default function InsumosMain() {
       if (opt?.tipo === 'articulo') {
         try { sessionStorage.setItem('pendingFocusArticulo', String(id)); } catch { }
         navigate('/menu');
+        // Si Artículos ya está montado (queda vivo), no remonta: avisarle.
+        setTimeout(() => window.dispatchEvent(new CustomEvent('focus:pendingArticulo', { detail: { id } })), 60);
       } else {
         focusInsumo(id);
       }
@@ -1640,7 +1645,7 @@ export default function InsumosMain() {
       {/* La barra (período, sucursal, buscador, food cost, Ventas/Compras,
           + Agregar) vive en GestionLayout y no se desmonta al cambiar de
           página; acá solo van los botones propios de Insumos. */}
-      {barraGestion.slotEl && ReactDOM.createPortal(
+      {barraGestion.slotEl && barraGestion.paginaActiva === 'insumos' && ReactDOM.createPortal(
         <>
           {!isStaff && insumoSelectionMode && (
             <Button size="small" variant="outlined" color="warning" onClick={() => setRevisionMasivaOpen(true)} sx={{ ml: 1 }}>
