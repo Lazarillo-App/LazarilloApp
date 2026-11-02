@@ -68,6 +68,12 @@ import '../css/theme-layout.css';
 
 // ✅ CAMBIO 1: Favorita ahora es por negocio
 const getFavKey = (bizId) => `favGroupId_${bizId || 'default'}`;
+// Última agrupación que quedó elegida, por negocio (pedido de Diego, 02/11:
+// al volver, Artículos abre donde lo dejaste, no en Sin agrupación/favorita).
+const ultimaAgrupKey = (bizId) => `lazarillo:ultimaAgrup:menu:${bizId || 'default'}`;
+const leerUltimaAgrup = (bizId) => {
+  try { const n = Number(localStorage.getItem(ultimaAgrupKey(bizId))); return Number.isFinite(n) && n > 0 ? n : null; } catch { return null; }
+};
 const VIEW_KEY = 'lazarillo:ventasViewMode';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -187,6 +193,9 @@ export default function ArticulosMain(props) {
   const [promoModalOpen, setPromoModalOpen] = useState(false);
   const { activeBusinessId, setActiveBusiness } = useBusiness();
   const activeBizId = String(activeBusinessId || '');
+  // ¿Ya se restauró la última agrupación de este negocio? (ver ultimaAgrupKey)
+  const ultimaRestauradaRef = useRef(false);
+  useEffect(() => { ultimaRestauradaRef.current = false; }, [activeBizId]);
   const showMiss = useCallback((msg) => { setMissMsg(msg); setMissOpen(true); }, []);
   const {
     selectionMode, selectedIds, saving: selectionSaving,
@@ -2265,12 +2274,15 @@ export default function ArticulosMain(props) {
     // render después, resucitando el mismo filtro-intersección que se quería evitar.
     if (activeListId) return;
     const catsReady = Array.isArray(categorias) && categorias.length > 0;
+    // Si hay una última agrupación guardada, esperar a restaurarla (si no,
+    // se ve un instante Sin agrupación y después salta).
+    if (!ultimaRestauradaRef.current && leerUltimaAgrup(activeBizId)) return;
     if (!agrupacionSeleccionada && todoGroupId && catsReady) {
       setAgrupacionSeleccionada({ id: Number(todoGroupId), nombre: 'TODO', articulos: [] });
       setFiltroBusqueda('');
       setCategoriaSeleccionada(null);
     }
-  }, [todoGroupId, agrupacionSeleccionada, categorias, activeListId]);
+  }, [todoGroupId, agrupacionSeleccionada, categorias, activeListId, activeBizId]);
 
   // IDs que pertenecen al negocio activo.
   // orgAssignedIds = artículos asignados en agrupaciones de TODA la org (incluye otros subnegocios).
@@ -2568,6 +2580,15 @@ export default function ArticulosMain(props) {
   const agrupSelRef = useRef(agrupacionSeleccionada);
   useEffect(() => { agrupSelRef.current = agrupacionSeleccionada; }, [agrupacionSeleccionada]);
 
+  // Guardar la agrupación que queda elegida — recién después de haber
+  // restaurado la guardada (si no, la selección automática inicial la pisa).
+  useEffect(() => {
+    if (!ultimaRestauradaRef.current) return;
+    const id = Number(agrupacionSeleccionada?.id);
+    if (!Number.isFinite(id) || id <= 0) return;
+    try { localStorage.setItem(ultimaAgrupKey(activeBizId), String(id)); } catch { /* sin storage */ }
+  }, [agrupacionSeleccionada?.id, activeBizId]);
+
   // Selección inteligente: Sin Agrupación tiene prioridad AL CARGAR, luego no interrumpe
   useEffect(() => {
     // Con una lista activa (pestaña Listas), agrupacionSeleccionada=null es
@@ -2583,6 +2604,24 @@ export default function ArticulosMain(props) {
     if (!catsReady || !groupsReady) return;
 
     const currentSel = agrupSelRef.current;
+
+    // Primera vez que están los datos: abrir la última agrupación elegida.
+    if (!ultimaRestauradaRef.current) {
+      ultimaRestauradaRef.current = true;
+      const ultimaId = leerUltimaAgrup(activeBizId);
+      if (ultimaId) {
+        const g = (agrupacionesRich || []).find((x) => Number(x?.id) === ultimaId)
+          || (todoId && Number(todoId) === ultimaId ? { id: Number(todoId), nombre: 'TODO', articulos: [] } : null);
+        if (g) {
+          if (!currentSel || Number(currentSel.id) !== ultimaId) {
+            setAgrupacionSeleccionada(g);
+            setCategoriaSeleccionada(null);
+            setFiltroBusqueda('');
+          }
+          return;
+        }
+      }
+    }
 
     if (currentSel && (isDiscontinuadosGroup(currentSel) || esTop20Group(currentSel))) return;
 
