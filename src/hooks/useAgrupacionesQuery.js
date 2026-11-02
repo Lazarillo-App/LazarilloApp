@@ -8,9 +8,9 @@ import { obtenerAgrupaciones } from '@/servicios/apiAgrupaciones';
 import { qk, STALE } from '@/lib/reactQueryClient';
 
 async function fetchAgrupaciones(bizId, divisionId) {
-  const { list, orgAssignedIds } = await obtenerAgrupaciones(bizId, divisionId ?? null);
+  const { list, orgAssignedIds, orgGroups } = await obtenerAgrupaciones(bizId, divisionId ?? null);
   const filtered = (list || []).filter(ag => !ag.moved_to_business_id);
-  return { filtered, orgAssignedIds };
+  return { filtered, orgAssignedIds, orgGroups };
 }
 
 export function useAgrupacionesQuery(bizId, divisionId) {

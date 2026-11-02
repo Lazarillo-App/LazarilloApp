@@ -38,7 +38,10 @@ export async function obtenerAgrupaciones(businessId, divisionId = null) {
   // (para calcular Sin Agrupación global correctamente)
   const list = unwrapList(resp);
   const orgAssignedIds = Array.isArray(resp?.orgAssignedIds) ? resp.orgAssignedIds : null;
-  return { list, orgAssignedIds };
+  // orgGroups = agrupaciones reales de los OTROS negocios de la org (destinos de
+  // "Mover a su rubro" cuando el rubro vive en otro subnegocio)
+  const orgGroups = Array.isArray(resp?.orgGroups) ? resp.orgGroups : null;
+  return { list, orgAssignedIds, orgGroups };
 }
 
 // POST /api/businesses/:businessId/agrupaciones
