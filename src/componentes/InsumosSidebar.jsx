@@ -503,7 +503,7 @@ function InsumosSidebar({
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
         {/* Pestañas: staff = Agrupaciones + Pendientes; admin/owner = + Listas */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 6, marginTop: 6 }}>
+        <div className="lz-tabs" style={{ display: 'flex', gap: 0, marginBottom: 14, marginTop: 6 }}>
           {[
             { id: 'agrupaciones', label: 'Agrupaciones', onClick: () => { setActiveTab('agrupaciones'); onClearInsumoList?.(); } },
             ...(!staff ? [{ id: 'listas', label: <>Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}</>, onClick: () => setActiveTab('listas') }] : []),

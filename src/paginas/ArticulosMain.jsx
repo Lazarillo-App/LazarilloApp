@@ -2887,7 +2887,7 @@ export default function ArticulosMain(props) {
           </Alert>
         )}
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <SalesPickerIcon
             value={rango}
             onChange={handleRangoChange}

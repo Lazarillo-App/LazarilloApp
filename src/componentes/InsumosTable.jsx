@@ -254,6 +254,10 @@ const InsumosTable = forwardRef(function InsumosTable({
   selectionMode = null,
   selectedInsumoIds = new Set(),
   onToggleInsumo,
+  // Selección igual que en Artículos: la casilla está siempre (si se puede
+  // seleccionar) y tildar arranca el modo selección.
+  allowSelect = false,
+  onToggleMode,
 }, ref) {
   const isElaborados = !!elaboradosGroupId && Number(selectedGroupId) === Number(elaboradosGroupId);
   const { desperdicioGlobalPct } = useConfig();
@@ -461,7 +465,8 @@ const InsumosTable = forwardRef(function InsumosTable({
   const branchExtraCols = branches && branches.length > 1
     ? branches.map(() => '.55fr').join(' ')
     : '';
-  const checkCol = selectionMode ? '28px ' : '';
+  const puedeSeleccionar = allowSelect || !!selectionMode;
+  const checkCol = puedeSeleccionar ? '28px ' : '';
 
   // Columnas FIJAS al inicio: check, código(.4fr), nombre(2fr), unidad(.35-.45fr), precio(.7fr)
   // Luego van las columnas reordenables (visibleCols)
@@ -471,8 +476,24 @@ const InsumosTable = forwardRef(function InsumosTable({
   const dynCols = visibleCols.map(c => c.width).join(' ');
   const fixedEnd = branches && branches.length > 1 ? `${branchExtraCols} .4fr` : '.4fr';
 
-  const GRID_NO_ELAB = `${fixedStartNoElab} ${dynCols} ${fixedEnd}`;
-  const GRID_ELAB = `${fixedStartElab} ${dynCols} ${fixedEnd}`;
+  // minmax(0, Nfr): sin esto un título largo ("Precio con merma default ($)")
+  // ensanchaba su columna solo en el encabezado y las filas quedaban corridas
+  // respecto de los títulos (el Nombre del encabezado quedaba angosto).
+  const fr0 = (t) => {
+    // Solo las pistas sueltas "Nfr" (fuera de paréntesis) pasan a minmax(0, Nfr).
+    const out = []; let depth = 0; let tok = '';
+    for (const ch of t + ' ') {
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      if (ch === ' ' && depth === 0) {
+        if (tok) out.push(/^\d*\.?\d+fr$/.test(tok) ? `minmax(0, ${tok})` : tok);
+        tok = '';
+      } else tok += ch;
+    }
+    return out.join(' ');
+  };
+  const GRID_NO_ELAB = fr0(`${fixedStartNoElab} ${dynCols} ${fixedEnd}`);
+  const GRID_ELAB = fr0(`${fixedStartElab} ${dynCols} ${fixedEnd}`);
 
   const displayCode = (r) =>
     r.codigo_mostrar ||
@@ -744,8 +765,9 @@ const InsumosTable = forwardRef(function InsumosTable({
   const flatRows = useMemo(() => {
     const out = [];
 
-    // Header de agrupación: solo cuando hay agrupación específica + insumos visibles
-    if (agrupacionInfo && groupedRows.length > 0) {
+    // El encabezado de agrupación repetía el nombre que ya está en el selector
+    // de la izquierda (pedido de Diego, 02/11): no se muestra más.
+    if (false && agrupacionInfo && groupedRows.length > 0) {
       out.push({
         type: "agrupacion-header",
         key: "AGRUP-HEADER",
@@ -783,6 +805,10 @@ const InsumosTable = forwardRef(function InsumosTable({
 
     return out;
   }, [groupedRows, agrupacionInfo]);
+
+  const idsVisibles = useMemo(
+    () => flatRows.filter((r) => r.type === "insumo").map((r) => Number(r.data?.id)).filter(Number.isFinite),
+    [flatRows]);
 
   // EditarItemModal necesita recorrer EXACTAMENTE lo que el usuario ve (este
   // orden agrupado por rubro + el sort/filtro de esta tabla), no el maestro
@@ -958,9 +984,22 @@ const InsumosTable = forwardRef(function InsumosTable({
             </Box>
           )}
           <div
-            className="table-col-header-inner"
+            className="table-col-header-inner insumos-header"
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
           >
+            {puedeSeleccionar && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <input type="checkbox"
+                  checked={!!selectionMode && idsVisibles.length > 0 && idsVisibles.every((id) => selectedInsumoIds.has(id))}
+                  onChange={() => {
+                    if (!selectionMode) { onToggleMode?.('list'); return; }
+                    const todos = idsVisibles.every((id) => selectedInsumoIds.has(id));
+                    idsVisibles.forEach((id) => { if (todos === selectedInsumoIds.has(id)) onToggleInsumo?.(id); });
+                  }}
+                  title={!selectionMode ? "Seleccionar insumos" : "Seleccionar / deseleccionar todos"}
+                />
+              </div>
+            )}
             <div onClick={() => toggleSort("codigo")} className="col-sortable">
               Código {sortIcon("codigo")}
             </div>
@@ -1200,7 +1239,20 @@ const InsumosTable = forwardRef(function InsumosTable({
                       gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB,
                     }}
                   >
-                    <div />
+                    {puedeSeleccionar ? (() => {
+                      const idsRubro = (row.rows || []).map((x) => Number(x.id)).filter(Number.isFinite);
+                      const todos = !!selectionMode && idsRubro.length > 0 && idsRubro.every((id) => selectedInsumoIds.has(id));
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {selectionMode && <input type="checkbox" checked={todos}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => {
+                              if (!selectionMode) onToggleMode?.('list');
+                              idsRubro.forEach((id) => { if (todos === selectedInsumoIds.has(id)) onToggleInsumo?.(id); });
+                            }} />}
+                        </div>
+                      );
+                    })() : <div />}
                     <div
                       style={{
                         gridColumn: "2 / -1",
@@ -1291,14 +1343,20 @@ const InsumosTable = forwardRef(function InsumosTable({
                   title={r.estado === "pendiente_aprobacion" ? "Pendiente de aprobación" : undefined}
                 >
                   {isSelected && <div className="row-left-bar" />}
-                  {selectionMode && (
-                    <input
-                      type="checkbox"
-                      checked={selectedInsumoIds.has(Number(r.id))}
-                      onChange={() => onToggleInsumo?.(Number(r.id))}
-                      onClick={e => e.stopPropagation()}
-                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--color-primary, #1976d2)' }}
-                    />
+                  {puedeSeleccionar && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {/* Igual que en Artículos: la columna queda reservada y la
+                          casilla aparece al arrancar la selección desde el encabezado. */}
+                      {selectionMode && <input
+                        type="checkbox"
+                        checked={!!selectionMode && selectedInsumoIds.has(Number(r.id))}
+                        onChange={() => {
+                          if (!selectionMode) onToggleMode?.('list');
+                          onToggleInsumo?.(Number(r.id));
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      />}
+                    </div>
                   )}
                   <div
                     onClick={(e) => { e.stopPropagation(); onOpenEditModal?.(r); }}

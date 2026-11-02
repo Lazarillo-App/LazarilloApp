@@ -61,8 +61,10 @@ export default function InsumoListToolbar({
     onToggleMode?.(null);
   };
 
-  // Sin modo activo — solo botón Seleccionar
-  if (!isActive) {
+  // Sin modo activo: la selección arranca desde las casillas de la tabla
+  // (igual que en Artículos) — el botón "Seleccionar" ya no se muestra.
+  if (!isActive) return null;
+  if (false) {
     return (
       <>
         <Tooltip title="Seleccionar insumos para crear lista">
