@@ -21,6 +21,7 @@ export default function ArticleListSelector({
   currentListId,
   onChange,
   onOpenConfig,
+  compact = false,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -50,8 +51,9 @@ export default function ArticleListSelector({
         sx={{
           display: 'inline-flex', alignItems: 'center', gap: 0.5,
           background: 'transparent', border: 'none', cursor: 'pointer',
-          color, fontWeight: 700, fontSize: '0.95rem',
-          fontFamily: 'inherit', padding: 0, ml: 1.5,
+          color, fontWeight: 700, fontSize: compact ? '0.7rem' : '0.95rem',
+          fontFamily: 'inherit', padding: compact ? '1px 7px' : 0, ml: compact ? 0.75 : 1.5,
+          ...(compact ? { background: 'rgba(36,146,200,0.10)', borderRadius: '10px', maxWidth: 120, textTransform: 'none' } : {}),
           opacity: 0.95,
           transition: 'opacity 0.15s',
           '&:hover': { opacity: 1, textDecoration: '', textDecorationThickness: '1.5px', textUnderlineOffset: '3px' },
@@ -61,7 +63,7 @@ export default function ArticleListSelector({
           width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
           backgroundColor: color, border: '1.5px solid rgba(0,0,0,0.15)',
         }} />
-        <span>{label}</span>
+        <span style={compact ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : undefined}>{label}</span>
         <ExpandMoreIcon sx={{ fontSize: 16, opacity: 0.6 }} />
       </Box>
 
