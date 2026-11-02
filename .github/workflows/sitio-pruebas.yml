@@ -1,0 +1,36 @@
+# Publica la rama testing en el sitio de pruebas (https://lazarillo-testing.vercel.app)
+# cada vez que cambia. Producción (main → lazarillo.com.ar) no se toca.
+# Necesita el secreto VERCEL_TOKEN en Settings → Secrets and variables → Actions.
+name: Sitio de pruebas
+
+on:
+  push:
+    branches: [testing]
+  workflow_dispatch:
+
+concurrency:
+  group: sitio-pruebas
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_twMRsJ9TcLTRglz7JHpKsw5Q
+      VERCEL_PROJECT_ID: prj_9YYnJjXW5UA09cMnFKlGffzDxLlo
+      VITE_BACKEND_URL: https://lazarillo-backend-testing.onrender.com/api
+      VITE_API_BASE_URL: https://lazarillo-backend-testing.onrender.com
+      VITE_ASSETS_BASE_URL: https://lazarillo-backend-testing.onrender.com
+      VITE_MAXI_ENABLED: "true"
+      VITE_BASE: /
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: cp vercel.json dist/vercel.json
+      - name: Publicar en Vercel
+        run: npx --yes vercel@39 deploy dist --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
