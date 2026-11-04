@@ -32,6 +32,10 @@ import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
 import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
 import CargarFactura from '@/componentes/gestion/CargarFactura';
 import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
+import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
+import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
+import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
+import { Toaster } from 'sonner';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
@@ -163,6 +167,10 @@ export default function GestionPanel() {
     staleTime: 10 * 60 * 1000,
   });
   const columnas = estado.meses.length ? estado.meses : MESES_IDX;
+  // Impagas y Sin carga: en la Económica sin búsqueda están en la tarjeta "Para mirar"; si no, en la barra.
+  const pdvId = lugarDe(activeBusinessId, sucursalCaja);
+  const enParaMirar = estado.modo === 'economica' && !busquedaActiva && pdvId != null && estado.mostrarTarjetas;
+  const { data: locales } = useFetchQuery(['locales'], '/api/locales', { staleTime: 5 * 60_000 });
 
   const paramsCompras = useMemo(() => ({
     year: estado.year,
@@ -214,6 +222,7 @@ export default function GestionPanel() {
 
   return (
     <PanelGestionContext.Provider value={panel}>
+    <Toaster position="bottom-right" />
     <Box sx={{ p: { xs: 1.5, md: 3 }, display: 'flex', flexDirection: 'column', height: { md: 'calc(100vh - 64px)' } }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} gap={1.5}>
         <Box sx={{ minWidth: 0 }}>
@@ -265,6 +274,12 @@ export default function GestionPanel() {
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
             <CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} />
+            {!enParaMirar && pdvId != null && (
+              <ScopeGestion>
+                <ImpagasBoton locales={locales ?? []} pdvId={pdvId} />
+                <SinCargaBoton />
+              </ScopeGestion>
+            )}
             {estado.tab === 'resultados'
               ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
               : <RubrosConfig key="dash" />}

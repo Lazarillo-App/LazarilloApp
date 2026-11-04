@@ -12,6 +12,7 @@ import { GestionAPI } from '@/servicios/apiGestion';
 import { egresosProyectados } from '@/gestion/egresosProy';
 import { MESES_IDX } from '@/gestion/formato';
 import { usePanelGestion } from '@/gestion/panelContext';
+import { gestionFetch } from '@/servicios/apiGestion';
 
 // Proyección de cierre del mes con ventas incompletas (mismos filtros que la fila Ingresos).
 // null cuando no hay mes para proyectar.
@@ -40,16 +41,33 @@ export function useAnual(anio, enabled = true) {
 // Fila Egresos: proyección del mes en curso (Económica, sin búsqueda: con un filtro de
 // proveedor/concepto la proyección por rubro no tiene sentido).
 export function useEgresosProyeccion(egresosPorMes) {
-  const { year, modo, busquedaActiva } = usePanelGestion();
+  const { businessId, year, modo, busquedaActiva, sucursalCaja } = usePanelGestion();
   const proy = useProyeccionIngresos();
   const activo = modo === 'economica' && !busquedaActiva;
   const mesProy = activo && proy && proy.anio === year ? proy.mes : null;
   const { data: anual } = useAnual(year, !!mesProy);
+  // Lo que falta cargar sale de Sin carga, del lugar elegido (con "todas" no hay un lugar concreto).
+  const pdvId = sucursalCaja === undefined || !businessId ? null : sucursalCaja === 'principal' ? -Number(businessId) : Number(sucursalCaja);
+  const { data: sc } = useQuery({
+    queryKey: ['sin-carga', pdvId, businessId],
+    queryFn: async () => (await gestionFetch(`/api/sin-carga?pdvId=${pdvId}`)).json(),
+    enabled: activo && pdvId != null,
+    staleTime: 60_000,
+  });
+  const delMes = (mes) => sc?.meses?.find((m) => m.mes === `${year}-${String(mes).padStart(2, '0')}`)?.items ?? [];
   const proyectado = mesProy && anual && egresosPorMes[mesProy] != null
-    ? egresosProyectados({ anual: anual.meses, mesProy, ventasProy: proy.proyeccion, cargadoPivot: egresosPorMes[mesProy], sinCargar: [] })
+    ? egresosProyectados({ anual: anual.meses, mesProy, ventasProy: proy.proyeccion, cargadoPivot: egresosPorMes[mesProy], sinCargar: delMes(mesProy) })
     : null;
-  // Meses cerrados con algo sin cargar: pendiente del módulo Sin carga.
+  // Meses cerrados con algo sin cargar (el de la proyección ya lo incluye).
   const faltan = {};
+  if (activo && sc?.meses) {
+    for (const m of sc.meses) {
+      const [a, mm] = m.mes.split('-').map(Number);
+      if (a !== year || mm === mesProy || !m.items.length) continue;
+      const items = [...m.items].sort((x, y) => y.ultimo - x.ultimo);
+      faltan[mm] = { n: items.length, total: items.reduce((s, x) => s + x.ultimo, 0), items };
+    }
+  }
   return { proyectado, ventasProy: proyectado ? proy.proyeccion : null, faltan };
 }
 
@@ -175,7 +193,7 @@ export function useMaestrosFactura(enabled = true) {
 
 // Tras cargar, editar o borrar un gasto: todo lo que se calcula con las compras.
 export function refrescarCompras(queryClient) {
-  for (const k of ['gestionPivot', 'gestionDetalle', 'gestionFactura', 'gestionCompraLineas', 'gestionProyeccion', 'gestionEquilibrio', 'gestionAnual', 'gestionActualizado', 'gestionRangoAnios', 'gestionMaestrosFactura']) {
+  for (const k of ['gestionPivot', 'gestionDetalle', 'gestionFactura', 'gestionCompraLineas', 'gestionProyeccion', 'gestionEquilibrio', 'gestionAnual', 'gestionActualizado', 'gestionRangoAnios', 'gestionMaestrosFactura', 'impagas', 'sin-carga', 'cta-cte']) {
     queryClient.invalidateQueries({ queryKey: [k] });
   }
 }

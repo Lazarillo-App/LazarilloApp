@@ -3,8 +3,11 @@
 // el ÚLTIMO MES CERRADO (Ventas → Equilibrio → Resultado, Mix con food cost y personal adentro,
 // Tu canasta) y el MES EN CURSO solo como proyección. Tocar una tarjeta abre su evolución debajo,
 // a todo el ancho.
-// "Para mirar": por ahora solo las alertas del mes (Impagas y Sin carga llegan con sus módulos).
+// "Para mirar": Impagas, Sin carga y las alertas del mes.
 
+import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
+import { ImpagasBoton } from './pagos/impagas-boton';
+import { SinCargaBoton } from './pagos/sin-carga-boton';
 import React, { useMemo, useState } from 'react';
 import { Box, Snackbar, Alert } from '@mui/material';
 import { useAnual, useCanasta, useEgresosProyeccion, useEquilibrio, useProyeccionIngresos } from '@/gestion/hooksPanel';
@@ -167,6 +170,19 @@ function SubIndicador({ nombre, valor, dif, onClick }) {
   );
 }
 
+// Renglones de Impagas y Sin carga: solo con un lugar concreto, sus datos son por lugar.
+function AccesosPagos() {
+  const { pdvId } = useDashboard();
+  const { data: locales } = useFetchQuery(['locales'], '/api/locales', { staleTime: 5 * 60_000 });
+  if (pdvId == null) return null;
+  return (
+    <ScopeGestion>
+      <ImpagasBoton locales={locales ?? []} pdvId={pdvId} variante="linea" />
+      <SinCargaBoton variante="linea" />
+    </ScopeGestion>
+  );
+}
+
 // Alertas del mes en una tarjeta que NUNCA es más alta que las de KPI: una a la vista y el resto en "+N más".
 function ParaMirar({ alertas }) {
   const [mas, setMas] = useState(false);
@@ -183,6 +199,7 @@ function ParaMirar({ alertas }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'text.secondary' }}>
         <span>Para mirar</span>{alertas.length > 0 && <Box component="b" sx={{ color: AMBAR }}>{alertas.length}</Box>}
       </Box>
+      <AccesosPagos />
       {visibles.map(linea)}
       {resto.length > 0 && (
         <Box component="button" type="button" onClick={() => setMas((v) => !v)} sx={{ all: 'unset', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: AMBAR, '&:hover': { textDecoration: 'underline' } }}>

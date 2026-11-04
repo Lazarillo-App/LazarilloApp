@@ -20,6 +20,8 @@ import { resolverImporteParaPatch } from '@/gestion/importeParaPatch';
 import { ETIQUETA_ESTADO, PUNTO_ESTADO } from '@/gestion/estadoPago';
 import DetalleModalShell, { DetallePeriodoControls, EditActionButtons, EditTriggerButton, EditedDot } from './DetalleModalShell';
 import { VerFactura } from './CargarFactura';
+import { CtaCteModal, origenDeFila } from './pagos/cta-cte-proveedor';
+import { ScopeGestion, lugarDeCompra } from '@/gestion/compat';
 
 const SIN_RUBRO_CODE = '__sin_rubro';
 const SIN_RUBRO_NOMBRE = 'Sin Rubro';
@@ -108,6 +110,16 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [lineas, setLineas] = useState(null);
+  // Cuenta corriente del proveedor de la fila (empleados y gastos varios: por lugar + código + nombre).
+  const [ctaCte, setCtaCte] = useState(null);
+  const origenDe = (item) => origenDeFila({
+    codigo: item.codigoProveedor, pdvId: lugarDeCompra(item.pdvCompraId), nombre: item.proveedor, tieneMaestro: !!item.proveedorRef,
+  });
+  const abrirCtaCte = (item) => {
+    const origen = origenDe(item);
+    const pdvId = lugarDeCompra(item.pdvCompraId);
+    if (origen) setCtaCte({ origen, resaltado: item.comprobante && pdvId != null ? { pdvId, comprobante: item.comprobante } : null });
+  };
   const [pendiente, setPendiente] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [tildadas, setTildadas] = useState(() => new Map());
@@ -300,7 +312,11 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>{esEditada(item) && <EditedDot />}{fmtDate(fecha)}</Box>
         </TableCell>
         <TableCell sx={{ ...celda, color: 'text.secondary' }}><FechaPago item={item} /></TableCell>
-        <TableCell sx={celda} title={prov}>{prov}</TableCell>
+        <TableCell sx={celda} title={prov}>
+          {origenDe(item) ? (
+            <Box component="button" type="button" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
+          ) : prov}
+        </TableCell>
         <TableCell sx={celda} title={item.detalle ?? undefined}>
           {item.detalle ? (
             <Box component="button" type="button" onClick={() => setLineas({ rowId: item.rowId, detalle: item.detalle })} sx={{ all: 'unset', cursor: 'pointer', color: 'text.secondary', fontFamily: 'monospace', fontSize: 12, '&:hover': { color: 'text.primary', textDecoration: 'underline' } }}>
@@ -347,6 +363,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
         renderRow={renderFila}
       />
+      {ctaCte && <ScopeGestion><CtaCteModal origen={ctaCte.origen} resaltado={ctaCte.resaltado} onCerrar={() => setCtaCte(null)} /></ScopeGestion>}
       <VerFactura rowId={lineas?.rowId ?? null} detalle={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
       <Dialog open={pendiente !== null} onClose={() => setPendiente(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: 16 }}>Aplicar a los registros tildados</DialogTitle>

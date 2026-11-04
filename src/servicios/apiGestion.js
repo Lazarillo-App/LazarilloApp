@@ -21,7 +21,14 @@ export function sucursalParam(activeBranchFilter) {
 // "/api/facturas/…" → la ruta del negocio activo.
 export async function gestionFetch(ruta, { method = 'GET', body } = {}) {
   try {
-    const d = await api(`${base()}${ruta.replace(/^\/api/, '')}`, { method, body: body ? JSON.parse(body) : undefined });
+    const cuerpo = body ? JSON.parse(body) : undefined;
+    // Esas pantallas nombran el lugar "pdvId" (-negocio = la principal, positivo = una sucursal);
+    // las rutas que trabajan sobre un lugar lo reciben como ?sucursal.
+    const url = new URL(ruta.replace(/^\/api/, ''), 'http://x');
+    const lugar = url.searchParams.get('pdvId') ?? url.searchParams.get('pdvDestinoId') ?? cuerpo?.pdvDestinoId
+      ?? (url.pathname.endsWith('/sin-carga/descartes') ? cuerpo?.pdvId : undefined);
+    if (lugar != null && lugar !== '') url.searchParams.set('sucursal', Number(lugar) < 0 ? 'principal' : String(lugar));
+    const d = await api(`${base()}${url.pathname}${url.search}`, { method, body: cuerpo });
     return { ok: true, status: 200, json: async () => d };
   } catch (e) {
     if (e?.status == null) throw e; // red o sesión: lo trata quien llama

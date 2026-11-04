@@ -1,0 +1,50 @@
+/* eslint-disable */
+// Traído de lazarillo_gestion/components/impagas/impagas-boton.tsx (mismas pantallas; datos de Lazarillo vía @/gestion/compat).
+import { useMemo, useState } from "react";
+import { useFetchQuery } from "@/gestion/compat";
+import { cn } from "@/gestion/compat";
+import { fmtMillones, separar, sumaSaldos } from "@/gestion/impagasClasificar";
+import { ImpagasModal, impagasQueryKey, leerDesde, resumenDeuda } from "./impagas-modal";
+// Botón del panel "● Impagas · $X M" (sin la cantidad: Diego, 27/10/2026) — cuenta las del PDV elegido en el panel
+// y abre el listado filtrado en ese PDV (se puede cambiar adentro).
+// variante "linea": renglón compacto para la tarjeta "Para mirar" del Panel (rediseño, Diego 30/10/2026).
+export function ImpagasBoton({ locales, pdvId, variante = "boton" }) {
+    const [open, setOpen] = useState(false);
+    const pdvs = useMemo(() => locales.flatMap((l) => l.puntosDeVenta.map((p) => ({ id: p.id, label: `${l.nombre} · ${p.nombre}` }))), [locales]);
+    // Mismo "Desde" que quedó elegido en el modal para este PDV (si no, el default del servidor).
+    const [leido, setLeido] = useState(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const desde = useMemo(() => leerDesde(pdvId), [pdvId, leido]);
+    const { data } = useFetchQuery(impagasQueryKey(pdvId, desde), pdvId ? `/api/impagas?pdvId=${pdvId}${desde ? `&desde=${desde}` : ""}` : null, { staleTime: 60_000 });
+    // Comprobantes impagos + lo que se le debe a otros PDV por aperturas.
+    const resumen = useMemo(() => {
+        if (!data)
+            return null;
+        const imp = separar(data.data).impagas;
+        const deudas = (data.deudas ?? []).map((d) => resumenDeuda(d));
+        return {
+            n: imp.length + deudas.reduce((s, d) => s + d.pendientes, 0),
+            saldo: sumaSaldos(imp) + deudas.reduce((s, d) => s + d.saldo, 0),
+        };
+    }, [data]);
+    if (pdvs.length === 0)
+        return null;
+    if (variante === "linea")
+        return (<>
+      <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center gap-1.5 text-left hover:underline">
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", resumen?.n ? "bg-red-500" : "bg-zinc-300")}/>
+        <span className="truncate">Impagas {resumen ? (resumen.n ? fmtMillones(resumen.saldo) : "· nada") : "…"}</span>
+        <span className="ml-auto text-muted-foreground">›</span>
+      </button>
+      <ImpagasModal open={open} onClose={() => { setOpen(false); setLeido((n) => n + 1); }} pdvs={pdvs} pdvInicial={pdvId}/>
+    </>);
+    return (<>
+      <button type="button" onClick={() => setOpen(true)} className={cn("h-8 px-3 flex items-center gap-2 rounded-lg border text-sm transition-all shrink-0", resumen?.n
+            ? "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:border-red-300"
+            : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:border-zinc-300")}>
+        <span className={cn("h-2 w-2 rounded-full", resumen?.n ? "bg-red-500" : "bg-zinc-300")}/>
+        {resumen ? `Impagas · ${fmtMillones(resumen.saldo)}` : "Impagas"}
+      </button>
+      <ImpagasModal open={open} onClose={() => { setOpen(false); setLeido((n) => n + 1); }} pdvs={pdvs} pdvInicial={pdvId}/>
+    </>);
+}
