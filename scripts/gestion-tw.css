@@ -6,6 +6,7 @@
 
 @source "../src/componentes/gestion/pagos";
 @source "../src/componentes/gestion/apertura";
+@source "../src/componentes/gestion/movil";
 @source "../src/gestion/compat.jsx";
 
 @custom-variant dark (&:is(.dark *));

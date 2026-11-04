@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
 import AnthonyWidget from './componentes/AnthonyWidget';
@@ -38,6 +38,7 @@ import RrhhCronogramas from './paginas/RrhhCronogramas';
 import GestionPanel from './paginas/GestionPanel';
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
+import GestionMovil from './paginas/GestionMovil';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import RequireActiveAccount from './routing/RequireActiveAccount';
 import Activar from './paginas/Activar';
@@ -59,6 +60,7 @@ function readRole() {
 }
 
 export default function App() {
+  const location = useLocation();
   useDocumentTitle();
   const [bootReady, setBootReady] = useState(false);
   const [isLogged, setIsLogged] = useState(!!localStorage.getItem('token'));
@@ -210,6 +212,7 @@ export default function App() {
   useDocumentTitle();
 
   if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
+  const enAppMovil = location.pathname === '/m';
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
       <AppAlertModal />
@@ -217,8 +220,8 @@ export default function App() {
       <AppConfirmModal />
       <UpdateBanner />
       <ImpersonateBanner />
-      {isLogged && role !== 'app_admin' && <Navbar />}
-      {isLogged && role !== 'app_admin' && <AnthonyWidget />}
+      {isLogged && role !== 'app_admin' && !enAppMovil && <Navbar />}
+      {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
 
       <Routes>
         <Route path="/" element={isLogged ? <Navigate to="/menu" replace /> : <LazarilloLanding />} />
@@ -283,6 +286,7 @@ export default function App() {
                 {/* ── RRHH › Cronogramas (Etapa 1) ── */}
                 <Route path="/rrhh/cronogramas" element={<RrhhCronogramas />} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
+                <Route path="/m" element={<RequireAdminOrOwner><GestionMovil /></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><GestionPanel /></RequireAdminOrOwner>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><GestionConceptos /></RequireAdminOrOwner>} />
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><GestionMediosPago /></RequireAdminOrOwner>} />
