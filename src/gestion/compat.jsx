@@ -7,13 +7,11 @@
 import React, { createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal, Popover as MuiPopover } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
 import { Loader2, Search, X } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
-import { getSession } from '@/servicios/apiBase';
-import { gestionFetch } from '@/servicios/apiGestion';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { useMaestrosFactura } from '@/gestion/hooksPanel';
+import { useReglasCarga } from '@/componentes/gestion/apertura/useReglasCarga';
 import ModalCargaFactura from '@/componentes/gestion/ModalCargaFactura';
 import '@/gestion/gestion-tw.css';
 
@@ -30,20 +28,7 @@ export function ScopeGestion({ children }) {
 
 // useFetchQuery de gestion. El negocio va al final de la clave para que los invalidate/setQueriesData
 // por prefijo de esas pantallas sigan valiendo.
-export function useFetchQuery(queryKey, url, opts) {
-  const { activeBusinessId } = getSession();
-  return useQuery({
-    queryKey: [...queryKey, activeBusinessId],
-    queryFn: async () => {
-      const res = await gestionFetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    enabled: opts?.enabled !== false && url !== null,
-    staleTime: opts?.staleTime ?? 30_000,
-    retry: 1,
-  });
-}
+export { useFetchQuery } from '@/gestion/hooksPanel';
 
 // El "PDV" de gestion es un lugar: la principal (-negocio) o una sucursal (su id).
 export function lugarDe(businessId, sucursal) {
@@ -56,11 +41,11 @@ export function useDashboard() {
   return { localId: businessId ?? null, pdvId: lugarDe(businessId, sucursalCaja) };
 }
 
-// Los maestros de la carga con la forma que espera Sin carga. Sin reglas de apertura hasta ese bloque.
-const sinRegla = () => null;
-export function useCargaFactura(enabled) {
+// Los maestros de la carga con la forma que espera Sin carga, y sus reglas de apertura.
+export function useCargaFactura(enabled, pdvId) {
   const { data: maestros } = useMaestrosFactura(enabled);
-  return { maestros: maestros ?? null, pdvsRef: maestros?.lugares ?? [], reglaDe: sinRegla };
+  const pdvsRef = maestros?.lugares ?? [];
+  return { maestros: maestros ?? null, pdvsRef, ...useReglasCarga(pdvId, pdvsRef) };
 }
 
 // El modal de carga tiene sus propios estilos: se dibuja fuera de `.gestion-tw`.

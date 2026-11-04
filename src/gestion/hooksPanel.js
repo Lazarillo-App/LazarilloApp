@@ -13,6 +13,7 @@ import { egresosProyectados } from '@/gestion/egresosProy';
 import { MESES_IDX } from '@/gestion/formato';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { gestionFetch } from '@/servicios/apiGestion';
+import { getSession } from '@/servicios/apiBase';
 
 // Proyección de cierre del mes con ventas incompletas (mismos filtros que la fila Ingresos).
 // null cuando no hay mes para proyectar.
@@ -167,6 +168,23 @@ export function useCanasta(ref) {
     agregarAumento: (f) => aumento('POST', f),
     quitarAumento: (f) => aumento('DELETE', f),
   };
+}
+
+// useFetchQuery de gestion. El negocio va al final de la clave para que los invalidate/setQueriesData
+// por prefijo de esas pantallas sigan valiendo.
+export function useFetchQuery(queryKey, url, opts) {
+  const { activeBusinessId } = getSession();
+  return useQuery({
+    queryKey: [...queryKey, activeBusinessId],
+    queryFn: async () => {
+      const res = await gestionFetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: opts?.enabled !== false && url !== null,
+    staleTime: opts?.staleTime ?? 30_000,
+    retry: 1,
+  });
 }
 
 // Medios de pago del negocio (los pagos y el gestor).

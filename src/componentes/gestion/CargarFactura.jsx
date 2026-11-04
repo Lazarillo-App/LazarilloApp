@@ -12,9 +12,8 @@ import { refrescarCompras, useMaestrosFactura } from '@/gestion/hooksPanel';
 import { ctxDesdeCelda } from '@/gestion/cargaUtils';
 import ModalNuevaCarga, { edeDesdeFactura } from './ModalCargaFactura';
 import CompraLineasModal from './CompraLineasModal';
+import { useReglasCarga } from './apertura/useReglasCarga';
 
-// Sin reglas de apertura todavía: nada se precarga como reparto (llega con ese bloque).
-const sinRegla = () => null;
 const pesos = (n) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 const lugarDe = (lugares, sucursalCaja, businessId) => {
   if (sucursalCaja === undefined) return null;
@@ -41,6 +40,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido }) {
   const { data: maestros, isError } = useMaestrosFactura(true);
   const lugar = lugarDe(maestros?.lugares, sucursalCaja, businessId);
   const puede = sucursalCaja !== undefined;
+  const reglasCarga = useReglasCarga(lugar?.id ?? null, maestros?.lugares ?? []);
 
   useEffect(() => {
     if (!pedido) return undefined;
@@ -78,12 +78,18 @@ export default function CargarFactura({ pedido, onPedidoAtendido }) {
           maestros={maestros}
           pdvsRef={maestros.lugares}
           pdvActual={lugar?.nombre}
-          reglaDe={sinRegla}
+          reglaDe={reglasCarga.reglaDe}
+          reglaEmpleadoDe={reglasCarga.reglaEmpleadoDe}
           ctx={ctx ?? undefined}
           onCerrar={cerrar}
           onProveedorCreado={() => queryClient.invalidateQueries({ queryKey: ['gestionMaestrosFactura'] })}
           onGuardado={(d) => {
             cerrar();
+            refrescarCompras(queryClient);
+            if (d.empleado) {
+              setAviso({ txt: `${d.tipo === 'sueldo' ? 'Sueldo' : 'Adelanto'} cargado: ${d.nombre} · ${pesos(d.total)}` });
+              return;
+            }
             const importe = pesos(d.total);
             const conPago = d.pago ? ` · ${d.pago.numero ?? `Pago Nº ${d.pago.id}`}` : '';
             setAviso({
@@ -91,7 +97,6 @@ export default function CargarFactura({ pedido, onPedidoAtendido }) {
                 ? `${d.pago ? 'Gasto cargado y pagado' : 'Gasto cargado (impago)'}: ${d.concepto ?? 'Gastos Varios'} · ${importe}${conPago}`
                 : `${d.pago ? 'Factura cargada y pagada' : 'Factura cargada'}: ${d.comprobante} · ${importe}${conPago}`,
             });
-            refrescarCompras(queryClient);
           }}
         />
       ) : (
@@ -118,6 +123,7 @@ export function VerFactura({ rowId, detalle, onClose }) {
   });
   const fa = data && !data.noEsFactura ? data : null;
   const { data: maestros } = useMaestrosFactura(!!fa);
+  const { reglaDe } = useReglasCarga(fa?.factura.registros[0]?.puntoDeVentaId ?? null, maestros?.lugares ?? []);
 
   // Sin factura abierta queda solo el aviso de lo último que se hizo.
   if (!rowId) return <Aviso aviso={aviso} onClose={() => setAviso(null)} />;
@@ -138,14 +144,14 @@ export function VerFactura({ rowId, detalle, onClose }) {
           <Box sx={{ py: 8, display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>
         ) : vista === 'repetir' ? (
           <ModalNuevaCarga
-            key="repetir" embebido vista="nueva" ctx={{ repetirDe: ede }} maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={sinRegla}
+            key="repetir" embebido vista="nueva" ctx={{ repetirDe: ede }} maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={reglaDe}
             onCerrar={() => setVista('ver')}
             onGuardado={(d) => { setAviso({ txt: `Factura cargada: ${d.comprobante} · ${pesos(d.total)}` }); refrescarCompras(queryClient); cerrar(); }}
           />
         ) : (
           <ModalNuevaCarga
             key={vista} embebido vista={vista} ctx={{ editarDe: ede }} editRowId={fa.rowId} editable={fa.editable} aviso={avisoFactura}
-            maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={sinRegla}
+            maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={reglaDe}
             onEditar={() => setVista('editar')}
             onRepetir={() => setVista('repetir')}
             onCerrar={vista === 'editar' ? () => setVista('ver') : cerrar}

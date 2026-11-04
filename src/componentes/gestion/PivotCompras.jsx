@@ -19,6 +19,8 @@ import {
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { mesAnteriorConValor } from '@/gestion/cargaUtils';
+import { ScopeGestion, useDashboard } from '@/gestion/compat';
+import { ConceptoFijoEmpleado, useConceptosEmpleado } from './apertura/concepto-fijo';
 import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
@@ -81,6 +83,8 @@ export default function PivotCompras({
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
   const aperturaPanel = useAperturaPanel();
+  const { pdvId: lugarPanel } = useDashboard();
+  const { data: conceptosFijos } = useConceptosEmpleado(lugarPanel);
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
   const [expanded, setExpanded] = useState(() => new Set());
@@ -275,6 +279,10 @@ export default function PivotCompras({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{nombre}</Expansor>
                 {d.entidadIdProveedor && <BotonApertura panel={aperturaPanel} nivel="proveedor" entidadId={d.entidadIdProveedor} nombre={normalize(d.nombre)} />}
+                {/* Concepto fijo del empleado (personas de planilla: texto del ERP con código). */}
+                {d.proveedorId == null && d.codigo && d.entidadIdProveedor?.startsWith('texto:') && (
+                  <ScopeGestion><ConceptoFijoEmpleado pdvId={lugarPanel} entidadId={d.entidadIdProveedor} nombre={normalize(d.nombre)} reglas={conceptosFijos?.reglas ?? []} /></ScopeGestion>
+                )}
               </Box>
             </TableCell>
             {months.map((mes) => (

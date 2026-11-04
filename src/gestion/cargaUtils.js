@@ -75,6 +75,32 @@ export function ctxDesdeCelda(p, fechaPagoPrev) {
   };
 }
 
+// ── Sueldos (lib/empleados/carga.ts) ──
+export const MEDIO_ADELANTOS = 'Adelantos';
+const r2 = (n) => Math.round(n * 100) / 100;
+const iguales = (a, b) => Math.abs(a - b) < 0.005;
+const fmt2 = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Problemas de una carga de sueldo (vacío = se puede guardar). adelantosPeriodo: lo adelantado en el período.
+export function validarSueldo(c, adelantosPeriodo) {
+  const out = [];
+  const sumaConceptos = r2(c.conceptos.reduce((s, x) => s + x.importe, 0));
+  if (!iguales(sumaConceptos, c.total)) out.push(`Los conceptos suman $ ${fmt2(sumaConceptos)} y el total es $ ${fmt2(c.total)}: tienen que dar exacto.`);
+  c.conceptos.forEach((x, i) => {
+    const pagos = r2(x.pagos.reduce((s, p) => s + p.importe, 0));
+    if (!iguales(pagos, x.importe)) out.push(`Concepto ${i + 1}: las formas de pago suman $ ${fmt2(pagos)} y el concepto es $ ${fmt2(x.importe)}.`);
+  });
+  const usados = r2(c.conceptos.flatMap((x) => x.pagos).filter((p) => p.medio === MEDIO_ADELANTOS).reduce((s, p) => s + p.importe, 0));
+  if (!iguales(usados, r2(adelantosPeriodo))) {
+    out.push(adelantosPeriodo > 0
+      ? `En el período hay $ ${fmt2(adelantosPeriodo)} de adelantos: tienen que descontarse (forma de pago "Adelantos"), y hay $ ${fmt2(usados)}.`
+      : 'No hay adelantos cargados en el período: sacá la forma de pago "Adelantos".');
+  }
+  if (adelantosPeriodo > c.total + 0.005) out.push(`Los adelantos del período ($ ${fmt2(adelantosPeriodo)}) superan el sueldo.`);
+  const rep = (c.reparto ?? []).filter((x) => x.pct > 0);
+  if (rep.length >= 2 && !iguales(rep.reduce((s, x) => s + x.pct, 0), 100)) out.push('El reparto por sucursal tiene que sumar 100%.');
+  return out;
+}
+
 // ── Ventas manuales ──
 // Grilla día × columna → ítems (solo las celdas con importe).
 export function itemsDeGrilla(modo, celdas, parse, detalle) {

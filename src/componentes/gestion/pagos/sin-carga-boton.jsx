@@ -59,7 +59,7 @@ function SinCargaModal({ pdvId, localId, onClose }) {
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
     const pdvCarga = cargando?.item.pdvOrigenId ?? pdvId;
     const localCarga = locales?.find((l) => l.puntosDeVenta.some((p) => p.id === pdvCarga))?.id ?? localId;
-    const { maestros, pdvsRef, reglaDe } = useCargaFactura(true, pdvCarga, localCarga);
+    const { maestros, pdvsRef, reglaDe } = useCargaFactura(true, pdvCarga);
     const pdv = pdvsRef.find((p) => p.id === pdvId);
     const nombrePdv = (id) => pdvsRef.find((p) => p.id === id)?.nombre ?? "otro PDV";
     const [tab, setTab] = useState("sin");
