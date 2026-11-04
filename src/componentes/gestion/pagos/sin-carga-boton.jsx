@@ -15,7 +15,7 @@ import { refrescarCompras } from "@/gestion/hooksPanel";
 import { useCargaFactura } from "@/gestion/compat";
 import { ModalNuevaCarga } from "@/gestion/compat";
 import { VerFactura } from "@/componentes/gestion/CargarFactura";
-import { ARCA_KEY, ctxArca, ListaArca, ListaCorregir, SubirArca, useAjusteAutomatico, useCruceArca } from "@/gestion/compat";
+import { ARCA_KEY, ctxArca, ListaArca, ListaCorregir, SubirArca, useAjusteAutomatico, useCruceArca } from "./arca";
 export const sinCargaKey = (pdvId) => ["sin-carga", pdvId ?? null];
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
 export function useSinCarga(pdvId) {
@@ -164,7 +164,7 @@ function SinCargaModal({ pdvId, localId, onClose }) {
         </div>
         <div className="flex items-center gap-3 px-6 pb-3">
           <div className="inline-flex rounded-lg bg-zinc-100 dark:bg-zinc-800 p-1 text-xs font-semibold">
-            {[["sin", `Por proyección (${kpi?.n ?? "…"})`], ["no", `Ya no van (${noVan.length + (arca?.anuladas.length ?? 0) + (arca?.agregadas.length ?? 0)})`]].map(([k, t]) => (<button key={k} type="button" onClick={() => setTab(k)} className={cn("rounded-md px-3 py-1.5", tab === k ? "bg-white dark:bg-zinc-950 shadow-sm" : "text-zinc-500")}>{t}</button>))}
+            {[["sin", `Por proyección (${kpi?.n ?? "…"})`], ["arca", `ARCA (${arca ? arca.faltan.length : "…"})`], ["corregir", `Corregir (${nCorregir ?? "…"})`], ["no", `Ya no van (${noVan.length + (arca?.anuladas.length ?? 0) + (arca?.agregadas.length ?? 0)})`]].map(([k, t]) => (<button key={k} type="button" onClick={() => setTab(k)} className={cn("rounded-md px-3 py-1.5", tab === k ? "bg-white dark:bg-zinc-950 shadow-sm" : "text-zinc-500")}>{t}</button>))}
           </div>
           {tab === "sin" && (<label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
               <input type="checkbox" checked={chicos} onChange={(e) => setChicos(e.target.checked)}/> Mostrar los chicos (menos de {fmtPesos(CHICO)})

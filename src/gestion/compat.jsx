@@ -17,6 +17,12 @@ import '@/gestion/gestion-tw.css';
 
 export { fmtARS } from '@/gestion/formato';
 
+// Lo de lib/query-retry de gestion: un reintento solo.
+export class HttpError extends Error {
+  constructor(status) { super(`HTTP ${status}`); this.status = status; }
+}
+export const REINTENTOS = { retry: 1 };
+
 export function cn(...clases) {
   return twMerge(clases.flat(Infinity).filter(Boolean).join(' '));
 }
@@ -204,11 +210,3 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
   );
 }
 
-// ── ARCA llega en otro bloque: Sin carga funciona sin esa fuente ──
-export const ARCA_KEY = ['arca'];
-export const useCruceArca = () => ({ data: null, isLoading: false, isError: false, refetch: () => {} });
-export const useAjusteAutomatico = () => {};
-export const ctxArca = () => ({ ctx: {}, aviso: null });
-export const ListaArca = () => null;
-export const ListaCorregir = () => null;
-export const SubirArca = () => null;

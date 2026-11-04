@@ -27,7 +27,7 @@ export async function gestionFetch(ruta, { method = 'GET', body } = {}) {
     const url = new URL(ruta.replace(/^\/api/, ''), 'http://x');
     const lugar = url.searchParams.get('pdvId') ?? url.searchParams.get('pdvDestinoId') ?? cuerpo?.pdvDestinoId
       ?? (url.pathname.endsWith('/sin-carga/descartes') ? cuerpo?.pdvId : undefined);
-    if (lugar != null && lugar !== '') url.searchParams.set('sucursal', Number(lugar) < 0 ? 'principal' : String(lugar));
+    if (lugar != null && lugar !== '' && Number(lugar) !== 0) url.searchParams.set('sucursal', Number(lugar) < 0 ? 'principal' : String(lugar));
     const d = await api(`${base()}${url.pathname}${url.search}`, { method, body: cuerpo });
     return { ok: true, status: 200, json: async () => d };
   } catch (e) {

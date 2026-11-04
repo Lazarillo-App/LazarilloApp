@@ -36,6 +36,10 @@ import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
 import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
 import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
 import { Toaster } from 'sonner';
+import { ActividadCampana } from '@/componentes/gestion/pagos/actividad-campana';
+import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
+import { Popover as MuiPopover } from '@mui/material';
+import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
@@ -90,6 +94,7 @@ export default function GestionPanel() {
   const [ventasFilter, setVentasFilter] = useState(null);
   // Celda vacía tocada en la tabla: la atiende CargarFactura.
   const [pedidoCarga, setPedidoCarga] = useState(null);
+  const [anclaNotas, setAnclaNotas] = useState(null);
   const limpiarPedido = useCallback(() => setPedidoCarga(null), []);
 
   // Al cambiar de negocio, sus propias preferencias.
@@ -239,6 +244,15 @@ export default function GestionPanel() {
           </Stack>
         </Box>
         <Stack direction="row" alignItems="center" gap={1}>
+          <ScopeGestion><ActividadCampana /></ScopeGestion>
+          <Tooltip title="Notas">
+            <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
+              <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
+            </IconButton>
+          </Tooltip>
+          <MuiPopover open={!!anclaNotas} anchorEl={anclaNotas} onClose={() => setAnclaNotas(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+            <ScopeGestion><Box sx={{ width: 320, pt: 1 }}><NotasSidebar /></Box></ScopeGestion>
+          </MuiPopover>
           {/* Ocultar / mostrar las tarjetas: quedan título, filtros, buscador y la tabla. */}
           <Tooltip title={estado.mostrarTarjetas ? 'Ocultar tarjetas' : 'Mostrar tarjetas'}>
             <IconButton
