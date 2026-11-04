@@ -17,6 +17,18 @@ export function sucursalParam(activeBranchFilter) {
   return activeBranchFilter.branchId ?? undefined;
 }
 
+// Lo que el modal de carga (traído tal cual de gestion) espera de fetch: { ok, status, json() }.
+// "/api/facturas/…" → la ruta del negocio activo.
+export async function gestionFetch(ruta, { method = 'GET', body } = {}) {
+  try {
+    const d = await api(`${base()}${ruta.replace(/^\/api/, '')}`, { method, body: body ? JSON.parse(body) : undefined });
+    return { ok: true, status: 200, json: async () => d };
+  } catch (e) {
+    if (e?.status == null) throw e; // red o sesión: lo trata quien llama
+    return { ok: false, status: e.status, json: async () => e.data };
+  }
+}
+
 export const GestionAPI = {
   // Pivot de Compras. params: { year, sucursal, months:[..], agrupacion:'concepto'|'proveedor'|'insumo',
   // modo:'financiera'|undefined, rubroCodigo, conceptoCodigo, proveedorId, observacionQuery, importeQuery }
@@ -66,6 +78,22 @@ export const GestionAPI = {
   conceptosEdicion: () => api(`${base()}/config/conceptos`),
   editarCompra: (rowId, body) => api(`${base()}/dashboard/compras/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
   editarVenta: (rowId, body) => api(`${base()}/dashboard/ventas/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+
+  // ── Carga manual: facturas, ventas, conceptos y medios de pago ──
+  maestrosFactura: () => api(`${base()}/facturas/maestros`),
+  factura: (rowId) => api(`${base()}/facturas/${encodeURIComponent(rowId)}`),
+  ventasManuales: (sucursal) => api(`${base()}/ventas-manuales${qs({ sucursal })}`),
+  crearVentasManuales: ({ sucursal, items, forzar }) =>
+    api(`${base()}/ventas-manuales${qs({ sucursal })}`, { method: 'POST', body: { items, forzar } }),
+  borrarVentasManuales: (ids) => api(`${base()}/ventas-manuales${qs({ ids: ids.join(',') })}`, { method: 'DELETE' }),
+  conceptos: () => api(`${base()}/conceptos`),
+  crearConcepto: (body) => api(`${base()}/conceptos`, { method: 'POST', body }),
+  editarConcepto: (codigo, body) => api(`${base()}/conceptos/${codigo}`, { method: 'PATCH', body }),
+  borrarConcepto: (codigo) => api(`${base()}/conceptos/${codigo}`, { method: 'DELETE' }),
+  mediosPago: () => api(`${base()}/medios-pago`),
+  crearMedio: (body) => api(`${base()}/medios-pago`, { method: 'POST', body }),
+  editarMedio: (id, body) => api(`${base()}/medios-pago/${id}`, { method: 'PUT', body }),
+  borrarMedio: (id) => api(`${base()}/medios-pago/${id}`, { method: 'DELETE' }),
 
   // ── Buscador (⌘K) y rubros visibles ──
   // Sugerencias: sin q, las de la sucursal que se mira; con q, todo el negocio (cada una dice en

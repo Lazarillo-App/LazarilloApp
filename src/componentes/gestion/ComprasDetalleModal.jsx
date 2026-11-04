@@ -19,7 +19,7 @@ import { cambiosLote, describirCambios } from '@/gestion/edicionLote';
 import { resolverImporteParaPatch } from '@/gestion/importeParaPatch';
 import { ETIQUETA_ESTADO, PUNTO_ESTADO } from '@/gestion/estadoPago';
 import DetalleModalShell, { DetallePeriodoControls, EditActionButtons, EditTriggerButton, EditedDot } from './DetalleModalShell';
-import CompraLineasModal from './CompraLineasModal';
+import { VerFactura } from './CargarFactura';
 
 const SIN_RUBRO_CODE = '__sin_rubro';
 const SIN_RUBRO_NOMBRE = 'Sin Rubro';
@@ -347,7 +347,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
         renderRow={renderFila}
       />
-      <CompraLineasModal compraId={lineas?.rowId ?? null} comprobante={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
+      <VerFactura rowId={lineas?.rowId ?? null} detalle={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
       <Dialog open={pendiente !== null} onClose={() => setPendiente(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: 16 }}>Aplicar a los registros tildados</DialogTitle>
         <DialogContent sx={{ fontSize: 14 }}>

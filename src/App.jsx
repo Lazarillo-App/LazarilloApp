@@ -36,6 +36,8 @@ import Perfil from './paginas/Perfil';
 import Inicio from './paginas/Inicio';
 import RrhhCronogramas from './paginas/RrhhCronogramas';
 import GestionPanel from './paginas/GestionPanel';
+import GestionConceptos from './paginas/GestionConceptos';
+import GestionMediosPago from './paginas/GestionMediosPago';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import RequireActiveAccount from './routing/RequireActiveAccount';
 import Activar from './paginas/Activar';
@@ -282,6 +284,8 @@ export default function App() {
                 <Route path="/rrhh/cronogramas" element={<RrhhCronogramas />} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/gestion" element={<RequireAdminOrOwner><GestionPanel /></RequireAdminOrOwner>} />
+                <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><GestionConceptos /></RequireAdminOrOwner>} />
+                <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><GestionMediosPago /></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/inicio" element={<Inicio />} />
                 <Route path="/configuracion" element={<RequireAdminOrOwner><ConfiguracionMain /></RequireAdminOrOwner>} />

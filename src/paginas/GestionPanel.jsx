@@ -30,6 +30,8 @@ import BuscadorPanel from '@/componentes/gestion/BuscadorPanel';
 import RubrosConfig from '@/componentes/gestion/RubrosConfig';
 import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
 import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
+import CargarFactura from '@/componentes/gestion/CargarFactura';
+import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
@@ -82,6 +84,9 @@ export default function GestionPanel() {
   // Modales de detalle: el filtro de la celda clickeada (null = cerrado).
   const [detalleFilter, setDetalleFilter] = useState(null);
   const [ventasFilter, setVentasFilter] = useState(null);
+  // Celda vacía tocada en la tabla: la atiende CargarFactura.
+  const [pedidoCarga, setPedidoCarga] = useState(null);
+  const limpiarPedido = useCallback(() => setPedidoCarga(null), []);
 
   // Al cambiar de negocio, sus propias preferencias.
   useEffect(() => { setEstado(leerEstado(activeBusinessId)); setBusqueda(null); }, [activeBusinessId]);
@@ -130,7 +135,7 @@ export default function GestionPanel() {
     : `${active?.name || 'Negocio'} · ${activeBranch?.name || 'Principal'}`;
   const panel = useMemo(() => ({
     businessId: activeBusinessId, year: estado.year, sucursal, sucursalCaja, modo: estado.modo, busquedaActiva: !!busquedaActiva,
-    abrirDetalle, abrirVentas, nombreLugar,
+    abrirDetalle, abrirVentas, nombreLugar, pedirCarga: setPedidoCarga,
   }), [activeBusinessId, estado.year, sucursal, sucursalCaja, estado.modo, busquedaActiva, abrirDetalle, abrirVentas, nombreLugar]);
 
   // ⌘K / Ctrl+K abre el buscador (no en Ventas).
@@ -259,6 +264,7 @@ export default function GestionPanel() {
         />
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
+            <CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} />
             {estado.tab === 'resultados'
               ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
               : <RubrosConfig key="dash" />}
@@ -317,6 +323,7 @@ export default function GestionPanel() {
             onSort={ordenar}
           />
         )}
+        {estado.tab === 'ventas' && <BarraIngresosManuales />}
         {estado.tab === 'ventas' && (
           <PivotVentas
             data={ventas.data}

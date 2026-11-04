@@ -18,6 +18,7 @@ import {
 } from '@/gestion/pivotUtils';
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
+import { mesAnteriorConValor } from '@/gestion/cargaUtils';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
 import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
@@ -77,7 +78,7 @@ const Punto = ({ color, title }) => (
 export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
 }) {
-  const { abrirDetalle } = usePanelGestion();
+  const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
   const [expanded, setExpanded] = useState(() => new Set());
@@ -173,6 +174,20 @@ export default function PivotCompras({
     </TableRow>
   );
 
+  // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera, Proveedor ni Insumos).
+  const cargaEnCelda = agrupacion === 'concepto' && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
+  const celdaConcepto = (c, mes, filtro) => {
+    if (hasValue(c.values[mes])) return { props: { onClick: () => abrirDetalle({ mes, ...filtro }) }, sx: sxClic };
+    if (!cargaEnCelda) return { props: {}, sx: {} };
+    return {
+      props: {
+        title: `Cargar ${c.nombre} en este mes como gasto vario`,
+        onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes) }),
+      },
+      sx: { cursor: 'copy', '&:hover': { bgcolor: '#f0f9ff' } },
+    };
+  };
+
   // Concepto (2do nivel de Concepto/Insumos, 3er nivel de Proveedor).
   const filaConcepto = (c, indent) => {
     const insumo = porInsumo && c.conceptoCodigo?.startsWith('ins:');
@@ -197,11 +212,14 @@ export default function PivotCompras({
             )}
           </Expansor>
         </TableCell>
-        {months.map((mes) => (
-          <ComposicionTooltip key={mes} comp={c.composicion?.[mes]}>
-            <TableCell {...clic(c.values[mes], { mes, ...filtro })} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...sxDe(c.values[mes]) }}>{fmtCelda(c.values[mes], mes)}</TableCell>
-          </ComposicionTooltip>
-        ))}
+        {months.map((mes) => {
+          const celda = celdaConcepto(c, mes, filtro);
+          return (
+            <ComposicionTooltip key={mes} comp={c.composicion?.[mes]}>
+              <TableCell {...celda.props} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...celda.sx }}>{fmtCelda(c.values[mes], mes)}</TableCell>
+            </ComposicionTooltip>
+          );
+        })}
         <TableCell onClick={() => abrirDetalle(filtro)} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(c.rowTotal)}</TableCell>
         {celdaPct(c.rowTotal, { py: 1, opacity: 0.5 })}
       </TableRow>

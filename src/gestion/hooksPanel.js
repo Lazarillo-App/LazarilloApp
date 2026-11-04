@@ -151,6 +151,35 @@ export function useCanasta(ref) {
   };
 }
 
+// Medios de pago del negocio (los pagos y el gestor).
+export function useMediosPago() {
+  const { businessId } = usePanelGestion();
+  return useQuery({
+    queryKey: ['gestionMediosPago', businessId],
+    queryFn: () => GestionAPI.mediosPago(),
+    enabled: !!businessId,
+    staleTime: 60_000,
+  });
+}
+
+// Proveedores, conceptos, insumos y lugares para el modal de carga.
+export function useMaestrosFactura(enabled = true) {
+  const { businessId } = usePanelGestion();
+  return useQuery({
+    queryKey: ['gestionMaestrosFactura', businessId],
+    queryFn: () => GestionAPI.maestrosFactura(),
+    enabled: !!businessId && enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+// Tras cargar, editar o borrar un gasto: todo lo que se calcula con las compras.
+export function refrescarCompras(queryClient) {
+  for (const k of ['gestionPivot', 'gestionDetalle', 'gestionFactura', 'gestionCompraLineas', 'gestionProyeccion', 'gestionEquilibrio', 'gestionAnual', 'gestionActualizado', 'gestionRangoAnios', 'gestionMaestrosFactura']) {
+    queryClient.invalidateQueries({ queryKey: [k] });
+  }
+}
+
 // "Actualizado al …": último día con ventas y con compras, y la última lectura del kit.
 export function useActualizado() {
   const { businessId, sucursal } = usePanelGestion();

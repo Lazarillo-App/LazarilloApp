@@ -1,7 +1,6 @@
 // src/componentes/gestion/PivotVentas.jsx
 // Pestaña Ventas del Panel de gestion, igual a lazarillo_gestion/components/dashboard/
 // ventas-pivot-table.tsx: tipo → forma de cobro, por mes, con "Total <año>" al pie.
-// Todavía no: la barra de ingresos manuales.
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { Box, Table, TableHead, TableBody, TableFooter, TableRow, TableCell } from '@mui/material';
