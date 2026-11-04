@@ -19,6 +19,7 @@ import {
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { mesAnteriorConValor } from '@/gestion/cargaUtils';
+import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
 import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
@@ -79,6 +80,7 @@ export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
+  const aperturaPanel = useAperturaPanel();
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
   const [expanded, setExpanded] = useState(() => new Set());
@@ -205,12 +207,15 @@ export default function PivotCompras({
     return (
       <TableRow key={c.id} hover onContextMenu={(e) => cerrarNivel(e, porProveedor ? proveedorIds : rubroIds)}>
         <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 1 }}>
-          <Expansor abierto={expanded.has(c.id)} onClick={() => toggle(c.id)} indent={indent}>
-            {insumo ? normalize(c.nombre) : c.nombre}
-            {porInsumo && !insumo && (
-              <Box component="span" sx={{ ml: 0.75, px: 0.75, border: 1, borderColor: 'divider', borderRadius: 4, fontSize: 10, color: 'text.secondary' }}>concepto</Box>
-            )}
-          </Expansor>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Expansor abierto={expanded.has(c.id)} onClick={() => toggle(c.id)} indent={indent}>
+              {insumo ? normalize(c.nombre) : c.nombre}
+              {porInsumo && !insumo && (
+                <Box component="span" sx={{ ml: 0.75, px: 0.75, border: 1, borderColor: 'divider', borderRadius: 4, fontSize: 10, color: 'text.secondary' }}>concepto</Box>
+              )}
+            </Expansor>
+            {!insumo && <BotonApertura panel={aperturaPanel} nivel="concepto" entidadId={c.conceptoCodigo} nombre={c.nombre} />}
+          </Box>
         </TableCell>
         {months.map((mes) => {
           const celda = celdaConcepto(c, mes, filtro);
@@ -231,6 +236,7 @@ export default function PivotCompras({
     <TableRow
       key={r.id}
       hover
+      className="group"
       sx={r.hasManualOverride ? { bgcolor: (t) => alpha(t.palette.warning.main, 0.05) } : undefined}
     >
       <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 2 + indent, py: 0.75, fontSize: 12, color: r.hasManualOverride ? 'warning.dark' : 'text.secondary' }}>
@@ -238,6 +244,7 @@ export default function PivotCompras({
           {r.hasManualOverride && <Punto color="warning.main" title="Editado en el Panel" />}
           {r.distribucionId != null && <Punto color="info.main" title="Parte de un gasto aperturado" />}
           {partes.filter(Boolean).join(' · ')}
+          <BotonAperturaRegistro panel={aperturaPanel} rowId={r.rowId} nombre={partes.filter(Boolean).join(' · ')} negocio={r.businessIdOrigen} sucursal={r.branchIdOrigen} />
         </Box>
       </TableCell>
       {months.map((mes) => (
@@ -265,7 +272,10 @@ export default function PivotCompras({
         return (
           <TableRow key={d.id} onContextMenu={(e) => cerrarNivel(e, rubroIds)} sx={{ '& td': { fontWeight: 600 } }}>
             <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
-              <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{nombre}</Expansor>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{nombre}</Expansor>
+                {d.entidadIdProveedor && <BotonApertura panel={aperturaPanel} nivel="proveedor" entidadId={d.entidadIdProveedor} nombre={normalize(d.nombre)} />}
+              </Box>
             </TableCell>
             {months.map((mes) => (
               <ComposicionTooltip key={mes} comp={d.composicion?.[mes]}>
@@ -343,6 +353,7 @@ export default function PivotCompras({
           </TableRow>
         </TableFooter>
       </Table>
+      <ModalAperturaPanel panel={aperturaPanel} />
     </Box>
   );
 }

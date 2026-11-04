@@ -21,7 +21,13 @@ import { ETIQUETA_ESTADO, PUNTO_ESTADO } from '@/gestion/estadoPago';
 import DetalleModalShell, { DetallePeriodoControls, EditActionButtons, EditTriggerButton, EditedDot } from './DetalleModalShell';
 import { VerFactura } from './CargarFactura';
 import { CtaCteModal, origenDeFila } from './pagos/cta-cte-proveedor';
-import { ScopeGestion, lugarDeCompra } from '@/gestion/compat';
+import { ScopeGestion, lugarDeCompra, useFetchQuery } from '@/gestion/compat';
+import { BotonAperturaRegistro, ModalAperturaPanel, lugarOrigen, useAperturaPanel } from './apertura/aperturaPanel';
+import { MoverPdvButton } from './apertura/mover-pdv-button';
+import { cuerpoMover, filasAMover } from '@/gestion/apertura/mover';
+import { refrescarCompras } from '@/gestion/hooksPanel';
+import { gestionFetch } from '@/servicios/apiGestion';
+import { toast } from 'sonner';
 
 const SIN_RUBRO_CODE = '__sin_rubro';
 const SIN_RUBRO_NOMBRE = 'Sin Rubro';
@@ -110,6 +116,53 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [lineas, setLineas] = useState(null);
+  // Apertura y "mover a otro lugar" de una fila o de las tildadas.
+  const aperturaPanel = useAperturaPanel();
+  const { data: localesApertura } = useFetchQuery(['locales-apertura'], '/api/apertura/locales', { staleTime: 5 * 60_000 });
+  const filaMovible = (f) => ({
+    ...f,
+    localIdOrigen: f.localIdOrigen != null ? Number(f.localIdOrigen) : null,
+    puntoDeVentaIdOrigen: lugarOrigen(f.localIdOrigen, f.puntoDeVentaIdOrigen),
+  });
+  const importeDe = (f) => Number(f.importeBase ?? f.importeManual ?? f.importe ?? 0);
+  const abrirAperturaFila = (row) => {
+    // Con la fila tildada (y 2+ tildadas) la regla nueva va para todas.
+    const filas = tildadas.has(row.rowId) && tildadas.size > 1 ? [...tildadas.values()].map(filaMovible) : null;
+    const m = filaMovible(row);
+    aperturaPanel.abrir('registro', row.rowId, nombreProveedor(row) || row.detalle || row.rowId, {
+      localId: m.localIdOrigen,
+      pdvId: m.puntoDeVentaIdOrigen,
+      lote: filas?.map((f) => ({ entidadId: f.rowId, origenLocalId: f.localIdOrigen, origenPdvId: f.puntoDeVentaIdOrigen, importe: importeDe(f) })) ?? null,
+    });
+  };
+  const moverFilas = async (filas, destino) => {
+    const aMover = filasAMover(filas, destino);
+    let movidas = 0;
+    let conRegla = 0;
+    let fallidas = 0;
+    for (const f of aMover) {
+      try {
+        const res = await gestionFetch('/api/apertura/reglas', { method: 'POST', body: JSON.stringify(cuerpoMover(f, destino)) });
+        if (res.ok) movidas += 1;
+        else if (res.status === 409) conRegla += 1;
+        else fallidas += 1;
+      } catch {
+        fallidas += 1;
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['apertura-reglas'] });
+    refrescarCompras(queryClient);
+    setTildadas(new Map());
+    const yaEstaban = filas.length - aMover.length;
+    const detalle = [
+      conRegla ? `${conRegla} ya tenía${conRegla !== 1 ? 'n' : ''} una apertura propia` : null,
+      yaEstaban ? `${yaEstaban} ya estaba${yaEstaban !== 1 ? 'n' : ''} en ${destino.etiqueta}` : null,
+      fallidas ? `${fallidas} no se pudo mover` : null,
+    ].filter(Boolean).join(' · ');
+    if (movidas > 0 && !conRegla && !fallidas) toast.success(`${movidas} registro${movidas !== 1 ? 's' : ''} movido${movidas !== 1 ? 's' : ''} a ${destino.etiqueta}`);
+    else if (movidas > 0) toast.warning(`${movidas} movido${movidas !== 1 ? 's' : ''} a ${destino.etiqueta}`, { description: detalle });
+    else toast.error('No se movió ningún registro', { description: detalle || undefined });
+  };
   // Cuenta corriente del proveedor de la fila (empleados y gastos varios: por lugar + código + nombre).
   const [ctaCte, setCtaCte] = useState(null);
   const origenDe = (item) => origenDeFila({
@@ -306,7 +359,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     const observacion = item.observacManual ?? item.observac ?? '';
     const prov = nombreProveedor(item);
     return (
-      <TableRow key={key} hover selected={!!seleccion?.tildado} sx={{ '&:hover .lapiz': { opacity: 1 } }}>
+      <TableRow key={key} hover className="group" selected={!!seleccion?.tildado} sx={{ '&:hover .lapiz': { opacity: 1 } }}>
         <CheckFila seleccion={seleccion} />
         <TableCell sx={celda}>
           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>{esEditada(item) && <EditedDot />}{fmtDate(fecha)}</Box>
@@ -332,7 +385,17 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <TableCell sx={{ ...celda, textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
           {fmtARS(importe != null ? Number(importe) : null)}<Semaforo estado={item.estadoPago} />
         </TableCell>
-        <TableCell sx={{ px: 1, py: 0.5 }}><EditTriggerButton onClick={() => abrirEdicion(item)} /></TableCell>
+        <TableCell sx={{ px: 1, py: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <EditTriggerButton onClick={() => abrirEdicion(item)} />
+            <BotonAperturaRegistro panel={aperturaPanel} rowId={item.rowId} onClick={() => abrirAperturaFila(item)} />
+            {localesApertura && (() => {
+              // Con la fila tildada actúa sobre todas las tildadas; si no, solo sobre ella.
+              const filas = (tildadas.has(item.rowId) ? [...tildadas.values()] : [item]).map(filaMovible);
+              return <ScopeGestion><MoverPdvButton filas={filas} importeTotal={filas.reduce((a, f) => a + importeDe(f), 0)} locales={localesApertura} onMover={moverFilas} /></ScopeGestion>;
+            })()}
+          </Box>
+        </TableCell>
       </TableRow>
     );
   };
@@ -363,6 +426,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
         renderRow={renderFila}
       />
+      <ModalAperturaPanel panel={aperturaPanel} />
       {ctaCte && <ScopeGestion><CtaCteModal origen={ctaCte.origen} resaltado={ctaCte.resaltado} onCerrar={() => setCtaCte(null)} /></ScopeGestion>}
       <VerFactura rowId={lineas?.rowId ?? null} detalle={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
       <Dialog open={pendiente !== null} onClose={() => setPendiente(null)} maxWidth="xs" fullWidth>

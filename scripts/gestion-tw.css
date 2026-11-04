@@ -5,6 +5,7 @@
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 
 @source "../src/componentes/gestion/pagos";
+@source "../src/componentes/gestion/apertura";
 @source "../src/gestion/compat.jsx";
 
 @custom-variant dark (&:is(.dark *));

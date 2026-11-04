@@ -1,0 +1,63 @@
+// Traído de lazarillo_gestion/lib/toast.ts (misma lógica).
+import { toast } from "sonner";
+export const notify = {
+    registroActualizado: () => toast.success("Registro actualizado"),
+    errorGuardar: () => toast.error("No se pudo guardar. Intentá de nuevo."),
+    arqueoCeroInvalido: () => toast.warning("Un arqueo en $0 no es un dato", {
+        description: "Dejá la celda vacía si no hubo arqueo ese mes.",
+    }),
+    aperturaSinCompras: () => toast.warning("Regla guardada, pero no afectó ninguna compra", {
+        description: "Revisá el origen y la vigencia — puede que no haya compras que coincidan todavía.",
+    }),
+    errorActualizar: (nombre) => toast.error(`No se pudo actualizar ${nombre}. Intentá de nuevo.`),
+    rubroVisibilidad: (nombre, visible) => toast.success(visible ? `${nombre} visible en panel` : `${nombre} ocultado del panel`),
+    importacionCompletada: (totalFiles, totalRecords) => toast.success("Importación completada", {
+        description: `${totalFiles} archivo${totalFiles !== 1 ? "s" : ""} procesados · ${totalRecords} registros`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    importacionConErrores: (totalErrors, totalFiles) => toast.error("Importación con errores", {
+        description: `${totalErrors} de ${totalFiles} archivo${totalFiles !== 1 ? "s" : ""} fallaron — revisá los detalles`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    maestrosNoCargados: (totalFiles) => toast.warning("Maestros no cargados", {
+        description: totalFiles > 0
+            ? `Se procesaron ${totalFiles} archivo${totalFiles !== 1 ? "s" : ""} maestros pero los transaccionales no se importaron`
+            : "Los archivos transaccionales no se importaron — los maestros no están disponibles",
+        duration: Infinity,
+        closeButton: true,
+    }),
+    localNoReconocido: (count) => toast.warning("Carpetas no importadas", {
+        description: `${count} carpeta${count !== 1 ? "s" : ""} omitida${count !== 1 ? "s" : ""} — el nombre no corresponde a ningún local registrado`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    archivosNoSoportados: (count) => toast.warning("Archivos no soportados", {
+        description: `${count} archivo${count !== 1 ? "s" : ""} no ${count !== 1 ? "fueron reconocidos" : "fue reconocido"} por el sistema y se ${count !== 1 ? "ignoraron" : "ignoró"} — el resto de la importación no se vio afectado`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    aperturaSincronizacionConErrores: (count) => toast.warning("Apertura de gastos — sincronización con errores", {
+        description: `${count} error${count !== 1 ? "es" : ""} al recalcular/aplicar reglas de apertura tras el import — revisá los detalles en el servidor`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    aperturaSincronizacionFallida: (motivo) => toast.error("Apertura de gastos — la sincronización no terminó", {
+        description: `El import se guardó, pero no se pudo confirmar que las reglas de apertura se aplicaron a las compras nuevas (${motivo}). Volvé a importar para reintentar.`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    aperturaCascadaTrasEliminarConErrores: (count) => toast.warning("Regla eliminada, pero la reaplicación de otras reglas falló", {
+        description: count === 1
+            ? "1 error al reaplicar reglas activas tras el borrado — revisá el servidor para el detalle."
+            : `${count} errores al reaplicar reglas activas tras el borrado — revisá el servidor para el detalle.`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+    aperturaSincronizacionOmitidas: (count) => toast.info("Apertura de gastos — cambios no recalculados", {
+        description: `${count} compra${count !== 1 ? "s" : ""} con datos del ERP actualizados no se recalcularon porque su regla de apertura está desactivada — el historial de distribución se preservó tal cual.`,
+        duration: Infinity,
+        closeButton: true,
+    }),
+};

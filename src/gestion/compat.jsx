@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
-import { Modal } from '@mui/material';
+import { Modal, Popover as MuiPopover } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Search, X } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
@@ -16,6 +16,8 @@ import { usePanelGestion } from '@/gestion/panelContext';
 import { useMaestrosFactura } from '@/gestion/hooksPanel';
 import ModalCargaFactura from '@/componentes/gestion/ModalCargaFactura';
 import '@/gestion/gestion-tw.css';
+
+export { fmtARS } from '@/gestion/formato';
 
 export function cn(...clases) {
   return twMerge(clases.flat(Infinity).filter(Boolean).join(' '));
@@ -123,8 +125,98 @@ export function DialogContent({ className, children, showCloseButton = true }) {
   );
 }
 
+export const DialogHeader = ({ className, children }) => <div className={cn('flex flex-col gap-2', className)}>{children}</div>;
+
 export function DialogTitle({ className, children }) {
   return <h2 className={cn('text-base leading-none font-medium', className)}>{children}</h2>;
+}
+
+// Select de shadcn sobre un <select> nativo: toma el placeholder y las clases del trigger.
+export const SelectTrigger = () => null;
+export const SelectValue = () => null;
+export const SelectContent = ({ children }) => children;
+export function SelectItem({ value, disabled, children }) {
+  return <option value={value} disabled={disabled}>{children}</option>;
+}
+export function Select({ value, onValueChange, disabled, children }) {
+  const hijos = React.Children.toArray(children);
+  const trigger = hijos.find((h) => h.type === SelectTrigger);
+  const contenido = hijos.find((h) => h.type === SelectContent);
+  const placeholder = React.Children.toArray(trigger?.props.children).find((h) => h.type === SelectValue)?.props.placeholder;
+  return (
+    <select
+      value={value ?? ''} disabled={disabled} onChange={(e) => onValueChange?.(e.target.value)}
+      className={cn('h-7 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring disabled:opacity-50', trigger?.props.className)}
+    >
+      <option value="" hidden>{placeholder ?? ''}</option>
+      {contenido?.props.children}
+    </select>
+  );
+}
+
+export const Input = React.forwardRef(function Input({ className, ...props }, ref) {
+  return <input ref={ref} className={cn('h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring disabled:opacity-50', className)} {...props} />;
+});
+
+export function Switch({ checked, onCheckedChange, disabled, className, id }) {
+  return (
+    <button
+      type="button" role="switch" id={id} aria-checked={!!checked} disabled={disabled} onClick={() => onCheckedChange?.(!checked)}
+      className={cn('inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors disabled:opacity-50', checked ? 'bg-primary' : 'bg-input', className)}
+    >
+      <span className={cn('block size-3.5 rounded-full bg-white transition-transform', checked ? 'translate-x-4' : 'translate-x-0.5')} />
+    </button>
+  );
+}
+
+export const Skeleton = ({ className }) => <div className={cn('animate-pulse rounded-md bg-muted', className)} />;
+export const Separator = ({ className }) => <div className={cn('h-px w-full shrink-0 bg-border', className)} />;
+
+export function Badge({ variant = 'default', className, children }) {
+  const estilos = {
+    default: 'bg-primary text-primary-foreground',
+    secondary: 'bg-secondary text-secondary-foreground',
+    destructive: 'bg-destructive/10 text-destructive',
+    outline: 'border-border text-foreground',
+  };
+  return <span className={cn('inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap', estilos[variant], className)}>{children}</span>;
+}
+
+const PopoverCtx = createContext(null);
+export function Popover({ open, onOpenChange, children }) {
+  const [ancla, setAncla] = React.useState(null);
+  return <PopoverCtx.Provider value={{ open: !!open, onOpenChange, ancla, setAncla }}>{children}</PopoverCtx.Provider>;
+}
+export function PopoverTrigger({ children }) {
+  const { open, onOpenChange, setAncla } = useContext(PopoverCtx);
+  return React.cloneElement(children, {
+    onClick: (e) => { e.stopPropagation(); setAncla(e.currentTarget); children.props.onClick?.(e); onOpenChange?.(!open); },
+  });
+}
+export function PopoverContent({ className, align = 'center', children }) {
+  const { open, onOpenChange, ancla } = useContext(PopoverCtx);
+  const horizontal = align === 'end' ? 'right' : align === 'start' ? 'left' : 'center';
+  return (
+    <MuiPopover open={open && !!ancla} anchorEl={ancla} onClose={() => onOpenChange?.(false)} disableEnforceFocus
+      anchorOrigin={{ vertical: 'bottom', horizontal }} transformOrigin={{ vertical: 'top', horizontal }}>
+      <div className="gestion-tw"><div className={cn('w-72 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground', className)}>{children}</div></div>
+    </MuiPopover>
+  );
+}
+
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', destructive, confirming, onConfirm }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false}>
+        <DialogTitle>{title}</DialogTitle>
+        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" disabled={confirming} onClick={() => onOpenChange(false)} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">{cancelLabel}</button>
+          <button type="button" disabled={confirming} onClick={onConfirm} className={cn('h-8 rounded-lg px-3 text-sm font-medium disabled:opacity-50', destructive ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground')}>{confirmLabel}</button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ── ARCA llega en otro bloque: Sin carga funciona sin esa fuente ──
