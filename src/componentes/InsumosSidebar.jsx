@@ -499,11 +499,11 @@ function InsumosSidebar({
     <div className="sidebar">
       <div style={{
         position: 'sticky', top: 0, zIndex: 10,
-        background: '#fafafa', paddingBottom: 4,
+        background: '#fafafa', padding: '10px 10px 6px',
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
         {/* Pestañas: staff = Agrupaciones + Pendientes; admin/owner = + Listas */}
-        <div className="lz-tabs" style={{ display: 'flex', gap: 0, marginBottom: 14, marginTop: 6 }}>
+        <div className="lz-tabs">
           {[
             { id: 'agrupaciones', label: 'Agrupaciones', onClick: () => { setActiveTab('agrupaciones'); onClearInsumoList?.(); } },
             ...(!staff ? [{ id: 'listas', label: <>Listas {insumoLists && insumoLists.length > 0 && <span style={{ opacity: 0.7 }}>({insumoLists.length})</span>}</>, onClick: () => setActiveTab('listas') }] : []),
@@ -514,16 +514,7 @@ function InsumosSidebar({
               <button
                 key={t.id}
                 onClick={t.onClick}
-                style={{
-                  flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-                  border: '1px solid #e2e8f0',
-                  borderLeft: idx > 0 ? 'none' : undefined,
-                  borderRadius: idx === 0 ? '6px 0 0 6px' : idx === arr.length - 1 ? '0 6px 6px 0' : 0,
-                  cursor: 'pointer',
-                  background: activo ? '#1e293b' : 'transparent',
-                  color: activo ? '#fff' : '#64748b',
-                  transition: 'all 0.15s',
-                }}
+                className={activo ? 'on' : undefined}
               >
                 {t.label}
               </button>
@@ -791,7 +782,13 @@ function InsumosSidebar({
 
       {/* ── Lista de rubros/subrubros — esta sí scrollea; el select y el
            toggle de arriba quedan fijos dentro del bloque sticky. ── */}
-      {activeTab === 'agrupaciones' && (
+      {/* Top 20: lista simple, sin rubros que navegar (pedido de Diego, 02/11). */}
+      {activeTab === 'agrupaciones' && top20GroupId && Number(selectedGroupId) === Number(top20GroupId) && (
+        <div style={{ padding: '4px 14px 8px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45 }}>
+          Los 20 insumos con más gasto en compras ($) en el período elegido arriba.
+        </div>
+      )}
+      {activeTab === 'agrupaciones' && !(top20GroupId && Number(selectedGroupId) === Number(top20GroupId)) && (
         <>
           <ul className="sidebar-draggable-list">
             {loading && <li style={{ opacity: 0.7 }}>Cargando rubros…</li>}

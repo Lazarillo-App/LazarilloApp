@@ -117,7 +117,7 @@ function RecetaIcon({ filled = false, size = 14 }) {
 // ─────────────────────────────────────────────
 // Modal de configuración de columnas
 // ─────────────────────────────────────────────
-function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
+function ColOrderModal({ open, cols, onSave, onClose, isElaborados, labels = {} }) {
   const [local, setLocal] = React.useState(cols);
   const dragIdx = React.useRef(null);
 
@@ -144,7 +144,7 @@ function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
             py: 0.75, px: 1.5, mb: 0.5, borderRadius: 1,
             bgcolor: 'action.hover', opacity: 0.55,
           }}>
-            <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{f}</Typography>
+            <Typography variant="body2" sx={{ flex: 1, color: 'text.secondary' }}>{f === 'Precio' ? (labels.precio || f) : f}</Typography>
             <Chip label="fija" size="small" sx={{ fontSize: '0.65rem', height: 16 }} />
           </Box>
         ))}
@@ -171,7 +171,9 @@ function ColOrderModal({ open, cols, onSave, onClose, isElaborados }) {
                 '&:hover': { borderColor: 'var(--color-primary)', bgcolor: 'action.hover' },
               }}>
               <Typography sx={{ color: 'text.disabled', mr: 0.5, fontSize: '1rem', lineHeight: 1 }}>⠿</Typography>
-              <Typography variant="body2" sx={{ flex: 1 }}>{col.label}</Typography>
+              {/* Mismo nombre que el título de la columna en la tabla (ej. "Total"
+                  se ve como "Precio con merma default ($)" según el modo). */}
+              <Typography variant="body2" sx={{ flex: 1 }}>{labels[col.id] || col.label}</Typography>
               <Button
                 size="small"
                 variant={col.visible ? 'contained' : 'outlined'}
@@ -219,6 +221,8 @@ const InsumosTable = forwardRef(function InsumosTable({
   discontinuadosGroupId = null,
   elaboradosGroupId = null,
   top20GroupId = null,
+  // Map id → puesto (1 = más gasto) del Top 20; viene del ranking de compras.
+  puestosTop20 = null,
   onOpenGroupModalForInsumo,
   onCreateGroupFromRubro,
   rubrosMap = new Map(),
@@ -383,7 +387,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     { id: 'enRecetas', label: 'Uso', width: '.7fr', sortKey: 'enRecetas' },
     { id: 'total', label: 'Total', width: '.6fr', sortKey: 'total' },
     { id: 'vencimiento', label: 'Vencimiento', width: '.6fr', sortKey: null },
-    { id: 'fecha', label: 'Fecha', width: '.65fr', sortKey: 'fecha' },
+    { id: 'fecha', label: 'Últ. modificación', width: '.65fr', sortKey: 'fecha' },
   ];
 
   const colStorageKey = isElaborados ? 'insumos_col_order_elab' : 'insumos_col_order_no_elab';
@@ -778,6 +782,20 @@ const InsumosTable = forwardRef(function InsumosTable({
       });
     }
 
+    // Top 20: sin divisiones (pedido de Diego, 02/11) — una sola lista
+    // ordenada por puesto (1 = el de más gasto en compras).
+    const enTop20 = !!top20GroupId && !!selectedGroupId && Number(selectedGroupId) === Number(top20GroupId);
+    if (enTop20) {
+      const todos = groupedRows.flatMap((g) => g.rows);
+      const p = (r) => puestosTop20?.get(Number(r.id)) ?? 999;
+      todos.sort((a, b) => p(a) - p(b));
+      todos.forEach((r) => out.push({
+        type: "insumo", data: r, key: `insumo-${r.id}`,
+        puesto: puestosTop20?.get(Number(r.id)) ?? null,
+      }));
+      return out;
+    }
+
     groupedRows.forEach((group) => {
       const elaboradoState = calcElaboradoState(group.rows);
 
@@ -804,7 +822,7 @@ const InsumosTable = forwardRef(function InsumosTable({
     });
 
     return out;
-  }, [groupedRows, agrupacionInfo]);
+  }, [groupedRows, agrupacionInfo, top20GroupId, selectedGroupId, puestosTop20]);
 
   const idsVisibles = useMemo(
     () => flatRows.filter((r) => r.type === "insumo").map((r) => Number(r.data?.id)).filter(Number.isFinite),
@@ -984,11 +1002,11 @@ const InsumosTable = forwardRef(function InsumosTable({
             </Box>
           )}
           <div
-            className="table-col-header-inner insumos-header"
+            className="table-col-header-inner insumos-header lz-centrar"
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
           >
             {puedeSeleccionar && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="c-keep" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <input type="checkbox"
                   checked={!!selectionMode && idsVisibles.length > 0 && idsVisibles.every((id) => selectedInsumoIds.has(id))}
                   onChange={() => {
@@ -1000,10 +1018,10 @@ const InsumosTable = forwardRef(function InsumosTable({
                 />
               </div>
             )}
-            <div onClick={() => toggleSort("codigo")} className="col-sortable">
+            <div onClick={() => toggleSort("codigo")} className="col-sortable c-keep">
               Código {sortIcon("codigo")}
             </div>
-            <div onClick={() => toggleSort("nombre")} className="col-sortable">
+            <div onClick={() => toggleSort("nombre")} className="col-sortable c-keep">
               Nombre {sortIcon("nombre")}
             </div>
             <div onClick={() => toggleSort("unidad")} className="col-sortable">
@@ -1087,8 +1105,9 @@ const InsumosTable = forwardRef(function InsumosTable({
               }
               if (col.id === 'fecha') {
                 return (
-                  <div key="fecha" {...dragProps} onClick={() => toggleSort("fecha")} className="col-sortable" style={dragStyle}>
-                    Fecha {sortIcon("fecha")}
+                  <div key="fecha" {...dragProps} onClick={() => toggleSort("fecha")} className="col-sortable" style={dragStyle}
+                    title="Fecha del último cambio del insumo: precio, receta o datos">
+                    Últ. modificación {sortIcon("fecha")}
                   </div>
                 );
               }
@@ -1329,7 +1348,7 @@ const InsumosTable = forwardRef(function InsumosTable({
               return (
                 <div
                   data-insumo-id={r.id}
-                  className={`table-item-row${isSelected ? " is-selected" : ""}${shouldHighlight ? " highlight-jump" : ""}`}
+                  className={`table-item-row lz-centrar${isSelected ? " is-selected" : ""}${shouldHighlight ? " highlight-jump" : ""}`}
                   style={{
                     ...style,
                     display: "grid",
@@ -1344,7 +1363,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                 >
                   {isSelected && <div className="row-left-bar" />}
                   {puedeSeleccionar && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div className="c-keep" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {/* Igual que en Artículos: la columna queda reservada y la
                           casilla aparece al arrancar la selección desde el encabezado. */}
                       {selectionMode && <input
@@ -1359,18 +1378,22 @@ const InsumosTable = forwardRef(function InsumosTable({
                     </div>
                   )}
                   <div
+                    className="c-keep"
                     onClick={(e) => { e.stopPropagation(); onOpenEditModal?.(r); }}
                     title="Editar insumo"
-                    style={{
-                      cursor: 'pointer', color: '#3C9BD6', fontWeight: 600,
-                      textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2,
-                    }}
+                    style={{ cursor: 'pointer', color: '#3C9BD6', fontWeight: 600 }}
                   >
-                    {displayCode(r)}
+                    {/* Top 20: puesto por gasto, en gris */}
+                    {row.puesto != null && (
+                      <span title="Puesto en el Top 20 por gasto en compras ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', marginRight: 6 }}>{row.puesto}</span>
+                    )}
+                    <span style={{ textDecoration: 'underline', textDecorationColor: 'rgba(60,155,214,.35)', textUnderlineOffset: 2 }}>
+                      {displayCode(r)}
+                    </span>
                   </div>
 
                   {/* Nombre: con indicador si tiene receta cargada */}
-                  <div title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                  <div className="c-keep" title={r.nombre} style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 36, flexShrink: 0, justifyContent: 'flex-start' }}>
                       {(r.es_elaborado || r.tiene_receta) && (
                         <span
@@ -1462,7 +1485,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         return null;
                       })}
 
-                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
@@ -1554,7 +1577,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           </div>
                         );
                       })}
-                      <div style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                         {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
@@ -1585,6 +1608,7 @@ const InsumosTable = forwardRef(function InsumosTable({
         )}
       </div>
       <ColOrderModal
+        labels={{ total: totalHeaderLabel, precio: precioHeaderLabel }}
         open={colDlgOpen}
         cols={colConfig}
         onSave={saveColConfig}

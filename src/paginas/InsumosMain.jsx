@@ -3,8 +3,6 @@
 // src/paginas/InsumosMain.jsx
 
 import { showAlert } from '../servicios/appAlert';
-import KpiFoodCost from '@/componentes/KpiFoodCost';
-import { useFoodCostKpi } from '@/hooks/useFoodCostKpi';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
 import MarcarRevisionDialog from '../componentes/MarcarRevisionDialog';
@@ -69,6 +67,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInsumosRubros, useInsumosList, useInsumoGroups } from '@/hooks/useInsumos';
 import { useAccess } from '@/context/AccessContext';
+import { useBarraGestion, useRegistrarBarra } from '@/context/BarraGestionContext';
+import ReactDOM from 'react-dom';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -301,6 +301,17 @@ export default function InsumosMain() {
   // Lista tal como la ve el usuario (agrupada por rubro, ordenada), reportada
   // hacia arriba por InsumosTable porque ese orden se arma adentro de ella.
   const [insumosOrdenados, setInsumosOrdenados] = useState([]);
+  // Todo el negocio para el buscador del modal (mismo mapeo que
+  // InsumosTable.itemsOrdenados); los que están en la vista usan su fila.
+  const todosInsumosParaEditModal = useMemo(() => {
+    const enVista = new Map(insumosOrdenados.map((x) => [String(x.id), x]));
+    return (allInsumos || []).map((d) => enVista.get(String(d.id)) || {
+      ...d,
+      rubro: d.rubro_nombre || d.rubroNombre || d.rubro || '',
+      unidad: d.unidad_med || d.unidad || '',
+      precio: d.precio_ref ?? d.precio ?? '',
+    });
+  }, [allInsumos, insumosOrdenados]);
   const [rubrosParaEditModalInsumo, setRubrosParaEditModalInsumo] = useState([]);
   const [agrupacionesParaEditModalInsumo, setAgrupacionesParaEditModalInsumo] = useState([]);
   useEffect(() => {
@@ -393,26 +404,13 @@ export default function InsumosMain() {
   /* ── Compras ── */
   const RANGO_COMPRAS_KEY = 'lazarillo:rangoCompras';
 
-  const [rangoCompras, setRangoCompras] = useState(() => {
-    try {
-      const saved = localStorage.getItem(RANGO_COMPRAS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.from && parsed?.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from)) {
-          return parsed;
-        }
-      }
-    } catch { }
-    const def = lastNDaysUntilYesterday(daysByMode('30'));
-    return { mode: '30', from: def.from, to: def.to };
-  });
+  // El período de compras vive en la barra única (BarraGestionContext): no se
+  // pierde ni se recarga al pasar a Menú y volver. Separado del de ventas.
+  const barraGestion = useBarraGestion();
+  const rangoCompras = barraGestion.rangoCompras;
+  const setRangoCompras = barraGestion.setRangoCompras;
 
-  // KPI de food cost también en Insumos (mismo período que las compras).
-  const { activeBranchFilter: branchFilterFoodCost } = useBranch() || {};
-  const foodCost = useFoodCostKpi({
-    bizId: businessId, from: rangoCompras?.from, to: rangoCompras?.to,
-    activeBranchFilter: branchFilterFoodCost,
-  });
+  // El KPI de food cost lo dibuja la barra única (BarraGestion).
 
   const handleRangoComprasChange = useCallback((nuevoRango) => {
     setRangoCompras(nuevoRango);
@@ -1000,6 +998,10 @@ export default function InsumosMain() {
     }
     return new Set(out.slice(0, 20));
   }, [top20RankingRaw, discontinuadosIds, idsElaboradosActivos]);
+  // Puesto de cada uno (el Set conserva el orden del ranking).
+  const puestosTop20Insumos = useMemo(
+    () => new Map([...idsTop20Insumos].map((id, k) => [id, k + 1])),
+    [idsTop20Insumos]);
 
   const idsSinAgrupActivos = useMemo(() => {
     const res = new Set();
@@ -1197,6 +1199,19 @@ export default function InsumosMain() {
   const groupsScopedRef = useRef(groupsScoped);
   useEffect(() => { groupsScopedRef.current = groupsScoped; }, [groupsScoped]);
 
+  // Última agrupación elegida, por negocio (pedido de Diego, 02/11): al
+  // volver, Insumos abre donde lo dejaste. Se restaura una vez, apenas están
+  // las agrupaciones, y recién después se empieza a guardar.
+  const ultimaAgrupKey = `lazarillo:ultimaAgrup:insumos:${businessId || 'default'}`;
+  const ultimaRestauradaRef = useRef(false);
+  useEffect(() => { ultimaRestauradaRef.current = false; }, [businessId]);
+  useEffect(() => {
+    if (!ultimaRestauradaRef.current) return;
+    const id = Number(selectedGroupId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    try { localStorage.setItem(ultimaAgrupKey, String(id)); } catch { /* sin storage */ }
+  }, [selectedGroupId, ultimaAgrupKey]);
+
   useEffect(() => {
     // Staff queda fijo en "Elaborados" vía su propio efecto dedicado, más
     // abajo — este no debe pisarlo con la autoselección normal.
@@ -1208,6 +1223,21 @@ export default function InsumosMain() {
     if (!currentGroups.length) return;
     const currentSelId = selectedGroupIdRef.current;
     const currentSel = selectedGroupRef.current;
+
+    // Primera vez que están las agrupaciones: abrir la última elegida.
+    if (!ultimaRestauradaRef.current) {
+      ultimaRestauradaRef.current = true;
+      let ultimaId = null;
+      try { ultimaId = Number(localStorage.getItem(ultimaAgrupKey)) || null; } catch { /* sin storage */ }
+      if (ultimaId && (currentGroups.some((g) => Number(g?.id) === ultimaId) || Number(todoId) === ultimaId)) {
+        if (Number(currentSelId) !== ultimaId) {
+          markManualPick();
+          setSelectedGroupId(ultimaId);
+          setRubroSeleccionado(null);
+        }
+        return;
+      }
+    }
     // Si el usuario ELIGIÓ Discontinuados a mano (hace poco), no lo sacamos de ahí.
     // Pero si "cayó" en Discontinuados solo porque este efecto corrió ANTES de que
     // los datos reales (favorita, sin-agrupación) terminaran de cargar, no debe
@@ -1255,7 +1285,7 @@ export default function InsumosMain() {
         setRubroSeleccionado(null);
       }
     }
-  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId, isStaff]);
+  }, [businessId, todoGroupId, idsSinAgrupActivos.size, favoriteGroupId, isStaff, groupsScoped.length, ultimaAgrupKey]);
 
   // Staff (Vista Operación) siempre fijo en la agrupación fija "Elaborados",
   // sin pasar por el Select (que de todos modos no ve) ni por la
@@ -1350,7 +1380,10 @@ export default function InsumosMain() {
   useEffect(() => {
     const handler = (e) => {
       const id = Number(e?.detail?.id);
-      if (Number.isFinite(id)) focusInsumo(id);
+      if (Number.isFinite(id)) {
+        try { sessionStorage.removeItem('pendingFocusInsumo'); } catch { }
+        focusInsumo(id);
+      }
     };
     window.addEventListener('focus:pendingInsumo', handler);
     return () => window.removeEventListener('focus:pendingInsumo', handler);
@@ -1608,41 +1641,55 @@ export default function InsumosMain() {
     return () => ro.disconnect();
   }, []);
 
+  // ── Barra única (BarraGestion): buscador y acciones de esta página ──
+  useRegistrarBarra('insumos', {
+    placeholder: 'Buscar insumos, artículos…',
+    opciones: opcionesGlobales,
+    value: searchText,
+  }, {
+    onBuscar: (v) => setSearchText(v || ''),
+    onPick: (opt) => {
+      const id = Number(opt?.id);
+      if (!Number.isFinite(id)) return;
+      setSearchText('');
+      if (opt?.tipo === 'articulo') {
+        try { sessionStorage.setItem('pendingFocusArticulo', String(id)); } catch { }
+        navigate('/menu');
+        // Si Artículos ya está montado (queda vivo), no remonta: avisarle.
+        setTimeout(() => window.dispatchEvent(new CustomEvent('focus:pendingArticulo', { detail: { id } })), 60);
+      } else {
+        focusInsumo(id);
+      }
+    },
+    agregar: (tipo) => {
+      if (tipo === 'insumo') setNuevoInsumoOpen(true);
+      else if (tipo === 'loteInsumos') setUploadInsumosOpen(true);
+      else if (tipo === 'articulo') setAgregarArticuloOpen(true);
+      else if (tipo === 'loteArticulos') setUploadArticulosOpen(true);
+    },
+    importar: () => setUploadComprasOpen(true),
+  });
+
+  // "Importar compras" elegido desde Menú: la barra navega hasta acá y deja
+  // la acción pendiente.
+  useEffect(() => {
+    if (barraGestion.accionPendiente !== 'importarCompras') return;
+    barraGestion.setAccionPendiente(null);
+    setUploadComprasOpen(true);
+  }, [barraGestion.accionPendiente]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Render ── */
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 16,
-      position: 'fixed', top: navHeight, left: 0, right: 0, bottom: 0,
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
       overflow: 'hidden',
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 8px 0 8px', flexShrink: 0 }}>
-        {/* "Insumos" ya está marcado en el menú de arriba: el título solo
-            aparece si hay una división activa (para saber en cuál estás). */}
-        {!isMainDivision && activeDivisionName && (
-          <h2 style={{ margin: 0 }}>
-            {titulo}
-          </h2>
-        )}
-
-        <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SalesPickerIcon
-            value={rangoCompras}
-            onChange={handleRangoComprasChange}
-            firstDate={firstDateCompras}
-            loadingFirst={loadingFirstCompras}
-            disableFuture
-            disableToday
-          />
-
-          {!isStaff && (
-            <ComprasActionsMenu
-              rango={rangoCompras}
-              onImport={() => setUploadComprasOpen(true)}
-              onExport={handleDownloadCompras}
-              disabled={!businessId || comprasLoading}
-            />
-          )}
-          {(rawBranches?.length > 1) && <SucursalSelector variant="inline" />}
+      {/* La barra (período, sucursal, buscador, food cost, Ventas/Compras,
+          + Agregar) vive en GestionLayout y no se desmonta al cambiar de
+          página; acá solo van los botones propios de Insumos. */}
+      {barraGestion.slotEl && barraGestion.paginaActiva === 'insumos' && ReactDOM.createPortal(
+        <>
           {!isStaff && insumoSelectionMode && (
             <Button size="small" variant="outlined" color="warning" onClick={() => setRevisionMasivaOpen(true)} sx={{ ml: 1 }}>
               Marcar a revisión
@@ -1665,105 +1712,19 @@ export default function InsumosMain() {
               onSelectInsumoList={selectInsumoList}
             />
           )}
-          <div style={{ minWidth: 260, maxWidth: 260 }}>
+        </>,
+        barraGestion.slotEl,
+      )}
 
-           <Buscador
-              placeholder="Buscar insumos, artículos…"
-              opciones={opcionesGlobales}
-              value={searchText}
-              onChange={(v) => setSearchText(v || '')}
-              clearOnPick={false}
-              autoFocusAfterPick
-              noResultsText="Sin resultados"
-              onPick={(opt) => {
-                const id = Number(opt?.id);
-                if (!Number.isFinite(id)) return;
-                setSearchText('');
+      {/* "Insumos" ya está marcado en el menú de arriba: el título solo
+          aparece si hay una división activa (para saber en cuál estás). */}
+      {!isMainDivision && activeDivisionName && (
+        <h2 style={{ margin: 0, padding: '0 8px', flexShrink: 0 }}>
+          {titulo}
+        </h2>
+      )}
 
-                if (opt?.tipo === 'articulo') {
-                  try { sessionStorage.setItem('pendingFocusArticulo', String(id)); } catch { }
-                  navigate('/menu');
-                } else {
-                  focusInsumo(id);
-                }
-              }}
-            />
-          </div>
-
-          {/* Botón + Agregar */}
-          <div>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={e => setAgregarMenuAnchor(e.currentTarget)}
-              sx={{
-                background: '#2492C8',
-                '&:hover': { background: '#1a7aaa' },
-                borderRadius: '8px',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                whiteSpace: 'nowrap',
-                px: 2,
-              }}
-            >
-              + Agregar
-            </Button>
-            <Menu
-              anchorEl={agregarMenuAnchor}
-              open={Boolean(agregarMenuAnchor)}
-              onClose={() => setAgregarMenuAnchor(null)}
-              PaperProps={{ sx: { borderRadius: 2, minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
-            >
-              <MenuItem
-                onClick={() => { setAgregarMenuAnchor(null); setNuevoInsumoOpen(true); }}
-                sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-              >
-                <span style={{ fontSize: 16 }}>🧂</span> Un insumo
-              </MenuItem>
-              {/* Lote de insumos, Un artículo, Lote de artículos: el servidor ya
-                  rechaza estas acciones para Staff (blockStaffWrite) — ocultarlas
-                  acá evita que vea un botón que siempre va a fallarle. */}
-              {!isStaff && (
-                <MenuItem
-                  onClick={() => { setAgregarMenuAnchor(null); setUploadInsumosOpen(true); }}
-                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-                >
-                  <span style={{ fontSize: 16 }}>📦</span> Lote de insumos
-                </MenuItem>
-              )}
-              {!isStaff && <Divider />}
-              {!isStaff && (
-                <MenuItem
-                  onClick={() => { setAgregarMenuAnchor(null); setAgregarArticuloOpen(true); }}
-                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-                >
-                  <span style={{ fontSize: 16 }}>📄</span> Un artículo
-                </MenuItem>
-              )}
-              {!isStaff && (
-                <MenuItem
-                  onClick={() => { setAgregarMenuAnchor(null); setUploadArticulosOpen(true); }}
-                  sx={{ fontSize: '0.88rem', gap: 1.5, py: 1.2 }}
-                >
-                  <span style={{ fontSize: 16 }}>📦</span> Lote de artículos
-                </MenuItem>
-              )}
-            </Menu>
-          </div>
-          {!isStaff && (
-            <KpiFoodCost
-              ventas={foodCost.ventas}
-              compras={foodCost.compras}
-              kpis={foodCost.kpis}
-              onChange={foodCost.onChange}
-              periodoLabel={foodCost.periodoLabel}
-              porMes={foodCost.porMes}
-            />
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+      <div className="lz-sectores" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
         <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
           <InsumosSidebar
             staff={!!isStaff}
@@ -1815,6 +1776,7 @@ export default function InsumosMain() {
 
         <div id="insumos-scroll" style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
+            puestosTop20={puestosTop20Insumos}
             branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}
             rows={tableRowsFiltrados}
@@ -1948,6 +1910,7 @@ export default function InsumosMain() {
           open
           tipo="insumo"
           items={insumosOrdenados}
+          todos={todosInsumosParaEditModal}
           itemId={insumoEditando?.id}
           agrupaciones={agrupacionesParaEditModalInsumo}
           rubros={rubrosParaEditModalInsumo}

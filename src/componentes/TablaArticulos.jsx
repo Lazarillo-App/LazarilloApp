@@ -21,7 +21,7 @@ import { BusinessesAPI, RecetasAPI, invalidateHttpCache, httpBiz } from "@/servi
 import EditarItemModal from "./EditarItemModal";
 import { showConfirm } from "@/servicios/appConfirm";
 import LinkChainIcon from "./LinkChainIcon";
-import { IconButton } from "@mui/material";  // sumarlo al import de MUI que ya tenés
+import { IconButton, Tooltip } from "@mui/material";  // sumarlo al import de MUI que ya tenés
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
@@ -432,7 +432,7 @@ export default function TablaArticulos({
   const REORDERABLE_COLS = [
     { id: 'costo', label: 'Costo', width: '.35fr' },
     { id: 'precio', label: 'Precio', width: '.35fr' },
-    { id: 'rentabilidad', label: 'Rentabilidad', width: '250px' },
+    { id: 'rentabilidad', label: 'Costo %', width: '250px' },
     { id: 'manual', label: 'Nuevo precio', width: '.35fr' },
     { id: 'acciones', label: 'Acciones', width: '.2fr' },
   ];
@@ -1258,6 +1258,28 @@ export default function TablaArticulos({
       });
     }
 
+    // Top 20: sin divisiones (pedido de Diego, 02/11) — una sola lista,
+    // cada fila con su puesto por facturación ($): 1 = el que más facturó.
+    if (esTop20Group(agrupacionSeleccionada)) {
+      const todos = sections.flatMap((sec) => sec.arts.map((a) => ({ a, sec })));
+      const puesto = new Map(
+        todos.map(({ a }) => getId(a))
+          .sort((x, y) => getVentasAmount(y) - getVentasAmount(x))
+          .map((id, k) => [id, k + 1]));
+      todos.sort((x, y) => cmp(x.a, y.a));
+      for (const { a, sec } of todos) {
+        const id = getId(a);
+        rows.push({
+          kind: "item",
+          key: `I|${sec.categoria}|${sec.subrubro}|${id}`,
+          categoria: sec.categoria, subrubro: sec.subrubro,
+          puesto: puesto.get(id),
+          art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+        });
+      }
+      return rows;
+    }
+
     for (const sec of sections) {
       const { categoria, subrubro, arts } = sec;
       rows.push({
@@ -1284,7 +1306,7 @@ export default function TablaArticulos({
   }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
-  const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : 42), []);
+  const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
 
   // Offset acumulado de cada fila — para saber qué sección está en el tope sin lag
   const rowOffsets = useMemo(() => {
@@ -1555,6 +1577,31 @@ export default function TablaArticulos({
     }),
     [flatRows]);
 
+  // Todo el negocio, para el buscador del modal (antes buscaba solo en la
+  // vista: parado en "Top 20" no encontraba nada fuera de ahí). Mismo mapeo
+  // de rubro/subrubro que arriba. Los que están en la vista usan su fila
+  // (ya enriquecida); el resto sale del árbol de artículos.
+  const todosParaEditModal = useMemo(() => {
+    const enVista = new Map(itemsParaEditModal.map((x) => [String(x.id), x]));
+    const out = [];
+    const vistos = new Set();
+    for (const sub of (categorias || [])) {
+      for (const cat of (sub?.categorias || [])) {
+        for (const a of (cat?.articulos || [])) {
+          const id = String(getId(a));
+          if (vistos.has(id)) continue;
+          vistos.add(id);
+          out.push(enVista.get(id) || {
+            ...a, id: getId(a),
+            rubro: a.subrubro || sub.subrubro || '',
+            subrubro: a.categoria || cat.categoria || '',
+          });
+        }
+      }
+    }
+    return out;
+  }, [categorias, itemsParaEditModal]);
+
   // A diferencia de currentGroupId en ArticuloAccionesMenu (que asume que se
   // está parado adentro de la agrupación actual del artículo), el código-link
   // puede abrirse desde cualquier vista — hay que buscar la agrupación real.
@@ -1687,28 +1734,36 @@ export default function TablaArticulos({
     // Descripción: antes el campo no se guardaba. Se manda solo si cambió.
     // Igual a la de MaxiRest (o vacía) = sin descripción propia (null), así
     // sigue a MaxiRest si allá la cambian.
-    const art = itemsParaEditModal.find((x) => Number(x.id) === idNum);
+    const art = todosParaEditModal.find((x) => Number(x.id) === idNum);
     const original = String(art?.descripcion_original ?? '').trim();
     const antes = String(art?.descripcion_propia ?? art?.descripcion_original ?? '').trim();
     const ahora = String(datos.descripcion ?? '').trim();
     if (ahora !== antes) body.descripcion = (!ahora || ahora === original) ? null : ahora;
-    await httpBiz(`/businesses/${activeBizId}/articles/${idNum}`, {
-      method: 'PATCH',
-      body,
-    }, activeBizId);
-
-    const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
-    const agrupacionNueva = (datos.agrupacion || '').trim();
-    if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
-      await httpBiz('/agrupaciones/create-or-move', {
-        method: 'POST', body: { nombre: agrupacionNueva, ids: [idNum] },
+    // httpBiz ya antepone /businesses/:id — antes se mandaba de nuevo acá
+    // (/businesses/147/businesses/147/articles/…) → 404 y no guardaba nada,
+    // sin avisar. Si falla, el modal queda abierto y se avisa.
+    try {
+      await httpBiz(`/articles/${idNum}`, {
+        method: 'PATCH',
+        body,
       }, activeBizId);
+
+      const agrupacionOriginal = agrupacionActualDeArticulo(idNum);
+      const agrupacionNueva = (datos.agrupacion || '').trim();
+      if (agrupacionNueva && agrupacionNueva !== agrupacionOriginal) {
+        await httpBiz('/agrupaciones/create-or-move', {
+          method: 'POST', body: { nombre: agrupacionNueva, ids: [idNum] },
+        }, activeBizId);
+      }
+    } catch (e) {
+      openSnack?.(`No se pudo guardar: ${e?.message || 'error'}`, 'error');
+      return;
     }
 
     setEditandoArticuloId(null);
     openSnack?.('Artículo actualizado', 'success');
     refetchLocal();
-  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, itemsParaEditModal]);
+  }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, todosParaEditModal]);
 
   // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
   // {id,nombre,tipo,valor,color} que espera EditarItemModal. Misma paleta
@@ -1771,6 +1826,15 @@ export default function TablaArticulos({
     saveColConfig(next);
   }, [colConfig, saveColConfig]);
 
+  // Ajuste % de agrupación / rubro: la caja va en la MISMA columna que el
+  // "Nuevo precio" de las filas, centrada y con el mismo ancho, para que
+  // queden alineadas (pedido de Diego, 02/11). La etiqueta ocupa las columnas
+  // de datos de la izquierda y la X queda pegada a la derecha de la caja.
+  const COLS_SIN_DATO_EN_HEADER = ['precio', 'costo', 'rentabilidad', 'objetivo', 'sugerido', 'ganancia', 'costoPct', 'sinPromo'];
+  const spanEtiquetaAjuste = Math.max(1, visibleCols.filter(c => COLS_SIN_DATO_EN_HEADER.includes(c.id)).length);
+  const enListaNoFavorita = !isPriceListFavorite && !!calcPrecioPorLista;
+  const ANCHO_CAJA_PRECIO = enListaNoFavorita ? 85 : 160;
+
   const ClearBtn = ({ onClick, visible = true }) => {
     if (!visible) return null;
     return (
@@ -1794,9 +1858,13 @@ export default function TablaArticulos({
     );
   };
 
-  const renderRow = ({ row, index, style }) => {
+  const renderRow = ({ row, index, style, enTitulo = false }) => {
 
     if (row.kind === "agrupacion-header") {
+      // La agrupación ya no va como fila de la tabla: se dibuja como TÍTULO
+      // de la tarjeta, arriba de las columnas (pedido de Diego 02/11, opción
+      // A). En la lista virtual queda con alto 0.
+      if (!enTitulo) return null;
       const agrupId = String(agrupacionSeleccionada?.id || '');
       const cfgAgrup = priceConfig.byAgrupacion?.[agrupId] || {};
       const objValDb = cfgAgrup.objetivo != null ? String(cfgAgrup.objetivo) : '';
@@ -1805,14 +1873,14 @@ export default function TablaArticulos({
       const ids = row.ids || [];
 
       return (
-        <div key={row.key} style={{
+        <div key={row.key} className="lz-titulo-agrup" style={{
           ...style, display: "grid", alignItems: "center",
           gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP,
           fontSize: "0.82rem", fontWeight: 600,
-          background: "color-mix(in srgb, var(--color-primary) 8%, transparent)",
-          borderBottom: "2px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-          padding: "0 8px",
-          boxShadow: "inset 4px 0 0 var(--color-primary)",
+          background: "#fff", minHeight: 52,
+          borderBottom: "1px solid #e4e4e7",
+          // ocupa todo el ancho de arriba del encabezado (que tiene padding 8px)
+          margin: "-8px -8px 8px", padding: "0 8px",
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             {selectionMode && (
@@ -1853,7 +1921,7 @@ export default function TablaArticulos({
             onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
-            {row.nombre}
+            <span style={{ fontFamily: 'Sora, Archivo, sans-serif', fontSize: '1rem', fontWeight: 700, color: '#15213E' }}>{row.nombre}</span>
             {(() => {
               const objA = priceConfig.byAgrupacion?.[agrupId]?.objetivo;
               return objA != null ? (
@@ -1907,9 +1975,12 @@ export default function TablaArticulos({
             }
             if (col.id === 'manual') {
               return (
-                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                <React.Fragment key="manual">
+                <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>AJUSTAR AGRUPACIÓN</span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
+                </div>
+                <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: ANCHO_CAJA_PRECIO }}>
                     <input
                       type="number"
                       value={blockManuales[bkManual] ?? ''}
@@ -1923,10 +1994,11 @@ export default function TablaArticulos({
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkManual);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
+                      style={{ flex: 1, minWidth: 0, width: '100%', fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <span style={{ position: 'absolute', left: `calc(50% + ${ANCHO_CAJA_PRECIO / 2 + 4}px)`, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}>
                   <ClearBtn
                     onClick={() => {
                       setBlockManuales(prev => { const n = { ...prev }; delete n[bkManual]; return n; });
@@ -1938,7 +2010,9 @@ export default function TablaArticulos({
                         ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
                       }
                     }} />
+                  </span>
                 </div>
+                </React.Fragment>
               );
             }
             if (col.id === 'acciones') {
@@ -2064,11 +2138,14 @@ export default function TablaArticulos({
               const rubroKeyManual = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const bkRubroMan = `rubro-man-${rubroKeyManual}`;
               return (
-                <div key="manual" style={{ ...cellNum, gridColumn: 'span 4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, gap: 6 }}>
+                <React.Fragment key="manual">
+                <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>
-                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO ' : 'AJUSTAR SUBRUBRO '}
+                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO'}
                   </span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: 90 }}>
+                </div>
+                <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: ANCHO_CAJA_PRECIO }}>
                     <input
                       type="number"
                       value={blockManuales[bkRubroMan] ?? ''}
@@ -2082,10 +2159,11 @@ export default function TablaArticulos({
                         triggerBulkPct(pct, row.ids, { current: e.target }, bkRubroMan);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                      style={{ width: 64, fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
+                      style={{ flex: 1, minWidth: 0, width: '100%', fontSize: '0.78rem', textAlign: 'right', border: 'none', outline: 'none', padding: '0 4px', background: 'transparent', fontWeight: 600, color: TABLE_TEXT }}
                     />
                     <span style={{ padding: '0 6px', fontSize: '0.72rem', color: TABLE_MUTED, background: '#f9fafb', borderLeft: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>%</span>
                   </div>
+                  <span style={{ position: 'absolute', left: `calc(50% + ${ANCHO_CAJA_PRECIO / 2 + 4}px)`, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex' }}>
                   <ClearBtn onClick={() => {
                     setBlockManuales(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
                     setLastAppliedPct(prev => { const n = { ...prev }; delete n[bkRubroMan]; return n; });
@@ -2096,7 +2174,9 @@ export default function TablaArticulos({
                       ids.forEach(artId => onPriceConfigSave?.({ scope: 'articulo', scopeId: String(artId), precioManual: null }));
                     }
                   }} />
+                  </span>
                 </div>
+                </React.Fragment>
               );
             }
             if (col.id === 'acciones') {
@@ -2220,6 +2300,10 @@ export default function TablaArticulos({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, color: TABLE_TEXT }}>
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
+            {/* Top 20: puesto por facturación, en gris */}
+            {row.puesto != null && !(!isStaff && selectionMode !== 'link' && isLinked) && (
+              <span title="Puesto en el Top 20 por facturación ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
+            )}
             {!isStaff && selectionMode !== 'link' && isLinked && (
               <>
                 {linkGroupsList.filter(g => g.linkType === 'precio').map(g => (
@@ -2405,7 +2489,7 @@ export default function TablaArticulos({
                 // Si está excluido → mostrar gris, no editable
                 if (excluido) {
                   return (
-                    <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                    <div key="manual" style={{ ...cellNum, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                       <div
                         title="Excluido — usa precio de la lista favorita"
                         style={{
@@ -2428,7 +2512,7 @@ export default function TablaArticulos({
                 const valorMostrado = localOverride !== undefined ? localOverride : precioFinal;
 
                 return (
-                  <div key="manual" style={{ ...cellNum, position: 'relative' }}>
+                  <div key="manual" style={{ ...cellNum, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center',
                       border: `1px solid ${currentListColor}50`,
@@ -2729,6 +2813,7 @@ export default function TablaArticulos({
           open
           tipo="articulo"
           items={itemsParaEditModal}
+          todos={todosParaEditModal}
           itemId={editandoArticuloId}
           agrupaciones={agrupaciones}
           rubros={rubrosParaEditModal}
@@ -2803,6 +2888,11 @@ export default function TablaArticulos({
                 )}
               </Box>
             )}
+            {/* Título de la tarjeta: la agrupación elegida (antes era la primera fila de la tabla) */}
+            {(() => {
+              const ag = flatRows.find((r) => r.kind === 'agrupacion-header');
+              return ag ? renderRow({ row: ag, index: -1, style: {}, enTitulo: true }) : null;
+            })()}
             {/* Fila superior de zonas: agrupa las columnas en 3 secciones (spec §2.2) */}
             <div className="table-col-zones" style={{ display: 'grid', gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP, alignItems: 'stretch' }}>
               <div />
@@ -2830,7 +2920,7 @@ export default function TablaArticulos({
                     i++;
                   } else if (col.id === 'manual') {
                     zonas.push(
-                      <div key={`z-aj-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#16a34a', background: 'rgba(87,187,127,0.1)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>TU AJUSTE</div>
+                      <div key={`z-aj-${i}`} style={{ gridColumn: 'span 1', textAlign: 'center', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '.04em', color: '#16a34a', background: 'rgba(87,187,127,0.1)', borderTopLeftRadius: 6, borderTopRightRadius: 6, padding: '3px 0', margin: '0 2px' }}>NUEVO PRECIO</div>
                     );
                     i++;
                   } else {
@@ -2919,19 +3009,40 @@ export default function TablaArticulos({
                 };
 
                 switch (col.id) {
-                  case 'precio': return <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}{precioHeaderExtra ? (
-                    // Selector de lista de precios: vive en el título de la columna
-                    // que cambia (antes estaba al lado del título de la página).
-                    <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                      {precioHeaderExtra}
-                    </span>
-                  ) : null}</div>;
+                  case 'precio': return (
+                    // Debajo, chico, de qué lista es el precio (como "costo actual |
+                    // objetivo" en Costo %). El selector de lista vive en Nuevo
+                    // precio (pedido de Diego, 02/11).
+                    <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                      <span>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      {currentPriceList?.name && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          lista: {currentPriceList.name}
+                        </span>
+                      )}
+                    </div>
+                  );
                   case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'rentabilidad': return (
                     <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
-                      style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'flex-end', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
-                      <span>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                      {/* Referencias de colores de las filas: tooltip sobre el título
+                          (antes era un ⓘ suelto en la barra). */}
+                      <Tooltip arrow placement="top" title={
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 2 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
+                            Fila ámbar: costo poco confiable
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
+                            Fila roja: excedido sobre el objetivo
+                          </span>
+                        </span>
+                      }>
+                        <span style={{ cursor: 'help' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                      </Tooltip>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
                         costo actual
@@ -2945,10 +3056,17 @@ export default function TablaArticulos({
                       ? currentPriceList.name
                       : 'Nuevo precio';
                     const headerColor = !isPriceListFavorite ? currentListColor : undefined;
+                    // El título de la columna es el selector de lista (antes estaba
+                    // en Precio); arriba la franja dice NUEVO PRECIO.
                     return (
                       <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
-                        style={{ ...dragIndicatorStyle, color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
-                        {headerLabel}{sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                        style={{ ...dragIndicatorStyle, justifyContent: 'center', textAlign: 'center', color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
+                        {precioHeaderExtra ? (
+                          <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                            {React.isValidElement(precioHeaderExtra) ? React.cloneElement(precioHeaderExtra, { enTitulo: true }) : precioHeaderExtra}
+                          </span>
+                        ) : headerLabel}
+                        {sortBy === 'manual' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                       </div>
                     );
                   }
@@ -3007,7 +3125,7 @@ export default function TablaArticulos({
               )}
               <div onScroll={handleScroll}>
                 <VirtualList
-                  ref={listRef} rows={flatRows} rowHeight={(row) => (row?.kind === 'item' ? 60 : 42)}
+                  ref={listRef} rows={flatRows} rowHeight={rowH}
                   onScrollTop={handleScrollTop}
                   height={listHeight}
                   overscan={8} onVisibleItemsIds={handleVisibleIds}

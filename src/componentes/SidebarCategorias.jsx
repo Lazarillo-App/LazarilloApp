@@ -536,11 +536,11 @@ function SidebarCategorias({
       {/* ── Controles fijos ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 10,
-        background: '#fafafa', paddingBottom: 4,
+        background: '#fafafa', padding: '10px 10px 6px',
         borderBottom: '1px solid #eee', marginBottom: 4,
       }}>
         {/* ── Pestañas del sidebar: staff = Agrupaciones + Pendientes; admin/owner = + Listas ── */}
-        <div className="lz-tabs" style={{ display: 'flex', gap: 0, marginBottom: 14, marginTop: 6 }}>
+        <div className="lz-tabs">
           {[
             { id: 'agrupaciones', label: 'Agrupaciones' },
             ...(!staff ? [{ id: 'listas', label: <>Listas {lists.length > 0 && <span style={{ opacity: 0.7 }}>({lists.length})</span>}</> }] : []),
@@ -551,16 +551,7 @@ function SidebarCategorias({
               <button
                 key={t.id}
                 onClick={() => handleSidebarMode(t.id)}
-                style={{
-                  flex: 1, padding: '4px 0', fontSize: '0.72rem', fontWeight: 600,
-                  border: '1px solid #e2e8f0',
-                  borderLeft: idx > 0 ? 'none' : undefined,
-                  borderRadius: idx === 0 ? '6px 0 0 6px' : idx === arr.length - 1 ? '0 6px 6px 0' : 0,
-                  cursor: 'pointer',
-                  background: activo ? '#1e293b' : 'transparent',
-                  color: activo ? '#fff' : '#64748b',
-                  transition: 'all 0.15s',
-                }}
+                className={activo ? 'on' : undefined}
               >
                 {t.label}
               </button>
@@ -814,8 +805,16 @@ function SidebarCategorias({
           </div>
         )}
 
+        {/* Top 20: lista simple, sin divisiones (pedido de Diego, 02/11) — no
+            hay rubros que navegar; en su lugar, qué es el Top 20. */}
+        {sidebarMode === 'agrupaciones' && esTop20Group(agrupacionSeleccionada) && (
+          <div style={{ padding: '4px 4px 8px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45 }}>
+            Los 20 artículos que más facturaron ($) en el período elegido arriba.
+          </div>
+        )}
+
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && !staff && (
+        {sidebarMode === 'agrupaciones' && !staff && !esTop20Group(agrupacionSeleccionada) && (
           <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ToggleButtonGroup
               size="small" exclusive value={localListMode}
@@ -830,7 +829,7 @@ function SidebarCategorias({
       </div>
 
       {/* ── Lista de rubros/subrubros (solo en modo agrupaciones) ── */}
-      {sidebarMode === 'agrupaciones' && (
+      {sidebarMode === 'agrupaciones' && !esTop20Group(agrupacionSeleccionada) && (
         <ul className="sidebar-draggable-list">
           {loading && <li style={{ opacity: 0.7 }}>Cargando {localListMode === 'by-categoria' ? 'categorías' : 'subrubros'}…</li>}
           {!loading && listaParaMostrar.map((sub) => {

@@ -900,6 +900,9 @@ input[type="number"]:focus {
       grilla ya no ensanchan su columna y desalinean las filas) ── */
 .insumos-header > * { min-width: 0; }
 .insumos-header .col-sortable { white-space: normal; line-height: 1.15; }
+/* Insumos: títulos y datos centrados salvo Código y Nombre (y casilla /
+   acciones), igual que en Artículos — pedido de Diego 02/11. */
+.lz-centrar > :not(.c-keep):not(.row-left-bar) { text-align: center !important; justify-content: center !important; }
 
 /* ── Casillas de selección: mismo tamaño y sin margen en todas las filas,
       así quedan en la misma línea vertical (encabezado, rubro y artículo) ── */
@@ -921,10 +924,45 @@ input[type="number"]:focus {
 }
 .lz-barra .MuiInputBase-root input { padding-top: 0 !important; padding-bottom: 0 !important; }
 
-/* ── Pestañas Agrupaciones / Listas / Pendientes: alto parejo y el contador
-      centrado; el margen de abajo deja lugar a la etiqueta del selector ── */
+/* ── Pestañas Agrupaciones / Listas / Pendientes: control segmentado
+      (fondo gris con las 3 pestañas adentro, la activa en blanco) — nada
+      toca el borde del panel; el margen de abajo deja lugar a la etiqueta
+      del selector ── */
+.lz-tabs {
+  display: flex; gap: 2px; padding: 3px; margin: 0 0 14px;
+  background: #eef2f6; border-radius: 8px;
+}
 .lz-tabs > button {
-  height: 28px; display: inline-flex; align-items: center; justify-content: center;
-  gap: 2px; padding: 0 4px !important; line-height: 1; white-space: nowrap;
+  flex: 1; min-width: 0; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 2px; padding: 0 4px; line-height: 1; white-space: nowrap;
+  border: none; border-radius: 6px; background: transparent; cursor: pointer;
+  font-size: 0.72rem; font-weight: 600; color: #64748b; transition: background .15s, color .15s;
+}
+.lz-tabs > button:hover { color: #1e293b; }
+.lz-tabs > button.on {
+  background: #fff; color: #1e293b; box-shadow: 0 1px 2px rgba(15,23,42,.12);
 }
 .lz-tabs > button span { line-height: 16px; }
+
+/* ── Sectores redondeados (estilo del Panel de Gestión) — Artículos e Insumos.
+      Se activa con ESTILO_TARJETAS en GestionLayout.jsx (clase .lz-tarjetas);
+      sin esa clase, todo queda como antes. Solo estilos: no cambia nada de
+      lo que se ve dentro de la tabla (colores de filas, avisos, ventas U/$,
+      ojito, referencias de Costo %). ── */
+.lz-tarjetas { background: #EEF1F5; gap: 12px !important; }
+.lz-tarjetas > .lz-barra-marco {
+  margin: 12px 12px 0; padding: 10px 12px !important;
+  background: #fff; border: 1px solid #e4e4e7; border-radius: 14px;
+}
+.lz-tarjetas .lz-sectores {
+  gap: 12px !important; margin: 0 12px 12px; align-items: stretch !important;
+  border-radius: 0 !important; box-shadow: none !important; overflow: visible !important;
+  background: transparent;
+}
+.lz-tarjetas .lz-sectores > * {
+  background: #fff !important; border: 1px solid #e4e4e7 !important;
+  border-radius: 14px; min-height: 0;
+  /* recorta las esquinas sin tocar el scroll de adentro (overflow lo rompería) */
+  clip-path: inset(0 round 14px);
+}
+

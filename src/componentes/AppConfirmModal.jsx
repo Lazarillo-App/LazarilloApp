@@ -15,11 +15,13 @@ export default function AppConfirmModal() {
   const [open, setOpen]       = useState(false);
   const [message, setMessage] = useState('');
   const [danger, setDanger]   = useState(false);
+  const [confirmText, setConfirmText] = useState(null);
 
   const handleEvent = useCallback((e) => {
-    const { message: msg = '', danger: d = false } = e.detail || {};
+    const { message: msg = '', danger: d = false, confirmText: ct = null } = e.detail || {};
     setMessage(msg);
     setDanger(d);
+    setConfirmText(ct);
     setOpen(true);
   }, []);
 
@@ -103,7 +105,7 @@ export default function AppConfirmModal() {
             '&:hover': { filter: 'brightness(0.92)', background: accentColor },
           }}
         >
-          {danger ? 'Eliminar' : 'Aceptar'}
+          {confirmText || (danger ? 'Eliminar' : 'Aceptar')}
         </Button>
       </DialogActions>
     </Dialog>

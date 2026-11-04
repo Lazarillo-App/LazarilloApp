@@ -11,6 +11,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
+import SucursalesChips from './SucursalesChips';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
@@ -72,7 +73,6 @@ export default function Navbar() {
   const [modulosOpen, setModulosOpen] = React.useState(false);
 
   const navigate = useNavigate();
-  const [menuVistaEl, setMenuVistaEl] = useState(null);
   const location = useLocation();
 
   // Detectar en qué sector estamos para navegar directo al tab correcto
@@ -283,12 +283,18 @@ export default function Navbar() {
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
-                    Menú
+                    {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
 
                   {!isAppAdmin && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
+                    </MenuItem>
+                  )}
+
+                  {!isAppAdmin && !isStaff && (
+                    <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
+                      Menú
                     </MenuItem>
                   )}
 
@@ -312,7 +318,8 @@ export default function Navbar() {
             </Box>
 
 {/* Desktop – links */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, gap: 1 }}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 1, py: 0.75 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {(() => {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
@@ -327,58 +334,43 @@ export default function Navbar() {
                 } : {};
                 return (
                   <>
-                    {isStaff || isAppAdmin ? (
+                    {isAppAdmin ? (
                       <Button color="inherit"
                         sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
                         component={NavLink} to="/menu">
                         Menú
                       </Button>
                     ) : (() => {
-                      // "Menú ▾": Tabla / Diseño (antes Diseño era un botón suelto
-                      // en la barra de Gestión de Artículos). La vista va en la URL
-                      // (?vista=diseno) para que se pueda elegir desde cualquier pantalla.
+                      // Tres botones (pedido de Diego, 02/11 — el desplegable
+                      // "Menú ▾" no era práctico): ARTÍCULOS (la tabla) · INSUMOS
+                      // | MENÚ (la carta para imprimir, ?vista=diseno) · ⚙.
                       const enDiseno = enMenu && new URLSearchParams(location.search).get('vista') === 'diseno';
-                      const ir = (diseno) => { setMenuVistaEl(null); navigate(diseno ? '/menu?vista=diseno' : '/menu'); };
-                      const opSx = { gap: 1.25, py: 1, px: 1.25, borderRadius: 1.5, mx: 0.75, alignItems: 'center' };
-                      const icSx = (on) => ({
-                        width: 28, height: 28, borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 15, background: on ? '#5BC2EA' : '#f1f5f9', color: on ? '#fff' : '#334155', flexShrink: 0,
-                      });
                       return (
                         <>
                           <Button color="inherit"
-                            sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
-                            onClick={(e) => setMenuVistaEl(e.currentTarget)}
-                            aria-haspopup="menu">
-                            Menú ▾
+                            sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu && !enDiseno) }}
+                            onClick={() => navigate('/menu')}>
+                            Artículos
                           </Button>
-                          <Menu anchorEl={menuVistaEl} open={Boolean(menuVistaEl)} onClose={() => setMenuVistaEl(null)}
-                            PaperProps={{ sx: { borderRadius: 2.5, minWidth: 250, mt: 0.5, py: 0.5, boxShadow: '0 8px 24px rgba(0,0,0,.18)' } }}>
-                            <MenuItem onClick={() => ir(false)} selected={enMenu && !enDiseno} sx={opSx}>
-                              <span style={icSx(enMenu && !enDiseno)}>☰</span>
-                              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                                <b style={{ fontSize: 13 }}>Tabla</b>
-                                <span style={{ fontSize: 11, color: '#64748b' }}>Precios, costos y food cost</span>
-                              </span>
-                            </MenuItem>
-                            <MenuItem onClick={() => ir(true)} selected={enDiseno} sx={opSx}>
-                              <span style={icSx(enDiseno)}>🖼</span>
-                              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                                <b style={{ fontSize: 13 }}>Diseño</b>
-                                <span style={{ fontSize: 11, color: '#64748b' }}>Carta para imprimir o compartir</span>
-                              </span>
-                            </MenuItem>
-                          </Menu>
+                          <Button color="inherit"
+                            sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}
+                            component={NavLink} to="/insumos">
+                            Insumos
+                          </Button>
+                          {!isStaff && (
+                            <>
+                              <Box component="span" aria-hidden
+                                sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                              <Button color="inherit"
+                                sx={{ color: 'inherit', position: 'relative', ...activeSx(enDiseno) }}
+                                onClick={() => navigate('/menu?vista=diseno')}>
+                                Menú
+                              </Button>
+                            </>
+                          )}
                         </>
                       );
                     })()}
-                    {!isAppAdmin && (
-                      <Button color="inherit"
-                        sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}
-                        component={NavLink} to="/insumos">
-                        Insumos
-                      </Button>
-                    )}
                     {!isAppAdmin && !isStaff && (
                       <Tooltip title="Configuración">
                         <IconButton
@@ -410,6 +402,13 @@ export default function Navbar() {
                   Admin
                 </Button>
               )}
+            </Box>
+            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú). */}
+            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')) && (
+              <Box sx={{ pl: 1, pb: 0.25 }}>
+                <SucursalesChips />
+              </Box>
+            )}
             </Box>
 
             {/* Selector negocio/división */}
