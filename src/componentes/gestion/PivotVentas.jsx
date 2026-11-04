@@ -1,17 +1,19 @@
 // src/componentes/gestion/PivotVentas.jsx
 // Pestaña Ventas del Panel de gestion, igual a lazarillo_gestion/components/dashboard/
 // ventas-pivot-table.tsx: tipo → forma de cobro, por mes, con "Total <año>" al pie.
-// Todavía no (paso 4, lo editable): detalle al clickear y la barra de ingresos manuales.
+// Todavía no: la barra de ingresos manuales.
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { Box, Table, TableHead, TableBody, TableFooter, TableRow, TableCell } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { flattenRows, sortPivotRows } from '@/gestion/pivotUtils';
+import { flattenRows, sortPivotRows, hasValue } from '@/gestion/pivotUtils';
+import { usePanelGestion } from '@/gestion/panelContext';
 import { fmtARS, normalize } from '@/gestion/formato';
-import { MUTED, sxStickyNombre, sxNum, sxTablaPanel } from '@/gestion/estilos';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
 import { PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden } from './piezasPivot';
 
 export default function PivotVentas({ data, isLoading, error, year, months, sort, onSort }) {
+  const { abrirVentas } = usePanelGestion();
   const [expanded, setExpanded] = useState(() => new Set());
   const toggle = useCallback((id) => {
     setExpanded((prev) => {
@@ -55,6 +57,8 @@ export default function PivotVentas({ data, isLoading, error, year, months, sort
         <TableBody>
           {flatRows.map((item) => {
             const d = item.data;
+            const clic = (mes, extra) => (hasValue(d.values[mes]) ? { onClick: () => abrirVentas({ mes, ...extra }) } : {});
+            const sxDe = (mes) => (hasValue(d.values[mes]) ? sxClic : {});
             if (item.type === 'rubro') {
               return (
                 <TableRow
@@ -65,16 +69,16 @@ export default function PivotVentas({ data, isLoading, error, year, months, sort
                   <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
                     <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)}>{normalize(d.nombre)}</Expansor>
                   </TableCell>
-                  {months.map((mes) => <TableCell key={mes} sx={{ ...sxNum, px: 1.5, py: 1.25 }}>{fmtARS(d.values[mes])}</TableCell>)}
-                  <TableCell sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15 }}>{fmtARS(d.rowTotal)}</TableCell>
+                  {months.map((mes) => <TableCell key={mes} {...clic(mes, { tipoCodigo: d.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>)}
+                  <TableCell onClick={() => abrirVentas({ tipoCodigo: d.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
                 </TableRow>
               );
             }
             return (
               <TableRow key={d.id} hover onContextMenu={(e) => cerrar(e, true)}>
                 <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 7, py: 1, color: 'text.secondary' }}>{normalize(d.nombre)}</TableCell>
-                {months.map((mes) => <TableCell key={mes} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary' }}>{fmtARS(d.values[mes])}</TableCell>)}
-                <TableCell sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14 }}>{fmtARS(d.rowTotal)}</TableCell>
+                {months.map((mes) => <TableCell key={mes} {...clic(mes, { tipoCodigo: d.rubroCodigo, cobroCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>)}
+                <TableCell onClick={() => abrirVentas({ tipoCodigo: d.rubroCodigo, cobroCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
               </TableRow>
             );
           })}

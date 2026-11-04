@@ -6,7 +6,7 @@
 // Pasos del port: 1 Compras, 2 Ventas, 3 Resultados + tarjetas KPI (hechos), 4 lo editable.
 // La sucursal sale del selector global de sucursales (BranchContext), como en el resto de la app.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton,
@@ -28,6 +28,9 @@ import ActualizadoAl from '@/componentes/gestion/ActualizadoAl';
 import FiltroPeriodo from '@/componentes/gestion/FiltroPeriodo';
 import BuscadorPanel from '@/componentes/gestion/BuscadorPanel';
 import RubrosConfig from '@/componentes/gestion/RubrosConfig';
+import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
+import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
+import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
 import { PanelGestionContext } from '@/gestion/panelContext';
@@ -76,6 +79,9 @@ export default function GestionPanel() {
   // Filtro del buscador ({ param, value, label }): no se recuerda entre visitas, como en gestion.
   const [busqueda, setBusqueda] = useState(null);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
+  // Modales de detalle: el filtro de la celda clickeada (null = cerrado).
+  const [detalleFilter, setDetalleFilter] = useState(null);
+  const [ventasFilter, setVentasFilter] = useState(null);
 
   // Al cambiar de negocio, sus propias preferencias.
   useEffect(() => { setEstado(leerEstado(activeBusinessId)); setBusqueda(null); }, [activeBusinessId]);
@@ -99,9 +105,33 @@ export default function GestionPanel() {
   const sucursalCaja = sucursal !== undefined ? sucursal : (branches?.length ?? 1) <= 1 ? 'principal' : undefined;
   // La búsqueda filtra Compras y Resultados (Ventas no tiene buscador).
   const busquedaActiva = estado.tab !== 'ventas' && busqueda ? busqueda : null;
+  // El modal muestra exactamente lo que suma la celda: los filtros del Panel también van al detalle.
+  const abrirDetalle = useCallback((extra) => {
+    const param = busquedaActiva?.param;
+    const valor = busquedaActiva?.value;
+    setDetalleFilter(buildDetalleFilter(
+      { year: estado.year, sucursal },
+      {
+        rubroCodigo: param === 'rubroCodigo' ? valor : undefined,
+        conceptoCodigo: param === 'conceptoCodigo' ? valor : undefined,
+        proveedorId: param === 'proveedorId' ? Number(valor) : undefined,
+        observacionQuery: param === 'observacionQuery' ? valor : undefined,
+        importeQuery: param === 'importeQuery' ? valor : undefined,
+        activeMonths: estado.meses.length ? estado.meses : undefined,
+      },
+      extra,
+    ));
+  }, [estado.year, estado.meses, sucursal, busquedaActiva]);
+  const abrirVentas = useCallback((extra) => {
+    setVentasFilter({ year: estado.year, sucursal, ...extra });
+  }, [estado.year, sucursal]);
+  const nombreLugar = activeBranchFilter?.mode === 'all' || !activeBranchFilter
+    ? (active?.name || 'Negocio')
+    : `${active?.name || 'Negocio'} · ${activeBranch?.name || 'Principal'}`;
   const panel = useMemo(() => ({
     businessId: activeBusinessId, year: estado.year, sucursal, sucursalCaja, modo: estado.modo, busquedaActiva: !!busquedaActiva,
-  }), [activeBusinessId, estado.year, sucursal, sucursalCaja, estado.modo, busquedaActiva]);
+    abrirDetalle, abrirVentas, nombreLugar,
+  }), [activeBusinessId, estado.year, sucursal, sucursalCaja, estado.modo, busquedaActiva, abrirDetalle, abrirVentas, nombreLugar]);
 
   // ⌘K / Ctrl+K abre el buscador (no en Ventas).
   useEffect(() => {
@@ -309,6 +339,8 @@ export default function GestionPanel() {
           />
         )}
       </Paper>
+      <ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} />
+      <VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} />
     </Box>
     </PanelGestionContext.Provider>
   );

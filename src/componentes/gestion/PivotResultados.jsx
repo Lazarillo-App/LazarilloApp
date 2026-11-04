@@ -4,7 +4,7 @@
 //   Operación (bloque KPI con los totales de Compras) → Caja (Disponible en caja editable +
 //   Diferencia de caja) → Societario (Ganancia + % Rentabilidad) → Detalle (rubro → concepto →
 //   registro de los conceptos visibles en Resultados).
-// Todavía no (paso 4, lo editable): detalle al clickear una celda y apertura de gastos.
+// Todavía no: apertura de gastos.
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
@@ -21,13 +21,13 @@ import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { useQueryClient } from '@tanstack/react-query';
-import { sortPivotRows, flattenRows, TANDA_PIVOT } from '@/gestion/pivotUtils';
+import { sortPivotRows, flattenRows, TANDA_PIVOT, hasValue } from '@/gestion/pivotUtils';
 import { MESES, fmtARS, fmtARSDecimal, normalize, fechaCorta } from '@/gestion/formato';
 import {
   RESULT_COLORS, pctSobreIngresos, parseMontoARS, montoNoGuardable, sumarDiferenciaCajaVisible,
   heatmapFillZeroAnchored, heatmapTextZeroAnchored,
 } from '@/gestion/resultadosCalc';
-import { MUTED, sxStickyNombre, sxNum, sxTablaPanel } from '@/gestion/estilos';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { useDiferenciaCaja, useFlujoCaja } from '@/gestion/hooksPanel';
 import { usePanelGestion } from '@/gestion/panelContext';
@@ -36,6 +36,7 @@ import { PivotLoading, PivotError, Expansor, CabeceraOrden, SectionDivider, KpiB
 const Espacio = ({ colSpan }) => <TableRow aria-hidden><TableCell colSpan={colSpan} sx={{ p: 0, height: 12, border: 0 }} /></TableRow>;
 
 export default function PivotResultados({ operacion, resultados, ventas, months, sort, onSort }) {
+  const { abrirDetalle } = usePanelGestion();
   const [expanded, setExpanded] = useState(() => new Set());
   const [mostrar, setMostrar] = useState(() => new Map());
   const toggle = useCallback((id) => {
@@ -80,6 +81,8 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
 
   const renderFila = (item) => {
     const d = item.data;
+    const clic = (mes, extra) => (hasValue(d.values[mes]) ? { onClick: () => abrirDetalle(extra) } : {});
+    const sxDe = (mes) => (hasValue(d.values[mes]) ? sxClic : {});
     if (item.type === 'rubro') {
       return (
         <TableRow key={d.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600 } }}>
@@ -87,9 +90,9 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
             <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)}>{d.nombre}</Expansor>
           </TableCell>
           {months.map((mes) => (
-            <TableCell key={mes} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: (t) => alpha(t.palette.grey[100], 0.25) }}>{fmtARS(d.values[mes])}</TableCell>
+            <TableCell key={mes} {...clic(mes, { mes, rubroCodigo: d.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>
           ))}
-          <TableCell sx={{ ...sxNum, px: 2, py: 1.25, fontWeight: '700 !important', bgcolor: (t) => alpha(t.palette.grey[100], 0.25) }}>{fmtARS(d.rowTotal)}</TableCell>
+          <TableCell onClick={() => abrirDetalle({ rubroCodigo: d.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontWeight: '700 !important', bgcolor: (t) => alpha(t.palette.grey[100], 0.25), ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
           <TableCell sx={{ ...sxNum, px: 1.5, py: 1.25, fontSize: 12, fontWeight: '400 !important', color: 'text.secondary', opacity: 0.7 }}>{pctIng(d.rowTotal)}</TableCell>
         </TableRow>
       );
@@ -100,8 +103,8 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
           <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 1 }}>
             <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{d.nombre}</Expansor>
           </TableCell>
-          {months.map((mes) => <TableCell key={mes} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary' }}>{fmtARS(d.values[mes])}</TableCell>)}
-          <TableCell sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600 }}>{fmtARS(d.rowTotal)}</TableCell>
+          {months.map((mes) => <TableCell key={mes} {...clic(mes, { mes, conceptoCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>)}
+          <TableCell onClick={() => abrirDetalle({ conceptoCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
           <TableCell sx={{ ...sxNum, px: 1.5, py: 1, fontSize: 12, color: 'text.secondary', opacity: 0.5 }}>{pctIng(d.rowTotal)}</TableCell>
         </TableRow>
       );
@@ -120,8 +123,8 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
     return (
       <TableRow key={d.id} hover sx={d.hasManualOverride ? { bgcolor: (t) => alpha(t.palette.warning.main, 0.05) } : undefined}>
         <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 7, py: 0.75, fontSize: 12, color: d.hasManualOverride ? 'warning.dark' : 'text.secondary' }}>{label}</TableCell>
-        {months.map((mes) => <TableCell key={mes} sx={{ ...sxNum, px: 1.5, py: 0.75, fontSize: 12, color: 'text.secondary' }}>{fmtARS(d.values[mes])}</TableCell>)}
-        <TableCell sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary' }}>{fmtARS(d.rowTotal)}</TableCell>
+        {months.map((mes) => <TableCell key={mes} {...clic(mes, { rowId: d.rowId, distribucionId: d.distribucionId ?? undefined })} sx={{ ...sxNum, px: 1.5, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>)}
+        <TableCell onClick={() => abrirDetalle({ rowId: d.rowId, distribucionId: d.distribucionId ?? undefined })} sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
         <TableCell sx={{ ...sxNum, px: 1.5, py: 0.75, fontSize: 12, color: 'text.secondary', opacity: 0.4 }}>{pctIng(d.rowTotal)}</TableCell>
       </TableRow>
     );

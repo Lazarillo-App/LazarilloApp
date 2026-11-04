@@ -10,6 +10,8 @@ export const PanelGestionContext = createContext({
   year: new Date().getFullYear(),
   sucursal: undefined,
   modo: 'economica',
+  abrirDetalle: () => {},
+  abrirVentas: () => {},
 });
 
 export const usePanelGestion = () => useContext(PanelGestionContext);

@@ -24,6 +24,12 @@ export function normalize(s) {
     : s;
 }
 
+// Fecha completa en la zona UTC, como se guardan (dd/mm/aaaa).
+export function fmtDate(date) {
+  if (!date) return '—';
+  return new Date(date).toLocaleDateString('es-AR', { timeZone: 'UTC' });
+}
+
 // "2026-01-02" → "02/01"
 export function fechaCorta(iso) {
   return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null;

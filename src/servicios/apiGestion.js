@@ -51,6 +51,22 @@ export const GestionAPI = {
   actualizado: ({ sucursal }) => api(`${base()}/dashboard/actualizado${qs({ sucursal })}`),
   rangoAnios: ({ sucursal }) => api(`${base()}/dashboard/rango-anios${qs({ sucursal })}`),
 
+  // ── Detalle y edición (click en una celda) ──
+  detalle: ({ meses, ...f }) => api(`${base()}/dashboard/detalle${qs({
+    ...f,
+    historico: f.historico ? 1 : undefined,
+    mes: f.historico ? undefined : f.mes,
+    months: !f.historico && !f.mes && meses?.length ? meses.join(',') : undefined,
+    sinProveedor: f.sinProveedor ? 1 : undefined,
+    sinInsumos: f.sinInsumos ? 1 : undefined,
+    modo: f.modo === 'financiera' ? 'financiera' : undefined,
+  })}`),
+  detalleVentas: (f) => api(`${base()}/dashboard/detalle-ventas${qs(f)}`),
+  compraLineas: (compraId) => api(`${base()}/dashboard/compra-lineas/${encodeURIComponent(compraId)}`),
+  conceptosEdicion: () => api(`${base()}/config/conceptos`),
+  editarCompra: (rowId, body) => api(`${base()}/dashboard/compras/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+  editarVenta: (rowId, body) => api(`${base()}/dashboard/ventas/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+
   // ── Buscador (⌘K) y rubros visibles ──
   // Sugerencias: sin q, las de la sucursal que se mira; con q, todo el negocio (cada una dice en
   // qué sucursales tiene compras). Observaciones e importes: todo el negocio, cualquier año.

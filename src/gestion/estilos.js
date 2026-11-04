@@ -32,6 +32,9 @@ export const sxTablaPanel = (t) => ({
   '& thead th:first-of-type': { boxShadow: `1px 0 0 0 ${t.palette.divider} !important` },
 });
 
+// Celda con detalle al hacer click.
+export const sxClic = { cursor: 'pointer', '&:hover': { color: 'primary.main' } };
+
 // Botones de la barra de filtros del Panel (BOTON de dashboard-filters.tsx).
 export const sxBotonBarra = {
   all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 32, px: 1.5, display: 'inline-flex', alignItems: 'center', gap: 0.75,

@@ -91,7 +91,7 @@ export function SectionDivider({ label, icon: Icon, colSpan }) {
  * Resultado OP y Gastos / Ventas. "Lo que falta cargar" de los meses cerrados llega con Sin carga.
  */
 export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady }) {
-  const { year } = usePanelGestion();
+  const { year, abrirVentas } = usePanelGestion();
   // Mes con ventas incompletas → tooltip con la proyección de cierre. Para el color del mapa de
   // calor ese mes cuenta con lo proyectado, no con lo facturado a medias.
   const proy = useProyeccionIngresos();
@@ -128,7 +128,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
   const celdaNombre = (texto, sx) => (
     <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 0.75, whiteSpace: 'nowrap', ...sx }}>{texto}</TableCell>
   );
-  const celda = (key, contenido, sx) => <TableCell key={key} sx={{ ...sxNum, px: 1.5, py: 0.75, ...sx }}>{contenido}</TableCell>;
+  const celda = (key, contenido, sx, onClick) => <TableCell key={key} onClick={onClick} sx={{ ...sxNum, px: 1.5, py: 0.75, ...sx, ...(onClick ? { cursor: 'pointer', '&:hover': { opacity: 0.75 } } : {}) }}>{contenido}</TableCell>;
 
   const resTotal = (ingresosTotal ?? 0) - egresosTotal;
   const ratioTotal = (ingresosTotal ?? 0) > 0 ? (egresosTotal / ingresosTotal) * 100 : null;
@@ -144,9 +144,9 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
           return celda(mes, mesProy === mes && hasVal ? <ProyeccionIngresos p={proy}>{fmtARS(val)}</ProyeccionIngresos> : fmtARS(val), {
             fontSize: 15, fontWeight: 600,
             ...(fill ? { bgcolor: fill.background, color: fill.foreground } : val != null ? { color: RESULT_COLORS.positive } : { color: 'text.disabled' }),
-          });
+          }, hasVal ? () => abrirVentas({ mes }) : undefined);
         })}
-        {celda('t', fmtARS(ingresosTotal), { fontSize: 15, fontWeight: 600, px: 2, color: RESULT_COLORS.positive })}
+        {celda('t', fmtARS(ingresosTotal), { fontSize: 15, fontWeight: 600, px: 2, color: RESULT_COLORS.positive }, ingresosTotal ? () => abrirVentas({}) : undefined)}
         <TableCell />
       </TableRow>
       <TableRow>
