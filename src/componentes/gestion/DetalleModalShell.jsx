@@ -133,7 +133,8 @@ export default function DetalleModalShell({
                   </TableCell>
                 )}
                 {cols.map((col) => {
-                  const activa = sort?.key === col.sortKey;
+                  // Sin orden elegido, una columna sin sortKey también daría undefined === undefined.
+                  const activa = col.sortKey != null && sort?.key === col.sortKey;
                   const Icono = activa ? (sort.dir === 'asc' ? KeyboardArrowUpIcon : KeyboardArrowDownIcon) : UnfoldMoreIcon;
                   return (
                     <TableCell key={col.label} sx={{ width: col.width, px: 1.5, py: 1, textAlign: col.right ? 'right' : 'left', fontWeight: 500 }}>
