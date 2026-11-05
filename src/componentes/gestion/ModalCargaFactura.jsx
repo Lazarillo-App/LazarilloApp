@@ -531,9 +531,16 @@ function ModalNuevaCarga(props) {
   const [fecha, setFecha] = useState(ede ? ede.fecha : ctx.fecha || fechaDefault);
   const [pdv, setPdv] = useState(ede ? ede.pdv : pdvActual || PDVS[0]);
   const [obs, setObs] = useState(ede ? ede.obs || "" : "");
+  // Total del comprobante, antes del desglose: al terminar, el desglose tiene que coincidir (Diego 05/11/2026).
+  const [totalCtrl, setTotalCtrl] = useState("");
+  // Descuento general de la factura: se reparte proporcional al neto de cada línea.
+  const [descG, setDescG] = useState("");
+  const [descGTipo, setDescGTipo] = useState("%");
+  const [reinicio, setReinicio] = useState(0); // "Vaciar todo": vuelve a montar la cabecera (foco en el proveedor)
+  const [confVaciar, setConfVaciar] = useState(false);
   // Precarga (Repetir / última factura): el primer registro queda abierto para corregir el
   // neto; al confirmarlo se abre el siguiente (Diego 27/10). Los demás quedan con ⚠.
-  const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: false, precargada: ix !== 0 }));
+  const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
   const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
   // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
   // valor ("Está bien así").
@@ -563,7 +570,7 @@ function ModalNuevaCarga(props) {
     // Con descuento se compara el unitario que queda después del descuento.
     const u = parseImp(l.unit);
     const cant = parseFloat(l.cant) || 0;
-    const uEf = parseImp(l.desc) > 0 && cant > 0 ? netoDe(l) / cant : u;
+    const uEf = (parseImp(l.desc) > 0 || fracG > 0) && cant > 0 ? netoDe(l) / cant : u;
     const a = avisoPrecio(uEf, mi.unit, factor);
     if (!a || (l.precioOk && l.precioOk === claveOk(l))) return null;
     // La sugerencia es para el unitario de la factura (antes del descuento): mismo corrimiento de ceros.
@@ -615,7 +622,11 @@ function ModalNuevaCarga(props) {
     const v = l.descTipo === "u" ? d * (parseFloat(l.cant) || 0) : l.descTipo === "t" ? d : b * Math.min(d, 100) / 100;
     return Math.min(Math.round(v * 100) / 100, b);
   };
-  const netoDe = (l) => l.tipo === "insumo" ? brutoDe(l) - descDe(l) : parseImp(l.neto);
+  const netoBase = (l) => l.tipo === "insumo" ? brutoDe(l) - descDe(l) : parseImp(l.neto);
+  const netoSinG = lineas.reduce((a, l) => a + netoBase(l), 0);
+  const dG = parseImp(descG);
+  const fracG = !(dG > 0) || !(netoSinG > 0) ? 0 : descGTipo === "%" ? Math.min(dG, 100) / 100 : Math.min(dG / netoSinG, 1);
+  const netoDe = (l) => netoBase(l) * (1 - fracG);
   const [percepciones, setPercepciones] = useState(((rde || ede) ? ((rde || ede).percepciones || []) : []).map((p) => ({ ...p })));
   const [impIntG, setImpIntG] = useState(() => { const b = ede || rde; return b && b.impInt > 0 && !(b.lineas || []).some((l) => parseImp(l.impint) > 0) ? fmtNum(b.impInt) : ""; });
   const [leida, setLeida] = useState(false);
@@ -675,6 +686,23 @@ function ModalNuevaCarga(props) {
   const impIntTotal = impIntLineas > 0 ? impIntLineas : parseImp(impIntG);
   const totalFactura = netoTotal + ivaTotal + percTotal + impIntTotal;
   const total = modo === "factura" ? totalFactura : parseImp(importeV);
+  const descGImporte = netoSinG - netoTotal;
+  const totCtrl = parseImp(totalCtrl);
+  const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
+  const cuerpoVacio = lineas.every((l) => !l.item && !(netoBase(l) > 0)) && percepciones.length === 0 && !impIntG && !descG;
+  // Vaciar en dos pasos (Diego 05/11/2026): primero el cuerpo; con el cuerpo vacío, todo (como recién abierto).
+  const vaciar = () => {
+    setConfVaciar(false); setErrores([]); setAvisosAlGuardar(null);
+    setLineas([]); setPercepciones([]); setImpIntG(""); setDescG(""); setOrigenPre(null);
+    if (!cuerpoVacio) {
+      setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
+      return;
+    }
+    provAnterior.current = "";
+    setProv(""); setTipoCpb(""); setCompPref(""); setCompNum(""); setFecha(fechaDefault); setObs(""); setTotalCtrl("");
+    setAltaProv(null); setPagarAhora(false); setImportePago(""); setErrFecha(false); setFuturaOk("");
+    setReinicio((n) => n + 1);
+  };
 
   // Un registro se puede confirmar con producto, importe, reparto que sume 100% y —si es
   // insumo— concepto de caja (antes dejaba seguir sin concepto: FALLA de Diego, 27/10/2026).
@@ -722,7 +750,7 @@ function ModalNuevaCarga(props) {
       setImpIntG("");
     }
   }, [prov]);
-  const cuerpoVisible = existente || !!origenPre || !!(prov && tipoCpb && compNum && fecha);
+  const cuerpoVisible = existente || !!origenPre || !!(prov && tipoCpb && compNum && fecha && parseImp(totalCtrl) > 0);
   useEffect(() => {
     // foco:false — la línea aparece apenas hay proveedor, tipo, Nº y fecha: si se llevaba el foco,
     // cortaba el Nº de comprobante al primer dígito (FALLA de Diego 05/11/2026).
@@ -730,9 +758,7 @@ function ModalNuevaCarga(props) {
       setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
   }, [cuerpoVisible]);
   const precargarDe = (f) => {
-    setTipoCpb(f.tipoCpb || (f.comp || "").split(" ")[0] || "");
-    setTimeout(() => tipoRef.current && tipoRef.current.focus(), 40);
-    setFecha(fechaDefault);
+    // La cabecera ya está completa (tipo, Nº, fecha y total): no se pisa; el foco va al primer registro.
     setOrigenPre(f.comp);
     setLineas(abrirPrecarga(f.lineas));
     setPercepciones((f.percepciones || []).map((p) => ({ ...p })));
@@ -844,7 +870,9 @@ function ModalNuevaCarga(props) {
     // Precios muy lejos de la última compra (rojo) sin resolver: se pregunta una sola vez.
     if (modo === "factura" && !forzarAvisos) {
       const rojas = lineas.map((l) => ({ l, a: avisoDe(l) })).filter((x) => x.a && x.a.nivel === "rojo");
-      if (rojas.length) { setErrores([]); setAvisosAlGuardar(rojas); return; }
+      // El desglose contra el total del comprobante (más de $ 1 de diferencia: no es redondeo).
+      const conTotal = totCtrl > 0 && Math.abs(difCtrl) > 1 ? [{ total: true }, ...rojas] : rojas;
+      if (conTotal.length) { setErrores([]); setAvisosAlGuardar(conTotal); return; }
     }
     setAvisosAlGuardar(null);
     setErrores([]);
@@ -895,23 +923,29 @@ function ModalNuevaCarga(props) {
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
   };
 
+  const titulo = vista === "ver" ? `Factura ${ede ? ede.comp : ""}` : vista === "editar" ? `Editar factura ${ede ? ede.comp : ""}` : "Carga de factura";
+  // Rediseño (Diego 05/11/2026): cabecera y pie fijos, lo único que scrollea es el cuerpo; bloques
+  // con fondo gris claro y bordes redondeados como la vista tabla del Panel.
+  const bloque = { background: C.fondo, border: `1px solid ${C.borde}`, borderRadius: 12 };
+  const revisados = lineas.filter((l) => l.desdePre && !l.precargada && !l.editando).length;
+  const deEstructura = lineas.filter((l) => l.desdePre).length;
   return (
     <div style={embebido ? { display: "contents" } : { position: "fixed", inset: 0, background: "rgba(40,40,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1300 }} onClick={embebido ? undefined : onCerrar}>
-      <div style={embebido ? { padding: "22px 26px" } : { ...card, width: "min(1120px, 96vw)", maxHeight: "92vh", overflow: "auto", padding: "22px 26px" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h2 style={{ fontSize: 17, margin: 0 }}>{vista === "ver" ? `Factura ${ede ? ede.comp : ""}` : vista === "editar" ? `Editar factura ${ede ? ede.comp : ""}` : modo === "vario" ? "Carga de gasto vario" : modo === "empleado" ? "Carga de empleados" : "Carga de factura"}</h2>
-          <button onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer" }}>×</button>
-        </div>
-
-        {vista === "nueva" && !rde ? (
-          <div style={{ display: "inline-flex", gap: 4, background: C.fondo, borderRadius: 11, padding: 4, margin: "12px 0 14px" }}>
-            {[["factura", "Factura"], ["vario", "Gastos Varios"], ["empleado", "Empleados"]].map(([k, t]) => (
-              <button key={k} type="button" tabIndex={-1} onClick={() => { setModo(k); setErrores([]); setErrFecha(false); setParecidoV(null); }}
-                style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                  background: modo === k ? "#fff" : "transparent", color: modo === k ? C.neg : C.gris, boxShadow: modo === k ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}>{t}</button>
-            ))}
+      <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1120px, 96vw)", maxHeight: "92vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
+        <div style={{ padding: "14px 20px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {vista === "nueva" && !rde ? (<>
+              <span style={{ fontSize: 15, fontWeight: 700, color: C.gris }}>Carga de</span>
+              <div style={{ display: "inline-flex", gap: 3, background: "#f2f2f0", borderRadius: 10, padding: 3 }}>
+                {[["factura", "Factura"], ["vario", "Gastos Varios"], ["empleado", "Empleados"]].map(([k, t]) => (
+                  <button key={k} type="button" tabIndex={-1} onClick={() => { setModo(k); setErrores([]); setErrFecha(false); setParecidoV(null); setAvisosAlGuardar(null); }}
+                    style={{ border: "none", borderRadius: 8, padding: "6px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                      background: modo === k ? "#fff" : "transparent", color: modo === k ? C.neg : C.gris, boxShadow: modo === k ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}>{t}</button>
+                ))}
+              </div>
+            </>) : <h2 style={{ fontSize: 17, margin: 0 }}>{titulo}</h2>}
+            <button type="button" tabIndex={-1} onClick={onCerrar} style={{ marginLeft: "auto", border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer" }}>×</button>
           </div>
-        ) : <div style={{ margin: "12px 0 14px" }} />}
         {fichaProvId && <FichaProveedor id={fichaProvId} onCerrar={() => setFichaProvId(null)}
           onGuardado={(d) => {
             const antes = (proveedores.find((x) => x.id === d.id) || {}).nombre;
@@ -920,21 +954,10 @@ function ModalNuevaCarga(props) {
             setFichaProvId(null);
             if (props.onProveedorEditado) props.onProveedorEditado(d);
           }} />}
-        {aviso && <div style={{ border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 11, padding: "10px 14px", fontSize: 12.5, color: "#2a6b86", marginBottom: 12 }}>{aviso}</div>}
-        {modo === "empleado" ? (
-          <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
-            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} />
-        ) : (<>
-        <fieldset disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-
-        {modo === "factura" ? (
-          <>
-            {yaCargada && (
-              <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "12px 14px", fontSize: 13, color: "#8a5a00", marginBottom: 12 }}>
-                ⚠ Esta factura <b>ya está cargada</b> ({yaCargada.origen === "lazarillo" ? "en Lazarillo" : "desde MaxiRest"}{yaCargada.fecha ? ` · ${dmy(yaCargada.fecha)}` : ""} · {$fmt(yaCargada.total)}). No se vuelve a cargar: <b>nunca se duplica</b>. Para corregirla vas a poder abrirla y editarla desde Detalle de compras.
-              </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr", gap: 10 }}>
+        {aviso && <div style={{ border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 11, padding: "8px 12px", fontSize: 12.5, color: "#2a6b86" }}>{aviso}</div>}
+        {modo === "factura" && (
+          <fieldset key={"cab" + reinicio} disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ ...bloque, padding: "8px 12px 10px", display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr 0.95fr 0.8fr 1fr", gap: 10, alignItems: "start" }}>
               <div>{(() => {
                   const pr = proveedores.find((x) => x.nombre === prov);
                   return (
@@ -954,29 +977,41 @@ function ModalNuevaCarga(props) {
                 </select></div>
               <div><span style={lab}>Nº comprobante</span>
                 {tipoCpb === "" ? (
-                  <button title="Genera un comprobante interno tipo Ticket: hora y minutos + fecha de hoy"
+                  <button type="button" title="Genera un comprobante interno tipo Ticket: hora y minutos + fecha de hoy"
                     onClick={() => { const ahora = new Date();
                       setTipoCpb("Ticket");
                       setCompPref(String(ahora.getHours()).padStart(2, "0") + String(ahora.getMinutes()).padStart(2, "0"));
                       setCompNum(String(ahora.getDate()).padStart(2, "0") + String(ahora.getMonth() + 1).padStart(2, "0") + ahora.getFullYear());
                       setTimeout(() => fechaRef.current && fechaRef.current.focus(), 40); }}
-                    style={{ ...btn(false), padding: "9px 16px", fontSize: 13, whiteSpace: "nowrap" }}>Generar</button>
+                    style={{ ...btn(false), height: 38, padding: "0 16px", fontSize: 13, whiteSpace: "nowrap" }}>Generar</button>
                 ) : (
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input style={{ ...inp, width: 74 }} value={compPref} placeholder="0001" maxLength={4}
+                    <input style={{ ...inp, width: 64 }} value={compPref} placeholder="0001" maxLength={4}
                       onChange={(e) => setCompPref(e.target.value.replace(/\D/g, ""))} onBlur={() => setCompPref(pad(compPref, 4))} />
                     <span style={{ color: "#999" }}>-</span>
                     <input style={inp} value={compNum} placeholder="00000000" maxLength={8}
                       onChange={(e) => setCompNum(e.target.value.replace(/\D/g, ""))} onBlur={() => setCompNum(pad(compNum, 8))} />
                   </div>
                 )}</div>
-              <div><span style={lab}>Fecha de factura</span><FechaTriple inputRef={fechaRef} error={errFecha} iso={fecha}
-                  onISO={(v) => { setFecha(v); setErrFecha(false); if (lineas.length === 0 && prov) setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true }]); }} />
-                {errFecha && modo === "factura" && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, marginTop: 3 }}>Falta una fecha válida.</div>}</div>
+              <div><span style={lab}>Fecha</span><FechaTriple inputRef={fechaRef} error={errFecha} iso={fecha}
+                  onISO={(v) => { setFecha(v); setErrFecha(false); }} />
+                {errFecha && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, marginTop: 3 }}>Falta una fecha válida.</div>}</div>
+              <div><span style={lab}>Total factura</span>
+                <input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={totalCtrl} placeholder="$ 0,00"
+                  title="El total del comprobante (con IVA y percepciones). Al terminar el desglose tiene que coincidir."
+                  onFocus={(e) => e.target.select()} onChange={(e) => setTotalCtrl(fmtImp(e.target.value))} /></div>
+              <div><span style={lab}>Observaciones</span>
+                <input style={inp} tabIndex={-1} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Opcional" /></div>
             </div>
 
+            {yaCargada && (
+              <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "8px 12px", fontSize: 12.5, color: "#8a5a00" }}>
+                ⚠ Esta factura <b>ya está cargada</b> ({yaCargada.origen === "lazarillo" ? "en Lazarillo" : "desde MaxiRest"}{yaCargada.fecha ? ` · ${dmy(yaCargada.fecha)}` : ""} · {$fmt(yaCargada.total)}). No se vuelve a cargar: <b>nunca se duplica</b>. Para corregirla abrila desde Detalle de compras.
+              </div>
+            )}
+
             {altaProv && (
-              <div style={{ border: `1.5px solid ${C.cel}`, borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
+              <div style={{ border: `1.5px solid ${C.cel}`, borderRadius: 12, padding: "12px 14px" }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Nuevo proveedor</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   <div><span style={lab}>Nombre *</span><input style={inp} autoFocus value={altaProv.nombre} onChange={(e) => setAltaProv({ ...altaProv, nombre: e.target.value })} /></div>
@@ -988,26 +1023,28 @@ function ModalNuevaCarga(props) {
                 </div>
                 <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>Lo demás (mail, CBU, contacto…) lo completás después desde «ver ficha».</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <button style={btn(true)} disabled={creandoProv} onClick={crearProveedor}>{creandoProv ? "Creando…" : "Crear y usar"}</button>
-                  <button style={btn(false)} onClick={() => setAltaProv(null)}>Cancelar</button>
+                  <button type="button" style={btn(true)} disabled={creandoProv} onClick={crearProveedor}>{creandoProv ? "Creando…" : "Crear y usar"}</button>
+                  <button type="button" style={btn(false)} onClick={() => setAltaProv(null)}>Cancelar</button>
                 </div>
               </div>
             )}
+          </fieldset>
+        )}
+        </div>
 
-            {origenPre && !existente && (
-              <div style={{ marginTop: 12, border: "1.5px solid #f0d5a8", background: "#fdf8ee", borderRadius: 11, padding: "10px 14px", fontSize: 12.5, color: "#8a6d2f" }}>
-                ⚠ Estás generando un comprobante <b>nuevo</b> con la estructura de <b>{origenPre}</b>: los importes son los de esa factura. Revisá cada registro contra el comprobante real, completá el Nº y confirmá la fecha (viene con la de hoy).
-              </div>
-            )}
+        {/* ── Cuerpo: lo único que scrollea ── */}
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? {} : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
+        {modo === "empleado" ? (
+          <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
+            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} />
+        ) : (
+        <fieldset disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
-            <div style={{ marginTop: 12 }}>
-              <span style={lab}>Observaciones</span>
-              <input style={inp} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Opcional" />
-            </div>
-
+        {modo === "factura" ? (
+          <>
             {!cuerpoVisible && (
-              <div style={{ marginTop: 16, border: "1px dashed #d8d8d4", borderRadius: 12, padding: "14px 16px", fontSize: 12.5, color: "#999" }}>
-                Completá {[!prov && "proveedor", !tipoCpb && "tipo", !compNum && "Nº", !fecha && "fecha"].filter(Boolean).join(" · ")} y se despliega la carga de registros.
+              <div style={{ margin: 14, border: "1px dashed #d8d8d4", borderRadius: 12, padding: "14px 16px", fontSize: 12.5, color: "#999" }}>
+                Completá {[!prov && "proveedor", !tipoCpb && "tipo", !compNum && "Nº", !fecha && "fecha", !(totCtrl > 0) && "total de la factura"].filter(Boolean).join(" · ")} y se despliega la carga de registros.
               </div>
             )}
             {cuerpoVisible && (<>
@@ -1015,22 +1052,28 @@ function ModalNuevaCarga(props) {
               const uf = !existente && !origenPre && prov && !lineas.some((l) => netoDe(l) > 0) ? ultConLineas(prov) : null;
               if (!uf) return null;
               return (
-                <div style={{ marginTop: 12, border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12.5, color: "#2a6b86" }}><b>{prov}</b> suele repetir la estructura — última del {dmy(uf.fecha)}: {uf.lineas.map((l) => l.item).join(" · ")} · {$fmt(uf.importe)}</span>
-                  <button style={{ ...btn(false), padding: "6px 12px", fontSize: 12.5, borderColor: "#5bc2ea", color: "#2a88ad", marginLeft: "auto" }}
+                <div style={{ margin: "12px 14px 0", border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: "#2a6b86" }}>ℹ <b>{prov}</b> suele repetir la estructura — última del {dmy(uf.fecha)}: {uf.lineas.map((l) => l.item).join(" · ")} · {$fmt(uf.importe)}</span>
+                  <button type="button" style={{ ...btn(false), padding: "5px 12px", fontSize: 12.5, borderColor: "#5bc2ea", color: "#2a88ad", marginLeft: "auto" }}
                     onClick={() => precargarDe(uf)}>Precargar esa estructura</button>
                 </div>
               );
             })()}
-            <div style={{ marginTop: 16, background: "#fafaf8", border: "1px solid #ececea", borderRadius: 12, padding: "12px 14px 14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, fontSize: 10.5, fontWeight: 700, color: C.gris, margin: "6px 0 4px" }}>
-                <span>CONCEPTO / INSUMO</span><span style={{ textAlign: "center" }}>CANT.</span><span style={{ textAlign: "center" }}>UNIT. $</span><span style={{ textAlign: "center" }}>TOTAL NETO $</span><span style={{ textAlign: "center" }}>IVA %</span><span style={{ textAlign: "center" }}>IVA $</span><span style={{ textAlign: "center" }}>SUBTOTAL c/IMPUESTOS</span><span />
+            {origenPre && !existente && (
+              <div style={{ margin: "12px 14px 0", border: "1.5px solid #f0d5a8", background: "#fdf8ee", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "#8a6d2f", display: "flex", gap: 12, alignItems: "center" }}>
+                <span>⚠ Comprobante <b>nuevo</b> con la estructura de <b>{origenPre}</b>: los importes son los de esa factura. Revisá cada registro (⚠) contra el comprobante real.</span>
+                {deEstructura > 0 && <b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{revisados} de {deEstructura} revisados</b>}
+              </div>
+            )}
+            <div style={{ padding: "0 14px 14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, fontSize: 10.5, fontWeight: 700, color: C.gris, position: "sticky", top: 0, zIndex: 5, background: "#fafaf8", borderBottom: "1px solid #ececea", margin: "0 -14px 4px", padding: "9px 14px" }}>
+                <span style={{ paddingLeft: lineas.length > 1 && !soloVer ? 22 : 0 }}>CONCEPTO / INSUMO</span><span style={{ textAlign: "center" }}>CANT.</span><span style={{ textAlign: "center" }}>UNIT. $</span><span style={{ textAlign: "center" }}>TOTAL NETO $</span><span style={{ textAlign: "center" }}>IVA %</span><span style={{ textAlign: "center" }}>IVA $</span><span style={{ textAlign: "center" }}>SUBTOTAL c/IMP.</span><span />
               </div>
               {lineas.map((l, i) => {
                 const esIns = l.tipo === "insumo";
                 const neto = netoDe(l);
                 const desc = descDe(l);
-                const unitEf = esIns && desc > 0 && parseFloat(l.cant) > 0 ? neto / parseFloat(l.cant) : parseImp(l.unit);
+                const unitEf = esIns && (desc > 0 || fracG > 0) && parseFloat(l.cant) > 0 ? neto / parseFloat(l.cant) : parseImp(l.unit);
                 const ivaUnit = esIns ? unitEf * l.alic / 100 : 0;
                 const txtDesc = desc > 0 ? `desc. ${l.descTipo === "u" ? $fmt(parseImp(l.desc)) + " /u" : l.descTipo === "t" ? $fmt(parseImp(l.desc)) : fmtNum(parseImp(l.desc)) + "%"} (−${$fmt(desc)})` : "";
                 const llave = l.uid || "i" + i;
@@ -1051,7 +1094,7 @@ function ModalNuevaCarga(props) {
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) {} setArrastre({ de: i, a: i }); }}
                     onDragEnd={() => setArrastre(null)}
                     style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI ? "none" : "1px solid #f2f2f0", fontSize: 13,
-                      opacity: arrastre && arrastre.de === i ? 0.45 : 1, ...marcaDrop }}>
+                      opacity: arrastre && arrastre.de === i ? 0.45 : 1, ...(l.precargada ? { background: "#fffdf5" } : {}), ...marcaDrop }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                       {!soloVer && lineas.length > 1 && <span title="Arrastrá para ordenar los registros" style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, flexShrink: 0, marginLeft: -2, userSelect: "none" }}>⠿</span>}
                       <span style={{ fontSize: 9.5, fontWeight: 700, color: esIns ? C.cel : "#999", border: `1.2px solid ${esIns ? C.cel : "#ccc"}`, borderRadius: 6, padding: "2px 0", width: 74, textAlign: "center", flexShrink: 0 }}>{esIns ? "INSUMO" : "CONCEPTO"}</span>
@@ -1283,54 +1326,11 @@ function ModalNuevaCarga(props) {
 
             </div>
 
-            <div style={{ display: "flex", gap: 22, marginTop: 16, padding: "12px 14px", background: "#f6f6f4", borderRadius: 10, fontSize: 13.5, borderTop: "2px solid #e6e6e2" }}>
-              <span>Neto <b>{$fmt(netoTotal)}</b></span>
-              <span>IVA <b>{$fmt(ivaTotal)}</b></span>
-              <span>Percepciones <b>{$fmt(percTotal)}</b></span>
-              {impIntTotal > 0 && <span>Imp. internos <b>{$fmt(impIntTotal)}</b></span>}
-              <span style={{ marginLeft: "auto" }}>TOTAL <b style={{ fontSize: 15 }}>{$fmt(totalFactura)}</b></span>
-            </div>
-
-            {/* ── Pago al pie (Etapa 4): "Registrar el pago ahora" ── */}
-            {vista === "nueva" && (
-              <div style={{ marginTop: 12, border: `1.5px solid ${pagarAhora ? "#bae6fd" : C.borde}`, background: pagarAhora ? "#f0f9ff" : "#fff", borderRadius: 11, padding: "10px 14px" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                  <input type="checkbox" checked={pagarAhora} onChange={(e) => setPagarAhora(e.target.checked)} style={{ width: 15, height: 15 }} />
-                  Registrar el pago ahora
-                  {!pagarAhora && <span style={{ fontSize: 12, fontWeight: 400, color: "#999" }}>— si no, la factura queda IMPAGA</span>}
-                </label>
-                {pagarAhora && (
-                  <>
-                    <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, marginTop: 10, alignItems: "end" }}>
-                      <div><span style={lab}>Importe</span>
-                        <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
-                          title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value))} /></div>
-                      <div><span style={lab}>Medio</span>
-                        <select style={inp} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
-                          {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
-                        </select></div>
-                      <div><span style={lab}>Fecha de pago</span>
-                        <FechaInput style={inp} iso={fechaPago} onISO={(v) => setFechaPago(v)} /></div>
-                      <div><span style={lab}>Paga</span>
-                        <select style={inp} value={pagadoPor} onChange={(e) => setPagadoPor(e.target.value)}>{PDVS.map((x) => <option key={x}>{x}</option>)}</select></div>
-                      {pidePagoId && <div><span style={lab}>ID</span>
-                        <input style={{ ...inp, fontFamily: "monospace" }} value={refPago} placeholder="opcional"
-                          onChange={(e) => setRefPago(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} /></div>}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "#888", marginTop: 6 }}>
-                      {parseImp(importePago) > 0 && parseImp(importePago) < totalFactura - 0.005 ? "Paga una parte: la factura queda PARCIAL."
-                        : parseImp(importePago) > totalFactura + 0.005 ? `Salda la factura y ${$fmt(parseImp(importePago) - totalFactura)} quedan a cuenta del proveedor.`
-                        : "Salda la factura entera. Se guarda junto con la factura (si el pago no se puede registrar, no se guarda nada)."}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
             </>)}
 
           </>
         ) : (
-          <>
+          <div style={{ padding: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {/* Período y fecha en una sola línea compacta (Diego 30/10/2026: "el período está enorme"). */}
             <div style={{ gridColumn: "1 / -1", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1387,61 +1387,149 @@ function ModalNuevaCarga(props) {
               </div>
             )}
           </div>
-          {parecidoV && (
-            <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "12px 14px", fontSize: 13, color: "#8a5a00", marginTop: 12 }}>
-              ⚠ Ya hay un gasto <b>parecido</b> en {nombrePeriodo(periodoDe(parecidoV.fecha))}: {dmy(parecidoV.fecha)} · {$fmt(parecidoV.importe)}
-              {parecidoV.observac ? ` · ${parecidoV.observac}` : ""} ({parecidoV.origen === "lazarillo" ? "cargado en Lazarillo" : "de MaxiRest"}).
-              {" "}¿Es otro gasto? <span onClick={() => guardarVario(true)} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí, cargarlo igual</span>
-              {" · "}<span onClick={() => setParecidoV(null)} style={{ cursor: "pointer", color: C.gris }}>No</span>
-            </div>
-          )}
-          </>
+          </div>
         )}
 
         </fieldset>
-        {avisosAlGuardar && (
-          <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "10px 14px", marginTop: 14, fontSize: 12.5, color: "#8a5a00" }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>Revisá antes de guardar: estos importes son muy distintos a lo habitual</div>
-            {avisosAlGuardar.map(({ l, a }, k) => (
-              <div key={k}>• {l.item}: {$fmt(parseImp(l.tipo === "concepto" ? l.neto : l.unit))} — <b>{textoVeces(a.ratio)}</b> ({a.habitual ? "habitual" : "última"} {$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""})</div>
-            ))}
-            <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-              <span onClick={() => setAvisosAlGuardar(null)} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Volver y corregir</span>
-              <span onClick={() => guardar(true)} style={{ cursor: "pointer", color: C.gris }}>Guardar igual</span>
-            </div>
-          </div>
         )}
-        {errores.length > 0 && (
-          <div style={{ border: `1.5px solid ${C.rojo}`, background: "#fdf3f3", borderRadius: 11, padding: "10px 14px", marginTop: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: C.rojo, marginBottom: 4 }}>No se puede guardar todavía:</div>
-            {errores.map((e, i) => <div key={i} style={{ fontSize: 12.5, color: C.rojo }}>• {e}</div>)}
-          </div>
-        )}
-        {soloVer ? (
-          <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
-            {editable && <button style={btn(true)} onClick={onEditar}>Editar</button>}
-            {onRepetir && <button style={btn(false)} onClick={onRepetir} title="Cargar una factura nueva con esta misma estructura">⟳ Repetir</button>}
-            <button style={btn(false)} onClick={onCerrar}>Cerrar</button>
-            {editable && <span style={{ marginLeft: "auto" }}>{borrando ? <span style={{ fontSize: 12, color: C.gris }}>Eliminando…</span>
-              : pagosAlBorrar ? (
-                <span style={{ fontSize: 12.5, color: C.rojo, display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 560 }}>
-                  <span>⚠ Está paga: <b>{$fmt(pagosAlBorrar.importe)}</b> en {pagosAlBorrar.total} pago{pagosAlBorrar.total === 1 ? "" : "s"}.
-                    {pagosAlBorrar.internos > 0 && <> Se eliminan también {pagosAlBorrar.internos === 1 ? "el pago cargado" : `los ${pagosAlBorrar.internos} pagos cargados`} en el Panel.</>}
-                    {pagosAlBorrar.lazarillo > 0 && <> {pagosAlBorrar.lazarillo === 1 ? "El pago al proveedor cargado en el Panel vuelve" : `Los ${pagosAlBorrar.lazarillo} pagos al proveedor cargados en el Panel vuelven`} a quedar a cuenta.</>}
-                    {pagosAlBorrar.maxirest > 0 && <> {pagosAlBorrar.maxirest === 1 ? "El pago" : "Los pagos"} de MaxiRest {pagosAlBorrar.maxirest === 1 ? "queda" : "quedan"} como “solo 80”.</>}
-                    {" "}¿Eliminar igual?</span>
-                  <span onClick={() => { setPagosAlBorrar(null); eliminar(true); }} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí, eliminar</span>
-                  <span onClick={() => setPagosAlBorrar(null)} style={{ color: C.gris, cursor: "pointer" }}>No</span>
-                </span>
-              ) : <BtnEliminar onConfirmar={() => eliminar(false)} style={{ fontSize: 13, color: C.rojo }} />}</span>}
-          </div>
-        ) : (
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          {(modo !== "factura" || cuerpoVisible) && <button style={{ ...btn(true), opacity: guardando || yaCargada ? 0.5 : 1 }} disabled={guardando || !!yaCargada} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>}
-          <button style={btn(false)} onClick={onCerrar}>Cancelar</button>
         </div>
+
+        {/* ── Pie fijo: totales, control contra el total, avisos y acciones ── */}
+        {modo !== "empleado" && (
+          <div style={{ ...bloque, margin: "10px 20px 16px", padding: "10px 14px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 9 }}>
+            {modo === "factura" && (
+              <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", fontSize: 13.5 }}>
+                <span>Neto <b>{$fmt(netoSinG)}</b></span>
+                {!soloVer ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#555" }} title="Descuento general de la factura: se reparte proporcional al neto de cada registro">
+                    Desc. general
+                    <input style={{ ...inp, height: 28, width: 76, padding: "3px 6px", fontSize: 12.5, textAlign: "center", ...(fracG > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
+                      value={descG} onChange={(e) => setDescG(fmtImp(e.target.value))} />
+                    <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28 }}>
+                      {[["%", "%"], ["$", "$"]].map(([k, t]) => (
+                        <span key={k} role="button" onClick={() => setDescGTipo(k)} style={{ display: "inline-flex", alignItems: "center", padding: "0 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: descGTipo === k ? "#111" : "#fff", color: descGTipo === k ? "#fff" : "#888" }}>{t}</span>))}
+                    </span>
+                    {fracG > 0 && <b style={{ color: C.verde }}>−{$fmt(descGImporte)}</b>}
+                  </span>
+                ) : null}
+                <span>IVA <b>{$fmt(ivaTotal)}</b></span>
+                <span>Percep. <b>{$fmt(percTotal)}</b></span>
+                {impIntTotal > 0 && <span>Imp. int. <b>{$fmt(impIntTotal)}</b></span>}
+                <span style={{ marginLeft: "auto" }}>TOTAL <b style={{ fontSize: 16 }}>{$fmt(totalFactura)}</b></span>
+              </div>
+            )}
+            {modo === "factura" && !soloVer && totCtrl > 0 && netoTotal > 0 && (() => {
+              const ok = Math.abs(difCtrl) <= 1;
+              return (
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: ok ? C.verde : C.nar, display: "flex", gap: 8, alignItems: "center" }}>
+                  {ok ? <>✓ El desglose coincide con el total de la factura ({$fmt(totCtrl)}){Math.abs(difCtrl) >= 0.01 ? ` · dif. ${$fmt(Math.abs(difCtrl))} por redondeo` : ""}</>
+                    : <>⚠ El desglose suma {$fmt(totalFactura)} y la factura dice {$fmt(totCtrl)}: {difCtrl < 0 ? `faltan cargar ${$fmt(-difCtrl)}` : `sobran ${$fmt(difCtrl)}`}.</>}
+                </div>
+              );
+            })()}
+            {modo === "vario" && parecidoV && (
+              <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "#8a5a00" }}>
+                ⚠ Ya hay un gasto <b>parecido</b> en {nombrePeriodo(periodoDe(parecidoV.fecha))}: {dmy(parecidoV.fecha)} · {$fmt(parecidoV.importe)}
+                {parecidoV.observac ? ` · ${parecidoV.observac}` : ""} ({parecidoV.origen === "lazarillo" ? "cargado en Lazarillo" : "de MaxiRest"}).
+                {" "}¿Es otro gasto? <span onClick={() => guardarVario(true)} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí, cargarlo igual</span>
+                {" · "}<span onClick={() => setParecidoV(null)} style={{ cursor: "pointer", color: C.gris }}>No</span>
+              </div>
+            )}
+            {errores.length > 0 && (
+              <div style={{ borderTop: "1px solid #e6e6e2", paddingTop: 8, display: "flex", flexDirection: "column", gap: 2 }}>
+                {errores.map((e, i) => <span key={i} style={{ fontSize: 12.5, fontWeight: 600, color: C.rojo }}>• {e}</span>)}
+              </div>
+            )}
+            {avisosAlGuardar && (
+              <div style={{ border: "1.5px solid #f3c4c4", background: "#fdf3f3", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: C.rojo, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 300 }}><b>Revisá antes de guardar:</b>{" "}
+                  {avisosAlGuardar.map((x) => x.total
+                    ? `el desglose (${$fmt(totalFactura)}) no coincide con el total de la factura (${$fmt(totCtrl)}): dif. ${$fmt(Math.abs(difCtrl))}`
+                    : `${x.l.item} ${textoVeces(x.a.ratio)} (${x.a.habitual ? "habitual" : "última"} ${$fmt(x.a.ref)}${x.a.medBase ? " /" + x.a.medBase : ""})`).join(" · ")}</span>
+                <button type="button" onClick={() => setAvisosAlGuardar(null)} style={{ ...btn(false), padding: "5px 10px", fontSize: 12 }}>Volver y corregir</button>
+                <button type="button" onClick={() => guardar(true)} style={{ ...btn(false), padding: "5px 10px", fontSize: 12, color: C.rojo }}>Guardar igual</button>
+              </div>
+            )}
+            {modo === "factura" && vista === "nueva" && pagarAhora && (
+              <div style={{ borderTop: "1px solid #e6e6e2", paddingTop: 9 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, alignItems: "end" }}>
+                  <div><span style={lab}>Importe</span>
+                    <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
+                      title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value))} /></div>
+                  <div><span style={lab}>Medio</span>
+                    <select style={sel} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
+                      {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                    </select></div>
+                  <div><span style={lab}>Fecha de pago</span>
+                    <FechaInput style={inp} iso={fechaPago} onISO={(v) => setFechaPago(v)} /></div>
+                  <div><span style={lab}>Paga</span>
+                    <select style={sel} value={pagadoPor} onChange={(e) => setPagadoPor(e.target.value)}>{PDVS.map((x) => <option key={x}>{x}</option>)}</select></div>
+                  {pidePagoId && <div><span style={lab}>ID</span>
+                    <input style={{ ...inp, fontFamily: "monospace" }} value={refPago} placeholder="opcional"
+                      onChange={(e) => setRefPago(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} /></div>}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#888", marginTop: 5 }}>
+                  {parseImp(importePago) > 0 && parseImp(importePago) < totalFactura - 0.005 ? "Paga una parte: la factura queda PARCIAL."
+                    : parseImp(importePago) > totalFactura + 0.005 ? `Salda la factura y ${$fmt(parseImp(importePago) - totalFactura)} quedan a cuenta del proveedor.`
+                    : "Salda la factura entera. Se guarda junto con la factura (si el pago no se puede registrar, no se guarda nada)."}
+                </div>
+              </div>
+            )}
+            {soloVer ? (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: "1px solid #e6e6e2", paddingTop: 9 }}>
+                {editable && <button type="button" style={btn(true)} onClick={onEditar}>Editar</button>}
+                {onRepetir && <button type="button" style={btn(false)} onClick={onRepetir} title="Cargar una factura nueva con esta misma estructura">⟳ Repetir</button>}
+                <button type="button" style={btn(false)} onClick={onCerrar}>Cerrar</button>
+                {editable && <span style={{ marginLeft: "auto" }}>{borrando ? <span style={{ fontSize: 12, color: C.gris }}>Eliminando…</span>
+                  : pagosAlBorrar ? (
+                    <span style={{ fontSize: 12.5, color: C.rojo, display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 560 }}>
+                      <span>⚠ Está paga: <b>{$fmt(pagosAlBorrar.importe)}</b> en {pagosAlBorrar.total} pago{pagosAlBorrar.total === 1 ? "" : "s"}.
+                        {pagosAlBorrar.internos > 0 && <> Se eliminan también {pagosAlBorrar.internos === 1 ? "el pago cargado" : `los ${pagosAlBorrar.internos} pagos cargados`} en el Panel.</>}
+                        {pagosAlBorrar.lazarillo > 0 && <> {pagosAlBorrar.lazarillo === 1 ? "El pago al proveedor cargado en el Panel vuelve" : `Los ${pagosAlBorrar.lazarillo} pagos al proveedor cargados en el Panel vuelven`} a quedar a cuenta.</>}
+                        {pagosAlBorrar.maxirest > 0 && <> {pagosAlBorrar.maxirest === 1 ? "El pago" : "Los pagos"} de MaxiRest {pagosAlBorrar.maxirest === 1 ? "queda" : "quedan"} como “solo 80”.</>}
+                        {" "}¿Eliminar igual?</span>
+                      <span onClick={() => { setPagosAlBorrar(null); eliminar(true); }} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí, eliminar</span>
+                      <span onClick={() => setPagosAlBorrar(null)} style={{ color: C.gris, cursor: "pointer" }}>No</span>
+                    </span>
+                  ) : <BtnEliminar onConfirmar={() => eliminar(false)} style={{ fontSize: 13, color: C.rojo }} />}</span>}
+              </div>
+            ) : (() => {
+              const todoVacio = modo === "vario" ? !conceptoV && !importeV && !detalle : cuerpoVacio && !prov && !tipoCpb && !compNum && !totalCtrl && !obs;
+              const txtVaciar = modo === "factura" && !cuerpoVacio ? "Vaciar cuerpo" : "Vaciar todo";
+              const hacerVaciar = () => {
+                if (modo === "vario") { setConfVaciar(false); setConceptoV(""); setRubroV(""); setImporteV(""); setDetalle(""); setParecidoV(null); setErrores([]); setAvisosAlGuardar(null); setImporteOkV(""); setTocadoV(false); setImporteRevisar(false); return; }
+                vaciar();
+              };
+              return (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: modo === "factura" ? "1px solid #e6e6e2" : "none", paddingTop: modo === "factura" ? 9 : 0, flexWrap: "wrap" }}>
+                  {modo === "factura" && vista === "nueva" && (
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                      <input type="checkbox" tabIndex={-1} checked={pagarAhora} onChange={(e) => setPagarAhora(e.target.checked)} style={{ width: 15, height: 15 }} />
+                      Registrar el pago ahora
+                      {!pagarAhora && <span style={{ fontSize: 12, fontWeight: 400, color: "#999" }}>— si no, queda IMPAGA</span>}
+                    </label>
+                  )}
+                  {modo === "vario" && <span style={{ fontSize: 13.5 }}>TOTAL <b style={{ fontSize: 16 }}>{$fmt(parseImp(importeV))}</b> <span style={{ color: "#999", fontSize: 12 }}>· Ticket interno de Gastos Varios</span></span>}
+                  <span style={{ flex: 1 }} />
+                  {vista === "nueva" && (confVaciar ? (
+                    <span style={{ fontSize: 12.5, display: "inline-flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ color: C.rojo, fontWeight: 700 }}>¿{txtVaciar}?</span>
+                      <span role="button" onClick={hacerVaciar} style={{ color: C.rojo, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí</span>
+                      <span role="button" onClick={() => setConfVaciar(false)} style={{ color: C.gris, cursor: "pointer" }}>No</span>
+                    </span>
+                  ) : (
+                    <button type="button" tabIndex={-1} disabled={todoVacio} onClick={() => setConfVaciar(true)}
+                      title={txtVaciar === "Vaciar cuerpo" ? "Saca los registros, percepciones, impuestos internos y el descuento general" : "Deja todo en blanco, como recién abierto"}
+                      style={{ ...btn(false), color: C.rojo, borderColor: "#f3c4c4", opacity: todoVacio ? 0.4 : 1, cursor: todoVacio ? "default" : "pointer" }}>{txtVaciar}</button>
+                  ))}
+                  <button type="button" tabIndex={-1} style={btn(false)} onClick={onCerrar}>Cancelar</button>
+                  <button type="button" style={{ ...btn(true), opacity: guardando || yaCargada || (modo === "factura" && !cuerpoVisible) ? 0.5 : 1 }}
+                    disabled={guardando || !!yaCargada || (modo === "factura" && !cuerpoVisible)} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar"}</button>
+                </div>
+              );
+            })()}
+          </div>
         )}
-        </>)}
       </div>
     </div>
   );
