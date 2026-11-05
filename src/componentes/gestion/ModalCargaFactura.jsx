@@ -55,7 +55,7 @@ const Imp = ({ v, sufijo = "", strong, max = 16 }) => {
   );
 };
 // Grilla de registros del modal de carga: nombre flexible (se lee completo), importes en px fijos
-const GRID_LIN = "minmax(0, 1fr) 78px 124px 130px 76px 124px 140px 50px";
+const GRID_LIN = "minmax(0, 1fr) 104px 124px 130px 76px 124px 140px 50px";
 const dmy = (iso) => { const [a, m, d] = iso.split("-"); return `${d}/${m}/${a.slice(2)}`; };
 const C = { neg: "#111", gris: "#8a8a8a", verde: "#159457", nar: "#e08900", rojo: "#c62828", cel: "#0d6fa8", borde: "#e8e8e6", fondo: "#f6f6f4" };
 const card = { background: "#fff", borderRadius: 14, border: `1px solid ${C.borde}` };
@@ -68,6 +68,7 @@ const sel = { ...inp, appearance: "none", WebkitAppearance: "none", MozAppearanc
 // Fila de abajo de cada registro (concepto de caja, PDV, imp. internos): todo a 32px.
 const chico = { height: 32, fontSize: 12.5, padding: "5px 8px" };
 const lab = { fontSize: 11.5, fontWeight: 700, color: C.gris, textTransform: "uppercase", letterSpacing: 0.4, display: "block", marginBottom: 4 };
+const labS = { ...lab, fontSize: 10, marginBottom: 3, height: 14, lineHeight: "14px", whiteSpace: "nowrap", overflow: "hidden" };
 const soloNum = (v) => v.replace(/[^0-9.,]/g, "").replace(/,/g, ".");
 const fechaValida = (s) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return false;
@@ -321,7 +322,8 @@ function Chev({ abierto }) {
     borderTop: abierto ? "6px solid #888" : "5px solid transparent", borderBottom: abierto ? "none" : "5px solid transparent" }} />;
 }
 
-function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo }) {
+// extra(o): texto adicional por el que también se busca y que se muestra debajo (razón social · CUIT).
+function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra }) {
   const [texto, setTexto] = useState(valor || "");
   const [abierto, setAbierto] = useState(false);
   // Opción marcada con las flechas (Diego 27/10: tipear "carn" + ↓ tiene que navegar la lista).
@@ -342,7 +344,16 @@ function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, 
     if (i >= 0 && i + 1 < campos.length) campos[i + 1].focus();
   }, 0);
   const buscando = texto.trim() !== "" && texto !== (valor || "");
-  const filtradas = (buscando ? opciones.filter((o) => o.toLowerCase().includes(texto.toLowerCase())) : opciones).slice(0, 12);
+  const q = texto.trim().toLowerCase();
+  const qDig = q.replace(/\D/g, "");
+  const coincide = (o) => {
+    if (o.toLowerCase().includes(q)) return true;
+    const x = extra ? String(extra(o) || "") : "";
+    if (!x) return false;
+    // CUIT con o sin guiones: si se tipean 3 o más dígitos se compara solo por los números.
+    return x.toLowerCase().includes(q) || (qDig.length >= 3 && qDig.length === q.replace(/[\s.\-\/]/g, "").length && x.replace(/\D/g, "").includes(qDig));
+  };
+  const filtradas = (buscando ? opciones.filter(coincide) : opciones).slice(0, 12);
   const hayExacta = opciones.some((o) => o.toLowerCase() === texto.toLowerCase());
   // "Crear …" primero y siempre visible en los maestros (Diego 05/11/2026); si no, al final y solo tipeando.
   const conCrear = !!(onCrear && (crearPrimero || texto.trim()) && !hayExacta);
@@ -388,7 +399,8 @@ function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, 
         <div ref={listaRef} style={{ position: "absolute", top: "105%", left: 0, right: 0, background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.10)", zIndex: 80, maxHeight: 230, overflow: "auto" }}>
           {items.map((o, ix) => o != null ? (
             <div key={o} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
-              style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>{o}</div>
+              style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>{o}
+              {extra && extra(o) ? <span style={{ display: "block", fontSize: 11.5, color: C.gris }}>{extra(o)}</span> : null}</div>
           ) : (
             <div key="__crear" onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", color: C.cel, fontWeight: 600, borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>
@@ -463,6 +475,7 @@ function ModalNuevaCarga(props) {
   const [provsEditados, setProvsEditados] = useState({}); // id → {nombre, razon} tras editar la ficha
   const proveedores = [...maestros.proveedores, ...provsNuevos].map((p) => ({ ...p, ...(provsEditados[p.id] || {}) })).map((p) => ({ ...p, nombre: p.nombre || p.razon || p.codigo }));
   const [fichaProvId, setFichaProvId] = useState(null);
+  const provPorNombre = Object.fromEntries(proveedores.map((p) => [p.nombre, p]));
   const [creandoProv, setCreandoProv] = useState(false);
   const crearProveedor = () => {
     if (!String(altaProv.nombre || "").trim()) { setErrores(["Poné el nombre del proveedor."]); return; }
@@ -969,6 +982,7 @@ function ModalNuevaCarga(props) {
                 })()}
                 <Combo opciones={proveedores.map((p) => p.nombre)} valor={prov} placeholder="Buscar proveedor..." autoFocus={vista === "nueva"}
                   onElegir={setProv} crearPrimero="proveedor"
+                  extra={(n) => { const pr = provPorNombre[n]; if (!pr) return ""; return [pr.razon && pr.razon.trim().toLowerCase() !== n.trim().toLowerCase() ? pr.razon : "", pr.cuit ? "CUIT " + pr.cuit : ""].filter(Boolean).join(" · "); }}
                   onCrear={(n) => setAltaProv({ nombre: n || "", razon: "", cuit: "", tel: "", dir: "" })} /></div>
               <div><span style={lab}>Tipo</span>
                 <select ref={tipoRef} style={sel} value={tipoCpb} onChange={(e) => setTipoCpb(e.target.value)}>
@@ -1154,7 +1168,7 @@ function ModalNuevaCarga(props) {
                       </div>
                       {esIns ? (
                         <div style={{ position: "relative" }}>
-                          <input style={{ ...inp, padding: "8px 26px 8px 6px", textAlign: "center" }} placeholder="0" value={l.cant} autoFocus={l.foco === "neto"}
+                          <input style={{ ...inp, padding: "8px 50px 8px 6px", textAlign: "center" }} placeholder="0" value={l.cant} autoFocus={l.foco === "neto"}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
                               const cant = soloNum(e.target.value); const c = parseFloat(cant) || 0;
@@ -1165,7 +1179,31 @@ function ModalNuevaCarga(props) {
                                 return { ...x, cant };
                               }));
                             }} />
-                          <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, fontWeight: 700, color: C.gris, pointerEvents: "none" }}>{med || ""}</span>
+                          {(() => {
+                            // Unidad o envase de la línea (Diego 05/11/2026): los envases del maestro de MaxiRest
+                            // (X6, Pack…). Al cambiarlo, el unitario pasa a ser por esa medida.
+                            const ins = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
+                            const envs = (ins && ins.envases) || [];
+                            if (!ins || !envs.length) return <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, fontWeight: 700, color: C.gris, pointerEvents: "none" }}>{med || ""}</span>;
+                            const opciones = [{ envase: ins.medida || "", factor: 1 }, ...envs.filter((e) => e.envase.trim().toUpperCase() !== String(ins.medida || "").trim().toUpperCase())];
+                            return (
+                              <select value={med} title={opciones.map((o) => o.factor === 1 ? `${o.envase}: unidad del insumo` : `${o.envase} = ${fmtNum(o.factor)} ${ins.medida}`).join("\n")}
+                                onChange={(e) => {
+                                  const nueva = e.target.value;
+                                  const fNuevo = (opciones.find((o) => o.envase === nueva) || {}).factor || 1;
+                                  setLineas((ls) => ls.map((x, ix) => {
+                                    if (ix !== i) return x;
+                                    const fViejo = medidaLinea(x).factor || 1;
+                                    const u = parseImp(x.unit); const c = parseFloat(x.cant) || 0;
+                                    const unit = u > 0 ? fmtNum(Math.round(u * fNuevo / fViejo * 100) / 100) : x.unit;
+                                    return { ...x, medida: nueva, unit, ntot: u > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(unit) * 100) / 100) : x.ntot };
+                                  }));
+                                }}
+                                style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", height: 28, maxWidth: 48, border: "none", borderLeft: `1px solid ${C.borde}`, background: "transparent", fontSize: 10.5, fontWeight: 700, color: C.cel, cursor: "pointer", padding: "0 2px 0 5px" }}>
+                                {opciones.map((o) => <option key={o.envase} value={o.envase}>{o.envase}</option>)}
+                              </select>
+                            );
+                          })()}
                         </div>
                       ) : null}
                       {esIns
@@ -1204,78 +1242,79 @@ function ModalNuevaCarga(props) {
                       </span>
                     </div>
                     {avisoUI}
-                    <div style={{ display: "flex", gap: 10, rowGap: 8, flexWrap: "wrap", alignItems: "center", margin: "8px 0 0 2px" }}>
-                      {esIns && (
-                        <>
-                          {/* Descuento (Diego 05/11/2026): en % (igual sobre el unitario o el total), en $ por unidad o en $ sobre el total. */}
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5, marginRight: 6 }}>DESCUENTO</span>
-                            <input style={{ ...inp, ...chico, width: 84, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
-                              value={l.desc || ""} onChange={(e) => setLinea(i, "desc", fmtImp(e.target.value))}
-                              title={desc > 0 ? `Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)} = neto ${$fmt(neto)}` : "Descuento de la línea (opcional)"} />
-                            <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 32 }}>
-                              {DESC_TIPOS.map(([k, t]) => {
-                                const act = (l.descTipo || "%") === k;
-                                return <span key={k} role="button" onClick={() => setLinea(i, "descTipo", k)}
-                                  title={k === "%" ? "Porcentaje (sobre el unitario o el total da lo mismo)" : k === "u" ? "Importe por unidad" : "Importe sobre el total de la línea"}
-                                  style={{ display: "inline-flex", alignItems: "center", padding: "0 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: act ? "#111" : "#fff", color: act ? "#fff" : "#888", whiteSpace: "nowrap" }}>{t}</span>;
-                              })}
-                            </span>
-                            {desc > 0 && <span style={{ fontSize: 11.5, color: C.verde, fontWeight: 600, whiteSpace: "nowrap" }}>−{$fmt(desc)}</span>}
-                          </span>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: 8 }}>
-                          <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>CONCEPTO DE CAJA</span>
-                          <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." ancho={230} estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
+                    {/* Segunda fila alineada a las columnas de arriba (Diego 05/11/2026: "quedó desordenado"):
+                        concepto de caja bajo el insumo, descuento bajo cant./unit., PDV e imp. internos a la derecha. */}
+                    <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "end", marginTop: 8 }}>
+                      {esIns ? (
+                        <div style={{ gridColumn: "1 / 2", minWidth: 0 }}><span style={labS}>Concepto de caja</span>
+                          <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
                             onElegir={(v) => {
                               // cambia el concepto: el reparto precargado pasa a ser el de la regla del concepto nuevo
                               const regla = reglaDe(codConcepto(v), PDVS, fecha);
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: v, reparto: regla ? regla.map((r) => ({ ...r })) : (x.reparto && !reglaDeItem(x, x.item) ? x.reparto : undefined) }));
-                            }} />
-                          </span>
-                        </>
-                      )}
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: esIns ? 8 : 0 }}>
-                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>PDV DEL REGISTRO</span>
-                      {!l.reparto ? (<>
-                        <select style={{ ...sel, ...chico, width: 200, paddingRight: 24 }} value={l.pdvDest || pdvActual || PDVS[0]}
-                          onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
-                          {PDVS.map((p) => <option key={p}>{p}</option>)}
-                        </select>
-                        <span onClick={() => setLinea(i, "reparto", [{ pdv: l.pdvDest || pdvActual || PDVS[0], pct: 100 }, { pdv: PDVS.find((p) => p !== (l.pdvDest || pdvActual || PDVS[0])) || PDVS[1], pct: 0 }])}
-                          title="Repartir este registro entre varios PDV por porcentaje" style={{ fontSize: 11.5, color: C.cel, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>⇄ repartir por PDV</span>
-                      </>) : (() => {
-                        const tot = l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0);
-                        const ok = Math.abs(tot - 100) < 0.01;
-                        const regla = reglaDeItem(l, l.item);
-                        const igualRegla = regla && regla.length === l.reparto.length && regla.every((r, k) => r.pdv === l.reparto[k].pdv && Math.abs(parseFloat(r.pct) - parseFloat(l.reparto[k].pct)) < 0.01);
-                        return (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", border: `1px solid ${ok ? "#bfe0f0" : "#f0c179"}`, background: ok ? "#f3fafd" : "#fdf8ef", borderRadius: 9, padding: "4px 8px" }}>
-                            {l.reparto.map((r, k) => (
-                              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <select style={{ ...sel, width: 160, height: 28, padding: "3px 22px 3px 6px", fontSize: 12 }} value={r.pdv}
-                                  onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pdv: e.target.value } : x))}>
-                                  {PDVS.map((p) => <option key={p}>{p}</option>)}
-                                </select>
-                                <input style={{ ...inp, width: 54, height: 28, padding: "3px 4px", fontSize: 12, textAlign: "center" }} value={r.pct}
-                                  onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pct: soloNum(e.target.value) } : x))} />
-                                <span style={{ fontSize: 11, color: "#777" }}>%</span>
-                                {l.reparto.length > 2 && <span onClick={() => setLinea(i, "reparto", l.reparto.filter((_, kx) => kx !== k))} style={{ cursor: "pointer", color: C.gris, fontSize: 13 }}>×</span>}
-                              </span>
-                            ))}
-                            {l.reparto.length < PDVS.length && <span onClick={() => setLinea(i, "reparto", [...l.reparto, { pdv: PDVS.find((p) => !l.reparto.some((x) => x.pdv === p)) || PDVS[0], pct: 0 }])} style={{ fontSize: 12, color: C.cel, fontWeight: 700, cursor: "pointer" }}>+ PDV</span>}
-                            <span style={{ fontSize: 11, fontWeight: 700, color: ok ? C.verde : C.nar }}>{ok ? "= 100%" : `suma ${fmtNum(tot)}%`}</span>
-                            {regla && igualRegla && <span title="Este reparto es la regla guardada para este concepto/insumo" style={{ fontSize: 10, fontWeight: 700, color: "#2a88ad", background: "#e7f3fa", borderRadius: 5, padding: "1px 6px" }}>REGLA</span>}
-                            <span onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, reparto: undefined, pdvDest: l.reparto[0].pdv } : x))} title="Volver a un solo PDV" style={{ cursor: "pointer", color: C.gris, fontSize: 11.5 }}>un solo PDV</span>
-                          </span>
-                        );
-                      })()}
-                      </span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: 8 }}>
-                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>IMP. INTERNOS $</span>
-                      <input style={{ ...inp, ...chico, width: 110, textAlign: "center" }} placeholder="0"
-                        value={l.impint || ""} onChange={(e) => setLinea(i, "impint", fmtImp(e.target.value))} title="Impuesto interno de este registro (opcional)" />
-                      </span>
+                            }} /></div>
+                      ) : <div style={{ gridColumn: "1 / 2" }} />}
+                      {esIns ? (<>
+                        {/* Descuento: en % (igual sobre el unitario o el total), en $ por unidad o en $ sobre el total. */}
+                        <div style={{ gridColumn: "2 / span 2", minWidth: 0 }}><span style={labS}>Descuento</span>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <input style={{ ...inp, ...chico, flex: 1, minWidth: 0, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
+                              value={l.desc || ""} onChange={(e) => setLinea(i, "desc", fmtImp(e.target.value))}
+                              title={desc > 0 ? `Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)} = neto ${$fmt(neto)}` : "Descuento de la línea (opcional)"} />
+                            <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 32, boxSizing: "border-box", flexShrink: 0 }}>
+                              {DESC_TIPOS.map(([k, t]) => {
+                                const act = (l.descTipo || "%") === k;
+                                return <span key={k} role="button" onClick={() => setLinea(i, "descTipo", k)}
+                                  title={k === "%" ? "Porcentaje (sobre el unitario o el total da lo mismo)" : k === "u" ? "Importe por unidad" : "Importe sobre el total de la línea"}
+                                  style={{ display: "inline-flex", alignItems: "center", padding: "0 7px", fontSize: 11, fontWeight: 700, cursor: "pointer", background: act ? "#111" : "#fff", color: act ? "#fff" : "#888", whiteSpace: "nowrap" }}>{t}</span>;
+                              })}
+                            </span>
+                          </div></div>
+                        <div style={{ gridColumn: "4 / 5", height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.verde }}>{desc > 0 ? `−${$fmt(desc)}` : ""}</div>
+                      </>) : <div style={{ gridColumn: "2 / 5" }} />}
+                      <div style={{ gridColumn: "5 / span 2", minWidth: 0 }}>
+                        <span style={{ ...labS, display: "flex", alignItems: "center" }}>PDV del registro
+                          {!l.reparto && <span role="button" onClick={() => setLinea(i, "reparto", [{ pdv: l.pdvDest || pdvActual || PDVS[0], pct: 100 }, { pdv: PDVS.find((p) => p !== (l.pdvDest || pdvActual || PDVS[0])) || PDVS[1], pct: 0 }])}
+                            title="Repartir este registro entre varios PDV por porcentaje" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 10.5, lineHeight: "14px", color: C.cel, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>⇄ repartir</span>}
+                          {l.reparto && <span role="button" onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, reparto: undefined, pdvDest: l.reparto[0].pdv } : x))}
+                            title="Volver a un solo PDV" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 10.5, lineHeight: "14px", color: C.gris, cursor: "pointer", whiteSpace: "nowrap" }}>un solo PDV</span>}
+                        </span>
+                        {!l.reparto
+                          ? <select style={{ ...sel, ...chico, paddingRight: 24 }} value={l.pdvDest || pdvActual || PDVS[0]} onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
+                              {PDVS.map((p) => <option key={p}>{p}</option>)}
+                            </select>
+                          : <div style={{ ...chico, display: "flex", alignItems: "center", border: `1px solid #bfe0f0`, background: "#f3fafd", borderRadius: 9, color: "#2a88ad", fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>⇄ {txtReparto(l) || "repartido"}</div>}
+                      </div>
+                      <div style={{ gridColumn: "7 / 8", minWidth: 0 }}><span style={labS}>Imp. internos $</span>
+                        <input style={{ ...inp, ...chico, textAlign: "center" }} placeholder="0"
+                          value={l.impint || ""} onChange={(e) => setLinea(i, "impint", fmtImp(e.target.value))} title="Impuesto interno de este registro (opcional)" /></div>
                     </div>
+                    {l.reparto && (() => {
+                      const tot = l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0);
+                      const ok = Math.abs(tot - 100) < 0.01;
+                      const regla = reglaDeItem(l, l.item);
+                      const igualRegla = regla && regla.length === l.reparto.length && regla.every((r, k) => r.pdv === l.reparto[k].pdv && Math.abs(parseFloat(r.pct) - parseFloat(l.reparto[k].pct)) < 0.01);
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, border: `1px solid ${ok ? "#bfe0f0" : "#f0c179"}`, background: ok ? "#f3fafd" : "#fdf8ef", borderRadius: 9, padding: "5px 8px" }}>
+                          <span style={{ ...labS, marginBottom: 0 }}>Reparto por PDV</span>
+                          {l.reparto.map((r, k) => (
+                            <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <select style={{ ...sel, width: 160, height: 28, padding: "3px 22px 3px 6px", fontSize: 12 }} value={r.pdv}
+                                onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pdv: e.target.value } : x))}>
+                                {PDVS.map((p) => <option key={p}>{p}</option>)}
+                              </select>
+                              <input style={{ ...inp, width: 54, height: 28, padding: "3px 4px", fontSize: 12, textAlign: "center" }} value={r.pct}
+                                onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pct: soloNum(e.target.value) } : x))} />
+                              <span style={{ fontSize: 11, color: "#777" }}>%</span>
+                              {l.reparto.length > 2 && <span onClick={() => setLinea(i, "reparto", l.reparto.filter((_, kx) => kx !== k))} style={{ cursor: "pointer", color: C.gris, fontSize: 13 }}>×</span>}
+                            </span>
+                          ))}
+                          {l.reparto.length < PDVS.length && <span onClick={() => setLinea(i, "reparto", [...l.reparto, { pdv: PDVS.find((p) => !l.reparto.some((x) => x.pdv === p)) || PDVS[0], pct: 0 }])} style={{ fontSize: 12, color: C.cel, fontWeight: 700, cursor: "pointer" }}>+ PDV</span>}
+                          <span style={{ fontSize: 11, fontWeight: 700, color: ok ? C.verde : C.nar }}>{ok ? "= 100%" : `suma ${fmtNum(tot)}%`}</span>
+                          {regla && igualRegla && <span title="Este reparto es la regla guardada para este concepto/insumo" style={{ fontSize: 10, fontWeight: 700, color: "#2a88ad", background: "#e7f3fa", borderRadius: 5, padding: "1px 6px" }}>REGLA</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -1405,7 +1444,7 @@ function ModalNuevaCarga(props) {
                     Desc. general
                     <input style={{ ...inp, height: 28, width: 76, padding: "3px 6px", fontSize: 12.5, textAlign: "center", ...(fracG > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
                       value={descG} onChange={(e) => setDescG(fmtImp(e.target.value))} />
-                    <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28 }}>
+                    <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28, boxSizing: "border-box" }}>
                       {[["%", "%"], ["$", "$"]].map(([k, t]) => (
                         <span key={k} role="button" onClick={() => setDescGTipo(k)} style={{ display: "inline-flex", alignItems: "center", padding: "0 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: descGTipo === k ? "#111" : "#fff", color: descGTipo === k ? "#fff" : "#888" }}>{t}</span>))}
                     </span>
