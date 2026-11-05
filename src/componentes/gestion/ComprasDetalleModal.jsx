@@ -8,7 +8,7 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Select, Snackbar, Alert, TableCell, TableRow, TextField, Tooltip,
+  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Popover, Select, Snackbar, Alert, TableCell, TableRow, TextField, Tooltip,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GestionAPI } from '@/servicios/apiGestion';
@@ -46,7 +46,11 @@ const COLS = [
 // Lo que depende de los gastos: se recalcula después de guardar.
 const DEPENDIENTES = ['gestionPivot', 'gestionAnual', 'gestionEquilibrio', 'gestionEquilibrioVariables', 'gestionDiferenciaCaja', 'gestionCanasta'];
 
-const esEditada = (c) => c.importeManual != null || c.fechaManual != null || c.conceptoCodigoManual != null || c.observacManual != null;
+// Mismo criterio que el back (fuente-compras: es_gv): sin comprobante o proveedor, o comprobante E/G.
+const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
+const pagosConFechaManual = (c) => (c.estadoPago?.pagos80 ?? []).some((p) => p.manual);
+const esEditada = (c) => c.importeManual != null || c.fechaManual != null || c.conceptoCodigoManual != null || c.observacManual != null
+  || c.fechaPagoManual != null || pagosConFechaManual(c);
 const fechaInput = (iso) => iso?.slice(0, 10) ?? '';
 const texto = (v) => (v != null ? String(v) : '');
 const nombreProveedor = (i) => normalize(i.proveedor ?? i.proveedorRef?.nombre ?? i.proveedorRef?.razon);
@@ -84,7 +88,57 @@ function FechaPago({ item }) {
   const n = item.pagoRef ? 1 : item.estadoPago?.pagos ?? 0;
   const parcial = item.estadoPago?.estado === 'parcial' && !item.pagoRef;
   const detalle = [n > 1 ? `último de ${n} pagos` : null, parcial ? 'pago parcial' : null, item.cajaPago ? `caja: ${item.cajaPago}` : null].filter(Boolean).join(' · ');
-  return <Box component="span" title={detalle || undefined} sx={detalle ? { textDecoration: 'underline dotted', textUnderlineOffset: 2 } : undefined}>{fmtDate(item.fechaPago)}{n > 1 || parcial ? '*' : ''}</Box>;
+  const manual = item.fechaPagoManual != null || pagosConFechaManual(item);
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+      {manual && <EditedDot />}
+      <Box component="span" title={detalle || undefined} sx={detalle ? { textDecoration: 'underline dotted', textUnderlineOffset: 2 } : undefined}>{fmtDate(item.fechaPago)}{n > 1 || parcial ? '*' : ''}</Box>
+    </Box>
+  );
+}
+
+// Fecha de pago editable (Diego 05/11/2026: aunque venga de MaxiRest).
+// - Gasto vario / sueldo: una sola fecha (la de la caja) → la de la compra.
+// - Factura: la fecha de cada pago del informe 80. Con un pago, directo; con varios, se
+//   abre la lista. En Financiera cada fila ya es un pago: se corrige ese.
+// Volver a dejar la fecha del informe = la corrección se borra.
+function EdicionFechaPago({ editing, setEditing, item }) {
+  const [anchor, setAnchor] = useState(null);
+  const pagos = editing.pagos;
+  // Factura sin pagos del 80 (o fila de un pago cargado en Lazarillo): se corrige desde Pagos.
+  if (!pagos.length && !editing.esGastoVario) {
+    return <Box component="span" title="Los pagos cargados en Lazarillo se corrigen desde Pagos" sx={{ px: 0.75, fontSize: 12, color: 'text.secondary' }}><FechaPago item={item} /></Box>;
+  }
+  const setPago = (rowId, fecha) => setEditing({ ...editing, pagos: pagos.map((p) => (p.rowId === rowId ? { ...p, fecha } : p)) });
+  if (!pagos.length) {
+    return (
+      <Box component="input" type="date" title={editing.fechaPagoOriginal ? `Del informe: ${fmtDate(editing.fechaPagoOriginal)}` : 'Sin fecha de pago en el informe'}
+        value={editing.fechaPago} onChange={(e) => setEditing({ ...editing, fechaPago: e.target.value })} sx={sxInput} />
+    );
+  }
+  if (pagos.length === 1) {
+    const p = pagos[0];
+    return <Box component="input" type="date" title={`Del informe: ${fmtDate(p.original)}`} value={p.fecha} onChange={(e) => setPago(p.rowId, e.target.value)} sx={sxInput} />;
+  }
+  return (
+    <>
+      <Box component="button" type="button" onClick={(e) => setAnchor(e.currentTarget)} sx={{ ...sxInput, cursor: 'pointer', textAlign: 'left' }}>
+        {pagos.length} pagos ▾
+      </Box>
+      <Popover open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+        <Box sx={{ p: 1.5, display: 'grid', gridTemplateColumns: 'auto auto auto', gap: 1, alignItems: 'center', fontSize: 12 }}>
+          <Box sx={{ fontWeight: 600 }}>Fecha de pago</Box><Box sx={{ fontWeight: 600, textAlign: 'right' }}>Importe</Box><Box sx={{ fontWeight: 600, color: 'text.secondary' }}>Informe</Box>
+          {pagos.map((p) => (
+            <React.Fragment key={p.rowId}>
+              <Box component="input" type="date" value={p.fecha} onChange={(e) => setPago(p.rowId, e.target.value)} sx={{ ...sxInput, width: 130 }} />
+              <Box sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtARS(p.importe)}</Box>
+              <Box sx={{ color: 'text.secondary' }}>{fmtDate(p.original)}</Box>
+            </React.Fragment>
+          ))}
+        </Box>
+      </Popover>
+    </>
+  );
 }
 
 function Semaforo({ estado }) {
@@ -237,7 +291,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     setSaving(true);
     setSaveError(null);
     // Una compra repartida solo cambia su observación hasta que esté el motor de apertura.
-    const cuerpo = state.esDistribuida
+    const base = state.esDistribuida
       ? { observacManual: state.observacManual !== '' ? state.observacManual : null }
       : {
         ...(imp.incluir ? { importeManual: imp.value } : {}),
@@ -245,8 +299,16 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         conceptoCodigoManual: state.conceptoCodigoManual !== '' ? state.conceptoCodigoManual : null,
         observacManual: state.observacManual !== '' ? state.observacManual : null,
       };
+    // Fecha de pago de la compra (gasto vario / sueldo): solo si se tocó; vacía = la del informe.
+    const cuerpo = state.esGastoVario && state.fechaPago !== state.fechaPagoInicial
+      ? { ...base, fechaPagoManual: state.fechaPago || null }
+      : base;
     try {
       await GestionAPI.editarCompra(state.rowId, cuerpo);
+      // Pagos del 80 con la fecha cambiada (la del informe o vacía = se borra la corrección).
+      for (const pg of state.pagos.filter((x) => x.fecha !== x.inicial)) {
+        await GestionAPI.editarPago(pg.rowId, { negocio: pg.negocio, fechaPagoManual: pg.fecha && pg.fecha !== pg.original ? pg.fecha : null });
+      }
     } catch (err) {
       // Un 4xx trae un mensaje accionable; un fallo de red, el genérico.
       setSaveError(err?.status ? err.message : 'No se pudo guardar. Intentá de nuevo.');
@@ -293,6 +355,14 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       conceptoCodigoManual: concepto,
       observacManual: item.observacManual ?? '',
       rubroFiltro: conceptos.find((o) => o.codigo === concepto)?.rubroCodigo ?? SIN_RUBRO_CODE,
+      // Fecha de pago: pagos del 80 (en Financiera, solo el de la fila) o la de la compra.
+      pagos: (item.estadoPago?.pagos80 ?? [])
+        .filter((p) => p.rowId && (!item.pagoRef || item.pagoRef === p.rowId))
+        .map((p) => ({ rowId: p.rowId, negocio: p.negocio, importe: p.importe, original: p.original, fecha: p.fecha, inicial: p.fecha })),
+      esGastoVario: esGastoVario(item) && !item.pagoRef,
+      fechaPago: fechaInput(item.fechaPago),
+      fechaPagoInicial: fechaInput(item.fechaPago),
+      fechaPagoOriginal: item.fechaPagoManual != null ? null : fechaInput(item.fechaPago),
       inicial: { fecha: fechaInput(item.fechaManual ?? item.fecha), concepto, observac: item.observacManual ?? '' },
     });
   };
@@ -310,7 +380,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           <TableCell sx={celdaEdicion}>
             <Box component="input" type="date" disabled={bloqueada} value={editing.fechaManual} onChange={(e) => setEditing({ ...editing, fechaManual: e.target.value })} sx={sxInput} />
           </TableCell>
-          <TableCell sx={{ ...celda, color: 'text.secondary' }}><FechaPago item={item} /></TableCell>
+          <TableCell sx={celdaEdicion}><EdicionFechaPago editing={editing} setEditing={setEditing} item={item} /></TableCell>
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{nombreProveedor(item)}</TableCell>
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{normalize(item.detalle)}</TableCell>
           <TableCell sx={celdaEdicion}>

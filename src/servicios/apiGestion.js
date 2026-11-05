@@ -84,6 +84,8 @@ export const GestionAPI = {
   compraLineas: (compraId) => api(`${base()}/dashboard/compra-lineas/${encodeURIComponent(compraId)}`),
   conceptosEdicion: () => api(`${base()}/config/conceptos`),
   editarCompra: (rowId, body) => api(`${base()}/dashboard/compras/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+  // Fecha de un pago del informe 80 corregida a mano ({ fechaPagoManual: 'YYYY-MM-DD' | null, negocio }).
+  editarPago: (rowId, body) => api(`${base()}/dashboard/pagos/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
   editarVenta: (rowId, body) => api(`${base()}/dashboard/ventas/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
 
   // ── Carga manual: facturas, ventas, conceptos y medios de pago ──
