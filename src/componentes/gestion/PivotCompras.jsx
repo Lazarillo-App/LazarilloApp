@@ -1,50 +1,48 @@
 // src/componentes/gestion/PivotCompras.jsx
-// Pestaña Compras del Panel de gestion: pivot rubro → concepto → registro por mes.
-// Portado de lazarillo_gestion (components/dashboard/pivot-table-por-concepto.tsx,
-// pivot-table-por-proveedor.tsx, pivot-rubro-row.tsx, pivot-table-head/foot.tsx,
-// composicion-tooltip.tsx) a MUI.
+// Pestaña Compras del Panel de gestion, igual a lazarillo_gestion:
+// pivot-table-por-concepto.tsx, pivot-table-por-proveedor.tsx, pivot-table-head.tsx (Operación +
+// meses + Total + % ing/egr), kpi-block.tsx, pivot-rubro-row.tsx, pivot-table-foot.tsx,
+// composicion-tooltip.tsx y fila-mas-registros.tsx — a MUI.
 //
-// Vistas: por Concepto (rubro → concepto → registro), por Insumo (mismo árbol, el 2do nivel
-// es el insumo o el concepto si el gasto no trae detalle) y por Proveedor
+// Vistas: por Concepto (rubro → concepto → registro), por Insumos (mismo árbol, el 2do nivel es
+// el insumo o el concepto si el gasto no trae detalle) y por Proveedor
 // (rubro → proveedor → concepto → registro).
-// Todavía no: fila de ingresos y % sobre ventas (con la pestaña Ventas), detalle al clickear,
-// apertura de gastos y carga desde una celda (con lo editable).
+// Todavía no: apertura de gastos y carga desde una celda vacía.
 
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import {
-  Box, Table, TableHead, TableBody, TableFooter, TableRow, TableCell, TableSortLabel,
-  IconButton, Tooltip, Typography, Button, CircularProgress, Alert,
-} from '@mui/material';
+import { Box, Table, TableHead, TableBody, TableFooter, TableRow, TableCell, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import LayersIcon from '@mui/icons-material/Layers';
 import {
-  hasValue, sortPivotRows, flattenRows, sortPivotRowsPorProveedor, flattenRowsPorProveedor, TANDA_PIVOT,
+  sortPivotRows, flattenRows, sortPivotRowsPorProveedor, flattenRowsPorProveedor, TANDA_PIVOT, hasValue,
 } from '@/gestion/pivotUtils';
-import { MESES, fmtARS, normalize, fechaCorta } from '@/gestion/formato';
+import { filtroFilaProveedor } from '@/gestion/detalleFilter';
+import { usePanelGestion } from '@/gestion/panelContext';
+import { mesAnteriorConValor } from '@/gestion/cargaUtils';
+import { ScopeGestion, useDashboard } from '@/gestion/compat';
+import { ConceptoFijoEmpleado, useConceptosEmpleado } from './apertura/concepto-fijo';
+import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
+import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
+import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
+import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
+import {
+  PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
+} from './piezasPivot';
 
-const ANCHO_NOMBRE = 320;
+// Rubro "Gastos En Personal": los "proveedores" suelen ser personas de planilla con nombres
+// ambiguos — ahí se antepone el código del ERP (constants.ts de gestion).
+const RUBRO_GASTOS_EN_PERSONAL_CODIGO = '3';
 
-// Celda de nombre fija a la izquierda (como el sticky de gestion).
-const sxNombre = (nivel, fondo) => ({
-  position: 'sticky', left: 0, zIndex: 1, bgcolor: fondo || 'background.paper',
-  minWidth: ANCHO_NOMBRE, maxWidth: 480, pl: 1 + nivel * 2.5,
-  boxShadow: (t) => `1px 0 0 0 ${t.palette.divider}`,
-});
-const sxNum = { textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', px: 1.5 };
-
-// Tooltip del reparto de la apertura (100% del gasto y lo que fue a cada destino).
+// Tooltip de prorrateo (composicion-tooltip.tsx): 100% del gasto y lo que fue a cada destino.
 function ComposicionTooltip({ comp, children }) {
   if (!comp) return children;
   return (
     <Tooltip
-      arrow
       title={
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, fontSize: 12 }}>
-          <b>100% · {fmtARS(comp.total)}</b>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25, fontSize: 12 }}>
+          <Box sx={{ fontWeight: 500 }}>100% · {fmtARS(comp.total)}</Box>
           {comp.destinos.map((d, i) => (
-            <span key={i}>{Math.round(d.pct)}% {d.nombre} {fmtARS(d.importe)}</span>
+            <Box key={i} sx={{ opacity: 0.75 }}>{Math.round(d.pct)}% {d.nombre} {fmtARS(d.importe)}</Box>
           ))}
         </Box>
       }
@@ -54,24 +52,46 @@ function ComposicionTooltip({ comp, children }) {
   );
 }
 
-function Expansor({ abierto, onClick, nivel, children, negrita }) {
+// Fila al pie de un concepto abierto con muchos registros (fila-mas-registros.tsx).
+function FilaMasRegistros({ fila, onVerMas }) {
+  const fmt = (n) => n.toLocaleString('es-AR');
+  const quedan = fila.total - fila.mostrados;
+  const btn = { all: 'unset', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2, '&:hover': { color: 'text.primary' } };
   return (
-    <Box
-      onClick={onClick}
-      sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', fontWeight: negrita ? 700 : 500, minWidth: 0 }}
-    >
-      {abierto ? <ExpandMoreIcon sx={{ fontSize: 18 - nivel }} /> : <ChevronRightIcon sx={{ fontSize: 18 - nivel }} />}
-      <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</Box>
+    <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, whiteSpace: 'nowrap' }}>
+      <span>Se muestran {fmt(fila.mostrados)} de {fmt(fila.total)}</span>
+      <span aria-hidden>·</span>
+      {quedan > TANDA_PIVOT && (
+        <>
+          <Box component="button" type="button" sx={btn} onClick={() => onVerMas(fila.conceptoId, false)}>Ver {TANDA_PIVOT} más</Box>
+          <span aria-hidden>·</span>
+        </>
+      )}
+      <Box component="button" type="button" sx={btn} onClick={() => onVerMas(fila.conceptoId, true)}>
+        {quedan > TANDA_PIVOT ? 'Ver todos' : `Ver ${fmt(quedan)} más`}
+      </Box>
     </Box>
   );
 }
 
-export default function PivotCompras({ data, isLoading, error, months, agrupacion, sort, onSort }) {
+const Punto = ({ color, title }) => (
+  <Tooltip title={title}><Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} /></Tooltip>
+);
+
+export default function PivotCompras({
+  data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
+}) {
+  const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
+  const aperturaPanel = useAperturaPanel();
+  const { pdvId: lugarPanel } = useDashboard();
+  const { data: conceptosFijos } = useConceptosEmpleado(lugarPanel);
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
   const [expanded, setExpanded] = useState(() => new Set());
-  // Registros visibles por concepto (de a TANDA_PIVOT, como en gestion). "Ver todos" = Infinity.
+  // Registros visibles por concepto (de a TANDA_PIVOT). "Ver todos" = Infinity.
   const [mostrar, setMostrar] = useState(() => new Map());
+  // % de cada fila sobre ingresos o sobre egresos (usePctMode de gestion).
+  const [pctMode, setPctMode] = useState('ingresos');
 
   const toggle = useCallback((id) => {
     setExpanded((prev) => {
@@ -88,8 +108,7 @@ export default function PivotCompras({ data, isLoading, error, months, agrupacio
     });
   }, []);
 
-  // Al cambiar de vista se arranca cerrado. Vista Insumos: abiertos los rubros que tienen
-  // insumos (Mercaderías), como en gestion.
+  // Vista Insumos: arrancan abiertos los rubros que tienen insumos (Mercaderías); el resto cerrado.
   const abiertosInsumo = useRef(false);
   useEffect(() => { setExpanded(new Set()); setMostrar(new Map()); abiertosInsumo.current = false; }, [agrupacion]);
   useEffect(() => {
@@ -98,54 +117,147 @@ export default function PivotCompras({ data, isLoading, error, months, agrupacio
     setExpanded(new Set(data.rows.filter((r) => r.children.some((c) => c.conceptoCodigo?.startsWith('ins:'))).map((r) => r.id)));
   }, [porInsumo, data]);
 
-  const filas = useMemo(() => {
-    if (!data) return [];
+  // Click derecho en un rubro: cierra todo; en un concepto / proveedor: cierra los de su nivel.
+  const cerrarNivel = useCallback((e, idsNivel) => {
+    if (navigator.maxTouchPoints > 0) return;
+    e.preventDefault();
+    setExpanded((prev) => (idsNivel ? new Set([...prev].filter((id) => idsNivel.has(id))) : new Set()));
+  }, []);
+
+  const { filas, rubroIds, proveedorIds } = useMemo(() => {
+    if (!data) return { filas: [], rubroIds: new Set(), proveedorIds: new Set() };
     if (porProveedor) {
       const rows = sortPivotRowsPorProveedor(data.rows, sort.col, sort.dir);
-      return flattenRowsPorProveedor({ ...data, rows }, expanded);
+      return {
+        filas: flattenRowsPorProveedor({ ...data, rows }, expanded),
+        rubroIds: new Set(rows.map((r) => r.id)),
+        proveedorIds: new Set(rows.flatMap((r) => [r.id, ...r.children.map((p) => p.id)])),
+      };
     }
     const rows = sortPivotRows(data.rows, sort.col, sort.dir);
-    return flattenRows({ rows, columnTotals: data.columnTotals, grandTotal: data.grandTotal }, expanded, 3, mostrar);
+    return {
+      filas: flattenRows({ rows, columnTotals: data.columnTotals, grandTotal: data.grandTotal }, expanded, 3, mostrar),
+      rubroIds: new Set(rows.map((r) => r.id)),
+      proveedorIds: new Set(),
+    };
   }, [data, porProveedor, sort, expanded, mostrar]);
 
-  if (isLoading) {
-    return <Box sx={{ display: 'grid', placeItems: 'center', py: 8 }}><CircularProgress size={28} /></Box>;
-  }
-  if (error) {
-    return <Alert severity="error" sx={{ m: 2 }}>No se pudo cargar el panel: {String(error.message || error)}</Alert>;
-  }
-  if (!data || data.rows.length === 0) {
-    return <Typography sx={{ p: 4, textAlign: 'center' }} color="text.secondary">No hay compras para los filtros elegidos.</Typography>;
-  }
+  if (isLoading) return <PivotLoading />;
+  if (error) return <PivotError />;
+  if (!data || data.rows.length === 0) return <PivotEmpty />;
 
-  const celdas = (values, { onComp, peso } = {}) => months.map((mes) => {
-    const v = values[mes];
-    const celda = (
-      <TableCell key={mes} sx={{ ...sxNum, fontWeight: peso, color: hasValue(v) ? 'text.primary' : 'text.disabled' }}>
-        {hasValue(v) || (v ?? 0) < 0 ? fmtARS(v) : '—'}
+  const ingresosPorMes = ventas?.columnTotals ?? {};
+  const ingresosReady = !!ventas;
+  // Celda mensual según el toggle $ / % ing (el Total sigue en $).
+  const fmtCelda = (valor, mes) => (modoCelda === 'pct'
+    ? (!ingresosReady && valor != null ? '…' : computePctCelda(valor, ingresosPorMes[mes]))
+    : fmtARS(valor));
+  const pctDenominator = pctMode === 'ingresos' ? (ventas?.grandTotal ?? 0) : data.grandTotal;
+  const fmtPct = (rowTotal) => computePctLabel(rowTotal, pctDenominator, pctMode === 'ingresos' && ventasLoading);
+  const colSpan = months.length + 3;
+
+  // Click en una celda con valor: abre el detalle de lo que suma.
+  const clic = (valor, extra) => (hasValue(valor) ? { onClick: () => abrirDetalle(extra) } : {});
+  const sxDe = (valor) => (hasValue(valor) ? sxClic : {});
+
+  const celdaPct = (rowTotal, sx) => (
+    <TableCell sx={{ ...sxNum, px: 1.5, fontSize: 12, color: 'text.secondary', opacity: 0.7, ...sx }}>{fmtPct(rowTotal)}</TableCell>
+  );
+
+  // Fila de rubro (pivot-rubro-row.tsx): fondo gris, semibold.
+  const filaRubro = (rubro) => (
+    <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600 } }}>
+      <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
+        <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{rubro.nombre}</Expansor>
       </TableCell>
+      {months.map((mes) => (
+        <TableCell key={mes} {...clic(rubro.values[mes], { mes, rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(rubro.values[mes]) }}>
+          {fmtCelda(rubro.values[mes], mes)}
+        </TableCell>
+      ))}
+      <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>
+      {celdaPct(rubro.rowTotal, { py: 1.25 })}
+    </TableRow>
+  );
+
+  // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera, Proveedor ni Insumos).
+  const cargaEnCelda = agrupacion === 'concepto' && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
+  const celdaConcepto = (c, mes, filtro) => {
+    if (hasValue(c.values[mes])) return { props: { onClick: () => abrirDetalle({ mes, ...filtro }) }, sx: sxClic };
+    if (!cargaEnCelda) return { props: {}, sx: {} };
+    return {
+      props: {
+        title: `Cargar ${c.nombre} en este mes como gasto vario`,
+        onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes) }),
+      },
+      sx: { cursor: 'copy', '&:hover': { bgcolor: '#f0f9ff' } },
+    };
+  };
+
+  // Concepto (2do nivel de Concepto/Insumos, 3er nivel de Proveedor).
+  const filaConcepto = (c, indent) => {
+    const insumo = porInsumo && c.conceptoCodigo?.startsWith('ins:');
+    // Vista Insumos: por insumo, o por concepto solo lo que no trae insumos.
+    const filtro = porProveedor
+      ? {
+        conceptoCodigo: c.conceptoCodigo,
+        ...(c.proveedorId != null
+          ? { proveedorId: c.proveedorId }
+          : c.proveedorTexto != null ? { proveedorTexto: c.proveedorTexto, codigo: c.codigo ?? undefined } : { sinProveedor: true }),
+      }
+      : insumo
+        ? { insumoCodigo: c.conceptoCodigo.slice(4), rubroCodigo: c.rubroCodigo }
+        : porInsumo ? { conceptoCodigo: c.conceptoCodigo, sinInsumos: true } : { conceptoCodigo: c.conceptoCodigo };
+    return (
+      <TableRow key={c.id} hover onContextMenu={(e) => cerrarNivel(e, porProveedor ? proveedorIds : rubroIds)}>
+        <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Expansor abierto={expanded.has(c.id)} onClick={() => toggle(c.id)} indent={indent}>
+              {insumo ? normalize(c.nombre) : c.nombre}
+              {porInsumo && !insumo && (
+                <Box component="span" sx={{ ml: 0.75, px: 0.75, border: 1, borderColor: 'divider', borderRadius: 4, fontSize: 10, color: 'text.secondary' }}>concepto</Box>
+              )}
+            </Expansor>
+            {!insumo && <BotonApertura panel={aperturaPanel} nivel="concepto" entidadId={c.conceptoCodigo} nombre={c.nombre} />}
+          </Box>
+        </TableCell>
+        {months.map((mes) => {
+          const celda = celdaConcepto(c, mes, filtro);
+          return (
+            <ComposicionTooltip key={mes} comp={c.composicion?.[mes]}>
+              <TableCell {...celda.props} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...celda.sx }}>{fmtCelda(c.values[mes], mes)}</TableCell>
+            </ComposicionTooltip>
+          );
+        })}
+        <TableCell onClick={() => abrirDetalle(filtro)} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(c.rowTotal)}</TableCell>
+        {celdaPct(c.rowTotal, { py: 1, opacity: 0.5 })}
+      </TableRow>
     );
-    return onComp ? <ComposicionTooltip key={mes} comp={onComp[mes]}>{celda}</ComposicionTooltip> : celda;
-  });
+  };
 
-  const etiquetaRegistro = (r, nombre) =>
-    [fechaCorta(r.fecha), nombre != null ? normalize(nombre) : null, r.observac || null, fmtARS(r.importe)].filter(Boolean).join(' · ');
-
-  const filaRegistro = (r, nivel, nombre) => (
-    <TableRow key={r.id} hover sx={r.hasManualOverride ? { bgcolor: (t) => alpha(t.palette.warning.main, 0.08) } : undefined}>
-      <TableCell sx={{ ...sxNombre(nivel), fontSize: 12, color: 'text.secondary', py: 0.5 }}>
-        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
-          {r.hasManualOverride && <Tooltip title="Editado a mano"><Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'warning.main' }} /></Tooltip>}
-          {r.distribucionId != null && <Tooltip title="Parte de un gasto repartido (apertura)"><Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'info.main' }} /></Tooltip>}
-          {etiquetaRegistro(r, nombre)}
+  // Registro (último nivel): "dd/mm · Nombre · observación · $".
+  const filaRegistro = (r, indent, partes) => (
+    <TableRow
+      key={r.id}
+      hover
+      className="group"
+      sx={r.hasManualOverride ? { bgcolor: (t) => alpha(t.palette.warning.main, 0.05) } : undefined}
+    >
+      <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 2 + indent, py: 0.75, fontSize: 12, color: r.hasManualOverride ? 'warning.dark' : 'text.secondary' }}>
+        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          {r.hasManualOverride && <Punto color="warning.main" title="Editado en el Panel" />}
+          {r.distribucionId != null && <Punto color="info.main" title="Parte de un gasto aperturado" />}
+          {partes.filter(Boolean).join(' · ')}
+          <BotonAperturaRegistro panel={aperturaPanel} rowId={r.rowId} nombre={partes.filter(Boolean).join(' · ')} negocio={r.businessIdOrigen} sucursal={r.branchIdOrigen} />
         </Box>
       </TableCell>
       {months.map((mes) => (
-        <TableCell key={mes} sx={{ ...sxNum, fontSize: 12, color: 'text.secondary', py: 0.5 }}>
-          {r.values[mes] != null ? fmtARS(r.values[mes]) : ''}
+        <TableCell key={mes} {...clic(r.values[mes], { rowId: r.rowId, distribucionId: r.distribucionId ?? undefined })} sx={{ ...sxNum, px: 1.5, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxDe(r.values[mes]) }}>
+          {fmtCelda(r.values[mes], mes)}
         </TableCell>
       ))}
-      <TableCell sx={{ ...sxNum, fontSize: 12, color: 'text.secondary', py: 0.5 }}>{fmtARS(r.rowTotal)}</TableCell>
+      <TableCell onClick={() => abrirDetalle({ rowId: r.rowId, distribucionId: r.distribucionId ?? undefined })} sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxClic }}>{fmtARS(r.rowTotal)}</TableCell>
+      {celdaPct(r.rowTotal, { py: 0.75, opacity: 0.4 })}
     </TableRow>
   );
 
@@ -154,65 +266,48 @@ export default function PivotCompras({ data, isLoading, error, months, agrupacio
     switch (item.type) {
       case 'rubro':
       case 'rubroTop':
+        return filaRubro(d);
+      case 'concepto':
+        return filaConcepto(d, 2.5);
+      case 'proveedorSub': {
+        const nombre = d.rubroCodigo === RUBRO_GASTOS_EN_PERSONAL_CODIGO && d.codigo
+          ? `${d.codigo} - ${normalize(d.nombre)}`
+          : normalize(d.nombre);
         return (
-          <TableRow key={d.id} sx={{ bgcolor: 'action.hover' }}>
-            <TableCell sx={{ ...sxNombre(0, 'grey.100'), fontWeight: 700 }}>
-              <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} nivel={0} negrita>{d.nombre}</Expansor>
-            </TableCell>
-            {celdas(d.values, { peso: 700 })}
-            <TableCell sx={{ ...sxNum, fontWeight: 700 }}>{fmtARS(d.rowTotal)}</TableCell>
-          </TableRow>
-        );
-      case 'concepto': {
-        const insumo = porInsumo && d.conceptoCodigo?.startsWith('ins:');
-        return (
-          <TableRow key={d.id} hover>
-            <TableCell sx={sxNombre(1)}>
-              <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} nivel={1}>
-                {insumo ? normalize(d.nombre) : d.nombre}
-                {porInsumo && !insumo && (
-                  <Box component="span" sx={{ ml: 1, px: 0.75, border: 1, borderColor: 'divider', borderRadius: 4, fontSize: 10, color: 'text.secondary' }}>concepto</Box>
+          <TableRow key={d.id} onContextMenu={(e) => cerrarNivel(e, rubroIds)} sx={{ '& td': { fontWeight: 600 } }}>
+            <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{nombre}</Expansor>
+                {d.entidadIdProveedor && <BotonApertura panel={aperturaPanel} nivel="proveedor" entidadId={d.entidadIdProveedor} nombre={normalize(d.nombre)} />}
+                {/* Concepto fijo del empleado (personas de planilla: texto del ERP con código). */}
+                {d.proveedorId == null && d.codigo && d.entidadIdProveedor?.startsWith('texto:') && (
+                  <ScopeGestion><ConceptoFijoEmpleado pdvId={lugarPanel} entidadId={d.entidadIdProveedor} nombre={normalize(d.nombre)} reglas={conceptosFijos?.reglas ?? []} /></ScopeGestion>
                 )}
-              </Expansor>
+              </Box>
             </TableCell>
-            {celdas(d.values, { onComp: d.composicion })}
-            <TableCell sx={{ ...sxNum, fontWeight: 600 }}>{fmtARS(d.rowTotal)}</TableCell>
+            {months.map((mes) => (
+              <ComposicionTooltip key={mes} comp={d.composicion?.[mes]}>
+                <TableCell {...clic(d.values[mes], { mes, ...filtroFilaProveedor(d) })} sx={{ ...sxNum, px: 1.5, py: 1.25, ...sxDe(d.values[mes]) }}>{fmtCelda(d.values[mes], mes)}</TableCell>
+              </ComposicionTooltip>
+            ))}
+            <TableCell onClick={() => abrirDetalle(filtroFilaProveedor(d))} sx={{ ...sxNum, px: 2, py: 1.25, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
+            {celdaPct(d.rowTotal, { py: 1.25 })}
           </TableRow>
         );
       }
-      case 'proveedorSub':
-        return (
-          <TableRow key={d.id} hover>
-            <TableCell sx={sxNombre(1)}>
-              <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} nivel={1}>{normalize(d.nombre)}</Expansor>
-            </TableCell>
-            {celdas(d.values, { onComp: d.composicion })}
-            <TableCell sx={{ ...sxNum, fontWeight: 600 }}>{fmtARS(d.rowTotal)}</TableCell>
-          </TableRow>
-        );
       case 'conceptoSub':
-        return (
-          <TableRow key={d.id} hover>
-            <TableCell sx={sxNombre(2)}>
-              <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} nivel={2}>{d.nombre}</Expansor>
-            </TableCell>
-            {celdas(d.values, { onComp: d.composicion })}
-            <TableCell sx={sxNum}>{fmtARS(d.rowTotal)}</TableCell>
-          </TableRow>
-        );
+        return filaConcepto(d, 5);
       case 'proveedor':
-        return filaRegistro(d, 3, d.nombre);
+        return filaRegistro(d, 7, [fechaCorta(d.fecha), normalize(d.nombre), d.observac || null, fmtARS(d.importe)]);
       case 'linea':
-        return filaRegistro(d, 4, null);
+        return filaRegistro(d, 9.5, [fechaCorta(d.fecha), d.observac || null, fmtARS(d.importe)]);
       case 'mas':
         return (
           <TableRow key={d.id}>
-            <TableCell sx={{ ...sxNombre(3), fontSize: 12, py: 0.5 }} colSpan={1}>
-              Mostrando {d.mostrados} de {d.total} registros ·{' '}
-              <Button size="small" onClick={() => verMas(d.conceptoId, false)}>Ver {Math.min(TANDA_PIVOT, d.total - d.mostrados)} más</Button>
-              <Button size="small" onClick={() => verMas(d.conceptoId, true)}>Ver todos</Button>
+            <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 7, py: 0.75, fontSize: 12, color: 'text.secondary' }}>
+              <FilaMasRegistros fila={d} onVerMas={verMas} />
             </TableCell>
-            <TableCell colSpan={months.length + 1} />
+            <TableCell colSpan={months.length + 2} />
           </TableRow>
         );
       default:
@@ -220,44 +315,53 @@ export default function PivotCompras({ data, isLoading, error, months, agrupacio
     }
   };
 
-  const cabeceraOrden = (col, label) => (
-    <TableSortLabel
-      active={sort.col === col}
-      direction={sort.col === col ? sort.dir : 'desc'}
-      onClick={() => onSort(col)}
-    >
-      {label}
-    </TableSortLabel>
-  );
-
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" stickyHeader sx={{ '& td, & th': { borderBottomColor: 'divider' } }}>
+      <Table size="small" sx={sxTablaPanel}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ ...sxNombre(0, 'background.paper'), zIndex: 3, fontWeight: 700 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                {porProveedor ? 'Rubro / Proveedor / Concepto' : porInsumo ? 'Rubro / Insumo' : 'Rubro / Concepto'}
-                <Tooltip title="Cerrar todo">
-                  <IconButton size="small" onClick={() => setExpanded(new Set())}><UnfoldLessIcon fontSize="small" /></IconButton>
-                </Tooltip>
-              </Box>
+            <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 200 }, whiteSpace: 'nowrap' }}>
+              Operación
             </TableCell>
             {months.map((mes) => (
-              <TableCell key={mes} sx={{ ...sxNum, fontWeight: 700 }}>{cabeceraOrden(mes, MESES[mes - 1])}</TableCell>
+              <CabeceraOrden key={mes} col={mes} sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />
             ))}
-            <TableCell sx={{ ...sxNum, fontWeight: 700 }}>{cabeceraOrden('total', 'Total')}</TableCell>
+            <CabeceraOrden col="total" label="Total" total sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />
+            <TableCell
+              onClick={() => setPctMode((m) => (m === 'ingresos' ? 'egresos' : 'ingresos'))}
+              title={pctMode === 'ingresos' ? '% sobre ingresos — click para cambiar a % sobre egresos' : '% sobre egresos — click para cambiar a % sobre ingresos'}
+              sx={{ ...sxNum, position: 'sticky', top: 0, zIndex: 2, bgcolor: MUTED, px: 1.5, py: 1.5, minWidth: 64, fontWeight: 500, color: 'text.secondary', cursor: 'pointer', userSelect: 'none', '&:hover': { color: 'text.primary' } }}
+            >
+              % {pctMode === 'ingresos' ? 'ing' : 'egr'}
+            </TableCell>
           </TableRow>
         </TableHead>
-        <TableBody>{filas.map(renderFila)}</TableBody>
+        <TableBody>
+          <KpiBlock
+            months={months}
+            ingresosPorMes={ingresosPorMes}
+            egresosPorMes={data.columnTotals}
+            ingresosTotal={ventas?.grandTotal}
+            egresosTotal={data.grandTotal}
+            ingresosReady={ingresosReady}
+          />
+          <SectionDivider label="Gastos por rubro" icon={LayersIcon} colSpan={colSpan} />
+          {filas.map(renderFila)}
+        </TableBody>
         <TableFooter>
-          <TableRow sx={{ '& td': { position: 'sticky', bottom: 0, bgcolor: 'background.paper', fontWeight: 700, color: 'text.primary', fontSize: 14 } }}>
-            <TableCell sx={{ ...sxNombre(0, 'background.paper'), zIndex: 3 }}>Total egresos</TableCell>
-            {months.map((mes) => <TableCell key={mes} sx={sxNum}>{fmtARS(data.columnTotals[mes] ?? 0)}</TableCell>)}
-            <TableCell sx={sxNum}>{fmtARS(data.grandTotal)}</TableCell>
+          <TableRow sx={{ '& td': { bgcolor: MUTED, fontWeight: 600, fontSize: 15, color: 'text.primary', borderTop: 2, borderTopColor: 'divider', py: 1.5 } }}>
+            <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2 }}>Total gastos</TableCell>
+            {months.map((mes) => (
+              <TableCell key={mes} {...clic(data.columnTotals[mes], { mes })} sx={{ ...sxNum, px: 1.5, ...sxDe(data.columnTotals[mes]) }}>{fmtCelda(data.columnTotals[mes], mes)}</TableCell>
+            ))}
+            <TableCell onClick={() => abrirDetalle({})} sx={{ ...sxNum, px: 2, color: 'primary.main !important', cursor: 'pointer' }}>{fmtARS(data.grandTotal)}</TableCell>
+            <TableCell sx={{ ...sxNum, px: 1.5, fontSize: '12px !important', color: 'text.secondary !important' }}>
+              {pctMode === 'egresos' ? '—' : fmtPct(data.grandTotal)}
+            </TableCell>
           </TableRow>
         </TableFooter>
       </Table>
+      <ModalAperturaPanel panel={aperturaPanel} />
     </Box>
   );
 }

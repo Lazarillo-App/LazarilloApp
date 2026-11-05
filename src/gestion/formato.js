@@ -10,12 +10,24 @@ export function fmtARS(value) {
   return value != null ? ARS.format(value) : '—';
 }
 
+const ARS_DECIMAL = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function fmtARSDecimal(value) {
+  return value != null ? ARS_DECIMAL.format(value) : '—';
+}
+
 // MaxiRest guarda muchos nombres en MAYÚSCULAS: se muestran como título; el resto, tal cual.
 export function normalize(s) {
   if (!s) return '—';
   return s === s.toUpperCase()
     ? s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
     : s;
+}
+
+// Fecha completa en la zona UTC, como se guardan (dd/mm/aaaa).
+export function fmtDate(date) {
+  if (!date) return '—';
+  return new Date(date).toLocaleDateString('es-AR', { timeZone: 'UTC' });
 }
 
 // "2026-01-02" → "02/01"

@@ -19,6 +19,8 @@ const GROUPS = [
     id: 'operacion', label: 'Operación',
     modules: [
       { id: 'tableros', label: 'Panel de Gestión', emoji: '📈', to: '/gestion' },
+      { id: 'gestion-conceptos', label: 'Conceptos de caja', emoji: '🏷️', to: '/gestion/conceptos' },
+      { id: 'gestion-medios', label: 'Medios de pago', emoji: '💳', to: '/gestion/medios-pago' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
     ],
   },

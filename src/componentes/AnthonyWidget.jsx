@@ -3,14 +3,46 @@
 // mismo lugar/rol que suele ocupar un botón de WhatsApp. Por ahora solo
 // deriva a soporte real por WhatsApp; más adelante esto se convierte en el
 // chatbot de Anthony con preguntas/autorespuestas predefinidas.
+//
+// Se puede minimizar (el "–" sobre el botón): queda una pestañita pegada al borde derecho que no
+// tapa datos, y al tocarla vuelve. Se recuerda por navegador (solo comodidad: sin storage,
+// arranca visible).
 import React, { useState } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 
 // Número de soporte temporal — se reemplaza por el definitivo más adelante.
 const SOPORTE_WHATSAPP = '541130211649';
+const CLAVE_MINIMIZADO = 'lazarillo:anthony:minimizado';
+
+function leerMinimizado() {
+  try { return localStorage.getItem(CLAVE_MINIMIZADO) === '1'; } catch { return false; }
+}
+function guardarMinimizado(v) {
+  try { if (v) localStorage.setItem(CLAVE_MINIMIZADO, '1'); else localStorage.removeItem(CLAVE_MINIMIZADO); } catch { /* sin storage: no se recuerda */ }
+}
 
 export default function AnthonyWidget() {
   const [open, setOpen] = useState(false);
+  const [minimizado, setMinimizado] = useState(leerMinimizado);
+  const minimizar = (v) => { setMinimizado(v); setOpen(false); guardarMinimizado(v); };
+
+  if (minimizado) {
+    // Pestañita en el borde derecho: asoma la cabeza de Anthony.
+    return (
+      <button
+        onClick={() => minimizar(false)}
+        aria-label="Mostrar a Anthony"
+        title="Mostrar a Anthony"
+        style={{
+          position: 'fixed', right: 0, bottom: 96, zIndex: 1400, width: 26, height: 52, padding: 0,
+          border: 'none', borderRadius: '12px 0 0 12px', cursor: 'pointer', background: '#15213E',
+          boxShadow: '-2px 4px 12px rgba(0,0,0,.25)', overflow: 'hidden', opacity: 0.85,
+        }}
+      >
+        <img src={ANT.saluda} alt="" style={{ height: 40, width: 'auto', objectFit: 'cover', objectPosition: 'left', marginLeft: 2 }} />
+      </button>
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
@@ -52,6 +84,20 @@ export default function AnthonyWidget() {
           </div>
         </div>
       )}
+      <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => minimizar(true)}
+        aria-label="Minimizar a Anthony"
+        title="Minimizar"
+        style={{
+          position: 'absolute', top: -8, left: -8, zIndex: 1, width: 22, height: 22, borderRadius: '50%',
+          border: '1px solid #e5e7eb', background: '#fff', color: '#475569', cursor: 'pointer',
+          fontSize: 16, lineHeight: 1, padding: 0, boxShadow: '0 2px 6px rgba(0,0,0,.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        –
+      </button>
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Cerrar chat de ayuda' : 'Abrir chat de ayuda'}
@@ -63,6 +109,7 @@ export default function AnthonyWidget() {
       >
         <img src={ANT.saluda} alt="" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
       </button>
+      </div>
     </div>
   );
 }
