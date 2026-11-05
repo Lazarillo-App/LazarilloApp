@@ -97,12 +97,17 @@ export default function DetalleModalShell({
           </Box>
           {headerControls}
         </Box>
-        {!error && (!!query || (!isLoading && count > 1)) && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: 176, flexShrink: 0, height: 32, px: 1, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-            <SearchIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
-            <InputBase value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar…" sx={{ fontSize: 13, flex: 1 }} />
-          </Box>
-        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          {!error && (!!query || (!isLoading && count > 1)) && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: 176, flexShrink: 0, height: 32, px: 1, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+              <SearchIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
+              <InputBase value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar…" sx={{ fontSize: 13, flex: 1 }} />
+            </Box>
+          )}
+          <Tooltip title="Cerrar">
+            <IconButton size="small" aria-label="Cerrar" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {isLoading && <Box sx={{ py: 6, display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>}
