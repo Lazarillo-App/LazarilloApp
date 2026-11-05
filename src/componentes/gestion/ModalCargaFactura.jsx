@@ -10,6 +10,7 @@ import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksP
 import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
+import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
@@ -202,6 +203,22 @@ const enterAvanza = (e) => {
 };
 
 // Insumo que vino bonificado (importe 0): se carga igual, con su cantidad.
+// Aviso de "un 0 de más" debajo de una línea (Diego 05/11/2026): rojo = casi seguro un error
+// de tipeo (ofrece corregir), ámbar = "¿es correcto?". "Está bien así" lo acepta.
+const AvisoLinea = ({ a, onCorregir, onAceptar }) => {
+  const rojo = a.nivel === "rojo";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
+      background: rojo ? "#fdf3f3" : "#fdf8ef", border: `1px solid ${rojo ? "#f3c4c4" : "#f0d9a8"}`, color: rojo ? C.rojo : "#8a5a00" }}>
+      <span>⚠ <b>{textoVeces(a.ratio)} de la última compra</b> ({$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""}). {rojo ? (a.ratio >= 1 ? "¿Un 0 de más?" : "¿Falta un 0?") : "¿Es correcto?"}</span>
+      <span style={{ flex: 1 }} />
+      {rojo && a.sugerido != null && <button type="button" onClick={onCorregir}
+        style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, borderRadius: 6, padding: "4px 10px", border: "none", background: C.neg, color: "#fff", whiteSpace: "nowrap" }}>Corregir a {$fmt(a.sugerido)}</button>}
+      <button type="button" onClick={onAceptar}
+        style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: 6, padding: "4px 10px", border: `1px solid ${C.borde}`, background: "#fff", color: "#333", whiteSpace: "nowrap" }}>Está bien así</button>
+    </div>
+  );
+};
 const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px" }}>BONIFICADO</span>;
 function Badge({ estado }) {
   const col = estado === "PAGA" ? C.verde : estado === "PARCIAL" ? C.nar : C.rojo;
@@ -424,6 +441,24 @@ function ModalNuevaCarga(props) {
   const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: false, precargada: ix !== 0 }));
   const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
   // Insumo: el total neto de la línea (lo que dice la factura) manda si está; si no, cant × unitario.
+  // Aviso de precio de una línea de insumo contra el último precio del maestro (por unidad base).
+  // Se calla si la línea se aceptó con ese mismo unitario ("Está bien así").
+  const avisoDe = (l) => {
+    if (l.tipo !== "insumo" || !l.item) return null;
+    const mi = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
+    if (!mi || !(mi.unit > 0)) return null;
+    const { factor, base } = medidaLinea(l);
+    const a = avisoPrecio(parseImp(l.unit), mi.unit, factor);
+    if (!a || (l.precioOk && l.precioOk === l.unit)) return null;
+    return { ...a, ref: mi.unit, medBase: base };
+  };
+  const corregirPrecio = (i, sug) => setLineas((ls) => ls.map((x, ix) => {
+    if (ix !== i) return x;
+    const c = parseFloat(x.cant) || 0;
+    return { ...x, unit: fmtNum(sug), ntot: c > 0 ? fmtNum(Math.round(c * sug * 100) / 100) : "", tocado: true };
+  }));
+  const aceptarPrecio = (i) => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, precioOk: x.unit } : x));
+  const [avisosAlGuardar, setAvisosAlGuardar] = useState(null);
   const netoDe = (l) => l.tipo === "insumo" ? (l.ntot !== undefined && l.ntot !== "" ? parseImp(l.ntot) : (parseFloat(l.cant) || 0) * parseImp(l.unit)) : parseImp(l.neto);
   const [percepciones, setPercepciones] = useState(((rde || ede) ? ((rde || ede).percepciones || []) : []).map((p) => ({ ...p })));
   const [impIntG, setImpIntG] = useState(() => { const b = ede || rde; return b && b.impInt > 0 && !(b.lineas || []).some((l) => parseImp(l.impint) > 0) ? fmtNum(b.impInt) : ""; });
@@ -599,7 +634,8 @@ function ModalNuevaCarga(props) {
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
   };
 
-  const guardar = () => {
+  const guardar = (opc) => {
+    const forzarAvisos = opc === true; // "Guardar igual" del aviso de precios
     if (modo === "vario") { guardarVario(false); return; }
     let fAct = modo === "factura" ? fecha : fechaV;
     if (!fechaValida(fAct)) {
@@ -634,6 +670,12 @@ function ModalNuevaCarga(props) {
     if (sinConc.length) faltan.push(`Elegí el concepto de caja de: ${sinConc.map((l) => l.item).join(", ")}.`);
     if (lineas.some((l) => l.editando && !faltaDe(l))) setLineas((ls) => ls.map((x) => ({ ...x, editando: false })));
     if (faltan.length) { setErrores(faltan); setErrFecha(!fechaValida(fAct)); return; }
+    // Precios muy lejos de la última compra (rojo) sin resolver: se pregunta una sola vez.
+    if (modo === "factura" && !forzarAvisos) {
+      const rojas = lineas.map((l) => ({ l, a: avisoDe(l) })).filter((x) => x.a && x.a.nivel === "rojo");
+      if (rojas.length) { setErrores([]); setAvisosAlGuardar(rojas); return; }
+    }
+    setAvisosAlGuardar(null);
     setErrores([]);
     setErrFecha(false);
     const p = proveedores.find((x) => x.nombre === prov);
@@ -801,8 +843,11 @@ function ModalNuevaCarga(props) {
                 const { med, base: medBase, factor: fEnv } = esIns ? medidaLinea(l) : { med: "", base: "", factor: null };
                 const cantN = parseFloat(l.cant) || 0;
                 const repartoOk = !l.reparto || Math.abs(l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0) - 100) < 0.01;
+                const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
+                const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
                 if (!l.editando) return (
-                  <div key={i} style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f2f2f0", fontSize: 13 }}>
+                  <React.Fragment key={i}>
+                  <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI ? "none" : "1px solid #f2f2f0", fontSize: 13 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                       <span style={{ fontSize: 9.5, fontWeight: 700, color: esIns ? C.cel : "#999", border: `1.2px solid ${esIns ? C.cel : "#ccc"}`, borderRadius: 6, padding: "2px 0", width: 74, textAlign: "center", flexShrink: 0 }}>{esIns ? "INSUMO" : "CONCEPTO"}</span>
                       <span style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
@@ -830,6 +875,8 @@ function ModalNuevaCarga(props) {
                       <span onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris }}>×</span>
                     </span>
                   </div>
+                  {avisoUI && <div style={{ borderBottom: "1px solid #f2f2f0", paddingBottom: 6 }}>{avisoUI}</div>}
+                  </React.Fragment>
                 );
                 return (
                   <div key={i} style={{ background: "#fbfbfa", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 10px 8px", marginBottom: 8 }}>
@@ -859,6 +906,7 @@ function ModalNuevaCarga(props) {
                       {esIns ? (
                         <div style={{ position: "relative" }}>
                           <input style={{ ...inp, padding: "8px 26px 8px 6px", textAlign: "center" }} placeholder="0" value={l.cant} autoFocus={l.foco === "neto"}
+                            onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
                               const cant = soloNum(e.target.value); const c = parseFloat(cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => {
@@ -872,14 +920,16 @@ function ModalNuevaCarga(props) {
                         </div>
                       ) : null}
                       {esIns
-                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center" }} placeholder="Unit. $" value={l.unit} title={l.unit ? "$ " + l.unit : undefined}
+                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Unit. $" value={l.unit} title={l.unit ? "$ " + l.unit : undefined}
+                            onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
                               const unit = fmtImp(e.target.value); const u = parseImp(unit); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, unit, ntot: c > 0 && u > 0 ? fmtNum(c * u) : "" } : x));
                             }} />
                         : null}
                       {esIns
-                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center" }} placeholder="Total $" value={l.ntot || ""}
+                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Total $" value={l.ntot || ""}
+                            onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             title={l.ntot ? "$ " + l.ntot + " — total neto de la línea: con la cantidad puesta, el unitario se calcula solo" : "Total neto de la línea: si lo cargás con la cantidad puesta, el unitario se calcula solo"}
                             onChange={(e) => {
                               const ntot = fmtImp(e.target.value); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
@@ -903,6 +953,7 @@ function ModalNuevaCarga(props) {
                         <button type="button" onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris, background: "none", border: "none", padding: 0, fontSize: 14 }}>×</button>
                       </span>
                     </div>
+                    {avisoUI}
                     <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "8px 0 0 2px" }}>
                       {esIns && (
                         <>
@@ -1118,6 +1169,18 @@ function ModalNuevaCarga(props) {
         )}
 
         </fieldset>
+        {avisosAlGuardar && (
+          <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "10px 14px", marginTop: 14, fontSize: 12.5, color: "#8a5a00" }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Revisá antes de guardar: estos precios son muy distintos a la última compra</div>
+            {avisosAlGuardar.map(({ l, a }, k) => (
+              <div key={k}>• {l.item}: {$fmt(parseImp(l.unit))} — <b>{textoVeces(a.ratio)}</b> (última {$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""})</div>
+            ))}
+            <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+              <span onClick={() => setAvisosAlGuardar(null)} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Volver y corregir</span>
+              <span onClick={() => guardar(true)} style={{ cursor: "pointer", color: C.gris }}>Guardar igual</span>
+            </div>
+          </div>
+        )}
         {errores.length > 0 && (
           <div style={{ border: `1.5px solid ${C.rojo}`, background: "#fdf3f3", borderRadius: 11, padding: "10px 14px", marginTop: 14 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: C.rojo, marginBottom: 4 }}>No se puede guardar todavía:</div>
