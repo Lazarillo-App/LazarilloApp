@@ -1243,7 +1243,7 @@ export function ComprasDetalleContenido({
           </Typography>
           {facturaKey && (
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
-              {facturaKey.trim()}{fecha ? ` · ${fecha}` : ''}
+              {facturaKey.split('~')[0].trim()}{fecha ? ` · ${fecha}` : ''}
               {aplicada ? ` · promoción ${bonif?.promo || ''} aplicada` : ' · sin promoción aplicada'}
             </Typography>
           )}

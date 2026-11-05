@@ -21,9 +21,18 @@ const lugarDe = (lugares, sucursalCaja, businessId) => {
   return (lugares ?? []).find((l) => l.id === id) ?? null;
 };
 
+// Lo que no pudo llegar a los costos de las recetas: mejor decirlo que dejar un costo viejo sin que se note.
+function avisoConCostos(txt, costos) {
+  const faltan = costos?.sinVincular ?? [];
+  const partes = [];
+  if (faltan.length) partes.push(`${faltan.length === 1 ? 'Este renglón no está vinculado' : `${faltan.length} renglones no están vinculados`} a un insumo y no mueve${faltan.length === 1 ? '' : 'n'} costos: ${faltan.slice(0, 4).join(', ')}${faltan.length > 4 ? '…' : ''}.`);
+  if (costos?.descartados) partes.push(`${costos.descartados === 1 ? 'Un precio' : `${costos.descartados} precios`} muy distinto${costos.descartados === 1 ? '' : 's'} a los anteriores no se aplicó: revisá la cantidad o el envase.`);
+  return partes.length ? { sev: 'warning', txt: `${txt}. ${partes.join(' ')}` } : { txt };
+}
+
 function Aviso({ aviso, onClose }) {
   return (
-    <Snackbar open={!!aviso} autoHideDuration={4000} onClose={onClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+    <Snackbar open={!!aviso} autoHideDuration={aviso?.sev === 'warning' ? 12000 : 4000} onClose={onClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
       {aviso ? <Alert severity={aviso.sev ?? 'success'} variant="filled" onClose={onClose}>{aviso.txt}</Alert> : undefined}
     </Snackbar>
   );
@@ -92,11 +101,9 @@ export default function CargarFactura({ pedido, onPedidoAtendido }) {
             }
             const importe = pesos(d.total);
             const conPago = d.pago ? ` · ${d.pago.numero ?? `Pago Nº ${d.pago.id}`}` : '';
-            setAviso({
-              txt: d.gastoVario
-                ? `${d.pago ? 'Gasto cargado y pagado' : 'Gasto cargado (impago)'}: ${d.concepto ?? 'Gastos Varios'} · ${importe}${conPago}`
-                : `${d.pago ? 'Factura cargada y pagada' : 'Factura cargada'}: ${d.comprobante} · ${importe}${conPago}`,
-            });
+            setAviso(d.gastoVario
+              ? { txt: `${d.pago ? 'Gasto cargado y pagado' : 'Gasto cargado (impago)'}: ${d.concepto ?? 'Gastos Varios'} · ${importe}${conPago}` }
+              : avisoConCostos(`${d.pago ? 'Factura cargada y pagada' : 'Factura cargada'}: ${d.comprobante} · ${importe}${conPago}`, d.costos));
           }}
         />
       ) : (
@@ -146,7 +153,7 @@ export function VerFactura({ rowId, detalle, onClose }) {
           <ModalNuevaCarga
             key="repetir" embebido vista="nueva" ctx={{ repetirDe: ede }} maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={reglaDe}
             onCerrar={() => setVista('ver')}
-            onGuardado={(d) => { setAviso({ txt: `Factura cargada: ${d.comprobante} · ${pesos(d.total)}` }); refrescarCompras(queryClient); cerrar(); }}
+            onGuardado={(d) => { setAviso(avisoConCostos(`Factura cargada: ${d.comprobante} · ${pesos(d.total)}`, d.costos)); refrescarCompras(queryClient); cerrar(); }}
           />
         ) : (
           <ModalNuevaCarga
@@ -158,7 +165,7 @@ export function VerFactura({ rowId, detalle, onClose }) {
             onGuardado={(d) => {
               setAviso(d.correccionesPerdidas
                 ? { sev: 'warning', txt: `Factura modificada. ${d.correccionesPerdidas} corrección(es) a mano quedaron en registros que cambiaron de sucursal o concepto: revisalas en Detalle de compras.` }
-                : { txt: `Factura modificada: ${d.comprobante} · ${pesos(d.total)}` });
+                : avisoConCostos(`Factura modificada: ${d.comprobante} · ${pesos(d.total)}`, d.costos));
               refrescarCompras(queryClient);
               cerrar();
             }}
