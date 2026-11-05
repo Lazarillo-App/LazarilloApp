@@ -18,7 +18,6 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación',
     modules: [
-      { id: 'tableros', label: 'Panel de Gestión', emoji: '📈', to: '/gestion' },
       { id: 'gestion-conceptos', label: 'Conceptos de caja', emoji: '🏷️', to: '/gestion/conceptos' },
       { id: 'gestion-medios', label: 'Medios de pago', emoji: '💳', to: '/gestion/medios-pago' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
@@ -36,7 +35,8 @@ const GROUPS = [
     id: 'administracion', label: 'Administración',
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: null },
-      { id: 'resultados', label: 'Resultados', emoji: '📊', to: null },
+      // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
+      { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
       { id: 'balance', label: 'Balance', emoji: '💳', to: null },
     ],
   },

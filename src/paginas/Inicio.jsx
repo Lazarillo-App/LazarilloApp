@@ -32,7 +32,7 @@ const GROUPS = [
     id: 'administracion', label: 'Administración', icon: '💼',
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: null },
-      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', to: null },
+      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', to: '/gestion' },
       { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
   },
