@@ -210,7 +210,7 @@ const AvisoLinea = ({ a, onCorregir, onAceptar }) => {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
       background: rojo ? "#fdf3f3" : "#fdf8ef", border: `1px solid ${rojo ? "#f3c4c4" : "#f0d9a8"}`, color: rojo ? C.rojo : "#8a5a00" }}>
-      <span>⚠ <b>{textoVeces(a.ratio)} de la última compra</b> ({$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""}). {rojo ? (a.ratio >= 1 ? "¿Un 0 de más?" : "¿Falta un 0?") : "¿Es correcto?"}</span>
+      <span>⚠ <b>{textoVeces(a.ratio)} {a.habitual ? "de lo habitual" : "de la última compra"}</b> ({a.habitual ? a.habitual + " " : ""}{$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""}). {rojo ? (a.ratio >= 1 ? "¿Un 0 de más?" : "¿Falta un 0?") : "¿Es correcto?"}</span>
       <span style={{ flex: 1 }} />
       {rojo && a.sugerido != null && <button type="button" onClick={onCorregir}
         style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, borderRadius: 6, padding: "4px 10px", border: "none", background: C.neg, color: "#fff", whiteSpace: "nowrap" }}>Corregir a {$fmt(a.sugerido)}</button>}
@@ -440,10 +440,27 @@ function ModalNuevaCarga(props) {
   // neto; al confirmarlo se abre el siguiente (Diego 27/10). Los demás quedan con ⚠.
   const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: false, precargada: ix !== 0 }));
   const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
-  // Insumo: el total neto de la línea (lo que dice la factura) manda si está; si no, cant × unitario.
-  // Aviso de precio de una línea de insumo contra el último precio del maestro (por unidad base).
-  // Se calla si la línea se aceptó con ese mismo unitario ("Está bien así").
+  // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
+  // valor ("Está bien así").
+  //  - Insumo: el unitario contra el último precio del maestro (por unidad base).
+  //  - Concepto: el neto contra lo habitual de ese proveedor × concepto (mediana de las últimas 6
+  //    cargas del año, que vienen con IVA: se compara sin IVA).
+  const habitualDe = (provId, codCon) => {
+    const h = (maestros.historialConceptos || []).filter((x) => x.k === codCon);
+    const exacto = h.find((x) => (x.p ?? null) === (provId ?? null));
+    return exacto || null;
+  };
   const avisoDe = (l) => {
+    if (l.tipo === "concepto") {
+      if (!l.item) return null;
+      const pr = proveedores.find((x) => x.nombre === prov);
+      const h = habitualDe(pr ? pr.id : null, codConcepto(l.item));
+      if (!h) return null;
+      const refNeto = h.mediana / (1 + (l.alic || 0) / 100);
+      const a = avisoPrecio(parseImp(l.neto), refNeto, null);
+      if (!a || (l.precioOk && l.precioOk === l.neto)) return null;
+      return { ...a, ref: refNeto, medBase: "", habitual: `últimas ${h.n}, sin IVA:` };
+    }
     if (l.tipo !== "insumo" || !l.item) return null;
     const mi = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
     if (!mi || !(mi.unit > 0)) return null;
@@ -454,10 +471,17 @@ function ModalNuevaCarga(props) {
   };
   const corregirPrecio = (i, sug) => setLineas((ls) => ls.map((x, ix) => {
     if (ix !== i) return x;
+    if (x.tipo === "concepto") return { ...x, neto: fmtNum(sug), tocado: true };
     const c = parseFloat(x.cant) || 0;
     return { ...x, unit: fmtNum(sug), ntot: c > 0 ? fmtNum(Math.round(c * sug * 100) / 100) : "", tocado: true };
   }));
-  const aceptarPrecio = (i) => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, precioOk: x.unit } : x));
+  const aceptarPrecio = (i) => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, precioOk: x.tipo === "concepto" ? x.neto : x.unit } : x));
+  // Línea nueva según lo que carga habitualmente el proveedor (Diego 05/11/2026): nuevo o con
+  // insumos alguna vez → Insumo; solo conceptos → Concepto.
+  const tipoDefault = (nombreProv) => {
+    const pr = proveedores.find((x) => x.nombre === nombreProv);
+    return pr && pr.tipoHabitual === "concepto" ? "concepto" : "insumo";
+  };
   const [avisosAlGuardar, setAvisosAlGuardar] = useState(null);
   const netoDe = (l) => l.tipo === "insumo" ? (l.ntot !== undefined && l.ntot !== "" ? parseImp(l.ntot) : (parseFloat(l.cant) || 0) * parseImp(l.unit)) : parseImp(l.neto);
   const [percepciones, setPercepciones] = useState(((rde || ede) ? ((rde || ede).percepciones || []) : []).map((p) => ({ ...p })));
@@ -477,6 +501,8 @@ function ModalNuevaCarga(props) {
   // Un gasto vario casi siempre se carga ya pagado: arranca tildado (sin pago queda IMPAGO).
   const [pagarV, setPagarV] = useState(true);
   const [parecidoV, setParecidoV] = useState(null); // ya hay uno parecido: confirmar
+  const [importeOkV, setImporteOkV] = useState("");   // "Está bien así" del aviso de importe
+  const [tocadoV, setTocadoV] = useState(false);
   const concCtx = MAESTRO_CONCEPTOS.find((c) => c.concepto === ctx.concepto || (ctx.conceptoCodigo && c.codigo === ctx.conceptoCodigo));
   const [rubroV, setRubroV] = useState(ctx.rubro || (concCtx && concCtx.rubro) || "");
   const [conceptoV, setConceptoV] = useState(ctx.concepto || (concCtx && concCtx.concepto) || "");
@@ -556,6 +582,7 @@ function ModalNuevaCarga(props) {
   useEffect(() => {
     if (provAnterior.current === prov) return;
     provAnterior.current = prov;
+    setLineas((ls) => (ls.length === 1 && !ls[0].item && !ctx.concepto ? [{ ...ls[0], tipo: tipoDefault(prov) }] : ls));
     if (origenPre && !existente) {
       setOrigenPre(null);
       setLineas([]);
@@ -565,8 +592,10 @@ function ModalNuevaCarga(props) {
   }, [prov]);
   const cuerpoVisible = existente || !!origenPre || !!(prov && tipoCpb && compNum && fecha);
   useEffect(() => {
+    // foco:false — la línea aparece apenas hay proveedor, tipo, Nº y fecha: si se llevaba el foco,
+    // cortaba el Nº de comprobante al primer dígito (FALLA de Diego 05/11/2026).
     if (modo === "factura" && cuerpoVisible && lineas.length === 0 && !existente)
-      setLineas([{ tipo: "concepto", item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true }]);
+      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
   }, [cuerpoVisible]);
   const precargarDe = (f) => {
     setTipoCpb(f.tipoCpb || (f.comp || "").split(" ")[0] || "");
@@ -599,7 +628,17 @@ function ModalNuevaCarga(props) {
   const estadoExistente = "";
 
   // Gasto vario: POST /api/gastos-varios (Ticket interno de "Gastos Varios", con su pago).
-  const guardarVario = (forzar) => {
+  const avisoVario = () => {
+    const h = habitualDe(null, codConcepto(conceptoV));
+    if (!h) return null;
+    const a = avisoPrecio(parseImp(importeV), h.mediana, null);
+    if (!a || importeOkV === importeV) return null;
+    return { ...a, ref: h.mediana, medBase: "", habitual: `últimas ${h.n}:` };
+  };
+  const guardarVario = (forzar, forzarAvisos) => {
+    const av = forzarAvisos ? null : avisoVario();
+    if (av && av.nivel === "rojo") { setTocadoV(true); setAvisosAlGuardar([{ l: { item: conceptoV, tipo: "concepto", neto: importeV }, a: av }]); return; }
+    setAvisosAlGuardar(null);
     let fAct = fechaV;
     if (!fechaValida(fAct)) { const c = corregirFecha(fAct); if (c) { fAct = c; setFechaV(c); } }
     const faltan = [];
@@ -636,7 +675,7 @@ function ModalNuevaCarga(props) {
 
   const guardar = (opc) => {
     const forzarAvisos = opc === true; // "Guardar igual" del aviso de precios
-    if (modo === "vario") { guardarVario(false); return; }
+    if (modo === "vario") { guardarVario(false, forzarAvisos); return; }
     let fAct = modo === "factura" ? fecha : fechaV;
     if (!fechaValida(fAct)) {
       const c = corregirFecha(fAct);
@@ -783,7 +822,7 @@ function ModalNuevaCarga(props) {
                   </div>
                 )}</div>
               <div><span style={lab}>Fecha de factura</span><FechaTriple inputRef={fechaRef} error={errFecha} iso={fecha}
-                  onISO={(v) => { setFecha(v); setErrFecha(false); if (lineas.length === 0 && prov) setLineas([{ tipo: "concepto", item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true }]); }} />
+                  onISO={(v) => { setFecha(v); setErrFecha(false); if (lineas.length === 0 && prov) setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true }]); }} />
                 {errFecha && modo === "factura" && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, marginTop: 3 }}>Falta una fecha válida.</div>}</div>
             </div>
 
@@ -935,7 +974,8 @@ function ModalNuevaCarga(props) {
                               const ntot = fmtImp(e.target.value); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
                             }} />
-                        : <input style={{ ...inp, padding: "8px 6px", textAlign: "center" }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value))} />}
+                        : <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value))}
+                            onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }} />}
                       <select style={{ ...sel, padding: "8px 20px 8px 8px", backgroundPosition: "right 7px center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
                         {ALICUOTAS.map((a) => <option key={a} value={a}>{a}%</option>)}
                       </select>
@@ -1018,7 +1058,7 @@ function ModalNuevaCarga(props) {
                   onClick={() => { if (confirmable) setLineas((ls) => {
                     // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo)
                     const ult = ls[ls.length - 1];
-                    return [...ls.map((x) => ({ ...x, editando: false })), { tipo: ult ? ult.tipo : "concepto", item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }];
+                    return [...ls.map((x) => ({ ...x, editando: false })), { tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }];
                   }); }}
                   style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
                 {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
@@ -1129,7 +1169,8 @@ function ModalNuevaCarga(props) {
             <div><span style={lab}>Importe{importeRevisar && <span style={{ textTransform: "none", fontWeight: 700, letterSpacing: 0, color: "#b45309" }}> · el de {nombrePeriodo(ctx.importeAnterior)}, corregilo</span>}</span>
               <input style={{ ...inp, textAlign: "right", fontWeight: 700, ...(importeRevisar ? { border: "1.6px solid #f59e0b", background: "#fffbeb" } : {}) }} value={importeV} placeholder="0,00"
                 autoFocus={vieneConImporte} onFocus={(e) => e.target.select()}
-                onChange={(e) => { setImporteV(fmtImp(e.target.value)); setImporteRevisar(false); }} /></div>
+                onChange={(e) => { setImporteV(fmtImp(e.target.value)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />
+              {tocadoV && (() => { const av = avisoVario(); return av ? <AvisoLinea a={av} onCorregir={() => setImporteV(fmtNum(av.sugerido))} onAceptar={() => setImporteOkV(importeV)} /> : null; })()}</div>
             <div><span style={lab}>PDV del gasto</span>
               <select style={sel} value={pdvV} onChange={(e) => setPdvV(e.target.value)}>{PDVS.map((p) => <option key={p}>{p}</option>)}</select></div>
           </div>
@@ -1171,9 +1212,9 @@ function ModalNuevaCarga(props) {
         </fieldset>
         {avisosAlGuardar && (
           <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "10px 14px", marginTop: 14, fontSize: 12.5, color: "#8a5a00" }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>Revisá antes de guardar: estos precios son muy distintos a la última compra</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Revisá antes de guardar: estos importes son muy distintos a lo habitual</div>
             {avisosAlGuardar.map(({ l, a }, k) => (
-              <div key={k}>• {l.item}: {$fmt(parseImp(l.unit))} — <b>{textoVeces(a.ratio)}</b> (última {$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""})</div>
+              <div key={k}>• {l.item}: {$fmt(parseImp(l.tipo === "concepto" ? l.neto : l.unit))} — <b>{textoVeces(a.ratio)}</b> ({a.habitual ? "habitual" : "última"} {$fmt(a.ref)}{a.medBase ? " /" + a.medBase : ""})</div>
             ))}
             <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
               <span onClick={() => setAvisosAlGuardar(null)} style={{ fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Volver y corregir</span>
