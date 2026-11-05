@@ -166,6 +166,75 @@ function BtnEliminar({ onConfirmar, style: st }) {
     </span>
   );
 }
+// Ficha del proveedor desde la carga (Diego 05/11/2026): ver y modificar sus datos. Si vino de
+// MaxiRest, lo editado en Lazarillo queda y la importación ya no lo pisa.
+const CAMPOS_FICHA = [
+  ["nombre", "Nombre *", 2], ["razon", "Razón social", 2], ["cuit", "CUIT", 1], ["telefono", "Teléfono", 1],
+  ["celular", "Celular", 1], ["email", "Email", 1], ["direccion", "Dirección", 2], ["localidad", "Localidad", 1],
+  ["contacto", "Contacto", 1], ["cbu", "CBU / CVU", 1], ["aliasCbu", "Alias", 1],
+];
+function FichaProveedor({ id, onCerrar, onGuardado }) {
+  const [f, setF] = useState(null);
+  const [orig, setOrig] = useState(null);
+  const [err, setErr] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    gestionFetch(`/api/facturas/proveedores/${id}`)
+      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
+      .then(({ ok, d }) => {
+        if (!vivo) return;
+        if (!ok || !d) { setErr((d && d.error) || "No se pudo abrir la ficha."); return; }
+        const v = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, d[k] || ""]));
+        setF({ ...v, deMaxirest: !!d.deMaxirest, codigo: d.codigo }); setOrig(v);
+      })
+      .catch(() => vivo && setErr("Error de red: no se pudo abrir la ficha."));
+    return () => { vivo = false; };
+  }, [id]);
+  const cambio = f && orig && CAMPOS_FICHA.some(([k]) => (f[k] || "") !== (orig[k] || ""));
+  const guardar = () => {
+    if (!f.nombre.trim()) { setErr("Poné el nombre del proveedor."); return; }
+    setGuardando(true); setErr("");
+    const body = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, String(f[k] || "").trim() || null]));
+    gestionFetch(`/api/facturas/proveedores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
+      .then(({ ok, d }) => {
+        setGuardando(false);
+        if (!ok) { setErr((d && d.error) || "No se pudo guardar la ficha."); return; }
+        toast.success("Ficha del proveedor guardada");
+        onGuardado({ id, nombre: body.nombre, razon: body.razon });
+      })
+      .catch(() => { setGuardando(false); setErr("Error de red: no se guardó."); });
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(40,40,40,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1400 }}
+      onClick={(e) => { e.stopPropagation(); onCerrar(); }}>
+      <div style={{ ...card, width: "min(620px, 94vw)", maxHeight: "88vh", overflow: "auto", padding: "18px 22px" }} onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { onCerrar(); return; } enterAvanza(e); }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <h3 style={{ fontSize: 16, margin: 0 }}>Ficha del proveedor {f && f.codigo ? <span style={{ fontSize: 12, color: C.gris, fontWeight: 500 }}>· cód. {f.codigo}</span> : null}</h3>
+          <button type="button" onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer" }}>×</button>
+        </div>
+        {!f && !err && <div style={{ fontSize: 13, color: C.gris, padding: "18px 0" }}>Cargando…</div>}
+        {f && (<>
+          {f.deMaxirest && <div style={{ fontSize: 12, color: "#2a6b86", background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 9, padding: "7px 10px", margin: "10px 0 0" }}>
+            Viene de MaxiRest: lo que cambies acá queda en Lazarillo y la importación no lo vuelve a pisar.</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginTop: 12 }}>
+            {CAMPOS_FICHA.map(([k, t, span], ix) => (
+              <div key={k} style={{ gridColumn: span === 2 ? "1 / -1" : undefined }}><span style={lab}>{t}</span>
+                <input style={inp} autoFocus={ix === 0} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
+            ))}
+          </div>
+        </>)}
+        {err && <div style={{ marginTop: 10, fontSize: 12.5, color: C.rojo, fontWeight: 600 }}>{err}</div>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button type="button" style={btn(false)} onClick={onCerrar}>{cambio ? "Cancelar" : "Cerrar"}</button>
+          {f && <button type="button" style={{ ...btn(true), opacity: cambio && !guardando ? 1 : 0.4, cursor: cambio && !guardando ? "pointer" : "default" }} disabled={!cambio || guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
 const corregirFecha = (s) => {
   const m = String(s || "").match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (!m) return null;
@@ -191,7 +260,22 @@ const fmtImp = (v) => {
   return partes.length > 1 ? ent + "," + partes.slice(1).join("").slice(0, 2) : ent;
 };
 const fmtNum = (n) => (n || n === 0 ? Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 }) : "");
+// Desplegables: en Mac las flechas abren el menú nativo y ahí el Enter no llega al formulario (no
+// tabulaba después de elegir el Tipo — Diego 05/11/2026). En todo el modal, las flechas cambian el
+// valor del desplegable sin abrirlo (se dispara el change, así React lo toma) y el Enter tabula.
+const flechaSelect = (e) => {
+  const s = e.target;
+  if (s.tagName !== "SELECT" || (e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.altKey) return false;
+  e.preventDefault();
+  const n = Math.min(Math.max(s.selectedIndex + (e.key === "ArrowDown" ? 1 : -1), 0), s.options.length - 1);
+  if (n !== s.selectedIndex) {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(s, s.options[n].value);
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  return true;
+};
 const enterAvanza = (e) => {
+  if (flechaSelect(e)) return;
   if (e.key !== "Enter") return;
   const t = e.target;
   if (t.tagName !== "INPUT" && t.tagName !== "SELECT") return;
@@ -201,6 +285,9 @@ const enterAvanza = (e) => {
   const i = campos.indexOf(t);
   if (i >= 0 && i + 1 < campos.length) campos[i + 1].focus();
 };
+// Descuento de una línea de insumo: % (da lo mismo sobre el unitario o el total), $ por unidad o $ sobre el total.
+const DESC_TIPOS = [["%", "%"], ["u", "$ /u"], ["t", "$ total"]];
+let uidLinea = 0;
 
 // Insumo que vino bonificado (importe 0): se carga igual, con su cantidad.
 // Aviso de "un 0 de más" debajo de una línea (Diego 05/11/2026): rojo = casi seguro un error
@@ -234,11 +321,12 @@ function Chev({ abierto }) {
     borderTop: abierto ? "6px solid #888" : "5px solid transparent", borderBottom: abierto ? "none" : "5px solid transparent" }} />;
 }
 
-function Combo({ opciones, valor, onElegir, placeholder, onCrear, ancho, autoFocus, estilo }) {
+function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo }) {
   const [texto, setTexto] = useState(valor || "");
   const [abierto, setAbierto] = useState(false);
   // Opción marcada con las flechas (Diego 27/10: tipear "carn" + ↓ tiene que navegar la lista).
-  const [activo, setActivo] = useState(0);
+  // null = la de por defecto (con "Crear" primero, la primera coincidencia).
+  const [activo, setActivo] = useState(null);
   const listaRef = useRef(null);
   useEffect(() => { setTexto(valor || ""); }, [valor]);
   // El blur resuelve 180 ms después: tiene que leer el valor de ESE momento (si en el medio
@@ -256,12 +344,16 @@ function Combo({ opciones, valor, onElegir, placeholder, onCrear, ancho, autoFoc
   const buscando = texto.trim() !== "" && texto !== (valor || "");
   const filtradas = (buscando ? opciones.filter((o) => o.toLowerCase().includes(texto.toLowerCase())) : opciones).slice(0, 12);
   const hayExacta = opciones.some((o) => o.toLowerCase() === texto.toLowerCase());
-  const conCrear = !!(onCrear && texto.trim() && !hayExacta);
-  const total = filtradas.length + (conCrear ? 1 : 0);
-  const marcado = Math.min(activo, Math.max(0, total - 1));
+  // "Crear …" primero y siempre visible en los maestros (Diego 05/11/2026); si no, al final y solo tipeando.
+  const conCrear = !!(onCrear && (crearPrimero || texto.trim()) && !hayExacta);
+  const items = [...(conCrear && crearPrimero ? [null] : []), ...filtradas, ...(conCrear && !crearPrimero ? [null] : [])];
+  const total = items.length;
+  const porDefecto = conCrear && crearPrimero && filtradas.length > 0 && buscando ? 1 : 0;
+  const marcado = Math.min(activo == null ? porDefecto : activo, Math.max(0, total - 1));
   const elegir = (idx) => {
-    if (idx < filtradas.length) { const o = filtradas[idx]; setTexto(o); setAbierto(false); onElegir(o); avanzar(); }
-    else if (conCrear) { setAbierto(false); onCrear(texto.trim()); }
+    const o = items[idx];
+    if (o != null) { setTexto(o); setAbierto(false); onElegir(o); avanzar(); }
+    else if (conCrear) { setAbierto(false); onCrear(buscando ? texto.trim() : ""); }
   };
   useEffect(() => {
     const el = listaRef.current && listaRef.current.children[marcado];
@@ -273,20 +365,19 @@ function Combo({ opciones, valor, onElegir, placeholder, onCrear, ancho, autoFoc
         style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
         <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
       <input ref={inputRef} style={{ ...inp, ...estilo, paddingLeft: 27 }} value={texto} placeholder={placeholder} autoFocus={autoFocus}
-        onChange={(e) => { setTexto(e.target.value); setAbierto(true); setActivo(0); }}
+        onChange={(e) => { setTexto(e.target.value); setAbierto(true); setActivo(null); }}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") { e.preventDefault(); if (!abierto) { setAbierto(true); setActivo(0); } else setActivo(Math.min(marcado + 1, total - 1)); }
+          if (e.key === "ArrowDown") { e.preventDefault(); if (!abierto) { setAbierto(true); setActivo(null); } else setActivo(Math.min(marcado + 1, total - 1)); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setActivo(Math.max(marcado - 1, 0)); }
           else if (e.key === "Escape" && abierto) { e.preventDefault(); e.stopPropagation(); setAbierto(false); }
           else if (e.key === "Enter" && abierto && total > 0) { e.preventDefault(); e.stopPropagation(); elegir(marcado); }
           // Tab con la lista abierta elige la opción marcada y deja que el Tab siga al próximo campo (Diego 27/10).
-          else if (e.key === "Tab" && abierto && marcado < filtradas.length) { const o = filtradas[marcado]; setTexto(o); setAbierto(false); if (o !== valor) onElegir(o); }
+          else if (e.key === "Tab" && abierto && items[marcado] != null) { const o = items[marcado]; setTexto(o); setAbierto(false); if (o !== valor) onElegir(o); }
         }}
         // No se despliega solo al entrar (Diego 27/10): se abre al tipear, con ↓ o con un click.
         onMouseDown={() => setAbierto(true)}
         onBlur={() => setTimeout(() => {
           setAbierto(false);
-          if (onCrear) return; // con alta habilitada (proveedor) se maneja desde la lista
           const actual = valorRef.current;
           if (actual !== valor) return; // cambió el valor mientras tanto: manda el nuevo
           const exacta = opciones.find((o) => o.toLowerCase() === texto.trim().toLowerCase());
@@ -295,14 +386,14 @@ function Combo({ opciones, valor, onElegir, placeholder, onCrear, ancho, autoFoc
         }, 180)} />
       {abierto && total > 0 && (
         <div ref={listaRef} style={{ position: "absolute", top: "105%", left: 0, right: 0, background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.10)", zIndex: 80, maxHeight: 230, overflow: "auto" }}>
-          {filtradas.map((o, ix) => (
+          {items.map((o, ix) => o != null ? (
             <div key={o} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>{o}</div>
+          ) : (
+            <div key="__crear" onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
+              style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", color: C.cel, fontWeight: 600, borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>
+              + {crearPrimero ? `Crear ${crearPrimero}` : "Crear"}{buscando ? ` «${texto.trim()}»` : ""}</div>
           ))}
-          {conCrear && (
-            <div onMouseDown={(e) => { e.preventDefault(); elegir(filtradas.length); }} onMouseEnter={() => setActivo(filtradas.length)}
-              style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", color: C.cel, fontWeight: 600, background: marcado === filtradas.length ? "#eef7fc" : "#fff" }}>+ Crear «{texto.trim()}»</div>
-          )}
         </div>
       )}
     </div>
@@ -369,9 +460,12 @@ function ModalNuevaCarga(props) {
     return { med, base: (ins && ins.medida) || "", factor: f && f > 1 ? f : null };
   };
   const [provsNuevos, setProvsNuevos] = useState([]);
-  const proveedores = [...maestros.proveedores, ...provsNuevos].map((p) => ({ ...p, nombre: p.nombre || p.razon || p.codigo }));
+  const [provsEditados, setProvsEditados] = useState({}); // id → {nombre, razon} tras editar la ficha
+  const proveedores = [...maestros.proveedores, ...provsNuevos].map((p) => ({ ...p, ...(provsEditados[p.id] || {}) })).map((p) => ({ ...p, nombre: p.nombre || p.razon || p.codigo }));
+  const [fichaProvId, setFichaProvId] = useState(null);
   const [creandoProv, setCreandoProv] = useState(false);
   const crearProveedor = () => {
+    if (!String(altaProv.nombre || "").trim()) { setErrores(["Poné el nombre del proveedor."]); return; }
     setCreandoProv(true);
     gestionFetch("/api/facturas/proveedores", { method: "POST", body: JSON.stringify({ nombre: altaProv.nombre, razon: altaProv.razon, cuit: altaProv.cuit, telefono: altaProv.tel, direccion: altaProv.dir }) })
       .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
@@ -382,6 +476,7 @@ function ModalNuevaCarga(props) {
         setProv(d.nombre);
         setAltaProv(null);
         setErrores([]);
+        setTimeout(() => tipoRef.current && tipoRef.current.focus(), 40);
         if (props.onProveedorCreado) props.onProveedorCreado(d);
       })
       .catch(() => { setCreandoProv(false); setErrores(["Error de red: no se creó el proveedor."]); });
@@ -465,17 +560,42 @@ function ModalNuevaCarga(props) {
     const mi = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
     if (!mi || !(mi.unit > 0)) return null;
     const { factor, base } = medidaLinea(l);
-    const a = avisoPrecio(parseImp(l.unit), mi.unit, factor);
-    if (!a || (l.precioOk && l.precioOk === l.unit)) return null;
-    return { ...a, ref: mi.unit, medBase: base };
+    // Con descuento se compara el unitario que queda después del descuento.
+    const u = parseImp(l.unit);
+    const cant = parseFloat(l.cant) || 0;
+    const uEf = parseImp(l.desc) > 0 && cant > 0 ? netoDe(l) / cant : u;
+    const a = avisoPrecio(uEf, mi.unit, factor);
+    if (!a || (l.precioOk && l.precioOk === claveOk(l))) return null;
+    // La sugerencia es para el unitario de la factura (antes del descuento): mismo corrimiento de ceros.
+    const sugerido = a.sugerido != null && uEf > 0 ? Math.round(u * (a.sugerido / uEf) * 100) / 100 : a.sugerido;
+    return { ...a, sugerido, ref: mi.unit, medBase: base };
   };
+  const claveOk = (l) => (l.tipo === "concepto" ? l.neto : `${l.unit}|${l.desc || ""}|${l.descTipo || ""}`);
   const corregirPrecio = (i, sug) => setLineas((ls) => ls.map((x, ix) => {
     if (ix !== i) return x;
     if (x.tipo === "concepto") return { ...x, neto: fmtNum(sug), tocado: true };
     const c = parseFloat(x.cant) || 0;
     return { ...x, unit: fmtNum(sug), ntot: c > 0 ? fmtNum(Math.round(c * sug * 100) / 100) : "", tocado: true };
   }));
-  const aceptarPrecio = (i) => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, precioOk: x.tipo === "concepto" ? x.neto : x.unit } : x));
+  const aceptarPrecio = (i) => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, precioOk: claveOk(x) } : x));
+  // Un solo registro abierto a la vez (Diego 05/11/2026): abrir otro (✎ o ⚠) confirma el que estaba
+  // abierto si está completo; uno vacío se descarta; uno a medio cargar no deja abrir otro.
+  const abrirLinea = (i) => {
+    const k = lineas.findIndex((x, ix) => ix !== i && x.editando && (x.item || netoDe(x) > 0) && faltaDe(x));
+    if (k >= 0) { toast.warning(`${lineas[k].item || "Registro abierto"}: ${faltaDe(lineas[k]).toLowerCase()} antes de abrir otro.`); return; }
+    setLineas((ls) => ls.flatMap((x, ix) => {
+      if (ix === i) return [{ ...x, editando: true, precargada: false, foco: "neto" }];
+      if (!x.editando) return [x];
+      if (!x.item && !(netoDe(x) > 0)) return [];
+      return [{ ...x, editando: false }];
+    }));
+  };
+  // Ordenar los registros arrastrándolos (Diego 05/11/2026).
+  const [arrastre, setArrastre] = useState(null); // {de, a}
+  const moverLinea = (de, a) => {
+    if (de == null || a == null || de === a) return;
+    setLineas((ls) => { const n = [...ls]; const [x] = n.splice(de, 1); n.splice(a, 0, x); return n; });
+  };
   // Línea nueva según lo que carga habitualmente el proveedor (Diego 05/11/2026): nuevo o con
   // insumos alguna vez → Insumo; solo conceptos → Concepto.
   const tipoDefault = (nombreProv) => {
@@ -483,7 +603,19 @@ function ModalNuevaCarga(props) {
     return pr && pr.tipoHabitual === "concepto" ? "concepto" : "insumo";
   };
   const [avisosAlGuardar, setAvisosAlGuardar] = useState(null);
-  const netoDe = (l) => l.tipo === "insumo" ? (l.ntot !== undefined && l.ntot !== "" ? parseImp(l.ntot) : (parseFloat(l.cant) || 0) * parseImp(l.unit)) : parseImp(l.neto);
+  // Cada registro con su id estable (para poder reordenarlos sin que se mezclen los campos).
+  useEffect(() => {
+    if (lineas.some((l) => !l.uid)) setLineas((ls) => ls.map((l) => (l.uid ? l : { ...l, uid: ++uidLinea })));
+  }, [lineas]);
+  const brutoDe = (l) => (l.ntot !== undefined && l.ntot !== "" ? parseImp(l.ntot) : (parseFloat(l.cant) || 0) * parseImp(l.unit));
+  const descDe = (l) => {
+    const d = parseImp(l.desc);
+    if (l.tipo !== "insumo" || !(d > 0)) return 0;
+    const b = brutoDe(l);
+    const v = l.descTipo === "u" ? d * (parseFloat(l.cant) || 0) : l.descTipo === "t" ? d : b * Math.min(d, 100) / 100;
+    return Math.min(Math.round(v * 100) / 100, b);
+  };
+  const netoDe = (l) => l.tipo === "insumo" ? brutoDe(l) - descDe(l) : parseImp(l.neto);
   const [percepciones, setPercepciones] = useState(((rde || ede) ? ((rde || ede).percepciones || []) : []).map((p) => ({ ...p })));
   const [impIntG, setImpIntG] = useState(() => { const b = ede || rde; return b && b.impInt > 0 && !(b.lineas || []).some((l) => parseImp(l.impint) > 0) ? fmtNum(b.impInt) : ""; });
   const [leida, setLeida] = useState(false);
@@ -780,6 +912,14 @@ function ModalNuevaCarga(props) {
             ))}
           </div>
         ) : <div style={{ margin: "12px 0 14px" }} />}
+        {fichaProvId && <FichaProveedor id={fichaProvId} onCerrar={() => setFichaProvId(null)}
+          onGuardado={(d) => {
+            const antes = (proveedores.find((x) => x.id === d.id) || {}).nombre;
+            setProvsEditados((m) => ({ ...m, [d.id]: { nombre: d.nombre, razon: d.razon } }));
+            if (antes && prov === antes) { provAnterior.current = d.nombre; setProv(d.nombre); }
+            setFichaProvId(null);
+            if (props.onProveedorEditado) props.onProveedorEditado(d);
+          }} />}
         {aviso && <div style={{ border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 11, padding: "10px 14px", fontSize: 12.5, color: "#2a6b86", marginBottom: 12 }}>{aviso}</div>}
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
@@ -795,9 +935,18 @@ function ModalNuevaCarga(props) {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr", gap: 10 }}>
-              <div><span style={lab}>Proveedor</span>
+              <div>{(() => {
+                  const pr = proveedores.find((x) => x.nombre === prov);
+                  return (
+                    <span style={{ ...lab, display: "flex", alignItems: "baseline", gap: 8 }}>Proveedor
+                      {pr && pr.id && !soloVer && <span role="button" tabIndex={-1} onClick={() => setFichaProvId(pr.id)} title="Abrir la ficha del proveedor para ver o modificar sus datos"
+                        style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 11.5, fontWeight: 600, color: C.cel, cursor: "pointer" }}>ver ficha ›</span>}
+                    </span>
+                  );
+                })()}
                 <Combo opciones={proveedores.map((p) => p.nombre)} valor={prov} placeholder="Buscar proveedor..." autoFocus={vista === "nueva"}
-                  onElegir={setProv} /></div>
+                  onElegir={setProv} crearPrimero="proveedor"
+                  onCrear={(n) => setAltaProv({ nombre: n || "", razon: "", cuit: "", tel: "", dir: "" })} /></div>
               <div><span style={lab}>Tipo</span>
                 <select ref={tipoRef} style={sel} value={tipoCpb} onChange={(e) => setTipoCpb(e.target.value)}>
                   <option value="">Elegir…</option>
@@ -828,13 +977,16 @@ function ModalNuevaCarga(props) {
 
             {altaProv && (
               <div style={{ border: `1.5px solid ${C.cel}`, borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Nuevo proveedor: {altaProv.nombre}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <input style={inp} placeholder="Razón social" value={altaProv.razon} onChange={(e) => setAltaProv({ ...altaProv, razon: e.target.value })} />
-                  <input style={inp} placeholder="CUIT" value={altaProv.cuit} onChange={(e) => setAltaProv({ ...altaProv, cuit: e.target.value })} />
-                  <input style={inp} placeholder="Teléfono" value={altaProv.tel} onChange={(e) => setAltaProv({ ...altaProv, tel: e.target.value })} />
-                  <input style={inp} placeholder="Dirección" value={altaProv.dir} onChange={(e) => setAltaProv({ ...altaProv, dir: e.target.value })} />
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Nuevo proveedor</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <div><span style={lab}>Nombre *</span><input style={inp} autoFocus value={altaProv.nombre} onChange={(e) => setAltaProv({ ...altaProv, nombre: e.target.value })} /></div>
+                  <div><span style={lab}>Razón social</span><input style={inp} placeholder="igual al nombre" value={altaProv.razon} onChange={(e) => setAltaProv({ ...altaProv, razon: e.target.value })} /></div>
+                  <div><span style={lab}>CUIT</span><input style={inp} value={altaProv.cuit} onChange={(e) => setAltaProv({ ...altaProv, cuit: e.target.value })} /></div>
+                  <div><span style={lab}>Teléfono</span><input style={inp} value={altaProv.tel} onChange={(e) => setAltaProv({ ...altaProv, tel: e.target.value })} /></div>
+                  <div style={{ gridColumn: "2 / span 2" }}><span style={lab}>Dirección</span><input style={inp} value={altaProv.dir} onChange={(e) => setAltaProv({ ...altaProv, dir: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (!creandoProv) crearProveedor(); } }} title="Enter: crear y usar" /></div>
                 </div>
+                <div style={{ fontSize: 11.5, color: C.gris, marginTop: 6 }}>Lo demás (mail, CBU, contacto…) lo completás después desde «ver ficha».</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button style={btn(true)} disabled={creandoProv} onClick={crearProveedor}>{creandoProv ? "Creando…" : "Crear y usar"}</button>
                   <button style={btn(false)} onClick={() => setAltaProv(null)}>Cancelar</button>
@@ -877,7 +1029,16 @@ function ModalNuevaCarga(props) {
               {lineas.map((l, i) => {
                 const esIns = l.tipo === "insumo";
                 const neto = netoDe(l);
-                const ivaUnit = esIns ? parseImp(l.unit) * l.alic / 100 : 0;
+                const desc = descDe(l);
+                const unitEf = esIns && desc > 0 && parseFloat(l.cant) > 0 ? neto / parseFloat(l.cant) : parseImp(l.unit);
+                const ivaUnit = esIns ? unitEf * l.alic / 100 : 0;
+                const txtDesc = desc > 0 ? `desc. ${l.descTipo === "u" ? $fmt(parseImp(l.desc)) + " /u" : l.descTipo === "t" ? $fmt(parseImp(l.desc)) : fmtNum(parseImp(l.desc)) + "%"} (−${$fmt(desc)})` : "";
+                const llave = l.uid || "i" + i;
+                const dnd = soloVer ? {} : {
+                  onDragOver: (e) => { if (arrastre) { e.preventDefault(); if (arrastre.a !== i) setArrastre({ ...arrastre, a: i }); } },
+                  onDrop: (e) => { e.preventDefault(); if (arrastre) moverLinea(arrastre.de, i); setArrastre(null); },
+                };
+                const marcaDrop = arrastre && arrastre.a === i && arrastre.de !== i ? { boxShadow: `inset 0 ${arrastre.de < i ? -3 : 3}px 0 ${C.cel}` } : {};
                 const ivaLinea = ivaDe(l);
                 const { med, base: medBase, factor: fEnv } = esIns ? medidaLinea(l) : { med: "", base: "", factor: null };
                 const cantN = parseFloat(l.cant) || 0;
@@ -885,9 +1046,14 @@ function ModalNuevaCarga(props) {
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
                 if (!l.editando) return (
-                  <React.Fragment key={i}>
-                  <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI ? "none" : "1px solid #f2f2f0", fontSize: 13 }}>
+                  <React.Fragment key={llave}>
+                  <div {...dnd} draggable={!soloVer && lineas.length > 1}
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) {} setArrastre({ de: i, a: i }); }}
+                    onDragEnd={() => setArrastre(null)}
+                    style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI ? "none" : "1px solid #f2f2f0", fontSize: 13,
+                      opacity: arrastre && arrastre.de === i ? 0.45 : 1, ...marcaDrop }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+                      {!soloVer && lineas.length > 1 && <span title="Arrastrá para ordenar los registros" style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, flexShrink: 0, marginLeft: -2, userSelect: "none" }}>⠿</span>}
                       <span style={{ fontSize: 9.5, fontWeight: 700, color: esIns ? C.cel : "#999", border: `1.2px solid ${esIns ? C.cel : "#ccc"}`, borderRadius: 6, padding: "2px 0", width: 74, textAlign: "center", flexShrink: 0 }}>{esIns ? "INSUMO" : "CONCEPTO"}</span>
                       <span style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
                         <span title={l.item} style={{ color: C.neg, fontWeight: 600, lineHeight: 1.2, overflowWrap: "anywhere" }}>{l.item}</span>
@@ -900,7 +1066,8 @@ function ModalNuevaCarga(props) {
                     <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
                       : fEnv ? <span><Imp v={parseImp(l.unit)} sufijo={" /" + med} max={17} /><span style={{ display: "block", fontSize: 10.5, color: "#2a88ad", fontWeight: 600 }}><Imp v={parseImp(l.unit) / fEnv} sufijo={" /" + (medBase || "u")} max={17} /></span></span>
                       : <Imp v={parseImp(l.unit)} sufijo=" /u" max={17} />}</span>
-                    <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}><Imp v={neto} max={17} /></span>
+                    <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}><Imp v={neto} max={17} />
+                      {txtDesc && <span title={`Bruto ${$fmt(brutoDe(l))} · ${txtDesc}`} style={{ display: "block", fontSize: 10.5, color: C.verde, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{txtDesc}</span>}</span>
                     <span style={{ color: "#555", textAlign: "center" }}>{l.alic}%</span>
                     <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={17} /> : <Imp v={ivaLinea} max={17} />}</span>
                     <span style={{ textAlign: "center", minWidth: 0, overflow: "hidden" }}>{esIns && neto === 0 ? <Bonif /> : <Imp v={neto + ivaLinea + parseImp(l.impint)} strong max={17} />}{parseImp(l.impint) > 0 && <span style={{ display: "block", fontWeight: 400, fontSize: 10.5, color: "#999" }}>incl. {$fmt(parseImp(l.impint))} imp.int.</span>}</span>
@@ -908,9 +1075,9 @@ function ModalNuevaCarga(props) {
                       {/* registro precargado (repetir factura): el ⚠ reemplaza al lápiz, hacen lo mismo (abrir para revisar) */}
                       {l.precargada
                         ? <span title="Importe copiado de la última factura — tocá para abrir el registro y revisarlo"
-                            onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, editando: true, precargada: false } : x))}
+                            onClick={() => abrirLinea(i)}
                             style={{ cursor: "pointer", fontSize: 13, color: "#d99a1f", fontWeight: 700 }}>⚠</span>
-                        : <span onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, editando: true, precargada: false } : x))} title="Editar" style={{ cursor: "pointer", color: C.gris }}>✎</span>}
+                        : <span onClick={() => abrirLinea(i)} title="Editar" style={{ cursor: "pointer", color: C.gris }}>✎</span>}
                       <span onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris }}>×</span>
                     </span>
                   </div>
@@ -918,13 +1085,13 @@ function ModalNuevaCarga(props) {
                   </React.Fragment>
                 );
                 return (
-                  <div key={i} style={{ background: "#fbfbfa", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 10px 8px", marginBottom: 8 }}>
+                  <div key={llave} {...dnd} style={{ background: "#fbfbfa", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 10px 8px", marginBottom: 8, ...marcaDrop }}>
                     <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, gridColumn: esIns ? "auto" : "1 / span 3" }}>
                         <span style={{ display: "inline-flex", flexDirection: "column", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
                           {[["concepto", "CONC."], ["insumo", "INSUMO"]].map(([k, t]) => (
                             <span key={k} title={"Pasar la línea a " + k}
-                              onClick={() => { if (l.tipo === k) return; setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, tipo: k, item: "", neto: "", cant: "", unit: "", conc: "", pdvDest: pdvActual || PDVS[0] } : x)); }}
+                              onClick={() => { if (l.tipo === k) return; setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, tipo: k, item: "", neto: "", cant: "", unit: "", ntot: "", desc: "", conc: "", pdvDest: pdvActual || PDVS[0] } : x)); }}
                               style={{ padding: "2px 7px", fontSize: 8.5, fontWeight: 700, cursor: "pointer", background: l.tipo === k ? (k === "insumo" ? C.cel : "#111") : "#fff", color: l.tipo === k ? "#fff" : "#999", textAlign: "center" }}>{t}</span>
                           ))}
                         </span>
@@ -937,7 +1104,7 @@ function ModalNuevaCarga(props) {
                               const regla = reglaDeItem(l, v);
                               const rep = regla ? regla.map((r) => ({ ...r })) : undefined;
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : (esIns
-                                ? { ...x, item: v, medida: undefined, reparto: rep, conc: conceptoDeInsumo(v) || (ult && ult.conc) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, impint: ult && ult.impint ? ult.impint : "" }
+                                ? { ...x, item: v, medida: undefined, desc: "", reparto: rep, conc: conceptoDeInsumo(v) || (ult && ult.conc) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, impint: ult && ult.impint ? ult.impint : "" }
                                 : { ...x, item: v, reparto: rep, neto: ult ? ult.neto : "", alic: ult ? ult.alic : x.alic, impint: ult && ult.impint ? ult.impint : "" })));
                             }} />
                         </div>
@@ -994,9 +1161,26 @@ function ModalNuevaCarga(props) {
                       </span>
                     </div>
                     {avisoUI}
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "8px 0 0 2px" }}>
+                    <div style={{ display: "flex", gap: 10, rowGap: 8, flexWrap: "wrap", alignItems: "center", margin: "8px 0 0 2px" }}>
                       {esIns && (
                         <>
+                          {/* Descuento (Diego 05/11/2026): en % (igual sobre el unitario o el total), en $ por unidad o en $ sobre el total. */}
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5, marginRight: 6 }}>DESCUENTO</span>
+                            <input style={{ ...inp, ...chico, width: 84, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
+                              value={l.desc || ""} onChange={(e) => setLinea(i, "desc", fmtImp(e.target.value))}
+                              title={desc > 0 ? `Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)} = neto ${$fmt(neto)}` : "Descuento de la línea (opcional)"} />
+                            <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 32 }}>
+                              {DESC_TIPOS.map(([k, t]) => {
+                                const act = (l.descTipo || "%") === k;
+                                return <span key={k} role="button" onClick={() => setLinea(i, "descTipo", k)}
+                                  title={k === "%" ? "Porcentaje (sobre el unitario o el total da lo mismo)" : k === "u" ? "Importe por unidad" : "Importe sobre el total de la línea"}
+                                  style={{ display: "inline-flex", alignItems: "center", padding: "0 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: act ? "#111" : "#fff", color: act ? "#fff" : "#888", whiteSpace: "nowrap" }}>{t}</span>;
+                              })}
+                            </span>
+                            {desc > 0 && <span style={{ fontSize: 11.5, color: C.verde, fontWeight: 600, whiteSpace: "nowrap" }}>−{$fmt(desc)}</span>}
+                          </span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: 8 }}>
                           <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>CONCEPTO DE CAJA</span>
                           <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." ancho={230} estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
                             onElegir={(v) => {
@@ -1004,9 +1188,11 @@ function ModalNuevaCarga(props) {
                               const regla = reglaDe(codConcepto(v), PDVS, fecha);
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: v, reparto: regla ? regla.map((r) => ({ ...r })) : (x.reparto && !reglaDeItem(x, x.item) ? x.reparto : undefined) }));
                             }} />
+                          </span>
                         </>
                       )}
-                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5, marginLeft: esIns ? 8 : 0 }}>PDV DEL REGISTRO</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: esIns ? 8 : 0 }}>
+                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>PDV DEL REGISTRO</span>
                       {!l.reparto ? (<>
                         <select style={{ ...sel, ...chico, width: 200, paddingRight: 24 }} value={l.pdvDest || pdvActual || PDVS[0]}
                           onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
@@ -1040,9 +1226,12 @@ function ModalNuevaCarga(props) {
                           </span>
                         );
                       })()}
-                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5, marginLeft: 8 }}>IMP. INTERNOS $</span>
+                      </span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: 8 }}>
+                      <span style={{ color: C.gris, fontWeight: 700, fontSize: 10.5 }}>IMP. INTERNOS $</span>
                       <input style={{ ...inp, ...chico, width: 110, textAlign: "center" }} placeholder="0"
                         value={l.impint || ""} onChange={(e) => setLinea(i, "impint", fmtImp(e.target.value))} title="Impuesto interno de este registro (opcional)" />
+                      </span>
                     </div>
                   </div>
                 );
