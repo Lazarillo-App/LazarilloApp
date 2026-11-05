@@ -704,6 +704,33 @@ function ModalNuevaCarga(props) {
   const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
   const cuerpoVacio = lineas.every((l) => !l.item && !(netoBase(l) > 0)) && percepciones.length === 0 && !impIntG && !descG;
   // Vaciar en dos pasos (Diego 05/11/2026): primero el cuerpo; con el cuerpo vacío, todo (como recién abierto).
+  // Borrador (Diego 05/11/2026): una factura a medio cargar queda guardada en este navegador para
+  // seguirla después (interrupciones, facturas con muchos ítems). Se borra al guardar o al vaciar todo.
+  const claveBorr = `lazarillo:borradorFactura:${(pdvsRef[0] || {}).localId || "x"}`;
+  const puedeBorr = vista === "nueva" && !rde && !ede && !ctx.prov && !ctx.proveedorId && !ctx.concepto && !ctx.conceptoCodigo && !ctx.numero;
+  const [borrPend, setBorrPend] = useState(() => {
+    if (!puedeBorr) return null;
+    try { const b = JSON.parse(localStorage.getItem(claveBorr) || "null"); return b && (b.prov || (b.lineas || []).some((l) => l.item)) ? b : null; } catch (_) { return null; }
+  });
+  const borrarBorrador = () => { try { localStorage.removeItem(claveBorr); } catch (_) {} };
+  useEffect(() => {
+    if (!puedeBorr || borrPend || modo !== "factura") return;
+    const hay = prov || lineas.some((l) => l.item);
+    try {
+      if (!hay) { localStorage.removeItem(claveBorr); return; }
+      localStorage.setItem(claveBorr, JSON.stringify({ prov, tipoCpb, compPref, compNum, fecha, obs, totalCtrl, descG, descGTipo, impIntG, percepciones, origenPre,
+        lineas: lineas.map(({ uid, foco, ...l }) => l), guardado: Date.now() }));
+    } catch (_) {}
+  }, [prov, tipoCpb, compPref, compNum, fecha, obs, totalCtrl, descG, descGTipo, impIntG, percepciones, origenPre, lineas, borrPend, modo]);
+  const retomarBorrador = () => {
+    const b = borrPend; if (!b) return;
+    provAnterior.current = b.prov || "";
+    setProv(b.prov || ""); setTipoCpb(b.tipoCpb || ""); setCompPref(b.compPref || ""); setCompNum(b.compNum || ""); setFecha(b.fecha || fechaDefault);
+    setObs(b.obs || ""); setTotalCtrl(b.totalCtrl || ""); setDescG(b.descG || ""); setDescGTipo(b.descGTipo || "%"); setImpIntG(b.impIntG || "");
+    setPercepciones(b.percepciones || []); setOrigenPre(b.origenPre || null);
+    setLineas((b.lineas || []).map((l) => ({ ...l, foco: false })));
+    setBorrPend(null); setReinicio((n) => n + 1);
+  };
   const vaciar = () => {
     setConfVaciar(false); setErrores([]); setAvisosAlGuardar(null);
     setLineas([]); setPercepciones([]); setImpIntG(""); setDescG(""); setOrigenPre(null);
@@ -715,6 +742,7 @@ function ModalNuevaCarga(props) {
     setProv(""); setTipoCpb(""); setCompPref(""); setCompNum(""); setFecha(fechaDefault); setObs(""); setTotalCtrl("");
     setAltaProv(null); setPagarAhora(false); setImportePago(""); setErrFecha(false); setFuturaOk("");
     setReinicio((n) => n + 1);
+    borrarBorrador();
   };
 
   // Un registro se puede confirmar con producto, importe, reparto que sume 100% y —si es
@@ -931,6 +959,7 @@ function ModalNuevaCarga(props) {
       .then(({ ok, d }) => {
         setGuardando(false);
         if (!ok) { setErrores([(d && d.error) || "No se pudo guardar la factura.", ...((d && d.detalle) || [])]); return; }
+        if (puedeBorr) borrarBorrador();
         onGuardado(d);
       })
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
@@ -968,6 +997,14 @@ function ModalNuevaCarga(props) {
             if (props.onProveedorEditado) props.onProveedorEditado(d);
           }} />}
         {aviso && <div style={{ border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 11, padding: "8px 12px", fontSize: 12.5, color: "#2a6b86" }}>{aviso}</div>}
+        {modo === "factura" && borrPend && (
+          <div style={{ border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "#2a6b86", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>↺ Tenés una factura <b>a medio cargar</b>: <b>{borrPend.prov || "sin proveedor"}</b>{borrPend.compNum ? ` · ${borrPend.tipoCpb || ""} ${borrPend.compPref || ""}-${borrPend.compNum}` : ""} · {(borrPend.lineas || []).filter((l) => l.item).length} registros
+              {borrPend.guardado ? ` · ${new Date(borrPend.guardado).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}</span>
+            <button type="button" onClick={retomarBorrador} style={{ ...btn(true), padding: "5px 12px", fontSize: 12.5, marginLeft: "auto" }}>Retomarla</button>
+            <button type="button" onClick={() => { borrarBorrador(); setBorrPend(null); }} style={{ ...btn(false), padding: "5px 12px", fontSize: 12.5, color: C.rojo }}>Descartarla</button>
+          </div>
+        )}
         {modo === "factura" && (
           <fieldset key={"cab" + reinicio} disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ ...bloque, padding: "8px 12px 10px", display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr 0.95fr 0.8fr 1fr", gap: 10, alignItems: "start" }}>
@@ -1083,6 +1120,25 @@ function ModalNuevaCarga(props) {
               <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, fontSize: 10.5, fontWeight: 700, color: C.gris, position: "sticky", top: 0, zIndex: 5, background: "#fafaf8", borderBottom: "1px solid #ececea", margin: "0 -14px 4px", padding: "9px 14px" }}>
                 <span style={{ paddingLeft: lineas.length > 1 && !soloVer ? 22 : 0 }}>CONCEPTO / INSUMO</span><span style={{ textAlign: "center" }}>CANT.</span><span style={{ textAlign: "center" }}>UNIT. $</span><span style={{ textAlign: "center" }}>TOTAL NETO $</span><span style={{ textAlign: "center" }}>IVA %</span><span style={{ textAlign: "center" }}>IVA $</span><span style={{ textAlign: "center" }}>SUBTOTAL c/IMP.</span><span />
               </div>
+              {(() => {
+                const enEd = lineas.find((l) => l.editando);
+                const falta = enEd ? faltaDe(enEd) : null;
+                const confirmable = !falta;
+                return (
+              <div style={{ display: soloVer ? "none" : "flex", gap: 10, alignItems: "center", margin: "6px 0 4px" }}>
+                <button ref={agregarRef} title={!confirmable ? `${falta} para agregar otro registro` : enEd ? "Confirmar este registro y agregar otro" : "Agregar registro"}
+                  disabled={!confirmable}
+                  onClick={() => { if (confirmable) setLineas((ls) => {
+                    // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo).
+                    // Va PRIMERO, pegado a los títulos de las columnas (Diego 05/11/2026).
+                    const ult = ls[0];
+                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false }))];
+                  }); }}
+                  style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
+                {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
+              </div>
+                );
+              })()}
               {lineas.map((l, i) => {
                 const esIns = l.tipo === "insumo";
                 const neto = netoDe(l);
@@ -1318,24 +1374,6 @@ function ModalNuevaCarga(props) {
                   </div>
                 );
               })}
-              {(() => {
-                const enEd = lineas.find((l) => l.editando);
-                const falta = enEd ? faltaDe(enEd) : null;
-                const confirmable = !falta;
-                return (
-              <div style={{ display: soloVer ? "none" : "flex", gap: 10, alignItems: "center" }}>
-                <button ref={agregarRef} title={!confirmable ? `${falta} para agregar otro registro` : enEd ? "Confirmar este registro y agregar otro" : "Agregar registro"}
-                  disabled={!confirmable}
-                  onClick={() => { if (confirmable) setLineas((ls) => {
-                    // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo)
-                    const ult = ls[ls.length - 1];
-                    return [...ls.map((x) => ({ ...x, editando: false })), { tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }];
-                  }); }}
-                  style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
-                {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
-              </div>
-                );
-              })()}
 
             <div style={{ marginTop: 14 }}>
               <span style={lab}>Percepciones</span>
