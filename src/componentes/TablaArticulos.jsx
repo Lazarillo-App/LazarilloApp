@@ -1200,6 +1200,19 @@ export default function TablaArticulos({
     return total;
   }, [agrupaciones, getVentasAmount]);
 
+  // Ingreso total del período (todas las ventas del período y sucursal
+  // elegidos, de todos los artículos) — denominador del % del Top 20.
+  const totalVentasPeriodo = useMemo(() => {
+    const ids = new Set();
+    (ventasPorArticulo || new Map()).forEach((_v, k) => {
+      const n = Number(k);
+      if (Number.isFinite(n)) ids.add(n);
+    });
+    let total = 0;
+    ids.forEach((id) => { total += getVentasAmount(id); });
+    return total;
+  }, [ventasPorArticulo, getVentasAmount]);
+
   const flatRows = useMemo(() => {
     const sections = [];
 
@@ -1231,7 +1244,10 @@ export default function TablaArticulos({
     let totalVentasAgrup = 0;
 
     if (esAgrupEspecifica && sections.length > 0) {
-      const todosIdsAgrup = (agrupacionSeleccionada?.articulos || [])
+      // Top 20 no guarda miembros (se calcula): sus artículos son los de la vista.
+      const todosIdsAgrup = (esTop20Group(agrupacionSeleccionada)
+        ? sections.flatMap((sec) => sec.arts)
+        : (agrupacionSeleccionada?.articulos || []))
         .map(getId)
         .filter(Boolean);
 
@@ -1255,6 +1271,9 @@ export default function TablaArticulos({
         totalVentas: totalVentasAgrup,
         ventasByBranch: agrupByBranch,
         nombre: agrupacionSeleccionada?.nombre || '',
+        // Top 20: cuánto del ingreso total del período explica (pedido de Diego, 05/11)
+        pctDelPeriodo: esTop20Group(agrupacionSeleccionada) && totalVentasPeriodo > 0
+          ? (totalVentasAgrup / totalVentasPeriodo) * 100 : null,
       });
     }
 
@@ -1303,7 +1322,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
@@ -1932,10 +1951,15 @@ export default function TablaArticulos({
             })()}
           </div>
 
-          <div style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, fontWeight: 700 }}>
+          <div style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.2 }}>
             {row.totalVentas > 0 && ventasVista === '$' && (
               <>
                 {fmtCurrency(row.totalVentas)}
+                {row.pctDelPeriodo != null && (
+                  <span title="Parte del ingreso total del período elegido" style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>
+                    {`${row.pctDelPeriodo.toFixed(1).replace('.', ',')}% del ingreso`}
+                  </span>
+                )}
                 {/* {totalTodasAgrupaciones > 0 && (
                   <span style={{ color: 'var(--color-primary)', fontSize: '0.72rem', fontWeight: 600, marginLeft: 5, opacity: 0.9 }}>
                     {`(${(row.totalVentas / totalTodasAgrupaciones * 100).toFixed(1).replace('.', ',')}%)`}
