@@ -51,21 +51,37 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
     return (id) => porArt.get(Number(id)) || 'Sin agrupación';
   }, [agrupaciones]);
 
-  const recorrerArbol = useCallback((importeDe) => {
+  // `importes` = { [articleId]: $ }. Recorre el árbol y, al final, suma lo
+  // vendido que no está en el árbol: el id 0 ("ARTÍCULOS INEXISTENTES" de
+  // MaxiRest) y artículos que ya no están en el catálogo. Antes quedaban
+  // afuera del total de ventas (pedido de Diego, 05/11: no se pueden dejar
+  // afuera los inexistentes).
+  const recorrerArbol = useCallback((importes) => {
     const out = [];
+    const vistos = new Set();
     for (const sub of tree || []) {
       const rubro = sub?.subrubro || 'Sin rubro';
       for (const cat of sub?.categorias || []) {
         const subrubro = cat?.categoria || 'Sin subrubro';
         for (const a of cat?.articulos || []) {
           const id = artId(a);
-          if (id == null) continue;
-          const importe = importeDe(id);
+          if (id == null || vistos.has(id)) continue;
+          vistos.add(id);
+          const importe = importes[id] || 0;
           if (!(importe > 0)) continue;
           out.push({ id: String(id), nombre: a?.nombre || `#${id}`, agrupacion: agrupacionDe(id), rubro, subrubro, importe });
         }
       }
     }
+    Object.entries(importes || {}).forEach(([k, importe]) => {
+      const id = Number(k);
+      if (vistos.has(id) || !(importe > 0)) return;
+      out.push({
+        id: String(id),
+        nombre: id === 0 ? 'Artículos inexistentes (MaxiRest)' : `#${id} (fuera del catálogo)`,
+        agrupacion: 'Sin agrupación', rubro: 'Sin rubro', subrubro: 'Sin subrubro', importe,
+      });
+    });
     return out;
   }, [tree, agrupacionDe]);
 
@@ -81,14 +97,14 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
       const m = {};
       rows.forEach((r) => {
         const id = Number(r.article_id ?? r.articuloId ?? r.articulo_id ?? r.id);
-        if (!Number.isFinite(id) || id <= 0) return;
+        if (!Number.isFinite(id) || id < 0) return; // 0 = sin artículo, cuenta igual
         m[id] = (m[id] || 0) + Number(r.total_amount ?? r.amount ?? r.total ?? 0);
       });
       return m;
     },
   });
   const ventas = useMemo(
-    () => (ventasPeriodo ? recorrerArbol((id) => ventasPeriodo[id] || 0) : []),
+    () => (ventasPeriodo ? recorrerArbol(ventasPeriodo) : []),
     [ventasPeriodo, recorrerArbol]);
 
   // Compras del período.
@@ -136,7 +152,7 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
   const porMes = useMemo(() => {
     const byMes = new Map();
     Object.entries(ventasMes || {}).forEach(([mes, amounts]) => {
-      byMes.set(mes, { mes, ventas: recorrerArbol((id) => amounts[id] || 0), compras: [] });
+      byMes.set(mes, { mes, ventas: recorrerArbol(amounts), compras: [] });
     });
     (comprasMes || []).forEach(({ mes, items }) => {
       if (!byMes.has(mes)) byMes.set(mes, { mes, ventas: [], compras: [] });
