@@ -19,6 +19,7 @@ import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
+import PulsoDatos from './PulsoDatos';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -228,31 +229,36 @@ export default function Navbar() {
             sí simétrico en los dos costados (no un hueco raro de un solo lado). */}
         <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
-            {/* Logo */}
+            {/* Logo + pulso de los datos (Diego, 06/11/2026: el punto va al lado del logo) */}
             <Box
-              component={NavLink}
-              to={homeTo}
-              aria-label="Ir al inicio"
               sx={{
                 mr: 2,
                 display: { xs: 'none', md: 'flex' },
                 alignItems: 'center',
-                textDecoration: 'none',
+                gap: 1,
                 pr: '50px',
               }}
             >
               <Box
-                component="img"
-                src={brandSrc}
-                alt="Lazarillo"
-                sx={{
-                  height: 45,
-                  display: 'block',
-                  filter: isLightBg
-                    ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
-                    : 'none',
-                }}
-              />
+                component={NavLink}
+                to={homeTo}
+                aria-label="Ir al inicio"
+                sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+              >
+                <Box
+                  component="img"
+                  src={brandSrc}
+                  alt="Lazarillo"
+                  sx={{
+                    height: 45,
+                    display: 'block',
+                    filter: isLightBg
+                      ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
+                      : 'none',
+                  }}
+                />
+              </Box>
+              {!isAppAdmin && <PulsoDatos puedeActualizar={!isStaff} />}
             </Box>
 
             {/* Mobile – hamburguesa */}
