@@ -122,28 +122,33 @@ const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '
 // es una factura (gasto o sueldo sin comprobante), el detalle de líneas de siempre.
 // vistaInicial "repetir": abre directo la carga nueva con esta estructura (Diego 06/11/2026: desde la
 // cta cte, "Repetir" abría la factura y había que volver a apretar Repetir).
-export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver' }) {
+// facturaDirecta: una factura que no está en Caja y llega armada desde su detalle (no tiene rowId).
+export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', facturaDirecta = null }) {
   const { businessId } = usePanelGestion();
   const queryClient = useQueryClient();
   const [vista, setVista] = useState(vistaInicial);
   const [aviso, setAviso] = useState(null);
-  const { data, isLoading } = useQuery({
+  const consulta = useQuery({
     queryKey: ['gestionFactura', businessId, rowId],
     queryFn: () => GestionAPI.factura(rowId),
-    enabled: !!rowId,
+    enabled: !!rowId && !facturaDirecta,
   });
+  const data = facturaDirecta || consulta.data;
+  const isLoading = !facturaDirecta && consulta.isLoading;
   const fa = data && !data.noEsFactura ? data : null;
   const { data: maestros } = useMaestrosFactura(!!fa);
   const { reglaDe } = useReglasCarga(fa?.factura.registros[0]?.puntoDeVentaId ?? null, maestros?.lugares ?? []);
 
   // Sin factura abierta queda solo el aviso de lo último que se hizo.
-  if (!rowId) return <Aviso aviso={aviso} onClose={() => setAviso(null)} />;
+  if (!rowId && !facturaDirecta) return <Aviso aviso={aviso} onClose={() => setAviso(null)} />;
   if (data?.noEsFactura) return <CompraLineasModal compraId={rowId} comprobante={detalle} onClose={onClose} />;
   const pdvsRef = maestros?.lugares ?? [];
   const pdvActual = pdvsRef.find((p) => p.id === fa?.factura.registros[0]?.puntoDeVentaId)?.nombre;
   const cerrar = () => { setVista('ver'); onClose(); };
   const ede = fa && maestros ? edeDesdeFactura(fa.rowId, fa.factura, { maestros, pdvsRef }) : null;
   const avisoFactura = !fa ? null
+    : fa.soloDetalle
+      ? 'Cargada en MaxiRest, pero no está en Caja: no suma en Resultados (sí en el costo de las recetas). Pasa cuando el insumo no tiene concepto de caja: en MaxiRest el concepto sale del rubro del insumo.'
     : fa.origen === 'maxirest'
       ? `Cargada desde MaxiRest: se ve con el formato de la carga, pero se modifica en MaxiRest.${fa.estimado ? ' Sin detalle de insumos (informe 25): el neto y el IVA se estiman al 21% sobre el importe.' : ''}`
       : `Cargada en Lazarillo${fa.cargadaPor ? ` por ${fa.cargadaPor}` : ''}${fa.cargadaEn ? ` el ${fechaCorta(fa.cargadaEn)}` : ''}${fa.editadaEn && fa.cargadaEn && String(fa.editadaEn).slice(0, 16) !== String(fa.cargadaEn).slice(0, 16) ? ` · editada el ${fechaCorta(fa.editadaEn)}` : ''}.`;
