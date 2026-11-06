@@ -8,6 +8,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton,
 } from '@mui/material';
@@ -91,7 +92,11 @@ export default function GestionPanel() {
 function GestionPanelContenido() {
   const { activeBusinessId, active } = useBusiness() || {};
   const { activeBranchFilter, activeBranch, branches, setActiveBranch } = useBranch() || {};
-  const [estado, setEstado] = useState(() => leerEstado(activeBusinessId));
+  const [estado, setEstado] = useState(() => {
+    const e = leerEstado(activeBusinessId);
+    // El botón de carga no está en Ventas: si se entra a cargar, se abre en Compras.
+    return new URLSearchParams(window.location.search).get('cargar') === '1' && e.tab === 'ventas' ? { ...e, tab: 'compras' } : e;
+  });
   // Filtro del buscador ({ param, value, label }): no se recuerda entre visitas, como en gestion.
   const [busqueda, setBusqueda] = useState(null);
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
@@ -102,6 +107,12 @@ function GestionPanelContenido() {
   const [pedidoCarga, setPedidoCarga] = useState(null);
   const [anclaNotas, setAnclaNotas] = useState(null);
   const limpiarPedido = useCallback(() => setPedidoCarga(null), []);
+  // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
+  const [params, setParams] = useSearchParams();
+  const [cargarAlEntrar] = useState(() => params.get('cargar') === '1');
+  const limpiarCargar = useCallback(() => {
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('cargar'); return n; }, { replace: true });
+  }, [setParams]);
 
   // Al cambiar de negocio, sus propias preferencias.
   useEffect(() => { setEstado(leerEstado(activeBusinessId)); setBusqueda(null); }, [activeBusinessId]);
@@ -293,7 +304,7 @@ function GestionPanelContenido() {
         />
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-            <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} /></BloqueSeguro>
+            <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro>
             {!enParaMirar && pdvId != null && (
               <ScopeGestion>
                 <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>

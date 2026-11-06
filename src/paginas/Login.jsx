@@ -272,7 +272,7 @@ export default function Login() {
       syncAllBusinesses({ scope: 'articles', alsoSalesDays: 14, concurrency: 2 }).catch(() => { });
 
       const role = user?.role ?? (JSON.parse(localStorage.getItem('user') || 'null') || {}).role;
-      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/menu');
+      const to = role === 'app_admin' ? '/admin' : (loc.state?.from || '/inicio');
       nav(to, { replace: true });
     } catch (e2) {
       console.error('LOGIN ERROR >>>', e2);

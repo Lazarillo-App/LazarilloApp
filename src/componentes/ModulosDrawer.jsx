@@ -37,6 +37,7 @@ const GROUPS = [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: null },
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
       { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
+      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', to: '/gestion?cargar=1' },
       { id: 'balance', label: 'Balance', emoji: '💳', to: null },
     ],
   },
