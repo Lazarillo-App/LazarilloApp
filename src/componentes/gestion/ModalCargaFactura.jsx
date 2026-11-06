@@ -13,6 +13,7 @@ import { gestionFetch } from "@/servicios/apiGestion";
 import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 import { insumoCreate } from "@/servicios/apiInsumos";
 import EnvasesEditor, { conCambios } from "@/componentes/gestion/EnvasesEditor";
+import FichaProveedor from "@/componentes/gestion/FichaProveedor";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
@@ -173,73 +174,7 @@ function BtnEliminar({ onConfirmar, style: st }) {
 }
 // Ficha del proveedor desde la carga (Diego 05/11/2026): ver y modificar sus datos. Si vino de
 // MaxiRest, lo editado en Lazarillo queda y la importación ya no lo pisa.
-const CAMPOS_FICHA = [
-  ["nombre", "Nombre *", 2], ["razon", "Razón social", 2], ["cuit", "CUIT", 1], ["telefono", "Teléfono", 1],
-  ["celular", "Celular", 1], ["email", "Email", 1], ["direccion", "Dirección", 2], ["localidad", "Localidad", 1],
-  ["contacto", "Contacto", 1], ["cbu", "CBU / CVU", 1], ["aliasCbu", "Alias", 1],
-];
-function FichaProveedor({ id, onCerrar, onGuardado }) {
-  const [f, setF] = useState(null);
-  const [orig, setOrig] = useState(null);
-  const [err, setErr] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  useEffect(() => {
-    let vivo = true;
-    gestionFetch(`/api/facturas/proveedores/${id}`)
-      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
-      .then(({ ok, d }) => {
-        if (!vivo) return;
-        if (!ok || !d) { setErr((d && d.error) || "No se pudo abrir la ficha."); return; }
-        const v = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, d[k] || ""]));
-        setF({ ...v, deMaxirest: !!d.deMaxirest, codigo: d.codigo }); setOrig(v);
-      })
-      .catch(() => vivo && setErr("Error de red: no se pudo abrir la ficha."));
-    return () => { vivo = false; };
-  }, [id]);
-  const cambio = f && orig && CAMPOS_FICHA.some(([k]) => (f[k] || "") !== (orig[k] || ""));
-  const guardar = () => {
-    if (!f.nombre.trim()) { setErr("Poné el nombre del proveedor."); return; }
-    setGuardando(true); setErr("");
-    const body = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, String(f[k] || "").trim() || null]));
-    gestionFetch(`/api/facturas/proveedores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
-      .then(({ ok, d }) => {
-        setGuardando(false);
-        if (!ok) { setErr((d && d.error) || "No se pudo guardar la ficha."); return; }
-        toast.success("Ficha del proveedor guardada");
-        onGuardado({ id, nombre: body.nombre, razon: body.razon });
-      })
-      .catch(() => { setGuardando(false); setErr("Error de red: no se guardó."); });
-  };
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(40,40,40,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1400 }}
-      onClick={(e) => { e.stopPropagation(); onCerrar(); }}>
-      <div style={{ ...card, width: "min(620px, 94vw)", maxHeight: "88vh", overflow: "auto", padding: "18px 22px" }} onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { onCerrar(); return; } enterAvanza(e); }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h3 style={{ fontSize: 16, margin: 0 }}>Ficha del proveedor {f && f.codigo ? <span style={{ fontSize: 12, color: C.gris, fontWeight: 500 }}>· cód. {f.codigo}</span> : null}</h3>
-          <button type="button" onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer" }}>×</button>
-        </div>
-        {!f && !err && <div style={{ fontSize: 13, color: C.gris, padding: "18px 0" }}>Cargando…</div>}
-        {f && (<>
-          {f.deMaxirest && <div style={{ fontSize: 12, color: "#2a6b86", background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 9, padding: "7px 10px", margin: "10px 0 0" }}>
-            Viene de MaxiRest: lo que cambies acá queda en Lazarillo y la importación no lo vuelve a pisar.</div>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginTop: 12 }}>
-            {CAMPOS_FICHA.map(([k, t, span], ix) => (
-              <div key={k} style={{ gridColumn: span === 2 ? "1 / -1" : undefined }}><span style={lab}>{t}</span>
-                <input style={inp} autoFocus={ix === 0} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
-            ))}
-          </div>
-        </>)}
-        {err && <div style={{ marginTop: 10, fontSize: 12.5, color: C.rojo, fontWeight: 600 }}>{err}</div>}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-          <button type="button" style={btn(false)} onClick={onCerrar}>{cambio ? "Cancelar" : "Cerrar"}</button>
-          {f && <button type="button" style={{ ...btn(true), opacity: cambio && !guardando ? 1 : 0.4, cursor: cambio && !guardando ? "pointer" : "default" }} disabled={!cambio || guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>}
-        </div>
-      </div>
-    </div>
-  );
-}
+// La ficha del proveedor vive en FichaProveedor.jsx (con «Ver cuenta corriente», Diego 06/11/2026).
 const corregirFecha = (s) => {
   const m = String(s || "").match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (!m) return null;
