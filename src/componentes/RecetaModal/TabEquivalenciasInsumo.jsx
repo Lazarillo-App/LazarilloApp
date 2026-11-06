@@ -15,6 +15,7 @@ import { sanitizeDecimal } from '@/utils/decimales';
 import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
+import { EnvasesCompraFicha } from '@/componentes/gestion/FacturaEnRecetas';
 
 export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo = null }) {
   const [lista, setLista] = useState([]);
@@ -375,6 +376,13 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
             </Typography>
           </Box>
         </>
+      )}
+      {/* Envases de compra (X6, Pack…): los mismos de la carga de facturas (Diego 06/11/2026). */}
+      {(insumoFull?.codigo_maxi || insumoData?.codigo_maxi) && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Envases de compra</Typography>
+          <EnvasesCompraFicha codigo={String(insumoFull?.codigo_maxi || insumoData?.codigo_maxi)} nombre={insumoFull?.nombre || insumoData?.nombre} />
+        </Box>
       )}
       <ConfirmDialog
         open={!!aBorrar}

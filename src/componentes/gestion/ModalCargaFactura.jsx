@@ -12,6 +12,7 @@ import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gesti
 import { gestionFetch } from "@/servicios/apiGestion";
 import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 import { insumoCreate } from "@/servicios/apiInsumos";
+import EnvasesEditor, { conCambios } from "@/componentes/gestion/EnvasesEditor";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
@@ -518,10 +519,14 @@ function ModalNuevaCarga(props) {
   const [altaItem, setAltaItem] = useState(null); // { i, tipo: "insumo"|"concepto", destino: "item"|"conc", nombre, medida, conc, codRubro }
   const [rubrosCon, setRubrosCon] = useState(null);
   const [creandoItem, setCreandoItem] = useState(false);
+  // Envases editados en esta carga (se guardan al momento; acá para verlos sin esperar los maestros).
+  const [envCambios, setEnvCambios] = useState({}); // codigo → [{tipo, envase, factor}]
+  const [envPanel, setEnvPanel] = useState(null); // { i, modo: "nuevo" | "editar" }
+  const qcMaestros = useQueryClient();
   const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
   const codConcepto = (nombre) => (MAESTRO_CONCEPTOS.find((c) => c.concepto === nombre) || {}).codigo;
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
-  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, ii: i.ii || null, envases: i.envases || [] }));
+  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, ii: i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }));
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
   const abrirAltaItem = (i, tipo, destino, nombre) => {
@@ -1081,6 +1086,16 @@ function ModalNuevaCarga(props) {
         setGuardando(false);
         if (!ok) { setErrores([(d && d.error) || "No se pudo guardar la factura.", ...((d && d.detalle) || [])]); return; }
         if (puedeBorr) borrarBorrador();
+        // Recordar el descuento de cada insumo de este proveedor para la próxima carga (0 = ya no trae).
+        if (p && p.id) {
+          const items = lineas.filter((l) => l.tipo === "insumo" && l.item).map((l) => {
+            const ins = MAESTRO_INSUMOS.find((x) => x.nombre === l.item) || {};
+            const cod = ins.codigo || l.codIns;
+            return cod ? { codigo: String(cod), tipo: l.descTipo === "u" || l.descTipo === "t" ? l.descTipo : "%", valor: parseImp(l.desc) || 0 } : null;
+          }).filter(Boolean);
+          if (items.length) gestionFetch("/api/facturas/descuentos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proveedorId: p.id, items }) })
+            .then(() => qcMaestros.invalidateQueries({ queryKey: ["gestionMaestrosFactura"] })).catch(() => {});
+        }
         onGuardado(d);
       })
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
@@ -1320,7 +1335,7 @@ function ModalNuevaCarga(props) {
                 // Los dos campos del descuento muestran el mismo descuento: en % el mismo número; en $, por unidad y total.
                 const descUnitTxt = modoDesc === "%" ? dTxt : l.descTipo === "u" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum / cantN * 100) / 100) : "";
                 const descTotTxt = modoDesc === "%" ? dTxt : l.descTipo === "t" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum * cantN * 100) / 100) : "";
-                const setDesc = (v, tipo) => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, desc: fmtImp(v), descTipo: tipo, descModo: modoDesc, tocado: true }));
+                const setDesc = (v, tipo) => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, desc: fmtImp(v), descTipo: tipo, descModo: modoDesc, descSug: false, tocado: true }));
                 const iiUTxt = l.iiu !== undefined ? l.iiu : iiU > 0 ? fmtNum(Math.round(iiU * 100) / 100) : "";
                 const miIns = esIns ? MAESTRO_INSUMOS.find((x) => x.nombre === l.item) : null;
                 const iiSug = miIns && miIns.ii > 0 ? miIns.ii * (fEnv || 1) : 0;
@@ -1347,8 +1362,12 @@ function ModalNuevaCarga(props) {
                               const rep = regla ? regla.map((r) => ({ ...r })) : undefined;
                               // El II de la última compra se sugiere igual que el precio (Diego 06/11/2026).
                               const iiu = mi && mi.ii > 0 ? fmtNum(Math.round(mi.ii * 100) / 100) : undefined;
+                              // El último descuento de este proveedor en este insumo se sugiere (Diego 06/11/2026).
+                              const prv = provPorNombre[prov];
+                              const dRec = mi && prv ? (maestros.descuentos || []).find((d) => d.p === prv.id && String(d.k) === String(mi.codigo)) : null;
+                              const dSug = dRec ? { desc: fmtNum(dRec.valor), descTipo: dRec.tipo, descModo: dRec.tipo === "%" ? "%" : "$", descSug: true } : { desc: "", descSug: false };
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : (esIns
-                                ? { ...x, item: v, medida: undefined, desc: "", reparto: rep, conc: conceptoDeInsumo(v) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, iiu, impint: "" }
+                                ? { ...x, item: v, medida: undefined, ...dSug, reparto: rep, conc: conceptoDeInsumo(v) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, iiu, impint: "" }
                                 : { ...x, item: v, reparto: rep, alic: x.alic })));
                             }} />
                         </div>
@@ -1376,26 +1395,30 @@ function ModalNuevaCarga(props) {
                             const ins = miIns;
                             const envs = (ins && ins.envases) || [];
                             const caja = { display: "flex", alignItems: "center", padding: "0 7px", borderLeft: `1px solid ${C.borde}`, background: "#f6fbfe", color: C.cel, fontWeight: 700, fontSize: 11, flexShrink: 0 };
-                            if (!ins || !envs.length) return <span style={{ ...caja, color: C.gris, background: "#fafaf8" }}>{med || "—"}</span>;
+                            if (!ins) return <span style={{ ...caja, color: C.gris, background: "#fafaf8" }}>{med || "—"}</span>;
                             const opciones = [{ envase: ins.medida || "", factor: 1 }, ...envs.filter((e) => e.envase.trim().toUpperCase() !== String(ins.medida || "").trim().toUpperCase())];
+                            const cambiarA = (nueva, fNuevo) => setLineas((ls) => ls.map((x, ix) => {
+                              if (ix !== i) return x;
+                              const fViejo = medidaLinea(x).factor || 1;
+                              const u = parseImp(x.unit); const c = parseFloat(x.cant) || 0;
+                              const unit = u > 0 ? fmtNum(Math.round(u * fNuevo / fViejo * 100) / 100) : x.unit;
+                              const iu = parseImp(x.iiu !== undefined ? x.iiu : "");
+                              const iiu = iu > 0 ? fmtNum(Math.round(iu * fNuevo / fViejo * 100) / 100) : x.iiu;
+                              return { ...x, medida: nueva, unit, ntot: u > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(unit) * 100) / 100) : x.ntot,
+                                iiu, impint: iu > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(iiu) * 100) / 100) : x.impint };
+                            }));
                             return (
                               <select value={med} title={opciones.map((o) => o.factor === 1 ? `${o.envase}: unidad del insumo` : `${o.envase} = ${fmtNum(o.factor)} ${ins.medida}`).join("\n")}
                                 onChange={(e) => {
                                   const nueva = e.target.value;
-                                  const fNuevo = (opciones.find((o) => o.envase === nueva) || {}).factor || 1;
-                                  setLineas((ls) => ls.map((x, ix) => {
-                                    if (ix !== i) return x;
-                                    const fViejo = medidaLinea(x).factor || 1;
-                                    const u = parseImp(x.unit); const c = parseFloat(x.cant) || 0;
-                                    const unit = u > 0 ? fmtNum(Math.round(u * fNuevo / fViejo * 100) / 100) : x.unit;
-                                    const iu = parseImp(x.iiu !== undefined ? x.iiu : "");
-                                    const iiu = iu > 0 ? fmtNum(Math.round(iu * fNuevo / fViejo * 100) / 100) : x.iiu;
-                                    return { ...x, medida: nueva, unit, ntot: u > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(unit) * 100) / 100) : x.ntot,
-                                      iiu, impint: iu > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(iiu) * 100) / 100) : x.impint };
-                                  }));
+                                  // «Crear …» primero (regla del sistema) y al final editar los envases del insumo.
+                                  if (nueva === "__nuevo" || nueva === "__editar") { setEnvPanel({ i, modo: nueva === "__nuevo" ? "nuevo" : "editar" }); return; }
+                                  cambiarA(nueva, (opciones.find((o) => o.envase === nueva) || {}).factor || 1);
                                 }}
                                 style={{ ...caja, appearance: "none", WebkitAppearance: "none", MozAppearance: "none", border: "none", borderLeft: `1px solid ${C.borde}`, cursor: "pointer", outline: "none", maxWidth: 52, textAlign: "center", textAlignLast: "center" }}>
+                                <option value="__nuevo">+ Nuevo envase…</option>
                                 {opciones.map((o) => <option key={o.envase} value={o.envase}>{o.envase}</option>)}
+                                <option value="__editar">✎ Editar envases</option>
                               </select>
                             );
                           })()}
@@ -1476,6 +1499,7 @@ function ModalNuevaCarga(props) {
                             value={descTotTxt} title={modoDesc === "%" ? "Descuento %" : "Descuento en $ sobre el total del registro"}
                             onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "t")} />
                           {desc > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {$fmt(brutoDe(l) - desc)} neto</span>}
+                          {l.descSug && desc > 0 && <span style={{ ...chica, textAlign: "center", color: "#64748b" }}>el de la última compra</span>}
                         </div>
                         <div style={{ gridColumn: "5 / span 2", fontSize: 10.5, color: C.ii, textAlign: "center", lineHeight: 1.35, paddingTop: 2, minWidth: 0 }}>
                           {iiSug > 0 && !(ii > 0) ? <span role="button" title="Usar el II de la última compra" style={{ cursor: "pointer" }}
@@ -1512,6 +1536,28 @@ function ModalNuevaCarga(props) {
                       </div>
                     </div>
                     <div style={{ padding: "0 8px" }}>
+                    {envPanel && envPanel.i === i && miIns && (
+                      <div style={{ marginTop: 8 }}>
+                        <EnvasesEditor codigo={String(miIns.codigo)} nombre={miIns.nombre} medida={miIns.medida} envases={miIns.envases || []}
+                          soloAlta={envPanel.modo === "nuevo"} onCerrar={() => setEnvPanel(null)}
+                          onCambio={(c) => {
+                            const cod = String(miIns.codigo);
+                            setEnvCambios((m) => ({ ...m, [cod]: [...(m[cod] || []), c] }));
+                            qcMaestros.invalidateQueries({ queryKey: ["gestionMaestrosFactura"] });
+                            if (envPanel.modo === "nuevo" && c.tipo === "alta") {
+                              // El envase nuevo queda elegido en la línea, con el unitario pasado a esa medida.
+                              setLineas((ls) => ls.map((x, ix) => {
+                                if (ix !== i) return x;
+                                const fViejo = medidaLinea(x).factor || 1;
+                                const u = parseImp(x.unit); const cc = parseFloat(x.cant) || 0;
+                                const unit = u > 0 ? fmtNum(Math.round(u * c.factor / fViejo * 100) / 100) : x.unit;
+                                return { ...x, medida: c.envase, unit, ntot: u > 0 && cc > 0 ? fmtNum(Math.round(cc * parseImp(unit) * 100) / 100) : x.ntot };
+                              }));
+                              setEnvPanel(null);
+                            }
+                          }} />
+                      </div>
+                    )}
                     {altaItem && altaItem.i === i && (() => {
                       const a = altaItem;
                       const set = (k, v) => setAltaItem((x) => ({ ...x, [k]: v }));
