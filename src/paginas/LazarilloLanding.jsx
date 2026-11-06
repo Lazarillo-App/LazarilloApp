@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
 import DOG from '@/assets/brand/anthony.png';
-import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO } from '@/componentes/landing-logos';
+import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -104,11 +104,19 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .ccard .logo{width:46px;height:46px;border-radius:12px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:15px;flex:none;}
 .ccard .nm{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:17px;color:var(--ink);line-height:1.2;}
 .ccard .rb{font-size:13.5px;color:#7a8396;}
-.ccard .big{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:46px;line-height:1;color:var(--skydeep);letter-spacing:-1px;margin-top:6px;}
+.ccard .big.txt{font-size:34px;letter-spacing:-.5px;line-height:1.1;}
+.ccard .ck{font-family:'Sora',system-ui,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--skydeep);text-transform:uppercase;margin-top:6px;}
+.ccard .big{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:46px;line-height:1;color:var(--skydeep);letter-spacing:-1px;margin-top:-4px;}
 .ccard .lbl{font-size:16px;color:var(--body);}
 .ccard q{display:block;font-size:15px;font-style:italic;color:var(--ink);border-top:1px solid var(--line);padding-top:14px;quotes:"“" "”";}
 .ccard .by{font-size:13px;color:#7a8396;margin-top:-6px;}
-.cgrid{grid-template-columns:repeat(2,1fr);}
+.cgrid{grid-template-columns:repeat(4,1fr);gap:18px;}
+.cgrid .ccard{padding:22px;}
+.cgrid .who{flex-direction:column;align-items:flex-start;gap:10px;}
+.cgrid .logo{height:40px!important;}
+.cgrid .big{font-size:36px;min-height:58px;display:flex;align-items:flex-end;}
+.cgrid .big.txt{font-size:24px;line-height:1.15;}
+.cgrid .lbl{font-size:15px;}
 .integra{padding:80px 0;background:var(--paper);}
 .igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
 .icard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:16px;}
@@ -120,7 +128,8 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .st.soon{background:rgba(91,194,234,.15);color:var(--skydeep);}
 .integra .note{margin-top:22px;font-size:15px;color:var(--body);text-align:center;}
 .integra .note a{color:var(--skydeep);font-weight:600;cursor:pointer;}
-@media(max-width:820px){.cgrid{grid-template-columns:1fr;}.igrid{grid-template-columns:1fr;}.clientes h2,.integra h2{font-size:30px;}}
+@media(max-width:1000px){.cgrid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:820px){.cgrid{grid-template-columns:1fr;}.cgrid .big{min-height:0;}.igrid{grid-template-columns:1fr;}.clientes h2,.integra h2{font-size:30px;}}
 .relato{padding:90px 0;background:var(--paper);}
 .relato h2{font-size:42px;color:var(--ink);font-weight:800;letter-spacing:-.8px;margin:10px 0 12px;line-height:1.1;}
 .relato h2 span{color:var(--skydeep);}
@@ -164,11 +173,13 @@ const marqueeChips = [
 
 // Clientes: un número real por cliente (verificar y pedir permiso antes de publicar).
 // En las tarjetas, el logo a color.
-const logosColor = { 'Container Bar': COLOR_CB, 'Comercio': COLOR_CO };
+const logosColor = { 'Container Bar': COLOR_CB, 'Comercio': COLOR_CO, 'MigaGO': COLOR_MG, 'Container FC': COLOR_FC };
 const clientes = [
-  { ini: 'CB', nm: 'Container Bar', rb: 'Bar · Ramos Mejía', big: '+6,6 pts', lbl: 'le ganó su último aumento de precios a lo que subieron sus costos — medido solo, sin planillas.', q: '', by: '' },
-  { ini: 'CO', nm: 'Comercio', rb: 'Buffet · Núñez', big: '22 / 22', lbl: 'meses de ventas que cuadran al peso con su POS, con compras e impagas al día.', q: '', by: '' },
-];
+  { ini: 'CB', nm: 'Container Bar', rb: 'Bar · Ramos Mejía', k: 'Precios', big: '+6,6 pts', lbl: 'Su último aumento quedó por encima de lo que subió su canasta de costos, no del IPC.', q: '', by: '' },
+  { ini: 'CO', nm: 'Comercio', rb: 'Buffet · Núñez', k: 'Menú', big: '49 de 199', lbl: 'productos hacen el 80% de sus ventas. Sabe en cuáles enfocarse y cuáles revisar.', q: '', by: '' },
+  { ini: 'MG', nm: 'MigaGO', rb: 'Gastronomía', k: 'Costos', big: 'El alquiler, medido', txt: true, lbl: 'Le subió mucho el alquiler y sabe cuánto impacta en su canasta de costos.', q: '', by: '' },
+  { ini: 'FC', nm: 'Container FC', rb: 'Canchas de fútbol · San Justo', k: 'Recetas', big: 'Cada plato, costeado', txt: true, lbl: 'Decidió empezar a vender comida y sabe cuánto le cuesta cada plato antes de ponerle precio.', q: '', by: '' },
+]
 // Logos de clientes en un solo tono (gris), sacados del perfil de cada negocio.
 const logosClientes = [
   { nm: 'Container Bar', src: LOGO_CB },
@@ -395,12 +406,13 @@ export default function LazarilloLanding() {
         <div className="wrap">
           <div className="kick">Clientes</div>
           <h2>Gastronómicos que ya ven lo que su POS no les muestra.</h2>
-          <p className="sub">No te contamos qué hace: te mostramos qué ganó cada uno.</p>
+          <p className="sub">Lo mismo que leíste arriba, con sus números.</p>
           <div className="grid cgrid">
             {clientes.map((c) => (
               <div className="ccard" key={c.nm}>
                 <div className="who">{logosColor[c.nm] ? <img className="logo" src={logosColor[c.nm]} alt={c.nm} style={{ objectFit: 'contain', background: 'transparent', width: 'auto', minWidth: 46, borderRadius: 8 }} /> : <div className="logo">{c.ini}</div>}<div><div className="nm">{c.nm}</div><div className="rb">{c.rb}</div></div></div>
-                <div className="big">{c.big}</div>
+                <div className="ck">{c.k}</div>
+                <div className={c.txt ? 'big txt' : 'big'}>{c.big}</div>
                 <div className="lbl">{c.lbl}</div>
                 {c.q && <q>{c.q}</q>}
                 {c.by && <div className="by">{c.by}</div>}
