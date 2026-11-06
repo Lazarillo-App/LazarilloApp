@@ -29,6 +29,9 @@ export function sentido(clave, dif) {
   return (dif > 0) === (INFO_INDICADOR[clave].mejor === "sube") ? "bueno" : "malo";
 }
 
+// Indicadores que dependen del gasto en personal.
+const CON_PERSONAL = new Set(["mix", "personal", "gastos", "resultado", "rentabilidad"]);
+
 export function serieIndicador(p) {
   const t0 = p.hasta.anio * 12 + p.hasta.mes - 1;
   const valorDe = (anio, mes) => {
@@ -43,7 +46,9 @@ export function serieIndicador(p) {
     const anio = Math.floor(t / 12), mes = (t % 12) + 1;
     const valor = valorDe(anio, mes);
     const ant = out.length ? out[out.length - 1].valor : null;
-    out.push({ anio, mes, valor, dif: difContra(p.clave, valor, ant), proyectado: k === 0 && !!p.actual?.proyectado });
+    // Mes con personal a medio cargar completado con el último mes completo (tarjetas.js): se marca.
+    const est = !!p.meses.find((x) => x.anio === anio && x.mes === mes)?.personalEstimado && CON_PERSONAL.has(p.clave);
+    out.push({ anio, mes, valor, dif: difContra(p.clave, valor, ant), proyectado: k === 0 && !!p.actual?.proyectado, estimado: est });
   }
   return out.slice(1);
 }

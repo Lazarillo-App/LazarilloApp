@@ -15,7 +15,7 @@ import { useAnual, useCanasta, useEgresosProyeccion, useEquilibrio, useProyeccio
 import { usePanelGestion } from '@/gestion/panelContext';
 import { fmtMillones } from '@/gestion/proyeccion';
 import { equilibrioMes, equilibrioProyectado, pctVariableReciente } from '@/gestion/equilibrio';
-import { alertasDelMes, mesCerrado, tarjetasDelMes } from '@/gestion/tarjetas';
+import { alertasDelMes, conPersonalCompleto, mesCerrado, tarjetasDelMes } from '@/gestion/tarjetas';
 import { serieIndicador, sentido, INFO_INDICADOR } from '@/gestion/evolucion';
 import { resumirCanasta } from '@/gestion/canasta';
 import { CanastaDetalle, CanastaMini } from './CanastaTarjeta';
@@ -60,7 +60,7 @@ export default function KpiTarjetas() {
   const toggle = (k) => setAbierta((a) => (a === k ? null : k));
   const e = t.equilibrio;
   const alertas = [
-    ...alertasDelMes(anual.meses, t, t.mes <= 6 ? (anualAnt?.meses ?? []).filter((m) => m.mes > t.mes + 6) : []),
+    ...alertasDelMes(conPersonalCompleto([...anual.meses].sort((a, b) => a.mes - b.mes)), t, t.mes <= 6 ? (anualAnt?.meses ?? []).filter((m) => m.mes > t.mes + 6) : []),
     ...(eqProy && eqProy.falta > 0 && enCurso ? [{ texto: `${MES[enCurso - 1]}: faltan ${fmtMillones(eqProy.falta)} para el equilibrio`, nivel: 'ambar' }] : []),
   ];
   const conMirar = alertas.length > 0;
@@ -255,7 +255,12 @@ function Tarjeta({ titulo, activa, deshabilitada, onClick, children }) {
 // Evolución de la tarjeta tocada, a todo el ancho (como en el celu): barras de los últimos 3/6/9/12 meses.
 function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onCerrar }) {
   const [n, setN] = useState(6);
-  const todos = [...mesesAnt.map((m) => ({ ...m, anio: anio - 1 })), ...meses.map((m) => ({ ...m, anio }))];
+  // Mismo criterio que las tarjetas (Diego 06/11/2026: "en la barra dice una cosa y en el número otra"):
+  // el personal a medio cargar se completa con el último mes completo y la barra queda marcada.
+  const todos = conPersonalCompleto([
+    ...[...mesesAnt].sort((a, b) => a.mes - b.mes).map((m) => ({ ...m, anio: anio - 1 })),
+    ...[...meses].sort((a, b) => a.mes - b.mes).map((m) => ({ ...m, anio })),
+  ]);
   let serie;
   let titulo;
   let plata;
@@ -264,9 +269,9 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
     // Barras = ventas; marca = equilibrio del mes (solo el año que se mira: las variables vienen por año).
     titulo = 'Ventas y punto de equilibrio'; plata = true; claveSentido = 'ventas';
     serie = serieIndicador({ meses: todos, clave: 'ventas', hasta: { anio, mes: mesHasta }, n }).map((p) => {
-      const m = p.anio === anio ? meses.find((x) => x.mes === p.mes) : null;
+      const m = p.anio === anio ? todos.find((x) => x.anio === anio && x.mes === p.mes) : null;
       const e = m && variablePorMes ? equilibrioMes(m.ventas, m.rubros.reduce((s, r) => s + r.total, 0), variablePorMes[p.mes]?.total ?? 0) : null;
-      return { ...p, marca: e?.equilibrio ?? null };
+      return { ...p, marca: e?.equilibrio ?? null, estimado: !!m?.personalEstimado };
     });
   } else {
     titulo = INFO_INDICADOR[clave].titulo; plata = INFO_INDICADOR[clave].tipo === 'plata'; claveSentido = clave;
@@ -305,8 +310,10 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
               <Box sx={{ position: 'relative', height: 144, width: '100%', maxWidth: 72 }}>
                 {x.valor != null && (
                   <>
-                    <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '6px 6px 0 0', bgcolor: x.valor < 0 ? '#f87171' : CELESTE, height: `${alto(x.valor) * 0.82}%` }} />
-                    <Box component="span" sx={{ position: 'absolute', left: -12, right: -12, textAlign: 'center', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums', bottom: `calc(${alto(x.valor) * 0.82}% + 2px)` }}>{fmt(x.valor)}</Box>
+                    <Box title={x.estimado ? 'Estimado: el personal del mes está a medio cargar; se usa el del último mes completo.' : undefined}
+                      sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '6px 6px 0 0', bgcolor: x.valor < 0 ? '#f87171' : CELESTE, height: `${alto(x.valor) * 0.82}%`,
+                        ...(x.estimado ? { opacity: 0.55, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px)' } : {}) }} />
+                    <Box component="span" sx={{ position: 'absolute', left: -12, right: -12, textAlign: 'center', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums', bottom: `calc(${alto(x.valor) * 0.82}% + 2px)` }}>{fmt(x.valor)}{x.estimado ? '*' : ''}</Box>
                   </>
                 )}
                 {x.marca != null && (
@@ -324,6 +331,7 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
         })}
       </Box>
       {clave === 'equilibrio' && <Box sx={{ mt: 0.5, fontSize: 11.5, color: 'text.secondary' }}>Barra = ventas · línea negra = punto de equilibrio del mes (con los gastos variables configurados).</Box>}
+      {serie.some((x) => x.estimado) && <Box sx={{ mt: 0.5, fontSize: 11.5, color: 'text.secondary' }}>* rayada = personal a medio cargar: se usa el del último mes completo hasta que se cargue.</Box>}
     </Box>
   );
 }
