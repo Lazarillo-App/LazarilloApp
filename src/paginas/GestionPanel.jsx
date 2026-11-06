@@ -22,6 +22,7 @@ import { useBranch } from '@/hooks/useBranch';
 import { MAIN_BRANCH_ID } from '@/context/BranchContext';
 import { GestionAPI, sucursalParam } from '@/servicios/apiGestion';
 import PivotCompras from '@/componentes/gestion/PivotCompras';
+import { SinRubroPanel } from '@/componentes/gestion/SinRubro';
 import PivotVentas from '@/componentes/gestion/PivotVentas';
 import PivotResultados from '@/componentes/gestion/PivotResultados';
 import KpiTarjetas from '@/componentes/gestion/KpiTarjetas';
@@ -245,6 +246,7 @@ function GestionPanelContenido() {
   return (
     <PanelGestionContext.Provider value={panel}>
     <Toaster position="bottom-right" />
+    <SinRubroPanel />
     <Box sx={{ p: { xs: 1.5, md: 3 }, display: 'flex', flexDirection: 'column', height: { md: 'calc(100vh - 64px)' } }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} gap={1.5}>
         <Box sx={{ minWidth: 0 }}>
