@@ -21,6 +21,7 @@ import { usePanelGestion } from '@/gestion/panelContext';
 import { mesAnteriorConValor } from '@/gestion/cargaUtils';
 import { ScopeGestion, useDashboard } from '@/gestion/compat';
 import { ConceptoFijoEmpleado, useConceptosEmpleado } from './apertura/concepto-fijo';
+import { ChipCorregir } from './SinRubro';
 import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
@@ -165,20 +166,24 @@ export default function PivotCompras({
   );
 
   // Fila de rubro (pivot-rubro-row.tsx): fondo gris, semibold.
-  const filaRubro = (rubro) => (
-    <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600 } }}>
-      <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
-        <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{rubro.nombre}</Expansor>
+  // Sin rubro (Diego 06/11/2026): siempre primero, en ámbar y con «corregir» (abre el porqué).
+  const filaRubro = (rubro) => {
+    const sinRubro = rubro.rubroCodigo === '__sin_rubro';
+    return (
+    <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
+      <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
+        <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{sinRubro ? <>⚠ {rubro.nombre}<ChipCorregir /></> : rubro.nombre}</Expansor>
       </TableCell>
       {months.map((mes) => (
-        <TableCell key={mes} {...clic(rubro.values[mes], { mes, rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(rubro.values[mes]) }}>
+        <TableCell key={mes} {...clic(rubro.values[mes], { mes, rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(rubro.values[mes]) }}>
           {fmtCelda(rubro.values[mes], mes)}
         </TableCell>
       ))}
       <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>
       {celdaPct(rubro.rowTotal, { py: 1.25 })}
     </TableRow>
-  );
+    );
+  };
 
   // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera, Proveedor ni Insumos).
   const cargaEnCelda = agrupacion === 'concepto' && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
