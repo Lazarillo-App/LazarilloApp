@@ -4,7 +4,7 @@
 // El Panel provee su contexto (negocio + sucursal); acá se arma con el negocio activo y la sucursal
 // elegida en la barra (con "todas", la principal).
 import React, { useMemo, useState } from 'react';
-import { Alert, Snackbar } from '@mui/material';
+import { Alert, Dialog, Snackbar } from '@mui/material';
 import { Toaster } from 'sonner';
 import { PanelGestionContext } from '@/gestion/panelContext';
 import { useBranch } from '@/hooks/useBranch';
@@ -34,6 +34,7 @@ export function BotonCargarFactura() {
 // Hook + modal: abrir(purchaseId, comprobante) busca la factura de esa compra y la muestra.
 export function useVerFacturaDeCompra() {
   const [ver, setVer] = useState(null); // { rowId, comprobante }
+  const [soloDetalle, setSoloDetalle] = useState(null); // compra que está en el detalle pero no en Caja
   const [buscando, setBuscando] = useState(null);
   const [error, setError] = useState('');
   const abrir = async (purchaseId, comprobante) => {
@@ -42,7 +43,8 @@ export function useVerFacturaDeCompra() {
     try {
       const r = await gestionFetch(`/api/facturas/de-compra?purchaseId=${encodeURIComponent(purchaseId)}`);
       const d = await r.json().catch(() => null);
-      if (!r.ok || !d || !d.rowId) setError((d && d.error) || 'No encontré la factura de esta compra.');
+      if (r.ok && d && d.soloDetalle) setSoloDetalle(d);
+      else if (!r.ok || !d || !d.rowId) setError((d && d.error) || 'No encontré la factura de esta compra.');
       else setVer({ rowId: d.rowId, comprobante });
     } catch (_) { setError('Error de red: no se pudo abrir la factura.'); }
     setBuscando(null);
@@ -54,6 +56,7 @@ export function useVerFacturaDeCompra() {
       <ConContextoGestion>
         <VerFactura rowId={ver ? ver.rowId : null} detalle={ver ? ver.comprobante : ''} onClose={() => setVer(null)} />
       </ConContextoGestion>
+      {soloDetalle && <CompraSoloDetalle d={soloDetalle} onClose={() => setSoloDetalle(null)} />}
       <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {error ? <Alert severity="warning" variant="filled" onClose={() => setError('')}>{error}</Alert> : undefined}
       </Snackbar>
@@ -111,4 +114,45 @@ export function useFichaProveedorDeCompra() {
     </ConContextoGestion>
   ) : null;
   return { abrir: (it) => setVer({ proveedorId: it.proveedor_id, cuit: it.proveedor_cuit, nombre: it.proveedor_nombre ?? it.proveedor }), modal };
+}
+
+// Compra que MaxiRest tiene en el detalle de compras (informe 25) pero no en Caja (informe 14): se ve con sus
+// renglones y se avisa que no suma en Resultados. Pasa cuando el insumo no tiene concepto de caja en
+// MaxiRest (Diego 06/11/2026, Ramos Flora en Comercio).
+const pesos = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function CompraSoloDetalle({ d, onClose }) {
+  const total = (d.lineas || []).reduce((a, l) => a + Number(l.total || 0), 0);
+  const fecha = d.fecha ? d.fecha.split('-').reverse().join('/') : '';
+  const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#8a8a8a', padding: '6px 8px', borderBottom: '1px solid #ececea' };
+  const td = { padding: '6px 8px', borderBottom: '1px solid #f2f2f0', fontSize: 13 };
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <b style={{ fontSize: 16 }}>{d.comprobante}</b>
+          <span style={{ color: '#666', fontSize: 13 }}>{d.proveedor || ''}{fecha ? ` · ${fecha}` : ''}</span>
+          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', fontSize: 20, color: '#999', cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ margin: '10px 0 12px', border: '1.5px solid #f0d5a8', background: '#fdf8ee', color: '#8a6d2f', borderRadius: 10, padding: '8px 12px', fontSize: 12.5 }}>
+          ⚠ Esta compra está en el <b>detalle de compras</b> de MaxiRest pero <b>no en Caja</b>: cuenta para el costo de las recetas pero <b>no suma en Resultados</b>.
+          Suele pasar cuando el insumo no tiene concepto de caja en MaxiRest.
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Insumo / concepto</th><th style={{ ...th, textAlign: 'right' }}>Cantidad</th><th style={{ ...th, textAlign: 'right' }}>Unit. $</th><th style={{ ...th, textAlign: 'right' }}>Neto $</th><th style={th}>Concepto de caja</th></tr></thead>
+          <tbody>
+            {(d.lineas || []).map((l, i) => (
+              <tr key={i}>
+                <td style={td}>{l.nombre}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{Number(l.cantidad || 0).toLocaleString('es-AR', { maximumFractionDigits: 3 })} {l.medida || ''}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{pesos(l.unitario)}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{pesos(l.total)}</td>
+                <td style={{ ...td, color: l.concepto ? '#333' : '#c62828', fontWeight: l.concepto ? 400 : 600 }}>{l.concepto || 'sin concepto'}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr><td style={{ ...td, fontWeight: 700 }} colSpan={3}>Total neto</td><td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{pesos(total)}</td><td style={td} /></tr></tfoot>
+        </table>
+      </div>
+    </Dialog>
+  );
 }
