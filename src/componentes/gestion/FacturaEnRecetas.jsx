@@ -14,7 +14,7 @@ import CargarFactura, { VerFactura } from './CargarFactura';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMaestrosFactura } from '@/gestion/hooksPanel';
 import EnvasesEditor from './EnvasesEditor';
-import { FichaProveedor } from './ModalCargaFactura';
+import FichaProveedor from './FichaProveedor';
 
 export function ConContextoGestion({ children }) {
   const { activeBusinessId } = getSession();
