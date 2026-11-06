@@ -249,6 +249,15 @@ const AvisoLinea = ({ a, onCorregir, onAceptar }) => {
     </div>
   );
 };
+// Insumo sin concepto de caja en MaxiRest (Diego 06/11/2026). Rojo mientras no se elija uno para esta
+// factura (no deja confirmar); ámbar después, para que se corrija de raíz en MaxiRest.
+const AvisoSinConcepto = ({ rubro, lazarillo, elegido }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
+    background: elegido ? "#fdf8ef" : "#fdf3f3", border: `1px solid ${elegido ? "#f0d9a8" : "#f3c4c4"}`, color: elegido ? "#8a5a00" : C.rojo }}>
+    <span>⚠ <b>Sin concepto de caja asociado</b>: {lazarillo ? "el insumo todavía no tiene concepto" : rubro ? <>el rubro «{rubro}» no tiene concepto en MaxiRest</> : "el insumo no tiene rubro en MaxiRest"}.{" "}
+      {!elegido ? "Elegí el concepto de caja para esta factura." : lazarillo ? "Queda con el concepto elegido." : "Esta factura va con el concepto elegido; corregilo en MaxiRest para las próximas."}</span>
+  </div>
+);
 const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px" }}>BONIFICADO</span>;
 function Badge({ estado }) {
   const col = estado === "PAGA" ? C.verde : estado === "PARCIAL" ? C.nar : C.rojo;
@@ -497,7 +506,7 @@ function ModalNuevaCarga(props) {
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
   // IVA e II guardados en la última carga de Lazarillo mandan sobre los de MaxiRest (Diego 06/11/2026).
   const recDe = (t, k) => (maestros.recordados || []).find((r) => r.t === t && String(r.k) === String(k));
-  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => { const r = recDe("insumo", i.codigo); return { codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit,
+  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => { const r = recDe("insumo", i.codigo); return { codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), rubro: i.rubro || null, unit: i.unit,
     alic: r && r.alic != null ? r.alic : i.alic, ii: r && r.ii != null ? r.ii || null : i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }; });
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
@@ -513,6 +522,7 @@ function ModalNuevaCarga(props) {
     try {
       if (a.tipo === "insumo") {
         if (!a.medida) throw new Error("Elegí la unidad de medida.");
+        if (!codConcepto(a.conc)) throw new Error("Elegí el concepto de caja: un insumo no puede quedar sin concepto.");
         // Mismo maestro que Recetas (código L1, L2…): no se duplica el insumo.
         const r = await insumoCreate({ nombre: a.nombre.trim(), unidadMed: a.medida });
         const cod = r.sku || (r.data && r.data.codigo_maxi);
@@ -535,6 +545,13 @@ function ModalNuevaCarga(props) {
     setCreandoItem(false);
   };
   const conceptoDeInsumo = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).concepto || "";
+  // Insumo del maestro sin concepto de caja (Diego 06/11/2026: "no nos tiene que dejar cargar un insumo sin
+  // concepto asociado, salta alerta"): en MaxiRest el concepto sale del rubro del insumo.
+  const sinConceptoDe = (l) => {
+    if (l.tipo !== "insumo" || !l.item) return null;
+    const m = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
+    return m && !m.concepto ? { rubro: m.rubro, lazarillo: /^L\d+$/.test(String(m.codigo)), elegido: !!codConcepto(l.conc) } : null;
+  };
   const medidaDe = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).medida || "";
   // Medida de la línea: la de la factura (X8, Pack… si en MaxiRest se cargó en envases; ahí el
   // precio es por envase) y, si es un envase, cuántas unidades del insumo trae (Diego 28/10/2026).
@@ -1298,6 +1315,8 @@ function ModalNuevaCarga(props) {
                 const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / cantN : 0;
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
+                const sinConc = !soloVer ? sinConceptoDe(l) : null;
+                const sinConcUI = sinConc && <AvisoSinConcepto {...sinConc} />;
                 const celda = { color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" };
                 const chica = { display: "block", fontSize: 10.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
                 const txtDesc = desc > 0 && esIns ? (l.descTipo === "u" ? `−${fmtNum(parseImp(l.desc))} /u` : l.descTipo === "t" ? `−${fmtNum(parseImp(l.desc))}` : `−${fmtNum(parseImp(l.desc))}%`) + (cantN > 0 ? ` → ${fmtNum(Math.round((brutoDe(l) - desc) / cantN * 100) / 100)}` : "") : "";
@@ -1306,7 +1325,7 @@ function ModalNuevaCarga(props) {
                   <div {...dnd} draggable={!soloVer && lineas.length > 1}
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (_) {} setArrastre({ de: i, a: i }); }}
                     onDragEnd={() => setArrastre(null)}
-                    style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI ? "none" : "1px solid #f2f2f0", fontSize: 13,
+                    style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "8px 0", borderBottom: avisoUI || sinConcUI ? "none" : "1px solid #f2f2f0", fontSize: 13,
                       opacity: arrastre && arrastre.de === i ? 0.45 : 1, ...(l.precargada ? { background: "#fffdf5" } : {}), ...marcaDrop }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                       {!soloVer && lineas.length > 1 && <span title="Arrastrá para ordenar los registros" style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, flexShrink: 0, marginLeft: -2, userSelect: "none" }}>⠿</span>}
@@ -1339,7 +1358,7 @@ function ModalNuevaCarga(props) {
                       <span onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris }}>×</span>
                     </span>
                   </div>
-                  {avisoUI && <div style={{ borderBottom: "1px solid #f2f2f0", paddingBottom: 6 }}>{avisoUI}</div>}
+                  {(avisoUI || sinConcUI) && <div style={{ borderBottom: "1px solid #f2f2f0", paddingBottom: 6 }}>{avisoUI}{sinConcUI}</div>}
                   </React.Fragment>
                 );
                 // ── Registro en edición ──
@@ -1493,7 +1512,7 @@ function ModalNuevaCarga(props) {
                         <button type="button" onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris, background: "none", border: "none", padding: 0, fontSize: 14 }}>×</button>
                       </span>
                     </div>
-                    {avisoUI && <div style={{ padding: "0 8px" }}>{avisoUI}</div>}
+                    {(avisoUI || sinConcUI) && <div style={{ padding: "0 8px" }}>{avisoUI}{sinConcUI}</div>}
                     {/* Segunda fila: descuento (insumo) debajo de unitario y total, II sugerido, y chips a la derecha. */}
                     <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "start", marginTop: 6 }}>
                       {esIns ? (<>
