@@ -43,7 +43,10 @@ export function CanastaMini({ r, d }) {
       <Box sx={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.4, color: 'text.secondary' }}>
         {r.base ? <>desde {ddmm(r.base)} (aumento)</> : <>en el mes</>}
       </Box>
-      <Box sx={{ fontSize: 11.5, lineHeight: 1.4, color: 'text.secondary' }}>12 meses {pct(r.doce)}{estimados.length ? ` · ${estimados.join(', ')} est.` : ''}</Box>
+      <Box sx={{ fontSize: 11.5, lineHeight: 1.4, color: 'text.secondary' }}>
+        <Box component="span" sx={{ whiteSpace: 'nowrap' }}>12 meses {pct(r.doce)}</Box>
+        {estimados.length > 0 && <Box component="span" sx={{ whiteSpace: 'nowrap' }}> · {estimados.join(', ')} est.</Box>}
+      </Box>
     </>
   );
 }

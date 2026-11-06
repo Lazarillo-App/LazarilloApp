@@ -87,14 +87,19 @@ export default function KpiTarjetas() {
             </Tarjeta>
             <Tarjeta titulo="Resultado" activa={abierta === 'resultado'} onClick={() => toggle('resultado')}>
               <Grande color={t.resultado < 0 ? ROJO : VERDE}>{fmtMillones(t.resultado)}</Grande>
-              <Chico color="text.secondary">{pc(t.rentabilidad)} rentab.{t.personalEstimado ? ' · personal est.' : ''}</Chico>
+              <Chico color="text.secondary">
+                <Box component="span" sx={{ whiteSpace: 'nowrap' }}>{pc(t.rentabilidad)} rentab.</Box>
+                {t.personalEstimado && <Box component="span" sx={{ whiteSpace: 'nowrap' }}> · personal est.</Box>}
+              </Chico>
             </Tarjeta>
             <Tarjeta titulo="Mix" activa={abierta === 'mix' || abierta === 'foodCost' || abierta === 'personal'} onClick={() => toggle('mix')}>
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
                 <Grande>{pc(t.mix)}</Grande>
                 {t.difMix != null && Math.abs(t.difMix) >= 0.05 && <Chico color={t.difMix < 0 ? VERDE : ROJO}>{ppTxt(t.difMix)} pp</Chico>}
               </Box>
-              <Box sx={{ mt: 0.5, display: 'flex', gap: 1.5, borderTop: '1px dashed', borderColor: 'divider', pt: 0.5, fontSize: 12 }}>
+              {/* Cada indicador entero en un renglón (nunca se corta el número de su variación); si no entran
+                  los dos, pasan a dos renglones y las tarjetas de la fila se estiran parejas. */}
+              <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0, borderTop: '1px dashed', borderColor: 'divider', pt: 0.5, fontSize: 12 }}>
                 <SubIndicador nombre="Food cost" valor={t.foodCost} dif={t.difFoodCost} onClick={() => toggle('foodCost')} />
                 <SubIndicador nombre="Personal" valor={t.personal} dif={t.difPersonal} onClick={() => toggle('personal')}
                   estimado={t.personalEstimado ? `Estimado: el personal del mes está a medio cargar (${fmtMillones(t.personalEstimado.cargado)}); se usa el último mes completo (${fmtMillones(t.personalEstimado.usado)}) hasta que se cargue.` : null} />
@@ -164,7 +169,7 @@ function SubIndicador({ nombre, valor, dif, onClick, estimado }) {
   return (
     <Box
       component="button" type="button" onClick={(ev) => { ev.stopPropagation(); onClick(); }}
-      sx={{ all: 'unset', cursor: 'pointer', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
+      sx={{ all: 'unset', cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap', '&:hover': { textDecoration: 'underline' } }}
     >
       {nombre} <b title={estimado || undefined}>{pc(valor)}{estimado && <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>*</Box>}</b>
       {dif != null && Math.abs(dif) >= 0.05 && <Box component="span" sx={{ ml: 0.5, fontWeight: 700, color: dif < 0 ? VERDE : ROJO }}>{ppTxt(dif)}</Box>}
