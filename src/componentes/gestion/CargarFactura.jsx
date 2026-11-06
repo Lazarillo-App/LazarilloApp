@@ -120,10 +120,12 @@ const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '
 
 // Ver una factura con el formato de la carga: si es de Lazarillo, Editar o Eliminar. Si la fila no
 // es una factura (gasto o sueldo sin comprobante), el detalle de líneas de siempre.
-export function VerFactura({ rowId, detalle, onClose }) {
+// vistaInicial "repetir": abre directo la carga nueva con esta estructura (Diego 06/11/2026: desde la
+// cta cte, "Repetir" abría la factura y había que volver a apretar Repetir).
+export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver' }) {
   const { businessId } = usePanelGestion();
   const queryClient = useQueryClient();
-  const [vista, setVista] = useState('ver');
+  const [vista, setVista] = useState(vistaInicial);
   const [aviso, setAviso] = useState(null);
   const { data, isLoading } = useQuery({
     queryKey: ['gestionFactura', businessId, rowId],
@@ -154,7 +156,7 @@ export function VerFactura({ rowId, detalle, onClose }) {
         ) : vista === 'repetir' ? (
           <ModalNuevaCarga
             key="repetir" embebido vista="nueva" ctx={{ repetirDe: ede }} maestros={maestros} pdvsRef={pdvsRef} pdvActual={pdvActual} reglaDe={reglaDe}
-            onCerrar={() => setVista('ver')}
+            onCerrar={vistaInicial === 'repetir' ? cerrar : () => setVista('ver')}
             onGuardado={(d) => { setAviso(avisoConCostos(`Factura cargada: ${d.comprobante} · ${pesos(d.total)}`, d.costos)); refrescarCompras(queryClient); cerrar(); }}
           />
         ) : (
