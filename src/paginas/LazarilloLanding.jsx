@@ -133,7 +133,7 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .relato{padding:90px 0;background:var(--paper);}
 .relato h2{font-size:42px;color:var(--ink);font-weight:800;letter-spacing:-.8px;margin:10px 0 12px;line-height:1.1;}
 .relato h2 span{color:var(--skydeep);}
-.relato .sub{font-size:18px;max-width:640px;margin-bottom:44px;}
+.relato .sub{font-size:18px;margin-bottom:44px;}
 .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
 .rcard{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;transition:transform .2s,box-shadow .2s;}
 .rcard:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(21,33,62,.12);}
@@ -405,7 +405,7 @@ export default function LazarilloLanding() {
       <section className="clientes" id="clientes">
         <div className="wrap">
           <div className="kick">Clientes</div>
-          <h2>Gastronómicos que ya ven lo que su POS no les muestra.</h2>
+          <h2>Negocios que ya ven lo que su POS no les muestra.</h2>
           <p className="sub">Lo mismo que leíste arriba, con sus números.</p>
           <div className="grid cgrid">
             {clientes.map((c) => (
