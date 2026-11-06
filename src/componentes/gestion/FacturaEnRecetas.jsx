@@ -14,6 +14,7 @@ import CargarFactura, { VerFactura } from './CargarFactura';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMaestrosFactura } from '@/gestion/hooksPanel';
 import EnvasesEditor from './EnvasesEditor';
+import FichaProveedor from './FichaProveedor';
 
 export function ConContextoGestion({ children }) {
   const { activeBusinessId } = getSession();
@@ -80,4 +81,34 @@ export function EnvasesCompraFicha({ codigo, nombre }) {
       <EnvasesFichaInterno codigo={codigo} nombre={nombre} />
     </ConContextoGestion>
   );
+}
+
+// Ficha del proveedor desde una compra de Recetas (Diego 06/11/2026). purchases guarda el proveedor con el
+// código de MaxiRest (o 9.000.000.000 + n para los "L<n>" de Lazarillo); la ficha es la del maestro de la carga.
+const BASE_PROVEEDOR_PANEL = 9000000000;
+const codigoDeSupplier = (id) => {
+  const n = Number(id);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n >= BASE_PROVEEDOR_PANEL ? `L${n - BASE_PROVEEDOR_PANEL}` : String(n);
+};
+function FichaDeCompra({ ver, onCerrar }) {
+  const { data: maestros, isLoading } = useMaestrosFactura(true);
+  if (isLoading || !maestros) return null;
+  const lista = maestros.proveedores || [];
+  const cod = codigoDeSupplier(ver.proveedorId);
+  const p = (cod && lista.find((x) => String(x.codigo).trim() === cod))
+    || (ver.cuit && lista.find((x) => x.cuit && x.cuit.replace(/\D/g, '') === String(ver.cuit).replace(/\D/g, '')))
+    || lista.find((x) => (x.nombre || '').trim().toUpperCase() === String(ver.nombre || '').trim().toUpperCase());
+  if (!p) return <Snackbar open autoHideDuration={5000} onClose={onCerrar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}><Alert severity="warning" variant="filled" onClose={onCerrar}>No encontré la ficha de {ver.nombre || 'este proveedor'}.</Alert></Snackbar>;
+  return <FichaProveedor id={p.id} onCerrar={onCerrar} onGuardado={onCerrar} />;
+}
+export function useFichaProveedorDeCompra() {
+  const [ver, setVer] = useState(null); // { proveedorId, cuit, nombre }
+  const modal = ver ? (
+    <ConContextoGestion>
+      <Toaster position="bottom-right" />
+      <FichaDeCompra ver={ver} onCerrar={() => setVer(null)} />
+    </ConContextoGestion>
+  ) : null;
+  return { abrir: (it) => setVer({ proveedorId: it.proveedor_id, cuit: it.proveedor_cuit, nombre: it.proveedor_nombre ?? it.proveedor }), modal };
 }

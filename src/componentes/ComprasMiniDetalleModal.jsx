@@ -22,7 +22,7 @@ import { useBranch } from '@/hooks/useBranch';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
-import { BotonCargarFactura, useVerFacturaDeCompra } from './gestion/FacturaEnRecetas';
+import { BotonCargarFactura, useVerFacturaDeCompra, useFichaProveedorDeCompra } from './gestion/FacturaEnRecetas';
 
 const fmtMoney = (v) => {
   const n = Number(v ?? 0);
@@ -593,6 +593,7 @@ export function ComprasDetalleContenido({
   const hasSucursales = (rawBranches || []).length > 0;
   // Factura de la compra con el formato de la carga (ver / editar) y «Cargar factura» (Diego 05/11/2026).
   const verFactura = useVerFacturaDeCompra();
+  const fichaProv = useFichaProveedorDeCompra();
 
   const [selectedBiz, setSelectedBiz] = useState('current');
   const [extraItems, setExtraItems] = useState([]);
@@ -1844,17 +1845,24 @@ export function ComprasDetalleContenido({
                     >
                       <TableCell>{fmtFecha(it.fecha)}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                        {it.factura ?? it.comprob ?? it.referencia ?? '-'}
-                        {it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) && (
+                        {/* El comprobante es el vínculo a la factura y el proveedor a su ficha, como en
+                            Detalle de compras (Diego 06/11/2026: sin botón "ver"). */}
+                        {it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
                           <Box component="span" role="button" title="Ver la factura con el formato de la carga (y editarla si se cargó en Lazarillo)"
                             onClick={(e) => { e.stopPropagation(); verFactura.abrir(it.purchase_id, it.factura ?? it.comprob ?? it.referencia ?? ''); }}
-                            sx={{ ml: 1, fontFamily: 'inherit', fontSize: '0.75rem', fontWeight: 700, color: 'primary.main', cursor: 'pointer', whiteSpace: 'nowrap', '&:hover': { textDecoration: 'underline' } }}>
-                            {verFactura.buscando === it.purchase_id ? '…' : 'ver ›'}
+                            sx={{ color: '#0369a1', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px', '&:hover': { textDecorationStyle: 'solid' }, opacity: verFactura.buscando === it.purchase_id ? 0.5 : 1 }}>
+                            {it.factura ?? it.comprob ?? it.referencia ?? '-'}
                           </Box>
-                        )}
+                        ) : (it.factura ?? it.comprob ?? it.referencia ?? '-')}
                       </TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                        {it.proveedor_nombre ?? it.proveedor ?? '-'}
+                        {(it.proveedor_nombre ?? it.proveedor) && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
+                          <Box component="span" role="button" title="Ver la ficha del proveedor"
+                            onClick={(e) => { e.stopPropagation(); fichaProv.abrir(it); }}
+                            sx={{ color: '#0369a1', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px', '&:hover': { textDecorationStyle: 'solid' } }}>
+                            {it.proveedor_nombre ?? it.proveedor}
+                          </Box>
+                        ) : (it.proveedor_nombre ?? it.proveedor ?? '-')}
                       </TableCell>
 
                       {showBizColumn && (
@@ -1958,6 +1966,7 @@ export function ComprasDetalleContenido({
       {/* Popover del chip de bonificación */}
       {bonif && renderPopover()}
       {verFactura.modal}
+      {fichaProv.modal}
     </Stack>
   );
 }
