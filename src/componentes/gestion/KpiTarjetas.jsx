@@ -8,6 +8,7 @@
 import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
 import { ImpagasBoton } from './pagos/impagas-boton';
 import { SinCargaBoton } from './pagos/sin-carga-boton';
+import { SinRubroLinea, useSinRubro } from './SinRubro';
 import React, { useMemo, useState } from 'react';
 import { Box, Snackbar, Alert } from '@mui/material';
 import { useAnual, useCanasta, useEgresosProyeccion, useEquilibrio, useProyeccionIngresos } from '@/gestion/hooksPanel';
@@ -186,8 +187,11 @@ function AccesosPagos() {
 // Alertas del mes en una tarjeta que NUNCA es más alta que las de KPI: una a la vista y el resto en "+N más".
 function ParaMirar({ alertas }) {
   const [mas, setMas] = useState(false);
-  const visibles = alertas.slice(0, 1);
-  const resto = alertas.slice(1);
+  // Con «Sin rubro» arriba (Diego 06/11/2026) la tarjeta no crece: las alertas pasan a "+N más".
+  const { data: sinRubro } = useSinRubro();
+  const conSinRubro = !!sinRubro && Math.abs(sinRubro.importe) >= 0.01;
+  const visibles = alertas.slice(0, conSinRubro ? 0 : 1);
+  const resto = alertas.slice(conSinRubro ? 0 : 1);
   const linea = (a) => (
     <Box key={a.texto} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <Box component="span" sx={{ width: 6, height: 6, flexShrink: 0, borderRadius: '50%', bgcolor: a.nivel === 'rojo' ? '#ef4444' : '#f59e0b' }} />
@@ -199,6 +203,7 @@ function ParaMirar({ alertas }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'text.secondary' }}>
         <span>Para mirar</span>{alertas.length > 0 && <Box component="b" sx={{ color: AMBAR }}>{alertas.length}</Box>}
       </Box>
+      <SinRubroLinea />
       <AccesosPagos />
       {visibles.map(linea)}
       {resto.length > 0 && (
