@@ -511,7 +511,8 @@ function ModalNuevaCarga(props) {
   const soloVer = vista === "ver";
   // ── Adaptación a datos reales (lo único que cambia respecto del prototipo v136) ──
   const HOY = hoyISO();
-  const PDVS = pdvsRef.map((p) => p.nombre);
+  const PDVS = [...new Set(pdvsRef.map((p) => p.nombre))];
+  const variosPdv = PDVS.length > 1; // con un solo PDV no hay nada que elegir ni repartir
   const idPdv = (nombre) => (pdvsRef.find((p) => p.nombre === nombre) || {}).id;
   // Altas desde la carga («Crear …» primero en todos los buscadores de maestros, Diego 05/11/2026).
   const [insNuevos, setInsNuevos] = useState([]);
@@ -1520,14 +1521,16 @@ function ModalNuevaCarga(props) {
                           </span>
                         )}
                         <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                          {!l.reparto
+                          {!l.reparto && !variosPdv
+                            ? <span style={{ ...chip, fontWeight: 700, color: C.neg }}><span style={{ fontWeight: 600, color: C.gris }}>PDV</span>{PDVS[0]}</span>
+                            : !l.reparto
                             ? <span style={chip}>PDV
                                 <select style={{ height: 26, border: "none", background: "transparent", fontSize: 12, fontWeight: 700, color: C.neg, cursor: "pointer", outline: "none", maxWidth: 170 }}
                                   value={l.pdvDest || pdvActual || PDVS[0]} onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
                                   {PDVS.map((p) => <option key={p}>{p}</option>)}
                                 </select></span>
                             : <span style={{ ...chip, borderColor: "#bfe0f0", background: "#f3fafd", color: "#2a88ad", fontWeight: 600, paddingRight: 11, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>⇄ {txtReparto(l) || "repartido"}</span>}
-                          {!l.reparto
+                          {!variosPdv ? null : !l.reparto
                             ? <span role="button" onClick={() => setLinea(i, "reparto", [{ pdv: l.pdvDest || pdvActual || PDVS[0], pct: 100 }, { pdv: PDVS.find((p) => p !== (l.pdvDest || pdvActual || PDVS[0])) || PDVS[1], pct: 0 }])}
                                 title="Repartir este registro entre varios PDV por porcentaje" style={{ fontSize: 11, color: C.cel, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", marginRight: 6 }}>⇄ repartir entre PDV</span>
                             : <span role="button" onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, reparto: undefined, pdvDest: l.reparto[0].pdv } : x))}
@@ -1603,7 +1606,7 @@ function ModalNuevaCarga(props) {
                             <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
                               <select style={{ ...sel, width: 160, height: 28, padding: "3px 22px 3px 6px", fontSize: 12 }} value={r.pdv}
                                 onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pdv: e.target.value } : x))}>
-                                {PDVS.map((p) => <option key={p}>{p}</option>)}
+                                {PDVS.filter((p) => p === r.pdv || !l.reparto.some((x) => x.pdv === p)).map((p) => <option key={p}>{p}</option>)}
                               </select>
                               <input style={{ ...inp, width: 54, height: 28, padding: "3px 4px", fontSize: 12, textAlign: "center" }} value={r.pct}
                                 onChange={(e) => setLinea(i, "reparto", l.reparto.map((x, kx) => kx === k ? { ...x, pct: soloNum(e.target.value) } : x))} />
