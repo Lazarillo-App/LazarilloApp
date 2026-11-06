@@ -298,15 +298,6 @@ export default function Navbar() {
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && !isStaff && (
-                    <MenuItem onClick={() => {
-                      setNavEl(null);
-                      const t = getConfigTab();
-                      navigate(t ? `/configuracion?tab=${t}` : '/configuracion');
-                    }}>
-                      Configuración
-                    </MenuItem>
-                  )}
 
                   {isAppAdmin && (
                     <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
@@ -324,7 +315,8 @@ export default function Navbar() {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
-                const enConfig = path.includes('/configuracion');
+                // En la home no van los links de Recetas (Artículos/Insumos/Menú): ahí se elige el módulo.
+                const enInicio = path.startsWith('/inicio');
                 // Estilo de subrayado para la sección activa
                 const activeSx = (on) => on ? {
                   '&::after': {
@@ -334,7 +326,7 @@ export default function Navbar() {
                 } : {};
                 return (
                   <>
-                    {isAppAdmin ? (
+                    {enInicio ? null : isAppAdmin ? (
                       <Button color="inherit"
                         sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
                         component={NavLink} to="/menu">
@@ -371,28 +363,6 @@ export default function Navbar() {
                         </>
                       );
                     })()}
-                    {!isAppAdmin && !isStaff && (
-                      <Tooltip title="Configuración">
-                        <IconButton
-                          color="inherit"
-                          sx={{ color: 'inherit', position: 'relative', ...activeSx(enConfig) }}
-                          aria-label="Configuración"
-                          onClick={() => {
-                            const tab = getConfigTab();
-                            navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
-                          }}
-                        >
-                          <Badge
-                            badgeContent={alertasBadge || null}
-                            color="warning"
-                            max={99}
-                            sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', minWidth: 16, height: 16 } }}
-                          >
-                            <SettingsIcon fontSize="small" />
-                          </Badge>
-                        </IconButton>
-                      </Tooltip>
-                    )}
                   </>
                 );
               })()}
@@ -495,6 +465,31 @@ export default function Navbar() {
                 </ClickAwayListener>
               )}
             </Box>
+            {/* ⚙ Configuración, al lado de la campana (pedido de Diego, 06/11). */}
+            {!isAppAdmin && !isStaff && logged && (
+              <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <Tooltip title="Configuración">
+                  <IconButton
+                    color="inherit"
+                    sx={{ color: 'inherit', position: 'relative', ...(location.pathname.includes('/configuracion') ? { bgcolor: 'color-mix(in srgb, var(--on-primary) 16%, transparent)' } : {}) }}
+                    aria-label="Configuración"
+                    onClick={() => {
+                      const tab = getConfigTab();
+                      navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
+                    }}
+                  >
+                    <Badge
+                      badgeContent={alertasBadge || null}
+                      color="warning"
+                      max={99}
+                      sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', minWidth: 16, height: 16 } }}
+                    >
+                      <SettingsIcon />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            )}
             {/* 🔔 Notificaciones siempre visibles */}
             {!isAppAdmin && logged && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
