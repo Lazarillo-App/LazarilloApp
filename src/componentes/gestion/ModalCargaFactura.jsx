@@ -250,9 +250,12 @@ const corregirFecha = (s) => {
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 };
 const parseImp = (v) => parseFloat(String(v).replace(/\./g, "").replace(",", ".")) || 0;
-const fmtImp = (v) => {
+// ev = e.nativeEvent: si se borró o se tipeó un dígito, los puntos que ya estaban son de miles (borrar un
+// 0 de 15.000 dejaba 15,00 — Diego 06/11/2026). Solo un "." recién tipeado (o pegado) se toma como decimal.
+const fmtImp = (v, ev) => {
   let s = String(v);
-  if (!s.includes(",")) {
+  const puntoNuevo = !ev || !ev.inputType || ev.inputType === "insertFromPaste" || ev.inputType === "insertFromDrop" || ev.data === ".";
+  if (!s.includes(",") && puntoNuevo) {
     const ult = s.lastIndexOf(".");
     if (ult >= 0) {
       const dec = s.slice(ult + 1).replace(/[^\d]/g, "");
@@ -527,7 +530,10 @@ function ModalNuevaCarga(props) {
   const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
   const codConcepto = (nombre) => (MAESTRO_CONCEPTOS.find((c) => c.concepto === nombre) || {}).codigo;
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
-  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, ii: i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }));
+  // IVA e II guardados en la última carga de Lazarillo mandan sobre los de MaxiRest (Diego 06/11/2026).
+  const recDe = (t, k) => (maestros.recordados || []).find((r) => r.t === t && String(r.k) === String(k));
+  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => { const r = recDe("insumo", i.codigo); return { codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit,
+    alic: r && r.alic != null ? r.alic : i.alic, ii: r && r.ii != null ? r.ii || null : i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }; });
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
   const abrirAltaItem = (i, tipo, destino, nombre) => {
@@ -738,6 +744,13 @@ function ModalNuevaCarga(props) {
     const v = l.descTipo === "u" ? d * (parseFloat(l.cant) || 0) : l.descTipo === "t" ? d : b * Math.min(d, 100) / 100;
     return Math.min(Math.round(v * 100) / 100, b);
   };
+  // Descuento mayor que el importe: casi seguro un error de tipeo; igual al importe = bonificado ($ 0).
+  const descExcede = (l) => {
+    const d = parseImp(l.desc);
+    if (l.tipo !== "insumo" || !(d > 0)) return false;
+    const v = l.descTipo === "u" ? d * (parseFloat(l.cant) || 0) : l.descTipo === "t" ? d : d > 100 ? Infinity : 0;
+    return v > brutoDe(l) + 0.005;
+  };
   const netoBase = (l) => l.tipo === "insumo" ? brutoDe(l) - descDe(l) : parseImp(l.neto);
   const netoSinG = lineas.reduce((a, l) => a + netoBase(l), 0);
   const dG = parseImp(descG);
@@ -878,6 +891,7 @@ function ModalNuevaCarga(props) {
     if (!l.item) return "Elegí el concepto o insumo";
     // Insumo bonificado: importe 0 con cantidad (Diego, 27/10/2026); un concepto sí necesita importe.
     if (l.tipo === "insumo" ? !(parseFloat(l.cant) > 0) : !(netoDe(l) > 0)) return l.tipo === "insumo" ? "Poné la cantidad" : "Poné el importe";
+    if (descExcede(l)) return "El descuento es mayor que el importe";
     if (l.tipo === "insumo" && !codConcepto(l.conc)) return "Elegí el concepto de caja del insumo";
     if (l.reparto && Math.abs(l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0) - 100) >= 0.01) return "El reparto por PDV tiene que sumar 100%";
     return null;
@@ -1087,6 +1101,21 @@ function ModalNuevaCarga(props) {
         setGuardando(false);
         if (!ok) { setErrores([(d && d.error) || "No se pudo guardar la factura.", ...((d && d.detalle) || [])]); return; }
         if (puedeBorr) borrarBorrador();
+        // Recordar IVA e II de cada insumo / concepto para la próxima carga (Diego 06/11/2026).
+        const recordar = lineas.filter((l) => l.item).map((l) => {
+          if (l.tipo !== "insumo") { const k = codConcepto(l.item); return k ? { tipo: "concepto", codigo: String(k), alic: Number(l.alic) } : null; }
+          const ins = MAESTRO_INSUMOS.find((x) => x.nombre === l.item) || {};
+          const cod = ins.codigo || l.codIns;
+          if (!cod) return null;
+          const c = parseFloat(l.cant) || 0;
+          const f = medidaLinea(l).factor || 1;
+          // Sin II cargado no se pisa lo recordado, salvo que se haya puesto 0 a propósito.
+          const iiT = parseImp(l.impint);
+          const ii = iiT > 0 && c > 0 ? Math.round(iiT / c / f * 10000) / 10000 : l.iiu === "0" || l.impint === "0" ? 0 : null;
+          return { tipo: "insumo", codigo: String(cod), alic: Number(l.alic), ii };
+        }).filter(Boolean);
+        if (recordar.length) gestionFetch("/api/facturas/recordados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: recordar }) })
+          .then(() => qcMaestros.invalidateQueries({ queryKey: ["gestionMaestrosFactura"] })).catch(() => {});
         // Recordar el descuento de cada insumo de este proveedor para la próxima carga (0 = ya no trae).
         if (p && p.id) {
           const items = lineas.filter((l) => l.tipo === "insumo" && l.item).map((l) => {
@@ -1187,7 +1216,7 @@ function ModalNuevaCarga(props) {
               <div><span style={lab}>Total factura</span>
                 <input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={totalCtrl} placeholder="$ 0,00"
                   title="El total del comprobante (con IVA y percepciones). Al terminar el desglose tiene que coincidir."
-                  onFocus={(e) => e.target.select()} onChange={(e) => setTotalCtrl(fmtImp(e.target.value))} /></div>
+                  onFocus={(e) => e.target.select()} onChange={(e) => setTotalCtrl(fmtImp(e.target.value, e.nativeEvent))} /></div>
               <div><span style={lab}>Observaciones</span>
                 <input style={inp} tabIndex={-1} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Opcional" /></div>
             </div>
@@ -1311,7 +1340,7 @@ function ModalNuevaCarga(props) {
                     <span style={{ ...celda, color: ii > 0 ? C.ii : "#ddd" }}>{ii > 0 ? <Imp v={ii} max={14} /> : "—"}</span>
                     <span style={celda}>{fmtNum(l.alic)}%</span>
                     <span style={celda}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />}</span>
-                    <span style={{ ...celda, color: C.neg }}>{esIns && neto === 0 ? <Bonif /> : <Imp v={subtotal} strong max={16} />}
+                    <span style={{ ...celda, color: C.neg }}>{esIns && neto === 0 ? (descExcede(l) ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : <Bonif />) : <Imp v={subtotal} strong max={16} />}
                       {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
                     <span style={{ display: soloVer ? "none" : "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
                       {/* registro precargado (repetir factura): el ⚠ reemplaza al lápiz, hacen lo mismo (abrir para revisar) */}
@@ -1330,13 +1359,16 @@ function ModalNuevaCarga(props) {
                 const marcoAviso = aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {};
                 const campo = { ...inp, padding: "8px 6px", textAlign: "center" };
                 const campoII = { ...campo, border: `1px solid ${C.iiBorde}`, color: C.ii, fontWeight: 600 };
-                const modoDesc = l.descModo || (l.descTipo === "u" || l.descTipo === "t" ? "$" : "%");
+                const modoDesc = l.descModo || (l.descTipo === "%" && l.desc ? "%" : "$"); // por importe de entrada (Diego 06/11/2026)
                 const dTxt = l.desc || "";
                 const dNum = parseImp(dTxt);
                 // Los dos campos del descuento muestran el mismo descuento: en % el mismo número; en $, por unidad y total.
                 const descUnitTxt = modoDesc === "%" ? dTxt : l.descTipo === "u" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum / cantN * 100) / 100) : "";
                 const descTotTxt = modoDesc === "%" ? dTxt : l.descTipo === "t" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum * cantN * 100) / 100) : "";
-                const setDesc = (v, tipo) => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, desc: fmtImp(v), descTipo: tipo, descModo: modoDesc, descSug: false, tocado: true }));
+                const excede = descExcede(l);
+                const estDesc = excede ? { border: `1.6px solid ${C.rojo}`, color: C.rojo, fontWeight: 600 } : desc > 0 ? { border: `1.6px solid ${C.verde}`, color: C.verde, fontWeight: 600 } : {};
+                const quedaTxt = (v) => (v > 0.004 ? $fmt(v) : "$ 0,00");
+                const setDesc = (v, tipo, ev) => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, desc: fmtImp(v, ev), descTipo: tipo, descModo: modoDesc, descSug: false, tocado: true }));
                 const iiUTxt = l.iiu !== undefined ? l.iiu : iiU > 0 ? fmtNum(Math.round(iiU * 100) / 100) : "";
                 const miIns = esIns ? MAESTRO_INSUMOS.find((x) => x.nombre === l.item) : null;
                 const iiSug = miIns && miIns.ii > 0 ? miIns.ii * (fEnv || 1) : 0;
@@ -1358,7 +1390,7 @@ function ModalNuevaCarga(props) {
                             crearPrimero={esIns ? "insumo" : "concepto"} onCrear={(n) => abrirAltaItem(i, esIns ? "insumo" : "concepto", "item", n)}
                             onElegir={(v) => {
                               const mi = esIns ? MAESTRO_INSUMOS.find((x) => x.nombre === v) : null;
-                              const ult = mi && mi.unit ? { unit: fmtNum(Math.round(mi.unit * 100) / 100), alic: mi.alic != null ? mi.alic : l.alic } : null;
+                              const ult = mi && mi.unit ? { unit: fmtNum(Math.round(mi.unit * 100) / 100) } : null;
                               const regla = reglaDeItem(l, v);
                               const rep = regla ? regla.map((r) => ({ ...r })) : undefined;
                               // El II de la última compra se sugiere igual que el precio (Diego 06/11/2026).
@@ -1368,8 +1400,8 @@ function ModalNuevaCarga(props) {
                               const dRec = mi && prv ? (maestros.descuentos || []).find((d) => d.p === prv.id && String(d.k) === String(mi.codigo)) : null;
                               const dSug = dRec ? { desc: fmtNum(dRec.valor), descTipo: dRec.tipo, descModo: dRec.tipo === "%" ? "%" : "$", descSug: true } : { desc: "", descSug: false };
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : (esIns
-                                ? { ...x, item: v, medida: undefined, ...dSug, reparto: rep, conc: conceptoDeInsumo(v) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, iiu, impint: "" }
-                                : { ...x, item: v, reparto: rep, alic: x.alic })));
+                                ? { ...x, item: v, medida: undefined, ...dSug, reparto: rep, conc: conceptoDeInsumo(v) || "", unit: ult ? ult.unit : "", ntot: "", alic: mi && mi.alic != null ? mi.alic : x.alic, iiu, impint: "" }
+                                : { ...x, item: v, reparto: rep, alic: (recDe("concepto", codConcepto(v)) || {}).alic ?? x.alic })));
                             }} />
                         </div>
                       </div>
@@ -1429,7 +1461,7 @@ function ModalNuevaCarga(props) {
                         ? <input style={{ ...campo, ...marcoAviso }} placeholder="Unit. $" value={l.unit} title={l.unit ? "$ " + l.unit : undefined}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
-                              const unit = fmtImp(e.target.value); const u = parseImp(unit); const c = parseFloat(l.cant) || 0;
+                              const unit = fmtImp(e.target.value, e.nativeEvent); const u = parseImp(unit); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, unit, ntot: c > 0 && u > 0 ? fmtNum(c * u) : "" } : x));
                             }} />
                         : null}
@@ -1438,29 +1470,29 @@ function ModalNuevaCarga(props) {
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             title="Total neto de la línea: con la cantidad puesta, el unitario se calcula solo"
                             onChange={(e) => {
-                              const ntot = fmtImp(e.target.value); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
+                              const ntot = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
                             }} />
-                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value))}
+                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value, e.nativeEvent))}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }} />}
                       {/* Impuestos internos: por unidad ⇄ total del registro (los proveedores lo pasan de las dos formas). */}
                       {esIns
                         ? <input style={campoII} placeholder="0" value={iiUTxt} title="Impuesto interno por unidad (por envase si la cantidad va en envases)"
                             onChange={(e) => {
-                              const iiu = fmtImp(e.target.value); const v = parseImp(iiu); const c = parseFloat(l.cant) || 0;
+                              const iiu = fmtImp(e.target.value, e.nativeEvent); const v = parseImp(iiu); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, iiu, impint: v > 0 && c > 0 ? fmtNum(Math.round(v * c * 100) / 100) : "" } : x));
                             }} />
                         : <span />}
                       <input style={campoII} placeholder="0" value={l.impint || ""} title="Impuesto interno total del registro"
                         onChange={(e) => {
-                          const impint = fmtImp(e.target.value); const t = parseImp(impint); const c = parseFloat(l.cant) || 0;
+                          const impint = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(impint); const c = parseFloat(l.cant) || 0;
                           setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, impint, iiu: esIns && t > 0 && c > 0 ? fmtNum(Math.round(t / c * 100) / 100) : esIns ? "" : undefined } : x));
                         }} />
                       <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
                         {ALICUOTAS.map((a) => <option key={a} value={a}>{fmtNum(a)}%</option>)}
                       </select>
                       <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>
-                      <span style={{ fontSize: 12.5, ...celda, color: C.neg }}>{neto > 0 ? <Imp v={subtotal} strong max={16} /> : esIns && cantN > 0 && l.item ? <Bonif /> : ""}
+                      <span style={{ fontSize: 12.5, ...celda, color: C.neg }}>{neto > 0 ? <Imp v={subtotal} strong max={16} /> : excede ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : esIns && cantN > 0 && l.item ? <Bonif /> : ""}
                         {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
                       <span style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button type="button" onClick={() => {
@@ -1490,16 +1522,18 @@ function ModalNuevaCarga(props) {
                           </span>
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <input style={{ ...inp, ...chico, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}`, color: C.verde, fontWeight: 600 } : {}) }} placeholder="0"
+                          <input style={{ ...inp, ...chico, textAlign: "center", ...estDesc }} placeholder="0"
                             value={descUnitTxt} title={modoDesc === "%" ? "Descuento %" : "Descuento en $ por unidad"}
-                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "u")} />
-                          {desc > 0 && cantN > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {$fmt((brutoDe(l) - desc) / cantN)} /{med || "u"}</span>}
+                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "u", e.nativeEvent)} />
+                          {excede ? <span style={{ ...chica, textAlign: "center", color: C.rojo, fontWeight: 700, marginTop: 2 }}>excede el unitario</span>
+                            : desc > 0 && cantN > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {quedaTxt((brutoDe(l) - desc) / cantN)}{brutoDe(l) - desc > 0.004 ? ` /${med || "u"}` : ""}</span>}
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <input style={{ ...inp, ...chico, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}`, color: C.verde, fontWeight: 600 } : {}) }} placeholder="0"
+                          <input style={{ ...inp, ...chico, textAlign: "center", ...estDesc }} placeholder="0"
                             value={descTotTxt} title={modoDesc === "%" ? "Descuento %" : "Descuento en $ sobre el total del registro"}
-                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "t")} />
-                          {desc > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {$fmt(brutoDe(l) - desc)} neto</span>}
+                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "t", e.nativeEvent)} />
+                          {excede ? <span style={{ ...chica, textAlign: "center", color: C.rojo, fontWeight: 700, marginTop: 2 }}>excede el neto</span>
+                            : desc > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {quedaTxt(brutoDe(l) - desc)}{brutoDe(l) - desc > 0.004 ? " neto" : ""}</span>}
                           {l.descSug && desc > 0 && <span style={{ ...chica, textAlign: "center", color: "#64748b" }}>el de la última compra</span>}
                         </div>
                         <div style={{ gridColumn: "5 / span 2", fontSize: 10.5, color: C.ii, textAlign: "center", lineHeight: 1.35, paddingTop: 2, minWidth: 0 }}>
@@ -1650,7 +1684,7 @@ function ModalNuevaCarga(props) {
                   <select style={sel} value={p.tipo} onChange={(e) => setPercepciones((ps) => ps.map((x, ix) => ix === i ? { ...x, tipo: e.target.value } : x))}>
                     {TIPOS_PERCEPCION.map((t) => <option key={t}>{t}</option>)}
                   </select>
-                  <input style={inp} placeholder="Importe $" value={p.importe} onChange={(e) => setPercepciones((ps) => ps.map((x, ix) => ix === i ? { ...x, importe: fmtImp(e.target.value) } : x))} />
+                  <input style={inp} placeholder="Importe $" value={p.importe} onChange={(e) => setPercepciones((ps) => ps.map((x, ix) => ix === i ? { ...x, importe: fmtImp(e.target.value, e.nativeEvent) } : x))} />
                   <span onClick={() => setPercepciones((ps) => ps.filter((_, ix) => ix !== i))} style={{ color: C.gris, cursor: "pointer", textAlign: "center", visibility: soloVer ? "hidden" : "visible" }}>×</span>
                 </div>
               ))}
@@ -1669,7 +1703,7 @@ function ModalNuevaCarga(props) {
                   title="Suma del II de los registros. Si el proveedor lo pasa solo por factura, cargalo acá y se reparte entre los registros."
                   value={iiPieTxt !== null ? iiPieTxt : impIntTotal > 0 ? fmtNum(Math.round(impIntTotal * 100) / 100) : ""} placeholder="0"
                   onFocus={(e) => { setIiPieTxt(impIntTotal > 0 ? fmtNum(Math.round(impIntTotal * 100) / 100) : ""); setTimeout(() => e.target.select && e.target.select(), 0); }}
-                  onChange={(e) => setIiPieTxt(fmtImp(e.target.value))}
+                  onChange={(e) => setIiPieTxt(fmtImp(e.target.value, e.nativeEvent))}
                   onBlur={() => { repartirII(parseImp(iiPieTxt || "")); setIiPieTxt(null); }} />
                 <span style={{ display: "block", fontSize: 10, color: C.gris, textAlign: "center" }}>imp. internos</span>
               </span>
@@ -1713,7 +1747,7 @@ function ModalNuevaCarga(props) {
             <div><span style={lab}>Importe{importeRevisar && <span style={{ textTransform: "none", fontWeight: 700, letterSpacing: 0, color: "#b45309" }}> · el de {nombrePeriodo(ctx.importeAnterior)}, corregilo</span>}</span>
               <input style={{ ...inp, textAlign: "right", fontWeight: 700, ...(importeRevisar ? { border: "1.6px solid #f59e0b", background: "#fffbeb" } : {}) }} value={importeV} placeholder="0,00"
                 autoFocus={vieneConImporte} onFocus={(e) => e.target.select()}
-                onChange={(e) => { setImporteV(fmtImp(e.target.value)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />
+                onChange={(e) => { setImporteV(fmtImp(e.target.value, e.nativeEvent)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />
               {tocadoV && (() => { const av = avisoVario(); return av ? <AvisoLinea a={av} onCorregir={() => setImporteV(fmtNum(av.sugerido))} onAceptar={() => setImporteOkV(importeV)} /> : null; })()}</div>
             <div><span style={lab}>PDV del gasto</span>
               <select style={sel} value={pdvV} onChange={(e) => setPdvV(e.target.value)}>{PDVS.map((p) => <option key={p}>{p}</option>)}</select></div>
@@ -1762,7 +1796,7 @@ function ModalNuevaCarga(props) {
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#555" }} title="Descuento general de la factura: se reparte proporcional al neto de cada registro">
                   Desc. general
                   <input style={{ ...inp, height: 28, width: 76, padding: "3px 6px", fontSize: 12.5, textAlign: "center", ...(fracG > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
-                    value={descG} onChange={(e) => setDescG(fmtImp(e.target.value))} />
+                    value={descG} onChange={(e) => setDescG(fmtImp(e.target.value, e.nativeEvent))} />
                   <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28, boxSizing: "border-box" }}>
                     {[["%", "%"], ["$", "$"]].map(([k, t]) => (
                       <span key={k} role="button" onClick={() => setDescGTipo(k)} style={{ display: "inline-flex", alignItems: "center", padding: "0 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: descGTipo === k ? "#111" : "#fff", color: descGTipo === k ? "#fff" : "#888" }}>{t}</span>))}
@@ -1808,7 +1842,7 @@ function ModalNuevaCarga(props) {
                 <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, alignItems: "end" }}>
                   <div><span style={lab}>Importe</span>
                     <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
-                      title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value))} /></div>
+                      title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value, e.nativeEvent))} /></div>
                   <div><span style={lab}>Medio</span>
                     <select style={sel} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
                       {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
@@ -2041,7 +2075,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
 
         {sub === "adelanto" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-            <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value))} /></div>
+            <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value, e.nativeEvent))} /></div>
             <div><span style={lab}>Forma de pago</span>
               <select style={sel} value={medioA || medioDef} onChange={(e) => setMedioA(e.target.value)}>{medios.map((m) => <option key={m}>{m}</option>)}</select></div>
             <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#888" }}>Concepto fijo: <b>{nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.nombre : "Adelanto Sueldo"}</b> · va a la cuenta del empleado en {nombrePeriodo(periodo)} y se descuenta del sueldo.</div>
@@ -2051,7 +2085,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
               <div><span style={lab}>Total del sueldo{total == null && ultimo ? <span style={{ textTransform: "none", fontWeight: 400, letterSpacing: 0 }}> · el de {nombrePeriodo(ultimo.periodo)}</span> : null}</span>
                 <input style={{ ...inp, textAlign: "right", fontWeight: 700, fontSize: 15 }} value={totalTxt} placeholder="0,00"
-                onChange={(e) => { setTotal(fmtImp(e.target.value)); }} /></div>
+                onChange={(e) => { setTotal(fmtImp(e.target.value, e.nativeEvent)); }} /></div>
               <div><span style={lab}>Adelantos del período</span><div style={{ ...inp, display: "flex", alignItems: "center", color: adelantos ? C.rojo : C.gris, fontWeight: 700 }}>{adelantos ? `− ${$fmt(adelantos)}` : "—"}</div></div>
               <div><span style={lab}>A pagar</span><div style={{ ...inp, display: "flex", alignItems: "center", fontWeight: 700, fontSize: 15 }}>{totalN ? $fmt(Math.max(0, totalN - adelantos)) : "—"}</div></div>
             </div>
@@ -2061,13 +2095,13 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
               {ls.map((l, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) 130px minmax(0, 2fr) 24px", gap: 8, alignItems: "start", padding: "6px 0", borderBottom: i < ls.length - 1 ? "1px solid #f2f2f0" : "none" }}>
                   <Combo opciones={opcCon.map((c) => c.nombre)} valor={l.concepto} placeholder="Concepto..." onElegir={(v) => tocar((x) => { x[i].concepto = v; return x; })} />
-                  <input style={{ ...inp, textAlign: "right" }} value={l.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value); tocar((x) => { x[i].importe = v; if (x[i].pagos.length === 1 && x[i].pagos[0].medio !== ADEL) x[i].pagos[0].importe = v; return x; }); }} />
+                  <input style={{ ...inp, textAlign: "right" }} value={l.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => { x[i].importe = v; if (x[i].pagos.length === 1 && x[i].pagos[0].medio !== ADEL) x[i].pagos[0].importe = v; return x; }); }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {l.pagos.map((p, k) => (
                       <div key={k} style={{ display: "flex", gap: 6 }}>
                         <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={(e) => tocar((x) => { x[i].pagos[k].medio = e.target.value; return x; })}>
                           {[...(adelantos > 0 ? [ADEL] : []), ...medios].map((m) => <option key={m}>{m}</option>)}</select>
-                        <input style={{ ...inp, width: 130, textAlign: "right" }} value={p.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value); tocar((x) => {
+                        <input style={{ ...inp, width: 130, textAlign: "right" }} value={p.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => {
                           x[i].pagos[k].importe = v;
                           // Con dos formas de pago, la otra es lo que falta para el importe del concepto (Diego 29/10).
                           // (Los adelantos son fijos: se cuentan pero no se recalculan.)
