@@ -180,12 +180,14 @@ function ModalIngresos({ sucursal, data, onClose }) {
                   <Box sx={{ fontSize: 11, color: 'text.secondary' }}>Día</Box>
                   {cols.map((c) => <Box key={c} sx={{ fontSize: 11, color: 'text.secondary', textAlign: 'right' }}>{c === 'total' ? 'Total del día' : c}</Box>)}
                   {cols.length > 1 && <Box sx={{ fontSize: 11, color: 'text.secondary', textAlign: 'right' }}>Total</Box>}
-                  {dias.map((d) => (
+                  {dias.map((d, fi) => (
                     <React.Fragment key={d}>
                       <Box sx={{ whiteSpace: 'nowrap' }}>{diaCorto(d)}</Box>
-                      {cols.map((c) => (
+                      {cols.map((c, ci) => (
                         <Box
                           key={c} component="input" inputMode="decimal" value={celdas[d]?.[c] ?? ''}
+                          data-celda={`${fi}-${ci}`} onKeyDown={(e) => moverEnGrilla(e, fi, ci, dias.length, cols.length)}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setCeldas((x) => ({ ...x, [d]: { ...(x[d] ?? {}), [c]: fmtTipeo(e.target.value) } }))}
                           sx={{ ...sxInput, height: 32, px: 1, textAlign: 'right', fontSize: 13 }}
                         />
@@ -241,6 +243,25 @@ function ModalIngresos({ sucursal, data, onClose }) {
 }
 
 // Select con "—" (sin especificar), las opciones del negocio y "Otro…" para escribir uno nuevo.
+// Grilla de varios días como una planilla (Diego 06/11/2026): ↑ ↓ (y Enter) cambian de día, ← → de
+// columna. ← y → solo saltan con el cursor en el borde del número, para poder corregir adentro.
+function moverEnGrilla(e, fi, ci, nFilas, nCols) {
+  const el = e.currentTarget;
+  const enInicio = el.selectionStart === 0 && el.selectionEnd === 0;
+  const enFin = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+  const todo = el.selectionStart === 0 && el.selectionEnd === el.value.length;
+  let f = fi, c = ci;
+  if (e.key === 'ArrowUp') f -= 1;
+  else if (e.key === 'ArrowDown' || e.key === 'Enter') f += 1;
+  else if (e.key === 'ArrowLeft' && (enInicio || todo)) c -= 1;
+  else if (e.key === 'ArrowRight' && (enFin || todo)) c += 1;
+  else return;
+  if (f < 0 || f >= nFilas || c < 0 || c >= nCols) { if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') e.preventDefault(); return; }
+  e.preventDefault();
+  const sig = el.closest('[role=dialog]')?.querySelector(`input[data-celda="${f}-${c}"]`);
+  if (sig) sig.focus();
+}
+
 function Opcional({ valor, opciones, onCambio }) {
   const [otro, setOtro] = useState(false);
   if (otro || (valor && !opciones.includes(valor))) {
