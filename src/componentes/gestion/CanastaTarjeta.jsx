@@ -32,15 +32,18 @@ function detalleAumento(a) {
 }
 
 /** Contenido de la tarjeta chica (dentro de la fila del último mes cerrado). */
-export function CanastaMini({ r }) {
+export function CanastaMini({ r, d }) {
   const principal = r.base ? r.desde : r.mes;
+  // Algún componente estimado en el mes (sueldos a medio cargar, Diego 06/11/2026).
+  const ult = d ? d.meses.length - 1 : -1;
+  const estimados = d ? d.componentes.filter((c) => c.cuenta && c.estimados?.[ult]).map((c) => c.nombre.toLowerCase()) : [];
   return (
     <>
       <Box component="b" sx={{ display: 'block', fontSize: 18, fontVariantNumeric: 'tabular-nums', lineHeight: 1.25, color: (principal ?? 0) > 0 ? VIOLETA : undefined }}>{pct(principal)}</Box>
       <Box sx={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.4, color: 'text.secondary' }}>
         {r.base ? <>desde {ddmm(r.base)} (aumento)</> : <>en el mes</>}
       </Box>
-      <Box sx={{ fontSize: 11.5, lineHeight: 1.4, color: 'text.secondary' }}>12 meses {pct(r.doce)}</Box>
+      <Box sx={{ fontSize: 11.5, lineHeight: 1.4, color: 'text.secondary' }}>12 meses {pct(r.doce)}{estimados.length ? ` · ${estimados.join(', ')} est.` : ''}</Box>
     </>
   );
 }
@@ -68,12 +71,16 @@ export function CanastaDetalle({ d, r, mesRef, conSucursal, onAgregar, onQuitar,
           {!c.cuenta && <Box component="span" sx={{ ml: 0.75, border: 1, borderColor: 'grey.400', borderRadius: 0.5, px: 0.5, fontSize: 10 }}>en revisión</Box>}
         </TableCell>
         <TableCell sx={{ ...sxTd, ...num }}>{c.cuenta ? pct(pesos.get(c.clave), false).replace(',0%', '%') : '—'}</TableCell>
-        <TableCell sx={{ ...sxTd, ...num, ...(c.cuenta && (c.variaciones[ult] ?? 0) > 0.02 ? { color: ROJO } : {}) }}>{pct(c.variaciones[ult])}</TableCell>
+        <TableCell sx={{ ...sxTd, ...num, position: 'relative', ...(c.cuenta && (c.variaciones[ult] ?? 0) > 0.02 ? { color: ROJO } : {}) }}
+          title={c.estimados?.[ult] ? 'Estimado: el mes está a medio cargar. Promedio mensual de los últimos 6 meses medidos (nunca menos de 0%). Se reemplaza por el dato real cuando se carga.' : undefined}>
+          {pct(c.variaciones[ult])}{c.estimados?.[ult] && <Box component="span" sx={{ position: 'absolute', right: 2, top: 6, fontSize: 11, color: 'text.secondary' }}>*</Box>}
+        </TableCell>
         <TableCell sx={{ ...sxTd, ...num }}>{pct(acumulada(c.variaciones, ult - 2, ult))}</TableCell>
         <TableCell sx={{ ...sxTd, ...num }}>{pct(acumulada(c.variaciones, 0, ult))}</TableCell>
         {v.base && <TableCell sx={{ ...sxTd, ...num }}>{pct(desde)}</TableCell>}
         <TableCell sx={{ ...sxTd, fontSize: 11.5, color: 'text.secondary' }}>
           {COMO[c.clave]}{c.clave === 'mercaderias' && c.aRevisar ? ` · ${c.aRevisar} insumos con saltos raros apartados` : ''}
+          {c.estimados?.[ult] ? ' · * mes a medio cargar: estimado' : ''}
         </TableCell>
       </TableRow>
     );
