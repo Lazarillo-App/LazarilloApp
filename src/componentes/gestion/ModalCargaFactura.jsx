@@ -56,9 +56,11 @@ const Imp = ({ v, sufijo = "", strong, max = 16 }) => {
   );
 };
 // Grilla de registros del modal de carga: nombre flexible (se lee completo), importes en px fijos
-const GRID_LIN = "minmax(0, 1fr) 104px 124px 130px 76px 124px 140px 50px";
+// Registros: nombre flexible (mín. 170) + cant · unit · neto · II/u · II total · IVA % · IVA $ · subtotal · acciones.
+const GRID_LIN = "minmax(170px, 1fr) 96px 104px 116px 88px 100px 70px 92px 128px 44px";
+const ANCHO_MIN_LIN = 1100;
 const dmy = (iso) => { const [a, m, d] = iso.split("-"); return `${d}/${m}/${a.slice(2)}`; };
-const C = { neg: "#111", gris: "#8a8a8a", verde: "#159457", nar: "#e08900", rojo: "#c62828", cel: "#0d6fa8", borde: "#e8e8e6", fondo: "#f6f6f4" };
+const C = { ii: "#6d28d9", iiBorde: "#a78bfa", neg: "#111", gris: "#8a8a8a", verde: "#159457", nar: "#e08900", rojo: "#c62828", cel: "#0d6fa8", borde: "#e8e8e6", fondo: "#f6f6f4" };
 const card = { background: "#fff", borderRadius: 14, border: `1px solid ${C.borde}` };
 const btn = (dark) => ({ padding: "9px 16px", borderRadius: 10, fontSize: 13.5, fontWeight: 600, cursor: "pointer", border: dark ? "none" : `1px solid ${C.borde}`, background: dark ? "#111" : "#fff", color: dark ? "#fff" : "#333" });
 const inp = { padding: "8px 10px", borderRadius: 9, border: "1px solid #ccc", fontSize: 13.5, width: "100%", height: 38, boxSizing: "border-box", background: "#fff" };
@@ -324,7 +326,8 @@ function Chev({ abierto }) {
 }
 
 // extra(o): texto adicional por el que también se busca y que se muestra debajo (razón social · CUIT).
-function Combo({ opciones, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra }) {
+function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra }) {
+  const opciones = [...new Set(opcionesCrudas)];
   const [texto, setTexto] = useState(valor || "");
   const [abierto, setAbierto] = useState(false);
   // Opción marcada con las flechas (Diego 27/10: tipear "carn" + ↓ tiene que navegar la lista).
@@ -518,7 +521,7 @@ function ModalNuevaCarga(props) {
   const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
   const codConcepto = (nombre) => (MAESTRO_CONCEPTOS.find((c) => c.concepto === nombre) || {}).codigo;
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
-  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, envases: i.envases || [] }));
+  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, ii: i.ii || null, envases: i.envases || [] }));
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
   const abrirAltaItem = (i, tipo, destino, nombre) => {
@@ -566,7 +569,7 @@ function ModalNuevaCarga(props) {
   };
   const [provsNuevos, setProvsNuevos] = useState([]);
   const [provsEditados, setProvsEditados] = useState({}); // id → {nombre, razon} tras editar la ficha
-  const proveedores = [...maestros.proveedores, ...provsNuevos].map((p) => ({ ...p, ...(provsEditados[p.id] || {}) })).map((p) => ({ ...p, nombre: p.nombre || p.razon || p.codigo }));
+  const proveedores = [...maestros.proveedores, ...provsNuevos.filter((n) => !maestros.proveedores.some((m) => m.id === n.id))].map((p) => ({ ...p, ...(provsEditados[p.id] || {}) })).map((p) => ({ ...p, nombre: p.nombre || p.razon || p.codigo }));
   const [fichaProvId, setFichaProvId] = useState(null);
   const provPorNombre = Object.fromEntries(proveedores.map((p) => [p.nombre, p]));
   const [creandoProv, setCreandoProv] = useState(false);
@@ -644,6 +647,7 @@ function ModalNuevaCarga(props) {
   const [descGTipo, setDescGTipo] = useState("%");
   const [reinicio, setReinicio] = useState(0); // "Vaciar todo": vuelve a montar la cabecera (foco en el proveedor)
   const [confVaciar, setConfVaciar] = useState(false);
+  const [iiPieTxt, setIiPieTxt] = useState(null); // edición del II de la factura en la fila de totales
   // Precarga (Repetir / última factura): el primer registro queda abierto para corregir el
   // neto; al confirmarlo se abre el siguiente (Diego 27/10). Los demás quedan con ⚠.
   const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
@@ -797,6 +801,28 @@ function ModalNuevaCarga(props) {
   const descGImporte = netoSinG - netoTotal;
   const totCtrl = parseImp(totalCtrl);
   const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
+  // II de toda la factura (proveedores que lo pasan solo por factura): se reparte entre los registros con II
+  // (o entre todos si ninguno lo lleva) en proporción a su neto; el último absorbe el redondeo.
+  const repartirII = (v) => {
+    if (!(v >= 0) || Math.abs(v - impIntTotal) < 0.005) return;
+    const conII = lineas.map((l, ix) => ({ l, ix })).filter(({ l }) => parseImp(l.impint) > 0 && netoDe(l) > 0);
+    const base = conII.length ? conII : lineas.map((l, ix) => ({ l, ix })).filter(({ l }) => netoDe(l) > 0);
+    if (!base.length) { setImpIntG(v > 0 ? fmtNum(v) : ""); return; }
+    const suma = base.reduce((a, { l }) => a + netoDe(l), 0);
+    let resto = Math.round(v * 100) / 100;
+    const nuevos = {};
+    base.forEach(({ l, ix }, k) => {
+      const parte = k === base.length - 1 ? resto : Math.round(v * netoDe(l) / suma * 100) / 100;
+      resto = Math.round((resto - parte) * 100) / 100;
+      nuevos[ix] = parte;
+    });
+    setImpIntG("");
+    setLineas((ls) => ls.map((x, ix) => {
+      if (nuevos[ix] === undefined) return conII.length ? x : { ...x, impint: "", iiu: x.tipo === "insumo" ? "" : undefined };
+      const c = parseFloat(x.cant) || 0;
+      return { ...x, impint: nuevos[ix] > 0 ? fmtNum(nuevos[ix]) : "", iiu: x.tipo === "insumo" ? (c > 0 && nuevos[ix] > 0 ? fmtNum(Math.round(nuevos[ix] / c * 100) / 100) : "") : undefined };
+    }));
+  };
   const cuerpoVacio = lineas.every((l) => !l.item && !(netoBase(l) > 0)) && percepciones.length === 0 && !impIntG && !descG;
   // Vaciar en dos pasos (Diego 05/11/2026): primero el cuerpo; con el cuerpo vacío, todo (como recién abierto).
   // Borrador (Diego 05/11/2026): una factura a medio cargar queda guardada en este navegador para
@@ -1068,7 +1094,7 @@ function ModalNuevaCarga(props) {
   const deEstructura = lineas.filter((l) => l.desdePre).length;
   return (
     <div style={embebido ? { display: "contents" } : { position: "fixed", inset: 0, background: "rgba(40,40,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1300 }} onClick={embebido ? undefined : onCerrar}>
-      <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1120px, 96vw)", maxHeight: "92vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
+      <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1320px, 98vw)", maxHeight: "94vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
         <div style={{ padding: "14px 20px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {vista === "nueva" && !rde ? (<>
@@ -1211,36 +1237,23 @@ function ModalNuevaCarga(props) {
                 {deEstructura > 0 && <b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{revisados} de {deEstructura} revisados</b>}
               </div>
             )}
-            <div style={{ padding: "0 14px 14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, fontSize: 10.5, fontWeight: 700, color: C.gris, position: "sticky", top: 0, zIndex: 5, background: "#fafaf8", borderBottom: "1px solid #ececea", margin: "0 -14px 4px", padding: "9px 14px" }}>
-                <span style={{ paddingLeft: lineas.length > 1 && !soloVer ? 22 : 0 }}>CONCEPTO / INSUMO</span><span style={{ textAlign: "center" }}>CANT.</span><span style={{ textAlign: "center" }}>UNIT. $</span><span style={{ textAlign: "center" }}>TOTAL NETO $</span><span style={{ textAlign: "center" }}>IVA %</span><span style={{ textAlign: "center" }}>IVA $</span><span style={{ textAlign: "center" }}>SUBTOTAL c/IMP.</span><span />
+            {/* Tabla de registros (Diego 06/11/2026, mockup A7b): fila de edición igual a la de la tabla, descuento
+                vinculado debajo de unitario y total, chips de concepto de caja y PDV a la derecha, columnas de
+                impuestos internos fijas y fila de totales alineada a las columnas (fija abajo). */}
+            <div style={{ padding: "0 14px", minWidth: ANCHO_MIN_LIN }}>
+              <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, fontSize: 10.5, fontWeight: 700, color: C.gris, position: "sticky", top: 0, zIndex: 5, background: "#fafaf8", borderBottom: "1px solid #ececea", margin: "0 -14px 4px", padding: "9px 14px", textAlign: "center" }}>
+                <span style={{ textAlign: "left", paddingLeft: lineas.length > 1 && !soloVer ? 22 : 0 }}>CONCEPTO / INSUMO</span><span>CANT.</span><span>UNIT. $</span><span>TOTAL NETO $</span>
+                <span style={{ color: C.ii }}>II /u $</span><span style={{ color: C.ii }}>II TOTAL $</span><span>IVA %</span><span>IVA $</span><span>SUBTOTAL c/IMP.</span><span />
               </div>
-              {(() => {
-                const enEd = lineas.find((l) => l.editando);
-                const falta = enEd ? faltaDe(enEd) : null;
-                const confirmable = !falta;
-                return (
-              <div style={{ display: soloVer ? "none" : "flex", gap: 10, alignItems: "center", margin: "6px 0 4px" }}>
-                <button ref={agregarRef} title={!confirmable ? `${falta} para agregar otro registro` : enEd ? "Confirmar este registro y agregar otro" : "Agregar registro"}
-                  disabled={!confirmable}
-                  onClick={() => { if (confirmable) setLineas((ls) => {
-                    // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo).
-                    // Va PRIMERO, pegado a los títulos de las columnas (Diego 05/11/2026).
-                    const ult = ls[0];
-                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false }))];
-                  }); }}
-                  style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
-                {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
-              </div>
-                );
-              })()}
               {lineas.map((l, i) => {
                 const esIns = l.tipo === "insumo";
                 const neto = netoDe(l);
                 const desc = descDe(l);
-                const unitEf = esIns && (desc > 0 || fracG > 0) && parseFloat(l.cant) > 0 ? neto / parseFloat(l.cant) : parseImp(l.unit);
+                const cantN = parseFloat(l.cant) || 0;
+                const unitEf = esIns && (desc > 0 || fracG > 0) && cantN > 0 ? neto / cantN : parseImp(l.unit);
                 const ivaUnit = esIns ? unitEf * l.alic / 100 : 0;
-                const txtDesc = desc > 0 ? `desc. ${l.descTipo === "u" ? $fmt(parseImp(l.desc)) + " /u" : l.descTipo === "t" ? $fmt(parseImp(l.desc)) : fmtNum(parseImp(l.desc)) + "%"} (−${$fmt(desc)})` : "";
+                const ii = parseImp(l.impint);
+                const iiU = esIns && cantN > 0 && ii > 0 ? ii / cantN : 0;
                 const llave = l.uid || "i" + i;
                 const dnd = soloVer ? {} : {
                   onDragOver: (e) => { if (arrastre) { e.preventDefault(); if (arrastre.a !== i) setArrastre({ ...arrastre, a: i }); } },
@@ -1248,11 +1261,14 @@ function ModalNuevaCarga(props) {
                 };
                 const marcaDrop = arrastre && arrastre.a === i && arrastre.de !== i ? { boxShadow: `inset 0 ${arrastre.de < i ? -3 : 3}px 0 ${C.cel}` } : {};
                 const ivaLinea = ivaDe(l);
+                const subtotal = neto + ivaLinea + ii;
                 const { med, base: medBase, factor: fEnv } = esIns ? medidaLinea(l) : { med: "", base: "", factor: null };
-                const cantN = parseFloat(l.cant) || 0;
-                const repartoOk = !l.reparto || Math.abs(l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0) - 100) < 0.01;
+                const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / cantN : 0;
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
+                const celda = { color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" };
+                const chica = { display: "block", fontSize: 10.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+                const txtDesc = desc > 0 && esIns ? (l.descTipo === "u" ? `−${fmtNum(parseImp(l.desc))} /u` : l.descTipo === "t" ? `−${fmtNum(parseImp(l.desc))}` : `−${fmtNum(parseImp(l.desc))}%`) + (cantN > 0 ? ` → ${fmtNum(Math.round((brutoDe(l) - desc) / cantN * 100) / 100)}` : "") : "";
                 if (!l.editando) return (
                   <React.Fragment key={llave}>
                   <div {...dnd} draggable={!soloVer && lineas.length > 1}
@@ -1262,23 +1278,25 @@ function ModalNuevaCarga(props) {
                       opacity: arrastre && arrastre.de === i ? 0.45 : 1, ...(l.precargada ? { background: "#fffdf5" } : {}), ...marcaDrop }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
                       {!soloVer && lineas.length > 1 && <span title="Arrastrá para ordenar los registros" style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, flexShrink: 0, marginLeft: -2, userSelect: "none" }}>⠿</span>}
-                      <span style={{ fontSize: 9.5, fontWeight: 700, color: esIns ? C.cel : "#999", border: `1.2px solid ${esIns ? C.cel : "#ccc"}`, borderRadius: 6, padding: "2px 0", width: 74, textAlign: "center", flexShrink: 0 }}>{esIns ? "INSUMO" : "CONCEPTO"}</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: esIns ? C.cel : "#999", border: `1.2px solid ${esIns ? C.cel : "#ccc"}`, borderRadius: 6, padding: "2px 0", width: 70, textAlign: "center", flexShrink: 0 }}>{esIns ? "INSUMO" : "CONCEPTO"}</span>
                       <span style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
                         <span title={l.item} style={{ color: C.neg, fontWeight: 600, lineHeight: 1.2, overflowWrap: "anywhere" }}>{l.item}</span>
-                        <span title={l.reparto ? txtReparto(l) : undefined} style={{ color: l.reparto ? "#2a88ad" : "#aaa", fontWeight: 400, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.reparto ? "⇄ " + txtReparto(l) : (l.pdvDest || pdvActual || PDVS[0])}</span>
+                        <span title={l.reparto ? txtReparto(l) : undefined} style={{ color: l.reparto ? "#2a88ad" : "#aaa", fontWeight: 400, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {[esIns && l.conc, l.reparto ? "⇄ " + txtReparto(l) : (l.pdvDest || pdvActual || PDVS[0])].filter(Boolean).join(" · ")}</span>
                       </span>
                     </span>
-                    <span style={{ color: "#555", textAlign: "center" }}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
-                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med}<span style={{ display: "block", fontSize: 10.5, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
+                    <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
+                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med}<span style={{ ...chica, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
                       : `${l.cant} ${med}`}</span>
-                    <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
-                      : fEnv ? <span><Imp v={parseImp(l.unit)} sufijo={" /" + med} max={17} /><span style={{ display: "block", fontSize: 10.5, color: "#2a88ad", fontWeight: 600 }}><Imp v={parseImp(l.unit) / fEnv} sufijo={" /" + (medBase || "u")} max={17} /></span></span>
-                      : <Imp v={parseImp(l.unit)} sufijo=" /u" max={17} />}</span>
-                    <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}><Imp v={neto} max={17} />
-                      {txtDesc && <span title={`Bruto ${$fmt(brutoDe(l))} · ${txtDesc}`} style={{ display: "block", fontSize: 10.5, color: C.verde, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{txtDesc}</span>}</span>
-                    <span style={{ color: "#555", textAlign: "center" }}>{l.alic}%</span>
-                    <span style={{ color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={17} /> : <Imp v={ivaLinea} max={17} />}</span>
-                    <span style={{ textAlign: "center", minWidth: 0, overflow: "hidden" }}>{esIns && neto === 0 ? <Bonif /> : <Imp v={neto + ivaLinea + parseImp(l.impint)} strong max={17} />}{parseImp(l.impint) > 0 && <span style={{ display: "block", fontWeight: 400, fontSize: 10.5, color: "#999" }}>incl. {$fmt(parseImp(l.impint))} imp.int.</span>}</span>
+                    <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span> : <Imp v={parseImp(l.unit)} max={15} />}
+                      {txtDesc && <span title={`Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)}`} style={{ ...chica, color: C.verde, fontWeight: 600 }}>{txtDesc}</span>}</span>
+                    <span style={celda}><Imp v={neto} max={16} /></span>
+                    <span style={{ ...celda, color: iiU > 0 ? C.ii : "#ddd" }}>{iiU > 0 ? <Imp v={iiU} max={14} /> : "—"}</span>
+                    <span style={{ ...celda, color: ii > 0 ? C.ii : "#ddd" }}>{ii > 0 ? <Imp v={ii} max={14} /> : "—"}</span>
+                    <span style={celda}>{fmtNum(l.alic)}%</span>
+                    <span style={celda}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />}</span>
+                    <span style={{ ...celda, color: C.neg }}>{esIns && neto === 0 ? <Bonif /> : <Imp v={subtotal} strong max={16} />}
+                      {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
                     <span style={{ display: soloVer ? "none" : "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
                       {/* registro precargado (repetir factura): el ⚠ reemplaza al lápiz, hacen lo mismo (abrir para revisar) */}
                       {l.precargada
@@ -1292,18 +1310,33 @@ function ModalNuevaCarga(props) {
                   {avisoUI && <div style={{ borderBottom: "1px solid #f2f2f0", paddingBottom: 6 }}>{avisoUI}</div>}
                   </React.Fragment>
                 );
+                // ── Registro en edición ──
+                const marcoAviso = aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {};
+                const campo = { ...inp, padding: "8px 6px", textAlign: "center" };
+                const campoII = { ...campo, border: `1px solid ${C.iiBorde}`, color: C.ii, fontWeight: 600 };
+                const modoDesc = l.descModo || (l.descTipo === "u" || l.descTipo === "t" ? "$" : "%");
+                const dTxt = l.desc || "";
+                const dNum = parseImp(dTxt);
+                // Los dos campos del descuento muestran el mismo descuento: en % el mismo número; en $, por unidad y total.
+                const descUnitTxt = modoDesc === "%" ? dTxt : l.descTipo === "u" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum / cantN * 100) / 100) : "";
+                const descTotTxt = modoDesc === "%" ? dTxt : l.descTipo === "t" ? dTxt : dNum > 0 && cantN > 0 ? fmtNum(Math.round(dNum * cantN * 100) / 100) : "";
+                const setDesc = (v, tipo) => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, desc: fmtImp(v), descTipo: tipo, descModo: modoDesc, tocado: true }));
+                const iiUTxt = l.iiu !== undefined ? l.iiu : iiU > 0 ? fmtNum(Math.round(iiU * 100) / 100) : "";
+                const miIns = esIns ? MAESTRO_INSUMOS.find((x) => x.nombre === l.item) : null;
+                const iiSug = miIns && miIns.ii > 0 ? miIns.ii * (fEnv || 1) : 0;
+                const chip = { display: "inline-flex", alignItems: "center", gap: 6, height: 30, border: `1px solid ${C.borde}`, borderRadius: 15, padding: "0 4px 0 11px", background: "#fff", fontSize: 12, color: "#666", whiteSpace: "nowrap" };
                 return (
-                  <div key={llave} {...dnd} style={{ background: "#fbfbfa", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 10px 8px", marginBottom: 8, ...marcaDrop }}>
-                    <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, gridColumn: esIns ? "auto" : "1 / span 3" }}>
+                  <div key={llave} {...dnd} style={{ background: "#fbfbfa", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 0 8px", margin: "0 0 8px", ...marcaDrop }}>
+                    <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", padding: "0 0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, gridColumn: esIns ? "auto" : "1 / span 3", paddingLeft: 8, minWidth: 0 }}>
                         <span style={{ display: "inline-flex", flexDirection: "column", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
                           {[["concepto", "CONC."], ["insumo", "INSUMO"]].map(([k, t]) => (
                             <span key={k} title={"Pasar la línea a " + k}
-                              onClick={() => { if (l.tipo === k) return; setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, tipo: k, item: "", neto: "", cant: "", unit: "", ntot: "", desc: "", conc: "", pdvDest: pdvActual || PDVS[0] } : x)); }}
+                              onClick={() => { if (l.tipo === k) return; setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, tipo: k, item: "", neto: "", cant: "", unit: "", ntot: "", desc: "", iiu: undefined, impint: "", conc: "", pdvDest: pdvActual || PDVS[0] } : x)); }}
                               style={{ padding: "2px 7px", fontSize: 8.5, fontWeight: 700, cursor: "pointer", background: l.tipo === k ? (k === "insumo" ? C.cel : "#111") : "#fff", color: l.tipo === k ? "#fff" : "#999", textAlign: "center" }}>{t}</span>
                           ))}
                         </span>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <Combo opciones={esIns ? MAESTRO_INSUMOS.map((x) => x.nombre) : conceptosDe(null)} valor={l.item} autoFocus={l.foco !== false && l.foco !== "neto"}
                             placeholder={esIns ? "Buscar insumo..." : "Buscar concepto..."}
                             crearPrimero={esIns ? "insumo" : "concepto"} onCrear={(n) => abrirAltaItem(i, esIns ? "insumo" : "concepto", "item", n)}
@@ -1312,31 +1345,38 @@ function ModalNuevaCarga(props) {
                               const ult = mi && mi.unit ? { unit: fmtNum(Math.round(mi.unit * 100) / 100), alic: mi.alic != null ? mi.alic : l.alic } : null;
                               const regla = reglaDeItem(l, v);
                               const rep = regla ? regla.map((r) => ({ ...r })) : undefined;
+                              // El II de la última compra se sugiere igual que el precio (Diego 06/11/2026).
+                              const iiu = mi && mi.ii > 0 ? fmtNum(Math.round(mi.ii * 100) / 100) : undefined;
                               setLineas((ls) => ls.map((x, ix) => ix !== i ? x : (esIns
-                                ? { ...x, item: v, medida: undefined, desc: "", reparto: rep, conc: conceptoDeInsumo(v) || (ult && ult.conc) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, impint: ult && ult.impint ? ult.impint : "" }
-                                : { ...x, item: v, reparto: rep, neto: ult ? ult.neto : "", alic: ult ? ult.alic : x.alic, impint: ult && ult.impint ? ult.impint : "" })));
+                                ? { ...x, item: v, medida: undefined, desc: "", reparto: rep, conc: conceptoDeInsumo(v) || "", unit: ult ? ult.unit : "", ntot: "", alic: ult ? ult.alic : x.alic, iiu, impint: "" }
+                                : { ...x, item: v, reparto: rep, alic: x.alic })));
                             }} />
                         </div>
                       </div>
                       {esIns ? (
-                        <div style={{ position: "relative" }}>
-                          <input style={{ ...inp, padding: "8px 50px 8px 6px", textAlign: "center" }} placeholder="0" value={l.cant} autoFocus={l.foco === "neto"}
+                        <div style={{ display: "flex", height: 38, border: "1px solid #ccc", borderRadius: 9, background: "#fff", overflow: "hidden" }}>
+                          <input style={{ flex: 1, minWidth: 0, border: "none", outline: "none", textAlign: "center", fontSize: 13.5, background: "transparent" }} placeholder="0" value={l.cant} autoFocus={l.foco === "neto"}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
                               const cant = soloNum(e.target.value); const c = parseFloat(cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => {
                                 if (ix !== i) return x;
-                                if (parseImp(x.unit) > 0) return { ...x, cant, ntot: c > 0 ? fmtNum(c * parseImp(x.unit)) : x.ntot };
-                                if (parseImp(x.ntot) > 0 && c > 0) return { ...x, cant, unit: fmtNum(parseImp(x.ntot) / c) };
-                                return { ...x, cant };
+                                let y = { ...x, cant };
+                                if (parseImp(x.unit) > 0) y.ntot = c > 0 ? fmtNum(c * parseImp(x.unit)) : x.ntot;
+                                else if (parseImp(x.ntot) > 0 && c > 0) y.unit = fmtNum(parseImp(x.ntot) / c);
+                                // II por unidad cargado: el total del registro acompaña la cantidad.
+                                const iu = parseImp(x.iiu !== undefined ? x.iiu : "");
+                                if (iu > 0) y.impint = c > 0 ? fmtNum(Math.round(iu * c * 100) / 100) : "";
+                                return y;
                               }));
                             }} />
                           {(() => {
-                            // Unidad o envase de la línea (Diego 05/11/2026): los envases del maestro de MaxiRest
-                            // (X6, Pack…). Al cambiarlo, el unitario pasa a ser por esa medida.
-                            const ins = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
+                            // Unidad o envase de la línea: los del maestro de MaxiRest (X6, Pack…). Al cambiarlo, el
+                            // unitario y el II por unidad pasan a ser por esa medida.
+                            const ins = miIns;
                             const envs = (ins && ins.envases) || [];
-                            if (!ins || !envs.length) return <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 10, fontWeight: 700, color: C.gris, pointerEvents: "none" }}>{med || ""}</span>;
+                            const caja = { display: "flex", alignItems: "center", padding: "0 7px", borderLeft: `1px solid ${C.borde}`, background: "#f6fbfe", color: C.cel, fontWeight: 700, fontSize: 11, flexShrink: 0 };
+                            if (!ins || !envs.length) return <span style={{ ...caja, color: C.gris, background: "#fafaf8" }}>{med || "—"}</span>;
                             const opciones = [{ envase: ins.medida || "", factor: 1 }, ...envs.filter((e) => e.envase.trim().toUpperCase() !== String(ins.medida || "").trim().toUpperCase())];
                             return (
                               <select value={med} title={opciones.map((o) => o.factor === 1 ? `${o.envase}: unidad del insumo` : `${o.envase} = ${fmtNum(o.factor)} ${ins.medida}`).join("\n")}
@@ -1348,10 +1388,13 @@ function ModalNuevaCarga(props) {
                                     const fViejo = medidaLinea(x).factor || 1;
                                     const u = parseImp(x.unit); const c = parseFloat(x.cant) || 0;
                                     const unit = u > 0 ? fmtNum(Math.round(u * fNuevo / fViejo * 100) / 100) : x.unit;
-                                    return { ...x, medida: nueva, unit, ntot: u > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(unit) * 100) / 100) : x.ntot };
+                                    const iu = parseImp(x.iiu !== undefined ? x.iiu : "");
+                                    const iiu = iu > 0 ? fmtNum(Math.round(iu * fNuevo / fViejo * 100) / 100) : x.iiu;
+                                    return { ...x, medida: nueva, unit, ntot: u > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(unit) * 100) / 100) : x.ntot,
+                                      iiu, impint: iu > 0 && c > 0 ? fmtNum(Math.round(c * parseImp(iiu) * 100) / 100) : x.impint };
                                   }));
                                 }}
-                                style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)", height: 28, maxWidth: 48, border: "none", borderLeft: `1px solid ${C.borde}`, background: "transparent", fontSize: 10.5, fontWeight: 700, color: C.cel, cursor: "pointer", padding: "0 2px 0 5px" }}>
+                                style={{ ...caja, appearance: "none", WebkitAppearance: "none", MozAppearance: "none", border: "none", borderLeft: `1px solid ${C.borde}`, cursor: "pointer", outline: "none", maxWidth: 52, textAlign: "center", textAlignLast: "center" }}>
                                 {opciones.map((o) => <option key={o.envase} value={o.envase}>{o.envase}</option>)}
                               </select>
                             );
@@ -1359,7 +1402,7 @@ function ModalNuevaCarga(props) {
                         </div>
                       ) : null}
                       {esIns
-                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Unit. $" value={l.unit} title={l.unit ? "$ " + l.unit : undefined}
+                        ? <input style={{ ...campo, ...marcoAviso }} placeholder="Unit. $" value={l.unit} title={l.unit ? "$ " + l.unit : undefined}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
                             onChange={(e) => {
                               const unit = fmtImp(e.target.value); const u = parseImp(unit); const c = parseFloat(l.cant) || 0;
@@ -1367,20 +1410,34 @@ function ModalNuevaCarga(props) {
                             }} />
                         : null}
                       {esIns
-                        ? <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Total $" value={l.ntot || ""}
+                        ? <input style={{ ...campo, ...marcoAviso }} placeholder="Total $" value={l.ntot || ""}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }}
-                            title={l.ntot ? "$ " + l.ntot + " — total neto de la línea: con la cantidad puesta, el unitario se calcula solo" : "Total neto de la línea: si lo cargás con la cantidad puesta, el unitario se calcula solo"}
+                            title="Total neto de la línea: con la cantidad puesta, el unitario se calcula solo"
                             onChange={(e) => {
                               const ntot = fmtImp(e.target.value); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
                               setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
                             }} />
-                        : <input style={{ ...inp, padding: "8px 6px", textAlign: "center", ...(aviso ? { border: `2px solid ${aviso.nivel === "rojo" ? C.rojo : C.nar}` } : {}) }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value))}
+                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value))}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }} />}
-                      <select style={{ ...sel, padding: "8px 20px 8px 8px", backgroundPosition: "right 7px center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
-                        {ALICUOTAS.map((a) => <option key={a} value={a}>{a}%</option>)}
+                      {/* Impuestos internos: por unidad ⇄ total del registro (los proveedores lo pasan de las dos formas). */}
+                      {esIns
+                        ? <input style={campoII} placeholder="0" value={iiUTxt} title="Impuesto interno por unidad (por envase si la cantidad va en envases)"
+                            onChange={(e) => {
+                              const iiu = fmtImp(e.target.value); const v = parseImp(iiu); const c = parseFloat(l.cant) || 0;
+                              setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, iiu, impint: v > 0 && c > 0 ? fmtNum(Math.round(v * c * 100) / 100) : "" } : x));
+                            }} />
+                        : <span />}
+                      <input style={campoII} placeholder="0" value={l.impint || ""} title="Impuesto interno total del registro"
+                        onChange={(e) => {
+                          const impint = fmtImp(e.target.value); const t = parseImp(impint); const c = parseFloat(l.cant) || 0;
+                          setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, impint, iiu: esIns && t > 0 && c > 0 ? fmtNum(Math.round(t / c * 100) / 100) : esIns ? "" : undefined } : x));
+                        }} />
+                      <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
+                        {ALICUOTAS.map((a) => <option key={a} value={a}>{fmtNum(a)}%</option>)}
                       </select>
-                      <span style={{ fontSize: 12.5, color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo=" /u" max={17} /> : <Imp v={ivaLinea} max={17} />) : ""}</span>
-                      <span style={{ fontSize: 12.5, textAlign: "center", minWidth: 0, overflow: "hidden" }}>{neto > 0 ? <Imp v={neto + ivaLinea + parseImp(l.impint)} strong max={17} /> : esIns && parseFloat(l.cant) > 0 && l.item ? <Bonif /> : ""}</span>
+                      <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>
+                      <span style={{ fontSize: 12.5, ...celda, color: C.neg }}>{neto > 0 ? <Imp v={subtotal} strong max={16} /> : esIns && cantN > 0 && l.item ? <Bonif /> : ""}
+                        {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
                       <span style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button type="button" onClick={() => {
                           if (faltaDe(l)) return;
@@ -1393,54 +1450,68 @@ function ModalNuevaCarga(props) {
                         <button type="button" onClick={() => setLineas((ls) => ls.filter((_, ix) => ix !== i))} title="Eliminar" style={{ cursor: "pointer", color: C.gris, background: "none", border: "none", padding: 0, fontSize: 14 }}>×</button>
                       </span>
                     </div>
-                    {avisoUI}
-                    {/* Segunda fila alineada a las columnas de arriba (Diego 05/11/2026: "quedó desordenado"):
-                        concepto de caja bajo el insumo, descuento bajo cant./unit., PDV e imp. internos a la derecha. */}
-                    <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "end", marginTop: 8 }}>
-                      {esIns ? (
-                        <div style={{ gridColumn: "1 / 2", minWidth: 0 }}><span style={labS}>Concepto de caja</span>
-                          <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." crearPrimero="concepto" onCrear={(n) => abrirAltaItem(i, "concepto", "conc", n)} estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
-                            onElegir={(v) => {
-                              // cambia el concepto: el reparto precargado pasa a ser el de la regla del concepto nuevo
-                              const regla = reglaDe(codConcepto(v), PDVS, fecha);
-                              setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: v, reparto: regla ? regla.map((r) => ({ ...r })) : (x.reparto && !reglaDeItem(x, x.item) ? x.reparto : undefined) }));
-                            }} /></div>
-                      ) : <div style={{ gridColumn: "1 / 2" }} />}
+                    {avisoUI && <div style={{ padding: "0 8px" }}>{avisoUI}</div>}
+                    {/* Segunda fila: descuento (insumo) debajo de unitario y total, II sugerido, y chips a la derecha. */}
+                    <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "start", marginTop: 6 }}>
                       {esIns ? (<>
-                        {/* Descuento: en % (igual sobre el unitario o el total), en $ por unidad o en $ sobre el total. */}
-                        <div style={{ gridColumn: "2 / span 2", minWidth: 0 }}><span style={labS}>Descuento</span>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <input style={{ ...inp, ...chico, flex: 1, minWidth: 0, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
-                              value={l.desc || ""} onChange={(e) => setLinea(i, "desc", fmtImp(e.target.value))}
-                              title={desc > 0 ? `Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)} = neto ${$fmt(neto)}` : "Descuento de la línea (opcional)"} />
-                            <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 32, boxSizing: "border-box", flexShrink: 0 }}>
-                              {DESC_TIPOS.map(([k, t]) => {
-                                const act = (l.descTipo || "%") === k;
-                                return <span key={k} role="button" onClick={() => setLinea(i, "descTipo", k)}
-                                  title={k === "%" ? "Porcentaje (sobre el unitario o el total da lo mismo)" : k === "u" ? "Importe por unidad" : "Importe sobre el total de la línea"}
-                                  style={{ display: "inline-flex", alignItems: "center", padding: "0 7px", fontSize: 11, fontWeight: 700, cursor: "pointer", background: act ? "#111" : "#fff", color: act ? "#fff" : "#888", whiteSpace: "nowrap" }}>{t}</span>;
-                              })}
-                            </span>
-                          </div></div>
-                        <div style={{ gridColumn: "4 / 5", height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.verde }}>{desc > 0 ? `−${$fmt(desc)}` : ""}</div>
-                      </>) : <div style={{ gridColumn: "2 / 5" }} />}
-                      <div style={{ gridColumn: "5 / span 2", minWidth: 0 }}>
-                        <span style={{ ...labS, display: "flex", alignItems: "center" }}>PDV del registro
-                          {!l.reparto && <span role="button" onClick={() => setLinea(i, "reparto", [{ pdv: l.pdvDest || pdvActual || PDVS[0], pct: 100 }, { pdv: PDVS.find((p) => p !== (l.pdvDest || pdvActual || PDVS[0])) || PDVS[1], pct: 0 }])}
-                            title="Repartir este registro entre varios PDV por porcentaje" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 10.5, lineHeight: "14px", color: C.cel, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>⇄ repartir</span>}
-                          {l.reparto && <span role="button" onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, reparto: undefined, pdvDest: l.reparto[0].pdv } : x))}
-                            title="Volver a un solo PDV" style={{ marginLeft: "auto", textTransform: "none", letterSpacing: 0, fontSize: 10.5, lineHeight: "14px", color: C.gris, cursor: "pointer", whiteSpace: "nowrap" }}>un solo PDV</span>}
+                        <div />
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", justifyContent: "flex-end", height: 30 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: C.verde }}>DESC.</span>
+                          <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28, boxSizing: "border-box" }}>
+                            {[["%", "%"], ["$", "$"]].map(([k, t]) => (
+                              <span key={k} role="button" title={k === "%" ? "Descuento en porcentaje" : "Descuento en pesos: por unidad o sobre el total"}
+                                onClick={() => { if (modoDesc !== k) setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, descModo: k, desc: "", descTipo: k === "%" ? "%" : "u" } : x)); }}
+                                style={{ display: "inline-flex", alignItems: "center", padding: "0 8px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: modoDesc === k ? "#111" : "#fff", color: modoDesc === k ? "#fff" : "#888" }}>{t}</span>
+                            ))}
+                          </span>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <input style={{ ...inp, ...chico, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}`, color: C.verde, fontWeight: 600 } : {}) }} placeholder="0"
+                            value={descUnitTxt} title={modoDesc === "%" ? "Descuento %" : "Descuento en $ por unidad"}
+                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "u")} />
+                          {desc > 0 && cantN > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {$fmt((brutoDe(l) - desc) / cantN)} /{med || "u"}</span>}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <input style={{ ...inp, ...chico, textAlign: "center", ...(desc > 0 ? { border: `1.6px solid ${C.verde}`, color: C.verde, fontWeight: 600 } : {}) }} placeholder="0"
+                            value={descTotTxt} title={modoDesc === "%" ? "Descuento %" : "Descuento en $ sobre el total del registro"}
+                            onChange={(e) => setDesc(e.target.value, modoDesc === "%" ? "%" : "t")} />
+                          {desc > 0 && <span style={{ ...chica, textAlign: "center", color: C.verde, marginTop: 2 }}>queda {$fmt(brutoDe(l) - desc)} neto</span>}
+                        </div>
+                        <div style={{ gridColumn: "5 / span 2", fontSize: 10.5, color: C.ii, textAlign: "center", lineHeight: 1.35, paddingTop: 2, minWidth: 0 }}>
+                          {iiSug > 0 && !(ii > 0) ? <span role="button" title="Usar el II de la última compra" style={{ cursor: "pointer" }}
+                            onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, iiu: fmtNum(Math.round(iiSug * 100) / 100), impint: cantN > 0 ? fmtNum(Math.round(iiSug * cantN * 100) / 100) : "" } : x))}>
+                            la última vez {$fmt(iiSug)} /{med || "u"} · usar</span> : iiSug > 0 ? <span style={{ color: "#94a3b8" }}>la última vez {$fmt(iiSug)} /{med || "u"}</span> : null}
+                        </div>
+                      </>) : <div style={{ gridColumn: "1 / span 6" }} />}
+                      <div style={{ gridColumn: "7 / span 4", display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "flex-start", paddingRight: 8, minWidth: 0 }}>
+                        {esIns && (
+                          <span style={{ ...chip, ...(l.conc ? {} : { borderColor: C.nar, background: "#fdf8ef" }) }}>Caja
+                            <span style={{ width: 150 }}><Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Concepto…" crearPrimero="concepto" onCrear={(n) => abrirAltaItem(i, "concepto", "conc", n)}
+                              estilo={{ height: 24, fontSize: 12, fontWeight: 600, border: "none", background: "transparent", padding: "2px 6px 2px 24px" }}
+                              onElegir={(v) => {
+                                // cambia el concepto: el reparto precargado pasa a ser el de la regla del concepto nuevo
+                                const regla = reglaDe(codConcepto(v), PDVS, fecha);
+                                setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: v, reparto: regla ? regla.map((r) => ({ ...r })) : (x.reparto && !reglaDeItem(x, x.item) ? x.reparto : undefined) }));
+                              }} /></span>
+                          </span>
+                        )}
+                        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                          {!l.reparto
+                            ? <span style={chip}>PDV
+                                <select style={{ height: 26, border: "none", background: "transparent", fontSize: 12, fontWeight: 700, color: C.neg, cursor: "pointer", outline: "none", maxWidth: 170 }}
+                                  value={l.pdvDest || pdvActual || PDVS[0]} onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
+                                  {PDVS.map((p) => <option key={p}>{p}</option>)}
+                                </select></span>
+                            : <span style={{ ...chip, borderColor: "#bfe0f0", background: "#f3fafd", color: "#2a88ad", fontWeight: 600, paddingRight: 11, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>⇄ {txtReparto(l) || "repartido"}</span>}
+                          {!l.reparto
+                            ? <span role="button" onClick={() => setLinea(i, "reparto", [{ pdv: l.pdvDest || pdvActual || PDVS[0], pct: 100 }, { pdv: PDVS.find((p) => p !== (l.pdvDest || pdvActual || PDVS[0])) || PDVS[1], pct: 0 }])}
+                                title="Repartir este registro entre varios PDV por porcentaje" style={{ fontSize: 11, color: C.cel, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", marginRight: 6 }}>⇄ repartir entre PDV</span>
+                            : <span role="button" onClick={() => setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, reparto: undefined, pdvDest: l.reparto[0].pdv } : x))}
+                                title="Volver a un solo PDV" style={{ fontSize: 11, color: C.gris, cursor: "pointer", whiteSpace: "nowrap", marginRight: 6 }}>un solo PDV</span>}
                         </span>
-                        {!l.reparto
-                          ? <select style={{ ...sel, ...chico, paddingRight: 24 }} value={l.pdvDest || pdvActual || PDVS[0]} onChange={(e) => setLinea(i, "pdvDest", e.target.value)}>
-                              {PDVS.map((p) => <option key={p}>{p}</option>)}
-                            </select>
-                          : <div style={{ ...chico, display: "flex", alignItems: "center", border: `1px solid #bfe0f0`, background: "#f3fafd", borderRadius: 9, color: "#2a88ad", fontWeight: 600, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>⇄ {txtReparto(l) || "repartido"}</div>}
                       </div>
-                      <div style={{ gridColumn: "7 / 8", minWidth: 0 }}><span style={labS}>Imp. internos $</span>
-                        <input style={{ ...inp, ...chico, textAlign: "center" }} placeholder="0"
-                          value={l.impint || ""} onChange={(e) => setLinea(i, "impint", fmtImp(e.target.value))} title="Impuesto interno de este registro (opcional)" /></div>
                     </div>
+                    <div style={{ padding: "0 8px" }}>
                     {altaItem && altaItem.i === i && (() => {
                       const a = altaItem;
                       const set = (k, v) => setAltaItem((x) => ({ ...x, [k]: v }));
@@ -1500,14 +1571,33 @@ function ModalNuevaCarga(props) {
                         </div>
                       );
                     })()}
+                    </div>
                   </div>
                 );
               })}
-
-            <div style={{ marginTop: 14 }}>
+              {(() => {
+                const enEd = lineas.find((l) => l.editando);
+                const falta = enEd ? faltaDe(enEd) : null;
+                const confirmable = !falta;
+                return (
+              <div style={{ display: soloVer ? "none" : "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+                <button ref={agregarRef} title={!confirmable ? `${falta} para agregar otro registro` : enEd ? "Confirmar este registro y agregar otro" : "Agregar registro"}
+                  disabled={!confirmable}
+                  onClick={() => { if (confirmable) setLineas((ls) => {
+                    // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo).
+                    // Va PRIMERO, pegado a los títulos de las columnas (Diego 05/11/2026).
+                    const ult = ls[0];
+                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false }))];
+                  }); }}
+                  style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
+                {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
+              </div>
+                );
+              })()}
+            <div style={{ marginTop: 14, marginBottom: 10 }}>
               <span style={lab}>Percepciones</span>
               {percepciones.map((p, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 24px", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 24px", gap: 8, alignItems: "center", marginBottom: 8, maxWidth: 620 }}>
                   <select style={sel} value={p.tipo} onChange={(e) => setPercepciones((ps) => ps.map((x, ix) => ix === i ? { ...x, tipo: e.target.value } : x))}>
                     {TIPOS_PERCEPCION.map((t) => <option key={t}>{t}</option>)}
                   </select>
@@ -1519,17 +1609,26 @@ function ModalNuevaCarga(props) {
               {soloVer && percepciones.length === 0 && <div style={{ fontSize: 12.5, color: "#aaa" }}>—</div>}
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <span style={lab}>Impuestos internos</span>
-              {impIntLineas > 0
-                ? <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}><b>{$fmt(impIntLineas)}</b> <span style={{ color: "#999", fontSize: 12 }}>· suma de los impuestos internos cargados por registro</span></div>
-                : soloVer ? <div style={{ fontSize: 13, color: impIntG ? "#555" : "#aaa", marginTop: 4 }}>{impIntG ? <b>$ {impIntG}</b> : "—"}</div>
-                : <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-                    <input style={{ ...inp, width: 140, textAlign: "center" }} placeholder="Importe $" value={impIntG} onChange={(e) => setImpIntG(fmtImp(e.target.value))} />
-                    <span style={{ color: "#999", fontSize: 12 }}>general de la factura — o cargalos registro por registro y acá va la suma</span>
-                  </div>}
+            {/* Totales de la factura alineados a las columnas, fijos abajo del cuerpo (Diego 06/11/2026). */}
+            <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "center", position: "sticky", bottom: 0, zIndex: 5, background: C.fondo, borderTop: `1px solid ${C.borde}`, margin: "0 -14px", padding: "9px 14px", fontSize: 13 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: C.gris, letterSpacing: 0.4 }}>TOTALES DE LA FACTURA</span>
+              <span /><span />
+              <span style={{ textAlign: "center" }}><Imp v={netoTotal} strong max={16} /><span style={{ display: "block", fontSize: 10.5, color: C.gris }}>neto{fracG > 0 ? " c/desc." : ""}</span></span>
+              <span />
+              <span style={{ minWidth: 0 }}>
+                <input style={{ ...inp, ...chico, textAlign: "center", border: `1px solid ${C.iiBorde}`, color: C.ii, fontWeight: 700 }} disabled={soloVer}
+                  title="Suma del II de los registros. Si el proveedor lo pasa solo por factura, cargalo acá y se reparte entre los registros."
+                  value={iiPieTxt !== null ? iiPieTxt : impIntTotal > 0 ? fmtNum(Math.round(impIntTotal * 100) / 100) : ""} placeholder="0"
+                  onFocus={(e) => { setIiPieTxt(impIntTotal > 0 ? fmtNum(Math.round(impIntTotal * 100) / 100) : ""); setTimeout(() => e.target.select && e.target.select(), 0); }}
+                  onChange={(e) => setIiPieTxt(fmtImp(e.target.value))}
+                  onBlur={() => { repartirII(parseImp(iiPieTxt || "")); setIiPieTxt(null); }} />
+                <span style={{ display: "block", fontSize: 10, color: C.gris, textAlign: "center" }}>imp. internos</span>
+              </span>
+              <span />
+              <span style={{ textAlign: "center" }}><Imp v={ivaTotal} strong max={15} /><span style={{ display: "block", fontSize: 10.5, color: C.gris }}>IVA</span></span>
+              <span style={{ textAlign: "center" }}><Imp v={totalFactura} strong max={16} /><span style={{ display: "block", fontSize: 10.5, color: C.gris }}>TOTAL{percTotal > 0 ? ` · incl. percep. ${$fmt(percTotal)}` : ""}</span></span>
+              <span />
             </div>
-
             </div>
 
             </>)}
@@ -1607,36 +1706,31 @@ function ModalNuevaCarga(props) {
         {/* ── Pie fijo: totales, control contra el total, avisos y acciones ── */}
         {modo !== "empleado" && (
           <div style={{ ...bloque, margin: "10px 20px 16px", padding: "10px 14px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-            {modo === "factura" && (
-              <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", fontSize: 13.5 }}>
-                <span>Neto <b>{$fmt(netoSinG)}</b></span>
-                {!soloVer ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#555" }} title="Descuento general de la factura: se reparte proporcional al neto de cada registro">
-                    Desc. general
-                    <input style={{ ...inp, height: 28, width: 76, padding: "3px 6px", fontSize: 12.5, textAlign: "center", ...(fracG > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
-                      value={descG} onChange={(e) => setDescG(fmtImp(e.target.value))} />
-                    <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28, boxSizing: "border-box" }}>
-                      {[["%", "%"], ["$", "$"]].map(([k, t]) => (
-                        <span key={k} role="button" onClick={() => setDescGTipo(k)} style={{ display: "inline-flex", alignItems: "center", padding: "0 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: descGTipo === k ? "#111" : "#fff", color: descGTipo === k ? "#fff" : "#888" }}>{t}</span>))}
-                    </span>
-                    {fracG > 0 && <b style={{ color: C.verde }}>−{$fmt(descGImporte)}</b>}
+            {/* Los totales van en la tabla (fila de totales alineada a las columnas); acá, el descuento general y el
+                control contra el total de la factura. */}
+            {modo === "factura" && !soloVer && cuerpoVisible && (
+              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#555" }} title="Descuento general de la factura: se reparte proporcional al neto de cada registro">
+                  Desc. general
+                  <input style={{ ...inp, height: 28, width: 76, padding: "3px 6px", fontSize: 12.5, textAlign: "center", ...(fracG > 0 ? { border: `1.6px solid ${C.verde}` } : {}) }} placeholder="0"
+                    value={descG} onChange={(e) => setDescG(fmtImp(e.target.value))} />
+                  <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", height: 28, boxSizing: "border-box" }}>
+                    {[["%", "%"], ["$", "$"]].map(([k, t]) => (
+                      <span key={k} role="button" onClick={() => setDescGTipo(k)} style={{ display: "inline-flex", alignItems: "center", padding: "0 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: descGTipo === k ? "#111" : "#fff", color: descGTipo === k ? "#fff" : "#888" }}>{t}</span>))}
                   </span>
-                ) : null}
-                <span>IVA <b>{$fmt(ivaTotal)}</b></span>
-                <span>Percep. <b>{$fmt(percTotal)}</b></span>
-                {impIntTotal > 0 && <span>Imp. int. <b>{$fmt(impIntTotal)}</b></span>}
-                <span style={{ marginLeft: "auto" }}>TOTAL <b style={{ fontSize: 16 }}>{$fmt(totalFactura)}</b></span>
+                  {fracG > 0 && <b style={{ color: C.verde }}>−{$fmt(descGImporte)}</b>}
+                </span>
+                {totCtrl > 0 && netoTotal > 0 && (() => {
+                  const ok = Math.abs(difCtrl) <= 1;
+                  return (
+                    <span style={{ fontWeight: 600, color: ok ? C.verde : C.nar }}>
+                      {ok ? <>✓ El desglose coincide con el total de la factura ({$fmt(totCtrl)}){Math.abs(difCtrl) >= 0.01 ? ` · dif. ${$fmt(Math.abs(difCtrl))} por redondeo` : ""}</>
+                        : <>⚠ El desglose suma {$fmt(totalFactura)} y la factura dice {$fmt(totCtrl)}: {difCtrl < 0 ? `faltan cargar ${$fmt(-difCtrl)}` : `sobran ${$fmt(difCtrl)}`}.</>}
+                    </span>
+                  );
+                })()}
               </div>
             )}
-            {modo === "factura" && !soloVer && totCtrl > 0 && netoTotal > 0 && (() => {
-              const ok = Math.abs(difCtrl) <= 1;
-              return (
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: ok ? C.verde : C.nar, display: "flex", gap: 8, alignItems: "center" }}>
-                  {ok ? <>✓ El desglose coincide con el total de la factura ({$fmt(totCtrl)}){Math.abs(difCtrl) >= 0.01 ? ` · dif. ${$fmt(Math.abs(difCtrl))} por redondeo` : ""}</>
-                    : <>⚠ El desglose suma {$fmt(totalFactura)} y la factura dice {$fmt(totCtrl)}: {difCtrl < 0 ? `faltan cargar ${$fmt(-difCtrl)}` : `sobran ${$fmt(difCtrl)}`}.</>}
-                </div>
-              );
-            })()}
             {modo === "vario" && parecidoV && (
               <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "#8a5a00" }}>
                 ⚠ Ya hay un gasto <b>parecido</b> en {nombrePeriodo(periodoDe(parecidoV.fecha))}: {dmy(parecidoV.fecha)} · {$fmt(parecidoV.importe)}
