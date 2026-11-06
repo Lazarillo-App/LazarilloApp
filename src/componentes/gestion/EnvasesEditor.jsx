@@ -55,45 +55,50 @@ export default function EnvasesEditor({ codigo, nombre, medida, envases = [], on
     try { await borrarEnvase(codigo, e.envase); toast.success(`Envase ${e.envase} sacado`); onCambio && onCambio({ tipo: "baja", envase: e.envase }); }
     catch (err) { toast.error(err.message); }
   };
+  // Misma grilla para encabezado, envases y alta, y todos los controles de 30px (Diego 06/11/2026:
+  // los componentes de un modal van del mismo alto y alineados).
+  const GRID = "minmax(0, 1fr) 130px 110px 40px";
+  const ALTO = 30;
+  const ctrl = { ...inp, height: ALTO, margin: 0, lineHeight: `${ALTO - 2}px`, padding: "0 8px" };
+  const boton = (oscuro) => ({ height: ALTO, margin: 0, padding: "0 12px", borderRadius: 8, boxSizing: "border-box", lineHeight: 1, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+    border: oscuro ? "none" : `1px solid ${C.borde}`, background: oscuro ? C.neg : "#fff", color: oscuro ? "#fff" : C.neg });
+  const fila = { display: "grid", gridTemplateColumns: GRID, gap: 8, padding: "6px 10px", alignItems: "center", borderTop: "1px solid #f2f2f0" };
+  const conUnidad = (input) => <span style={{ display: "flex", alignItems: "center", gap: 6 }}>{input}<span style={{ color: C.gris, width: 14 }}>{u}</span></span>;
   const alta = (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 110px auto", gap: 8, alignItems: "end" }}
+    <div style={{ ...fila, background: "#fbfdfe" }}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (!ocupado) agregar(); } }}>
-      <div><span style={{ fontSize: 10, fontWeight: 700, color: C.gris, textTransform: "uppercase" }}>Nombre</span>
-        <input style={inp} autoFocus={soloAlta} placeholder="Pack 24" maxLength={20} value={nuevo.envase} onChange={(e) => setNuevo({ ...nuevo, envase: e.target.value })} /></div>
-      <div><span style={{ fontSize: 10, fontWeight: 700, color: C.gris, textTransform: "uppercase" }}>Trae ({u})</span>
-        <input style={{ ...inp, textAlign: "center" }} placeholder="24" value={nuevo.factor} onChange={(e) => setNuevo({ ...nuevo, factor: e.target.value.replace(/[^0-9.,]/g, "") })} /></div>
-      <div style={{ display: "flex", gap: 6 }}>
-        <button type="button" disabled={ocupado} onClick={agregar} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: C.neg, color: "#fff", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>{soloAlta ? "Crear y usar" : "Agregar"}</button>
-        {onCerrar && <button type="button" onClick={onCerrar} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.borde}`, background: "#fff", fontSize: 12.5, cursor: "pointer" }}>{soloAlta ? "Cancelar" : "Cerrar"}</button>}
-      </div>
+      <input style={ctrl} autoFocus={soloAlta} placeholder="Nombre del envase nuevo (ej. Pack 24)" maxLength={20} value={nuevo.envase} onChange={(e) => setNuevo({ ...nuevo, envase: e.target.value })} />
+      {conUnidad(<input style={{ ...ctrl, textAlign: "center" }} placeholder="trae" value={nuevo.factor} onChange={(e) => setNuevo({ ...nuevo, factor: e.target.value.replace(/[^0-9.,]/g, "") })} />)}
+      <button type="button" disabled={ocupado} onClick={agregar} style={{ ...boton(true), width: "100%" }}>{soloAlta ? "Crear y usar" : "+ Agregar"}</button>
+      <span />
     </div>
   );
   return (
     <div style={{ border: `1.5px solid #5BC2EA`, borderRadius: 10, padding: "10px 12px", background: "#fff", fontSize: 12.5 }}>
-      <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>{titulo || (soloAlta ? `Nuevo envase de ${nombre}` : `Envases de compra · ${nombre}`)}
-        <span style={{ fontWeight: 400, color: C.gris, marginLeft: 8 }}>cuántas {u} trae cada envase</span></div>
-      {!soloAlta && (
-        <div style={{ border: `1px solid ${C.borde}`, borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 40px", padding: "6px 10px", background: "#fafaf8", fontSize: 10.5, fontWeight: 700, color: C.gris }}>
-            <span>ENVASE</span><span style={{ textAlign: "center" }}>TRAE</span><span style={{ textAlign: "center" }}>ORIGEN</span><span />
-          </div>
-          {!envases.length && <div style={{ padding: "8px 10px", color: C.gris, borderTop: "1px solid #f2f2f0" }}>Sin envases: se compra por {u}.</div>}
-          {envases.map((e) => (
-            <div key={e.envase} style={{ display: "grid", gridTemplateColumns: "1fr 120px 110px 40px", padding: "5px 10px", borderTop: "1px solid #f2f2f0", alignItems: "center" }}>
-              <span style={{ fontWeight: 600 }}>{e.envase}</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
-                <input style={{ ...inp, width: 64, height: 28, textAlign: "center" }} value={editando[e.envase] !== undefined ? editando[e.envase] : fmt(e.factor)}
-                  onFocus={() => setEditando((x) => ({ ...x, [e.envase]: fmt(e.factor) }))}
-                  onChange={(ev) => setEditando((x) => ({ ...x, [e.envase]: ev.target.value.replace(/[^0-9.,]/g, "") }))}
-                  onBlur={() => corregir(e)} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); ev.currentTarget.blur(); } }} />
-                <span style={{ color: C.gris }}>{u}</span></span>
-              <span style={{ textAlign: "center", color: e.origen === "lazarillo" ? "#2a88ad" : C.gris }}>{e.origen === "lazarillo" ? (e.corrige ? "corregido" : "Lazarillo") : "MaxiRest"}</span>
-              <span role="button" title="Sacar este envase" onClick={() => sacar(e)} style={{ textAlign: "center", color: C.gris, cursor: "pointer" }}>×</span>
-            </div>
-          ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minHeight: ALTO }}>
+        <span style={{ fontWeight: 700 }}>{titulo || (soloAlta ? `Nuevo envase de ${nombre}` : `Envases de compra · ${nombre}`)}</span>
+        <span style={{ color: C.gris }}>cuántas {u} trae cada envase</span>
+        <span style={{ flex: 1 }} />
+        {onCerrar && <button type="button" onClick={onCerrar} style={boton(false)}>{soloAlta ? "Cancelar" : "Cerrar"}</button>}
+      </div>
+      <div style={{ border: `1px solid ${C.borde}`, borderRadius: 8, overflow: "hidden" }}>
+        <div style={{ ...fila, borderTop: "none", background: "#fafaf8", fontSize: 10.5, fontWeight: 700, color: C.gris, padding: "7px 10px" }}>
+          <span>ENVASE</span><span style={{ textAlign: "center", paddingRight: 20 }}>TRAE</span><span style={{ textAlign: "center" }}>{soloAlta ? "" : "ORIGEN"}</span><span />
         </div>
-      )}
-      {alta}
+        {!soloAlta && !envases.length && <div style={{ ...fila, color: C.gris }}><span style={{ gridColumn: "1 / -1" }}>Sin envases: se compra por {u}.</span></div>}
+        {!soloAlta && envases.map((e) => (
+          <div key={e.envase} style={fila}>
+            <span style={{ fontWeight: 600, paddingLeft: 9 }}>{e.envase}</span>
+            {conUnidad(<input style={{ ...ctrl, textAlign: "center" }} value={editando[e.envase] !== undefined ? editando[e.envase] : fmt(e.factor)}
+              onFocus={() => setEditando((x) => ({ ...x, [e.envase]: fmt(e.factor) }))}
+              onChange={(ev) => setEditando((x) => ({ ...x, [e.envase]: ev.target.value.replace(/[^0-9.,]/g, "") }))}
+              onBlur={() => corregir(e)} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); ev.currentTarget.blur(); } }} />)}
+            <span style={{ textAlign: "center", color: e.origen === "lazarillo" ? "#2a88ad" : C.gris }}>{e.origen === "lazarillo" ? (e.corrige ? "corregido" : "Lazarillo") : "MaxiRest"}</span>
+            <span role="button" title="Sacar este envase" onClick={() => sacar(e)} style={{ textAlign: "center", color: C.gris, cursor: "pointer", fontSize: 15, lineHeight: `${ALTO}px` }}>×</span>
+          </div>
+        ))}
+        {alta}
+      </div>
     </div>
   );
 }
