@@ -15,8 +15,10 @@ import CompraLineasModal from './CompraLineasModal';
 import { useReglasCarga } from './apertura/useReglasCarga';
 
 const pesos = (n) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+// Con "Todas las sucursales" se carga igual: arranca en la principal y el PDV se elige en cada
+// registro (Diego 06/11/2026: en Container FC no dejaba cargar).
 const lugarDe = (lugares, sucursalCaja, businessId) => {
-  if (sucursalCaja === undefined) return null;
+  if (sucursalCaja === undefined) return (lugares ?? []).find((l) => l.id === -Number(businessId)) ?? (lugares ?? [])[0] ?? null;
   const id = sucursalCaja === 'principal' ? -Number(businessId) : Number(sucursalCaja);
   return (lugares ?? []).find((l) => l.id === id) ?? null;
 };
@@ -48,7 +50,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   // Los maestros se piden al abrir el Panel: cuando se abre el modal ya están.
   const { data: maestros, isError } = useMaestrosFactura(true);
   const lugar = lugarDe(maestros?.lugares, sucursalCaja, businessId);
-  const puede = sucursalCaja !== undefined;
+  const puede = true;
   const reglasCarga = useReglasCarga(lugar?.id ?? null, maestros?.lugares ?? []);
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
     <>
       <Box
         component="button" type="button" disabled={!puede} onClick={() => setAbierto(true)}
-        title={puede ? 'Cargar una factura en esta sucursal' : 'Elegí una sucursal para cargar'}
+        title={sucursalCaja !== undefined ? 'Cargar una factura en esta sucursal' : 'Cargar una factura (el PDV se elige en cada registro)'}
         sx={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 32, px: 1.5, display: 'inline-flex', alignItems: 'center', gap: 0.75, flexShrink: 0, borderRadius: 2, bgcolor: 'grey.900', color: '#fff', fontSize: 14, fontWeight: 500, '&:hover': { bgcolor: 'grey.800' }, '&:disabled': { opacity: 0.4, cursor: 'default' } }}
       >
         <AddIcon sx={{ fontSize: 15 }} /> {etiqueta}
