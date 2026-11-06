@@ -845,7 +845,18 @@ const InsumosTable = forwardRef(function InsumosTable({
       };
     }),
     [flatRows]);
-  useEffect(() => { onItemsOrdenados?.(itemsOrdenados); }, [itemsOrdenados, onItemsOrdenados]);
+  // Solo se avisa cuando la lista cambia DE VERDAD (Diego 06/11/2026: "toco Artículos y no cambia la
+  // pantalla"). Avisar en cada render armaba un bucle: el padre guardaba un array nuevo, se volvía a
+  // renderizar esta tabla, salía otro array igual… ~60 veces por segundo, aun oculta. Ese bucle no
+  // dejaba terminar la navegación (React Router la hace como transición y las actualizaciones
+  // urgentes la interrumpían siempre): la URL cambiaba pero la pantalla no.
+  const firmaOrdenadosRef = useRef(null);
+  useEffect(() => {
+    const firma = itemsOrdenados.map((d) => `${d.id}|${d.nombre}|${d.rubro}|${d.unidad}|${d.precio}|${d.origen ?? ''}`).join('\n');
+    if (firma === firmaOrdenadosRef.current) return;
+    firmaOrdenadosRef.current = firma;
+    onItemsOrdenados?.(itemsOrdenados);
+  }, [itemsOrdenados, onItemsOrdenados]);
 
   const idToIndex = useMemo(() => {
     const m = new Map();
