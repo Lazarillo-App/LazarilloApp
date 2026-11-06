@@ -446,6 +446,57 @@ export function edeDesdeFactura(rowId, f, { maestros, pdvsRef }) {
   };
 }
 
+// Gastos varios: historial del concepto elegido a la derecha (Diego 05/11/2026), como la cuenta del
+// empleado: por período, con lo habitual (mediana de las últimas 6) y un atajo para usar el último.
+function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar }) {
+  const [filas, setFilas] = useState(null);
+  useEffect(() => {
+    setFilas(null);
+    if (!codigo || pdvId == null) return undefined;
+    let vivo = true;
+    gestionFetch(`/api/gastos-varios/historial?conceptoCodigo=${encodeURIComponent(codigo)}&pdvId=${pdvId}`)
+      .then((r) => r.json()).then((d) => { if (vivo) setFilas((d && d.filas) || []); }).catch(() => vivo && setFilas([]));
+    return () => { vivo = false; };
+  }, [codigo, pdvId]);
+  const caja = { background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px", fontSize: 12.5 };
+  if (!codigo) return <div style={{ ...caja, color: C.gris }}><div style={{ fontWeight: 700, fontSize: 13.5, color: C.neg, marginBottom: 4 }}>Últimas cargas</div>Elegí un concepto para ver lo último que se cargó.</div>;
+  const ult6 = (filas || []).slice(0, 6).map((f) => f.importe).sort((a, b) => a - b);
+  const mediana = ult6.length ? (ult6.length % 2 ? ult6[(ult6.length - 1) / 2] : (ult6[ult6.length / 2 - 1] + ult6[ult6.length / 2]) / 2) : null;
+  const porPeriodo = [];
+  (filas || []).forEach((f) => { const g = porPeriodo.find((x) => x.p === f.periodo); if (g) g.filas.push(f); else porPeriodo.push({ p: f.periodo, filas: [f] }); });
+  const tieneActual = porPeriodo.some((g) => g.p === periodo);
+  return (
+    <div style={caja}>
+      <div style={{ fontWeight: 700, fontSize: 13.5 }}>Últimas cargas · {concepto}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", color: C.gris, margin: "2px 0 6px" }}><span>{pdvNombre} · últimos 12 meses</span>{filas && <span>{filas.length} carga{filas.length === 1 ? "" : "s"}</span>}</div>
+      {!filas ? <div style={{ color: C.gris }}>Cargando…</div> : (<>
+        {!tieneActual && <div style={{ background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 8, padding: "4px 8px", fontWeight: 700 }}>{nombrePeriodo(periodo)} <span style={{ fontWeight: 400, color: "#2a88ad" }}>· este período, sin cargar</span></div>}
+        {!filas.length && <div style={{ color: C.gris, marginTop: 6 }}>Sin cargas de este concepto en el último año.</div>}
+        <div style={{ maxHeight: 330, overflow: "auto" }}>
+          {porPeriodo.map((g) => (
+            <div key={g.p} style={{ marginTop: 6, borderRadius: 8, padding: "4px 7px", ...(g.p === periodo ? { background: "#fdf8ef", border: "1px solid #f0d9a8" } : {}) }}>
+              <b style={{ display: "block" }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
+              {g.filas.map((f, k) => (
+                <div key={k} style={{ display: "flex", gap: 5, borderBottom: "1px dashed #eee", padding: "2px 0" }}>
+                  <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                    {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>
+                  <span style={{ flexShrink: 0, alignSelf: "center", fontSize: 9.5, fontWeight: 700, borderRadius: 4, padding: "0 4px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
+                  <span style={{ flex: 1 }} />
+                  <b style={{ whiteSpace: "nowrap" }}>{$fmt(f.importe)}</b>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        {mediana != null && (<>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" }}><span>Habitual (mediana últimas {ult6.length})</span><b>{$fmt(mediana)}</b></div>
+          <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0].importe)} style={{ color: C.cel, fontWeight: 600, fontSize: 11.5, cursor: "pointer" }}>usar {$fmt(filas[0].importe)} (el último) ›</span></div>
+        </>)}
+      </>)}
+    </div>
+  );
+}
+
 // vista: "nueva" (alta) | "ver" (solo lectura, con Editar / Eliminar) | "editar".
 // embebido: sin overlay propio (va adentro de un Dialog, p.ej. desde Detalle de compras).
 /** @param {any} props */
@@ -741,6 +792,8 @@ function ModalNuevaCarga(props) {
   const impIntTotal = impIntLineas > 0 ? impIntLineas : parseImp(impIntG);
   const totalFactura = netoTotal + ivaTotal + percTotal + impIntTotal;
   const total = modo === "factura" ? totalFactura : parseImp(importeV);
+  // Ver / editar una factura existente: el total de control arranca con el de la factura.
+  useEffect(() => { if (ede && !totalCtrl && totalFactura > 0) setTotalCtrl(fmtNum(Math.round(totalFactura * 100) / 100)); }, []);
   const descGImporte = netoSinG - netoTotal;
   const totCtrl = parseImp(totalCtrl);
   const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
@@ -1483,7 +1536,8 @@ function ModalNuevaCarga(props) {
 
           </>
         ) : (
-          <div style={{ padding: 14 }}>
+          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 14, alignItems: "start" }}>
+          <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {/* Período y fecha en una sola línea compacta (Diego 30/10/2026: "el período está enorme"). */}
             <div style={{ gridColumn: "1 / -1", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1540,6 +1594,9 @@ function ModalNuevaCarga(props) {
               </div>
             )}
           </div>
+          </div>
+          <HistorialConcepto concepto={conceptoV} codigo={codConcepto(conceptoV)} pdvId={idPdv(pdvV)} pdvNombre={pdvV} periodo={periodoV}
+            onUsar={(v) => { setImporteV(fmtNum(v)); setImporteRevisar(false); }} />
           </div>
         )}
 
