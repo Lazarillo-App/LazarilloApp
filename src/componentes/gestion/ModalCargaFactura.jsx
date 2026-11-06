@@ -11,6 +11,7 @@ import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
+import { insumoCreate } from "@/servicios/apiInsumos";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
@@ -457,10 +458,51 @@ function ModalNuevaCarga(props) {
   const HOY = hoyISO();
   const PDVS = pdvsRef.map((p) => p.nombre);
   const idPdv = (nombre) => (pdvsRef.find((p) => p.nombre === nombre) || {}).id;
-  const MAESTRO_CONCEPTOS = maestros.conceptos.map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
+  // Altas desde la carga («Crear …» primero en todos los buscadores de maestros, Diego 05/11/2026).
+  const [insNuevos, setInsNuevos] = useState([]);
+  const [concNuevos, setConcNuevos] = useState([]);
+  const [altaItem, setAltaItem] = useState(null); // { i, tipo: "insumo"|"concepto", destino: "item"|"conc", nombre, medida, conc, codRubro }
+  const [rubrosCon, setRubrosCon] = useState(null);
+  const [creandoItem, setCreandoItem] = useState(false);
+  const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
   const codConcepto = (nombre) => (MAESTRO_CONCEPTOS.find((c) => c.concepto === nombre) || {}).codigo;
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
-  const MAESTRO_INSUMOS = maestros.insumos.map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, envases: i.envases || [] }));
+  const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => ({ codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), unit: i.unit, alic: i.alic, envases: i.envases || [] }));
+  const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
+    .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
+  const abrirAltaItem = (i, tipo, destino, nombre) => {
+    setAltaItem({ i, tipo, destino, nombre: nombre || "", medida: "", conc: "", codRubro: "" });
+    if (tipo === "concepto" && !rubrosCon)
+      gestionFetch("/api/conceptos").then((r) => r.json()).then((d) => setRubrosCon((d && d.rubros) || [])).catch(() => setRubrosCon([]));
+  };
+  const crearItem = async () => {
+    const a = altaItem;
+    if (!a || !a.nombre.trim()) { toast.error("Poné el nombre."); return; }
+    setCreandoItem(true);
+    try {
+      if (a.tipo === "insumo") {
+        if (!a.medida) throw new Error("Elegí la unidad de medida.");
+        // Mismo maestro que Recetas (código L1, L2…): no se duplica el insumo.
+        const r = await insumoCreate({ nombre: a.nombre.trim(), unidadMed: a.medida });
+        const cod = r.sku || (r.data && r.data.codigo_maxi);
+        const nuevo = { codigo: cod, nombre: (r.data && r.data.nombre) || a.nombre.trim(), medida: a.medida, codCga: codConcepto(a.conc) || null, unit: null, alic: null, envases: [] };
+        setInsNuevos((x) => [...x, nuevo]);
+        setLineas((ls) => ls.map((x, ix) => ix !== a.i ? x : { ...x, item: nuevo.nombre, codIns: cod, medida: undefined, conc: a.conc || x.conc, unit: "", ntot: "", desc: "" }));
+      } else {
+        if (!a.codRubro) throw new Error("Elegí el rubro.");
+        const r = await gestionFetch("/api/conceptos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: a.nombre.trim(), tipo: "-", codRubro: String(a.codRubro) }) });
+        const d = await r.json().catch(() => null);
+        if (!r.ok) throw new Error((d && d.error) || "No se pudo crear el concepto.");
+        const rub = (rubrosCon || []).find((x) => String(x.codigo) === String(a.codRubro));
+        const nuevo = { codigo: String(d.codigo), nombre: a.nombre.trim(), rubro: rub ? String(rub.nombre).trim() : "" };
+        setConcNuevos((x) => [...x, nuevo]);
+        setLineas((ls) => ls.map((x, ix) => ix !== a.i ? x : a.destino === "conc" ? { ...x, conc: nuevo.nombre } : { ...x, item: nuevo.nombre }));
+      }
+      toast.success(a.tipo === "insumo" ? "Insumo creado" : "Concepto creado");
+      setAltaItem(null);
+    } catch (e) { toast.error((e && e.message) || "No se pudo crear."); }
+    setCreandoItem(false);
+  };
   const conceptoDeInsumo = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).concepto || "";
   const medidaDe = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).medida || "";
   // Medida de la línea: la de la factura (X8, Pack… si en MaxiRest se cargó en envases; ahí el
@@ -1211,6 +1253,7 @@ function ModalNuevaCarga(props) {
                         <div style={{ flex: 1 }}>
                           <Combo opciones={esIns ? MAESTRO_INSUMOS.map((x) => x.nombre) : conceptosDe(null)} valor={l.item} autoFocus={l.foco !== false && l.foco !== "neto"}
                             placeholder={esIns ? "Buscar insumo..." : "Buscar concepto..."}
+                            crearPrimero={esIns ? "insumo" : "concepto"} onCrear={(n) => abrirAltaItem(i, esIns ? "insumo" : "concepto", "item", n)}
                             onElegir={(v) => {
                               const mi = esIns ? MAESTRO_INSUMOS.find((x) => x.nombre === v) : null;
                               const ult = mi && mi.unit ? { unit: fmtNum(Math.round(mi.unit * 100) / 100), alic: mi.alic != null ? mi.alic : l.alic } : null;
@@ -1303,7 +1346,7 @@ function ModalNuevaCarga(props) {
                     <div style={{ display: "grid", gridTemplateColumns: GRID_LIN, gap: 8, alignItems: "end", marginTop: 8 }}>
                       {esIns ? (
                         <div style={{ gridColumn: "1 / 2", minWidth: 0 }}><span style={labS}>Concepto de caja</span>
-                          <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
+                          <Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Buscar concepto..." crearPrimero="concepto" onCrear={(n) => abrirAltaItem(i, "concepto", "conc", n)} estilo={{ ...chico, border: l.conc ? inp.border : `1.6px solid ${C.nar}` }}
                             onElegir={(v) => {
                               // cambia el concepto: el reparto precargado pasa a ser el de la regla del concepto nuevo
                               const regla = reglaDe(codConcepto(v), PDVS, fecha);
@@ -1345,6 +1388,39 @@ function ModalNuevaCarga(props) {
                         <input style={{ ...inp, ...chico, textAlign: "center" }} placeholder="0"
                           value={l.impint || ""} onChange={(e) => setLinea(i, "impint", fmtImp(e.target.value))} title="Impuesto interno de este registro (opcional)" /></div>
                     </div>
+                    {altaItem && altaItem.i === i && (() => {
+                      const a = altaItem;
+                      const set = (k, v) => setAltaItem((x) => ({ ...x, [k]: v }));
+                      const enter = (e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (!creandoItem) crearItem(); } };
+                      return (
+                        <div style={{ marginTop: 8, border: `1.5px solid ${C.cel}`, borderRadius: 10, padding: "10px 12px", background: "#fff" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{a.tipo === "insumo" ? "Nuevo insumo" : a.destino === "conc" ? "Nuevo concepto de caja" : "Nuevo concepto"}
+                            <span style={{ fontWeight: 400, color: C.gris, marginLeft: 8 }}>{a.tipo === "insumo" ? "queda en el maestro de insumos (el mismo de Recetas), con código L" : "egreso · código propio desde 1000"}</span></div>
+                          <div style={{ display: "grid", gridTemplateColumns: a.tipo === "insumo" ? "1.4fr 130px 1fr auto" : "1.4fr 1fr auto", gap: 8, alignItems: "end" }}>
+                            <div><span style={labS}>Nombre</span><input style={{ ...inp, ...chico }} autoFocus value={a.nombre} onChange={(e) => set("nombre", e.target.value)} /></div>
+                            {a.tipo === "insumo" ? (<>
+                              <div><span style={labS}>Unidad</span>
+                                <select style={{ ...sel, ...chico, paddingRight: 24 }} value={a.medida} onChange={(e) => set("medida", e.target.value)}>
+                                  <option value="">Elegir…</option>
+                                  {medidasUsadas.map((m) => <option key={m} value={m}>{m}</option>)}
+                                </select></div>
+                              <div><span style={labS}>Concepto de caja</span>
+                                <Combo opciones={conceptosDe(null)} valor={a.conc} placeholder="Buscar concepto..." estilo={chico} onElegir={(v) => set("conc", v)} /></div>
+                            </>) : (
+                              <div><span style={labS}>Rubro</span>
+                                <select style={{ ...sel, ...chico, paddingRight: 24 }} value={a.codRubro} onChange={(e) => set("codRubro", e.target.value)} onKeyDown={enter}>
+                                  <option value="">{rubrosCon ? "Elegir…" : "Cargando…"}</option>
+                                  {(rubrosCon || []).map((r) => <option key={r.codigo} value={r.codigo}>{String(r.nombre).trim()}</option>)}
+                                </select></div>
+                            )}
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button type="button" style={{ ...btn(true), padding: "6px 12px", fontSize: 12.5 }} disabled={creandoItem} onClick={crearItem}>{creandoItem ? "Creando…" : "Crear y usar"}</button>
+                              <button type="button" style={{ ...btn(false), padding: "6px 12px", fontSize: 12.5 }} onClick={() => setAltaItem(null)}>Cancelar</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {l.reparto && (() => {
                       const tot = l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0);
                       const ok = Math.abs(tot - 100) < 0.01;
