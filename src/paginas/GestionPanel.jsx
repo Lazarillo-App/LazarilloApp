@@ -31,6 +31,7 @@ import RubrosConfig from '@/componentes/gestion/RubrosConfig';
 import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
 import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
 import CargarFactura from '@/componentes/gestion/CargarFactura';
+import BloqueSeguro from '@/componentes/gestion/BloqueSeguro';
 import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
 import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
@@ -82,7 +83,12 @@ const sxGrupo = {
   border: 1, borderColor: 'divider', borderRadius: 2, p: 0.25,
 };
 
+// Todo el Panel protegido además de cada bloque: si algo falla arriba, se ve el aviso, no la pantalla en blanco.
 export default function GestionPanel() {
+  return <BloqueSeguro nombre="el Panel de Gestión"><GestionPanelContenido /></BloqueSeguro>;
+}
+
+function GestionPanelContenido() {
   const { activeBusinessId, active } = useBusiness() || {};
   const { activeBranchFilter, activeBranch, branches, setActiveBranch } = useBranch() || {};
   const [estado, setEstado] = useState(() => leerEstado(activeBusinessId));
@@ -244,7 +250,7 @@ export default function GestionPanel() {
           </Stack>
         </Box>
         <Stack direction="row" alignItems="center" gap={1}>
-          <ScopeGestion><ActividadCampana /></ScopeGestion>
+          <BloqueSeguro nombre="Actividad" compacto><ScopeGestion><ActividadCampana /></ScopeGestion></BloqueSeguro>
           <Tooltip title="Notas">
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
               <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
@@ -287,11 +293,11 @@ export default function GestionPanel() {
         />
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-            <CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} />
+            <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} /></BloqueSeguro>
             {!enParaMirar && pdvId != null && (
               <ScopeGestion>
-                <ImpagasBoton locales={locales ?? []} pdvId={pdvId} />
-                <SinCargaBoton />
+                <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>
+                <BloqueSeguro nombre="Sin carga" compacto><SinCargaBoton /></BloqueSeguro>
               </ScopeGestion>
             )}
             {estado.tab === 'resultados'
@@ -308,7 +314,7 @@ export default function GestionPanel() {
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {estado.mostrarTarjetas && <KpiTarjetas />}
+      {estado.mostrarTarjetas && <BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro>}
 
       <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -339,6 +345,7 @@ export default function GestionPanel() {
           )}
         </Stack>
         {estado.tab === 'compras' && (
+          <BloqueSeguro nombre="la tabla de gastos">
           <PivotCompras
             data={compras.data}
             isLoading={compras.isLoading}
@@ -351,9 +358,11 @@ export default function GestionPanel() {
             sort={estado.sort}
             onSort={ordenar}
           />
+          </BloqueSeguro>
         )}
-        {estado.tab === 'ventas' && <BarraIngresosManuales />}
+        {estado.tab === 'ventas' && <BloqueSeguro nombre="los ingresos manuales"><BarraIngresosManuales /></BloqueSeguro>}
         {estado.tab === 'ventas' && (
+          <BloqueSeguro nombre="la tabla de ventas">
           <PivotVentas
             data={ventas.data}
             isLoading={ventas.isLoading}
@@ -363,8 +372,10 @@ export default function GestionPanel() {
             sort={estado.sort}
             onSort={ordenar}
           />
+          </BloqueSeguro>
         )}
         {estado.tab === 'resultados' && (
+          <BloqueSeguro nombre="la tabla de resultados">
           <PivotResultados
             operacion={operacion}
             resultados={resultados}
@@ -373,10 +384,11 @@ export default function GestionPanel() {
             sort={estado.sort}
             onSort={ordenar}
           />
+          </BloqueSeguro>
         )}
       </Paper>
-      <ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} />
-      <VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} />
+      <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
+      <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
     </Box>
     </PanelGestionContext.Provider>
   );
