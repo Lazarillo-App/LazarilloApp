@@ -25,7 +25,7 @@ const sxLabel = { display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 
 const sxOriginal = { fontSize: 11, color: 'text.disabled' };
 const sxEtiqueta = (bg, color) => ({ borderRadius: 0.5, bgcolor: bg, color, px: 0.5, fontSize: 10, fontWeight: 600 });
 
-function Buscador({ valor, opciones, placeholder, ancho, onCambio }) {
+export function Buscador({ valor, opciones, placeholder, ancho, onCambio }) {
   const elegido = opciones.find((o) => o.valor === valor) ?? null;
   return (
     <Autocomplete
@@ -39,7 +39,8 @@ function Buscador({ valor, opciones, placeholder, ancho, onCambio }) {
   );
 }
 
-function Formulario({ inicial, proximo, rubros, conceptos, onCerrar, onGuardado, onAviso }) {
+// También lo usa el panel «Sin rubro · por qué» para corregir un concepto ahí mismo (mismo formulario).
+export function Formulario({ inicial, proximo, rubros, conceptos, onCerrar, onGuardado, onAviso }) {
   const [f, setF] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
