@@ -286,7 +286,7 @@ function Importe({ c, ocupado, onVer, onIgualar, onPercepcion }) {
             </select>
             <button type="button" disabled={ocupado || !imp} onClick={() => imp && onPercepcion(imp)} className="h-6 rounded bg-zinc-900 px-2 font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900">Cargarla</button>
           </span>)}
-        <button type="button" onClick={() => onVer(c.panel.rowId, c.panel.comprobante)} className="h-7 rounded-md border border-zinc-300 dark:border-zinc-600 px-2.5 text-xs font-semibold">Ver factura</button>
+        <span role="button" onClick={() => onVer(c.panel.rowId, c.panel.comprobante)} title="Ver la factura" className="text-xs text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{c.panel.comprobante || "ver la factura"}</span>
       </div>
     </>);
 }
