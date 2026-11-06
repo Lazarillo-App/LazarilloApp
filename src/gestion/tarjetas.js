@@ -14,7 +14,31 @@ export function mesCerrado(meses, anio, hoy) {
   return null;
 }
 
-export function tarjetasDelMes(meses, mes, variable, anterior) {
+// Personal a medio cargar (Diego 06/11/2026, Comercio oct-26: el Mix no puede bajar porque faltan
+// sueldos): si el gasto en personal del mes es menos del UMBRAL del último mes completo, se usa el
+// importe de ese mes. Afecta Mix, Personal, Resultado y Equilibrio del mes, marcado como estimado.
+const UMBRAL_PERSONAL = 0.8;
+const esPersonal = (r) => /personal/i.test(r.rubro);
+const totalPersonal = (m) => m.rubros.filter(esPersonal).reduce((s, r) => s + r.total, 0);
+/** Meses en orden; devuelve los mismos con el personal completado donde está a medio cargar. */
+export function conPersonalCompleto(lista) {
+  let ref = null;
+  return lista.map((m) => {
+    if (!m || !(m.ventas > 0)) return m;
+    const p = totalPersonal(m);
+    if (ref != null && p < UMBRAL_PERSONAL * ref) {
+      const nombre = m.rubros.find(esPersonal)?.rubro ?? "Gastos en personal";
+      return { ...m, rubros: [...m.rubros.filter((r) => !esPersonal(r)), { rubro: nombre, total: ref }], personalEstimado: { cargado: p, usado: ref } };
+    }
+    if (p > 0) ref = p;
+    return m;
+  });
+}
+
+export function tarjetasDelMes(mesesCrudos, mes, variable, anteriorCrudo) {
+  const lista = conPersonalCompleto([...(anteriorCrudo ? [anteriorCrudo] : []), ...mesesCrudos.filter((x) => x.mes <= mes).sort((a, b) => a.mes - b.mes)]);
+  const anterior = anteriorCrudo ? lista[0] : undefined;
+  const meses = anteriorCrudo ? lista.slice(1) : lista;
   const m = meses.find((x) => x.mes === mes);
   if (!m || !(m.ventas > 0)) return null;
   const i = indicadores(m.ventas, m.rubros);
@@ -27,6 +51,7 @@ export function tarjetasDelMes(meses, mes, variable, anterior) {
     ventasVsAnterior: ia && ia.ventas > 0 ? i.ventas / ia.ventas - 1 : null,
     difFoodCost: pp(i.foodCost, ia?.foodCost), difPersonal: pp(i.personal, ia?.personal), difMix: pp(i.mix, ia?.mix),
     equilibrio: variable == null ? null : equilibrioMes(i.ventas, i.gastos, variable),
+    personalEstimado: m.personalEstimado ?? null,
   };
 }
 
