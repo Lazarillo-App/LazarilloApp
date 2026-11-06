@@ -93,7 +93,7 @@ export default function RubrosConfig({ field = 'visibleEnDashboard', title = 'Ru
                 sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, px: 1.5, py: 0.5, borderRadius: 2, opacity: r.visible ? 1 : 0.5, '&:hover': r.visible ? { bgcolor: 'grey.50' } : undefined }}
               >
                 <Box component="span" sx={{ fontSize: 14, color: r.visible ? 'text.primary' : 'text.secondary' }}>{r.nombre}</Box>
-                <Switch size="small" checked={r.visible} disabled={guardando === r.codigo} onChange={(e) => cambiar(r.codigo, e.target.checked)} inputProps={{ 'aria-label': r.nombre }} />
+                <Switch size="small" checked={r.visible || !!r.fijo} disabled={!!r.fijo || guardando === r.codigo} title={r.fijo ? 'Siempre visible: es gasto y entra al total. Se va cuando le asignás rubro.' : undefined} onChange={(e) => cambiar(r.codigo, e.target.checked)} inputProps={{ 'aria-label': r.nombre }} />
               </Box>
             ))}
           </Box>

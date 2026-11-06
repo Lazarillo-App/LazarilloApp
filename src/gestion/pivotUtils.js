@@ -28,6 +28,9 @@ function compareRows(a, b, col, factor) {
 }
 
 /** Ordena cada nivel del árbol pivot sin mutar el original. */
+// Sin Rubro va siempre primero, ordene por lo que ordene (Diego 06/11/2026: "así se ve").
+const sinRubroPrimero = (a, b) => (b.rubroCodigo === "__sin_rubro") - (a.rubroCodigo === "__sin_rubro");
+
 export function sortPivotRows(
   rows,
   col,
@@ -35,7 +38,7 @@ export function sortPivotRows(
 ) {
   const factor = dir === "desc" ? -1 : 1;
   return [...rows]
-    .sort((a, b) => compareRows(a, b, col, factor))
+    .sort((a, b) => sinRubroPrimero(a, b) || compareRows(a, b, col, factor))
     .map((rubro) => ({
       ...rubro,
       children: [...rubro.children]
@@ -92,7 +95,7 @@ export function sortPivotRowsPorProveedor(
 ) {
   const factor = dir === "desc" ? -1 : 1;
   return [...rows]
-    .sort((a, b) => compareRows(a, b, col, factor))
+    .sort((a, b) => sinRubroPrimero(a, b) || compareRows(a, b, col, factor))
     .map((rubro) => ({
       ...rubro,
       children: [...rubro.children]
