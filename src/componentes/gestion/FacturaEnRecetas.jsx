@@ -11,8 +11,11 @@ import { useBranch } from '@/hooks/useBranch';
 import { getSession } from '@/servicios/apiBase';
 import { gestionFetch } from '@/servicios/apiGestion';
 import CargarFactura, { VerFactura } from './CargarFactura';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMaestrosFactura } from '@/gestion/hooksPanel';
+import EnvasesEditor from './EnvasesEditor';
 
-function ConContextoGestion({ children }) {
+export function ConContextoGestion({ children }) {
   const { activeBusinessId } = getSession();
   const { activeBranchFilter } = useBranch() || {};
   const suc = activeBranchFilter && activeBranchFilter.mode === 'branch' && activeBranchFilter.branchId ? String(activeBranchFilter.branchId) : 'principal';
@@ -56,4 +59,25 @@ export function useVerFacturaDeCompra() {
     </>
   );
   return { abrir, buscando, modal };
+}
+
+// Envases de compra en la ficha del insumo (Recetas › Insumos › Equivalencias), los mismos de la carga
+// de facturas (Diego 06/11/2026). El insumo se ubica por su código (el de MaxiRest o el L de Lazarillo).
+function EnvasesFichaInterno({ codigo, nombre }) {
+  const qc = useQueryClient();
+  const { data: maestros, isLoading } = useMaestrosFactura(true);
+  if (isLoading || !maestros) return <div style={{ fontSize: 12.5, color: '#8a8a8a' }}>Cargando envases…</div>;
+  const ins = (maestros.insumos || []).find((i) => String(i.codigo).trim() === String(codigo).trim());
+  if (!ins) return <div style={{ fontSize: 12.5, color: '#8a8a8a' }}>Este insumo todavía no figura en el maestro de compras: sus envases se cargan desde la carga de facturas.</div>;
+  return <EnvasesEditor codigo={String(ins.codigo)} nombre={nombre || ins.nombre} medida={ins.medida} envases={ins.envases || []}
+    onCambio={() => qc.invalidateQueries({ queryKey: ['gestionMaestrosFactura'] })} />;
+}
+export function EnvasesCompraFicha({ codigo, nombre }) {
+  if (!codigo) return null;
+  return (
+    <ConContextoGestion>
+      <Toaster position="bottom-right" />
+      <EnvasesFichaInterno codigo={codigo} nombre={nombre} />
+    </ConContextoGestion>
+  );
 }
