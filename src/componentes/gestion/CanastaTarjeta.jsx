@@ -80,7 +80,7 @@ export function CanastaDetalle({ d, r, mesRef, conSucursal, onAgregar, onQuitar,
         {v.base && <TableCell sx={{ ...sxTd, ...num }}>{pct(desde)}</TableCell>}
         <TableCell sx={{ ...sxTd, fontSize: 11.5, color: 'text.secondary' }}>
           {COMO[c.clave]}{c.clave === 'mercaderias' && c.aRevisar ? ` · ${c.aRevisar} insumos con saltos raros apartados` : ''}
-          {c.estimados?.[ult] ? ' · * mes a medio cargar: estimado' : ''}
+          {c.estimados?.[ult] ? ' · * mes a medio cargar: estimado' : ''}{c.puenteados?.some(Boolean) ? ' · saltos que se compensan, promediados' : ''}
         </TableCell>
       </TableRow>
     );

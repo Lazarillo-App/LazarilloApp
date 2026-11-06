@@ -87,7 +87,7 @@ export default function KpiTarjetas() {
             </Tarjeta>
             <Tarjeta titulo="Resultado" activa={abierta === 'resultado'} onClick={() => toggle('resultado')}>
               <Grande color={t.resultado < 0 ? ROJO : VERDE}>{fmtMillones(t.resultado)}</Grande>
-              <Chico color="text.secondary">{pc(t.rentabilidad)} rentab.</Chico>
+              <Chico color="text.secondary">{pc(t.rentabilidad)} rentab.{t.personalEstimado ? ' · personal est.' : ''}</Chico>
             </Tarjeta>
             <Tarjeta titulo="Mix" activa={abierta === 'mix' || abierta === 'foodCost' || abierta === 'personal'} onClick={() => toggle('mix')}>
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
@@ -96,7 +96,8 @@ export default function KpiTarjetas() {
               </Box>
               <Box sx={{ mt: 0.5, display: 'flex', gap: 1.5, borderTop: '1px dashed', borderColor: 'divider', pt: 0.5, fontSize: 12 }}>
                 <SubIndicador nombre="Food cost" valor={t.foodCost} dif={t.difFoodCost} onClick={() => toggle('foodCost')} />
-                <SubIndicador nombre="Personal" valor={t.personal} dif={t.difPersonal} onClick={() => toggle('personal')} />
+                <SubIndicador nombre="Personal" valor={t.personal} dif={t.difPersonal} onClick={() => toggle('personal')}
+                  estimado={t.personalEstimado ? `Estimado: el personal del mes está a medio cargar (${fmtMillones(t.personalEstimado.cargado)}); se usa el último mes completo (${fmtMillones(t.personalEstimado.usado)}) hasta que se cargue.` : null} />
               </Box>
             </Tarjeta>
             {rc && (
@@ -159,13 +160,13 @@ export default function KpiTarjetas() {
   );
 }
 
-function SubIndicador({ nombre, valor, dif, onClick }) {
+function SubIndicador({ nombre, valor, dif, onClick, estimado }) {
   return (
     <Box
       component="button" type="button" onClick={(ev) => { ev.stopPropagation(); onClick(); }}
       sx={{ all: 'unset', cursor: 'pointer', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
     >
-      {nombre} <b>{pc(valor)}</b>
+      {nombre} <b title={estimado || undefined}>{pc(valor)}{estimado && <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>*</Box>}</b>
       {dif != null && Math.abs(dif) >= 0.05 && <Box component="span" sx={{ ml: 0.5, fontWeight: 700, color: dif < 0 ? VERDE : ROJO }}>{ppTxt(dif)}</Box>}
     </Box>
   );
