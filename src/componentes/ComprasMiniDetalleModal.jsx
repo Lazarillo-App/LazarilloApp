@@ -22,6 +22,7 @@ import { useBranch } from '@/hooks/useBranch';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
+import { BotonCargarFactura, useVerFacturaDeCompra } from './gestion/FacturaEnRecetas';
 
 const fmtMoney = (v) => {
   const n = Number(v ?? 0);
@@ -590,6 +591,8 @@ export function ComprasDetalleContenido({
 
   const { branches, rawBranches } = useBranch() || {};
   const hasSucursales = (rawBranches || []).length > 0;
+  // Factura de la compra con el formato de la carga (ver / editar) y «Cargar factura» (Diego 05/11/2026).
+  const verFactura = useVerFacturaDeCompra();
 
   const [selectedBiz, setSelectedBiz] = useState('current');
   const [extraItems, setExtraItems] = useState([]);
@@ -1453,6 +1456,7 @@ export function ComprasDetalleContenido({
         </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
+          <BotonCargarFactura />
           {/* Selector de negocio */}
           {bizOptions.length > 1 && (
             <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -1841,6 +1845,13 @@ export function ComprasDetalleContenido({
                       <TableCell>{fmtFecha(it.fecha)}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                         {it.factura ?? it.comprob ?? it.referencia ?? '-'}
+                        {it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) && (
+                          <Box component="span" role="button" title="Ver la factura con el formato de la carga (y editarla si se cargó en Lazarillo)"
+                            onClick={(e) => { e.stopPropagation(); verFactura.abrir(it.purchase_id, it.factura ?? it.comprob ?? it.referencia ?? ''); }}
+                            sx={{ ml: 1, fontFamily: 'inherit', fontSize: '0.75rem', fontWeight: 700, color: 'primary.main', cursor: 'pointer', whiteSpace: 'nowrap', '&:hover': { textDecoration: 'underline' } }}>
+                            {verFactura.buscando === it.purchase_id ? '…' : 'ver ›'}
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
                         {it.proveedor_nombre ?? it.proveedor ?? '-'}
@@ -1946,6 +1957,7 @@ export function ComprasDetalleContenido({
 
       {/* Popover del chip de bonificación */}
       {bonif && renderPopover()}
+      {verFactura.modal}
     </Stack>
   );
 }

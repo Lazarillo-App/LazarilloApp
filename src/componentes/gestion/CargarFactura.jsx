@@ -39,7 +39,7 @@ function Aviso({ aviso, onClose }) {
 }
 
 // `pedido`: celda vacía tocada en el Panel; abre un Gasto Vario ya armado.
-export default function CargarFactura({ pedido, onPedidoAtendido }) {
+export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Cargar Gastos' }) {
   const { businessId, sucursal, sucursalCaja } = usePanelGestion();
   const queryClient = useQueryClient();
   const [abierto, setAbierto] = useState(false);
@@ -80,7 +80,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido }) {
         title={puede ? 'Cargar una factura en esta sucursal' : 'Elegí una sucursal para cargar'}
         sx={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 32, px: 1.5, display: 'inline-flex', alignItems: 'center', gap: 0.75, flexShrink: 0, borderRadius: 2, bgcolor: 'grey.900', color: '#fff', fontSize: 14, fontWeight: 500, '&:hover': { bgcolor: 'grey.800' }, '&:disabled': { opacity: 0.4, cursor: 'default' } }}
       >
-        <AddIcon sx={{ fontSize: 15 }} /> Cargar Gastos
+        <AddIcon sx={{ fontSize: 15 }} /> {etiqueta}
       </Box>
       {abierto && puede && (maestros ? (
         <ModalNuevaCarga
