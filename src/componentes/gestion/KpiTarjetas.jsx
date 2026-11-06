@@ -101,7 +101,7 @@ export default function KpiTarjetas() {
             </Tarjeta>
             {rc && (
               <Tarjeta titulo="Tu canasta" activa={abierta === 'canasta'} onClick={() => toggle('canasta')}>
-                <CanastaMini r={rc} />
+                <CanastaMini r={rc} d={canasta.data} />
               </Tarjeta>
             )}
           </Box>
