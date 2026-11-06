@@ -4,13 +4,16 @@
 // (primera línea, solo si hay algo) y desde el chip «corregir» de la fila Sin rubro de la tabla.
 // El panel se monta una sola vez (GestionPanel) y se abre con abrirSinRubro().
 import React, { useEffect, useState } from 'react';
-import { Box, Drawer, IconButton, CircularProgress } from '@mui/material';
+import { Box, Button, Drawer, IconButton, CircularProgress, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { useQuery } from '@tanstack/react-query';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { fmtARS } from '@/gestion/formato';
 import { VerFactura } from './CargarFactura';
+import { Buscador, Formulario as FormularioConcepto } from '@/paginas/GestionConceptos';
+import { esPropio } from '@/gestion/cargaUtils';
 
 const AMBAR = '#b45309';
 const EVENTO = 'lz:sin-rubro';
@@ -53,14 +56,72 @@ export function ChipCorregir() {
   );
 }
 
-function Item({ it, onVer }) {
+const sxCaja = { mx: 2, my: 1, borderRadius: 2, border: '1px solid #bae6fd', bgcolor: 'rgba(240,249,255,.6)', p: 1.5 };
+
+// Corregir un ítem ahí mismo (Diego 06/11): rubro de insumo → concepto, insumo → rubro (como en Insumos),
+// compra sin insumo → concepto, concepto → rubro (el mismo formulario del sector Conceptos).
+function Editor({ it, maestros, rubrosInsumo, onCerrar, onGuardado }) {
+  const e = it.editar;
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const conceptos = maestros?.conceptos ?? [];
+  if (e.tipo === 'concepto') {
+    const c = conceptos.find((x) => x.codigo === e.codigo);
+    if (!c) return <Box sx={sxCaja}><Typography fontSize={12}>Cargando el concepto…</Typography></Box>;
+    const inicial = { codigo: c.codigo, nombre: c.nombre, tipo: c.tipo ?? '-', codRubro: c.codRubro != null ? String(c.codRubro) : '', padrino: null,
+      ...(esPropio(c.codigo) ? {} : { original: c.original ?? { nombre: c.nombre, tipo: c.tipo, codRubro: c.codRubro, rubro: c.rubro }, editado: !!c.editado }) };
+    return <FormularioConcepto inicial={inicial} rubros={maestros?.rubros ?? []} conceptos={conceptos} onCerrar={onCerrar} onGuardado={onGuardado} onAviso={() => {}} />;
+  }
+  const porRubro = e.tipo === 'insumo';
+  const opciones = porRubro
+    ? rubrosInsumo.map((r) => ({ valor: String(r.codigo), texto: r.nombre }))
+    : conceptos.map((c) => ({ valor: String(c.codigo), texto: `${c.codigo} · ${c.nombre}${c.rubro ? ` (${c.rubro})` : ''}` }));
+  const titulo = { 'rubro-insumo': `Concepto de caja del rubro «${it.nombre}» · vale para todos sus insumos, también lo ya cargado`,
+    insumo: `Rubro del insumo «${it.nombre}»`,
+    compra: `Concepto de caja de ${it.cantidadComprobantes === 1 ? 'la compra' : `las ${it.cantidadComprobantes} compras`}` }[e.tipo];
+  async function guardar() {
+    setGuardando(true); setError(null);
+    try {
+      if (e.tipo === 'rubro-insumo') await GestionAPI.sinRubroRubroInsumo(e.codigo, Number(valor));
+      else if (e.tipo === 'insumo') await GestionAPI.sinRubroInsumo(e.id, valor);
+      else await Promise.all(it.comprobantes.map((c) => GestionAPI.sinRubroCompra(c.rowId, Number(valor))));
+      onGuardado();
+    } catch (err) {
+      setError(err?.data?.error ?? 'No se pudo guardar');
+      setGuardando(false);
+    }
+  }
+  return (
+    <Box sx={sxCaja}>
+      <Typography fontSize={12} fontWeight={500} sx={{ mb: 1 }}>{titulo}</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+        <Buscador valor={valor} opciones={opciones} placeholder={porRubro ? 'Elegí un rubro' : 'Elegí un concepto'} ancho={300} onCambio={setValor} />
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button size="small" variant="outlined" disabled={guardando} onClick={onCerrar}>Cancelar</Button>
+          <Button size="small" variant="contained" disabled={guardando || !valor} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+        </Box>
+      </Box>
+      {error && <Typography color="error" fontSize={12} sx={{ mt: 1 }}>{error}</Typography>}
+    </Box>
+  );
+}
+
+function Item({ it, onVer, editando, onEditar, editor }) {
   const [abierto, setAbierto] = useState(false);
   const ej = it.detalle.slice(0, 3).join(', ') + (it.detalle.length > 3 ? '…' : '');
   return (
     <Box sx={{ borderTop: '1px solid #f2f2f0' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 54px 104px', gap: 1, px: 2, py: 0.9, alignItems: 'center' }}>
         <Box sx={{ minWidth: 0 }}>
-          <Box sx={{ fontSize: 13.5 }}>{it.nombre}</Box>
+          {it.editar ? (
+            <Box component="button" type="button" onClick={onEditar} title="Corregir"
+              sx={{ all: 'unset', cursor: 'pointer', fontSize: 13.5, overflowWrap: 'anywhere',
+                color: editando ? '#0d6fa8' : 'inherit', '&:hover': { color: '#0d6fa8' }, '&:hover .lz-lapiz': { opacity: 1 } }}>
+              {it.nombre}
+              <EditOutlinedIcon className="lz-lapiz" sx={{ fontSize: 14, ml: 0.5, verticalAlign: '-2px', color: '#0d6fa8', opacity: editando ? 1 : 0.45 }} />
+            </Box>
+          ) : <Box sx={{ fontSize: 13.5 }}>{it.nombre}</Box>}
           {ej && <Box sx={{ fontSize: 11.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.detalle.join(', ')}>{ej}</Box>}
         </Box>
         <Box component="button" type="button" onClick={() => setAbierto((v) => !v)} title="Ver los comprobantes"
@@ -69,6 +130,7 @@ function Item({ it, onVer }) {
         </Box>
         <Box sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmtARS(it.importe)}</Box>
       </Box>
+      {editando && editor}
       {abierto && (
         <Box sx={{ px: 2, pb: 1 }}>
           {it.comprobantes.map((c) => (
@@ -91,7 +153,22 @@ export function SinRubroPanel() {
   const [open, setOpen] = useState(false);
   const [ver, setVer] = useState(null);
   const { year } = usePanelGestion();
-  const { data, isLoading } = useSinRubro();
+  const { data, isLoading, refetch } = useSinRubro();
+  const [editando, setEditando] = useState(null);
+  const queryClient = useQueryClient();
+  const { businessId } = usePanelGestion();
+  const { data: maestros } = useQuery({
+    queryKey: ['gestionConceptos', businessId],
+    queryFn: () => GestionAPI.conceptos(),
+    enabled: open && !!businessId,
+    staleTime: 60_000,
+  });
+  // Tras corregir: se recalcula todo el Panel (tabla, tarjetas, este panel) y el sector Conceptos.
+  const guardado = async () => {
+    setEditando(null);
+    await queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0] ?? '').startsWith('gestion') });
+    refetch();
+  };
   useEffect(() => {
     const abrir = () => setOpen(true);
     window.addEventListener(EVENTO, abrir);
@@ -114,12 +191,18 @@ export function SinRubroPanel() {
               <Box component="span" sx={{ ml: 'auto', whiteSpace: 'nowrap' }}>{g.items.length} · {millones(g.importe)}</Box>
             </Box>
             <Box sx={{ px: 2, pt: 0.5, pb: 1, fontSize: 12, color: 'text.secondary' }}>{g.accion}</Box>
-            {g.items.map((it) => <Item key={it.nombre} it={it} onVer={setVer} />)}
+            {g.items.map((it) => {
+              const k = `${g.tipo}|${it.nombre}`;
+              return (
+                <Item key={k} it={it} onVer={setVer} editando={editando === k} onEditar={() => setEditando(editando === k ? null : k)}
+                  editor={<Editor key={k} it={it} maestros={maestros} rubrosInsumo={data.rubrosInsumo ?? []} onCerrar={() => setEditando(null)} onGuardado={guardado} />} />
+              );
+            })}
           </Box>
         ))}
         {data && data.grupos.length > 0 && (
           <Box sx={{ px: 2, py: 1.5, mt: 'auto', borderTop: '1px solid #e8e8e6', fontSize: 11.5, color: 'text.secondary' }}>
-            Lo que ya corregiste en MaxiRest se pasa solo a su concepto en la próxima actualización (también lo ya cargado).
+            Tocá el nombre para corregirlo acá (vale solo en Lazarillo). Lo que corrijas en MaxiRest se pasa solo en la próxima actualización.
           </Box>
         )}
       </Drawer>
