@@ -188,11 +188,17 @@ function AccesosPagos() {
 // Alertas del mes en una tarjeta que NUNCA es más alta que las de KPI: una a la vista y el resto en "+N más".
 function ParaMirar({ alertas }) {
   const [mas, setMas] = useState(false);
-  // Con «Sin rubro» arriba (Diego 06/11/2026) la tarjeta no crece: las alertas pasan a "+N más".
+  // La tarjeta tiene lugar para 3 renglones debajo del título (Diego 06/11/2026: el texto pisaba la
+  // caja). Sin rubro, Impagas y Sin carga van primero; las alertas usan el lugar que quede y el resto
+  // pasa a "+N más", que va en la línea del título (no suma un renglón).
+  const RENGLONES = 3;
+  const { pdvId } = useDashboard();
   const { data: sinRubro } = useSinRubro();
   const conSinRubro = !!sinRubro && Math.abs(sinRubro.importe) >= 0.01;
-  const visibles = alertas.slice(0, conSinRubro ? 0 : 1);
-  const resto = alertas.slice(conSinRubro ? 0 : 1);
+  const ocupados = (conSinRubro ? 1 : 0) + (pdvId != null ? 2 : 0);
+  const lugar = Math.max(0, RENGLONES - ocupados);
+  const visibles = alertas.slice(0, lugar);
+  const resto = alertas.slice(lugar);
   const linea = (a) => (
     <Box key={a.texto} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <Box component="span" sx={{ width: 6, height: 6, flexShrink: 0, borderRadius: '50%', bgcolor: a.nivel === 'rojo' ? '#ef4444' : '#f59e0b' }} />
@@ -200,18 +206,20 @@ function ParaMirar({ alertas }) {
     </Box>
   );
   return (
-    <Box sx={{ position: 'relative', flex: 1, borderRadius: 3, border: '1px solid rgba(252,211,77,.7)', bgcolor: 'rgba(255,251,235,.7)', px: 1.5, py: 1, fontSize: 12.5, lineHeight: 1.55, maxHeight: 96 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'text.secondary' }}>
-        <span>Para mirar</span>{alertas.length > 0 && <Box component="b" sx={{ color: AMBAR }}>{alertas.length}</Box>}
+    <Box sx={{ position: 'relative', flex: 1, borderRadius: 3, border: '1px solid rgba(252,211,77,.7)', bgcolor: 'rgba(255,251,235,.7)', px: 1.5, py: 1, fontSize: 12.5, lineHeight: 1.55, minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: 11.5, color: 'text.secondary' }}>
+        <span>Para mirar</span>
+        <Box component="span" sx={{ flex: 1 }} />
+        {resto.length > 0 && (
+          <Box component="button" type="button" onClick={() => setMas((v) => !v)} sx={{ all: 'unset', cursor: 'pointer', fontWeight: 700, color: AMBAR, whiteSpace: 'nowrap', '&:hover': { textDecoration: 'underline' } }}>
+            {mas ? 'menos ▴' : `+${resto.length} más ›`}
+          </Box>
+        )}
+        {alertas.length > 0 && <Box component="b" sx={{ color: AMBAR }}>{alertas.length}</Box>}
       </Box>
       <SinRubroLinea />
       <AccesosPagos />
       {visibles.map(linea)}
-      {resto.length > 0 && (
-        <Box component="button" type="button" onClick={() => setMas((v) => !v)} sx={{ all: 'unset', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: AMBAR, '&:hover': { textDecoration: 'underline' } }}>
-          {mas ? 'menos ▴' : `+${resto.length} más ›`}
-        </Box>
-      )}
       {mas && (
         <Box sx={{ position: 'absolute', right: 0, top: '100%', zIndex: 30, mt: 0.5, width: 288, borderRadius: 3, border: '1px solid #fcd34d', bgcolor: 'background.paper', px: 1.5, py: 1, boxShadow: 3 }}>
           {resto.map(linea)}
