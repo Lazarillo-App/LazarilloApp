@@ -41,10 +41,12 @@ function Aviso({ aviso, onClose }) {
 }
 
 // `pedido`: celda vacía tocada en el Panel; abre un Gasto Vario ya armado.
-export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Cargar Gastos' }) {
+// `abrirAlMontar`: se entra desde la home ("Carga de gastos") y el modal arranca abierto.
+export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Cargar Gastos', abrirAlMontar = false, onAbiertoAlMontar }) {
   const { businessId, sucursal, sucursalCaja } = usePanelGestion();
   const queryClient = useQueryClient();
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(abrirAlMontar);
+  useEffect(() => { if (abrirAlMontar) onAbiertoAlMontar?.(); }, [abrirAlMontar, onAbiertoAlMontar]);
   const [ctx, setCtx] = useState(null);
   const [aviso, setAviso] = useState(null);
   // Los maestros se piden al abrir el Panel: cuando se abre el modal ya están.

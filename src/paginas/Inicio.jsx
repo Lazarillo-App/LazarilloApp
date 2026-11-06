@@ -2,9 +2,10 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import anthonyImg from '@/assets/brand/anthony.png';
 import { useBusiness } from '@/context/BusinessContext';
+import { useAccess } from '@/context/AccessContext';
 
 /**
- * Inicio — Home de la app: muestra todos los módulos operativos agrupados
+ * Inicio — Home de la app (a donde se entra al iniciar sesión): muestra todos los módulos operativos agrupados
  * por área (Operación / Rentabilidad / Administración). Los disponibles
  * (con pantalla real) van arriba de cada columna, los "Próximamente" abajo.
  *
@@ -17,7 +18,7 @@ const GROUPS = [
     id: 'operacion', label: 'Operación', icon: '⚙️',
     modules: [
       { id: 'tableros', label: 'Tableros', emoji: '📈', desc: 'Vista integral de tus negocios.', to: null },
-      { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Asistencia, turnos y personal.', to: null },
+      { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Cronogramas del personal.', to: '/rrhh/cronogramas' },
     ],
   },
   {
@@ -32,7 +33,8 @@ const GROUPS = [
     id: 'administracion', label: 'Administración', icon: '💼',
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: null },
-      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', to: '/gestion' },
+      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', to: '/gestion', soloAdmin: true },
+      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', desc: 'Facturas, gastos varios y sueldos.', to: '/gestion?cargar=1', soloAdmin: true },
       { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
   },
@@ -59,6 +61,9 @@ function getUserName() {
 export default function Inicio() {
   const navigate = useNavigate();
   const { active } = useBusiness() || {};
+  const { isStaff } = useAccess() || {};
+  // Staff no entra a Resultados ni a la carga (RequireAdminOrOwner): no se le muestran.
+  const grupos = GROUPS.map((g) => ({ ...g, modules: g.modules.filter((m) => !(isStaff && m.soloAdmin)) }));
 
   const userName = getUserName();
 
@@ -75,7 +80,7 @@ export default function Inicio() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, alignItems: 'start' }}>
-          {GROUPS.map((g) => (
+          {grupos.map((g) => (
             <AreaColumn key={g.id} group={g} tint={AREA_TINTS[g.id]} onSelect={(to) => navigate(to)} />
           ))}
         </div>
@@ -86,7 +91,7 @@ export default function Inicio() {
           </div>
           <div style={{ fontSize: 13, color: C.txt, lineHeight: 1.45 }}>
             <b style={{ color: '#2492C8', fontFamily: "'Sora',sans-serif", fontWeight: 700 }}>Anthony:</b>{' '}
-            Elegí un módulo para arrancar — por ahora Recetas es el único activo, el resto va sumándose.
+            Elegí un módulo para arrancar. Recetas, Resultados, Carga de gastos y RRHH ya están andando; el resto va sumándose.
           </div>
         </div>
       </main>

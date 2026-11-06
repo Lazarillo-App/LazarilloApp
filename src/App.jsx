@@ -224,7 +224,7 @@ export default function App() {
       {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
 
       <Routes>
-        <Route path="/" element={isLogged ? <Navigate to="/menu" replace /> : <LazarilloLanding />} />
+        <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/activar" element={<Activar />} />
@@ -300,7 +300,7 @@ export default function App() {
           )}
         </Route>
 
-        <Route path="*" element={isLogged ? <Navigate to="/menu" replace /> : <LazarilloLanding />} />
+        <Route path="*" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
 
       </Routes>
     </ThemeProviderNegocio>
