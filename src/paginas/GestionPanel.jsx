@@ -252,8 +252,8 @@ function GestionPanelContenido() {
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
             <Typography variant="h5" fontWeight={600} noWrap>Panel de Gestión</Typography>
-            {/* Compu: solo el punto con las fechas en el tooltip; celu: el chip debajo. */}
-            <Box sx={{ display: { xs: 'none', md: 'inline-flex' } }}><ActualizadoAl variante="punto" nombre={nombreActualizado} /></Box>
+            {/* Compu: el punto de frescura vive al lado del logo (PulsoDatos, Diego 06/11/2026);
+                acá ya no se repite. Celu: el chip de abajo, porque en el celu el header no lo muestra. */}
           </Stack>
           <Stack direction="row" flexWrap="wrap" alignItems="center" columnGap={1} rowGap={0.5}>
             <Typography variant="body2" color="text.secondary" noWrap>
