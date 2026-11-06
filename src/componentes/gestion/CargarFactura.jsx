@@ -122,7 +122,10 @@ const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '
 // es una factura (gasto o sueldo sin comprobante), el detalle de líneas de siempre.
 // vistaInicial "repetir": abre directo la carga nueva con esta estructura (Diego 06/11/2026: desde la
 // cta cte, "Repetir" abría la factura y había que volver a apretar Repetir).
-// facturaDirecta: una factura que no está en Caja y llega armada desde su detalle (no tiene rowId).
+// facturaDirecta: una factura sin fila en el Panel que llega armada desde su detalle (no tiene rowId).
+// Renglones de insumos sin rubro en MaxiRest (Diego 06/11/2026: "sin concepto de caja asociado", no
+// "no está en Caja", que suena a no pagado).
+const SIN_CONCEPTO_TXT = 'Tiene insumos sin concepto de caja asociado: en MaxiRest el concepto sale del rubro del insumo y estos no tienen rubro.';
 export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', facturaDirecta = null }) {
   const { businessId } = usePanelGestion();
   const queryClient = useQueryClient();
@@ -148,9 +151,9 @@ export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', fact
   const ede = fa && maestros ? edeDesdeFactura(fa.rowId, fa.factura, { maestros, pdvsRef }) : null;
   const avisoFactura = !fa ? null
     : fa.soloDetalle
-      ? 'Cargada en MaxiRest, pero no está en Caja: no suma en Resultados (sí en el costo de las recetas). Pasa cuando el insumo no tiene concepto de caja: en MaxiRest el concepto sale del rubro del insumo.'
+      ? `Cargada en MaxiRest. ${SIN_CONCEPTO_TXT}`
     : fa.origen === 'maxirest'
-      ? `Cargada desde MaxiRest: se ve con el formato de la carga, pero se modifica en MaxiRest.${fa.estimado ? ' Sin detalle de insumos (informe 25): el neto y el IVA se estiman al 21% sobre el importe.' : ''}`
+      ? `Cargada desde MaxiRest: se ve con el formato de la carga, pero se modifica en MaxiRest.${fa.estimado ? ' Sin detalle de insumos (informe 25): el neto y el IVA se estiman al 21% sobre el importe.' : ''}${fa.sinConcepto ? ` ${SIN_CONCEPTO_TXT} Suma igual en el tablero de gastos, como «Sin concepto de caja asociado».` : ''}`
       : `Cargada en Lazarillo${fa.cargadaPor ? ` por ${fa.cargadaPor}` : ''}${fa.cargadaEn ? ` el ${fechaCorta(fa.cargadaEn)}` : ''}${fa.editadaEn && fa.cargadaEn && String(fa.editadaEn).slice(0, 16) !== String(fa.cargadaEn).slice(0, 16) ? ` · editada el ${fechaCorta(fa.editadaEn)}` : ''}.`;
 
   return (
