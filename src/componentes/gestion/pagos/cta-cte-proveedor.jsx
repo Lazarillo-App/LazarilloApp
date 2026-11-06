@@ -274,15 +274,17 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                 }
                 else
                     setSel(on ? null : k);
-            }} onDoubleClick={() => { if (f.rowId)
-            setVerFact({ rowId: f.rowId, detalle: fmtComprobante(f.comprobante) }); }} title={f.rowId ? "Doble clic: ver la factura" : undefined} className={cn("flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer border-b border-zinc-100 dark:border-zinc-800", on ? "bg-[#eef6fb] dark:bg-sky-950/40" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40")}>
+            }} className={cn("flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer border-b border-zinc-100 dark:border-zinc-800", on ? "bg-[#eef6fb] dark:bg-sky-950/40" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/40")}>
         {PAGABLE(f.estado)
                 ? <input type="checkbox" readOnly checked={tildadas.has(claveF(f))} className="h-[13px] w-[13px] accent-zinc-900 cursor-pointer"/>
                 : <span className="w-[13px]"/>}
         <span className="w-[62px] text-[12.5px] text-zinc-600 dark:text-zinc-300 tabular-nums">{dmy(f.fecha)}</span>
         {/* Una sola fila: comprobante y, a la derecha, el PDV en gris. */}
         <span className="flex-1 min-w-0 flex items-baseline gap-2 text-[13px] whitespace-nowrap">
-          <span className="tabular-nums shrink-0">{fmtComprobante(f.comprobante)}</span>
+          {/* El comprobante es el vínculo a la factura (Diego 06/11/2026: sin botón "Ver / editar"). */}
+          {f.rowId
+                ? <span role="button" title="Ver la factura" onClick={(e) => { e.stopPropagation(); setVerFact({ rowId: f.rowId, detalle: fmtComprobante(f.comprobante) }); }} className="tabular-nums shrink-0 text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{fmtComprobante(f.comprobante)}</span>
+                : <span className="tabular-nums shrink-0">{fmtComprobante(f.comprobante)}</span>}
           {f.solo80 && <span className="text-[10px] text-muted-foreground shrink-0" title="El pago está en el informe 80 pero la factura no está en el 14">solo 80</span>}
           <span className="truncate text-[11.5px] text-zinc-500" title={f.pdv}>{f.pdv}</span>
         </span>
@@ -391,11 +393,11 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
           <div className="flex flex-col min-h-0">
             <div className="flex flex-wrap items-center gap-2.5 mb-2 shrink-0">
               <span className="text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">
-                {fact ? `Pagos de ${fmtComprobante(fact.comprobante)}` : "Todos los pagos del proveedor"}
+                {fact ? <>Pagos de {fact.rowId
+                    ? <span role="button" title="Ver la factura" onClick={() => setVerFact({ rowId: fact.rowId, detalle: fmtComprobante(fact.comprobante) })} className="normal-case text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{fmtComprobante(fact.comprobante)}</span>
+                    : fmtComprobante(fact.comprobante)}</> : "Todos los pagos del proveedor"}
               </span>
               <span className="ml-auto flex gap-2.5">
-                {/* Ver la factura con el formato de la carga (y editarla / eliminarla si es de Lazarillo). */}
-                {fact?.rowId && <button type="button" onClick={() => setVerFact({ rowId: fact.rowId, detalle: fmtComprobante(fact.comprobante) })} className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-800">Ver / editar {fmtComprobante(fact.comprobante)}</button>}
                 {fact?.rowId
                 ? <button type="button" onClick={() => setVerFact({ rowId: fact.rowId, detalle: fmtComprobante(fact.comprobante), repetir: true })} title="Cargar una factura nueva con la estructura de esta" className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-800">⟳ Repetir</button>
                 : <Gris><button type="button" disabled className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-semibold">⟳ Repetir</button></Gris>}
