@@ -4,8 +4,8 @@
 // / lo que sube el kit), así que el punto toma la PEOR de las dos y el tooltip muestra cada una
 // con su punto y sus fechas. Mismo criterio de colores que el "actualizado al" de Balance
 // (gestion/frescura.js): verde hasta ayer, ámbar 2-3 días, rojo más viejo.
-// Tocar el punto = "actualizar ahora" (Diego, 06/11): trae de MaxiRest las ventas que le faltan
-// a Recetas y relee del kit lo que cambió para Balance. Mientras corre, el punto late; al terminar
+// Tocar el punto = "actualizar ahora" (Diego, 06/11): todo desde el kit — relee lo que cambió para
+// Balance y corre los pipelines de Recetas (ventas del 12, compras y pagos del 25/80). Mientras corre, el punto late; al terminar
 // se refrescan las pantallas. Solo dueño/admin (staff ve el punto pero no lo puede tocar).
 // Ojo: no hace correr el kit en la PC; Balance llega hasta la última corrida del kit.
 // Back: GET /api/businesses/:id/pulso (balance llega null para staff) y POST …/pulso/actualizar.
@@ -103,7 +103,7 @@ export default function PulsoDatos({ puedeActualizar = false }) {
     : null;
   const pie = [
     data?.balance && `Balance: lo que sube el kit${lectura ? `, última lectura ${lectura}` : ''}`,
-    data?.recetas && 'Recetas: sync con MaxiRest',
+    data?.recetas && 'Recetas: del kit al tocar el punto',
   ].filter(Boolean).join(' · ');
   const nombre = active?.name || 'Negocio';
 

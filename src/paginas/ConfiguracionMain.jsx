@@ -46,6 +46,7 @@ import { useNormalizarNombres } from '@/hooks/useNormalizarNombres';
 // Sub-tabs extraídos
 import ConfigArticulosTab from '../componentes/configuracion/ConfigArticulosTab';
 import ConfigInsumosTab from '../componentes/configuracion/ConfigInsumosTab';
+import ImportarExportarDatos from '../componentes/configuracion/ImportarExportarDatos';
 import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
 import SectoresTab from '../componentes/configuracion/SectoresTab';
 import AprobacionesTab from '../componentes/configuracion/AprobacionesTab';
@@ -497,6 +498,7 @@ export default function ConfiguracionMain() {
 
           {/* TAB 0 — ARTÍCULOS Y VENTAS */}
           <TabPanel value={tab} index={0}>
+            <ImportarExportarDatos tipo="ventas" businessId={businessId} themeColor={themeColor} />
             <ConfigArticulosTab
               subTab={subTabArt} setSubTab={setSubTabArt}
               config={config} setConfig={setConfig}
@@ -516,6 +518,7 @@ export default function ConfiguracionMain() {
 
           {/* TAB 1 — INSUMOS Y COMPRAS */}
           <TabPanel value={tab} index={1}>
+            <ImportarExportarDatos tipo="compras" businessId={businessId} themeColor={themeColor} />
             <ConfigInsumosTab
               subTab={subTabIns} setSubTab={setSubTabIns}
               config={config} setConfig={setConfig}
