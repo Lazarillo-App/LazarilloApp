@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
 import DOG from '@/assets/brand/anthony.png';
+import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -38,8 +39,6 @@ nav .btn-sky{padding:11px 22px;font-size:15px;}
 .insight .q{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:80px;line-height:.6;}
 .insight p{font-size:22px;font-weight:450;}
 .insight p b{font-weight:800;}
-.pillars{padding:80px 0;background:var(--paper);}
-.pillars h2{font-size:38px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 40px;}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
 .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:28px;}
 .card .n{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:32px;color:var(--sky);}
@@ -97,6 +96,56 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .modal-success .modal-check{font-size:48px;margin-bottom:12px;}
 .modal-success h4{font-family:'Sora',system-ui,sans-serif;font-size:20px;font-weight:700;color:var(--ink);margin-bottom:8px;}
 .modal-success p{font-size:15px;color:var(--body);}
+.clientes{padding:80px 0;background:#fff;}
+.clientes h2,.integra h2{font-size:38px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 12px;}
+.clientes .sub,.integra .sub{font-size:18px;max-width:640px;margin-bottom:40px;}
+.ccard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(21,33,62,.06);}
+.ccard .who{display:flex;align-items:center;gap:12px;}
+.ccard .logo{width:46px;height:46px;border-radius:12px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:15px;flex:none;}
+.ccard .nm{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:17px;color:var(--ink);line-height:1.2;}
+.ccard .rb{font-size:13.5px;color:#7a8396;}
+.ccard .big{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:46px;line-height:1;color:var(--skydeep);letter-spacing:-1px;margin-top:6px;}
+.ccard .lbl{font-size:16px;color:var(--body);}
+.ccard q{display:block;font-size:15px;font-style:italic;color:var(--ink);border-top:1px solid var(--line);padding-top:14px;quotes:"“" "”";}
+.ccard .by{font-size:13px;color:#7a8396;margin-top:-6px;}
+.cgrid{grid-template-columns:repeat(2,1fr);}
+.integra{padding:80px 0;background:var(--paper);}
+.igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.icard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:16px;}
+.icard .mk{width:52px;height:52px;border-radius:14px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;color:var(--ink);font-size:16px;flex:none;}
+.icard .t{font-family:'Sora',system-ui,sans-serif;font-weight:700;color:var(--ink);font-size:17px;line-height:1.2;}
+.icard .d{font-size:14px;color:#7a8396;}
+.icard .st{display:inline-block;margin-top:8px;font-family:'Sora',system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border-radius:50px;padding:4px 10px;white-space:nowrap;}
+.st.on{background:rgba(52,211,153,.14);color:#12805a;}
+.st.soon{background:rgba(91,194,234,.15);color:var(--skydeep);}
+.integra .note{margin-top:22px;font-size:15px;color:var(--body);text-align:center;}
+.integra .note a{color:var(--skydeep);font-weight:600;cursor:pointer;}
+@media(max-width:820px){.cgrid{grid-template-columns:1fr;}.igrid{grid-template-columns:1fr;}.clientes h2,.integra h2{font-size:30px;}}
+.relato{padding:90px 0;background:var(--paper);}
+.relato h2{font-size:42px;color:var(--ink);font-weight:800;letter-spacing:-.8px;margin:10px 0 12px;line-height:1.1;}
+.relato h2 span{color:var(--skydeep);}
+.relato .sub{font-size:18px;max-width:640px;margin-bottom:44px;}
+.rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.rcard{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;transition:transform .2s,box-shadow .2s;}
+.rcard:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(21,33,62,.12);}
+.rvis{height:150px;background:var(--navy);position:relative;display:flex;align-items:center;justify-content:center;padding:18px 22px;color:#fff;font-family:'Sora',system-ui,sans-serif;}
+.rtxt{padding:20px 22px 24px;}
+.rtxt .k{font-family:'Sora',system-ui,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--skydeep);text-transform:uppercase;}
+.rtxt h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;line-height:1.3;color:var(--ink);font-weight:700;margin-top:8px;}
+.vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
+.vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
+.vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
+.vbar{height:9px;border-radius:5px;background:var(--sky);}
+.marca{background:var(--navy);padding:46px 0 50px;overflow:hidden;}
+.marca .t{text-align:center;font-family:'Sora',system-ui,sans-serif;font-size:13px;letter-spacing:4px;text-transform:uppercase;color:var(--sky);font-weight:600;margin-bottom:26px;}
+.marca .track{display:flex;gap:80px;width:max-content;animation:mqx 28s linear infinite;align-items:center;}
+.marca:hover .track{animation-play-state:paused;}
+.marca .lgm{display:flex;flex-direction:column;align-items:center;gap:10px;flex:none;transition:transform .2s;}
+.marca .lgm:hover{transform:translateY(-4px) scale(1.04);}
+.marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
+.marca .lgm:hover img{opacity:1;}
+.marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
+@media(max-width:820px){.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
@@ -111,13 +160,32 @@ const marqueeChips = [
   "Decisiones con datos", "Un equipo interdependiente", "Trazabilidad", "Digitaliza tu gestión",
 ];
 
-const pillars = [
-  { n: "01", t: "Ordená tu menú como funciona tu negocio", d: "Reagrupalo por rubros y subnegocios para gestionar cada parte por separado, no todo en una misma bolsa." },
-  { n: "02", t: "Definí tu política de precios", d: "La regla que sostiene tu rentabilidad en el tiempo, no una mejora de una sola vez." },
-  { n: "03", t: "Recetas y costos reales", d: "Conocé cuánto te cuesta y cuánto te deja cada plato. Sin estimar a ojo: la base de toda buena decisión." },
-  { n: "04", t: "Tableros que comunican solos", d: "Información clara para producción, despacho y atención —y tableros de precios listos para tus clientes." },
-  { n: "05", t: "Visibilidad de tu ganancia", d: "Descubrí tus platos estrella y los que conviene rotar o sacar.", soon: " Con Anthony, nuestra IA — muy pronto." },
-  { n: "06", t: "Tu negocio entero en un tablero", d: "Resultados económicos, proveedores, gastos y los KPIs clave del rubro, en un solo lugar." },
+
+
+// Clientes: un número real por cliente (verificar y pedir permiso antes de publicar).
+// En las tarjetas, el logo a color.
+const logosColor = { 'Container Bar': COLOR_CB, 'Comercio': COLOR_CO };
+const clientes = [
+  { ini: 'CB', nm: 'Container Bar', rb: 'Bar · Ramos Mejía', big: '+6,6 pts', lbl: 'le ganó su último aumento de precios a lo que subieron sus costos — medido solo, sin planillas.', q: '', by: '' },
+  { ini: 'CO', nm: 'Comercio', rb: 'Buffet · Núñez', big: '22 / 22', lbl: 'meses de ventas que cuadran al peso con su POS, con compras e impagas al día.', q: '', by: '' },
+];
+// Logos de clientes en un solo tono (gris), sacados del perfil de cada negocio.
+const logosClientes = [
+  { nm: 'Container Bar', src: LOGO_CB },
+  { nm: 'Container FC', src: LOGO_FC },
+  { nm: 'Comercio', src: LOGO_CO },
+  { nm: 'MigaGO', src: LOGO_MG },
+  { nm: 'Llévalo Listo', src: LOGO_LL },
+];
+
+// Integraciones: con qué se conecta. Estados a confirmar.
+const integraciones = [
+  { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
+  { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
+  { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
+  { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
+  { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'soon' },
+  { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
 ];
 
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
@@ -237,20 +305,126 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
-      {/* PILLARS */}
-      <section className="pillars" id="que-hace">
+      {/* RELATO: cómo es un restaurante con Lazarillo */}
+      <section className="relato" id="que-hace">
         <div className="wrap">
-          <div className="kick">Qué hace por vos</div>
-          <h2>Todo tu negocio, claro y comunicado.</h2>
-          <div className="grid">
-            {pillars.map((p) => (
-              <div className="card" key={p.n}>
-                <div className="n">{p.n}</div>
-                <h3>{p.t}</h3>
-                <p>{p.d}{p.soon && <span className="soon">{p.soon}</span>}</p>
+          <div className="kick">Qué cambia</div>
+          <h2>Un negocio con Lazarillo <span>sabe dónde está parado.</span></h2>
+          <p className="sub">No es más información: son seis cosas que pasa a saber —y a hacer— todos los días.</p>
+          <div className="rgrid">
+            {/* 1 canasta */}
+            <div className="rcard">
+              <div className="rvis">
+                <svg viewBox="0 0 260 110" width="100%" height="100%">
+                  <polyline points="0,90 50,82 100,70 150,62 200,48 260,40" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeDasharray="6 6" />
+                  <polyline points="0,92 50,78 100,72 150,50 200,40 260,18" fill="none" stroke="#5BC2EA" strokeWidth="4" strokeLinecap="round" />
+                  <circle cx="260" cy="18" r="6" fill="#5BC2EA" />
+                  <text x="0" y="12" fill="#5BC2EA" fontSize="13" fontWeight="700">Tu canasta</text>
+                  <text x="190" y="66" fill="rgba(255,255,255,.55)" fontSize="12">IPC</text>
+                </svg>
+              </div>
+              <div className="rtxt"><div className="k">Costos</div><h3>Conoce su propia canasta de costos y no depende del IPC.</h3></div>
+            </div>
+            {/* 2 precios */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', gap: 12 }}>
+                <div className="vrow"><span className="vlbl">Tu canasta subió</span><span className="vchip" style={{ background: 'rgba(91,194,234,.18)', color: '#5BC2EA' }}>+6,1%</span></div>
+                <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,.12)' }} />
+                <div className="vrow"><span className="vlbl">Aumento sugerido</span><span className="vchip" style={{ background: '#5BC2EA', color: '#12111F' }}>+6,5% ✓</span></div>
+              </div>
+              <div className="rtxt"><div className="k">Precios</div><h3>Sus precios de venta siguen a su canasta de costos, no solo a la receta.</h3></div>
+            </div>
+            {/* 3 operación */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                {[['Cocina', 'Elaboración paso a paso'], ['Barra', 'Armado y emplatado'], ['Salón', 'Despacho y descripción']].map(([a, b]) => (
+                  <div className="vrow" key={a}><span><b style={{ color: '#5BC2EA' }}>{a}</b> <span style={{ color: 'rgba(255,255,255,.7)', fontWeight: 400 }}>· {b}</span></span><span style={{ color: '#34d399' }}>✓</span></div>
+                ))}
+              </div>
+              <div className="rtxt"><div className="k">Operación</div><h3>Todo el equipo sabe elaborar y despachar cada producto —y colabora en eso.</h3></div>
+            </div>
+            {/* 4 fijos y variables */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                <div className="vlbl">Ventas del mes</div>
+                <div style={{ position: 'relative', display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ width: '38%', background: '#2492C8' }} /><div style={{ width: '34%', background: '#5BC2EA' }} /><div style={{ flex: 1, background: '#34d399' }} />
+                  <div style={{ position: 'absolute', left: '72%', top: -4, bottom: -4, width: 2, background: '#fff' }} />
+                </div>
+                <div className="vrow" style={{ fontSize: 12 }}><span style={{ color: '#2492C8' }}>■ Fijos</span><span style={{ color: '#5BC2EA' }}>■ Variables</span><span style={{ color: '#34d399' }}>■ Ganancia</span></div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>│ punto de equilibrio</div>
+              </div>
+              <div className="rtxt"><div className="k">Rentabilidad</div><h3>Ganó rentabilidad al ver sus costos fijos y variables.</h3></div>
+            </div>
+            {/* 5 insumos a negociar */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 9 }}>
+                <div className="vlbl">Lo que más pesa en tu gasto</div>
+                {[['Queso', 92], ['Carne', 74], ['Aceite', 48]].map(([a, w]) => (
+                  <div className="vrow" key={a} style={{ gap: 12 }}><span style={{ width: 52 }}>{a}</span><div style={{ flex: 1, height: 9, borderRadius: 5, background: 'rgba(255,255,255,.1)' }}><div className="vbar" style={{ width: `${w}%` }} /></div></div>
+                ))}
+              </div>
+              <div className="rtxt"><div className="k">Proveedores</div><h3>Sabe qué insumos tiene que salir a negociar con sus proveedores.</h3></div>
+            </div>
+            {/* 6 menú foco */}
+            <div className="rcard">
+              <div className="rvis" style={{ alignItems: 'flex-end', gap: 7 }}>
+                {[100, 82, 66, 52, 30, 22, 16, 12, 9, 7].map((h, i) => (
+                  <div key={i} className="vbar" style={{ width: 16, height: `${h}%`, background: i < 4 ? '#5BC2EA' : 'rgba(255,255,255,.2)' }} />
+                ))}
+                <div style={{ position: 'absolute', top: 16, right: 20, fontSize: 13, fontWeight: 700, color: '#5BC2EA' }}>4 platos = 80%</div>
+              </div>
+              <div className="rtxt"><div className="k">Menú</div><h3>Sabe en qué productos del menú tiene que enfocarse.</h3></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MARCAS: clientes en banda oscura que se mueve */}
+      <section className="marca">
+        <div className="t">Ya lo usan</div>
+        <div className="track">
+          {[...logosClientes, ...logosClientes, ...logosClientes].map((l, i) => (
+            <div className="lgm" key={i}><img src={l.src} alt={l.nm} loading="lazy" /><span>{l.nm}</span></div>
+          ))}
+        </div>
+      </section>
+
+      {/* CLIENTES */}
+      <section className="clientes" id="clientes">
+        <div className="wrap">
+          <div className="kick">Clientes</div>
+          <h2>Gastronómicos que ya ven lo que su POS no les muestra.</h2>
+          <p className="sub">No te contamos qué hace: te mostramos qué ganó cada uno.</p>
+          <div className="grid cgrid">
+            {clientes.map((c) => (
+              <div className="ccard" key={c.nm}>
+                <div className="who">{logosColor[c.nm] ? <img className="logo" src={logosColor[c.nm]} alt={c.nm} style={{ objectFit: 'contain', background: 'transparent', width: 'auto', minWidth: 46, borderRadius: 8 }} /> : <div className="logo">{c.ini}</div>}<div><div className="nm">{c.nm}</div><div className="rb">{c.rb}</div></div></div>
+                <div className="big">{c.big}</div>
+                <div className="lbl">{c.lbl}</div>
+                {c.q && <q>{c.q}</q>}
+                {c.by && <div className="by">{c.by}</div>}
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* INTEGRACIONES */}
+      <section className="integra" id="integraciones">
+        <div className="wrap">
+          <div className="kick">Integraciones</div>
+          <h2>Se apoya en el sistema que ya tenés.</h2>
+          <p className="sub">No cambiás tu POS ni cargás dos veces: Lazarillo lee lo que ya registrás y lo convierte en decisiones.</p>
+          <div className="igrid">
+            {integraciones.map((i) => (
+              <div className="icard" key={i.t}>
+                <div className="mk">{i.mk}</div>
+                <div><div className="t">{i.t}</div><div className="d">{i.d}</div><span className={`st ${i.st}`}>{i.st === 'on' ? 'Conectado' : 'Próximamente'}</span></div>
+              </div>
+            ))}
+          </div>
+          <p className="note">¿Usás otro sistema? <a onClick={openModal}>Contanos cuál</a> y lo sumamos.</p>
         </div>
       </section>
 
