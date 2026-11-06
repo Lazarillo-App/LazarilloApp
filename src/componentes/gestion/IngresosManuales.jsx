@@ -175,11 +175,12 @@ function ModalIngresos({ sucursal, data, onClose }) {
               </Box>
             </Box>
             {dias.length > 0 ? (
-              <Box sx={{ overflowX: 'auto' }}>
+              // La grilla scrollea en su propio recuadro y la fila de títulos queda fija arriba (Diego 06/11/2026).
+              <Box sx={{ overflow: 'auto', maxHeight: 'min(52vh, 460px)' }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: `max-content repeat(${cols.length}, minmax(90px, 1fr))${cols.length > 1 ? ' max-content' : ''}`, alignItems: 'center', columnGap: 1, rowGap: 0.5, fontSize: 13 }}>
-                  <Box sx={{ fontSize: 11, color: 'text.secondary' }}>Día</Box>
-                  {cols.map((c) => <Box key={c} sx={{ fontSize: 11, color: 'text.secondary', textAlign: 'right' }}>{c === 'total' ? 'Total del día' : c}</Box>)}
-                  {cols.length > 1 && <Box sx={{ fontSize: 11, color: 'text.secondary', textAlign: 'right' }}>Total</Box>}
+                  <Box sx={sxTitulo}>Día</Box>
+                  {cols.map((c) => <Box key={c} sx={{ ...sxTitulo, textAlign: 'right' }}>{c === 'total' ? 'Total del día' : c}</Box>)}
+                  {cols.length > 1 && <Box sx={{ ...sxTitulo, textAlign: 'right' }}>Total</Box>}
                   {dias.map((d, fi) => (
                     <React.Fragment key={d}>
                       <Box sx={{ whiteSpace: 'nowrap' }}>{diaCorto(d)}</Box>
@@ -243,6 +244,9 @@ function ModalIngresos({ sucursal, data, onClose }) {
 }
 
 // Select con "—" (sin especificar), las opciones del negocio y "Otro…" para escribir uno nuevo.
+// Títulos de la grilla de varios días: fijos al scrollear.
+const sxTitulo = { fontSize: 11, color: 'text.secondary', position: 'sticky', top: 0, zIndex: 1, bgcolor: 'background.paper', py: 0.5, alignSelf: 'stretch' };
+
 // Grilla de varios días como una planilla (Diego 06/11/2026): ↑ ↓ (y Enter) cambian de día, ← → de
 // columna. ← y → solo saltan con el cursor en el borde del número, para poder corregir adentro.
 function moverEnGrilla(e, fi, ci, nFilas, nCols) {
