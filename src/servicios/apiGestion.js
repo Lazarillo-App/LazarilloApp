@@ -57,7 +57,8 @@ export const GestionAPI = {
   // Todos llevan `sucursal` (undefined = todas, 'principal', o el id de la sucursal).
   // Sin rubro · por qué (Diego 06/11/2026): lo que cae en Sin rubro, agrupado por causa.
   sinRubro: ({ anio, sucursal }) => api(`${base()}/sin-rubro${qs({ anio, sucursal })}`),
-  sinRubroRubroInsumo: (codigo, concepto) => api(`${base()}/sin-rubro/rubro-insumo/${encodeURIComponent(codigo)}`, { method: 'PUT', body: { concepto } }),
+  // body: { concepto } (siempre el mismo) o { alternativas: [{ etiqueta, concepto }, …] } (depende de la compra)
+  sinRubroRubroInsumo: (codigo, body) => api(`${base()}/sin-rubro/rubro-insumo/${encodeURIComponent(codigo)}`, { method: 'PUT', body }),
   sinRubroInsumo: (id, rubro) => api(`${base()}/sin-rubro/insumo/${id}`, { method: 'PUT', body: { rubro } }),
   sinRubroCompra: (rowId, concepto) => api(`${base()}/sin-rubro/compra/${encodeURIComponent(rowId)}`, { method: 'PUT', body: { concepto } }),
   proyeccion: ({ year, sucursal }) => api(`${base()}/dashboard/proyeccion${qs({ year, sucursal })}`),
