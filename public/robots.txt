@@ -1,0 +1,10 @@
+# Lazarillo — qué pueden leer los robots (buscadores e IA).
+# Solo la página pública (la portada) y lo que necesita para verse.
+# Nada de adentro de la app: eso además está detrás del login.
+# El sitio de pruebas no se indexa: index.html agrega "noindex" fuera de lazarillo.com.ar.
+
+User-agent: *
+Allow: /$
+Allow: /assets/
+Allow: /favicon.png
+Disallow: /
