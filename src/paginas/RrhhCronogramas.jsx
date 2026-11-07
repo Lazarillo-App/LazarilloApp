@@ -17,6 +17,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
+import { getSession } from '../servicios/apiBase';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
@@ -31,6 +32,8 @@ const T = {
   sombra: '0 20px 60px #15213E33', vacio: '#B9C7DA',
 };
 const FT = "'Sora', sans-serif";
+// Texto sobre el encabezado de tabla del tema (fondo = color del negocio).
+const TH_TXT = 'var(--on-primary, #fff)';
 const FB = "'Archivo', sans-serif";
 const JORNADA_HS = 8;
 
@@ -73,7 +76,7 @@ const semanasDelMes = (mes) => {
 };
 const colorCat = (tipo) => { const t = tipoNorm(tipo); return t === 'cerrado' ? T.bad : t === 'evento' ? T.violet : T.warn; };
 // "Salón" (espacio) y "SALON" (MaxiRest) son el mismo sector
-const normSector = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+const normSector = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
 
 /* ───────── piezas chicas (estilo del mockup) ───────── */
 const Chip = ({ color, children, onClick, title, activoBg }) => (
@@ -222,7 +225,7 @@ function dibujarFrancos({ titulo, rango, items }) {
   pieImg(ctx, H);
   return cv;
 }
-const slug = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
 function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
@@ -505,7 +508,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
       background: empId === e.id ? T.accent : 'transparent',
       color: empId === e.id ? T.ink : T.text, borderBottom: `1px solid ${T.border}`,
     }}>
-      <span>{nombreDe(e)}</span>
+      <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
       <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{e.sector || ''}</span>
     </div>
   );
@@ -587,7 +590,8 @@ export default function RrhhCronogramas() {
   const [dropSobre, setDropSobre] = useState(null);     // `${filaKey}:${dia}` resaltada al arrastrar
   const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
-  const { active: negocioActivo } = useBusiness() || {};
+  const { active: negocioActivo, activeBusinessId: negocioId } = useBusiness() || {};
+  const bizId = negocioId ?? negocioActivo?.id ?? null;
   const navigate = useNavigate();
   const { branches = [], activeBranchId } = useBranch() || {};
   // Sucursal del cronograma: "Todas" o la principal → null (principal); si no, su id.
@@ -611,7 +615,7 @@ export default function RrhhCronogramas() {
   const cargarTodo = useCallback(async () => {
     setCargando(true); setErrorCarga('');
     try {
-      await flushRef.current?.(); // lo pendiente de la sucursal anterior se guarda antes
+      await flushRef.current?.(); // lo pendiente de la sucursal (o negocio) anterior se guarda antes, en SU negocio
       const [cfg, sems] = await Promise.all([RrhhAPI.getConfig(sucursalId), RrhhAPI.listarSemanas()]);
       setConfig(cfg.config);
       setSemanasIdx(sems.semanas || []);
@@ -629,8 +633,14 @@ export default function RrhhCronogramas() {
     } finally {
       setCargando(false);
     }
-  }, [avisar, sucursalId]);
-  useEffect(() => { cargarTodo(); }, [cargarTodo]);
+  }, [avisar, sucursalId, bizId]);
+  // Al cambiar de negocio no puede quedar NADA del anterior (mostraba la nómina y la semana de Container
+  // en Comercio, y al guardar mandaba un espacio de Container: espacio_not_found — Diego 07/11/2026).
+  const bizPrevio = useRef(bizId);
+  useEffect(() => {
+    if (bizPrevio.current !== bizId) { bizPrevio.current = bizId; setConfig(null); setFilas([]); setEspacioId(null); setSemanasIdx([]); setCeldaSel(null); }
+    cargarTodo();
+  }, [cargarTodo, bizId]);
 
   const espacio = useMemo(
     () => config?.espacios.find((e) => e.id === espacioId) || null,
@@ -725,7 +735,7 @@ export default function RrhhCronogramas() {
     pendienteRef.current = null;
     setGuardado('guardando');
     try {
-      putEnVuelo.current = RrhhAPI.putSemana(p.semanaId, p.body);
+      putEnVuelo.current = RrhhAPI.putSemana(p.semanaId, p.body, p.bizId);
       const r = await putEnVuelo.current;
       // Si mientras viajaba el PUT se tocó algo más, hay otro pendiente: no pisar su cartel.
       setGuardado((g) => (pendienteRef.current ? g : 'ok'));
@@ -755,7 +765,7 @@ export default function RrhhCronogramas() {
 
   const programarGuardado = useCallback((filasSnapshot) => {
     setGuardado('pendiente');
-    pendienteRef.current = { semanaId, body: armarBody(filasSnapshot) };
+    pendienteRef.current = { semanaId, body: armarBody(filasSnapshot), bizId: getSession().activeBusinessId };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(guardarAhora, 1200);
   }, [semanaId, armarBody, guardarAhora]);
@@ -800,7 +810,7 @@ export default function RrhhCronogramas() {
       if (f.key !== filaKey) return f;
       const celdas = { ...f.celdas };
       if (valor) celdas[dia] = valor; else delete celdas[dia];
-      const owner = f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
+      const owner = !Object.keys(celdas).length ? null : f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
     setCeldaSel(null);
@@ -812,7 +822,8 @@ export default function RrhhCronogramas() {
       if (f.key !== fila.key) return f;
       const celdas = { ...f.celdas };
       delete celdas[dia];
-      return { ...f, celdas };
+      // sin días cargados la fila vuelve a quedar libre (si no, el empleado seguía «pegado» a la fila)
+      return { ...f, celdas, ownerEmpleadoId: Object.keys(celdas).length ? f.ownerEmpleadoId : null };
     }));
   };
 
@@ -892,7 +903,7 @@ export default function RrhhCronogramas() {
     }
     mutarFilas((prev) => prev.map((f) => {
       let celdas = f.celdas; let ownerEmpleadoId = f.ownerEmpleadoId;
-      if (f.key === src.filaKey) { celdas = { ...celdas }; delete celdas[src.dia]; }
+      if (f.key === src.filaKey) { celdas = { ...celdas }; delete celdas[src.dia]; if (f.key !== dest.key && !Object.keys(celdas).length) ownerEmpleadoId = null; }
       if (f.key === dest.key) { celdas = { ...celdas, [diaDest]: celda }; ownerEmpleadoId = ownerEmpleadoId || celda.empleadoId; }
       return celdas === f.celdas ? f : { ...f, celdas, ownerEmpleadoId };
     }));
@@ -986,10 +997,12 @@ export default function RrhhCronogramas() {
   }, [config, espacio, totales]);
 
   /* ── estilos compartidos de la tabla ── */
-  const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.text2, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
+  // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
+  // encabezado van en el color de contraste del tema, si no los días no se leían (Diego 07/11/2026).
+  const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: TH_TXT, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
   const colFila = { width: 132, minWidth: 132, maxWidth: 132, boxSizing: 'border-box' };
   const thSup = { position: 'sticky', top: 0, zIndex: 3, height: 26, boxSizing: 'border-box', padding: '4px 6px', fontSize: 11 };
-  const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: T.text3, minWidth: 34 };
+  const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, minWidth: 34 };
   const celTot = { padding: '4px 6px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, fontFamily: FB, fontSize: 12, color: T.text2, background: T.head };
 
   /* ═════ render ═════ */
@@ -1058,7 +1071,7 @@ export default function RrhhCronogramas() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
-                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
+                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
                   {diasISO.map((iso, i) => {
                     const esp = fechasMap.get(iso);
                     const d = new Date(iso + 'T12:00:00');
@@ -1066,8 +1079,10 @@ export default function RrhhCronogramas() {
                       <th key={iso} rowSpan={2} onClick={() => setFechaSel(iso)}
                         title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
                         style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
-                        <div style={{ color: esp ? colorCat(esp.tipo) : T.text2 }}>{DC[i]} {d.getDate()}</div>
-                        <div style={{ height: 14, fontFamily: FB, fontWeight: 700, fontSize: 10, color: esp ? colorCat(esp.tipo) : T.vacio, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '0 auto' }}>
+                        <div style={{ color: TH_TXT }}>{DC[i]} {d.getDate()}</div>
+                        {/* la fecha especial va en una pastilla blanca: se lee sobre cualquier color de negocio */}
+                        <div style={{ height: 16, marginTop: 2, fontFamily: FB, fontWeight: 700, fontSize: 10, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '2px auto 0',
+                          ...(esp ? { display: 'inline-block', padding: '0 7px', borderRadius: 8, background: '#fff', color: colorCat(esp.tipo) } : { color: TH_TXT, opacity: 0.7 }) }}>
                           {esp ? (esp.nombre || etiquetaTipo(esp.tipo)) : '+ especial'}
                         </div>
                       </th>
