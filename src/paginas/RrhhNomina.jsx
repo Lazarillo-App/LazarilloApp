@@ -6,8 +6,9 @@
 // se desactivan. Lo que se edita acá (nombre, apellido, sector, activo) no lo
 // pisa la sync. Los empleados no se borran: se desactivan (tienen historia).
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
+import { useBusiness } from '../context/BusinessContext';
 
 /* ───────── tema (el mismo de Cronogramas) ───────── */
 const T = {
@@ -119,6 +120,9 @@ export default function RrhhNomina() {
   const [q, setQ] = useState('');
   const [editando, setEditando] = useState(null);   // null | 'nuevo' | empleado
   const [toast, setToast] = useState(null);
+  const [sync, setSync] = useState(undefined);           // null = el negocio no tiene MaxiRest
+  const { activeBusinessId } = useBusiness() || {};
+  const cargaSeq = useRef(0);
 
   const avisar = useCallback((msj, tipo = 'ok') => {
     setToast({ msj, tipo });
@@ -126,10 +130,13 @@ export default function RrhhNomina() {
   }, []);
 
   const cargar = useCallback(async () => {
-    setCargando(true); setErrorCarga('');
+    const mi = ++cargaSeq.current;
+    setCargando(true); setErrorCarga(''); setEditando(null);
     try {
       const r = await RrhhAPI.getConfig();
+      if (mi !== cargaSeq.current) return; // se cambió de negocio mientras cargaba
       setConfig(r.config);
+      setSync(r.sync);
       const s = r.sync;
       if (s && (s.altas?.length || s.bajas?.length)) {
         const partes = [];
@@ -140,9 +147,10 @@ export default function RrhhNomina() {
     } catch (e) {
       setErrorCarga(e?.data?.message || e.message || 'No se pudo cargar la nómina.');
     } finally {
-      setCargando(false);
+      if (mi === cargaSeq.current) setCargando(false);
     }
-  }, [avisar]);
+    // activeBusinessId: al cambiar de negocio en el header se recarga
+  }, [avisar, activeBusinessId]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const empleados = config?.empleados || [];
@@ -205,9 +213,19 @@ export default function RrhhNomina() {
           <div style={{ flex: 1 }} />
           <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>
         </div>
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginBottom: 12 }}>
-          Se sincroniza sola con MaxiRest al abrir RRHH: las altas entran y las bajas se desactivan. Lo que edites acá no se pisa.
-        </div>
+        {sync === null ? (
+          <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
+            Este negocio no tiene MaxiRest conectado: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>.
+          </div>
+        ) : sync?.error ? (
+          <div style={{ fontFamily: FB, fontSize: 12.5, color: T.bad, background: T.bad + '10', border: `1px solid ${T.bad}44`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
+            No se pudo leer la nómina de MaxiRest en este momento: se muestra lo último que se sincronizó.
+          </div>
+        ) : (
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginBottom: 12 }}>
+            Se sincroniza sola con MaxiRest al abrir RRHH: las altas entran y las bajas se desactivan. Lo que edites acá no se pisa.
+          </div>
+        )}
 
         <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
           {/* buscador pegado a la lista (filtra solo esta tabla) */}

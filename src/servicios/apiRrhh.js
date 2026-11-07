@@ -4,10 +4,13 @@
 
 import { api, getSession, qs } from './apiBase';
 
-const base = () => {
+// bizId explícito: para que un guardado pendiente vaya al negocio donde se hizo
+// la edición aunque el usuario ya haya cambiado de negocio.
+const base = (bizId) => {
   const { activeBusinessId } = getSession();
-  return `/businesses/${activeBusinessId}/rrhh`;
+  return `/businesses/${bizId || activeBusinessId}/rrhh`;
 };
+export const negocioActual = () => getSession().activeBusinessId;
 
 export const RrhhAPI = {
   // Config (empleados + puestos + fechas especiales + espacios con turnos).
@@ -36,8 +39,10 @@ export const RrhhAPI = {
   listarSemanas: () => api(`${base()}/semanas`),
   getSemana: (semana, espacioId) =>
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`),
-  putSemana: (semana, body) =>
-    api(`${base()}/semanas/${semana}`, { method: 'PUT', body }),
+  putSemana: (semana, body, bizId = null) =>
+    api(`${base(bizId)}/semanas/${semana}`, {
+      method: 'PUT', body, ...(bizId ? { headers: { 'X-Business-Id': String(bizId) } } : {}),
+    }),
   borrarSemana: (semana, espacioId) =>
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`, { method: 'DELETE' }),
 };
