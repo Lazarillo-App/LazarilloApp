@@ -6,6 +6,8 @@
 // Barra completa del mockup v31: Exportar imagen (2 PNG: cronograma + francos,
 // Canvas en modo día), + Semana (crea la siguiente copiando esta), Vaciar,
 // calendario de semanas. "Próximamente": ⚙ Configuración; después demanda.
+// La nómina se sincroniza sola con MaxiRest (GET /config) y se edita en
+// RRHH › Nómina (botonera del header).
 // Grilla: columna con el dueño de la fila, clic en la cabecera del día carga un
 // feriado/evento, turnos minimizables, leyenda de puestos, "sin jornadas",
 // drag & drop entre celdas y totales del MES (días dentro del mes de la semana).
@@ -13,6 +15,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
+import { useNavigate } from 'react-router-dom';
 
 /* ───────── tema (modo día del mockup v31, paleta de marca) ───────── */
 const T = {
@@ -553,120 +556,6 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
   );
 }
 
-/* ───────── modal: importar nómina de MaxiRest (con selección) ───────── */
-function ModalImportar({ onCerrar, onImportado }) {
-  const [estado, setEstado] = useState('cargando'); // cargando | lista | importando | error
-  const [msg, setMsg] = useState('');
-  const [nomina, setNomina] = useState([]);
-  const [sel, setSel] = useState(() => new Set());
-  const [q, setQ] = useState('');
-
-  useEffect(() => {
-    let alive = true;
-    RrhhAPI.nominaMaxirest()
-      .then((r) => { if (!alive) return; setNomina(r.nomina || []); setEstado('lista'); })
-      .catch((e) => {
-        if (!alive) return;
-        setMsg(e?.data?.message || e.message || 'No se pudo leer la nómina.');
-        setEstado('error');
-      });
-    return () => { alive = false; };
-  }, []);
-
-  const visibles = useMemo(() => {
-    const txt = q.trim().toLowerCase();
-    if (!txt) return nomina;
-    return nomina.filter((r) =>
-      `${r.nombre || ''} ${r.apellido || ''}`.toLowerCase().includes(txt) || String(r.codigo).includes(txt));
-  }, [nomina, q]);
-
-  const pendientes = nomina.filter((r) => !r.yaImportado);
-  const toggle = (codigo) => setSel((s) => { const n = new Set(s); n.has(codigo) ? n.delete(codigo) : n.add(codigo); return n; });
-  const todos = () => setSel(new Set(pendientes.map((r) => r.codigo)));
-  const ninguno = () => setSel(new Set());
-
-  const importar = async () => {
-    if (!sel.size) return;
-    setEstado('importando');
-    try {
-      const r = await RrhhAPI.importarNomina([...sel]);
-      onImportado?.(r);
-    } catch (e) {
-      setMsg(e?.data?.message || e.message || 'No se pudo importar.');
-      setEstado('error');
-    }
-  };
-
-  return (
-    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: '94vw', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}` }}>
-        <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Importar nómina de MaxiRest</div>
-        <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text2, margin: '4px 0 10px' }}>
-          La nómina del POS mezcla empleados reales con usuarios técnicos (apps de delivery, cajas, soporte).
-          Tildá solo a las personas: los importados quedan como empleados del módulo.
-        </div>
-
-        {estado === 'cargando' && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3, padding: 20 }}>Leyendo la nómina…</div>}
-        {estado === 'error' && (
-          <div style={{ fontFamily: FB, fontSize: 13, color: T.bad, padding: '10px 0' }}>{msg}</div>
-        )}
-
-        {(estado === 'lista' || estado === 'importando') && (
-          <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o código…"
-                style={{ flex: 1, fontFamily: FB, fontSize: 13, padding: '7px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
-              <Chip color={T.accentTxt} onClick={todos}>Tildar todos</Chip>
-              <Chip color={T.text3} onClick={ninguno}>Ninguno</Chip>
-            </div>
-            <div style={{ flex: 1, minHeight: 120, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 10 }}>
-              {visibles.map((r) => {
-                const tildado = sel.has(r.codigo);
-                return (
-                  <label key={r.codigo} style={{
-                    display: 'grid', gridTemplateColumns: '26px 52px 1fr 90px', alignItems: 'center', gap: 6,
-                    padding: '6px 10px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, fontSize: 13,
-                    color: r.yaImportado ? T.text3 : T.text, cursor: r.yaImportado ? 'default' : 'pointer',
-                    background: tildado ? T.accent + '22' : 'transparent',
-                  }}>
-                    {r.yaImportado
-                      ? <span style={{ color: T.ok, fontWeight: 700 }}>✓</span>
-                      : <input type="checkbox" checked={tildado} onChange={() => toggle(r.codigo)} style={{ accentColor: T.accent }} />}
-                    <span style={{ color: T.text3, fontSize: 12 }}>{r.codigo}</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {`${r.nombre || ''}${r.apellido ? ` ${r.apellido}` : ''}`.trim() || `#${r.codigo}`}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: T.text3, textAlign: 'right' }}>
-                      {r.yaImportado ? 'Importado' : (r.sector || '')}
-                    </span>
-                  </label>
-                );
-              })}
-              {!visibles.length && <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: T.text3 }}>Sin resultados.</div>}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-              <span style={{ fontFamily: FB, fontSize: 12, color: T.text3 }}>
-                {nomina.length} en la réplica · {nomina.length - pendientes.length} ya importados
-              </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Boton onClick={onCerrar}>Cerrar</Boton>
-                <Boton grande activo deshabilitado={!sel.size || estado === 'importando'} onClick={importar}>
-                  {estado === 'importando' ? 'Importando…' : `Importar ${sel.size || ''}`.trim()}
-                </Boton>
-              </div>
-            </div>
-          </>
-        )}
-        {estado === 'error' && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <Boton onClick={onCerrar}>Cerrar</Boton>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ═══════════════ página ═══════════════ */
 export default function RrhhCronogramas() {
   const [cargando, setCargando] = useState(true);
@@ -680,7 +569,6 @@ export default function RrhhCronogramas() {
   const [cargandoSemana, setCargandoSemana] = useState(false);
   const [guardado, setGuardado] = useState('ok');       // ok | pendiente | guardando | error
   const [celdaSel, setCeldaSel] = useState(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [fechaSel, setFechaSel] = useState(null);     // iso del día cuya cabecera se tocó
@@ -692,6 +580,7 @@ export default function RrhhCronogramas() {
   const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
   const { active: negocioActivo } = useBusiness() || {};
+  const navigate = useNavigate();
   const nombreNegocio = negocioActivo?.name || negocioActivo?.nombre || '';
   const saveTimer = useRef(null);
   const pendienteRef = useRef(null); // { semanaId, body } del guardado programado
@@ -711,13 +600,20 @@ export default function RrhhCronogramas() {
       const [cfg, sems] = await Promise.all([RrhhAPI.getConfig(), RrhhAPI.listarSemanas()]);
       setConfig(cfg.config);
       setSemanasIdx(sems.semanas || []);
+      const sy = cfg.sync;
+      if (sy && (sy.altas?.length || sy.bajas?.length)) {
+        const partes = [];
+        if (sy.altas.length) partes.push(`${sy.altas.length} ${sy.altas.length === 1 ? 'alta' : 'altas'}`);
+        if (sy.bajas.length) partes.push(`${sy.bajas.length} ${sy.bajas.length === 1 ? 'baja' : 'bajas'}`);
+        avisar(`Nómina sincronizada con MaxiRest: ${partes.join(' · ')}.`);
+      }
       setEspacioId((prev) => prev || cfg.config.espacios[0]?.id || null);
     } catch (e) {
       setErrorCarga(e?.data?.message || e.message || 'No se pudo cargar el módulo.');
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [avisar]);
   useEffect(() => { cargarTodo(); }, [cargarTodo]);
 
   const espacio = useMemo(
@@ -1098,7 +994,6 @@ export default function RrhhCronogramas() {
         <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
-        <Boton onClick={() => setImportOpen(true)} title="Importar empleados desde la nómina de MaxiRest">👥 Nómina</Boton>
         <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
         <Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen del cronograma y de los francos para WhatsApp">🖼 Exportar imagen</Boton>
       </div>
@@ -1122,9 +1017,9 @@ export default function RrhhCronogramas() {
         <div style={{ maxWidth: 520, margin: '60px auto', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 28, textAlign: 'center' }}>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
-            Primero importá tu nómina desde MaxiRest: elegís a quiénes traer y quedan como empleados del módulo.
+            Todavía no hay empleados. Si el negocio tiene MaxiRest, la nómina entra sola; si no, dalos de alta en Nómina.
           </div>
-          <Boton grande activo onClick={() => setImportOpen(true)}>👥 Importar nómina de MaxiRest</Boton>
+          <Boton grande activo onClick={() => navigate('/rrhh/nomina')}>Ir a Nómina</Boton>
         </div>
       ) : (
         <>
@@ -1330,16 +1225,6 @@ export default function RrhhCronogramas() {
           espacio={espacio}
           onGuardar={guardarCelda}
           onCerrar={() => setCeldaSel(null)}
-        />
-      )}
-      {importOpen && (
-        <ModalImportar
-          onCerrar={() => setImportOpen(false)}
-          onImportado={async (r) => {
-            setImportOpen(false);
-            avisar(`Nómina importada: ${r.importados} nuevos${r.existentes ? ` · ${r.existentes} ya estaban` : ''}.`);
-            await cargarTodo();
-          }}
         />
       )}
       {toast && (
