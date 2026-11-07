@@ -288,17 +288,26 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
+                  {location.pathname.startsWith('/rrhh') && !isAppAdmin ? [
+                    <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>Cronogramas</MenuItem>,
+                    <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
+                    <MenuItem key="rrhh-fich" disabled>Fichaje · Próximamente</MenuItem>,
+                    <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
+                    <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
+                  ] : null}
+                  {!location.pathname.startsWith('/rrhh') && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
+                  )}
 
-                  {!isAppAdmin && (
+                  {!isAppAdmin && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && !isStaff && (
+                  {!isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -330,6 +339,28 @@ export default function Navbar() {
                     height: 2, borderRadius: 2, background: 'var(--on-primary)',
                   },
                 } : {};
+                // Dentro de RRHH la botonera es la del módulo (pedido de Diego, 07/11):
+                // CRONOGRAMAS · LIQUIDACIÓN · FICHAJE | NÓMINA. Liquidación y Fichaje
+                // se ven pero todavía no están ("Próximamente").
+                if (path.startsWith('/rrhh')) {
+                  const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
+                  return (
+                    <>
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/rrhh/cronogramas')) }}
+                        component={NavLink} to="/rrhh/cronogramas">
+                        Cronogramas
+                      </Button>
+                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Liquidación</Button></Tooltip>
+                      <Tooltip title="Próximamente"><Button color="inherit" disableRipple sx={proxSx}>Fichaje</Button></Tooltip>
+                      <Box component="span" aria-hidden
+                        sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/rrhh/nomina')) }}
+                        component={NavLink} to="/rrhh/nomina">
+                        Nómina
+                      </Button>
+                    </>
+                  );
+                }
                 return (
                   <>
                     {enInicio ? null : isAppAdmin ? (
