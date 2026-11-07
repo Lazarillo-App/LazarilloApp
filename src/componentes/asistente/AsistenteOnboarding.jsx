@@ -909,8 +909,13 @@ const AnthonyDice = ({ pose = "senala", size = 84, children, accent }) => {
 };
 
 // ───────────────────────── App ─────────────────────────
+const MOSTRAR_ELECCION = false;
+
 export default function AsistenteOnboarding({ businessId: businessIdProp = null, onDone } = {}) {
-  const [view, setView] = useState("home"); // home | marcha | nuevo
+  // Por ahora el alta arranca directo en "Negocio en marcha": la pantalla de
+  // elección (Home) y el flujo "Proyecto de negocio" quedan en el código pero
+  // ocultos. Para volver a mostrarlos, poner MOSTRAR_ELECCION en true.
+  const [view, setView] = useState(MOSTRAR_ELECCION ? "home" : "marcha"); // home | marcha | nuevo
   const [insumos, setInsumos] = useState([]);
   const [articulos, setArticulos] = useState([]);
   const [brand, setBrand] = useState(null);
@@ -947,7 +952,7 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
             {brand?.nombre ? <>ASISTENTE DE ALTA DE <b style={{ fontWeight: 700 }}>{brand.nombre}</b></> : "ASISTENTE DE ALTA"}
           </span>
         </div>
-        {view !== "home" && <Btn ghost small onClick={reset} style={{ color: "#fff", border: "1px solid rgba(255,255,255,.45)" }}>← Inicio</Btn>}
+        {MOSTRAR_ELECCION && view !== "home" && <Btn ghost small onClick={reset} style={{ color: "#fff", border: "1px solid rgba(255,255,255,.45)" }}>← Inicio</Btn>}
       </div>
 
       <div style={{ flex: 1, width: "100%", maxWidth: 1000, margin: "0 auto", padding: "22px" }}>
@@ -1346,7 +1351,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
       <Steps items={["Datos Principales", "Estilos", "Redes Sociales"]} active={ws} accent={brand.primary} onStep={setWs} />
       <AnthonyDice pose={buscando ? "investiga" : ws === 0 ? "saluda" : ws === 1 ? "presenta" : "senala"} size={84} accent={brand.primary}>
         {buscando ? "Dame un segundo que busco tu negocio en Google…"
-          : ws === 0 ? "Buscá tu local arriba y completo los datos por vos. Después subí el logo y te armo los colores."
+          : ws === 0 ? "¡Hola! Soy Anthony, te acompaño a dar de alta tu negocio. Buscá tu local arriba y completo los datos por vos. Después subí el logo y te armo los colores."
           : ws === 1 ? "Estos son los colores que saqué de tu logo. Si no te cierran, cambialos acá."
           : "Por último, sumá tus redes sociales para tenerlas a mano."}
       </AnthonyDice>
