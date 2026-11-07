@@ -76,7 +76,7 @@ const semanasDelMes = (mes) => {
 };
 const colorCat = (tipo) => { const t = tipoNorm(tipo); return t === 'cerrado' ? T.bad : t === 'evento' ? T.violet : T.warn; };
 // "Salón" (espacio) y "SALON" (MaxiRest) son el mismo sector
-const normSector = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
+const normSector = (s) => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim().toUpperCase();
 
 /* ───────── piezas chicas (estilo del mockup) ───────── */
 const Chip = ({ color, children, onClick, title, activoBg }) => (
@@ -225,7 +225,7 @@ function dibujarFrancos({ titulo, rango, items }) {
   pieImg(ctx, H);
   return cv;
 }
-const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const slug = (s) => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
 function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
