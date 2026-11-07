@@ -3,11 +3,12 @@
 // RRHH › Cronogramas — Etapa 1, tanda 2 (front básico contra la API).
 // Diseño calcado del mockup v31 en modo día (marca Lazarillo); el header es el
 // de la app (Navbar) — acá solo va la toolbar del módulo.
-// Barra completa del mockup v31: Exportar imagen ACTIVO (2 PNG: cronograma +
-// francos, dibujados con Canvas en modo día). Quedan "Próximamente": + Semana
-// (copiar), Vaciar, ⚙ Configuración y el calendario; después drag & drop y demanda.
+// Barra completa del mockup v31: Exportar imagen (2 PNG: cronograma + francos,
+// Canvas en modo día), + Semana (crea la siguiente copiando esta), Vaciar,
+// calendario de semanas. "Próximamente": ⚙ Configuración; después demanda.
 // Grilla: columna con el dueño de la fila, clic en la cabecera del día carga un
-// feriado/evento, turnos minimizables, leyenda de puestos y "sin jornadas".
+// feriado/evento, turnos minimizables, leyenda de puestos, "sin jornadas",
+// drag & drop entre celdas y totales del MES (días dentro del mes de la semana).
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
@@ -29,6 +30,7 @@ const JORNADA_HS = 8;
 /* ───────── fechas y semanas (AAASS, ancla del Excel: 202641 = 4/10/2026) ───────── */
 const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DC = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+const MESES_C = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MESES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const dd2 = (n) => String(n).padStart(2, '0');
 const isoDe = (d) => `${d.getFullYear()}-${dd2(d.getMonth() + 1)}-${dd2(d.getDate())}`;
@@ -51,6 +53,17 @@ const TIPOS_FECHA = [
 // "Pre Feriado" / "preferiado" / "prefer" → 'prefer'; el resto en minúscula
 const tipoNorm = (tipo) => { const t = String(tipo || '').toLowerCase().replace(/\s+/g, ''); return t.startsWith('pre') ? 'prefer' : t; };
 const etiquetaTipo = (tipo) => (TIPOS_FECHA.find((t) => t.v === tipoNorm(tipo)) || { l: tipo || '' }).l;
+// el mes de una semana es el de su jueves (la que cruza de mes va al que tiene más días)
+const mesDeSemana = (startIso) => { const d = new Date(sumarDias(startIso, 4) + 'T12:00:00'); return { y: d.getFullYear(), m: d.getMonth() }; };
+const enMes = (iso, mes) => Number(iso.slice(0, 4)) === mes.y && Number(iso.slice(5, 7)) - 1 === mes.m;
+// ids de semana (AAASS) que tocan un mes
+const semanasDelMes = (mes) => {
+  const ini = new Date(mes.y, mes.m, 1, 12); ini.setDate(ini.getDate() - ini.getDay());
+  const fin = new Date(mes.y, mes.m + 1, 0, 12);
+  const out = [];
+  for (const d = new Date(ini); d <= fin; d.setDate(d.getDate() + 7)) out.push(idDeSemana(isoDe(d)));
+  return out;
+};
 const colorCat = (tipo) => { const t = tipoNorm(tipo); return t === 'cerrado' ? T.bad : t === 'evento' ? T.violet : T.warn; };
 // "Salón" (espacio) y "SALON" (MaxiRest) son el mismo sector
 const normSector = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
@@ -341,6 +354,121 @@ function ModalFecha({ iso, actual, onGuardar, onQuitar, onCerrar }) {
   );
 }
 
+/* ───────── marco común de los modales chicos ───────── */
+function Marco({ ancho = 400, onCerrar, children }) {
+  return (
+    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: ancho, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+const TituloModal = ({ children, onCerrar, sub }) => (
+  <div style={{ marginBottom: 12 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{children}</div>
+      <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+    </div>
+    {sub && <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 2 }}>{sub}</div>}
+  </div>
+);
+// opción grande de un modal (título + explicación), toda clickeable
+const Opcion = ({ titulo, texto, onClick, peligro }) => (
+  <div onClick={onClick} style={{ border: `1px solid ${peligro ? T.bad + '55' : T.border2}`, borderRadius: 12, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', background: T.head }}>
+    <div style={{ fontFamily: FB, fontWeight: 700, fontSize: 13.5, color: peligro ? T.bad : T.text }}>{titulo}</div>
+    <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginTop: 2 }}>{texto}</div>
+  </div>
+);
+
+/* ───────── modal: + Semana (crear la siguiente copiando esta) ───────── */
+function ModalNuevaSemana({ info, espacioNombre, onElegir, onCerrar }) {
+  const nro = (id) => String(id).slice(4);
+  return (
+    <Marco onCerrar={onCerrar} ancho={420}>
+      <TituloModal onCerrar={onCerrar} sub={info ? `${espacioNombre} · se crea a partir de la semana ${nro(info.origen)}. Los feriados no se copian (van por fecha).` : ''}>
+        {info ? `Crear la semana ${nro(info.destino)}` : 'Preparando…'}
+      </TituloModal>
+      {!info ? (
+        <div style={{ fontFamily: FB, fontSize: 13, color: T.text3, padding: '10px 0' }}>Revisando la semana siguiente…</div>
+      ) : (
+        <>
+          {info.celdasDestino > 0 && (
+            <div style={{ fontFamily: FB, fontSize: 12.5, color: T.bad, background: T.bad + '12', border: `1px solid ${T.bad}44`, borderRadius: 10, padding: '7px 10px', marginBottom: 10 }}>
+              La semana {nro(info.destino)} ya tiene {info.celdasDestino} turnos cargados: lo que elijas los reemplaza.
+            </div>
+          )}
+          <Opcion titulo="Copiar completa" texto="Filas, empleados y todos los turnos asignados." onClick={() => onElegir('completa')} />
+          <Opcion titulo="Solo la estructura" texto="Cada fila queda reservada a su empleado, sin turnos." onClick={() => onElegir('estructura')} />
+          <Opcion titulo="Vacía" texto="3 filas libres por turno, como una semana nueva." onClick={() => onElegir('vacia')} />
+        </>
+      )}
+    </Marco>
+  );
+}
+
+/* ───────── modal: vaciar la semana ───────── */
+function ModalVaciar({ semanaId, espacioNombre, onElegir, onCerrar }) {
+  return (
+    <Marco onCerrar={onCerrar} ancho={400}>
+      <TituloModal onCerrar={onCerrar} sub="Los feriados y eventos del día no se tocan.">
+        Vaciar semana {String(semanaId).slice(4)} · {espacioNombre}
+      </TituloModal>
+      <Opcion titulo="Vaciar turnos" texto="Las filas quedan reservadas a cada empleado, sin turnos." onClick={() => onElegir('turnos')} peligro />
+      <Opcion titulo="Vaciar todo" texto="Las filas quedan libres, sin empleados." onClick={() => onElegir('todo')} peligro />
+    </Marco>
+  );
+}
+
+/* ───────── modal: calendario de semanas ───────── */
+function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onCerrar }) {
+  const [mes, setMes] = useState(() => mesDeSemana(startDeId(semanaId)));
+  const hoyIso = isoDe(new Date());
+  const filas = semanasDelMes(mes);
+  const mover = (n) => setMes((m) => { const d = new Date(m.y, m.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  return (
+    <Marco onCerrar={onCerrar} ancho={340}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <Boton onClick={() => mover(-1)} title="Mes anterior">‹</Boton>
+        <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{MESES_C[mes.m]} {mes.y}</div>
+        <Boton onClick={() => mover(1)} title="Mes siguiente">›</Boton>
+      </div>
+      <div style={{ display: 'flex', textAlign: 'center', fontFamily: FB, fontSize: 11, fontWeight: 700, color: T.text3, marginBottom: 4 }}>
+        {DC.map((d) => <span key={d} style={{ flex: '1 1 0' }}>{d}</span>)}
+      </div>
+      {filas.map((id) => {
+        const ini = startDeId(id);
+        const activa = id === semanaId;
+        const creada = creadas.has(id);
+        return (
+          <div key={id} onClick={() => onElegir(id)} title={`Semana ${String(id).slice(4)}${creada ? ' · con cronograma' : ' · sin cronograma'}`}
+            style={{ display: 'flex', textAlign: 'center', padding: '4px 0', marginBottom: 3, borderRadius: 8, cursor: 'pointer',
+              background: activa ? T.accent + '33' : creada ? T.card : 'transparent', border: `1px solid ${activa ? T.accent : 'transparent'}` }}>
+            {Array.from({ length: 7 }, (_, j) => {
+              const iso = sumarDias(ini, j);
+              const fuera = !enMes(iso, mes);
+              const esp = fechasMap.get(iso);
+              const hoy = iso === hoyIso;
+              return (
+                <div key={iso} style={{ flex: '1 1 0', fontFamily: FB, fontSize: 12.5, lineHeight: '22px', position: 'relative', color: fuera ? T.vacio : creada || activa ? T.text : T.text3 }}>
+                  <span style={{ display: 'inline-block', width: 22, height: 22, borderRadius: 11, background: hoy ? T.accent : 'transparent', color: hoy ? T.ink : undefined, fontWeight: hoy ? 700 : 400 }}>
+                    {Number(iso.slice(8, 10))}
+                  </span>
+                  {esp && <span style={{ position: 'absolute', left: '50%', bottom: -2, marginLeft: -2.5, width: 5, height: 5, borderRadius: 3, background: colorCat(esp.tipo) }} />}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+        <span style={{ fontFamily: FB, fontSize: 11, color: T.text3 }}>Sombreadas: con cronograma</span>
+        <Boton onClick={() => onElegir(idDeSemana(domingoDeHoy()))}>HOY</Boton>
+      </div>
+    </Marco>
+  );
+}
+
 /* ───────── modal: asignar empleado a una celda ───────── */
 function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar }) {
   const [q, setQ] = useState('');
@@ -557,6 +685,12 @@ export default function RrhhCronogramas() {
   const [exportOpen, setExportOpen] = useState(false);
   const [fechaSel, setFechaSel] = useState(null);     // iso del día cuya cabecera se tocó
   const [minimizados, setMinimizados] = useState({}); // `${espacioId}:${turnoId}` → true
+  const [nuevaSem, setNuevaSem] = useState(null);       // null | { cargando } | { origen, destino, celdasDestino }
+  const [vaciarOpen, setVaciarOpen] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
+  const [dropSobre, setDropSobre] = useState(null);     // `${filaKey}:${dia}` resaltada al arrastrar
+  const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
+  const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
   const { active: negocioActivo } = useBusiness() || {};
   const nombreNegocio = negocioActivo?.name || negocioActivo?.nombre || '';
   const saveTimer = useRef(null);
@@ -647,7 +781,7 @@ export default function RrhhCronogramas() {
   }, [espacioId, semanaId, config]);
 
   /* ── guardado (PUT reemplaza la semana del espacio) ── */
-  const armarBody = useCallback((fs) => {
+  const armarBody = useCallback((fs, fi = fechaInicio) => {
     const porTurno = new Map();
     (espacio?.turnos || []).forEach((t) => porTurno.set(t.id, []));
     fs.forEach((f) => {
@@ -661,7 +795,7 @@ export default function RrhhCronogramas() {
     });
     return {
       espacioId: espacio.id,
-      fechaInicio,
+      fechaInicio: fi,
       turnos: [...porTurno.entries()].map(([turnoId, fls]) => ({ turnoId, filas: fls })),
     };
   }, [espacio, fechaInicio]);
@@ -775,6 +909,80 @@ export default function RrhhCronogramas() {
     mutarFilas((fs) => fs.filter((f) => f.key !== fila.key));
   };
 
+  /* ── + Semana: crea la SIGUIENTE copiando la que se está viendo ── */
+  const abrirNuevaSemana = async () => {
+    if (!espacio) return;
+    setNuevaSem({ cargando: true });
+    try {
+      await flushRef.current();
+      const destino = semanaId + 1;
+      const r = await RrhhAPI.getSemana(destino, espacio.id);
+      const celdasDestino = r?.found ? (r.semana.turnos || []).reduce((a, t) => a + (t.filas || []).reduce((b, f) => b + (f.celdas || []).length, 0), 0) : 0;
+      setNuevaSem({ origen: semanaId, destino, celdasDestino });
+    } catch (e) {
+      setNuevaSem(null);
+      avisar(e?.data?.message || e.message || 'No se pudo revisar la semana siguiente.', 'error');
+    }
+  };
+  const crearSemana = async (modo) => {
+    const { destino } = nuevaSem;
+    const base = filasRef.current;
+    const turnosOk = new Set((espacio.turnos || []).map((t) => t.id));
+    let fs;
+    if (modo === 'completa') {
+      fs = base.filter((f) => turnosOk.has(f.turnoId)).map((f) => ({ key: nuevaKey(), turnoId: f.turnoId, ownerEmpleadoId: duenoDe(f), celdas: JSON.parse(JSON.stringify(f.celdas)) }));
+    } else if (modo === 'estructura') {
+      fs = base.filter((f) => turnosOk.has(f.turnoId)).map((f) => ({ key: nuevaKey(), turnoId: f.turnoId, ownerEmpleadoId: duenoDe(f), celdas: {} }));
+    } else {
+      fs = filasVacias(espacio);
+    }
+    try {
+      await RrhhAPI.putSemana(destino, armarBody(fs, startDeId(destino)));
+      setSemanasIdx((prev) => (prev.some((s) => Number(s.semana) === destino && s.espacioId === espacio.id) ? prev
+        : [...prev, { espacioId: espacio.id, semana: destino, fechaInicio: startDeId(destino) }]));
+      setNuevaSem(null);
+      setSemanaId(destino);
+      avisar(`Semana ${String(destino).slice(4)} creada ✓`);
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo crear la semana.', 'error');
+    }
+  };
+
+  /* ── Vaciar ── */
+  const vaciar = (modo) => {
+    if (modo === 'turnos') mutarFilas((fs) => fs.map((f) => ({ ...f, ownerEmpleadoId: duenoDe(f), celdas: {} })));
+    else mutarFilas((fs) => fs.map((f) => ({ ...f, ownerEmpleadoId: null, celdas: {} })));
+    setVaciarOpen(false);
+    avisar(modo === 'turnos' ? 'Turnos vaciados: las filas quedan reservadas.' : 'Semana vaciada.');
+  };
+
+  /* ── drag & drop (reglas del v31) ── */
+  const soltar = (destFila, diaDest) => {
+    const src = dragRef.current;
+    dragRef.current = null; setDropSobre(null);
+    if (!src || (src.filaKey === destFila.key && src.dia === diaDest)) return;
+    const fs = filasRef.current;
+    const srcFila = fs.find((f) => f.key === src.filaKey);
+    const dest = fs.find((f) => f.key === destFila.key);
+    const celda = srcFila?.celdas[src.dia];
+    if (!celda || !dest) return;
+    const emp = empleadosMap.get(celda.empleadoId);
+    if (dest.celdas[diaDest]) { avisar('Esa celda ya tiene un turno: soltá en una celda vacía.', 'error'); return; }
+    const owner = duenoDe(dest);
+    if (owner && owner !== celda.empleadoId) {
+      avisar(`La fila es de ${nombreCorto(empleadosMap.get(owner))}: no se mezclan empleados en una fila.`, 'error'); return;
+    }
+    if (!owner && duenoEnTurno(fs, dest.turnoId, celda.empleadoId, dest.key)) {
+      avisar(`${nombreCorto(emp)} ya tiene una fila en este turno: soltá dentro de su fila.`, 'error'); return;
+    }
+    mutarFilas((prev) => prev.map((f) => {
+      let celdas = f.celdas; let ownerEmpleadoId = f.ownerEmpleadoId;
+      if (f.key === src.filaKey) { celdas = { ...celdas }; delete celdas[src.dia]; }
+      if (f.key === dest.key) { celdas = { ...celdas, [diaDest]: celda }; ownerEmpleadoId = ownerEmpleadoId || celda.empleadoId; }
+      return celdas === f.celdas ? f : { ...f, celdas, ownerEmpleadoId };
+    }));
+  };
+
   /* ── fechas especiales (PUT /config manda la colección completa) ── */
   const guardarFechas = async (fechas, msj) => {
     try {
@@ -812,6 +1020,42 @@ export default function RrhhCronogramas() {
     return out;
   }, [filas]);
 
+  const mesRef = useMemo(() => mesDeSemana(fechaInicio), [fechaInicio]);
+  useEffect(() => {
+    if (!espacio) return;
+    let alive = true;
+    const ids = semanasDelMes(mesRef).filter((id) => id !== semanaId);
+    Promise.resolve(flushRef.current())
+      .then(() => Promise.all(ids.map((id) => RrhhAPI.getSemana(id, espacio.id).then((r) => ({ id, r })).catch(() => ({ id, r: null })))))
+      .then((res) => {
+        if (!alive) return;
+        const out = [];
+        res.forEach(({ id, r }) => {
+          if (!r?.found) return;
+          const ini = startDeId(id);
+          (r.semana.turnos || []).forEach((t) => (t.filas || []).forEach((f) => (f.celdas || []).forEach((c) => {
+            out.push({ iso: sumarDias(ini, Number(c.dia)), empleadoId: c.empleadoId, horas: Number(c.horas) || JORNADA_HS });
+          })));
+        });
+        setOtrasDelMes(out);
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [espacioId, semanaId, config]);
+  const totalesMes = useMemo(() => {
+    const m = new Map();
+    const sumar = (id, hs) => { const t = m.get(id) || { dias: 0, hs: 0 }; t.dias += 1; t.hs += hs; m.set(id, t); };
+    otrasDelMes.forEach((c) => { if (enMes(c.iso, mesRef)) sumar(c.empleadoId, c.horas); });
+    filas.forEach((f) => Object.entries(f.celdas).forEach(([dia, c]) => {
+      if (c?.empleadoId && enMes(diasISO[Number(dia)], mesRef)) sumar(c.empleadoId, Number(c.horas) || JORNADA_HS);
+    }));
+    return m;
+  }, [otrasDelMes, filas, diasISO, mesRef]);
+  const semanasCreadas = useMemo(
+    () => new Set(semanasIdx.filter((s) => s.espacioId === espacioId).map((s) => Number(s.semana))),
+    [semanasIdx, espacioId]
+  );
+
   const sinJornadas = useMemo(() => {
     const sec = normSector(espacio?.sectorNomina);
     if (!sec) return [];
@@ -822,7 +1066,9 @@ export default function RrhhCronogramas() {
 
   /* ── estilos compartidos de la tabla ── */
   const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.text2, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
-  const colFila = { width: 140, minWidth: 140, maxWidth: 140, boxSizing: 'border-box' };
+  const colFila = { width: 132, minWidth: 132, maxWidth: 132, boxSizing: 'border-box' };
+  const thSup = { position: 'sticky', top: 0, zIndex: 3, height: 26, boxSizing: 'border-box', padding: '4px 6px', fontSize: 11 };
+  const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: T.text3, minWidth: 34 };
   const celTot = { padding: '4px 6px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, fontFamily: FB, fontSize: 12, color: T.text2, background: T.head };
 
   /* ═════ render ═════ */
@@ -858,17 +1104,17 @@ export default function RrhhCronogramas() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Boton onClick={() => setSemanaId((s) => s - 1)} title="Semana anterior">‹</Boton>
-        <div style={{ textAlign: 'center', minWidth: 250 }}>
+        <div onClick={() => setCalOpen(true)} title="Abrir calendario" style={{ textAlign: 'center', minWidth: 250, cursor: 'pointer' }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text, whiteSpace: 'nowrap' }}>
-            Semana {String(semanaId).slice(4)} <span title="Calendario: próximamente" style={{ fontSize: 12, opacity: 0.5 }}>📅</span>
+            Semana {String(semanaId).slice(4)} <span style={{ fontSize: 12 }}>📅</span>
           </div>
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, whiteSpace: 'nowrap' }}>{rangoLargo(fechaInicio)}</div>
         </div>
         <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
         <Boton onClick={() => setSemanaId(idDeSemana(domingoDeHoy()))} title="Ir a la semana de hoy">HOY</Boton>
         <div style={{ width: 1, alignSelf: 'stretch', background: T.border2, margin: '0 4px' }} />
-        <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>+ Semana</Boton>
-        <Boton prox peligro onClick={() => avisar('Llega en la próxima tanda.')}>Vaciar</Boton>
+        <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton>
+        <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)} title="Vaciar esta semana">Vaciar</Boton>
       </div>
 
       {/* arranque sin nómina */}
@@ -892,12 +1138,12 @@ export default function RrhhCronogramas() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
-                  <th style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
+                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
                   {diasISO.map((iso, i) => {
                     const esp = fechasMap.get(iso);
                     const d = new Date(iso + 'T12:00:00');
                     return (
-                      <th key={iso} onClick={() => setFechaSel(iso)}
+                      <th key={iso} rowSpan={2} onClick={() => setFechaSel(iso)}
                         title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
                         style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
                         <div style={{ color: esp ? colorCat(esp.tipo) : T.text2 }}>{DC[i]} {d.getDate()}</div>
@@ -907,10 +1153,15 @@ export default function RrhhCronogramas() {
                       </th>
                     );
                   })}
-                  <th style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, borderLeft: `2px solid ${T.border2}`, minWidth: 38 }} title="Jornadas del empleado en la semana (este espacio)">Sem</th>
-                  <th style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 38 }} title="Horas de la semana">Hs</th>
-                  <th style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 110 }} title="Días sin turno esta semana">Francos</th>
-                  <th style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 30 }} />
+                  <th colSpan={2} style={{ ...thDia, ...thSup, borderLeft: `2px solid ${T.border2}` }}>Semana</th>
+                  <th colSpan={2} style={{ ...thDia, ...thSup }} title={`Días dentro de ${MESES_L[mesRef.m]} (todas las semanas del mes en este espacio)`}>{MESES_C[mesRef.m]}</th>
+                  <th rowSpan={2} style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 100 }} title="Días sin turno esta semana">Francos</th>
+                  <th rowSpan={2} style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 26 }} />
+                </tr>
+                <tr>
+                  {['Días', 'Hs', 'Días', 'Hs'].map((h, i) => (
+                    <th key={i} style={{ ...thDia, ...thSub, borderLeft: i === 0 ? `2px solid ${T.border2}` : thDia.borderLeft }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -921,8 +1172,8 @@ export default function RrhhCronogramas() {
                   return (
                     <React.Fragment key={t.id}>
                       <tr>
-                        <td colSpan={12} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
-                          style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: 42, zIndex: 2, cursor: 'pointer', userSelect: 'none' }}>
+                        <td colSpan={14} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
+                          style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: 50, zIndex: 2, cursor: 'pointer', userSelect: 'none' }}>
                           <span style={{ display: 'inline-block', width: 14 }}>{minim ? '▸' : '▾'}</span>
                           {t.nombre}
                           {t.entrada && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: T.text3 }}> · entra {t.entrada}</span>}
@@ -933,6 +1184,7 @@ export default function RrhhCronogramas() {
                         const dueno = duenoDe(f);
                         const tot = dueno ? totales.get(dueno) : null;
                         const francos = tot?.francos || [];
+                        const totMes = dueno ? totalesMes.get(dueno) : null;
                         return (
                           <tr key={f.key}>
                             <td style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -947,16 +1199,23 @@ export default function RrhhCronogramas() {
                                   key={iso}
                                   onClick={() => abrirCelda(f, dia, t)}
                                   onContextMenu={(e) => { e.preventDefault(); sacarCelda(f, dia); }}
-                                  title={c ? `${nombreDe(emp)} · click derecho: sacar` : 'Cargar empleado'}
+                                  draggable={!!c}
+                                  onDragStart={(e) => { dragRef.current = { filaKey: f.key, dia }; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'turno'); } catch (_) {} }}
+                                  onDragOver={(e) => { if (dragRef.current) e.preventDefault(); }}
+                                  onDragEnter={() => { if (dragRef.current) setDropSobre(`${f.key}:${dia}`); }}
+                                  onDrop={(e) => { e.preventDefault(); soltar(f, dia); }}
+                                  onDragEnd={() => { dragRef.current = null; setDropSobre(null); }}
+                                  title={c ? `${nombreDe(emp)} · arrastrá para mover · click derecho: sacar` : 'Cargar empleado'}
                                   style={{
                                     padding: '4px 2px', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`,
-                                    cursor: 'pointer', background: c ? T.card : 'transparent', minWidth: 82,
+                                    cursor: c ? 'grab' : 'pointer', background: c ? T.card : 'transparent', minWidth: 78,
+                                    outline: dropSobre === `${f.key}:${dia}` ? `2px dashed ${T.accent}` : 'none', outlineOffset: -3,
                                   }}
                                 >
                                   <div style={{ height: 36, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                     {c ? (
                                       <>
-                                        <div style={{ fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreCorto(emp)}</div>
+                                        <div style={{ fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreCorto(emp)}</div>
                                         <div style={{ height: 16, display: 'flex', gap: 3, alignItems: 'center' }}>
                                           {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px' }}>{c.puesto}</span>}
                                           {c.horas !== JORNADA_HS && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
@@ -971,6 +1230,8 @@ export default function RrhhCronogramas() {
                             })}
                             <td style={{ ...celTot, borderLeft: `2px solid ${T.border2}`, fontFamily: FT, fontWeight: 700, fontSize: 13, color: tot && tot.semCnt >= 6 ? T.warn : T.accentTxt }}>{tot ? tot.semCnt : '—'}</td>
                             <td style={celTot}>{tot ? tot.hs : '—'}</td>
+                            <td style={{ ...celTot, fontFamily: FT, fontWeight: 700, fontSize: 13, color: T.accentTxt }}>{totMes ? totMes.dias : '—'}</td>
+                            <td style={celTot}>{totMes ? Math.round(totMes.hs * 10) / 10 : '—'}</td>
                             <td style={{ ...celTot, textAlign: 'left', fontSize: 11 }}>
                               {!tot ? '—' : francos.length === 0 ? '—'
                                 : francos.length > 3
@@ -985,7 +1246,7 @@ export default function RrhhCronogramas() {
                       })}
                       {!minim && (
                         <tr>
-                          <td colSpan={12} style={{ padding: '6px 12px', borderBottom: `1px solid ${T.border}` }}>
+                          <td colSpan={14} style={{ padding: '6px 12px', borderBottom: `1px solid ${T.border}` }}>
                             <span onClick={() => agregarFila(t.id)} style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: T.accentTxt, cursor: 'pointer' }}>
                               + Agregar empleado en {t.nombre}
                             </span>
@@ -1011,7 +1272,7 @@ export default function RrhhCronogramas() {
             {(config?.puestos || []).map((p) => <Chip key={p.codigo} color={T.accentTxt}>{p.codigo} · {p.nombre}</Chip>)}
           </div>
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 8 }}>
-            Click en una celda carga un empleado · click derecho lo saca · click en el día carga un feriado o evento · click en el turno lo minimiza · los cambios se guardan solos.
+            Click en una celda carga un empleado · arrastrala para moverla · click derecho la saca · click en el día carga un feriado o evento · click en el turno lo minimiza · los cambios se guardan solos.
           </div>
         </>
       )}
@@ -1030,6 +1291,26 @@ export default function RrhhCronogramas() {
           totales={totales}
           avisar={avisar}
           onCerrar={() => setExportOpen(false)}
+        />
+      )}
+      {nuevaSem && espacio && (
+        <ModalNuevaSemana
+          info={nuevaSem.cargando ? null : nuevaSem}
+          espacioNombre={espacio.nombre}
+          onElegir={crearSemana}
+          onCerrar={() => setNuevaSem(null)}
+        />
+      )}
+      {vaciarOpen && espacio && (
+        <ModalVaciar semanaId={semanaId} espacioNombre={espacio.nombre} onElegir={vaciar} onCerrar={() => setVaciarOpen(false)} />
+      )}
+      {calOpen && (
+        <ModalCalendario
+          semanaId={semanaId}
+          creadas={semanasCreadas}
+          fechasMap={fechasMap}
+          onElegir={(id) => { setCalOpen(false); setSemanaId(id); }}
+          onCerrar={() => setCalOpen(false)}
         />
       )}
       {fechaSel && (
