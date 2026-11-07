@@ -416,6 +416,18 @@ export default function Navbar() {
                 <SucursalesChips />
               </Box>
             )}
+            {/* Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas". */}
+            {!isAppAdmin && location.pathname.startsWith('/rrhh/cronogramas') && (
+              <Box sx={{ pl: 1, pb: 0.25 }}>
+                <SucursalesChips sinTodas ayuda={
+                  <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
+                    <b>Sucursales</b><br />
+                    Cada sucursal tiene su propio cronograma. La nómina y los feriados son los
+                    mismos para todas; los eventos son de cada sucursal.
+                  </span>
+                } />
+              </Box>
+            )}
             </Box>
 
             {/* Selector negocio/división */}
