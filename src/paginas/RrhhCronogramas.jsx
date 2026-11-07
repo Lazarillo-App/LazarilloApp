@@ -3,11 +3,13 @@
 // RRHH › Cronogramas — Etapa 1, tanda 2 (front básico contra la API).
 // Diseño calcado del mockup v31 en modo día (marca Lazarillo); el header es el
 // de la app (Navbar) — acá solo va la toolbar del módulo.
-// Quedan para las tandas 3/4: drag & drop, copiar/vaciar semana, ⚙ Configuración
-// (espacios/turnos/referencias/fechas), banda de demanda y export a imagen.
+// Barra completa del mockup v31: Exportar imagen ACTIVO (2 PNG: cronograma +
+// francos, dibujados con Canvas en modo día). Quedan "Próximamente": + Semana
+// (copiar), Vaciar, ⚙ Configuración y el calendario; después drag & drop y demanda.
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
+import { useBusiness } from '../context/BusinessContext';
 
 /* ───────── tema (modo día del mockup v31, paleta de marca) ───────── */
 const T = {
@@ -53,14 +55,14 @@ const Chip = ({ color, children, onClick, title, activoBg }) => (
   }}>{children}</span>
 );
 
-const Boton = ({ children, onClick, activo, grande, peligro, deshabilitado, title }) => (
-  <button onClick={deshabilitado ? undefined : onClick} title={title} style={{
+const Boton = ({ children, onClick, activo, grande, peligro, deshabilitado, prox, title }) => (
+  <button onClick={deshabilitado ? undefined : onClick} title={prox ? 'Próximamente' : title} style={{
     fontFamily: FB, fontWeight: 700, fontSize: grande ? 14 : 12.5,
     padding: grande ? '9px 18px' : '6px 12px', borderRadius: 10, cursor: deshabilitado ? 'default' : 'pointer',
     border: `1px solid ${peligro ? T.bad + '88' : activo ? T.accent : T.border2}`,
     background: activo ? T.accent : 'transparent',
     color: deshabilitado ? T.text3 : peligro ? T.bad : activo ? T.ink : T.text2,
-    opacity: deshabilitado ? 0.55 : 1,
+    opacity: deshabilitado || prox ? 0.5 : 1, whiteSpace: 'nowrap',
   }}>{children}</button>
 );
 
@@ -86,6 +88,204 @@ function duenoDe(fila) {
   let mejor = null; let n = 0;
   cnt.forEach((v, k) => { if (v > n) { n = v; mejor = k; } });
   return mejor;
+}
+
+/* ───────── imagen para WhatsApp (Canvas, siempre en modo día) ─────────
+ * Dos PNG por espacio y semana: 1) cronograma de los turnos tildados,
+ * 2) francos de la semana (sin eventuales, cuyo chip ya está en la grilla).
+ */
+const IMG = { W: 540, S: 2, P: 16, bg: '#FFFFFF', celda: '#EAF1F8', ink: '#15213E', acc: '#1E87B5', gris: '#5a6a82', pie: '#8aa0b5', esp: '#B97700', logo: '#5BC2EA' };
+const rrect = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+const recortar = (ctx, txt, ancho) => {
+  if (ctx.measureText(txt).width <= ancho) return txt;
+  let t = txt;
+  while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
+  return t + '…';
+};
+function lienzo(H) {
+  const cv = document.createElement('canvas');
+  cv.width = IMG.W * IMG.S; cv.height = Math.round(H * IMG.S);
+  const ctx = cv.getContext('2d'); ctx.scale(IMG.S, IMG.S);
+  ctx.fillStyle = IMG.bg; ctx.fillRect(0, 0, IMG.W, H);
+  return { cv, ctx };
+}
+function cabeceraImg(ctx, titulo, rango) {
+  const { P } = IMG;
+  ctx.fillStyle = IMG.logo; rrect(ctx, P, P, 24, 24, 7); ctx.fill();
+  ctx.fillStyle = IMG.ink; ctx.font = "800 15px Sora, sans-serif"; ctx.textAlign = 'center'; ctx.fillText('L', P + 12, P + 17);
+  ctx.textAlign = 'left'; ctx.font = "700 13px Sora, sans-serif"; ctx.fillText(titulo, P + 32, P + 10);
+  ctx.fillStyle = IMG.gris; ctx.font = "400 10px Archivo, sans-serif"; ctx.fillText(rango, P + 32, P + 22);
+}
+function pieImg(ctx, H) {
+  ctx.fillStyle = IMG.pie; ctx.font = "400 8.5px Archivo, sans-serif"; ctx.textAlign = 'right';
+  ctx.fillText('Lazarillo Gestión · lazarillo.com.ar', IMG.W - IMG.P, H - IMG.P + 4);
+}
+// grupos: [{ turno:{nombre,entrada}, filas:[{celdas:{dia:{nombre,puesto}}}] }] · dias: [{nro, dc, ev}]
+function dibujarCronograma({ titulo, rango, dias, grupos }) {
+  if (!grupos.length) return null;
+  const { W, P } = IMG; const GAP = 2;
+  const colW = (W - P * 2 - GAP * 6) / 7;
+  const extraEv = dias.some((d) => d.ev) ? 11 : 0; // línea pareja para el nombre del feriado/evento
+  const altos = grupos.map((g) => {
+    let maxN = 0;
+    for (let j = 0; j < 7; j++) maxN = Math.max(maxN, g.filas.filter((f) => f.celdas[j]).length);
+    const celH = Math.max(40, 17 + extraEv + maxN * 12 + 5);
+    return { celH, total: 20 + celH + 8 };
+  });
+  const H = P + 34 + altos.reduce((a, x) => a + x.total, 0) + 18 + P;
+  const { cv, ctx } = lienzo(H);
+  cabeceraImg(ctx, titulo, rango);
+  let y = P + 34;
+  grupos.forEach((g, gi) => {
+    ctx.fillStyle = IMG.acc; ctx.font = "700 10px Sora, sans-serif"; ctx.textAlign = 'left';
+    ctx.fillText((g.turno.nombre + (g.turno.entrada ? ' · ' + g.turno.entrada : '')).toUpperCase(), P, y + 12);
+    y += 20;
+    const { celH } = altos[gi];
+    for (let j = 0; j < 7; j++) {
+      const x = P + j * (colW + GAP);
+      const d = dias[j];
+      ctx.fillStyle = IMG.celda; rrect(ctx, x, y, colW, celH, 6); ctx.fill();
+      ctx.fillStyle = d.ev ? IMG.esp : IMG.gris; ctx.font = "700 9px Sora, sans-serif"; ctx.textAlign = 'center';
+      ctx.fillText(d.dc + ' ' + d.nro + (d.ev ? ' ★' : ''), x + colW / 2, y + 12);
+      if (d.ev) { ctx.font = "600 7px Archivo, sans-serif"; ctx.fillText(recortar(ctx, d.ev, colW - 8), x + colW / 2, y + 21); }
+      let yy = y + 23 + extraEv;
+      g.filas.forEach((f) => {
+        const c = f.celdas[j];
+        if (!c) return;
+        const tag = c.puesto ? ' ·' + c.puesto : '';
+        ctx.font = "600 8.5px Archivo, sans-serif";
+        const nom = recortar(ctx, c.nombre, colW - 6 - (tag ? ctx.measureText(tag).width : 0));
+        const wN = ctx.measureText(nom).width; const wT = tag ? ctx.measureText(tag).width : 0;
+        const x0 = x + colW / 2 - (wN + wT) / 2;
+        ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.fillText(nom, x0, yy);
+        if (tag) { ctx.fillStyle = IMG.acc; ctx.fillText(tag, x0 + wN, yy); }
+        yy += 12;
+      });
+    }
+    y += celH + 8;
+  });
+  pieImg(ctx, H);
+  return cv;
+}
+// items: [{ n, txt }]
+function dibujarFrancos({ titulo, rango, items }) {
+  if (!items.length) return null;
+  const { W, P } = IMG;
+  const filas = Math.ceil(items.length / 2);
+  const H = P + 34 + 24 + filas * 17 + 8 + 16 + P;
+  const { cv, ctx } = lienzo(H);
+  cabeceraImg(ctx, titulo, rango);
+  let y = P + 34;
+  ctx.fillStyle = IMG.acc; ctx.font = "700 11px Sora, sans-serif"; ctx.textAlign = 'left';
+  ctx.fillText('🌴 FRANCOS DE LA SEMANA', P, y + 13);
+  y += 24;
+  const colF = (W - P * 2) / 2;
+  items.forEach((f, i) => {
+    const cx = P + (i % 2) * colF; const cy = y + Math.floor(i / 2) * 17 + 11;
+    ctx.textAlign = 'left'; ctx.font = "600 10.5px Archivo, sans-serif";
+    const nom = recortar(ctx, f.n, colF * 0.55); const wN = ctx.measureText(nom).width;
+    ctx.fillStyle = IMG.ink; ctx.fillText(nom, cx, cy);
+    ctx.font = "400 10.5px Archivo, sans-serif"; ctx.fillStyle = IMG.gris;
+    ctx.fillText(recortar(ctx, '  ' + f.txt, colF - wN - 14), cx + wN, cy);
+  });
+  pieImg(ctx, H);
+  return cv;
+}
+const slug = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/* ───────── modal: exportar imagen ───────── */
+function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
+  const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
+  const [urlCrono, setUrlCrono] = useState(null);
+  const [urlFrancos, setUrlFrancos] = useState(null);
+  const sufijo = negocio ? ' · ' + negocio : '';
+  const incluidos = (espacio.turnos || []).filter((t) => tildados[t.id]);
+
+  useEffect(() => {
+    const dias = diasISO.map((iso, j) => {
+      const f = fechasMap.get(iso);
+      return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || f.tipo) : '' };
+    });
+    const grupos = incluidos.map((t) => ({
+      turno: t,
+      filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
+        const celdas = {};
+        Object.entries(f.celdas).forEach(([dia, c]) => {
+          if (c?.empleadoId) celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto };
+        });
+        return { celdas };
+      }),
+    }));
+    const items = [...totales.entries()]
+      .filter(([, t]) => t.semCnt > 0 && t.francos.length <= 3)
+      .map(([id, t]) => ({ n: nombreDe(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
+      .sort((a, b) => a.n.localeCompare(b.n));
+    try {
+      const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre + sufijo, rango, dias, grupos });
+      setUrlCrono(cv ? cv.toDataURL('image/png') : null);
+    } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
+    try {
+      const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre + sufijo, rango, items });
+      setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
+    } catch (e) { setUrlFrancos(null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tildados]);
+
+  const base = slug(espacio.nombre) + (negocio ? '_' + slug(negocio) : '') + '_sem' + String(semanaId).slice(-2);
+  const nombreCrono = 'cronograma_' + base +
+    (incluidos.length === (espacio.turnos || []).length ? '' : '_' + incluidos.map((t) => slug(t.nombre)).join('_')) + '.png';
+  // Un botón por imagen: cada click es un gesto del usuario (los navegadores bloquean descargas encadenadas).
+  const bajar = (url, nombre, label) => {
+    if (!url) { avisar('La imagen todavía no se generó.', 'error'); return; }
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    avisar(`${label} descargado ✓ · si no bajó: click derecho sobre la imagen → Guardar imagen como…`);
+  };
+  const rotulo = { fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 };
+  const imgSt = { width: '100%', display: 'block', borderRadius: 12, border: `1px solid ${T.border2}`, background: '#FFFFFF' };
+
+  return (
+    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Así sale la imagen</div>
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={{ ...rotulo, marginBottom: 0 }}>Turnos</span>
+          {(espacio.turnos || []).map((t) => (
+            <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: FB, fontSize: 12.5, color: T.text, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!tildados[t.id]} onChange={(e) => setTildados((v) => ({ ...v, [t.id]: e.target.checked }))} style={{ accentColor: T.accent }} />
+              {t.nombre}
+            </label>
+          ))}
+        </div>
+        {urlCrono ? (
+          <>
+            <div style={rotulo}>Imagen 1 · Cronograma</div>
+            <img src={urlCrono} alt="Imagen del cronograma para WhatsApp" style={imgSt} />
+          </>
+        ) : (
+          <div style={{ padding: 30, textAlign: 'center', fontFamily: FB, fontSize: 12.5, color: T.text3, background: T.card, borderRadius: 12 }}>
+            {incluidos.length ? 'Generando la imagen…' : 'Elegí al menos un turno para la imagen.'}
+          </div>
+        )}
+        {urlFrancos && (
+          <div style={{ marginTop: 10 }}>
+            <div style={rotulo}>Imagen 2 · Francos</div>
+            <img src={urlFrancos} alt="Imagen de los francos de la semana" style={imgSt} />
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
+            {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
@@ -301,6 +501,9 @@ export default function RrhhCronogramas() {
   const [celdaSel, setCeldaSel] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const { active: negocioActivo } = useBusiness() || {};
+  const nombreNegocio = negocioActivo?.name || negocioActivo?.nombre || '';
   const saveTimer = useRef(null);
   const pendienteRef = useRef(null); // { semanaId, body } del guardado programado
   const putEnVuelo = useRef(null);   // promesa del PUT en tránsito
@@ -555,35 +758,33 @@ export default function RrhhCronogramas() {
 
   return (
     <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box' }}>
-      {/* toolbar del módulo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text }}>Cronogramas</div>
-
-        {/* tabs de espacios */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(config?.espacios || []).map((e) => (
-            <Chip key={e.id} color={T.text3} activoBg={e.id === espacioId} onClick={() => setEspacioId(e.id)}>{e.nombre}</Chip>
-          ))}
-        </div>
-
-        {/* navegador semanal */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 6 }}>
-          <Boton onClick={() => setSemanaId((s) => s - 1)} title="Semana anterior">‹</Boton>
-          <div style={{ textAlign: 'center', minWidth: 230 }}>
-            <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>Semana {String(semanaId).slice(4)}</div>
-            <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3 }}>{rangoLargo(fechaInicio)}</div>
-          </div>
-          <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
-          <Boton onClick={() => setSemanaId(idDeSemana(domingoDeHoy()))} title="Ir a la semana de hoy">HOY</Boton>
-        </div>
-
+      {/* barra del módulo — fila 1: espacios + acciones · fila 2: semana */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginRight: 6 }}>Cronogramas</div>
+        {(config?.espacios || []).map((e) => (
+          <Boton key={e.id} activo={e.id === espacioId} onClick={() => setEspacioId(e.id)}>{e.nombre}</Boton>
+        ))}
         <div style={{ flex: 1 }} />
-
-        {/* estado de guardado */}
-        <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
+        <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
         <Boton onClick={() => setImportOpen(true)} title="Importar empleados desde la nómina de MaxiRest">👥 Nómina</Boton>
+        <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
+        <Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen del cronograma y de los francos para WhatsApp">🖼 Exportar imagen</Boton>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Boton onClick={() => setSemanaId((s) => s - 1)} title="Semana anterior">‹</Boton>
+        <div style={{ textAlign: 'center', minWidth: 250 }}>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text, whiteSpace: 'nowrap' }}>
+            Semana {String(semanaId).slice(4)} <span title="Calendario: próximamente" style={{ fontSize: 12, opacity: 0.5 }}>📅</span>
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, whiteSpace: 'nowrap' }}>{rangoLargo(fechaInicio)}</div>
+        </div>
+        <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
+        <Boton onClick={() => setSemanaId(idDeSemana(domingoDeHoy()))} title="Ir a la semana de hoy">HOY</Boton>
+        <div style={{ width: 1, alignSelf: 'stretch', background: T.border2, margin: '0 4px' }} />
+        <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>+ Semana</Boton>
+        <Boton prox peligro onClick={() => avisar('Llega en la próxima tanda.')}>Vaciar</Boton>
       </div>
 
       {/* arranque sin nómina */}
@@ -603,7 +804,7 @@ export default function RrhhCronogramas() {
             </div>
           )}
 
-          <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: 'calc(100vh - 185px)' }}>
+          <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: 'calc(100vh - 225px)' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
@@ -708,6 +909,21 @@ export default function RrhhCronogramas() {
       )}
 
       {/* modales y toast */}
+      {exportOpen && espacio && (
+        <ModalExportar
+          espacio={espacio}
+          negocio={nombreNegocio}
+          semanaId={semanaId}
+          rango={rangoLargo(fechaInicio)}
+          diasISO={diasISO}
+          fechasMap={fechasMap}
+          filas={filas}
+          empleadosMap={empleadosMap}
+          totales={totales}
+          avisar={avisar}
+          onCerrar={() => setExportOpen(false)}
+        />
+      )}
       {celdaSel && espacio && (
         <ModalAsignar
           ctx={celdaSel}
