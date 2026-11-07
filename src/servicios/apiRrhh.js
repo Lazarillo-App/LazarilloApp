@@ -13,8 +13,11 @@ export const RrhhAPI = {
   // Config (empleados + puestos + fechas especiales + espacios con turnos).
   // El primer GET siembra los defaults del negocio (espacios, turnos,
   // referencias y feriados AR) en el back.
-  getConfig: () => api(`${base()}/config`),
-  putConfig: (body) => api(`${base()}/config`, { method: 'PUT', body }),
+  // branchId: sucursal (null = principal). Los espacios y los eventos son de
+  // cada sucursal; la nómina, las referencias y los feriados son compartidos.
+  getConfig: (branchId = null) => api(`${base()}/config${qs({ branchId: branchId ?? undefined })}`),
+  putConfig: (body, branchId = null) =>
+    api(`${base()}/config${qs({ branchId: branchId ?? undefined })}`, { method: 'PUT', body }),
 
   // Nómina: la réplica de MaxiRest se lista para TILDAR (mezcla empleados
   // reales con usuarios técnicos del POS) y se importan solo los elegidos.

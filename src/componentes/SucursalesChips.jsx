@@ -38,7 +38,10 @@ const AYUDA = (
   </span>
 );
 
-export default function SucursalesChips() {
+// sinTodas: para pantallas donde "Todas" no tiene sentido (un cronograma es de
+// UNA sucursal): no se muestra y, si estaba elegida, se marca la principal.
+// ayuda: texto del "?" propio de esa pantalla.
+export default function SucursalesChips({ sinTodas = false, ayuda = null }) {
   const { branches, activeBranchId, setActiveBranch, loadBranches } = useBranch() || {};
   const { activeBusinessId } = useBusiness() || {};
   const { isStaff } = useAccess() || {};
@@ -59,15 +62,17 @@ export default function SucursalesChips() {
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       {lista.length > 0 && (
         <>
-          {varias && (
+          {varias && !sinTodas && (
             <button type="button" onClick={() => setActiveBranch?.(null)}
               style={{ ...CHIP, ...(esTodas ? CHIP_ON : null) }}>
               Todas
             </button>
           )}
-          {lista.map((b) => {
+          {lista.map((b, i) => {
             // Con una sola sucursal, esa es la que se ve siempre (queda marcada).
-            const on = varias ? (!esTodas && String(activeBranchId) === String(b.id)) : true;
+            const on = varias
+              ? (esTodas ? (sinTodas && i === 0) : String(activeBranchId) === String(b.id))
+              : true;
             const color = b.color || (b.isMain ? 'var(--color-primary)' : '#1976d2');
             return (
               <button key={b.id} type="button"
@@ -94,7 +99,7 @@ export default function SucursalesChips() {
           </button>
         </Tooltip>
       )}
-      <Tooltip title={AYUDA} arrow>
+      <Tooltip title={ayuda || AYUDA} arrow>
         <span aria-label="Qué son las sucursales"
           style={{ ...REDONDO, width: 16, height: 16, fontSize: 10, cursor: 'help', opacity: 0.75,
             border: '1px solid color-mix(in srgb, var(--on-primary) 40%, transparent)' }}>
