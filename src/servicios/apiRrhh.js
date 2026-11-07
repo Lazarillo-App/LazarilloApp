@@ -31,6 +31,12 @@ export const RrhhAPI = {
       body: Array.isArray(codigos) ? { codigos } : {},
     }),
   crearEmpleado: (body) => api(`${base()}/empleados`, { method: 'POST', body }),
+
+  // Nómina compartida con otro negocio de la cartera (vinculada, no copia).
+  candidatosNomina: () => api(`${base()}/nomina/candidatos`),
+  vincularNomina: (origenBusinessId) =>
+    api(`${base()}/nomina/vinculo`, { method: 'PUT', body: { origenBusinessId } }),
+  desvincularNomina: () => api(`${base()}/nomina/vinculo`, { method: 'DELETE' }),
   editarEmpleado: (id, body) =>
     api(`${base()}/empleados/${id}`, { method: 'PATCH', body }),
 
