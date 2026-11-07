@@ -31,6 +31,8 @@ const T = {
   sombra: '0 20px 60px #15213E33', vacio: '#B9C7DA',
 };
 const FT = "'Sora', sans-serif";
+// Texto sobre el encabezado de tabla del tema (fondo = color del negocio).
+const TH_TXT = 'var(--on-primary, #fff)';
 const FB = "'Archivo', sans-serif";
 const JORNADA_HS = 8;
 
@@ -505,7 +507,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
       background: empId === e.id ? T.accent : 'transparent',
       color: empId === e.id ? T.ink : T.text, borderBottom: `1px solid ${T.border}`,
     }}>
-      <span>{nombreDe(e)}</span>
+      <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
       <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{e.sector || ''}</span>
     </div>
   );
@@ -806,7 +808,7 @@ export default function RrhhCronogramas() {
       if (f.key !== filaKey) return f;
       const celdas = { ...f.celdas };
       if (valor) celdas[dia] = valor; else delete celdas[dia];
-      const owner = f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
+      const owner = !Object.keys(celdas).length ? null : f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
     setCeldaSel(null);
@@ -818,7 +820,8 @@ export default function RrhhCronogramas() {
       if (f.key !== fila.key) return f;
       const celdas = { ...f.celdas };
       delete celdas[dia];
-      return { ...f, celdas };
+      // sin días cargados la fila vuelve a quedar libre (si no, el empleado seguía «pegado» a la fila)
+      return { ...f, celdas, ownerEmpleadoId: Object.keys(celdas).length ? f.ownerEmpleadoId : null };
     }));
   };
 
@@ -898,7 +901,7 @@ export default function RrhhCronogramas() {
     }
     mutarFilas((prev) => prev.map((f) => {
       let celdas = f.celdas; let ownerEmpleadoId = f.ownerEmpleadoId;
-      if (f.key === src.filaKey) { celdas = { ...celdas }; delete celdas[src.dia]; }
+      if (f.key === src.filaKey) { celdas = { ...celdas }; delete celdas[src.dia]; if (f.key !== dest.key && !Object.keys(celdas).length) ownerEmpleadoId = null; }
       if (f.key === dest.key) { celdas = { ...celdas, [diaDest]: celda }; ownerEmpleadoId = ownerEmpleadoId || celda.empleadoId; }
       return celdas === f.celdas ? f : { ...f, celdas, ownerEmpleadoId };
     }));
@@ -992,10 +995,12 @@ export default function RrhhCronogramas() {
   }, [config, espacio, totales]);
 
   /* ── estilos compartidos de la tabla ── */
-  const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.text2, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
+  // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
+  // encabezado van en el color de contraste del tema, si no los días no se leían (Diego 07/11/2026).
+  const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: TH_TXT, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
   const colFila = { width: 132, minWidth: 132, maxWidth: 132, boxSizing: 'border-box' };
   const thSup = { position: 'sticky', top: 0, zIndex: 3, height: 26, boxSizing: 'border-box', padding: '4px 6px', fontSize: 11 };
-  const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: T.text3, minWidth: 34 };
+  const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, minWidth: 34 };
   const celTot = { padding: '4px 6px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, fontFamily: FB, fontSize: 12, color: T.text2, background: T.head };
 
   /* ═════ render ═════ */
@@ -1066,7 +1071,7 @@ export default function RrhhCronogramas() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
-                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
+                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
                   {diasISO.map((iso, i) => {
                     const esp = fechasMap.get(iso);
                     const d = new Date(iso + 'T12:00:00');
@@ -1074,8 +1079,10 @@ export default function RrhhCronogramas() {
                       <th key={iso} rowSpan={2} onClick={() => setFechaSel(iso)}
                         title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
                         style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
-                        <div style={{ color: esp ? colorCat(esp.tipo) : T.text2 }}>{DC[i]} {d.getDate()}</div>
-                        <div style={{ height: 14, fontFamily: FB, fontWeight: 700, fontSize: 10, color: esp ? colorCat(esp.tipo) : T.vacio, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '0 auto' }}>
+                        <div style={{ color: TH_TXT }}>{DC[i]} {d.getDate()}</div>
+                        {/* la fecha especial va en una pastilla blanca: se lee sobre cualquier color de negocio */}
+                        <div style={{ height: 16, fontFamily: FB, fontWeight: 700, fontSize: 10, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '2px auto 0',
+                          ...(esp ? { display: 'inline-block', padding: '0 7px', borderRadius: 8, background: '#fff', color: colorCat(esp.tipo) } : { color: TH_TXT, opacity: 0.7 }) }}>
                           {esp ? (esp.nombre || etiquetaTipo(esp.tipo)) : '+ especial'}
                         </div>
                       </th>
