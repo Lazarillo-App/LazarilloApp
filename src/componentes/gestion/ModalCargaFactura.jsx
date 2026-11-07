@@ -249,15 +249,33 @@ const AvisoLinea = ({ a, onCorregir, onAceptar }) => {
     </div>
   );
 };
-// Insumo sin concepto de caja en MaxiRest (Diego 06/11/2026). Rojo mientras no se elija uno para esta
-// factura (no deja confirmar); ámbar después, para que se corrija de raíz en MaxiRest.
+// Insumo sin concepto de caja (Diego 06/11/2026). Diego 07/11: se avisa pero deja guardar — data entry
+// puede no saber a qué corresponde; queda en Sin rubro para que lo resuelva el administrador.
 const AvisoSinConcepto = ({ rubro, lazarillo, elegido }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
-    background: elegido ? "#fdf8ef" : "#fdf3f3", border: `1px solid ${elegido ? "#f0d9a8" : "#f3c4c4"}`, color: elegido ? "#8a5a00" : C.rojo }}>
-    <span>⚠ <b>Sin concepto de caja asociado</b>: {lazarillo ? "el insumo todavía no tiene concepto" : rubro ? <>el rubro «{rubro}» no tiene concepto en MaxiRest</> : "el insumo no tiene rubro en MaxiRest"}.{" "}
-      {!elegido ? "Elegí el concepto de caja para esta factura." : lazarillo ? "Queda con el concepto elegido." : "Esta factura va con el concepto elegido; corregilo en MaxiRest para las próximas."}</span>
+    background: "#fdf8ef", border: "1px solid #f0d9a8", color: "#8a5a00" }}>
+    <span>⚠ <b>Sin concepto de caja asociado</b>: {lazarillo ? "el insumo todavía no tiene concepto" : rubro ? <>el rubro «{rubro}» no tiene concepto</> : "el insumo no tiene rubro"}.{" "}
+      {!elegido ? "Elegí el concepto en «Caja» o dejalo: queda en Sin rubro para el administrador." : "Esta factura va con el concepto elegido."}</span>
   </div>
 );
+// Rubro con varios conceptos posibles (Diego 07/11/2026, ej. Vajilla: reposición o ítem nuevo): se pregunta
+// en el renglón. «No sé» deja guardar: queda en Sin rubro «se decide en cada compra».
+const PreguntaConcepto = ({ opciones, elegido, noSe, nombreDe, onElegir, onNoSe }) => {
+  const ch = (on, ns) => ({ display: "inline-flex", alignItems: "center", height: 28, padding: "0 11px", borderRadius: 14, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap",
+    border: `1px solid ${on ? (ns ? "#f0d9a8" : "#2a88ad") : C.borde}`, background: on ? (ns ? "#fdf8ef" : "#2a88ad") : "#fff",
+    color: on ? (ns ? "#8a5a00" : "#fff") : ns ? C.gris : "#333", fontWeight: on ? 600 : 400 });
+  const sel = opciones.find((o) => nombreDe(o.codigo) && nombreDe(o.codigo) === elegido);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "6px 0 2px", fontSize: 12 }}>
+      <b style={{ marginRight: 2 }}>¿Es…?</b>
+      {opciones.map((o) => <span key={o.etiqueta} role="button" style={ch(sel === o, false)} onClick={() => onElegir(nombreDe(o.codigo))}>{o.etiqueta}</span>)}
+      <span role="button" style={ch(!sel && noSe, true)} onClick={onNoSe} title="Queda sin concepto: lo resuelve el administrador desde Sin rubro">No sé</span>
+      <span style={{ color: sel ? C.verde : "#8a5a00", marginLeft: 4 }}>
+        {sel ? <>→ <b>{o2t(sel, nombreDe)}</b></> : noSe ? "→ queda sin concepto: va a Sin rubro" : ""}</span>
+    </div>
+  );
+};
+const o2t = (o, nombreDe) => `${o.codigo} · ${nombreDe(o.codigo)}`;
 const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px" }}>BONIFICADO</span>;
 function Badge({ estado }) {
   const col = estado === "PAGA" ? C.verde : estado === "PARCIAL" ? C.nar : C.rojo;
@@ -507,6 +525,7 @@ function ModalNuevaCarga(props) {
   // IVA e II guardados en la última carga de Lazarillo mandan sobre los de MaxiRest (Diego 06/11/2026).
   const recDe = (t, k) => (maestros.recordados || []).find((r) => r.t === t && String(r.k) === String(k));
   const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => { const r = recDe("insumo", i.codigo); return { codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), rubro: i.rubro || null, unit: i.unit,
+    alternativas: Array.isArray(i.alternativas) && i.alternativas.length >= 2 ? i.alternativas.map((a) => ({ etiqueta: a.etiqueta, codigo: String(a.codigo) })) : null,
     alic: r && r.alic != null ? r.alic : i.alic, ii: r && r.ii != null ? r.ii || null : i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }; });
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
@@ -550,6 +569,7 @@ function ModalNuevaCarga(props) {
   const sinConceptoDe = (l) => {
     if (l.tipo !== "insumo" || !l.item) return null;
     const m = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
+    if (m && m.alternativas) return { alternativas: m.alternativas };
     return m && !m.concepto ? { rubro: m.rubro, lazarillo: /^L\d+$/.test(String(m.codigo)), elegido: !!codConcepto(l.conc) } : null;
   };
   const medidaDe = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).medida || "";
@@ -885,7 +905,6 @@ function ModalNuevaCarga(props) {
     // Insumo bonificado: importe 0 con cantidad (Diego, 27/10/2026); un concepto sí necesita importe.
     if (l.tipo === "insumo" ? !(parseFloat(l.cant) > 0) : !(netoDe(l) > 0)) return l.tipo === "insumo" ? "Poné la cantidad" : "Poné el importe";
     if (descExcede(l)) return "El descuento es mayor que el importe";
-    if (l.tipo === "insumo" && !codConcepto(l.conc)) return "Elegí el concepto de caja del insumo";
     if (l.reparto && Math.abs(l.reparto.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0) - 100) >= 0.01) return "El reparto por PDV tiene que sumar 100%";
     return null;
   };
@@ -1043,8 +1062,6 @@ function ModalNuevaCarga(props) {
       faltan.push(`La fecha de factura (${dmy4(fAct)}) es posterior a hoy. Revisala; si está bien, tocá Guardar de nuevo.`);
       setFuturaOk(fAct);
     }
-    const sinConc = lineas.filter((l) => l.tipo === "insumo" && l.item && !codConcepto(l.conc || conceptoDeInsumo(l.item)));
-    if (sinConc.length) faltan.push(`Elegí el concepto de caja de: ${sinConc.map((l) => l.item).join(", ")}.`);
     if (lineas.some((l) => l.editando && !faltaDe(l))) setLineas((ls) => ls.map((x) => ({ ...x, editando: false })));
     if (faltan.length) { setErrores(faltan); setErrFecha(!fechaValida(fAct)); return; }
     // Precios muy lejos de la última compra (rojo) sin resolver: se pregunta una sola vez.
@@ -1316,7 +1333,15 @@ function ModalNuevaCarga(props) {
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
                 const sinConc = !soloVer ? sinConceptoDe(l) : null;
-                const sinConcUI = sinConc && <AvisoSinConcepto {...sinConc} />;
+                const elegirConc = (v) => {
+                  // mismo efecto que elegir en «Caja»: el reparto precargado pasa a ser el de la regla del concepto
+                  const regla = reglaDe(codConcepto(v), PDVS, fecha);
+                  setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: v, noSe: false, reparto: regla ? regla.map((r) => ({ ...r })) : (x.reparto && !reglaDeItem(x, x.item) ? x.reparto : undefined) }));
+                };
+                const sinConcUI = sinConc && (sinConc.alternativas
+                  ? ((l.editando || !codConcepto(l.conc)) && <PreguntaConcepto opciones={sinConc.alternativas} elegido={l.conc} noSe={!!l.noSe} nombreDe={nomConcepto}
+                      onElegir={elegirConc} onNoSe={() => setLineas((ls) => ls.map((x, ix) => ix !== i ? x : { ...x, conc: "", noSe: true }))} />)
+                  : <AvisoSinConcepto {...sinConc} />);
                 const celda = { color: "#555", textAlign: "center", minWidth: 0, overflow: "hidden" };
                 const chica = { display: "block", fontSize: 10.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
                 const txtDesc = desc > 0 && esIns ? (l.descTipo === "u" ? `−${fmtNum(parseImp(l.desc))} /u` : l.descTipo === "t" ? `−${fmtNum(parseImp(l.desc))}` : `−${fmtNum(parseImp(l.desc))}%`) + (cantN > 0 ? ` → ${fmtNum(Math.round((brutoDe(l) - desc) / cantN * 100) / 100)}` : "") : "";
@@ -1839,6 +1864,17 @@ function ModalNuevaCarga(props) {
                   </span>
                   {fracG > 0 && <b style={{ color: C.verde }}>−{$fmt(descGImporte)}</b>}
                 </span>
+                {(() => {
+                  // Renglones que quedan sin concepto (Diego 07/11/2026): se avisa, se puede guardar igual.
+                  const sc = lineas.filter((l) => l.tipo === "insumo" && l.item && !codConcepto(l.conc || conceptoDeInsumo(l.item)));
+                  if (!sc.length) return null;
+                  const imp = sc.reduce((a, l) => a + netoDe(l) + ivaDe(l) + parseImp(l.impint), 0);
+                  return (
+                    <span style={{ fontWeight: 600, color: "#8a5a00" }}>
+                      ⚠ {sc.length === 1 ? "1 renglón queda" : `${sc.length} renglones quedan`} <b>sin concepto</b> ({$fmt(imp)}). Podés guardar igual: aparece{sc.length === 1 ? "" : "n"} en Sin rubro para que lo resuelva el administrador.
+                    </span>
+                  );
+                })()}
                 {totCtrl > 0 && netoTotal > 0 && (() => {
                   const ok = Math.abs(difCtrl) <= 1;
                   return (
