@@ -940,22 +940,11 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
         input,select,textarea{font-family:inherit}
       `}</style>
 
-      {/* Barra propia del asistente — misma altura que antes (56px, la usan
-          otros elementos sticky de más abajo como referencia), pero SIN
-          sticky/fixed: el Navbar real de la app ya envuelve esta pantalla
-          (ver App.jsx), así que quedaba una segunda barra fija encima de la
-          otra. */}
-      <div style={{ height: 56, boxSizing: "border-box", background: brand?.secondary || LAZ.secondary, color: "#fff", padding: "0 22px", borderBottom: `2px solid ${brand?.primary || LAZ.primary}`, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background .25s,border-color .25s" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src={LOGO_LIGHT} alt="Lazarillo" style={{ height: 20, objectFit: "contain", display: "block" }} />
-          <span style={{ fontSize: 12, opacity: .85, letterSpacing: ".5px" }}>
-            {brand?.nombre ? <>ASISTENTE DE ALTA DE <b style={{ fontWeight: 700 }}>{brand.nombre}</b></> : "ASISTENTE DE ALTA"}
-          </span>
-        </div>
-        {MOSTRAR_ELECCION && view !== "home" && <Btn ghost small onClick={reset} style={{ color: "#fff", border: "1px solid rgba(255,255,255,.45)" }}>← Inicio</Btn>}
-      </div>
-
+      {/* Sin barra propia: el encabezado es el Navbar de la app, que en el
+          alta muestra "Asistente de alta" en lugar de Artículos/Insumos/Menú
+          (pedido de Diego, 07/11: el header estaba duplicado). */}
       <div style={{ flex: 1, width: "100%", maxWidth: 1000, margin: "0 auto", padding: "22px" }}>
+        {MOSTRAR_ELECCION && view !== "home" && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}><Btn ghost small onClick={reset}>← Inicio</Btn></div>}
         {view === "home" && <Home onPick={setView} />}
         {view === "marcha" && <EnMarcha insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
         {view === "nuevo" && <Nuevo insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
@@ -1795,7 +1784,7 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
         </AnthonyDice>
       )}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 22, ...(mode === "diseño" && articulos.length ? { width: "min(94vw, 1560px)", marginLeft: "calc((100% - min(94vw, 1560px)) / 2)", marginRight: "calc((100% - min(94vw, 1560px)) / 2)" } : {}) }}>
-      {articulos.length > 0 && (<div style={{ position: "sticky", top: 56, zIndex: 40, background: C.card, margin: "-22px -22px 14px", padding: "12px 22px", borderBottom: `1px solid ${C.border}`, borderRadius: "14px 14px 0 0", boxShadow: "0 4px 10px -6px rgba(0,0,0,.18)" }}>
+      {articulos.length > 0 && (<div style={{ position: "sticky", top: 0, zIndex: 40, background: C.card, margin: "-22px -22px 14px", padding: "12px 22px", borderBottom: `1px solid ${C.border}`, borderRadius: "14px 14px 0 0", boxShadow: "0 4px 10px -6px rgba(0,0,0,.18)" }}>
         <div style={{ display: "flex", justifyContent: mode === "diseño" ? "space-between" : "flex-end", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {mode === "diseño" && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

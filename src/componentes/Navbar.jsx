@@ -92,7 +92,10 @@ export default function Navbar() {
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
   const { isOwner, isStaff } = useAccess() || {};
 
-  const { activeBusinessId } = useBusiness() || {};
+  const { activeBusinessId, items: negocios } = useBusiness() || {};
+  // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
+  // dice "Asistente de alta" en lugar de Artículos/Insumos/Menú.
+  const enAlta = !isAppAdmin && location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0);
 
   // Badge de alertas en el ícono de configuración
   const [alertasBadge, setAlertasBadge] = useState(0);
@@ -288,26 +291,27 @@ export default function Navbar() {
                 MenuListProps={{ 'aria-label': 'Navegación principal' }}
               >
                 <MenuList dense sx={{ color: 'inherit' }}>
-                  {location.pathname.startsWith('/rrhh') && !isAppAdmin ? [
+                  {enAlta && <MenuItem disabled sx={{ opacity: '1 !important' }}>Asistente de alta</MenuItem>}
+                  {!enAlta && location.pathname.startsWith('/rrhh') && !isAppAdmin ? [
                     <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>Cronogramas</MenuItem>,
                     <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
                     <MenuItem key="rrhh-fich" disabled>Fichaje · Próximamente</MenuItem>,
                     <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
                   ] : null}
-                  {!location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !location.pathname.startsWith('/rrhh') && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!isAppAdmin && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -342,6 +346,14 @@ export default function Navbar() {
                 // Dentro de RRHH la botonera es la del módulo (pedido de Diego, 07/11):
                 // CRONOGRAMAS · LIQUIDACIÓN · FICHAJE | NÓMINA. Liquidación y Fichaje
                 // se ven pero todavía no están ("Próximamente").
+                if (enAlta) {
+                  return (
+                    <Button color="inherit" disableRipple tabIndex={-1}
+                      sx={{ color: 'inherit', position: 'relative', cursor: 'default', '&:hover': { background: 'transparent' }, ...activeSx(true) }}>
+                      Asistente de alta
+                    </Button>
+                  );
+                }
                 if (path.startsWith('/rrhh')) {
                   const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
                   return (
