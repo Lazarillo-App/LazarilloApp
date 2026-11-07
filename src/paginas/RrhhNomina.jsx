@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
+import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
 
 /* ───────── tema (el mismo de Cronogramas) ───────── */
 const T = {
@@ -123,6 +124,7 @@ export default function RrhhNomina() {
   const [sync, setSync] = useState(undefined);           // null = el negocio no tiene MaxiRest
   const { activeBusinessId } = useBusiness() || {};
   const cargaSeq = useRef(0);
+  const [eligiendo, setEligiendo] = useState(false);
 
   const avisar = useCallback((msj, tipo = 'ok') => {
     setToast({ msj, tipo });
@@ -131,7 +133,7 @@ export default function RrhhNomina() {
 
   const cargar = useCallback(async () => {
     const mi = ++cargaSeq.current;
-    setCargando(true); setErrorCarga(''); setEditando(null);
+    setCargando(true); setErrorCarga(''); setEditando(null); setEligiendo(false);
     try {
       const r = await RrhhAPI.getConfig();
       if (mi !== cargaSeq.current) return; // se cambió de negocio mientras cargaba
@@ -154,6 +156,16 @@ export default function RrhhNomina() {
   useEffect(() => { cargar(); }, [cargar]);
 
   const empleados = config?.empleados || [];
+  const compartidaCon = config?.nomina?.compartidaCon || null;
+  const dejarDeCompartir = async () => {
+    try {
+      await RrhhAPI.desvincularNomina();
+      avisar('Dejaste de compartir la nómina ✓');
+      cargar();
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo dejar de compartir.', 'error');
+    }
+  };
   const cuenta = useMemo(() => ({
     activos: empleados.filter((e) => e.activo !== false).length,
     inactivos: empleados.filter((e) => e.activo === false).length,
@@ -188,8 +200,7 @@ export default function RrhhNomina() {
     setEditando(null);
   };
 
-  // el tema pinta «thead th» con el color del negocio: texto en su color de contraste
-  const th = { padding: '9px 12px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: 'var(--on-primary, #fff)', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left', borderBottom: `1px solid ${T.border2}`, background: T.head, position: 'sticky', top: 0, zIndex: 1 };
+  const th = { padding: '9px 12px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left', borderBottom: `1px solid ${T.border2}`, background: T.head, position: 'sticky', top: 0, zIndex: 1 };
   const td = { padding: '8px 12px', fontFamily: FB, fontSize: 13, color: T.text, borderBottom: `1px solid ${T.border}` };
 
   if (cargando) return <div style={{ padding: 32, fontFamily: FB, color: T.text2, background: T.bg, minHeight: '60vh' }}>Cargando la nómina…</div>;
@@ -214,9 +225,27 @@ export default function RrhhNomina() {
           <div style={{ flex: 1 }} />
           <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>
         </div>
-        {sync === null ? (
+        {compartidaCon ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontFamily: FB, fontSize: 12.5, color: T.accentTxt, background: T.accent + '18', border: `1px solid ${T.accent}66`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
+            <span>Nómina compartida con <b>{compartidaCon.nombre}</b>: las altas, bajas y cambios se ven en los dos negocios.</span>
+            <span onClick={dejarDeCompartir} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Dejar de compartir</span>
+          </div>
+        ) : sync === null ? (
           <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
-            Este negocio no tiene MaxiRest conectado: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>.
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <span>Este negocio no tiene MaxiRest conectado: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length ? '.' : ', o usá la de otro negocio.'}</span>
+              {!empleados.length && !eligiendo && (
+                <span onClick={() => setEligiendo(true)} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Usar la nómina de otro negocio</span>
+              )}
+            </div>
+            {eligiendo && (
+              <div style={{ background: T.band, borderRadius: 10, padding: '2px 12px 10px', marginTop: 8 }}>
+                <ListaNegociosNomina
+                  onCancelar={() => setEligiendo(false)}
+                  onVinculado={(o) => { avisar(`Ahora usás la nómina de ${o?.nombre || 'ese negocio'} ✓`); cargar(); }}
+                />
+              </div>
+            )}
           </div>
         ) : sync?.error ? (
           <div style={{ fontFamily: FB, fontSize: 12.5, color: T.bad, background: T.bad + '10', border: `1px solid ${T.bad}44`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
@@ -238,8 +267,8 @@ export default function RrhhNomina() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, width: 80 }}>Código</th>
                   <th style={th}>Empleado</th>
+                  <th style={{ ...th, width: 90 }}>Código</th>
                   <th style={{ ...th, width: 160 }}>Sector</th>
                   <th style={{ ...th, width: 110 }}>Origen</th>
                   <th style={{ ...th, width: 220 }}>Estado</th>
@@ -249,8 +278,8 @@ export default function RrhhNomina() {
               <tbody>
                 {visibles.map((e) => (
                   <tr key={e.id} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
-                    <td style={{ ...td, color: T.text3, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{nombreDe(e) || '—'}</td>
+                    <td style={{ ...td, color: T.text3, fontSize: 12 }}>{e.codigoMaxi || '—'}</td>
                     <td style={{ ...td, color: T.text2 }}>{e.sector || <span style={{ color: T.vacio }}>sin sector</span>}</td>
                     <td style={td}>
                       {e.origen === 'maxirest' ? <Etiqueta color={T.accentTxt}>MaxiRest</Etiqueta> : <Etiqueta color={T.violet}>Manual</Etiqueta>}
