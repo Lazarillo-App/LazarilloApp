@@ -42,6 +42,13 @@
     } catch { }
   </script>
   <title>Lazarillo</title>
+  <!-- Fuera del dominio de producción (sitio de pruebas, previews) no se indexa. -->
+  <script>
+    if (!/(^|\.)lazarillo\.com\.ar$/.test(location.hostname)) {
+      var m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex, nofollow';
+      document.head.appendChild(m);
+    }
+  </script>
 </head>
 
 <body>
