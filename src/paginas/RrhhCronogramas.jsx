@@ -16,7 +16,7 @@
 // drag & drop entre celdas y totales del MES (días dentro del mes de la semana).
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { RrhhAPI } from '../servicios/apiRrhh';
+import { RrhhAPI, negocioActual } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
@@ -587,7 +587,9 @@ export default function RrhhCronogramas() {
   const [dropSobre, setDropSobre] = useState(null);     // `${filaKey}:${dia}` resaltada al arrastrar
   const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
-  const { active: negocioActivo } = useBusiness() || {};
+  const { active: negocioActivo, activeBusinessId } = useBusiness() || {};
+  const [sinReplica, setSinReplica] = useState(false);   // el negocio no tiene MaxiRest conectado
+  const cargaSeq = useRef(0);                            // descarta respuestas de una carga vieja
   const navigate = useNavigate();
   const { branches = [], activeBranchId } = useBranch() || {};
   // Sucursal del cronograma: "Todas" o la principal → null (principal); si no, su id.
@@ -609,10 +611,13 @@ export default function RrhhCronogramas() {
 
   /* ── carga inicial: config (siembra defaults) + índice de semanas ── */
   const cargarTodo = useCallback(async () => {
+    const mi = ++cargaSeq.current;
     setCargando(true); setErrorCarga('');
     try {
-      await flushRef.current?.(); // lo pendiente de la sucursal anterior se guarda antes
+      await flushRef.current?.(); // lo pendiente (de otra sucursal u otro negocio) se guarda antes, en SU negocio
       const [cfg, sems] = await Promise.all([RrhhAPI.getConfig(sucursalId), RrhhAPI.listarSemanas()]);
+      if (mi !== cargaSeq.current) return; // mientras tanto se cambió de negocio/sucursal
+      setSinReplica(cfg.sync === null);
       setConfig(cfg.config);
       setSemanasIdx(sems.semanas || []);
       const sy = cfg.sync;
@@ -627,9 +632,10 @@ export default function RrhhCronogramas() {
     } catch (e) {
       setErrorCarga(e?.data?.message || e.message || 'No se pudo cargar el módulo.');
     } finally {
-      setCargando(false);
+      if (mi === cargaSeq.current) setCargando(false);
     }
-  }, [avisar, sucursalId]);
+    // activeBusinessId: al cambiar de negocio en el header se recarga todo
+  }, [avisar, sucursalId, activeBusinessId]);
   useEffect(() => { cargarTodo(); }, [cargarTodo]);
 
   const espacio = useMemo(
@@ -725,7 +731,7 @@ export default function RrhhCronogramas() {
     pendienteRef.current = null;
     setGuardado('guardando');
     try {
-      putEnVuelo.current = RrhhAPI.putSemana(p.semanaId, p.body);
+      putEnVuelo.current = RrhhAPI.putSemana(p.semanaId, p.body, p.bizId);
       const r = await putEnVuelo.current;
       // Si mientras viajaba el PUT se tocó algo más, hay otro pendiente: no pisar su cartel.
       setGuardado((g) => (pendienteRef.current ? g : 'ok'));
@@ -755,7 +761,7 @@ export default function RrhhCronogramas() {
 
   const programarGuardado = useCallback((filasSnapshot) => {
     setGuardado('pendiente');
-    pendienteRef.current = { semanaId, body: armarBody(filasSnapshot) };
+    pendienteRef.current = { semanaId, body: armarBody(filasSnapshot), bizId: negocioActual() };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(guardarAhora, 1200);
   }, [semanaId, armarBody, guardarAhora]);
@@ -1042,7 +1048,9 @@ export default function RrhhCronogramas() {
         <div style={{ maxWidth: 520, margin: '60px auto', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 28, textAlign: 'center' }}>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
-            Todavía no hay empleados. Si el negocio tiene MaxiRest, la nómina entra sola; si no, dalos de alta en Nómina.
+            {sinReplica
+              ? 'Este negocio no tiene MaxiRest conectado, así que la nómina no entra sola: dá de alta a tu equipo en Nómina.'
+              : 'Todavía no hay empleados. La nómina de MaxiRest entra sola; si falta alguien, dalo de alta en Nómina.'}
           </div>
           <Boton grande activo onClick={() => navigate('/rrhh/nomina')}>Ir a Nómina</Boton>
         </div>
