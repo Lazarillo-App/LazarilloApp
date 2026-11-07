@@ -20,6 +20,7 @@ import { RrhhAPI, negocioActual } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
+import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
 
 /* ───────── tema (modo día del mockup v31, paleta de marca) ───────── */
 const T = {
@@ -591,6 +592,7 @@ export default function RrhhCronogramas() {
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
   const { active: negocioActivo, activeBusinessId } = useBusiness() || {};
   const [sinReplica, setSinReplica] = useState(false);   // el negocio no tiene MaxiRest conectado
+  const [eligiendoNomina, setEligiendoNomina] = useState(false);
   const cargaSeq = useRef(0);                            // descarta respuestas de una carga vieja
   const navigate = useNavigate();
   const { branches = [], activeBranchId } = useBranch() || {};
@@ -1054,10 +1056,20 @@ export default function RrhhCronogramas() {
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
             {sinReplica
-              ? 'Este negocio no tiene MaxiRest conectado, así que la nómina no entra sola: dá de alta a tu equipo en Nómina.'
+              ? 'Este negocio no tiene MaxiRest conectado, así que la nómina no entra sola: usá la de otro negocio de tu cartera o cargala a mano.'
               : 'Todavía no hay empleados. La nómina de MaxiRest entra sola; si falta alguien, dalo de alta en Nómina.'}
           </div>
-          <Boton grande activo onClick={() => navigate('/rrhh/nomina')}>Ir a Nómina</Boton>
+          {!eligiendoNomina ? (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Boton grande activo onClick={() => setEligiendoNomina(true)}>Usar la nómina de otro negocio</Boton>
+              <Boton grande onClick={() => navigate('/rrhh/nomina')}>Cargarla a mano</Boton>
+            </div>
+          ) : (
+            <ListaNegociosNomina
+              onCancelar={() => setEligiendoNomina(false)}
+              onVinculado={(o) => { setEligiendoNomina(false); avisar(`Ahora usás la nómina de ${o?.nombre || 'ese negocio'} ✓`); cargarTodo(); }}
+            />
+          )}
         </div>
       ) : (
         <>
