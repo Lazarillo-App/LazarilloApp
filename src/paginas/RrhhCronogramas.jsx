@@ -8,6 +8,9 @@
 // calendario de semanas. "Próximamente": ⚙ Configuración; después demanda.
 // La nómina se sincroniza sola con MaxiRest (GET /config) y se edita en
 // RRHH › Nómina (botonera del header).
+// Sucursales (Diego, 07/11): cada sucursal tiene su cronograma (espacios y
+// semanas propios; se elige con las pastillas del header, sin "Todas"). La
+// nómina y los feriados son compartidos; los eventos y cierres, de la sucursal.
 // Grilla: columna con el dueño de la fila, clic en la cabecera del día carga un
 // feriado/evento, turnos minimizables, leyenda de puestos, "sin jornadas",
 // drag & drop entre celdas y totales del MES (días dentro del mes de la semana).
@@ -16,6 +19,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { RrhhAPI } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
+import { useBranch } from '../hooks/useBranch';
 
 /* ───────── tema (modo día del mockup v31, paleta de marca) ───────── */
 const T = {
@@ -316,7 +320,7 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
 }
 
 /* ───────── modal: fecha especial (clic en la cabecera del día) ───────── */
-function ModalFecha({ iso, actual, onGuardar, onQuitar, onCerrar }) {
+function ModalFecha({ iso, actual, sucursalNombre, onGuardar, onQuitar, onCerrar }) {
   const [tipo, setTipo] = useState(tipoNorm(actual?.tipo) || 'feriado');
   const [nombre, setNombre] = useState(actual?.nombre || '');
   const [suma, setSuma] = useState(!!actual?.sumaPromedio);
@@ -333,7 +337,11 @@ function ModalFecha({ iso, actual, onGuardar, onQuitar, onCerrar }) {
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{DIAS[d.getDay()]} {dd2(d.getDate())}/{dd2(d.getMonth() + 1)}</div>
           <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
         </div>
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 2 }}>Vale para todos los espacios.</div>
+        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 2 }}>
+          {tipo === 'feriado' || tipo === 'prefer'
+            ? 'Los feriados valen para todas las sucursales.'
+            : `Solo para ${sucursalNombre || 'esta sucursal'} (todos sus espacios).`}
+        </div>
         <div style={rotulo}>Tipo</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {TIPOS_FECHA.map((t) => <Boton key={t.v} activo={tipo === t.v} onClick={() => setTipo(t.v)}>{t.l}</Boton>)}
@@ -581,6 +589,12 @@ export default function RrhhCronogramas() {
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
   const { active: negocioActivo } = useBusiness() || {};
   const navigate = useNavigate();
+  const { branches = [], activeBranchId } = useBranch() || {};
+  // Sucursal del cronograma: "Todas" o la principal → null (principal); si no, su id.
+  const sucursalId = activeBranchId == null || activeBranchId === 'main' ? null : Number(activeBranchId);
+  const sucursal = sucursalId == null ? (branches.find((b) => b.id === 'main' || b.isMain) || branches[0]) : branches.find((b) => Number(b.id) === sucursalId);
+  const sucursalNombre = sucursal?.name || '';
+  const variasSucursales = branches.length > 1;
   const nombreNegocio = negocioActivo?.name || negocioActivo?.nombre || '';
   const saveTimer = useRef(null);
   const pendienteRef = useRef(null); // { semanaId, body } del guardado programado
@@ -597,7 +611,8 @@ export default function RrhhCronogramas() {
   const cargarTodo = useCallback(async () => {
     setCargando(true); setErrorCarga('');
     try {
-      const [cfg, sems] = await Promise.all([RrhhAPI.getConfig(), RrhhAPI.listarSemanas()]);
+      await flushRef.current?.(); // lo pendiente de la sucursal anterior se guarda antes
+      const [cfg, sems] = await Promise.all([RrhhAPI.getConfig(sucursalId), RrhhAPI.listarSemanas()]);
       setConfig(cfg.config);
       setSemanasIdx(sems.semanas || []);
       const sy = cfg.sync;
@@ -607,13 +622,14 @@ export default function RrhhCronogramas() {
         if (sy.bajas.length) partes.push(`${sy.bajas.length} ${sy.bajas.length === 1 ? 'baja' : 'bajas'}`);
         avisar(`Nómina sincronizada con MaxiRest: ${partes.join(' · ')}.`);
       }
-      setEspacioId((prev) => prev || cfg.config.espacios[0]?.id || null);
+      // al cambiar de sucursal los espacios son otros: si el elegido no está, va el primero
+      setEspacioId((prev) => (cfg.config.espacios.some((e) => e.id === prev) ? prev : cfg.config.espacios[0]?.id || null));
     } catch (e) {
       setErrorCarga(e?.data?.message || e.message || 'No se pudo cargar el módulo.');
     } finally {
       setCargando(false);
     }
-  }, [avisar]);
+  }, [avisar, sucursalId]);
   useEffect(() => { cargarTodo(); }, [cargarTodo]);
 
   const espacio = useMemo(
@@ -627,7 +643,10 @@ export default function RrhhCronogramas() {
   }, [config]);
   const fechasMap = useMemo(() => {
     const m = new Map();
-    (config?.fechas || []).forEach((f) => m.set(f.fecha, f));
+    // primero las compartidas (feriados) y después las de la sucursal: si un día
+    // tiene las dos, se ve el evento de la sucursal
+    (config?.fechas || []).filter((f) => f.compartida !== false).forEach((f) => m.set(f.fecha, f));
+    (config?.fechas || []).filter((f) => f.compartida === false).forEach((f) => m.set(f.fecha, f));
     return m;
   }, [config]);
 
@@ -882,7 +901,7 @@ export default function RrhhCronogramas() {
   /* ── fechas especiales (PUT /config manda la colección completa) ── */
   const guardarFechas = async (fechas, msj) => {
     try {
-      const r = await RrhhAPI.putConfig({ fechas });
+      const r = await RrhhAPI.putConfig({ fechas }, sucursalId);
       if (r?.config) setConfig(r.config);
       avisar(msj);
       setFechaSel(null);
@@ -890,12 +909,18 @@ export default function RrhhCronogramas() {
       avisar(e?.data?.message || e.message || 'No se pudo guardar la fecha.', 'error');
     }
   };
+  // Se reemplaza solo la fecha que se ve ese día (si hay un feriado compartido
+  // debajo de un evento de la sucursal, el feriado no se toca).
+  const esLaVista = (x) => {
+    const v = fechasMap.get(fechaSel);
+    return v && x.fecha === v.fecha && (x.compartida !== false) === (v.compartida !== false);
+  };
   const guardarFecha = (f) => guardarFechas(
-    [...(config?.fechas || []).filter((x) => x.fecha !== f.fecha), f],
+    [...(config?.fechas || []).filter((x) => !esLaVista(x)), f],
     `Fecha ${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} guardada ✓`
   );
   const quitarFecha = () => guardarFechas(
-    (config?.fechas || []).filter((x) => x.fecha !== fechaSel),
+    (config?.fechas || []).filter((x) => !esLaVista(x)),
     'Fecha quitada ✓'
   );
 
@@ -1176,7 +1201,7 @@ export default function RrhhCronogramas() {
       {exportOpen && espacio && (
         <ModalExportar
           espacio={espacio}
-          negocio={nombreNegocio}
+          negocio={variasSucursales && sucursalNombre ? sucursalNombre : nombreNegocio}
           semanaId={semanaId}
           rango={rangoLargo(fechaInicio)}
           diasISO={diasISO}
@@ -1212,6 +1237,7 @@ export default function RrhhCronogramas() {
         <ModalFecha
           iso={fechaSel}
           actual={fechasMap.get(fechaSel) || null}
+          sucursalNombre={sucursalNombre}
           onGuardar={guardarFecha}
           onQuitar={quitarFecha}
           onCerrar={() => setFechaSel(null)}
