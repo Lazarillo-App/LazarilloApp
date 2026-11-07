@@ -4,9 +4,11 @@
 
 import { api, getSession, qs } from './apiBase';
 
-const base = () => {
+// bizId explícito: un guardado programado viaja con el negocio donde se editó, aunque el usuario ya
+// haya cambiado de negocio (si no, iba al nuevo: espacio_not_found).
+const base = (bizId) => {
   const { activeBusinessId } = getSession();
-  return `/businesses/${activeBusinessId}/rrhh`;
+  return `/businesses/${bizId ?? activeBusinessId}/rrhh`;
 };
 
 export const RrhhAPI = {
@@ -36,8 +38,8 @@ export const RrhhAPI = {
   listarSemanas: () => api(`${base()}/semanas`),
   getSemana: (semana, espacioId) =>
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`),
-  putSemana: (semana, body) =>
-    api(`${base()}/semanas/${semana}`, { method: 'PUT', body }),
+  putSemana: (semana, body, bizId = null) =>
+    api(`${base(bizId)}/semanas/${semana}`, { method: 'PUT', body, ...(bizId ? { headers: { 'X-Business-Id': String(bizId) } } : {}) }),
   borrarSemana: (semana, espacioId) =>
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`, { method: 'DELETE' }),
 };
