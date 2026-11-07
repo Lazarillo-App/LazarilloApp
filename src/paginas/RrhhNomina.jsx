@@ -180,7 +180,8 @@ export default function RrhhNomina() {
     setEditando(null);
   };
 
-  const th = { padding: '9px 12px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left', borderBottom: `1px solid ${T.border2}`, background: T.head, position: 'sticky', top: 0, zIndex: 1 };
+  // el tema pinta «thead th» con el color del negocio: texto en su color de contraste
+  const th = { padding: '9px 12px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: 'var(--on-primary, #fff)', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left', borderBottom: `1px solid ${T.border2}`, background: T.head, position: 'sticky', top: 0, zIndex: 1 };
   const td = { padding: '8px 12px', fontFamily: FB, fontSize: 13, color: T.text, borderBottom: `1px solid ${T.border}` };
 
   if (cargando) return <div style={{ padding: 32, fontFamily: FB, color: T.text2, background: T.bg, minHeight: '60vh' }}>Cargando la nómina…</div>;
@@ -219,8 +220,8 @@ export default function RrhhNomina() {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
               <thead>
                 <tr>
+                  <th style={{ ...th, width: 80 }}>Código</th>
                   <th style={th}>Empleado</th>
-                  <th style={{ ...th, width: 90 }}>Código</th>
                   <th style={{ ...th, width: 160 }}>Sector</th>
                   <th style={{ ...th, width: 110 }}>Origen</th>
                   <th style={{ ...th, width: 220 }}>Estado</th>
@@ -230,8 +231,8 @@ export default function RrhhNomina() {
               <tbody>
                 {visibles.map((e) => (
                   <tr key={e.id} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
+                    <td style={{ ...td, color: T.text3, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{nombreDe(e) || '—'}</td>
-                    <td style={{ ...td, color: T.text3, fontSize: 12 }}>{e.codigoMaxi || '—'}</td>
                     <td style={{ ...td, color: T.text2 }}>{e.sector || <span style={{ color: T.vacio }}>sin sector</span>}</td>
                     <td style={td}>
                       {e.origen === 'maxirest' ? <Etiqueta color={T.accentTxt}>MaxiRest</Etiqueta> : <Etiqueta color={T.violet}>Manual</Etiqueta>}
