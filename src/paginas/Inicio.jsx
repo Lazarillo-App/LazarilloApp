@@ -58,12 +58,19 @@ function getUserName() {
   } catch { return ''; }
 }
 
+// Módulo → sección de los roles a medida.
+const SECCION_DE_MODULO = { resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh', recetas: 'recetas' };
+
 export default function Inicio() {
   const navigate = useNavigate();
   const { active } = useBusiness() || {};
-  const { isStaff } = useAccess() || {};
+  const { isStaff, puedeVer } = useAccess() || {};
   // Staff no entra a Resultados ni a la carga (RequireAdminOrOwner): no se le muestran.
-  const grupos = GROUPS.map((g) => ({ ...g, modules: g.modules.filter((m) => !(isStaff && m.soloAdmin)) }));
+  // Un rol a medida tampoco ve los módulos de las secciones que no tiene.
+  const grupos = GROUPS.map((g) => ({
+    ...g,
+    modules: g.modules.filter((m) => !(isStaff && m.soloAdmin) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]))),
+  }));
 
   const userName = getUserName();
   const celular = useAngosto();
