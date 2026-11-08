@@ -32,10 +32,13 @@ import { GestionAPI } from '@/servicios/apiGestion';
 import { useDiferenciaCaja, useFlujoCaja } from '@/gestion/hooksPanel';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { PivotLoading, PivotError, Expansor, CabeceraOrden, SectionDivider, KpiBlock } from './piezasPivot';
+import { useAccess } from '@/context/AccessContext';
 
 const Espacio = ({ colSpan }) => <TableRow aria-hidden><TableCell colSpan={colSpan} sx={{ p: 0, height: 12, border: 0 }} /></TableRow>;
 
 export default function PivotResultados({ operacion, resultados, ventas, months, sort, onSort }) {
+  // Rol a medida: sin el bloque Ingresos · Egresos · Resultado · Equilibrio, o sin la caja.
+  const { oculto = () => false } = useAccess() || {};
   const { abrirDetalle } = usePanelGestion();
   const [expanded, setExpanded] = useState(() => new Set());
   const [mostrar, setMostrar] = useState(() => new Map());
@@ -144,6 +147,7 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
           </TableRow>
         </TableHead>
         <TableBody>
+          {!oculto('tabla.ing_egr') && <>
           <KpiBlock
             months={months}
             ingresosPorMes={ingresosPorMes}
@@ -153,8 +157,11 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
             ingresosReady={!!ventas.data}
           />
           <Espacio colSpan={colSpan} />
+          </>}
+          {!oculto('tabla.dif_caja') && <>
           <CajaRows months={months} isEmpty={resultadosEmpty} colSpan={colSpan} />
           <Espacio colSpan={colSpan} />
+          </>}
           <SocietarioRows
             months={months}
             ingresosPorMes={ingresosPorMes}
