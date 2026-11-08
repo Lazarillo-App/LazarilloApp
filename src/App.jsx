@@ -20,6 +20,7 @@ import UploadFoto from './paginas/UploadFoto';
 import NegocioPausado from './paginas/NegocioPausado';
 import UpdateBanner from './componentes/UpdateBanner';
 import ImpersonateBanner from './componentes/ImpersonateBanner';
+import { VerComoBanner } from './componentes/VerComo';
 import EnMantenimiento from './paginas/EnMantenimiento';
 import { ThemeProviderNegocio } from './tema/ThemeProviderNegocio';
 import AppAlertModal from './componentes/AppAlertModal';
@@ -234,6 +235,7 @@ export default function App() {
       <AppConfirmModal />
       <UpdateBanner />
       <ImpersonateBanner />
+      {isLogged && <VerComoBanner />}
       {isLogged && role !== 'app_admin' && !enAppMovil && <Navbar />}
       {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
 

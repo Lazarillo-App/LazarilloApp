@@ -17,6 +17,7 @@ import React, {
 import { useAuth } from './AuthContext';
 import { useBusiness } from './BusinessContext';
 import { MeAPI } from '../servicios/apiMe';
+import { setVistaPrevia } from '../servicios/vistaPrevia';
 
 const AccessCtx = createContext(null);
 export const useAccess = () => useContext(AccessCtx);
@@ -101,7 +102,21 @@ export function AccessProvider({ children }) {
     [businesses, currentBizId]
   );
 
-  const currentRole = currentBusiness?.role || null;     // 'owner' | 'admin' | 'staff' | null
+  // "Ver como" (solo el dueño): { id, nombre, rol: 'admin'|'staff', permisos }. No se guarda:
+  // se apaga al recargar o al cambiar de negocio.
+  const [verComo, setVerComoState] = useState(null);
+  const rolReal = currentBusiness?.role || null;
+  const verComoActivo = rolReal === 'owner' && verComo ? verComo : null;
+  const setVerComo = useCallback((v) => { setVerComoState(v); setVistaPrevia(!!v); }, []);
+  useEffect(() => {
+    const salir = () => { setVerComoState(null); setVistaPrevia(false); };
+    window.addEventListener('business:switched', salir);
+    window.addEventListener('auth:logout', salir);
+    return () => { window.removeEventListener('business:switched', salir); window.removeEventListener('auth:logout', salir); };
+  }, []);
+  useEffect(() => { if (verComo && rolReal !== 'owner') { setVerComoState(null); setVistaPrevia(false); } }, [verComo, rolReal]);
+
+  const currentRole = verComoActivo ? verComoActivo.rol : rolReal;     // 'owner' | 'admin' | 'staff' | null
   const currentAlias = currentBusiness?.alias || null;
 
   // Rol MÁS ALTO entre todos los negocios accesibles (owner > admin > staff).
@@ -123,7 +138,7 @@ export function AccessProvider({ children }) {
   }, [currentRole]);
 
   // Rol a medida del negocio activo (solo admins). null = sin límites.
-  const permisos = currentBusiness?.permisos || null;
+  const permisos = verComoActivo ? (verComoActivo.permisos || null) : (currentBusiness?.permisos || null);
   const puedeVer = useCallback((seccion, modo = 'ver') => {
     if (!permisos) return true;
     const m = permisos.secciones?.[seccion];
@@ -167,11 +182,14 @@ export function AccessProvider({ children }) {
     permisos,
     puedeVer,
     oculto,
+    rolReal,
+    verComo: verComoActivo,
+    setVerComo,
   }), [
     loading, error, refetch, data,
     businesses, currentBusiness, currentRole, highestRole, currentAlias,
     canDo, isOwner, isAdmin, isStaff, switchToBusiness,
-    permisos, puedeVer, oculto,
+    permisos, puedeVer, oculto, rolReal, verComoActivo, setVerComo,
   ]);
 
   return <AccessCtx.Provider value={value}>{children}</AccessCtx.Provider>;
