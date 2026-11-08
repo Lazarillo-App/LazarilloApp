@@ -219,6 +219,15 @@ export default function Navbar() {
           color: 'var(--on-primary, #ffffff)',
           borderBottom: '1px solid color-mix(in srgb, var(--on-primary, #000) 12%, transparent)',
           boxShadow: 'none',
+          // Celular: barra de 56 px, la misma altura que la versión celular del Panel (Diego 08/11/2026).
+          '@media (max-width: 899.95px)': {
+            '& .MuiToolbar-root': { minHeight: 56, height: 56 },
+            '& .navbar-biz-logo': { height: '34px !important', maxWidth: 90 },
+            '& .navbar-biz-fallback': { width: '34px !important', height: '34px !important', fontSize: '15px !important' },
+            '& .navbar-biz-name': { fontSize: '0.95rem !important' },
+            '& .navbar-user-avatar': { width: 36, height: 36, fontSize: '0.9rem' },
+            '& .MuiIconButton-sizeLarge': { padding: '8px' },
+          },
         }}
       >
         {/* Sin el maxWidth="xl" (1536px) de MUI: con eso el contenido quedaba
