@@ -40,7 +40,8 @@ const SECCIONES = [
   { id: 'rrhh', nombre: 'RRHH', desc: 'Cronogramas y nómina', grupos: [] },
   { id: 'conceptos', nombre: 'Conceptos de caja', desc: 'Rubros y conceptos', grupos: [] },
   { id: 'medios', nombre: 'Medios de pago', desc: 'Cuentas, tarjetas y cheques', grupos: [] },
-  { id: 'configuracion', nombre: 'Configuración', desc: 'Negocio, sectores y roles', grupos: [] },
+  { id: 'configuracion', nombre: 'Configuración', desc: 'Negocio, sucursales y sectores', grupos: [] },
+  { id: 'conexiones', nombre: 'Conexiones', desc: 'Vincular PC y bajar el instalador', grupos: [] },
 ];
 
 function Card({ children, sx }) {

@@ -308,7 +308,7 @@ export default function App() {
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/inicio" element={<Inicio />} />
-                <Route path="/configuracion" element={<RequireAdminOrOwner><RequireSeccion seccion="configuracion"><ConfiguracionMain /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/configuracion" element={<RequireAdminOrOwner><RequireSeccion seccion={['configuracion', 'conexiones']}><ConfiguracionMain /></RequireSeccion></RequireAdminOrOwner>} />
               </Route>
             </Route>
           ) : (
