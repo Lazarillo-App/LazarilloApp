@@ -1241,7 +1241,16 @@ async function fotosDeGoogle(names, w = 800) {
 }
 // Hora escrita a mano → "HH:MM" al salir del campo (acepta "9", "930", "9:30", "2130").
 const horaTxt = (v) => { const dgt = String(v || "").replace(/\D/g, "").slice(0, 4); if (!dgt) return ""; return dgt.length > 2 ? `${dgt.slice(0, dgt.length - 2)}:${dgt.slice(-2)}`.padStart(5, "0") : `${dgt.padStart(2, "0")}:00`; };
-const PERFIL_VACIO = () => ({ horarios: [], canales: { salon: false, takeAway: false, delivery: false, eventos: false }, sirve: { desayuno: false, almuerzo: false, cena: false, cerveza: false, vino: false, tragos: false }, fotos: [], portada: "", google: null, descGoogle: false, deGoogle: { horarios: false, canales: false, sirve: false } });
+// Lo que Google no trae (logo, descripción, redes) se busca en la web vía el back.
+async function completarDesdeWeb(body) {
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/places/completar`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+const PERFIL_VACIO = () => ({ descWeb: false, horarios: [], canales: { salon: false, takeAway: false, delivery: false, eventos: false }, sirve: { desayuno: false, almuerzo: false, cena: false, cerveza: false, vino: false, tragos: false }, fotos: [], portada: "", google: null, descGoogle: false, deGoogle: { horarios: false, canales: false, sirve: false } });
 function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [ws, setWs] = useState(0);
   const [query, setQuery] = useState("");
@@ -1250,6 +1259,8 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [logoOpts, setLogoOpts] = useState([]);
   const [logoFail, setLogoFail] = useState([]);
   const [buscandoLogos, setBuscandoLogos] = useState(false);
+  const [buscandoWeb, setBuscandoWeb] = useState(false); // buscando en la web lo que Google no tiene
+  const [webMsg, setWebMsg] = useState("");
   const [paletaMsg, setPaletaMsg] = useState("");
   const searchRef = useRef(0);
   // Si ya se aplicó un local de la búsqueda (o un logo encontrado), elegir otro
@@ -1265,6 +1276,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [logoColores, setLogoColores] = useState(null); // paleta original generada por el logo (para resetear)
   const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES }, ...PERFIL_VACIO() });
   const set = (k, v) => setD((p) => ({ ...p, [k]: v }));
+  const dRef = useRef(d); dRef.current = d;
   const setHorario = (i, patch) => setD((p) => ({ ...p, horarios: p.horarios.map((h, j) => (j === i ? { ...h, ...patch } : h)) }));
   const [thumbs, setThumbs] = useState({}); // placeId → foto chica para confirmar el local
   const onFoto = async (e) => {
@@ -1344,6 +1356,26 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
       descGoogle: !!o.descripcion,
       deGoogle: { horarios: !!(o.horarios || []).length, canales: informa(o.canales), sirve: informa(o.sirve) },
     }));
+    // Lo que falta (descripción, logo si no hay web, redes) se busca en la web.
+    const falta = ["instagram", "facebook", "tiktok"];
+    if (!o.descripcion) falta.push("descripcion");
+    if (!o.web) falta.push("web", "logo");
+    setBuscandoWeb(true); setWebMsg("");
+    completarDesdeWeb({ nombre: o.nombre, direccion: o.direccion || "", ciudad: o.ciudad || "", web: o.web || "", falta }).then(async (r) => {
+      if (tok !== searchRef.current) return;
+      setBuscandoWeb(false);
+      if (!r) return;
+      const NOM = { descripcion: "descripción", web: "web", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
+      const p0 = dRef.current;
+      const enc = Object.keys(NOM).filter((k) => !p0[k] && r[k]);
+      if (enc.length) setD((p) => { const n = { ...p }; for (const k of enc) if (!p[k]) n[k] = r[k]; if (enc.includes("descripcion")) n.descWeb = true; return n; });
+      const partes = enc.map((k) => NOM[k]);
+      if (Array.isArray(r.logos) && r.logos.length) {
+        setLogoOpts((prev) => [...new Set([...prev, ...r.logos])].slice(0, 8));
+        if (!dRef.current.logo) { logoDeBusqueda.current = true; await elegirLogo(r.logos[0]); partes.push("logo"); }
+      }
+      if (partes.length) setWebMsg(`✓ Completé desde la web: ${partes.join(", ")}. Revisalo.`);
+    });
     if (o.fotos?.length) fotosDeGoogle(o.fotos).then((fs) => {
       if (tok !== searchRef.current || !fs.length) return;
       setD((p) => ({ ...p, fotos: [...fs.map((f) => f.url), ...(p.fotos || []).filter((u) => u.startsWith("data:"))], portada: fs[0].url }));
@@ -1414,7 +1446,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
             <div style={{ background: C.shade, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.gold}`, borderRadius: 10, padding: 14, marginBottom: 18 }}>
               <div style={{ fontSize: 13.5, color: C.ink, marginBottom: 8 }}><b>📍 Buscá tu negocio</b> y autocompleto los datos desde Google.</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <input value={query} onChange={(e) => { searchRef.current++; setQuery(e.target.value); setBuscando(false); setBuscandoLogos(false); setOpciones([]); setLogoOpts([]); setLogoFail([]); setLogoTried(false); setBusqError(""); }} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Nombre del local + ciudad (ej: FC San Justo, Ramos Mejía)" style={{ ...WInp, flex: 1, minWidth: 240, background: C.card }} />
+                <input value={query} onChange={(e) => { searchRef.current++; setQuery(e.target.value); setBuscando(false); setBuscandoLogos(false); setOpciones([]); setLogoOpts([]); setLogoFail([]); setLogoTried(false); setBusqError(""); setBuscandoWeb(false); setWebMsg(""); }} onKeyDown={(e) => e.key === "Enter" && buscar()} placeholder="Nombre del local + ciudad (ej: FC San Justo, Ramos Mejía)" style={{ ...WInp, flex: 1, minWidth: 240, background: C.card }} />
                 <Btn accent={brand.primary} onClick={buscar} disabled={buscando || !query.trim()}>{buscando ? "Buscando…" : "🔎 Buscar"}</Btn>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
@@ -1432,6 +1464,11 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
                 <div style={{ fontSize: 12.5, color: C.danger, marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span>{busqError}</span>
                   <button onClick={buscar} style={{ background: "none", border: `1px solid ${C.border}`, color: brand.primary, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 12, borderRadius: 6, padding: "3px 9px" }}>🔄 Reintentar</button>
+                </div>
+              )}
+              {(buscandoWeb || webMsg) && (
+                <div style={{ fontSize: 12.5, color: buscandoWeb ? C.muted : "#15803d", marginTop: 8 }}>
+                  {buscandoWeb ? "🔎 Buscando en la web lo que Google no tiene (logo, descripción y redes)…" : webMsg}
                 </div>
               )}
               {opciones.length > 0 && (
@@ -1468,7 +1505,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
               <WField label="Número" value={d.numero} onChange={(v) => set("numero", v)} ph="(opcional)" half />
             </div>
             <div style={{ display: "flex", marginTop: 14 }}>
-              <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
+              <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}{d.descWeb && <GBadge>🌐 de la web</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false, descWeb: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
             </div>
             <div style={{ marginTop: 16 }}>
               <Lbl>Fotos{d.google && (d.fotos || []).some((u) => /^https?:/.test(u)) && <GBadge>G de Google</GBadge>}<span style={{ fontWeight: 400, color: C.muted, fontSize: 12.5 }}> · tocá una para elegirla de portada</span></Lbl>
@@ -1504,7 +1541,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
                 const visibles = logoOpts.filter((u) => !logoFail.includes(u));
                 return (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{buscandoLogos ? "Buscando el logo en la web…" : (visibles.length ? "Logos que encontré (elegí uno):" : "No encontré el logo en la web. Subilo con el botón de acá arriba.")}</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{(buscandoLogos || buscandoWeb) ? "Buscando el logo en la web…" : (visibles.length ? "Logos que encontré (elegí uno):" : "No encontré el logo en la web. Subilo con el botón de acá arriba.")}</div>
                     {visibles.length > 0 && (
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                         {visibles.map((u, i) => (
