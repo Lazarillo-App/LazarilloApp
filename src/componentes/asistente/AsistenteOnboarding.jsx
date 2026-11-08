@@ -1217,6 +1217,7 @@ async function geocodeZona(texto) {
   } catch { /* nada */ }
   return null;
 }
+const COLORES_INICIALES = { primary: "#2492C8", secondary: "#15213E", background: "#F2F4F7" };
 function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [ws, setWs] = useState(0);
   const [query, setQuery] = useState("");
@@ -1227,6 +1228,10 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [buscandoLogos, setBuscandoLogos] = useState(false);
   const [paletaMsg, setPaletaMsg] = useState("");
   const searchRef = useRef(0);
+  // Si ya se aplicó un local de la búsqueda (o un logo encontrado), elegir otro
+  // local reemplaza todo: datos, logo y colores (antes quedaban los del primero).
+  const yaAplicado = useRef(false);
+  const logoDeBusqueda = useRef(false);
   const [loc, setLoc] = useState(null);          // {lat,lng} | null
   const [ubic, setUbic] = useState("idle");      // idle | ok | denied | unsupported
   const [zonaB, setZonaB] = useState("");        // zona/ciudad opcional para sesgar la búsqueda
@@ -1234,7 +1239,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [logoUrl, setLogoUrl] = useState("");    // texto del campo de URL manual
   const [logoTried, setLogoTried] = useState(false); // ya intentamos traer logos para este negocio
   const [logoColores, setLogoColores] = useState(null); // paleta original generada por el logo (para resetear)
-  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { primary: "#2492C8", secondary: "#15213E", background: "#F2F4F7" } });
+  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES } });
   const set = (k, v) => setD((p) => ({ ...p, [k]: v }));
   const setColor = (k, v) => setD((p) => ({ ...p, colores: { ...p.colores, [k]: v } }));
 
@@ -1244,7 +1249,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
     const f = e.target.files?.[0]; if (!f) return;
     setPaletaMsg("Generando colores desde el logo…");
     const url = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = () => r(""); fr.readAsDataURL(f); });
-    set("logo", url);
+    set("logo", url); logoDeBusqueda.current = false; // logo propio: no se pisa al buscar
     const pal = await getPalette(url || f);
     if (pal) {
       const np = { primary: pal.primary, secondary: pal.secondary, background: pal.background };
@@ -1286,7 +1291,12 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
 
   const aplicar = async (o) => {
     const tok = searchRef.current;
-    setD((p) => ({ ...p, nombre: o.nombre || p.nombre, telefono: o.telefono || p.telefono, ciudad: o.ciudad || p.ciudad, calle: o.calle || p.calle, numero: o.numero || p.numero, descripcion: o.descripcion || p.descripcion, web: o.web || p.web, instagram: o.instagram || p.instagram, facebook: o.facebook || p.facebook, tiktok: o.tiktok || p.tiktok }));
+    const reemplazar = yaAplicado.current; // 2da búsqueda: no mezclar con el local anterior
+    const campo = (k, p) => o[k] || (reemplazar ? "" : p[k]);
+    setD((p) => ({ ...p, nombre: campo("nombre", p), telefono: campo("telefono", p), ciudad: campo("ciudad", p), calle: campo("calle", p), numero: campo("numero", p), descripcion: campo("descripcion", p), web: campo("web", p), instagram: campo("instagram", p), facebook: campo("facebook", p), tiktok: campo("tiktok", p),
+      ...(logoDeBusqueda.current ? { logo: "", colores: { ...COLORES_INICIALES } } : {}) }));
+    if (logoDeBusqueda.current) { setLogoColores(null); setPaletaMsg(""); logoDeBusqueda.current = false; }
+    yaAplicado.current = true;
     const cands = Array.isArray(o.logos) ? o.logos.filter((u) => typeof u === "string" && u.startsWith("http")) : [];
     let dominio = ""; try { dominio = new URL(o.web).hostname.replace(/^www\./, ""); } catch { /* sin web */ }
     if (dominio) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
@@ -1303,7 +1313,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
       const dataUrls = [...new Set(resueltos.filter(Boolean))].slice(0, 6);
       if (tok === searchRef.current) {
         setLogoOpts(dataUrls);
-        if (dataUrls.length) await elegirLogo(dataUrls[0]);
+        if (dataUrls.length) { logoDeBusqueda.current = true; await elegirLogo(dataUrls[0]); }
       }
     } catch { /* nada */ }
     finally { if (tok === searchRef.current) setBuscandoLogos(false); }
@@ -1418,7 +1428,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
                 const visibles = logoOpts.filter((u) => !logoFail.includes(u));
                 return (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{buscandoLogos ? "Buscando el logo en la web…" : (visibles.length ? "Logos que encontré (elegí uno):" : "Encontré el logo pero este entorno de prueba no deja traerlo. Subilo con el botón de acá arriba (en tu app sale solo).")}</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{buscandoLogos ? "Buscando el logo en la web…" : (visibles.length ? "Logos que encontré (elegí uno):" : "No encontré el logo en la web. Subilo con el botón de acá arriba.")}</div>
                     {visibles.length > 0 && (
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                         {visibles.map((u, i) => (
