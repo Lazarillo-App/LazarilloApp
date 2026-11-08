@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { execSync } from 'child_process'
+import { readFileSync } from 'fs'
 
 // Versión de este build: hash corto de git + timestamp, para poder detectar
 // desde el propio frontend cuando el navegador quedó con una versión vieja
@@ -35,9 +36,30 @@ function versionFilePlugin() {
   }
 }
 
+// Ícono del escritorio del celular (apple-touch-icon, 180x180). El PNG vive como texto base64
+// en src/assets/brand/apple-touch-icon.png.b64 (así se puede subir por la API de GitHub, que
+// solo acepta texto) y el build lo escribe en dist/apple-touch-icon.png. En `npm run dev` lo
+// sirve el middleware de abajo.
+const ICONO_B64 = path.resolve(__dirname, 'src/assets/brand/apple-touch-icon.png.b64')
+const leerIcono = () => Buffer.from(readFileSync(ICONO_B64, 'utf8').trim(), 'base64')
+function iconoCelularPlugin() {
+  return {
+    name: 'icono-celular',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'apple-touch-icon.png', source: leerIcono() })
+    },
+    configureServer(server) {
+      server.middlewares.use('/apple-touch-icon.png', (req, res) => {
+        res.setHeader('Content-Type', 'image/png')
+        res.end(leerIcono())
+      })
+    },
+  }
+}
+
 export default defineConfig({
   base: '/',
-  plugins: [react(), versionFilePlugin()],
+  plugins: [react(), versionFilePlugin(), iconoCelularPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
