@@ -369,7 +369,7 @@ function Inicio({ sel, irImpagas, irSinCarga }) {
         {vista && !vista.rubros.length && <p className="pt-2 text-[13px] text-zinc-500">Sin gastos en el mes.</p>}
       </div>
       <p className="mt-2 text-center text-[11.5px] text-zinc-400">← deslizá para cambiar de mes →</p>
-      <Link to="/gestion" className="mt-3 block text-center text-[13px] text-sky-700 underline">Abrir el Panel completo</Link>
+      <Link to="/gestion?completa=1" className="mt-3 block text-center text-[13px] text-sky-700 underline">Abrir el Panel completo</Link>
       {evolucion && (<Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>)}
     </div>);
 }

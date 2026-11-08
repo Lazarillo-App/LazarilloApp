@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
+import { elegirVersionCelular } from '@/gestion/vistaCelular';
 
 /**
  * ModulosDrawer — el menú "escondido" para navegar entre los módulos
@@ -38,6 +39,9 @@ const GROUPS = [
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
       { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
       { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', to: '/gestion?cargar=1' },
+      // Como en lazarillo_gestion: entrar desde acá vuelve a la versión celular aunque antes se haya
+      // elegido el Panel completo en este celular.
+      { id: 'version-celular', label: 'Versión celular', emoji: '📱', to: '/m', alEntrar: 'celular' },
       { id: 'balance', label: 'Balance', emoji: '💳', to: null },
     ],
   },
@@ -122,7 +126,7 @@ export default function ModulosDrawer({ open, onClose }) {
                 return (
                   <Box
                     key={m.id}
-                    onClick={() => !disabled && irA(m.to)}
+                    onClick={() => { if (disabled) return; if (m.alEntrar === 'celular') elegirVersionCelular(); irA(m.to); }}
                     sx={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10,
                       cursor: disabled ? 'default' : 'pointer', marginBottom: 3,
