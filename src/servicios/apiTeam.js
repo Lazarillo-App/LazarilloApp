@@ -71,10 +71,13 @@ export const TeamAPI = {
   /**
    * Actualiza alias, rol o sector (Vista Operación) de un miembro.
    */
-  async updateAssignment(assignmentId, { alias, role, sectorIds } = {}) {
+  async updateAssignment(assignmentId, { alias, role, sectorIds, ...resto } = {}) {
+    // customRoleId solo viaja si se pasa (null = Administración completa).
+    const body = { alias, role, sectorIds };
+    if ('customRoleId' in resto) body.customRoleId = resto.customRoleId;
     return http(`/team/assignments/${assignmentId}`, {
       method: 'PATCH',
-      body: { alias, role, sectorIds },
+      body,
       withBusinessId: false,
     });
   },
