@@ -20,7 +20,7 @@ import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
 import PulsoDatos from './PulsoDatos';
-import { VerComoMenu } from '@/componentes/VerComo';
+import { VerComoItems } from '@/componentes/VerComo';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -91,7 +91,7 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner, isStaff, puedeVer = () => true } = useAccess() || {};
+  const { isOwner, isStaff, puedeVer = () => true, rolReal } = useAccess() || {};
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
@@ -460,15 +460,12 @@ export default function Navbar() {
               </Box>
             )}
 
-            {/* Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión. */}
-            {!isAppAdmin && logged && <VerComoMenu />}
-
             {/* Perfil — dropdown propio (no MUI Menu portal) para no depender de
                 matemática de posición cruzando el zoom global: al vivir en el
                 mismo contenedor que el avatar (position:relative acá al lado),
                 cae directamente debajo sin ningún cálculo. */}
             <Box sx={{ flexGrow: 0, ml: 0.5, position: 'relative' }}>
-              <Tooltip title="Perfil">
+              <Tooltip title={userMenuOpen ? "" : "Perfil"}>
                 <IconButton
                   onClick={() => setUserMenuOpen((v) => !v)}
                   sx={{ p: 0, color: 'inherit' }}
@@ -518,6 +515,11 @@ export default function Navbar() {
                           <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserMenuOpen(false)}>
                             Perfil
                           </MenuItem>,
+                          // Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión.
+                          ...(!isAppAdmin && rolReal === 'owner' ? [
+                            <Divider key="div-vercomo" sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
+                            <VerComoItems key="vercomo" onElegido={() => setUserMenuOpen(false)} />,
+                          ] : []),
                           <Divider
                             key="div"
                             sx={{
