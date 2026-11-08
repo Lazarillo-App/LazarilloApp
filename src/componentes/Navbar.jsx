@@ -90,7 +90,7 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner, isStaff } = useAccess() || {};
+  const { isOwner, isStaff, puedeVer = () => true } = useAccess() || {};
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
@@ -308,19 +308,19 @@ export default function Navbar() {
                     <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
                   ] : null}
-                  {!enAlta && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !isStaff && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -384,7 +384,7 @@ export default function Navbar() {
                 }
                 return (
                   <>
-                    {enInicio ? null : isAppAdmin ? (
+                    {(enInicio || !puedeVer('recetas')) ? null : isAppAdmin ? (
                       <Button color="inherit"
                         sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
                         component={NavLink} to="/menu">
@@ -542,7 +542,7 @@ export default function Navbar() {
               </Box>
             )}
             {/* ⚙ Configuración, a la derecha de la campana (pedido de Diego, 06/11). */}
-            {!isAppAdmin && !isStaff && logged && (
+            {!isAppAdmin && !isStaff && logged && puedeVer('configuracion') && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <Tooltip title="Configuración">
                   <IconButton
