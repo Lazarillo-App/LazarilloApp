@@ -1193,11 +1193,13 @@ async function buscarNegocio(query, loc, zona) {
     const res = await fetch(`${API_BASE}/places/search?${params.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) return [];
+    // Error del servidor (ej. falta la clave de Google): no es "sin resultados",
+    // así que se avisa distinto y no se reintenta.
+    if (!res.ok) throw new Error("busqueda_no_disponible");
     const data = await res.json();
     const arr = data?.opciones;
     return Array.isArray(arr) ? arr.filter((o) => o && (o.nombre || o.ciudad || o.calle)) : [];
-  } catch { return []; }
+  } catch (e) { throw e instanceof Error ? e : new Error("busqueda_no_disponible"); }
 }
 // Geocodifica una zona/ciudad a coordenadas vía Google Geocoding (backend
 // proxy en /api/places/geocode), para sesgar la búsqueda de arriba cuando no
@@ -1276,9 +1278,9 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
         arr = await buscarNegocio(query.trim(), useLoc || loc, zonaB.trim());
         if (myId !== searchRef.current) return; // cancelada (cambió el texto)
       }
-      if (!arr.length) { setBusqError("No encontré nada en este intento (a veces la primera búsqueda falla). Probá de nuevo, o agregá la zona/ciudad."); return; }
+      if (!arr.length) { setBusqError("No encontré tu local en Google. Probá con el nombre como figura en Google Maps y sumá la zona/ciudad, o completá los datos abajo."); return; }
       if (arr.length === 1) aplicar(arr[0]); else setOpciones(arr);
-    } catch { if (myId === searchRef.current) setBusqError("No pude completar la búsqueda. Probá de nuevo o cargá los datos a mano."); }
+    } catch { if (myId === searchRef.current) setBusqError("La búsqueda en Google no está disponible en este momento. Completá los datos abajo a mano."); }
     finally { if (myId === searchRef.current) setBuscando(false); }
   };
 
@@ -1361,7 +1363,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
               {ubic === "ok" && <div style={{ fontSize: 12, color: C.muted, marginTop: 7 }}>📍 Priorizando resultados cerca de tu ubicación.</div>}
               {(ubic === "denied" || ubic === "unsupported") && (
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 7 }}>
-                  {ubic === "denied" ? "No pude acceder a tu ubicación (acá en el preview suele estar bloqueada; en tu app va a pedir permiso normal)." : "Tu navegador no comparte ubicación."} Usá el campo <b>Zona/ciudad</b> de arriba para afinar.
+                  {ubic === "denied" ? "No pude acceder a tu ubicación (el navegador no dio permiso)." : "Tu navegador no comparte ubicación."} Usá el campo <b>Zona/ciudad</b> de arriba para afinar.
                   {ubic === "denied" && <> · <button onClick={() => pedirUbicacion()} style={{ background: "none", border: "none", color: brand.primary, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 12, padding: 0 }}>Reintentar ubicación</button></>}
                 </div>
               )}
