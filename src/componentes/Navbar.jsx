@@ -20,6 +20,7 @@ import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
 import PulsoDatos from './PulsoDatos';
+import { VerComoMenu } from '@/componentes/VerComo';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -458,6 +459,9 @@ export default function Navbar() {
                 <BusinessDivisionSelector canCreate={!!isOwner} />
               </Box>
             )}
+
+            {/* Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión. */}
+            {!isAppAdmin && logged && <VerComoMenu />}
 
             {/* Perfil — dropdown propio (no MUI Menu portal) para no depender de
                 matemática de posición cruzando el zoom global: al vivir en el
