@@ -1218,6 +1218,30 @@ async function geocodeZona(texto) {
   return null;
 }
 const COLORES_INICIALES = { primary: "#2492C8", secondary: "#15213E", background: "#F2F4F7" };
+// Datos extra del local que trae Google (Diego, 08/11): canales, qué sirve,
+// horarios y fotos. Se guardan en props.perfil del negocio.
+const DIAS_L = [[1, "L"], [2, "M"], [3, "M"], [4, "J"], [5, "V"], [6, "S"], [0, "D"]];
+const CANALES = [["salon", "Salón"], ["takeAway", "Take away"], ["delivery", "Delivery"], ["eventos", "Eventos"]];
+const SIRVE = [["desayuno", "Desayuno"], ["almuerzo", "Almuerzo"], ["cena", "Cena"], ["cerveza", "Cerveza"], ["vino", "Vino"], ["tragos", "Tragos"]];
+const GBadge = ({ children = "G" }) => <span style={{ display: "inline-flex", alignItems: "center", fontSize: 10.5, fontWeight: 700, color: "#1a73e8", background: "#e8f0fe", borderRadius: 5, padding: "1px 6px", marginLeft: 6, verticalAlign: "middle" }}>{children}</span>;
+const ChipToggle = ({ on, onClick, children, accent }) => (
+  <button type="button" onClick={onClick} style={{ height: 30, padding: "0 12px", borderRadius: 15, fontSize: 13, fontWeight: 600, border: `1px solid ${on ? accent : C.border}`, background: on ? accent : "#fff", color: on ? "#fff" : C.ink, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{on ? "✓ " : ""}{children}</button>
+);
+// Resuelve fotos de Google (names) a URLs públicas vía el back (la clave no sale del servidor).
+async function fotosDeGoogle(names, w = 800) {
+  if (!names?.length) return [];
+  try {
+    const token = localStorage.getItem("token");
+    const qs = new URLSearchParams({ names: names.join(","), w: String(w) });
+    const res = await fetch(`${API_BASE}/places/photos?${qs.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.fotos) ? data.fotos.filter((f) => f && f.url) : [];
+  } catch { return []; }
+}
+// Hora escrita a mano → "HH:MM" al salir del campo (acepta "9", "930", "9:30", "2130").
+const horaTxt = (v) => { const dgt = String(v || "").replace(/\D/g, "").slice(0, 4); if (!dgt) return ""; return dgt.length > 2 ? `${dgt.slice(0, dgt.length - 2)}:${dgt.slice(-2)}`.padStart(5, "0") : `${dgt.padStart(2, "0")}:00`; };
+const PERFIL_VACIO = () => ({ horarios: [], canales: { salon: false, takeAway: false, delivery: false, eventos: false }, sirve: { desayuno: false, almuerzo: false, cena: false, cerveza: false, vino: false, tragos: false }, fotos: [], portada: "", google: null, descGoogle: false, deGoogle: { horarios: false, canales: false, sirve: false } });
 function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [ws, setWs] = useState(0);
   const [query, setQuery] = useState("");
@@ -1239,8 +1263,15 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [logoUrl, setLogoUrl] = useState("");    // texto del campo de URL manual
   const [logoTried, setLogoTried] = useState(false); // ya intentamos traer logos para este negocio
   const [logoColores, setLogoColores] = useState(null); // paleta original generada por el logo (para resetear)
-  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES } });
+  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES }, ...PERFIL_VACIO() });
   const set = (k, v) => setD((p) => ({ ...p, [k]: v }));
+  const setHorario = (i, patch) => setD((p) => ({ ...p, horarios: p.horarios.map((h, j) => (j === i ? { ...h, ...patch } : h)) }));
+  const [thumbs, setThumbs] = useState({}); // placeId → foto chica para confirmar el local
+  const onFoto = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+    const url = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = () => r(""); fr.readAsDataURL(f); });
+    if (url) setD((p) => ({ ...p, fotos: [...(p.fotos || []), url], portada: p.portada || url }));
+  };
   const setColor = (k, v) => setD((p) => ({ ...p, colores: { ...p.colores, [k]: v } }));
 
   useEffect(() => { onBrand && onBrand({ primary: d.colores.primary, secondary: d.colores.secondary, background: d.colores.background, logo: d.logo, nombre: d.nombre }); }, [d.colores.primary, d.colores.secondary, d.colores.background, d.logo, d.nombre]);
@@ -1284,7 +1315,13 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
         if (myId !== searchRef.current) return; // cancelada (cambió el texto)
       }
       if (!arr.length) { setBusqError("No encontré tu local en Google. Probá con el nombre como figura en Google Maps y sumá la zona/ciudad, o completá los datos abajo."); return; }
-      if (arr.length === 1) aplicar(arr[0]); else setOpciones(arr);
+      // Siempre se confirma el local antes de cargar nada ("¿Es este tu local?").
+      setOpciones(arr);
+      arr.slice(0, 3).forEach(async (o) => {
+        if (!o.placeId || !o.fotos?.length) return;
+        const [f] = await fotosDeGoogle([o.fotos[0]], 240);
+        if (f && myId === searchRef.current) setThumbs((t) => ({ ...t, [o.placeId]: f.url }));
+      });
     } catch { if (myId === searchRef.current) setBusqError("La búsqueda en Google no está disponible en este momento. Completá los datos abajo a mano."); }
     finally { if (myId === searchRef.current) setBuscando(false); }
   };
@@ -1297,6 +1334,20 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
       ...(logoDeBusqueda.current ? { logo: "", colores: { ...COLORES_INICIALES } } : {}) }));
     if (logoDeBusqueda.current) { setLogoColores(null); setPaletaMsg(""); logoDeBusqueda.current = false; }
     yaAplicado.current = true;
+    const si = (v) => v === true;
+    const informa = (obj) => !!obj && Object.values(obj).some((x) => x !== null && x !== undefined);
+    setD((p) => ({ ...p, ...PERFIL_VACIO(),
+      horarios: (o.horarios || []).map((h) => ({ dias: [...(h.dias || [])], abre: h.abre || "", cierra: h.cierra || "" })),
+      canales: { salon: si(o.canales?.salon), takeAway: si(o.canales?.takeAway), delivery: si(o.canales?.delivery), eventos: false },
+      sirve: Object.fromEntries(SIRVE.map(([k]) => [k, si(o.sirve?.[k])])),
+      google: o.placeId ? { placeId: o.placeId, rating: o.rating ?? null, resenas: o.resenas ?? null, mapsUrl: o.mapsUrl || "", tipo: o.tipo || "" } : null,
+      descGoogle: !!o.descripcion,
+      deGoogle: { horarios: !!(o.horarios || []).length, canales: informa(o.canales), sirve: informa(o.sirve) },
+    }));
+    if (o.fotos?.length) fotosDeGoogle(o.fotos).then((fs) => {
+      if (tok !== searchRef.current || !fs.length) return;
+      setD((p) => ({ ...p, fotos: [...fs.map((f) => f.url), ...(p.fotos || []).filter((u) => u.startsWith("data:"))], portada: fs[0].url }));
+    });
     const cands = Array.isArray(o.logos) ? o.logos.filter((u) => typeof u === "string" && u.startsWith("http")) : [];
     let dominio = ""; try { dominio = new URL(o.web).hostname.replace(/^www\./, ""); } catch { /* sin web */ }
     if (dominio) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
@@ -1383,15 +1434,27 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
                   <button onClick={buscar} style={{ background: "none", border: `1px solid ${C.border}`, color: brand.primary, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", fontSize: 12, borderRadius: 6, padding: "3px 9px" }}>🔄 Reintentar</button>
                 </div>
               )}
-              {opciones.length > 1 && (
+              {opciones.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>Encontré estas (ordenadas por relevancia), ¿cuál es la tuya?</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{opciones.length === 1 ? "¿Es este tu local?" : "Encontré estos, ¿cuál es el tuyo?"}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {opciones.map((o, i) => (
-                      <button key={i} onClick={() => aplicar(o)} style={{ textAlign: "left", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 13px", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 600, color: C.maroonDark, fontSize: 14 }}>{o.nombre}</div>
-                        <div style={{ fontSize: 12.5, color: C.muted }}>{[o.calle, o.numero].filter(Boolean).join(" ")}{(o.calle || o.numero) && o.ciudad ? " · " : ""}{o.ciudad}</div>
-                      </button>
+                      <div key={o.placeId || i} style={{ display: "flex", alignItems: "center", gap: 12, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 10, flexWrap: "wrap" }}>
+                        <div style={{ width: 96, height: 60, borderRadius: 8, flex: "none", background: thumbs[o.placeId] ? `center / cover no-repeat url("${thumbs[o.placeId]}")` : C.paper, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{thumbs[o.placeId] ? "" : "📍"}</div>
+                        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{o.nombre}</div>
+                          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+                            {o.rating ? <><b style={{ color: "#f59e0b" }}>★ {String(o.rating).replace(".", ",")}</b>{o.resenas ? ` (${o.resenas} reseñas)` : ""} · </> : null}
+                            {o.tipo ? `${o.tipo} · ` : ""}{o.direccion || [o.calle, o.numero, o.ciudad].filter(Boolean).join(" ")}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flex: "none" }}>
+                          <button type="button" onClick={() => { const r = opciones.filter((x) => x !== o); setOpciones(r); if (!r.length) setBusqError("Probá con el nombre como figura en Google Maps y sumá la zona/ciudad, o completá los datos abajo."); }}
+                            style={{ height: 34, padding: "0 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>No es este</button>
+                          <button type="button" onClick={() => aplicar(o)}
+                            style={{ height: 34, padding: "0 14px", borderRadius: 9, border: `1px solid ${brand.primary}`, background: brand.primary, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>✓ Es este</button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1405,7 +1468,52 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
               <WField label="Número" value={d.numero} onChange={(v) => set("numero", v)} ph="(opcional)" half />
             </div>
             <div style={{ display: "flex", marginTop: 14 }}>
-              <WArea label="Descripción" value={d.descripcion} onChange={(v) => set("descripcion", v)} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
+              <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 18, marginTop: 16 }}>
+              <div>
+                <Lbl>Cómo vendés{d.deGoogle?.canales && <GBadge />}</Lbl>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {CANALES.map(([k, t]) => <ChipToggle key={k} on={!!d.canales?.[k]} accent={brand.primary} onClick={() => setD((p) => ({ ...p, canales: { ...p.canales, [k]: !p.canales?.[k] } }))}>{t}</ChipToggle>)}
+                </div>
+                <div style={{ height: 14 }} />
+                <Lbl>Qué servís{d.deGoogle?.sirve && <GBadge />}</Lbl>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {SIRVE.map(([k, t]) => <ChipToggle key={k} on={!!d.sirve?.[k]} accent={brand.primary} onClick={() => setD((p) => ({ ...p, sirve: { ...p.sirve, [k]: !p.sirve?.[k] } }))}>{t}</ChipToggle>)}
+                </div>
+              </div>
+              <div>
+                <Lbl>Horarios{d.deGoogle?.horarios && <GBadge />}</Lbl>
+                {(d.horarios || []).map((h, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "nowrap" }}>
+                    <div style={{ display: "flex", gap: 3 }}>
+                      {DIAS_L.map(([n, l]) => { const on = h.dias.includes(n); return (
+                        <button key={n} type="button" onClick={() => setHorario(i, { dias: on ? h.dias.filter((x) => x !== n) : [...h.dias, n] })}
+                          style={{ width: 23, height: 30, borderRadius: 7, border: `1px solid ${on ? brand.primary : C.border}`, background: on ? brand.primary : "#fff", color: on ? "#fff" : C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{l}</button>); })}
+                    </div>
+                    <input value={h.abre} onChange={(e) => setHorario(i, { abre: e.target.value.replace(/[^\d:]/g, "") })} onBlur={(e) => setHorario(i, { abre: horaTxt(e.target.value) })} placeholder="09:00" inputMode="numeric" maxLength={5} style={{ ...inp, width: 64, height: 30, padding: "4px 8px", fontSize: 13, textAlign: "center" }} />
+                    <span style={{ color: C.muted, fontSize: 13 }}>a</span>
+                    <input value={h.cierra} onChange={(e) => setHorario(i, { cierra: e.target.value.replace(/[^\d:]/g, "") })} onBlur={(e) => setHorario(i, { cierra: horaTxt(e.target.value) })} placeholder="00:00" inputMode="numeric" maxLength={5} style={{ ...inp, width: 64, height: 30, padding: "4px 8px", fontSize: 13, textAlign: "center" }} />
+                    <button type="button" title="Quitar" onClick={() => setD((p) => ({ ...p, horarios: p.horarios.filter((_, j) => j !== i) }))} style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 15, padding: "0 4px" }}>✕</button>
+                  </div>
+                ))}
+                {!(d.horarios || []).length && <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>Sin horarios cargados.</div>}
+                <button type="button" onClick={() => setD((p) => ({ ...p, horarios: [...(p.horarios || []), { dias: [1, 2, 3, 4, 5], abre: "", cierra: "" }] }))}
+                  style={{ border: "none", background: "none", color: brand.primary, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>+ Agregar turno</button>
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Lbl>Fotos{d.google && (d.fotos || []).some((u) => /^https?:/.test(u)) && <GBadge>G de Google</GBadge>}<span style={{ fontWeight: 400, color: C.muted, fontSize: 12.5 }}> · tocá una para elegirla de portada</span></Lbl>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+                {(d.fotos || []).map((u) => (
+                  <button key={u} type="button" onClick={() => set("portada", u)} title="Usar de portada"
+                    style={{ height: 84, borderRadius: 10, border: "none", padding: 0, cursor: "pointer", position: "relative", background: `center / cover no-repeat url("${u}")`, outline: d.portada === u ? `3px solid ${brand.primary}` : "none", outlineOffset: 2 }}>
+                    {d.portada === u && <span style={{ position: "absolute", bottom: 4, left: 6, fontSize: 10.5, color: "#fff", background: "rgba(0,0,0,.55)", padding: "1px 6px", borderRadius: 4 }}>★ Portada</span>}
+                  </button>
+                ))}
+                <label style={{ height: 84, borderRadius: 10, border: `2px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, color: C.muted, fontWeight: 700, cursor: "pointer" }}>+ Subir
+                  <input type="file" accept="image/*" onChange={onFoto} style={{ display: "none" }} /></label>
+              </div>
             </div>
             <div style={{ marginTop: 16 }}>
               <Lbl>Logo</Lbl>
@@ -2525,6 +2633,17 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
         contact: { phone: d.telefono || "", web: d.web || "" },
         address: { city: d.ciudad || "", street: d.calle || "", number: d.numero || "" },
         social: { instagram: d.instagram || "", facebook: d.facebook || "", tiktok: d.tiktok || "" },
+        // Perfil del local (Google + lo que corrigió el usuario). Las fotos subidas
+        // a mano (data URL) todavía no se guardan: solo las de Google.
+        perfil: {
+          descripcion: d.descripcion || "",
+          horarios: (d.horarios || []).filter((h) => h.dias?.length && h.abre && h.cierra),
+          canales: d.canales || {},
+          sirve: d.sirve || {},
+          fotos: (d.fotos || []).filter((u) => /^https?:/.test(u)),
+          portada: /^https?:/.test(d.portada || "") ? d.portada : "",
+          google: d.google || null,
+        },
       };
       const resp = await BusinessesAPI.create(payload);
       const bizId = resp?.business?.id ?? resp?.activeBusinessId;
