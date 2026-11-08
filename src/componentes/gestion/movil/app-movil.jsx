@@ -1,6 +1,7 @@
 /* eslint-disable */
 // Traído de lazarillo_gestion/components/movil/app-movil.tsx (misma lógica).
 import { gestionFetch } from "@/servicios/apiGestion";
+import { useBusiness } from "@/context/BusinessContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Camera, ChevronLeft, ChevronRight, CircleDot, ClipboardList, Home, PenLine, Plus, Receipt } from "lucide-react";
@@ -81,6 +82,16 @@ export function AppMovil() {
     const [actualId, setActualId] = useState(null);
     const actual = elegidos.find((p) => p.pdvId === actualId) ?? elegidos[0] ?? null;
     const [eligiendo, setEligiendo] = useState(false);
+    // Negocio (Diego 08/11/2026): en el celular no está la barra de la app, así que se elige acá
+    // (Container Bar, Container FC, Comercio…). Al cambiar, arranca con el primer PDV del negocio nuevo.
+    const { items: negocios = [], activeBusinessId: negocioId, select: elegirNegocio } = useBusiness() || {};
+    const cambiarNegocio = async (id) => {
+        setEligiendo(false);
+        if (String(id) === String(negocioId)) return;
+        try { await elegirNegocio(id); } catch { toast.error("No se pudo cambiar de negocio"); return; }
+        setSelIds(null); setActualId(null);
+        try { localStorage.removeItem(LS_PDVS); localStorage.removeItem(LS_PDV); } catch { /* sin almacenamiento */ }
+    };
     const guardarSeleccion = (ids) => {
         setSelIds(ids);
         setActualId(null);
@@ -203,7 +214,8 @@ export function AppMovil() {
               <p className="mt-2 text-[12px] text-zinc-500">La foto se lee en el celular y no se guarda: solo se usa para leer el QR.</p>
             </div>)}
       </main>
-      {eligiendo && <ElegirPdvs locales={locales ?? []} inicial={elegidos.map((p) => p.pdvId)} onListo={guardarSeleccion} onCerrar={() => setEligiendo(false)}/>}
+      {eligiendo && <ElegirPdvs locales={locales ?? []} inicial={elegidos.map((p) => p.pdvId)} onListo={guardarSeleccion} onCerrar={() => setEligiendo(false)}
+          negocios={negocios} negocioId={negocioId} onNegocio={cambiarNegocio}/>}
 
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
         {[["inicio", Home, "Inicio"], ["cargar", Plus, "Cargar"], ["impagas", CircleDot, "Impagas"], ["sincarga", ClipboardList, "Sin carga"]].map(([k, Icono, t]) => (<button key={k} type="button" onClick={() => { if (k === "sincarga")
@@ -475,7 +487,7 @@ function Caja({ on }) {
 }
 // Elegir qué PDV ver (Diego 29/10/2026, mockup_celu_pdvs_indicadores): se tildan por local, con atajos
 // "Todo <local>" y "Todos los PDV". Inicio suma los elegidos.
-function ElegirPdvs({ locales, inicial, onListo, onCerrar }) {
+function ElegirPdvs({ locales, inicial, onListo, onCerrar, negocios = [], negocioId, onNegocio }) {
     const [ids, setIds] = useState(inicial);
     const todos = locales.flatMap((l) => l.puntosDeVenta.map((p) => p.id));
     const tiene = (id) => ids.includes(id);
@@ -485,6 +497,17 @@ function ElegirPdvs({ locales, inicial, onListo, onCerrar }) {
     return (<div className="fixed inset-0 z-[1350] flex items-end bg-black/40" onClick={onCerrar}>
       <div className="max-h-[85svh] w-full overflow-y-auto rounded-t-3xl bg-white dark:bg-zinc-950 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-300"/>
+        {negocios.length > 1 && (<>
+            <b className="text-[16px]">Negocio</b>
+            <div className="mt-2 mb-4 flex flex-wrap gap-2">
+              {negocios.map((n) => {
+                const on = String(n.id) === String(negocioId);
+                return (<button key={n.id} type="button" onClick={() => onNegocio?.(n.id)}
+                    className={cn("rounded-full border px-3.5 py-1.5 text-[14px]", on ? "border-zinc-900 bg-zinc-900 font-bold text-white dark:border-white dark:bg-white dark:text-zinc-900" : "border-zinc-300 text-zinc-700 dark:text-zinc-200")}>
+                    {n.name || n.nombre || `Negocio ${n.id}`}</button>);
+              })}
+            </div>
+          </>)}
         <b className="text-[16px]">Qué PDV ver</b>
         <div className="text-[12.5px] text-zinc-500">Se suman ventas, gastos e indicadores</div>
         {locales.map((l) => (<div key={l.id} className="mt-3">
