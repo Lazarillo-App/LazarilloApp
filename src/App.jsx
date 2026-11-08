@@ -67,7 +67,7 @@ function PanelOCelular() {
   const location = useLocation();
   const sp = new URLSearchParams(location.search);
   if (sp.get('completa') === '1') elegirPanelCompleto();
-  else if (irACelular()) return <Navigate to="/m" replace />;
+  else if (irACelular()) return <Navigate to={sp.get('cargar') === '1' ? '/m?tab=cargar' : '/m'} replace />;
   return <GestionPanel />;
 }
 

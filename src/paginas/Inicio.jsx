@@ -33,8 +33,8 @@ const GROUPS = [
     id: 'administracion', label: 'Administración', icon: '💼',
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: null },
-      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', to: '/gestion', soloAdmin: true },
-      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', desc: 'Facturas, gastos varios y sueldos.', to: '/gestion?cargar=1', soloAdmin: true },
+      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
+      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', desc: 'Facturas, gastos varios y sueldos.', descCelular: 'Factura con foto del QR o gasto.', to: '/gestion?cargar=1', soloAdmin: true },
       { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
   },
@@ -66,6 +66,8 @@ export default function Inicio() {
   const grupos = GROUPS.map((g) => ({ ...g, modules: g.modules.filter((m) => !(isStaff && m.soloAdmin)) }));
 
   const userName = getUserName();
+  const celular = useAngosto();
+  if (celular) return <InicioCelular grupos={grupos} userName={userName} onSelect={(to) => navigate(to)} />;
 
   return (
     <div style={{ fontFamily: "'Archivo',sans-serif", background: C.paper, minHeight: '100vh', color: C.txt }}>
@@ -95,6 +97,78 @@ export default function Inicio() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+// Celular (< 760 px, Diego 08/11/2026): una columna, Administración primero (es lo que se usa desde el
+// celu), solo lo disponible como tarjetas y lo que viene en una línea de pastillas.
+function useAngosto(max = 760) {
+  const q = `(max-width: ${max}px)`;
+  const [v, setV] = React.useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
+  React.useEffect(() => {
+    const m = window.matchMedia(q);
+    const f = () => setV(m.matches);
+    m.addEventListener('change', f);
+    return () => m.removeEventListener('change', f);
+  }, [q]);
+  return v;
+}
+
+const ORDEN_CELULAR = ['administracion', 'operacion', 'rentabilidad'];
+
+function InicioCelular({ grupos, userName, onSelect }) {
+  const orden = [...grupos].sort((a, b) => ORDEN_CELULAR.indexOf(a.id) - ORDEN_CELULAR.indexOf(b.id));
+  const proximos = orden.flatMap((g) => g.modules.filter((m) => !m.to));
+  return (
+    <div style={{ fontFamily: "'Archivo',sans-serif", background: C.paper, minHeight: '100vh', color: C.txt }}>
+      <main style={{ padding: '18px 16px 28px' }}>
+        <h1 style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 24, color: C.tinta, letterSpacing: '-0.3px', margin: 0 }}>
+          Hola{userName ? `, ${userName}` : ''} 👋
+        </h1>
+        <p style={{ fontSize: 13, color: C.txt2, margin: '3px 0 0' }}>¿En qué trabajamos hoy?</p>
+        {orden.map((g) => {
+          const disponibles = g.modules.filter((m) => m.to);
+          if (!disponibles.length) return null;
+          return (
+            <section key={g.id} style={{ marginTop: 18 }}>
+              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 11.5, color: C.tinta, textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13 }} aria-hidden>{g.icon}</span>{g.label}
+              </div>
+              {disponibles.map((m) => <TarjetaCelular key={m.id} module={m} tint={AREA_TINTS[g.id]} onSelect={onSelect} />)}
+            </section>
+          );
+        })}
+        {proximos.length > 0 && (
+          <section style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: C.txt3 }}>Próximamente</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {proximos.map((m) => (
+                <span key={m.id} style={{ fontSize: 12, color: C.txt3, background: C.white, border: `1px solid ${C.line2}`, borderRadius: 14, padding: '4px 10px' }}>{m.label}</span>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function TarjetaCelular({ module, tint, onSelect }) {
+  return (
+    <div role="button" tabIndex={0} onClick={() => onSelect(module.to)} onKeyDown={(e) => { if (e.key === 'Enter') onSelect(module.to); }}
+      style={{
+        marginTop: 8, background: C.white, borderRadius: 14, padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+        border: module.destacado ? '1.5px solid var(--color-primary, #5BC2EA)' : `1px solid ${C.line2}`,
+      }}>
+      <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, background: tint.bg }} aria-hidden>
+        {module.emoji}
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 15, color: C.tinta, lineHeight: 1.2 }}>{module.label}</div>
+        <div style={{ fontSize: 12.5, color: C.txt2, lineHeight: 1.3, marginTop: 2 }}>{module.descCelular || module.desc}</div>
+      </div>
+      <span style={{ color: C.txt3, fontSize: 20, lineHeight: 1 }} aria-hidden>›</span>
     </div>
   );
 }
