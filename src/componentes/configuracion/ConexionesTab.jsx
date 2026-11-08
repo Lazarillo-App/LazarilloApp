@@ -5,15 +5,15 @@
 //   - Vincular una PC nueva: 3 pasos + "Descargar instalador" (Diego: "el kit quiero bajarlo
 //     desde lazarillo"). El zip trae la última versión del kit y ya apunta a este servidor.
 //   - Por API (Waitry, Fudo): próximamente, en gris.
-//   - Publicar una versión del kit: solo el equipo de Lazarillo (el back dice si podés).
-// Back: GET/POST /api/businesses/:id/kit/{pcs, pcs/:id/desvincular, version, instalador, publicar}.
+//   El kit NO se publica desde la app: vive en el servidor (carpeta kit/ del repo del back),
+//   Diego 08/11: "no quiero que se publique desde usuario".
+// Back: GET/POST /api/businesses/:id/kit/{pcs, pcs/:id/desvincular, version, instalador}.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box, Stack, Paper, Typography, Button, Chip, CircularProgress, Alert, Table, TableHead,
-  TableBody, TableRow, TableCell, TextField, Tooltip,
+  TableBody, TableRow, TableCell, Tooltip,
 } from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { api, BASE, getSession } from '@/servicios/apiBase';
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
@@ -64,11 +64,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
   const [pcs, setPcs] = useState(null);
   const [error, setError] = useState(null);
   const [version, setVersion] = useState(null);
-  const [puedePublicar, setPuedePublicar] = useState(false);
   const [bajando, setBajando] = useState(false);
-  const [publicando, setPublicando] = useState(false);
-  const [notas, setNotas] = useState('');
-  const archivoRef = useRef(null);
   const nuevaRef = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -81,7 +77,6 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
       ]);
       setPcs(p?.pcs || []);
       setVersion(v?.version || null);
-      setPuedePublicar(!!v?.puedePublicar);
     } catch (e) {
       setError(e?.message || String(e));
       setPcs([]);
@@ -112,7 +107,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        throw new Error(j.error === 'todavia_no_hay_kit_publicado' ? 'Todavía no hay una versión del kit publicada.' : (j.error || `HTTP ${r.status}`));
+        throw new Error(j.error === 'todavia_no_hay_kit_publicado' ? 'El kit todavía no está en el servidor.' : (j.error || `HTTP ${r.status}`));
       }
       const blob = await r.blob();
       const url = window.URL.createObjectURL(blob);
@@ -127,26 +122,6 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
       showAlert(`No se pudo descargar el instalador: ${e?.message || e}`, 'error');
     } finally {
       setBajando(false);
-    }
-  };
-
-  const publicar = async () => {
-    const f = archivoRef.current?.files?.[0];
-    if (!f) { showAlert('Elegí el zip del kit.', 'warning'); return; }
-    setPublicando(true);
-    try {
-      const fd = new FormData();
-      fd.append('zip', f);
-      if (notas.trim()) fd.append('notas', notas.trim());
-      const r = await api(`/businesses/${businessId}/kit/publicar`, { method: 'POST', body: fd, timeout: 120000 });
-      showAlert(`Kit ${r?.version?.version} publicado (${r?.version?.archivos} archivos)`, 'success');
-      setNotas('');
-      if (archivoRef.current) archivoRef.current.value = '';
-      cargar();
-    } catch (e) {
-      showAlert(`No se pudo publicar: ${e?.message || e}`, 'error');
-    } finally {
-      setPublicando(false);
     }
   };
 
@@ -243,7 +218,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
             <Typography variant="body2" color="text.secondary">
               {version
                 ? `Lazarillo - instalar.zip · kit ${version.version} del ${dia(version.publicado)}`
-                : 'Todavía no hay una versión del kit publicada.'}
+                : 'El kit todavía no está en el servidor.'}
             </Typography>
           </Stack>
           <Typography sx={{ px: 2, pb: 1.5, fontSize: 12, color: 'text.secondary' }}>
@@ -256,22 +231,6 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
       <Caja titulo="Por API" gris
         chip={<Chip size="small" label="próximamente" sx={{ height: 24, fontWeight: 600 }} />}
         accion={<Typography variant="body2" color="text.secondary">Waitry · Fudo</Typography>} />
-
-      {puedePublicar && (
-        <Caja titulo="Publicar una versión del kit" chip={<Chip size="small" label="equipo de Lazarillo" sx={{ height: 24 }} />}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ px: 2, py: 1.5 }}>
-            <input ref={archivoRef} type="file" accept=".zip,application/zip" style={{ fontSize: 13 }} />
-            <TextField size="small" label="Notas (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} sx={{ flex: 1, minWidth: 200 }} />
-            <Button variant="outlined" startIcon={publicando ? <CircularProgress size={16} /> : <CloudUploadIcon />} onClick={publicar} disabled={publicando}
-              sx={{ height: 38, textTransform: 'none', fontWeight: 700, borderColor: themeColor, color: themeColor }}>
-              {publicando ? 'Publicando…' : 'Publicar'}
-            </Button>
-          </Stack>
-          <Typography sx={{ px: 2, pb: 1.5, fontSize: 12, color: 'text.secondary' }}>
-            El zip «Lazarillo - instalar». Se rechaza si trae credenciales. La que publiques es la que bajan todos y con la que se actualizan las PC vinculadas.
-          </Typography>
-        </Caja>
-      )}
     </Stack>
   );
 }
