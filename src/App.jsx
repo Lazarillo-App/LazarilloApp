@@ -40,6 +40,7 @@ import GestionPanel from './paginas/GestionPanel';
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
 import GestionMovil from './paginas/GestionMovil';
+import { irACelular, elegirPanelCompleto } from './gestion/vistaCelular';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import RequireActiveAccount from './routing/RequireActiveAccount';
 import Activar from './paginas/Activar';
@@ -58,6 +59,16 @@ function readRole() {
     if (!raw) return null;
     return (JSON.parse(raw) || {}).role || null;
   } catch { return null; }
+}
+
+// En un celular el Panel abre la versión celular (/m), como en lazarillo_gestion. ?completa=1 (desde
+// «Abrir el Panel completo» de /m) se recuerda en el celular. Lo que venga en la URL pasa igual a /m.
+function PanelOCelular() {
+  const location = useLocation();
+  const sp = new URLSearchParams(location.search);
+  if (sp.get('completa') === '1') elegirPanelCompleto();
+  else if (irACelular()) return <Navigate to="/m" replace />;
+  return <GestionPanel />;
 }
 
 export default function App() {
@@ -289,7 +300,7 @@ export default function App() {
                 <Route path="/rrhh/nomina" element={<RrhhNomina />} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><GestionMovil /></RequireAdminOrOwner>} />
-                <Route path="/gestion" element={<RequireAdminOrOwner><GestionPanel /></RequireAdminOrOwner>} />
+                <Route path="/gestion" element={<RequireAdminOrOwner><PanelOCelular /></RequireAdminOrOwner>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><GestionConceptos /></RequireAdminOrOwner>} />
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><GestionMediosPago /></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
