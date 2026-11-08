@@ -911,14 +911,15 @@ const AnthonyDice = ({ pose = "senala", size = 84, children, accent }) => {
 // ───────────────────────── App ─────────────────────────
 const MOSTRAR_ELECCION = false;
 
-export default function AsistenteOnboarding({ businessId: businessIdProp = null, onDone } = {}) {
+export default function AsistenteOnboarding({ businessId: businessIdProp = null, onDone, negocioInicial = null } = {}) {
   // Por ahora el alta arranca directo en "Negocio en marcha": la pantalla de
   // elección (Home) y el flujo "Proyecto de negocio" quedan en el código pero
   // ocultos. Para volver a mostrarlos, poner MOSTRAR_ELECCION en true.
   const [view, setView] = useState(MOSTRAR_ELECCION ? "home" : "marcha"); // home | marcha | nuevo
   const [insumos, setInsumos] = useState([]);
   const [articulos, setArticulos] = useState([]);
-  const [brand, setBrand] = useState(null);
+  // negocioInicial: volver al asistente con el negocio ya creado (/alta).
+  const [brand, setBrand] = useState(negocioInicial?.colores ? { ...negocioInicial.colores, logo: negocioInicial.logo, nombre: negocioInicial.nombre } : null);
   // businessId del negocio recién creado (o el pasado por prop). Lo comparten
   // los pasos que persisten datos (menú, insumos, etc).
   const [businessId, setBusinessId] = useState(businessIdProp);
@@ -958,7 +959,7 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
       <div style={{ flex: 1, width: "100%", maxWidth: 1000, margin: "0 auto", padding: "22px" }}>
         {MOSTRAR_ELECCION && view !== "home" && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}><Btn ghost small onClick={reset}>← Inicio</Btn></div>}
         {view === "home" && <Home onPick={setView} />}
-        {view === "marcha" && <EnMarcha insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
+        {view === "marcha" && <EnMarcha negocioInicial={negocioInicial} insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
         {view === "nuevo" && <Nuevo insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
       </div>
     </div>
@@ -2611,8 +2612,8 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
     </>
   );
 }
-function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, businessId, setBusinessId, onDone }) {
-  const [negocio, setNegocio] = useState(null);
+function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, businessId, setBusinessId, onDone, negocioInicial = null }) {
+  const [negocio, setNegocio] = useState(negocioInicial);
   const [step, setStep] = useState(0);
   const [ventasRaw, setVentasRaw] = useState("");
   const [savedVentas, setSavedVentas] = useState(null); // estado del mapeo de ventas para poder volver a ajustarlo
