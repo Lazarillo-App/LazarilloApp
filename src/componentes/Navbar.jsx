@@ -95,7 +95,7 @@ export default function Navbar() {
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
   // dice "Asistente de alta" en lugar de Artículos/Insumos/Menú.
-  const enAlta = !isAppAdmin && location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0);
+  const enAlta = !isAppAdmin && (location.pathname.startsWith('/alta') || (location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0)));
 
   // Badge de alertas en el ícono de configuración
   const [alertasBadge, setAlertasBadge] = useState(0);
