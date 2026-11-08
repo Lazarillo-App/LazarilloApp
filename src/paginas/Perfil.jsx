@@ -35,6 +35,8 @@ import BusinessCreateModal from '@/componentes/BusinessCreateModal';
 import InvitarMiembroModal from '@/componentes/InvitarMiembroModal';
 import EditarAccesoModal from '@/componentes/EditarAccesoModal';
 import AccesoEquipoModal from '@/componentes/AccesoEquipoModal';
+import RolesTab from '@/componentes/configuracion/RolesTab';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
 import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
@@ -85,6 +87,8 @@ function DataRow({ label, value, mono }) {
   );
 }
 
+const ROL_LABEL = { owner: 'Dueño', admin: 'Administración', staff: 'Staff' };
+
 /* ─── EQUIPO funcional ─── */
 function TeamSection() {
   const { currentBusiness, currentRole, canDo, isOwner } = useAccess();
@@ -117,6 +121,7 @@ function TeamSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [showRoles, setShowRoles] = useState(false);
   const [showAccesoQR, setShowAccesoQR] = useState(false);
 const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (detalle de negocios)
   const [editandoPersona, setEditandoPersona] = useState(null); // persona en el modal de editar acceso
@@ -164,6 +169,8 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           role: r.role,
           account_status: r.account_status,
           sectorIds: Array.isArray(r.sector_ids) ? r.sector_ids.map(Number) : [],
+          customRoleId: r.custom_role_id != null ? Number(r.custom_role_id) : null,
+          customRoleNombre: r.custom_role_nombre || null,
         });
       }
       // Rol más alto por persona (para el chip principal)
@@ -173,7 +180,11 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         for (const n of p.negocios) {
           if (rank[n.role] > best) { best = rank[n.role]; rolMasAlto = n.role; }
         }
-        return { ...p, rolMasAlto };
+        // Nombre a mostrar: el rol a medida si todos sus accesos de admin lo tienen.
+        const admins = p.negocios.filter((n) => n.role === 'admin');
+        const medida = rolMasAlto === 'admin' && admins.length && admins.every((n) => n.customRoleNombre)
+          ? [...new Set(admins.map((n) => n.customRoleNombre))].join(' / ') : null;
+        return { ...p, rolMasAlto, rolNombre: medida || ROL_LABEL[rolMasAlto] || rolMasAlto };
       });
       setMembers(lista);
     } catch (e) {
@@ -254,7 +265,13 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         badge={members.length ? `${members.length} ${members.length === 1 ? 'persona' : 'personas'}` : undefined}
         action={
           puedeGestionar ? (
-            <Stack direction="row" spacing={0.5}>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              {isOwner && (
+                <Button size="small" startIcon={<ShieldOutlinedIcon sx={{ fontSize: '1rem !important' }} />}
+                  onClick={() => setShowRoles(true)} sx={{ color: tc, textTransform: 'none', fontWeight: 600, height: 30 }}>
+                  Roles
+                </Button>
+              )}
               <Tooltip title="QR de acceso del equipo (negocio activo)">
                 <IconButton
                   size="small"
@@ -349,7 +366,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={m.rolMasAlto}
+                          label={m.rolNombre}
                           size="small"
                           icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
                           sx={{ fontSize: '0.7rem', bgcolor: `${tc}15`, color: tc, fontWeight: 600 }}
@@ -405,7 +422,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                                     <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                                       {n.scopeName}
                                     </Typography>
-                                    <Chip label={n.role} size="small"
+                                    <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
                                       sx={{ height: 18, fontSize: '0.62rem', bgcolor: `${tc}12`, color: tc }} />
                                   </Stack>
                                 ))}
@@ -450,6 +467,16 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           </MenuItem>
         )}
       </Menu>
+
+      {/* Roles y permisos (solo el dueño) */}
+      <Dialog open={showRoles} onClose={() => setShowRoles(false)} fullWidth maxWidth="lg">
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ShieldOutlinedIcon sx={{ color: tc, fontSize: 20 }} /> Roles y permisos
+        </DialogTitle>
+        <DialogContent sx={{ pt: '4px !important' }}>
+          <RolesTab themeColor={tc} onCambio={fetchMembers} />
+        </DialogContent>
+      </Dialog>
 
       {/* Modal editar acceso */}
       <EditarAccesoModal

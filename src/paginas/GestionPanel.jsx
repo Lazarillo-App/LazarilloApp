@@ -48,6 +48,7 @@ import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
 import { PanelGestionContext } from '@/gestion/panelContext';
 import { MESES_IDX } from '@/gestion/formato';
+import { useAccess } from '@/context/AccessContext';
 
 const ANIO_ACTUAL = new Date().getFullYear();
 
@@ -120,6 +121,22 @@ function GestionPanelContenido() {
   useEffect(() => { guardarEstado(activeBusinessId, estado); }, [activeBusinessId, estado]);
 
   const cambiar = (parcial) => setEstado((e) => ({ ...e, ...parcial }));
+
+  // Roles a medida (sin rol a medida, se ve todo como siempre).
+  const { puedeVer = () => true, oculto = () => false } = useAccess() || {};
+  const verPanel = puedeVer('resultados');
+  const verCarga = puedeVer('carga', 'editar');
+  const tabsVisibles = TABS.filter((t) => !oculto(`tab.${t.v}`));
+  const sinEcoFin = oculto('btn.eco_fin');
+  const sinPct = oculto('tabla.pct');
+  // Si lo guardado apunta a algo que el rol no ve, se vuelve a lo básico.
+  useEffect(() => {
+    const arreglo = {};
+    if (!tabsVisibles.some((t) => t.v === estado.tab)) arreglo.tab = 'compras';
+    if (sinEcoFin && estado.modo !== 'economica') arreglo.modo = 'economica';
+    if (sinPct && estado.modoCelda !== 'importe') arreglo.modoCelda = 'importe';
+    if (Object.keys(arreglo).length) setEstado((e) => ({ ...e, ...arreglo }));
+  }, [estado.tab, estado.modo, estado.modoCelda, sinEcoFin, sinPct, tabsVisibles.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleMes = (m) => setEstado((e) => {
     const set = new Set(e.meses);
     if (set.has(m)) set.delete(m); else set.add(m);
@@ -184,7 +201,7 @@ function GestionPanelContenido() {
 
   // Años navegables: desde el primer dato importado hasta el actual (rango-anios de gestion).
   const rango = useQuery({
-    enabled: !!activeBusinessId,
+    enabled: !!activeBusinessId && verPanel,
     queryKey: ['gestionRangoAnios', activeBusinessId, sucursal],
     queryFn: () => GestionAPI.rangoAnios({ sucursal }),
     staleTime: 10 * 60 * 1000,
@@ -208,13 +225,13 @@ function GestionPanelContenido() {
   // Compras y, en Resultados, la fila Egresos del bloque Operación (vista por concepto).
   const paramsOperacion = useMemo(() => ({ ...paramsCompras, agrupacion: 'concepto' }), [paramsCompras]);
   const compras = useQuery({
-    enabled: !!activeBusinessId && estado.tab === 'compras',
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras',
     queryKey: ['gestionPivot', activeBusinessId, paramsCompras],
     queryFn: () => GestionAPI.pivot(paramsCompras),
     staleTime: 60 * 1000,
   });
   const operacion = useQuery({
-    enabled: !!activeBusinessId && estado.tab === 'resultados',
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'resultados',
     queryKey: ['gestionPivot', activeBusinessId, paramsOperacion],
     queryFn: () => GestionAPI.pivot(paramsOperacion),
     staleTime: 60 * 1000,
@@ -222,14 +239,14 @@ function GestionPanelContenido() {
   // Resultados: pivot filtrado por los rubros visibles en Resultados (Ganancia y el detalle).
   const paramsResultados = useMemo(() => ({ ...paramsOperacion, vista: 'resultados' }), [paramsOperacion]);
   const resultados = useQuery({
-    enabled: !!activeBusinessId && estado.tab === 'resultados',
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'resultados',
     queryKey: ['gestionPivot', activeBusinessId, paramsResultados],
     queryFn: () => GestionAPI.pivot(paramsResultados),
     staleTime: 60 * 1000,
   });
   // Ventas: su pestaña y la fila de Ingresos y el % de las otras dos (useOperacionKpis de gestion).
   const ventas = useQuery({
-    enabled: !!activeBusinessId,
+    enabled: !!activeBusinessId && verPanel,
     queryKey: ['gestionPivotVentas', activeBusinessId, paramsVentas],
     queryFn: () => GestionAPI.pivotVentas(paramsVentas),
     staleTime: 60 * 1000,
@@ -283,12 +300,14 @@ function GestionPanelContenido() {
             </IconButton>
           </Tooltip>
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
+          {verPanel && !sinEcoFin && (
           <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
             <ToggleButtonGroup size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
               <ToggleButton value="economica">Económica</ToggleButton>
               <ToggleButton value="financiera">Financiera</ToggleButton>
             </ToggleButtonGroup>
           </Tooltip>
+          )}
         </Stack>
       </Stack>
 
@@ -306,20 +325,20 @@ function GestionPanelContenido() {
         />
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-            <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro>
-            {!enParaMirar && pdvId != null && (
+            {verCarga && <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro>}
+            {verPanel && !enParaMirar && pdvId != null && (
               <ScopeGestion>
-                <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>
-                <BloqueSeguro nombre="Sin carga" compacto><SinCargaBoton /></BloqueSeguro>
+                {!oculto('btn.impagas') && <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>}
+                {!oculto('btn.sin_carga') && <BloqueSeguro nombre="Sin carga" compacto><SinCargaBoton /></BloqueSeguro>}
               </ScopeGestion>
             )}
-            {estado.tab === 'resultados'
+            {!verPanel || !puedeVer('resultados', 'editar') ? null : estado.tab === 'resultados'
               ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
               : <RubrosConfig key="dash" />}
-            <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
+            {verPanel && <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
               <SearchIcon sx={{ fontSize: 15 }} />
               <span>Buscar</span>
-            </Box>
+            </Box>}
           </Stack>
         )}
       </Stack>
@@ -327,9 +346,9 @@ function GestionPanelContenido() {
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {estado.mostrarTarjetas && <BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro>}
+      {verPanel && estado.mostrarTarjetas && <BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro>}
 
-      <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
+      {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <ToggleButtonGroup
             exclusive
@@ -337,7 +356,7 @@ function GestionPanelContenido() {
             onChange={(_, v) => v && cambiar({ tab: v })}
             sx={{ ...sxGrupo, bgcolor: 'grey.50', '& .MuiToggleButton-root': { ...sxGrupo['& .MuiToggleButton-root'], height: 30, px: 2, fontSize: 14 }, '& .MuiToggleButton-root.Mui-selected, & .MuiToggleButton-root.Mui-selected:hover': { bgcolor: 'background.paper', color: 'text.primary', boxShadow: 1 } }}
           >
-            {TABS.map((t) => (
+            {tabsVisibles.map((t) => (
               <ToggleButton key={t.v} value={t.v} disabled={t.proximamente} title={t.proximamente ? 'Próximamente' : undefined}>{t.label}</ToggleButton>
             ))}
           </ToggleButtonGroup>
@@ -350,10 +369,12 @@ function GestionPanelContenido() {
                 <ToggleButton value="insumo" title="Cada gasto por sus insumos (informe 25); sin detalle, por su concepto"><Inventory2Icon sx={{ fontSize: 13 }} />Insumos</ToggleButton>
               </ToggleButtonGroup>
               {/* $ / % ing: cada celda mensual como peso sobre los ingresos de ese mes. */}
+              {!sinPct && (
               <ToggleButtonGroup exclusive value={estado.modoCelda} onChange={(_, v) => v && cambiar({ modoCelda: v })} sx={sxGrupo}>
                 <ToggleButton value="importe" title="Celdas en pesos">$</ToggleButton>
                 <ToggleButton value="pct" title="Celdas como % de los ingresos de cada mes">% ing</ToggleButton>
               </ToggleButtonGroup>
+              )}
             </Stack>
           )}
         </Stack>
@@ -399,7 +420,7 @@ function GestionPanelContenido() {
           />
           </BloqueSeguro>
         )}
-      </Paper>
+      </Paper>}
       <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
       <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
     </Box>

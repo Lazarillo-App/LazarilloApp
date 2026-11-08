@@ -4,6 +4,13 @@ import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
 import { elegirVersionCelular } from '@/gestion/vistaCelular';
+import { useAccess } from '@/context/AccessContext';
+
+// Módulo → sección de los roles a medida (lo que el rol no ve, no aparece).
+const SECCION_DE_MODULO = {
+  resultados: 'resultados', 'carga-gastos': 'carga', 'version-celular': 'resultados', rrhh: 'rrhh',
+  recetas: 'recetas', 'gestion-conceptos': 'conceptos', 'gestion-medios': 'medios',
+};
 
 /**
  * ModulosDrawer — el menú "escondido" para navegar entre los módulos
@@ -63,6 +70,8 @@ const C = {
 export default function ModulosDrawer({ open, onClose }) {
   const navigate = useNavigate();
   const [query, setQuery] = React.useState('');
+  const { puedeVer } = useAccess() || {};
+  const visible = (m) => !SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]);
 
   const irA = (to) => {
     if (!to) return;
@@ -121,7 +130,7 @@ export default function ModulosDrawer({ open, onClose }) {
               <Box sx={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: C.sidebarDim, padding: '0 4px 7px' }}>
                 {g.label}
               </Box>
-              {g.modules.map((m) => {
+              {g.modules.filter(visible).map((m) => {
                 const disabled = !m.to;
                 return (
                   <Box

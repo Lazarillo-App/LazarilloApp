@@ -25,19 +25,36 @@ import { listarSectores } from '@/servicios/apiSectores';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { showConfirm } from '@/servicios/appConfirm';
+import { RolesAPI } from '@/servicios/apiRoles';
 import GestionarSectoresModal from '@/componentes/GestionarSectoresModal';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
 /* ─── Fila de un negocio con acceso: ver, editar rol/sector, o quitar ─── */
+const ROL_LABEL = { owner: 'Dueño', admin: 'Administración', staff: 'Staff' };
+// Valor del selector: 'admin' | 'staff' | 'rol:<id>' (rol a medida, se guarda como admin + customRoleId).
+const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : n.role);
+
 function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
+  const { isOwner, businesses = [] } = useAccess() || {};
   const [editando, setEditando] = useState(false);
-  const [rol, setRol] = useState(n.role);
+  const [rol, setRol] = useState(valorRol(n));
+  const [rolesMedida, setRolesMedida] = useState([]);
   const [sectorIds, setSectorIds] = useState(() => new Set(n.sectorIds || []));
   const [sectores, setSectores] = useState([]);
   const [guardando, setGuardando] = useState(false);
   const [errorEdit, setErrorEdit] = useState(null);
   const [gestionando, setGestionando] = useState(false);
+
+  // Roles a medida de la organización de este acceso (solo los asigna el dueño).
+  useEffect(() => {
+    if (!editando || !isOwner) return;
+    const bizDeFila = n.scopeType === 'business'
+      ? n.scopeId
+      : businesses.find((b) => Number(b.organization_id) === Number(n.scopeId))?.id;
+    if (!bizDeFila) return;
+    RolesAPI.list(bizDeFila).then(setRolesMedida).catch(() => setRolesMedida([]));
+  }, [editando, isOwner, n.scopeType, n.scopeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cargarSectores = () => {
     if (rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
@@ -53,7 +70,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   }, [editando, rol, n.scopeType, n.scopeId]);
 
   const empezarEdicion = () => {
-    setRol(n.role);
+    setRol(valorRol(n));
     setSectorIds(new Set(n.sectorIds || []));
     setErrorEdit(null);
     setEditando(true);
@@ -62,9 +79,13 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const guardar = async () => {
     setGuardando(true); setErrorEdit(null);
     try {
+      const esMedida = rol.startsWith('rol:');
+      const role = esMedida ? 'admin' : rol;
       await updateAssignment(n.assignmentId, {
-        role: rol,
-        sectorIds: rol === 'staff' ? Array.from(sectorIds) : [],
+        role,
+        sectorIds: role === 'staff' ? Array.from(sectorIds) : [],
+        // Solo el dueño toca el rol a medida (null = Administración completa).
+        ...(isOwner && role === 'admin' ? { customRoleId: esMedida ? Number(rol.slice(4)) : null } : {}),
       });
       try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
       setEditando(false);
@@ -86,7 +107,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           {n.scopeName}
         </Typography>
         {!editando && (
-          <Chip label={n.role} size="small"
+          <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
             sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
         )}
         {n.account_status === 'invited' && (
@@ -119,9 +140,12 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
             <TextField
               select label="Rol" size="small" value={rol}
               onChange={(e) => setRol(e.target.value)}
-              sx={{ width: 140 }}
+              sx={{ width: 190 }}
             >
-              {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
+              {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
+              {puedeInvitarAdmin && rolesMedida.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
+              {/* Si el rol a medida ya no está en la lista (otra organización), igual se muestra. */}
+              {rol.startsWith('rol:') && !rolesMedida.some((r) => `rol:${r.id}` === rol) && <MenuItem value={rol}>{n.customRoleNombre || 'Rol a medida'}</MenuItem>}
               <MenuItem value="staff">Staff</MenuItem>
             </TextField>
             <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
@@ -331,7 +355,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   onChange={(e) => setNuevoRol(e.target.value)}
                   sx={{ width: 140 }}
                 >
-                  {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
+                  {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
                   <MenuItem value="staff">Staff</MenuItem>
                 </TextField>
                 <Button

@@ -29,6 +29,7 @@ import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/es
 import {
   PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
 } from './piezasPivot';
+import { useAccess } from '@/context/AccessContext';
 
 // Rubro "Gastos En Personal": los "proveedores" suelen ser personas de planilla con nombres
 // ambiguos — ahí se antepone el código del ERP (constants.ts de gestion).
@@ -83,6 +84,11 @@ export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
+  // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
+  // y/o sin el bloque Ingresos · Egresos · Resultado · Equilibrio.
+  const { oculto = () => false } = useAccess() || {};
+  const sinTotalesRubro = oculto('tabla.totales_rubro');
+  const sinIngEgr = oculto('tabla.ing_egr');
   const aperturaPanel = useAperturaPanel();
   const { pdvId: lugarPanel } = useDashboard();
   const { data: conceptosFijos } = useConceptosEmpleado(lugarPanel);
@@ -174,6 +180,9 @@ export default function PivotCompras({
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
         <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{sinRubro ? <>⚠ {rubro.nombre}<ChipCorregir /></> : rubro.nombre}</Expansor>
       </TableCell>
+      {sinTotalesRubro ? (
+        <TableCell colSpan={months.length + 2} sx={{ bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25) }} />
+      ) : (<>
       {months.map((mes) => (
         <TableCell key={mes} {...clic(rubro.values[mes], { mes, rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(rubro.values[mes]) }}>
           {fmtCelda(rubro.values[mes], mes)}
@@ -181,6 +190,7 @@ export default function PivotCompras({
       ))}
       <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>
       {celdaPct(rubro.rowTotal, { py: 1.25 })}
+      </>)}
     </TableRow>
     );
   };
@@ -342,6 +352,7 @@ export default function PivotCompras({
           </TableRow>
         </TableHead>
         <TableBody>
+          {!sinIngEgr && (
           <KpiBlock
             months={months}
             ingresosPorMes={ingresosPorMes}
@@ -350,10 +361,11 @@ export default function PivotCompras({
             egresosTotal={data.grandTotal}
             ingresosReady={ingresosReady}
           />
+          )}
           <SectionDivider label="Gastos por rubro" icon={LayersIcon} colSpan={colSpan} />
           {filas.map(renderFila)}
         </TableBody>
-        <TableFooter>
+        {!sinTotalesRubro && <TableFooter>
           <TableRow sx={{ '& td': { bgcolor: MUTED, fontWeight: 600, fontSize: 15, color: 'text.primary', borderTop: 2, borderTopColor: 'divider', py: 1.5 } }}>
             <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2 }}>Total gastos</TableCell>
             {months.map((mes) => (
@@ -364,7 +376,7 @@ export default function PivotCompras({
               {pctMode === 'egresos' ? '—' : fmtPct(data.grandTotal)}
             </TableCell>
           </TableRow>
-        </TableFooter>
+        </TableFooter>}
       </Table>
       <ModalAperturaPanel panel={aperturaPanel} />
     </Box>

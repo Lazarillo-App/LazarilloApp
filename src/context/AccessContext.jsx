@@ -122,6 +122,16 @@ export function AccessProvider({ children }) {
     return set.has(permission);
   }, [currentRole]);
 
+  // Rol a medida del negocio activo (solo admins). null = sin límites.
+  const permisos = currentBusiness?.permisos || null;
+  const puedeVer = useCallback((seccion, modo = 'ver') => {
+    if (!permisos) return true;
+    const m = permisos.secciones?.[seccion];
+    if (!m) return false;
+    return modo === 'ver' || m === 'editar';
+  }, [permisos]);
+  const oculto = useCallback((clave) => !!permisos && (permisos.ocultos || []).includes(clave), [permisos]);
+
   const isOwner = currentRole === 'owner';
   const isAdmin = currentRole === 'admin';
   const isStaff = currentRole === 'staff';
@@ -154,10 +164,14 @@ export function AccessProvider({ children }) {
     isAdmin,
     isStaff,
     switchToBusiness,
+    permisos,
+    puedeVer,
+    oculto,
   }), [
     loading, error, refetch, data,
     businesses, currentBusiness, currentRole, highestRole, currentAlias,
     canDo, isOwner, isAdmin, isStaff, switchToBusiness,
+    permisos, puedeVer, oculto,
   ]);
 
   return <AccessCtx.Provider value={value}>{children}</AccessCtx.Provider>;

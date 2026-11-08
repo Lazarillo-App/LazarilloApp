@@ -12,6 +12,7 @@ import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
 import GestionLayout from './componentes/GestionLayout';
 import ConfiguracionMain from './paginas/ConfiguracionMain';
+import RequireSeccion from './componentes/RequireSeccion';
 import RequireAdminOrOwner from './componentes/RequireAdminOrOwner';
 import ForgotPassword from './paginas/ForgotPassword';
 import ResetPassword from './paginas/ResetPassword';
@@ -270,6 +271,7 @@ export default function App() {
                 <Route
                   path="/menu"
                   element={
+                    <RequireSeccion seccion="recetas">
                     <RequireMaxi onReady={() => { }}>
                       <ArticulosMain
                         agrupacionSeleccionada={agrupacionSeleccionada}
@@ -282,12 +284,13 @@ export default function App() {
                         activeBizId={activeBusinessId}
                       />
                     </RequireMaxi>
+                    </RequireSeccion>
                   }
                 />
                 <Route
                   path="/insumos"
                   element={
-                    <Insumos />
+                    <RequireSeccion seccion="recetas"><Insumos /></RequireSeccion>
                   }
                 />
                 </Route>
@@ -296,16 +299,16 @@ export default function App() {
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}
                 />
                 {/* ── RRHH › Cronogramas (Etapa 1) ── */}
-                <Route path="/rrhh/cronogramas" element={<RrhhCronogramas />} />
-                <Route path="/rrhh/nomina" element={<RrhhNomina />} />
+                <Route path="/rrhh/cronogramas" element={<RequireSeccion seccion="rrhh"><RrhhCronogramas /></RequireSeccion>} />
+                <Route path="/rrhh/nomina" element={<RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion>} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
-                <Route path="/m" element={<RequireAdminOrOwner><GestionMovil /></RequireAdminOrOwner>} />
-                <Route path="/gestion" element={<RequireAdminOrOwner><PanelOCelular /></RequireAdminOrOwner>} />
-                <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><GestionConceptos /></RequireAdminOrOwner>} />
-                <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><GestionMediosPago /></RequireAdminOrOwner>} />
+                <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><RequireSeccion seccion="conceptos"><GestionConceptos /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/inicio" element={<Inicio />} />
-                <Route path="/configuracion" element={<RequireAdminOrOwner><ConfiguracionMain /></RequireAdminOrOwner>} />
+                <Route path="/configuracion" element={<RequireAdminOrOwner><RequireSeccion seccion="configuracion"><ConfiguracionMain /></RequireSeccion></RequireAdminOrOwner>} />
               </Route>
             </Route>
           ) : (
