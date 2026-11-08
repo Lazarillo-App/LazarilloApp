@@ -24,6 +24,7 @@ import { nombrePeriodo } from "@/gestion/periodoGastos";
 import { FacturaMovil } from "./factura-movil";
 import { GastoMovil } from "./gasto-movil";
 import { FacturaVerMovil } from "./factura-ver-movil";
+import { DetalleVentas } from "./detalle-ventas";
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const $ = (n) => "$ " + Math.round(n).toLocaleString("es-AR");
 const LS_PDV = "movil:pdv";
@@ -400,6 +401,10 @@ const plataCorta = (n) => {
 };
 function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const [n, setN] = useState(6);
+    // Ventas: debajo del gráfico va el detalle de un día o de un mes (Diego 08/11/2026).
+    const esVentas = clave === "ventas";
+    const [periodo, setPeriodo] = useState({ modo: "dia", dia: null, mes: null });
+    const ymDe = (x) => `${x.anio}-${String(x.mes).padStart(2, "0")}`;
     const ant = hasta.anio - 1;
     // El año anterior solo si la ventana lo necesita.
     const necesitaAnt = hasta.mes < n;
@@ -429,14 +434,20 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
           <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
         </div>
         <div className="mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
-          {serie.map((x) => (<div key={`${x.anio}-${x.mes}`} className="flex h-full flex-1 flex-col items-center justify-end">
+          {serie.map((x) => {
+            const elegido = esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x);
+            return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
+              onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
               {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{plata ? plataCorta(x.valor) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
-              <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
-            </div>))}
+              <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : elegido ? "bg-sky-700" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
+            </div>);
+          })}
         </div>
         <div className="flex gap-1.5">
-          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className="flex-1 text-center text-[10.5px] text-zinc-500">{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
+          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
         </div>
+        {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
+        {esVentas && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
         <div className="mt-4">
           {[...serie].reverse().map((x) => (<div key={`${x.anio}-${x.mes}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-2 text-[14px]">
               <span className="flex-1">{MESES[x.mes - 1]} {x.anio !== hasta.anio ? x.anio : ""}{x.proyectado && <span className="ml-1.5 text-[11.5px] text-zinc-500">proyectado</span>}</span>
