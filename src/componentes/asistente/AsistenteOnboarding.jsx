@@ -1470,38 +1470,6 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
             <div style={{ display: "flex", marginTop: 14 }}>
               <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 18, marginTop: 16 }}>
-              <div>
-                <Lbl>Cómo vendés{d.deGoogle?.canales && <GBadge />}</Lbl>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {CANALES.map(([k, t]) => <ChipToggle key={k} on={!!d.canales?.[k]} accent={brand.primary} onClick={() => setD((p) => ({ ...p, canales: { ...p.canales, [k]: !p.canales?.[k] } }))}>{t}</ChipToggle>)}
-                </div>
-                <div style={{ height: 14 }} />
-                <Lbl>Qué servís{d.deGoogle?.sirve && <GBadge />}</Lbl>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {SIRVE.map(([k, t]) => <ChipToggle key={k} on={!!d.sirve?.[k]} accent={brand.primary} onClick={() => setD((p) => ({ ...p, sirve: { ...p.sirve, [k]: !p.sirve?.[k] } }))}>{t}</ChipToggle>)}
-                </div>
-              </div>
-              <div>
-                <Lbl>Horarios{d.deGoogle?.horarios && <GBadge />}</Lbl>
-                {(d.horarios || []).map((h, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "nowrap" }}>
-                    <div style={{ display: "flex", gap: 3 }}>
-                      {DIAS_L.map(([n, l]) => { const on = h.dias.includes(n); return (
-                        <button key={n} type="button" onClick={() => setHorario(i, { dias: on ? h.dias.filter((x) => x !== n) : [...h.dias, n] })}
-                          style={{ width: 23, height: 30, borderRadius: 7, border: `1px solid ${on ? brand.primary : C.border}`, background: on ? brand.primary : "#fff", color: on ? "#fff" : C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>{l}</button>); })}
-                    </div>
-                    <input value={h.abre} onChange={(e) => setHorario(i, { abre: e.target.value.replace(/[^\d:]/g, "") })} onBlur={(e) => setHorario(i, { abre: horaTxt(e.target.value) })} placeholder="09:00" inputMode="numeric" maxLength={5} style={{ ...inp, width: 64, height: 30, padding: "4px 8px", fontSize: 13, textAlign: "center" }} />
-                    <span style={{ color: C.muted, fontSize: 13 }}>a</span>
-                    <input value={h.cierra} onChange={(e) => setHorario(i, { cierra: e.target.value.replace(/[^\d:]/g, "") })} onBlur={(e) => setHorario(i, { cierra: horaTxt(e.target.value) })} placeholder="00:00" inputMode="numeric" maxLength={5} style={{ ...inp, width: 64, height: 30, padding: "4px 8px", fontSize: 13, textAlign: "center" }} />
-                    <button type="button" title="Quitar" onClick={() => setD((p) => ({ ...p, horarios: p.horarios.filter((_, j) => j !== i) }))} style={{ border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 15, padding: "0 4px" }}>✕</button>
-                  </div>
-                ))}
-                {!(d.horarios || []).length && <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>Sin horarios cargados.</div>}
-                <button type="button" onClick={() => setD((p) => ({ ...p, horarios: [...(p.horarios || []), { dias: [1, 2, 3, 4, 5], abre: "", cierra: "" }] }))}
-                  style={{ border: "none", background: "none", color: brand.primary, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>+ Agregar turno</button>
-              </div>
-            </div>
             <div style={{ marginTop: 16 }}>
               <Lbl>Fotos{d.google && (d.fotos || []).some((u) => /^https?:/.test(u)) && <GBadge>G de Google</GBadge>}<span style={{ fontWeight: 400, color: C.muted, fontSize: 12.5 }}> · tocá una para elegirla de portada</span></Lbl>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
