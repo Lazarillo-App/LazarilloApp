@@ -69,6 +69,10 @@ function sumar(datos) {
     mozos: porImporte(unir(ok.map((d) => d.mozos), (x) => nombreMozo(x.mozo))),
     descuentos: { importe: s((d) => d.descuentos?.importe), tickets: s((d) => d.descuentos?.tickets), porTurno: porImporte(unir(ok.map((d) => d.descuentos?.porTurno), (x) => x.turno)) },
     pagosCaja: ok.flatMap((d) => d.pagosCaja || []).sort((a, b) => b.importe - a.importe),
+    anulaciones: (() => {
+      const det = ok.flatMap((d) => d.anulaciones?.detalle || []).sort((a, b) => b.importe - a.importe);
+      return { importe: det.reduce((t, a) => t + a.importe, 0), n: det.length, detalle: det };
+    })(),
     dias: unir(ok.map((d) => d.dias), (x) => x.fecha).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),
     articulos: arts.length ? {
       rubros: porImporte(unir(arts.map((a) => a.rubros), (x) => x.rubro)),
@@ -192,7 +196,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
   const turnosReales = d.turnos.filter((t) => t.turno !== "—");
   // Con un turno elegido los botones quedan siempre, para poder volver al día completo.
   const conTurnos = turnosReales.length > 1 || !!turno;
-  const alertaRevisar = d.bruto > 0 && d.descuentos.importe / d.bruto > 0.05;
+  const alertaRevisar = (d.bruto > 0 && d.descuentos.importe / d.bruto > 0.05) || d.anulaciones.n > 0;
   const ultimoDiaMes = Number(finDeMes(mesAct).slice(8));
   const porDia = new Map(d.dias.map((x) => [Number(x.fecha.slice(8)), x.importe]));
   const maxDia = Math.max(1, ...d.dias.map((x) => x.importe));
@@ -249,7 +253,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
       )}
       {conTurnos && !turno && (
         <div style={{ fontSize: 11.5, color: GRIS, marginTop: 4 }}>
-          {turnosReales.map((t, i) => <span key={t.turno} style={{ whiteSpace: "nowrap" }}>{i > 0 ? " · " : ""}{nombreTurno(t.turno)} {$(t.importe)} · {num(t.tickets)} tickets</span>)}
+          {turnosReales.map((t, i) => <span key={t.turno}>{i > 0 ? " · " : ""}<span style={{ whiteSpace: "nowrap" }}>{nombreTurno(t.turno)} {$(t.importe)} · {num(t.tickets)} tickets</span></span>)}
         </div>
       )}
 
@@ -315,7 +319,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
           {[
             ["Descuentos", $(d.descuentos.importe), `${num(d.descuentos.tickets)} tickets · ${d.bruto ? (d.descuentos.importe / d.bruto * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 }) : 0}% de lo bruto`],
             ["Pagos desde la caja", $(d.pagosCaja.reduce((t, p) => t + p.importe, 0)), `${num(d.pagosCaja.length)} pagos`],
-            ["Anulaciones", "—", "falta el dato", true],
+            ["Anulaciones", $(d.anulaciones.importe), `${num(d.anulaciones.n)} ${d.anulaciones.n === 1 ? "nota de crédito" : "notas de crédito"}`],
             ["Movimientos de stock", "—", "falta el dato", true],
           ].map(([t, v, s, gris]) => (
             <div key={t} style={{ border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 10px", background: gris ? "#fafafa" : "#fff", minWidth: 0 }}>
@@ -331,6 +335,19 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
             <div key={x.turno} style={{ display: "flex", padding: "6px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 }}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>
           ))}
         </>)}
+        {d.anulaciones.n > 0 && (<>
+          <Seccion>Anulaciones</Seccion>
+          <Lista key={`anu-${periodo.modo}-${periodo.dia || periodo.mes}`} items={d.anulaciones.detalle} etiqueta="anulaciones" render={(a) => (
+            <div key={`${a.fecha}|${a.comprobante}`} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "6px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 }}>
+              <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {esMes && <span style={{ color: GRIS }}>{a.fecha.slice(8)}/{a.fecha.slice(5, 7)} · </span>}
+                {a.anula || a.comprobante}
+                <small style={{ color: GRIS }}> · {nombreTurno(a.turno)}{a.tipo ? ` · ${nombreServicio(a.tipo)}` : ""}</small>
+              </span>
+              <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
+            </div>
+          )} />
+        </>)}
         {d.pagosCaja.length > 0 && (<>
           <Seccion>Pagos desde la caja</Seccion>
           {unir(d.pagosCaja.map((p) => [{ ...p, n: 1 }]), (p) => `${p.concepto}|${p.proveedor}`).sort((a, b) => b.importe - a.importe).map((p) => (
@@ -342,7 +359,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
           ))}
         </>)}
         <div style={{ marginTop: 12, border: "1px dashed #d4d4d8", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: GRIS, lineHeight: 1.45 }}>
-          <b>Pagos desde la caja</b>: todo lo que se pagó con la caja del turno (la de la adición). <b>Anulaciones y movimientos de stock</b> salen de los informes 27 y 28: se empiezan a subir a Render; falta mostrarlos acá.
+          <b>Pagos desde la caja</b>: todo lo que se pagó con la caja del turno (la de la adición). <b>Anulaciones</b>: las notas de crédito (salen del informe 22); al lado, el comprobante que anulan. <b>Movimientos de stock</b>: salen de los informes 27 y 28, ya en Render; falta mostrarlos acá.
         </div>
       </>)}
     </div>
