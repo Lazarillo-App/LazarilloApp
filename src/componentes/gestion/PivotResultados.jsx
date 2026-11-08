@@ -274,6 +274,14 @@ function CajaRows({ months, isEmpty, colSpan }) {
           title={puedeEditar ? undefined : 'Elegí una sucursal para cargar Disponible en caja — acá se muestra la suma de todas'}
         >
           Disponible en caja
+          {/* Caja compartida (08/11/2026): el arqueo es el mismo desde cualquiera de los negocios del
+              grupo, y la diferencia de caja suma los movimientos de todos. */}
+          {flujo?.compartidaCon?.length > 0 && (
+            <Box component="span" sx={{ display: 'block', fontSize: 11, color: 'text.secondary', fontWeight: 400 }}
+              title="El arqueo es uno solo para toda la caja; la diferencia de caja suma las ventas y compras de todos.">
+              Caja compartida con {flujo.compartidaCon.join(', ')}
+            </Box>
+          )}
         </TableCell>
         {months.map((mes) => {
           const value = flujoPorMes[mes];
