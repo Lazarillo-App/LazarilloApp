@@ -927,10 +927,16 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
   useEffect(() => { loadLearned(); }, []);
   // El header de la app (Navbar) toma el color del negocio mientras se arma el
   // alta (antes lo hacía la barra propia del asistente, que se sacó en #73).
+  const bizRef = useRef(businessId); bizRef.current = businessId;
   useEffect(() => {
     const root = document.documentElement;
     const antes = root.style.getPropertyValue("--color-primary");
-    return () => { if (antes) root.style.setProperty("--color-primary", antes); else root.style.removeProperty("--color-primary"); window.dispatchEvent(new Event("theme:updated")); };
+    return () => {
+      // Con negocio creado, el color del header ya es el del negocio (lo aplica el
+      // tema de la app): no se vuelve al anterior (Diego, 08/11: "no carga el tema").
+      if (!bizRef.current) { if (antes) root.style.setProperty("--color-primary", antes); else root.style.removeProperty("--color-primary"); }
+      window.dispatchEvent(new Event("theme:updated"));
+    };
   }, []);
   useEffect(() => {
     if (!brand?.primary || !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(brand.primary)) return;
@@ -1265,7 +1271,7 @@ async function completarDesdeWeb(body) {
   } catch { return null; }
 }
 const PERFIL_VACIO = () => ({ descWeb: false, horarios: [], canales: { salon: false, takeAway: false, delivery: false, eventos: false }, sirve: { desayuno: false, almuerzo: false, cena: false, cerveza: false, vino: false, tragos: false }, fotos: [], portada: "", google: null, descGoogle: false, deGoogle: { horarios: false, canales: false, sirve: false } });
-function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
+function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
   const [ws, setWs] = useState(0);
   const [query, setQuery] = useState("");
   const [buscando, setBuscando] = useState(false);
@@ -1288,7 +1294,11 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
   const [logoUrl, setLogoUrl] = useState("");    // texto del campo de URL manual
   const [logoTried, setLogoTried] = useState(false); // ya intentamos traer logos para este negocio
   const [logoColores, setLogoColores] = useState(null); // paleta original generada por el logo (para resetear)
-  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES }, ...PERFIL_VACIO() });
+  const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES }, ...PERFIL_VACIO(),
+    // Volviendo al paso "Local" con el negocio ya creado: arranca con sus datos.
+    ...(inicial ? Object.fromEntries(["nombre", "telefono", "ciudad", "calle", "numero", "descripcion", "logo", "instagram", "facebook", "tiktok", "web"].filter((k) => inicial[k]).map((k) => [k, inicial[k]])) : {}),
+    ...(inicial?.colores?.primary ? { colores: { ...COLORES_INICIALES, ...inicial.colores } } : {}),
+  });
   const set = (k, v) => setD((p) => ({ ...p, [k]: v }));
   const dRef = useRef(d); dRef.current = d;
   const setHorario = (i, patch) => setD((p) => ({ ...p, horarios: p.horarios.map((h, j) => (j === i ? { ...h, ...patch } : h)) }));
@@ -1631,7 +1641,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
           <div style={{ flex: 1 }} />
           {ws < 2
             ? <Btn accent={brand.primary} onClick={() => setWs(ws + 1)} disabled={ws === 0 && !d.nombre.trim()}>Siguiente →</Btn>
-            : <Btn accent={brand.primary} onClick={async () => { try { await onDone(d); } catch { /* el error se muestra abajo */ } }} disabled={creando || !d.nombre.trim()}>{creando ? "Creando tu negocio…" : "Empezar con ventas →"}</Btn>}
+            : <Btn accent={brand.primary} onClick={async () => { try { await onDone(d); } catch { /* el error se muestra abajo */ } }} disabled={creando || !d.nombre.trim()}>{creando ? (inicial ? "Guardando…" : "Creando tu negocio…") : "Empezar con ventas →"}</Btn>}
         </div>
         {errCrear && <p style={{ color: C.danger, fontSize: 13, marginTop: 12, textAlign: "right" }}>{errCrear}</p>}
       </div>
@@ -2613,7 +2623,11 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
   );
 }
 function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, businessId, setBusinessId, onDone, negocioInicial = null }) {
-  const [negocio, setNegocio] = useState(negocioInicial);
+  const [negocio, setNegocio] = useState(null);
+  // Datos con los que se abre el paso "Local": los del negocio ya creado (/alta)
+  // o los últimos cargados si se vuelve desde los pasos siguientes.
+  const [negocioPrev, setNegocioPrev] = useState(negocioInicial);
+  const volverALocal = () => { setNegocioPrev(negocio || negocioPrev); setNegocio(null); };
   const [step, setStep] = useState(0);
   const [ventasRaw, setVentasRaw] = useState("");
   const [savedVentas, setSavedVentas] = useState(null); // estado del mapeo de ventas para poder volver a ajustarlo
@@ -2636,7 +2650,34 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
     setErrCrear("");
     // Si ya había un businessId (p. ej. venías con negocio creado), no recreo;
     // solo guardo datos en local y avanzo.
-    if (businessId) { setNegocio(d); return; }
+    if (businessId) {
+      // Negocio ya creado (volviste al paso Local o entraste por /alta): se guardan los cambios.
+      setCreando(true);
+      try {
+        const logoUrl = typeof d.logo === "string" && /^https?:\/\//i.test(d.logo);
+        const branding = { primary: d.colores?.primary, secondary: d.colores?.secondary, background: d.colores?.background, font: d.fuente || undefined, ...(logoUrl ? { logo_url: d.logo } : {}) };
+        await BusinessesAPI.update(businessId, {
+          name: (d.nombre || "").trim() || undefined,
+          branding,
+          contact: { phone: d.telefono || "", web: d.web || "" },
+          address: { city: d.ciudad || "", street: d.calle || "", number: d.numero || "" },
+          social: { instagram: d.instagram || "", facebook: d.facebook || "", tiktok: d.tiktok || "" },
+          description: d.descripcion || "",
+        });
+        if (d.logo && !logoUrl && d.logo.startsWith("data:")) {
+          try {
+            const blob = await (await fetch(d.logo)).blob();
+            await BusinessesAPI.uploadLogo(businessId, new File([blob], "logo.png", { type: blob.type || "image/png" }));
+          } catch (e) { console.warn("[onboarding] no se pudo subir el logo:", e?.message); }
+        }
+        window.dispatchEvent(new CustomEvent("business:branding-updated", { detail: { id: businessId, branding } }));
+        setNegocio(d);
+      } catch (e) {
+        setErrCrear("No pude guardar los cambios del negocio. Probá de nuevo. (" + (e?.message || "error") + ")");
+        throw e;
+      } finally { setCreando(false); }
+      return;
+    }
     setCreando(true);
     try {
       // El logo del asistente puede ser una data URL (archivo) que no sirve como
@@ -2830,7 +2871,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
 
   if (!negocio) return (
     <div className="rise">
-      <DatosNegocio onDone={crearNegocio} onBrand={onBrand} creando={creando} errCrear={errCrear} />
+      <DatosNegocio onDone={crearNegocio} onBrand={onBrand} creando={creando} errCrear={errCrear} inicial={negocioPrev} />
     </div>
   );
 
@@ -2928,7 +2969,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
 
   return (
     <div className="rise">
-      <Steps items={["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)} active={posView ? 0 : Math.min(step, 3) + 1} accent={marca.primary} onStep={(i) => { if (i === 0) { setPosView(true); } else { setPosView(false); setStep(i - 1); } }}
+      <Steps items={["Local", ...["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)]} active={posView ? 1 : Math.min(step, 3) + 2} accent={marca.primary} onStep={(i) => { if (i === 0) volverALocal(); else if (i === 1) { setPosView(true); } else { setPosView(false); setStep(i - 2); } }}
         accion={(posView || step <= 3) && !progress ? <Btn small accent={marca.primary} onClick={irAlTablero}>Finalizar y ver tablero →</Btn> : null} />
       {posView ? posScreen : (<>
       {step <= 3 && step !== 1 && step !== 3 && !(step === 0 && ventasRaw.trim()) && !(step === 2 && comprasRaw.trim()) && (
