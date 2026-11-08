@@ -342,7 +342,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
           ))}
         </>)}
         <div style={{ marginTop: 12, border: "1px dashed #d4d4d8", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: GRIS, lineHeight: 1.45 }}>
-          <b>Anulaciones y movimientos de stock</b> salen de los informes 27 y 28, que todavía no se suben a Render. Pagos desde la caja: por ahora, gastos varios y sueldos pagados con la caja.
+          <b>Pagos desde la caja</b>: todo lo que se pagó con la caja del turno (la de la adición). <b>Anulaciones y movimientos de stock</b> salen de los informes 27 y 28: se empiezan a subir a Render; falta mostrarlos acá.
         </div>
       </>)}
     </div>
