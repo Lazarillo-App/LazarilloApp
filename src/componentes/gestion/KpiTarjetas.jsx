@@ -19,6 +19,7 @@ import { alertasDelMes, conPersonalCompleto, mesCerrado, tarjetasDelMes } from '
 import { serieIndicador, sentido, INFO_INDICADOR } from '@/gestion/evolucion';
 import { resumirCanasta } from '@/gestion/canasta';
 import { CanastaDetalle, CanastaMini } from './CanastaTarjeta';
+import { useAccess } from '@/context/AccessContext';
 
 const MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const VERDE = '#047857';
@@ -30,6 +31,9 @@ const ppTxt = (d) => `${d > 0 ? '▲' : '▼'} ${Math.abs(d).toLocaleString('es-
 
 export default function KpiTarjetas() {
   const { year, modo, sucursalCaja, busquedaActiva } = usePanelGestion();
+  // Rol a medida: tarjetas que el rol no ve (sin rol a medida se ve todo).
+  const { oculto = () => false } = useAccess() || {};
+  const ver = (k) => !oculto(`tarjeta.${k}`);
   const { data: anual } = useAnual(year);
   const { data: anualAnt } = useAnual(year - 1);
   const { data: eq } = useEquilibrio();
@@ -59,12 +63,16 @@ export default function KpiTarjetas() {
 
   const toggle = (k) => setAbierta((a) => (a === k ? null : k));
   const e = t.equilibrio;
-  const alertas = [
+  const alertasTodas = [
     ...alertasDelMes(conPersonalCompleto([...anual.meses].sort((a, b) => a.mes - b.mes)), t, t.mes <= 6 ? (anualAnt?.meses ?? []).filter((m) => m.mes > t.mes + 6) : []),
     ...(eqProy && eqProy.falta > 0 && enCurso ? [{ texto: `${MES[enCurso - 1]}: faltan ${fmtMillones(eqProy.falta)} para el equilibrio`, nivel: 'ambar' }] : []),
   ];
+  // Sin la tarjeta de Equilibrio o de Resultado, tampoco se cuentan por las alertas.
+  const alertas = alertasTodas.filter((a) => (ver('equilibrio') || !/equilibrio/i.test(a.texto)) && (ver('resultado') || !/resultado|p[eé]rdida|ganancia/i.test(a.texto)));
   const conMirar = alertas.length > 0;
-  const columnas = [rc ? '3.5fr' : '3fr', ...(enCurso ? ['1.4fr'] : []), ...(conMirar ? ['0.95fr'] : [])].join(' ');
+  const verCanasta = rc && ver('canasta');
+  const anchos = [ver('ventas') && '1fr', ver('equilibrio') && '1fr', ver('resultado') && '1fr', ver('mix') && '1.5fr', verCanasta && '1.1fr'].filter(Boolean);
+  const columnas = [`${Math.max(1, anchos.length * 0.7).toFixed(1)}fr`, ...(enCurso ? ['1.4fr'] : []), ...(conMirar ? ['0.95fr'] : [])].join(' ');
   const aviseError = (p) => p.then((err) => { if (err) setAviso(err); });
 
   return (
@@ -72,27 +80,27 @@ export default function KpiTarjetas() {
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { lg: columnas } }}>
         <div>
           <Grupo>{MES[t.mes - 1]} · último mes cerrado</Grupo>
-          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr 1fr', md: rc ? '1fr 1fr 1fr 1.5fr 1.1fr' : '1fr 1fr 1fr 1.5fr' } }}>
-            <Tarjeta titulo="Ventas" activa={abierta === 'ventas'} onClick={() => toggle('ventas')}>
+          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr 1fr', md: anchos.join(' ') } }}>
+            {ver('ventas') && <Tarjeta titulo="Ventas" activa={abierta === 'ventas'} onClick={() => toggle('ventas')}>
               <Grande>{fmtMillones(t.ventas)}</Grande>
               {t.ventasVsAnterior != null && (
                 <Chico color={t.ventasVsAnterior >= 0 ? VERDE : ROJO}>
                   {t.ventasVsAnterior >= 0 ? '▲' : '▼'} {pc(Math.abs(t.ventasVsAnterior))} vs {MES[(t.mes + 10) % 12].slice(0, 3).toLowerCase()}
                 </Chico>
               )}
-            </Tarjeta>
-            <Tarjeta titulo="Equilibrio" activa={abierta === 'equilibrio'} onClick={() => toggle('equilibrio')} deshabilitada={!e?.equilibrio}>
+            </Tarjeta>}
+            {ver('equilibrio') && <Tarjeta titulo="Equilibrio" activa={abierta === 'equilibrio'} onClick={() => toggle('equilibrio')} deshabilitada={!e?.equilibrio}>
               <Grande>{e?.equilibrio != null ? fmtMillones(e.equilibrio) : '—'}</Grande>
               {e?.equilibrio != null && <Chico color={e.diferencia >= 0 ? VERDE : ROJO}>{e.diferencia >= 0 ? '✓ superado' : `faltaron ${fmtMillones(-e.diferencia)}`}</Chico>}
-            </Tarjeta>
-            <Tarjeta titulo="Resultado" activa={abierta === 'resultado'} onClick={() => toggle('resultado')}>
+            </Tarjeta>}
+            {ver('resultado') && <Tarjeta titulo="Resultado" activa={abierta === 'resultado'} onClick={() => toggle('resultado')}>
               <Grande color={t.resultado < 0 ? ROJO : VERDE}>{fmtMillones(t.resultado)}</Grande>
               <Chico color="text.secondary">
                 <Box component="span" sx={{ whiteSpace: 'nowrap' }}>{pc(t.rentabilidad)} rentab.</Box>
                 {t.personalEstimado && <Box component="span" sx={{ whiteSpace: 'nowrap' }}> · personal est.</Box>}
               </Chico>
-            </Tarjeta>
-            <Tarjeta titulo="Mix" activa={abierta === 'mix' || abierta === 'foodCost' || abierta === 'personal'} onClick={() => toggle('mix')}>
+            </Tarjeta>}
+            {ver('mix') && <Tarjeta titulo="Mix" activa={abierta === 'mix' || abierta === 'foodCost' || abierta === 'personal'} onClick={() => toggle('mix')}>
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
                 <Grande>{pc(t.mix)}</Grande>
                 {t.difMix != null && Math.abs(t.difMix) >= 0.05 && <Chico color={t.difMix < 0 ? VERDE : ROJO}>{ppTxt(t.difMix)} pp</Chico>}
@@ -104,8 +112,8 @@ export default function KpiTarjetas() {
                 <SubIndicador nombre="Personal" valor={t.personal} dif={t.difPersonal} onClick={() => toggle('personal')}
                   estimado={t.personalEstimado ? `Estimado: el personal del mes está a medio cargar (${fmtMillones(t.personalEstimado.cargado)}); se usa el último mes completo (${fmtMillones(t.personalEstimado.usado)}) hasta que se cargue.` : null} />
               </Box>
-            </Tarjeta>
-            {rc && (
+            </Tarjeta>}
+            {verCanasta && (
               <Tarjeta titulo="Tu canasta" activa={abierta === 'canasta'} onClick={() => toggle('canasta')}>
                 <CanastaMini r={rc} d={canasta.data} />
               </Tarjeta>
@@ -122,13 +130,13 @@ export default function KpiTarjetas() {
                   <Grande color="#0369a1">{fmtMillones(ventasProy)}</Grande>
                   <Chico color="text.secondary">real {fmtMillones(proy.facturado)} al {proy.corte.slice(8, 10)}/{proy.corte.slice(5, 7)}</Chico>
                 </div>
-                <Box sx={{ textAlign: 'right' }}>
+                {ver('resultado') && <Box sx={{ textAlign: 'right' }}>
                   <Box sx={{ fontSize: 11.5, color: 'text.secondary' }}>Resultado proy.</Box>
                   <Grande color={ventasProy - egrProy.total < 0 ? ROJO : '#0369a1'}>{fmtMillones(ventasProy - egrProy.total)}</Grande>
                   <Chico color="text.secondary">con gastos estimados</Chico>
-                </Box>
+                </Box>}
               </Box>
-              {eqProy?.equilibrio != null && (
+              {eqProy?.equilibrio != null && ver('equilibrio') && (
                 <>
                   <Box sx={{ position: 'relative', mt: 1, height: 8, borderRadius: 1, bgcolor: 'rgba(255,255,255,.7)' }}>
                     <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: 0, borderRadius: 1, bgcolor: CELESTE, width: `${Math.min(100, (proy.facturado / Math.max(ventasProy, eqProy.equilibrio)) * 100)}%` }} />
@@ -146,7 +154,7 @@ export default function KpiTarjetas() {
         )}
         {conMirar && <Box sx={{ display: 'flex', flexDirection: 'column' }}><Grupo>&nbsp;</Grupo><ParaMirar alertas={alertas} /></Box>}
       </Box>
-      {abierta === 'canasta' && canasta.data && rc && (
+      {abierta === 'canasta' && canasta.data && verCanasta && (
         <CanastaDetalle
           d={canasta.data} r={rc} mesRef={t.mes} conSucursal={sucursalCaja !== undefined}
           onAgregar={(f) => aviseError(canasta.agregarAumento(f))} onQuitar={(f) => aviseError(canasta.quitarAumento(f))} onCerrar={() => setAbierta(null)}
@@ -180,12 +188,13 @@ function SubIndicador({ nombre, valor, dif, onClick, estimado }) {
 // Renglones de Impagas y Sin carga: solo con un lugar concreto, sus datos son por lugar.
 function AccesosPagos() {
   const { pdvId } = useDashboard();
+  const { oculto = () => false } = useAccess() || {};
   const { data: locales } = useFetchQuery(['locales'], '/api/locales', { staleTime: 5 * 60_000 });
   if (pdvId == null) return null;
   return (
     <ScopeGestion>
-      <ImpagasBoton locales={locales ?? []} pdvId={pdvId} variante="linea" />
-      <SinCargaBoton variante="linea" />
+      {!oculto('btn.impagas') && <ImpagasBoton locales={locales ?? []} pdvId={pdvId} variante="linea" />}
+      {!oculto('btn.sin_carga') && <SinCargaBoton variante="linea" />}
     </ScopeGestion>
   );
 }
