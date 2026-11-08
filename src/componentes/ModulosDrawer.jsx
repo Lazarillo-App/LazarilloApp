@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
-import { elegirVersionCelular } from '@/gestion/vistaCelular';
 import { useAccess } from '@/context/AccessContext';
 
 // Módulo → sección de los roles a medida (lo que el rol no ve, no aparece).
 const SECCION_DE_MODULO = {
-  resultados: 'resultados', 'carga-gastos': 'carga', 'version-celular': 'resultados', rrhh: 'rrhh',
+  resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh',
   recetas: 'recetas', 'gestion-conceptos': 'conceptos', 'gestion-medios': 'medios',
 };
 
@@ -46,9 +45,8 @@ const GROUPS = [
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
       { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
       { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', to: '/gestion?cargar=1' },
-      // Como en lazarillo_gestion: entrar desde acá vuelve a la versión celular aunque antes se haya
-      // elegido el Panel completo en este celular.
-      { id: 'version-celular', label: 'Versión celular', emoji: '📱', to: '/m', alEntrar: 'celular' },
+      // Sin "Versión celular" (usuaria 08/11/2026: se sigue desarrollando, pero no hace falta un botón
+      // que la muestre). /m sigue andando: un teléfono que entra a /gestion va solo ahí.
       { id: 'balance', label: 'Balance', emoji: '💳', to: null },
     ],
   },
@@ -135,7 +133,7 @@ export default function ModulosDrawer({ open, onClose }) {
                 return (
                   <Box
                     key={m.id}
-                    onClick={() => { if (disabled) return; if (m.alEntrar === 'celular') elegirVersionCelular(); irA(m.to); }}
+                    onClick={() => { if (disabled) return; irA(m.to); }}
                     sx={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10,
                       cursor: disabled ? 'default' : 'pointer', marginBottom: 3,
