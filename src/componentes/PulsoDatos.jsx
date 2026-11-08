@@ -9,6 +9,14 @@
 // se refrescan las pantallas. Solo dueño/admin (staff ve el punto pero no lo puede tocar).
 // Ojo: no hace correr el kit en la PC; Balance llega hasta la última corrida del kit.
 // Back: GET /api/businesses/:id/pulso (balance llega null para staff) y POST …/pulso/actualizar.
+//
+// Diego, 08/11: "dice compras 21/10 atrasado, yo no sé si es que está atrasado o que no hay
+// compras cargadas después de esa fecha, ojo con esa falla". La fecha del último dato no dice
+// si algo está al día (puede no haber compras hace semanas). Con data.kit (negocios que suben
+// por el kit) el punto se juzga por CUÁNDO SUBIÓ el kit (verde hasta 26 h, ámbar hasta 3 días,
+// rojo después) y, en Recetas, por si la app ya tomó todo lo que subió (si no: ámbar, "falta
+// leer lo último"). Las fechas quedan como dato: "última venta" / "última compra".
+// Sin data.kit (negocio que no sube por el kit) sigue el criterio de antes (frescura por fecha).
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
@@ -22,8 +30,30 @@ const LEYENDA = { al_dia: 'al día', atrasado: 'atrasado', viejo: 'desactualizad
 const PESO = { al_dia: 0, atrasado: 1, viejo: 2 };
 
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
-const fechas = (f) => [f.ventas && `ventas ${ddmm(f.ventas)}`, f.compras && `compras ${ddmm(f.compras)}`]
+const fechas = (f) => [f.ventas && `última venta ${ddmm(f.ventas)}`, f.compras && `última compra ${ddmm(f.compras)}`]
   .filter(Boolean).join(' · ');
+const hm = (d) => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+// Estado por la subida del kit (ver arriba). Devuelve { estado, falta }.
+function estadoPorKit(nombre, f, kit) {
+  const horas = (Date.now() - new Date(kit.subida).getTime()) / 3_600_000;
+  let estado = horas <= 26 ? 'al_dia' : horas <= 72 ? 'atrasado' : 'viejo';
+  // Recetas: ¿la app ya tiene todo lo que subió el kit?
+  const falta = nombre === 'Recetas'
+    && ((kit.ventas && (!f.ventas || f.ventas < kit.ventas)) || (kit.compras && (!f.compras || f.compras < kit.compras)));
+  if (falta && estado === 'al_dia') estado = 'atrasado';
+  return { estado, falta: !!falta };
+}
+
+// "hoy 11:37" / "ayer 08:02" / "05/11 08:01"
+function cuando(iso, hoy) {
+  const d = new Date(iso);
+  const dia = new Date(d.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
+  const ayer = new Date(Date.parse(hoy + 'T12:00:00Z') - 86_400_000).toISOString().slice(0, 10);
+  if (dia === hoy) return `hoy ${hm(d)}`;
+  if (dia === ayer) return `ayer ${hm(d)}`;
+  return `${ddmm(dia)} ${hm(d)}`;
+}
 
 const latido = {
   '@keyframes pulsoLatido': { '0%, 100%': { opacity: 1, transform: 'scale(1)' }, '50%': { opacity: 0.35, transform: 'scale(0.7)' } },
@@ -93,7 +123,9 @@ export default function PulsoDatos({ puedeActualizar = false }) {
     ['Recetas', data?.recetas],
   ]
     .filter(([, f]) => f && (f.ventas || f.compras))
-    .map(([nombre, f]) => ({ nombre, f, estado: frescura(f.ventas ?? f.compras, hoy) }));
+    .map(([nombre, f]) => (data?.kit?.subida
+      ? { nombre, f, ...estadoPorKit(nombre, f, data.kit) }
+      : { nombre, f, estado: frescura(f.ventas ?? f.compras, hoy), falta: false }));
   if (!fuentes.length) return null;
 
   const peor = fuentes.reduce((a, b) => (PESO[b.estado] > PESO[a.estado] ? b : a)).estado;
@@ -115,12 +147,17 @@ export default function PulsoDatos({ puedeActualizar = false }) {
       title={
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 12, lineHeight: 1.45, py: 0.25 }}>
           <Box sx={{ fontWeight: 600 }}>{nombre} · {LEYENDA[peor]}</Box>
+          {data?.kit?.subida && (
+            <Box sx={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
+              {(Date.now() - new Date(data.kit.subida).getTime()) / 3_600_000 > 26 ? 'El kit no sube desde' : 'El kit subió'} {cuando(data.kit.subida, hoy)}
+            </Box>
+          )}
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', justifyContent: 'start', alignItems: 'center', columnGap: 1, rowGap: 0.25, whiteSpace: 'nowrap' }}>
-            {fuentes.map(({ nombre: n, f, estado }) => (
+            {fuentes.map(({ nombre: n, f, estado, falta }) => (
               <React.Fragment key={n}>
                 <Punto estado={estado} size={9} />
                 <Box component="span" sx={{ opacity: 0.8, pr: 1 }}>{n}</Box>
-                <span>{fechas(f)}{estado !== 'al_dia' ? ` — ${LEYENDA[estado]}` : ''}</span>
+                <span>{fechas(f)}{falta ? ' — falta leer lo último' : (estado !== 'al_dia' ? ` — ${LEYENDA[estado]}` : '')}</span>
               </React.Fragment>
             ))}
           </Box>
