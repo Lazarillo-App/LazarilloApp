@@ -542,7 +542,7 @@ export default function Navbar() {
               </Box>
             )}
             {/* ⚙ Configuración, a la derecha de la campana (pedido de Diego, 06/11). */}
-            {!isAppAdmin && !isStaff && logged && puedeVer('configuracion') && (
+            {!isAppAdmin && !isStaff && logged && (puedeVer('configuracion') || puedeVer('conexiones')) && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <Tooltip title="Configuración">
                   <IconButton
