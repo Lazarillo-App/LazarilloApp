@@ -27,6 +27,8 @@ import { FacturaVerMovil } from "./factura-ver-movil";
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const $ = (n) => "$ " + Math.round(n).toLocaleString("es-AR");
 const LS_PDV = "movil:pdv";
+const HEADER = { height: 56, background: "var(--color-primary, #111)", color: "var(--on-primary, #fff)", borderBottom: "1px solid color-mix(in srgb, var(--on-primary, #000) 12%, transparent)" };
+const CHIP_HEADER = { color: "inherit", border: "1px solid color-mix(in srgb, var(--on-primary, #000) 25%, transparent)", background: "color-mix(in srgb, var(--on-primary, #000) 10%, transparent)" };
 function leerPdv() {
     try {
         const v = JSON.parse(localStorage.getItem(LS_PDV) ?? "null");
@@ -64,7 +66,8 @@ function useMulti(sel, key, url, staleTime = 30_000) {
     return { list: listo ? qs.map((q) => q.data) : undefined, isLoading: qs.some((q) => q.isLoading), isError: qs.some((q) => q.isError) };
 }
 export function AppMovil() {
-    const [tab, setTabCrudo] = useState("inicio");
+    // /m?tab=cargar: «Carga de gastos» del Inicio en el celular abre directo en Cargar.
+    const [tab, setTabCrudo] = useState(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "cargar" ? "cargar" : "inicio"));
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
     const pdvs = useMemo(() => (locales ?? []).flatMap((l) => l.puntosDeVenta.map((p) => ({ localId: l.id, pdvId: p.id, label: `${l.nombre} · ${p.nombre}` }))), [locales]);
     // Los PDV elegidos se recuerdan en el celular (Diego 29/10: varios a la vez). Inicio suma todos;
@@ -166,14 +169,15 @@ export function AppMovil() {
     const titulos = { inicio: "Inicio", cargar: carga ? ("gasto" in carga || ("sc" in carga && !carga.sc.proveedorId) ? "Gasto vario" : "Factura") : "Cargar", impagas: "Impagas", sincarga: "Sin carga" };
     const enInicio = tab === "inicio" && !carga;
     return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950">
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur">
-        {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center text-sky-700"><ChevronLeft className="size-6"/></button>)}
+      {/* Header con el color del negocio y 56 px, igual que la barra de la app en el celular (Diego 08/11/2026). */}
+      <header className="sticky top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
+        {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center" style={{ color: "inherit" }}><ChevronLeft className="size-6"/></button>)}
         <b className="text-[19px]">{titulos[tab]}</b>
-        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto max-w-[62%] truncate rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 text-[13px]">
+        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto max-w-[62%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
             {etiquetaSeleccion(locales ?? [], elegidos.map((p) => p.pdvId))} ▾
           </button>) : (
         // Fuera de Inicio, con varios tildados: en cuál se trabaja.
-        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto max-w-[60%] truncate rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 px-3 py-1.5 text-[13px]">
+        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto max-w-[60%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
             {elegidos.map((p) => <option key={p.pdvId} value={p.pdvId}>{p.label}</option>)}
           </select>))}
       </header>
