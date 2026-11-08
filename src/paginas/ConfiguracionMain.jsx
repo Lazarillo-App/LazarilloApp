@@ -63,7 +63,11 @@ export { getRedondeoConfig, saveRedondeoConfig };
 
 export default function ConfiguracionMain() {
   const { businessId } = useActiveBusiness();
-  const { isOwner, isAdmin } = useAccess() || {};
+  const { isOwner, isAdmin, puedeVer = () => true } = useAccess() || {};
+  // Roles a medida: Conexiones es un permiso propio. Con Conexiones y sin Configuración,
+  // la pantalla muestra solo Conexiones.
+  const verConexiones = puedeVer('conexiones');
+  const soloConexiones = !puedeVer('configuracion') && verConexiones;
   // El admin gestiona el negocio igual que el owner (editar, sucursales, crear
   // sub-negocio/organización) — la única excepción es invitar a otro admin, que
   // se controla aparte en teamController. Borrar un negocio queda exclusivo del
@@ -452,7 +456,9 @@ export default function ConfiguracionMain() {
         <Typography variant="h5" fontWeight={800}>Configuración</Typography>
       </Stack>
 
-      {configLoading ? (
+      {soloConexiones ? (
+        <ConexionesTab businessId={businessId} themeColor={themeColor} />
+      ) : configLoading ? (
         <Stack alignItems="center" py={6}>
           <CircularProgress />
           <Typography variant="body2" color="text.secondary" mt={1}>Cargando configuración…</Typography>
@@ -484,7 +490,7 @@ export default function ConfiguracionMain() {
             <Tab icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
             {/* Conexiones (kit vinculado sin Drive, Diego 08/11/2026): va al lado de Organización pero
                 con value 7, así no cambian los ?tab= de las pestañas que ya existían (4, 5, 6). */}
-            {puedeGestionarNegocio && (
+            {puedeGestionarNegocio && verConexiones && (
               <Tab value={7} icon={<CableIcon fontSize="small" />} iconPosition="start" label="Conexiones" />
             )}
             {puedeGestionarNegocio && (
@@ -776,7 +782,7 @@ export default function ConfiguracionMain() {
           </TabPanel>
 
           {/* TAB 7 — CONEXIONES (owner/admin): PC vinculadas y descarga del kit */}
-          {puedeGestionarNegocio && (
+          {puedeGestionarNegocio && verConexiones && (
             <TabPanel value={tab} index={7}>
               <ConexionesTab businessId={businessId} themeColor={themeColor} />
             </TabPanel>
