@@ -45,6 +45,7 @@ import {
 } from '@/servicios/apiTeam';
 import { useNavigate } from 'react-router-dom';
 import AsistenteOnboarding from '@/componentes/asistente/AsistenteOnboarding';
+import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
@@ -861,6 +862,9 @@ function PerfilContenido() {
 
         {/* ── Seguridad ── */}
         <SecuritySection />
+
+        {/* ── Super usuarios (solo cuentas con es_superusuario) ── */}
+        {me?.es_superusuario === true && <SuperUsuariosSection />}
 
       </Stack>
       {/* Diálogo editar nombre */}
