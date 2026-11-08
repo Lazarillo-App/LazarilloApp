@@ -25,6 +25,9 @@ export default function AnthonyWidget() {
   const [open, setOpen] = useState(false);
   const [minimizado, setMinimizado] = useState(leerMinimizado);
   const minimizar = (v) => { setMinimizado(v); setOpen(false); guardarMinimizado(v); };
+  // Logueado: ofrece volver al asistente de alta (Diego, 08/11), salvo si ya está en él.
+  const logueado = (() => { try { return !!localStorage.getItem('token'); } catch { return false; } })();
+  const enAsistente = typeof window !== 'undefined' && /^\/(alta|perfil)/.test(window.location.pathname);
 
   if (minimizado) {
     // Pestañita en el borde derecho: asoma la cabeza de Anthony.
@@ -67,8 +70,22 @@ export default function AnthonyWidget() {
           </div>
           <div style={{ padding: 16 }}>
             <p style={{ margin: 0, fontSize: 13.5, color: '#334155', lineHeight: 1.5 }}>
-              ¡Hola! 👋 Soy Anthony. Si tenés dudas antes de registrarte o necesitás ayuda urgente, escribinos por WhatsApp.
+              {logueado
+                ? '¡Hola! 👋 Soy Anthony. Si querés seguir cargando tu negocio, volvé al asistente. Si necesitás ayuda, escribinos por WhatsApp.'
+                : '¡Hola! 👋 Soy Anthony. Si tenés dudas antes de registrarte o necesitás ayuda urgente, escribinos por WhatsApp.'}
             </p>
+            {logueado && !enAsistente && (
+              <a
+                href="/alta"
+                style={{
+                  marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: '#15213E', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 13.5,
+                  borderRadius: 10, padding: '10px 14px',
+                }}
+              >
+                ↩ Volver al asistente de alta
+              </a>
+            )}
             <a
               href={`https://wa.me/${SOPORTE_WHATSAPP}`}
               target="_blank"
