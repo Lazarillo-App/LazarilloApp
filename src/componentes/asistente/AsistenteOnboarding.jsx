@@ -924,6 +924,18 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
   const [businessId, setBusinessId] = useState(businessIdProp);
 
   useEffect(() => { loadLearned(); }, []);
+  // El header de la app (Navbar) toma el color del negocio mientras se arma el
+  // alta (antes lo hacía la barra propia del asistente, que se sacó en #73).
+  useEffect(() => {
+    const root = document.documentElement;
+    const antes = root.style.getPropertyValue("--color-primary");
+    return () => { if (antes) root.style.setProperty("--color-primary", antes); else root.style.removeProperty("--color-primary"); window.dispatchEvent(new Event("theme:updated")); };
+  }, []);
+  useEffect(() => {
+    if (!brand?.primary || !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(brand.primary)) return;
+    document.documentElement.style.setProperty("--color-primary", brand.primary);
+    window.dispatchEvent(new Event("theme:updated"));
+  }, [brand?.primary]);
 
   const reset = () => { setView("home"); setBrand(null); };
 
@@ -980,10 +992,10 @@ function Home({ onPick }) {
 }
 
 // ───────────────────────── Stepper compartido ─────────────────────────
-function Steps({ items, active, accent, onStep }) {
+function Steps({ items, active, accent, onStep, accion }) {
   const a = accent || C.maroon;
   return (
-    <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
       {items.map((s, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div onClick={() => onStep && onStep(i)} role={onStep ? "button" : undefined}
@@ -993,6 +1005,7 @@ function Steps({ items, active, accent, onStep }) {
           {i < items.length - 1 && <span style={{ color: C.border }}>→</span>}
         </div>
       ))}
+      {accion && <div style={{ marginLeft: "auto" }}>{accion}</div>}
     </div>
   );
 }
@@ -1359,17 +1372,18 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
     // Lo que falta (descripción, logo si no hay web, redes) se busca en la web.
     const falta = ["instagram", "facebook", "tiktok"];
     if (!o.descripcion) falta.push("descripcion");
-    if (!o.web) falta.push("web", "logo");
+    falta.push("logo"); // la web del local puede tener un logo mejor que el favicon
+    if (!o.web) falta.push("web");
     setBuscandoWeb(true); setWebMsg("");
-    completarDesdeWeb({ nombre: o.nombre, direccion: o.direccion || "", ciudad: o.ciudad || "", web: o.web || "", falta }).then(async (r) => {
+    completarDesdeWeb({ nombre: o.nombre, direccion: o.direccion || "", ciudad: o.ciudad || "", web: o.web || "", tipo: o.tipo || "", falta }).then(async (r) => {
       if (tok !== searchRef.current) return;
       setBuscandoWeb(false);
       if (!r) return;
       const NOM = { descripcion: "descripción", web: "web", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
       const p0 = dRef.current;
       const enc = Object.keys(NOM).filter((k) => !p0[k] && r[k]);
-      if (enc.length) setD((p) => { const n = { ...p }; for (const k of enc) if (!p[k]) n[k] = r[k]; if (enc.includes("descripcion")) n.descWeb = true; return n; });
-      const partes = enc.map((k) => NOM[k]);
+      if (enc.length) setD((p) => { const n = { ...p }; for (const k of enc) if (!p[k]) n[k] = r[k]; if (enc.includes("descripcion")) n.descWeb = r.descripcionFuente || "web"; return n; });
+      const partes = enc.map((k) => (k === "descripcion" && r.descripcionFuente === "plantilla" ? "descripción sugerida" : NOM[k]));
       if (Array.isArray(r.logos) && r.logos.length) {
         setLogoOpts((prev) => [...new Set([...prev, ...r.logos])].slice(0, 8));
         if (!dRef.current.logo) { logoDeBusqueda.current = true; await elegirLogo(r.logos[0]); partes.push("logo"); }
@@ -1505,7 +1519,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear }) {
               <WField label="Número" value={d.numero} onChange={(v) => set("numero", v)} ph="(opcional)" half />
             </div>
             <div style={{ display: "flex", marginTop: 14 }}>
-              <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}{d.descWeb && <GBadge>🌐 de la web</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false, descWeb: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
+              <WArea label={<>Descripción{d.descGoogle && <GBadge>G resumen de Google</GBadge>}{d.descWeb && <GBadge>{d.descWeb === "plantilla" ? "✎ sugerida, completala" : d.descWeb === "web" ? "🌐 de su web" : "🌐 de la web"}</GBadge>}</>} value={d.descripcion} onChange={(v) => setD((p) => ({ ...p, descripcion: v, descGoogle: false, descWeb: false }))} ph="Contá brevemente de qué es el local, su estilo, especialidades…" rows={4} />
             </div>
             <div style={{ marginTop: 16 }}>
               <Lbl>Fotos{d.google && (d.fotos || []).some((u) => /^https?:/.test(u)) && <GBadge>G de Google</GBadge>}<span style={{ fontWeight: 400, color: C.muted, fontSize: 12.5 }}> · tocá una para elegirla de portada</span></Lbl>
@@ -2606,6 +2620,8 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   const [comprasRaw, setComprasRaw] = useState("");
   const [zona, setZona] = useState("Ramos Mejía (oeste GBA)");
   const [progress, setProgress] = useState(null);
+  const [bajandoKit, setBajandoKit] = useState(false); // instalador de MaxiRest (paso POS)
+  const [kitMsg, setKitMsg] = useState("");
   const [reading, setReading] = useState(false);
   // Paso B: creación real del negocio en la DB
   const [creando, setCreando] = useState(false);
@@ -2818,6 +2834,27 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   );
 
   const marca = negocio?.colores || { primary: C.maroon, secondary: C.maroonDark, background: C.paper };
+  // "Finalizar y ver tablero" desde cualquier paso (pedido de Diego, 08/11): si
+  // hay insumos los clasifica (como el paso Insumos); si no, va directo al tablero.
+  const irAlTablero = () => {
+    setPosDone(true); setPosView(false);
+    if (insumoRows.some((r) => (r.nombre || "").trim())) clasificar(); else { setInsumos([]); setStep(5); }
+  };
+  const descargarInstalador = async () => {
+    if (!businessId) { setKitMsg("Primero terminá los datos del local."); return; }
+    setBajandoKit(true); setKitMsg("");
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API_BASE}/businesses/${businessId}/kit/instalador`, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), "X-Business-Id": String(businessId) } });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error === "todavia_no_hay_kit_publicado" ? "el instalador todavía no está en el servidor" : (j.error || `HTTP ${r.status}`)); }
+      const blob = await r.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "Lazarillo - instalar.zip";
+      document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
+      setKitMsg("✓ Listo. Descomprimilo en la PC de MaxiRest y abrí “INSTALAR EN ESTA PC”. Se vincula con tu usuario y sube tus datos solo.");
+    } catch (e) { setKitMsg(`No se pudo descargar el instalador (${e?.message || e}).`); }
+    finally { setBajandoKit(false); }
+  };
 
   const posScreen = (() => {
     const posName = pos === POS_OTRO ? customName.trim() : pos;
@@ -2852,7 +2889,17 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
           )}
           <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 16 }}>{pos === POS_OTRO ? "Si varios cargan el mismo, lo sumo solo a la lista para todos." : "Estos son los más usados en Argentina. Si el tuyo no está, elegí “Otro”."}</div>
 
-          {!apiMode ? (
+          {pos === "Maxirest" ? (
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, background: C.shade }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>MaxiRest se conecta con el instalador de Lazarillo</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Bajalo en la PC donde está MaxiRest, abrí “INSTALAR EN ESTA PC” y entrá con tu usuario de Lazarillo. Tus ventas, menú y compras llegan solos, sin subir archivos.</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <Btn accent={marca.primary} onClick={descargarInstalador} disabled={bajandoKit}>{bajandoKit ? "Preparando…" : "⬇ Descargar instalador"}</Btn>
+                <Btn ghost small accent={marca.primary} onClick={cargarManual}>Lo subo manualmente →</Btn>
+              </div>
+              {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
+            </div>
+          ) : !apiMode ? (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Btn accent={marca.primary} onClick={() => setApiMode(true)} disabled={!valido}>🔌 Conectar por API</Btn>
               <Btn ghost small accent={marca.primary} onClick={cargarManual}>Lo subo manualmente →</Btn>
@@ -2880,7 +2927,8 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
 
   return (
     <div className="rise">
-      <Steps items={["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)} active={posView ? 0 : Math.min(step, 3) + 1} accent={marca.primary} onStep={(i) => { if (i === 0) { setPosView(true); } else { setPosView(false); setStep(i - 1); } }} />
+      <Steps items={["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)} active={posView ? 0 : Math.min(step, 3) + 1} accent={marca.primary} onStep={(i) => { if (i === 0) { setPosView(true); } else { setPosView(false); setStep(i - 1); } }}
+        accion={(posView || step <= 3) && !progress ? <Btn small accent={marca.primary} onClick={irAlTablero}>Finalizar y ver tablero →</Btn> : null} />
       {posView ? posScreen : (<>
       {step <= 3 && step !== 1 && step !== 3 && !(step === 0 && ventasRaw.trim()) && !(step === 2 && comprasRaw.trim()) && (
         <AnthonyDice pose={step === 1 ? "presenta" : step === 0 ? "senala" : "investiga"} size={80} accent={marca.primary}>
@@ -2982,7 +3030,6 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
               <Btn ghost small accent={marca.primary} onClick={() => setStep(2)}>← Volver</Btn>
               <div style={{ flex: 1 }} />
               <Btn ghost small accent={marca.primary} onClick={() => { setInsumoRows([]); setRaw(""); setStep(5); }}>Saltear</Btn>
-              <Btn accent={marca.primary} onClick={clasificar} disabled={!insumoRows.some((r) => (r.nombre || "").trim())}>Finalizar y ver tablero →</Btn>
             </Footer>
           </div>
         </>
