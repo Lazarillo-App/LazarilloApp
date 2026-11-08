@@ -28,6 +28,8 @@ const norm = (s) => (s ? String(s).toLowerCase().normalize('NFD').replace(/\p{M}
 export default function DetalleModalShell({
   open, onClose, title, subtitle, cols, queryKey, queryFn, searchFields, sortFn, renderRow, saveError, footerNote,
   headerControls, periodoLabel, onServerQuery, resetKey, seleccion, anchoAcciones = 68,
+  // Sección debajo de la tabla (gestion: `extra`), p. ej. la cuenta corriente de un registro puntual.
+  extra,
 }) {
   const [sort, setSort] = useState(null);
   const [query, setQuery] = useState('');
@@ -87,7 +89,8 @@ export default function DetalleModalShell({
   return (
     <Dialog
       open={open} onClose={onClose} maxWidth={false}
-      slotProps={{ paper: { sx: { width: { xs: 'calc(100vw - 32px)', sm: '94vw' }, maxWidth: 1600, maxHeight: '85vh', m: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 } } }}
+      // Con sección extra el alto queda fijo: la tabla toma lo justo y el resto es de la sección.
+      slotProps={{ paper: { sx: { width: { xs: 'calc(100vw - 32px)', sm: '94vw' }, maxWidth: 1600, maxHeight: '85vh', ...(extra ? { height: '85vh' } : {}), m: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 } } }}
     >
       <Box sx={{ px: 3, pt: 2, pb: 1.5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flexWrap: 'wrap' }}>
@@ -122,7 +125,7 @@ export default function DetalleModalShell({
       )}
 
       {!isLoading && !error && count > 0 && (
-        <Box ref={scrollRef} sx={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, flex: 1, pb: 1 }}>
+        <Box ref={scrollRef} sx={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, ...(extra ? { flex: 'none', maxHeight: '40%' } : { flex: 1 }), pb: filtered.length > 1 ? 1 : 0 }}>
           <Table size="small" sx={[sxTablaPanel, { tableLayout: 'fixed', width: '100%', '& td, & th': { fontSize: 12 } }]}>
             <TableHead>
               <TableRow>
@@ -166,6 +169,9 @@ export default function DetalleModalShell({
         </Box>
       )}
 
+      {extra && !isLoading && !error && rawData && (
+        <Box sx={{ flex: 1, minHeight: 0, borderTop: 4, borderColor: 'grey.100', display: 'flex', flexDirection: 'column' }}>{extra(rawData)}</Box>
+      )}
       {saveError && <Box sx={{ borderTop: 1, borderColor: 'error.light', px: 3, py: 1, fontSize: 12, color: 'error.main' }}>{saveError}</Box>}
       {count > 0 && (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, borderTop: 1, borderColor: 'divider', px: 3, py: 1.25, flexShrink: 0, fontSize: 11 }}>

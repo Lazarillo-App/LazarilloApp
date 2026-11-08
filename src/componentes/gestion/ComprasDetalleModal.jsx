@@ -1,10 +1,9 @@
 // src/componentes/gestion/ComprasDetalleModal.jsx
 // Detalle de compras (lazarillo_gestion/components/dashboard/compras-detalle-modal.tsx): lo que
 // suma la celda clickeada, con edición de fecha, concepto, observación e importe, y edición de
-// varias filas tildadas a la vez.
-// Todavía no: apertura de gastos y mover a otro negocio (bloque de apertura), cuenta corriente del
-// proveedor (bloque 3). Una compra ya repartida solo deja cambiar la observación hasta que esté
-// el motor de apertura. El comprobante abre sus líneas; ver/editar la factura llega con la carga.
+// varias filas tildadas a la vez. El proveedor y el semáforo abren su cuenta corriente; con un
+// registro puntual (click en una fila de gasto) la cuenta corriente va debajo, como en gestion.
+// El comprobante abre sus líneas.
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
@@ -20,7 +19,7 @@ import { resolverImporteParaPatch } from '@/gestion/importeParaPatch';
 import { ETIQUETA_ESTADO, PUNTO_ESTADO } from '@/gestion/estadoPago';
 import DetalleModalShell, { DetallePeriodoControls, EditActionButtons, EditTriggerButton, EditedDot } from './DetalleModalShell';
 import { VerFactura } from './CargarFactura';
-import { CtaCteModal, origenDeFila } from './pagos/cta-cte-proveedor';
+import { CtaCteContenido, CtaCteModal, origenDeFila } from './pagos/cta-cte-proveedor';
 import { ScopeGestion, lugarDeCompra, useFetchQuery } from '@/gestion/compat';
 import { BotonAperturaRegistro, ModalAperturaPanel, lugarOrigen, useAperturaPanel } from './apertura/aperturaPanel';
 import { MoverPdvButton } from './apertura/mover-pdv-button';
@@ -141,13 +140,14 @@ function EdicionFechaPago({ editing, setEditing, item }) {
   );
 }
 
-function Semaforo({ estado }) {
+// Click: abre la cuenta corriente (como en gestion), si la fila tiene proveedor.
+function Semaforo({ estado, onClick }) {
   if (!estado) return <Box component="span" sx={{ display: 'inline-block', width: 12, ml: 0.75 }} />;
   const p = PUNTO_ESTADO[estado.estado];
-  const titulo = `${ETIQUETA_ESTADO[estado.estado]}${estado.pagado ? ` · pagado ${fmtARS(estado.pagado)} de ${fmtARS(estado.total)}` : ''}`;
+  const titulo = `${ETIQUETA_ESTADO[estado.estado]}${estado.pagado ? ` · pagado ${fmtARS(estado.pagado)} de ${fmtARS(estado.total)}` : ''}${onClick ? ' · ver cuenta corriente' : ''}`;
   return (
     <Tooltip title={titulo}>
-      <Box component="span" aria-label={`Estado: ${ETIQUETA_ESTADO[estado.estado]}`} sx={{ display: 'inline-flex', width: 12, ml: 0.75, justifyContent: 'center', verticalAlign: 'middle' }}>
+      <Box component={onClick ? 'button' : 'span'} type={onClick ? 'button' : undefined} onClick={onClick} aria-label={`Estado: ${ETIQUETA_ESTADO[estado.estado]}`} sx={{ all: onClick ? 'unset' : undefined, cursor: onClick ? 'pointer' : 'default', display: 'inline-flex', width: 12, ml: 0.75, justifyContent: 'center', verticalAlign: 'middle' }}>
         <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: p.color, border: p.borde ? `1px solid ${p.borde}` : 'none', boxSizing: 'border-box' }} />
       </Box>
     </Tooltip>
@@ -453,7 +453,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <TableCell sx={celda} title={normalize(concepto?.rubro?.nombre)}>{normalize(concepto?.rubro?.nombre)}</TableCell>
         <TableCell sx={celda} title={normalize(concepto?.nombre)}>{normalize(concepto?.nombre)}</TableCell>
         <TableCell sx={{ ...celda, textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-          {fmtARS(importe != null ? Number(importe) : null)}<Semaforo estado={item.estadoPago} />
+          {fmtARS(importe != null ? Number(importe) : null)}<Semaforo estado={item.estadoPago} onClick={!stable?.rowId && origenDe(item) ? () => abrirCtaCte(item) : undefined} />
         </TableCell>
         <TableCell sx={{ px: 1, py: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -494,6 +494,16 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         footerNote={nota}
         headerControls={conPeriodo ? <DetallePeriodoControls periodo={periodo} onChange={setPeriodo} /> : null}
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
+        // Un registro puntual (click en un gasto de la vista económica): la edición queda arriba,
+        // tal cual, y abajo la cuenta corriente del proveedor.
+        extra={stable?.rowId ? (rows) => {
+          const r = rows[0];
+          const origen = r ? origenDe(r) : null;
+          const pdvId = r ? lugarDeCompra(r.pdvCompraId) : null;
+          return r && origen
+            ? <ScopeGestion><CtaCteContenido key={`${origen.codPro}|${origen.nombre ?? ''}`} origen={origen} resaltado={r.comprobante && pdvId != null ? { pdvId, comprobante: r.comprobante } : null} /></ScopeGestion>
+            : <Box sx={{ py: 4, textAlign: 'center', fontSize: 14, color: 'text.secondary' }}>Este gasto no tiene proveedor: no hay cuenta corriente para mostrar.</Box>;
+        } : undefined}
         renderRow={renderFila}
       />
       <ModalAperturaPanel panel={aperturaPanel} />
