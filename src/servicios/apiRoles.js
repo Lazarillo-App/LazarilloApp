@@ -9,6 +9,17 @@ export const RolesAPI = {
     const data = await http(`/roles${conNegocio(bizId)}`, { withBusinessId: !bizId, cache: false });
     return data?.roles || [];
   },
+  // Lista + Administración (ajustada o "ve todo") para el editor de roles.
+  async listCompleto() {
+    const data = await http('/roles', { cache: false });
+    return { roles: data?.roles || [], administracion: data?.administracion || null };
+  },
+  setAdministracion(rol) {
+    return http('/roles/administracion', { method: 'PUT', body: rol });
+  },
+  resetAdministracion() {
+    return http('/roles/administracion', { method: 'DELETE' });
+  },
   create(rol) {
     return http('/roles', { method: 'POST', body: rol });
   },

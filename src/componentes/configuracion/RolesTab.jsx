@@ -61,15 +61,19 @@ function CardHeader({ icon, title, subtitle, action, tc }) {
 }
 
 const TODAS = Object.fromEntries(SECCIONES.map((s) => [s.id, 'editar']));
-const FIJOS = [
-  { id: 'duenio', nombre: 'Dueño', fijo: true, nota: 'Ve y edita todo', secciones: TODAS, ocultos: [] },
-  { id: 'admin', nombre: 'Administración', fijo: true, nota: 'Ve y edita todo', secciones: TODAS, ocultos: [] },
-  { id: 'staff', nombre: 'Staff', fijo: true, nota: 'Vista operativa · por sectores', secciones: {}, ocultos: [] },
-];
+const DUENIO = { id: 'duenio', nombre: 'Dueño', fijo: true, nota: 'Ve y edita todo', secciones: TODAS, ocultos: [] };
+const STAFF = { id: 'staff', nombre: 'Staff', fijo: true, nota: 'Vista operativa · por sectores', secciones: {}, ocultos: [] };
+// Administración: editable por el dueño (vale para todos los admins sin rol a medida).
+// Sin ajustar, ve todo.
+const adminDe = (a) => ({
+  id: 'admin', nombre: 'Administración', base: true, personas: a?.personas ?? 0, ajustada: !!a?.ajustada,
+  secciones: a?.ajustada ? { ...a.secciones } : { ...TODAS }, ocultos: a?.ajustada ? [...(a.ocultos || [])] : [],
+});
 const NUEVO = { id: 'nuevo', nombre: '', secciones: { resultados: 'ver' }, ocultos: [], personas: 0 };
 
 function resumen(rol) {
   if (rol.fijo) return rol.nota;
+  if (rol.base && !rol.ajustada) return 'Ve y edita todo';
   const vis = SECCIONES.filter((s) => rol.secciones[s.id]).map((s) => s.nombre);
   const parcial = rol.ocultos.length ? ` · ${rol.ocultos.length} oculto${rol.ocultos.length !== 1 ? 's' : ''}` : '';
   return (vis.join(', ') || 'Sin secciones') + parcial;
@@ -79,6 +83,7 @@ const MENSAJES = {
   nombre_repetido: 'Ya hay un rol con ese nombre.',
   nombre_requerido: 'Ponele un nombre al rol.',
   rol_en_uso: 'Hay personas con este rol: cambiales el rol en Editar acceso antes de borrarlo.',
+  nombre_reservado: 'Ese nombre ya lo usa un rol fijo (Dueño, Administración o Staff).',
   only_owner: 'Solo el dueño puede cambiar los roles.',
 };
 const mensajeDe = (e) => MENSAJES[e?.response?.data?.error || e?.data?.error || e?.message] || e?.response?.data?.error || e?.message || 'No se pudo guardar';
@@ -86,6 +91,7 @@ const mensajeDe = (e) => MENSAJES[e?.response?.data?.error || e?.data?.error || 
 export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, onCambio }) {
   const tc = themeColor;
   const [roles, setRoles] = useState([]);
+  const [admin, setAdmin] = useState(adminDe(null));
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [rolId, setRolId] = useState(null);
@@ -96,17 +102,18 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const cargar = async (elegir) => {
     setCargando(true); setError(null);
     try {
-      const lista = await RolesAPI.list();
-      setRoles(lista);
-      const id = elegir ?? rolId ?? lista[0]?.id ?? 'staff';
-      elegirRol(id, lista);
+      const { roles: lista, administracion } = await RolesAPI.listCompleto();
+      const adm = adminDe(administracion);
+      setRoles(lista); setAdmin(adm);
+      const id = elegir ?? rolId ?? 'admin';
+      elegirRol(id, lista, adm);
     } catch (e) { setError(mensajeDe(e)); } finally { setCargando(false); }
   };
   useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const todos = useMemo(() => [...FIJOS, ...roles], [roles]);
-  function elegirRol(id, lista = roles) {
-    const r = id === 'nuevo' ? NUEVO : [...FIJOS, ...lista].find((x) => x.id === id);
+  const todos = useMemo(() => [DUENIO, admin, STAFF, ...roles], [roles, admin]);
+  function elegirRol(id, lista = roles, adm = admin) {
+    const r = id === 'nuevo' ? NUEVO : [DUENIO, adm, STAFF, ...lista].find((x) => x.id === id);
     if (!r) return;
     setRolId(id);
     setBorrador({ ...r, secciones: { ...r.secciones }, ocultos: [...r.ocultos] });
@@ -134,10 +141,22 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     setGuardando(true); setError(null);
     try {
       const body = { nombre: rol.nombre.trim(), secciones: rol.secciones, ocultos: rol.ocultos };
+      if (rolId === 'admin') {
+        await RolesAPI.setAdministracion(body);
+        await cargar('admin');
+        onCambio?.();
+        return;
+      }
       const res = rolId === 'nuevo' ? await RolesAPI.create(body) : await RolesAPI.update(rolId, body);
       await cargar(res?.rol?.id ?? rolId);
       onCambio?.();
     } catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
+  };
+  const volverATodo = async () => {
+    if (!(await showConfirm('¿Volver a que Administración vea y edite todo?', { confirmText: 'Volver a todo' }))) return;
+    setGuardando(true); setError(null);
+    try { await RolesAPI.resetAdministracion(); await cargar('admin'); onCambio?.(); }
+    catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
   };
   const borrar = async () => {
     if (rolId === 'nuevo') { elegirRol(roles[0]?.id ?? 'staff'); return; }
@@ -179,17 +198,23 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
       {/* ── Editor del rol ── */}
       <Card>
         <CardHeader tc={tc} icon={<ShieldOutlinedIcon />}
-          title={editable ? (
+          title={editable && !rol.base ? (
             <TextField size="small" variant="standard" placeholder="Nombre del rol" value={rol.nombre} autoFocus={rolId === 'nuevo'}
               onChange={(e) => cambiar((r) => ({ ...r, nombre: e.target.value }))}
               InputProps={{ sx: { fontSize: '0.85rem', fontWeight: 700 } }} sx={{ width: 240 }} />
           ) : rol.nombre}
-          subtitle={rol.fijo ? `Rol fijo · ${rol.nota}` : `Basado en Administración · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`}
+          subtitle={rol.fijo ? `Rol fijo · ${rol.nota}`
+            : rol.base ? `${original?.ajustada ? 'Ajustado' : 'Ve y edita todo'} · vale para quienes tienen Administración${rol.personas ? ` (${rol.personas})` : ''}`
+            : `Basado en Administración · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`}
           action={editable && (
             <Stack direction="row" gap={1} alignItems="center">
+              {rol.base ? (
+                original?.ajustada && <Button size="small" onClick={volverATodo} disabled={guardando} sx={{ color: 'text.secondary' }}>Volver a todo</Button>
+              ) : (
               <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={borrar} disabled={guardando}>
                 {rolId === 'nuevo' ? 'Descartar' : 'Borrar'}
               </Button>
+              )}
               <Button size="small" variant="contained" disableElevation sx={{ bgcolor: tc }} onClick={guardar}
                 disabled={guardando || !cambiado || !rol.nombre.trim()}>
                 {guardando ? 'Guardando…' : 'Guardar'}
