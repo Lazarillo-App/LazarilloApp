@@ -22,6 +22,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import HistoryIcon from '@mui/icons-material/History';
 import GroupsIcon from '@mui/icons-material/Groups';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
+import CableIcon from '@mui/icons-material/Cable';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import PersonIcon from '@mui/icons-material/Person';
@@ -50,6 +51,7 @@ import ImportarExportarDatos from '../componentes/configuracion/ImportarExportar
 import ConfigHistorialTab from '../componentes/configuracion/ConfigHistorialTab';
 import SectoresTab from '../componentes/configuracion/SectoresTab';
 import AprobacionesTab from '../componentes/configuracion/AprobacionesTab';
+import ConexionesTab from '../componentes/configuracion/ConexionesTab';
 import { listarPropuestas } from '@/servicios/apiRecetaProposals';
 import { TabPanel, SectionCard } from '../componentes/configuracion/configHelpers';
 import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuracion/ABMModals';
@@ -85,12 +87,12 @@ export default function ConfiguracionMain() {
   // ── Tabs ──
   const [tab, setTab] = useState(() => {
     const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 6 ? t : 0;
+    return Number.isFinite(t) && t >= 0 && t <= 7 ? t : 0;
   });
   // Si ya está abierta y llega otro ?tab= (ej. desde un aviso de aprobación), cambia de pestaña
   useEffect(() => {
     const t = Number(searchParams.get('tab'));
-    if (Number.isFinite(t) && t >= 0 && t <= 6) setTab(t);
+    if (Number.isFinite(t) && t >= 0 && t <= 7) setTab(t);
   }, [searchParams]);
   const [subTabArt, setSubTabArt] = useState(0);
   const [subTabIns, setSubTabIns] = useState(0);
@@ -460,6 +462,9 @@ export default function ConfiguracionMain() {
           <Tabs
             key={puedeGestionarNegocio ? 'full' : 'basic'}
             value={tab}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
             onChange={(_, v) => { setTab(v); setSearchParams({}, { replace: true }); }}
             sx={{
               borderBottom: 1, borderColor: 'divider',
@@ -477,14 +482,20 @@ export default function ConfiguracionMain() {
             <Tab icon={<ShoppingCartIcon fontSize="small" />} iconPosition="start" label="Insumos y compras" />
             <Tab icon={<PublicIcon fontSize="small" />} iconPosition="start" label="General" />
             <Tab icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
+            {/* Conexiones (kit vinculado sin Drive, Diego 08/11/2026): va al lado de Organización pero
+                con value 7, así no cambian los ?tab= de las pestañas que ya existían (4, 5, 6). */}
             {puedeGestionarNegocio && (
-              <Tab icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
+              <Tab value={7} icon={<CableIcon fontSize="small" />} iconPosition="start" label="Conexiones" />
             )}
             {puedeGestionarNegocio && (
-              <Tab icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
+              <Tab value={4} icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
+            )}
+            {puedeGestionarNegocio && (
+              <Tab value={5} icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
             )}
             {puedeGestionarNegocio && (
               <Tab
+                value={6}
                 icon={
                   <Badge badgeContent={pendingProposalsCount} color="warning" max={99}>
                     <FactCheckIcon fontSize="small" />
@@ -763,6 +774,13 @@ export default function ConfiguracionMain() {
               );
             })()}
           </TabPanel>
+
+          {/* TAB 7 — CONEXIONES (owner/admin): PC vinculadas y descarga del kit */}
+          {puedeGestionarNegocio && (
+            <TabPanel value={tab} index={7}>
+              <ConexionesTab businessId={businessId} themeColor={themeColor} />
+            </TabPanel>
+          )}
 
           {/* TAB 4 — HISTORIAL DE ACTIVIDAD (owner/admin) */}
           {puedeGestionarNegocio && (
