@@ -13,6 +13,10 @@ const BRAND = {
   paper:           '#F2F4F7',
 };
 
+// Cobro con MercadoPago: queda en el código pero oculto (decisión de la usuaria, 2026-11-09: por
+// ahora la cuenta se activa solo con código). Para volver a mostrarlo, poner en true.
+const MOSTRAR_COBRO = false;
+
 export default function Activar() {
   const nav = useNavigate();
   const [code,    setCode]    = useState('');
@@ -146,9 +150,10 @@ export default function Activar() {
                 Activá tu cuenta
               </h1>
               <p style={{ margin: '0 0 36px', fontSize: 14, color: 'rgba(255,255,255,0.45)' }}>
-                Elegí cómo querés comenzar.
+                {MOSTRAR_COBRO ? 'Elegí cómo querés comenzar.' : 'Ingresá el código de acceso que te dimos.'}
               </p>
 
+              {MOSTRAR_COBRO && (<>
               {/* ── Bloque MercadoPago (próximamente) ── */}
               <div style={{
                 background: 'rgba(255,255,255,0.04)',
@@ -202,6 +207,7 @@ export default function Activar() {
                 </span>
                 <div style={{ flex: 1, height: '0.5px', background: 'rgba(255,255,255,0.1)' }} />
               </div>
+              </>)}
 
               {/* ── Formulario cupón ── */}
               <form onSubmit={handleRedeem} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
