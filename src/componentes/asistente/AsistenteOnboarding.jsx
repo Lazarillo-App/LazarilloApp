@@ -9,6 +9,7 @@ import { BusinessesAPI, http } from "../../servicios/apiBusinesses";
 import { showAlert } from "../../servicios/appAlert";
 import { showConfirm } from "../../servicios/appConfirm";
 import { showPrompt } from "../../servicios/appPrompt";
+import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
 // alguien sube un PDF acá — se carga con import() dinámico para no engordar
@@ -911,7 +912,7 @@ const AnthonyDice = ({ pose = "senala", size = 84, children, accent }) => {
 // ───────────────────────── App ─────────────────────────
 const MOSTRAR_ELECCION = false;
 
-export default function AsistenteOnboarding({ businessId: businessIdProp = null, onDone, negocioInicial = null } = {}) {
+export default function AsistenteOnboarding({ businessId: businessIdProp = null, onDone: onDoneProp, negocioInicial = null, pasoInicial = null } = {}) {
   // Por ahora el alta arranca directo en "Negocio en marcha": la pantalla de
   // elección (Home) y el flujo "Proyecto de negocio" quedan en el código pero
   // ocultos. Para volver a mostrarlos, poner MOSTRAR_ELECCION en true.
@@ -923,6 +924,9 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
   // businessId del negocio recién creado (o el pasado por prop). Lo comparten
   // los pasos que persisten datos (menú, insumos, etc).
   const [businessId, setBusinessId] = useState(businessIdProp);
+  // Terminar el asistente u omitirlo queda anotado en el negocio (ya no se retoma solo).
+  const onDone = async () => { await guardarAlta(businessId, "terminado", "tablero"); await onDoneProp?.(); };
+  const onOmitir = async () => { await guardarAlta(businessId, "omitido"); await onDoneProp?.(); };
 
   useEffect(() => { loadLearned(); }, []);
   // El header de la app (Navbar) toma el color del negocio mientras se arma el
@@ -965,7 +969,7 @@ export default function AsistenteOnboarding({ businessId: businessIdProp = null,
       <div style={{ flex: 1, width: "100%", maxWidth: 1000, margin: "0 auto", padding: "22px" }}>
         {MOSTRAR_ELECCION && view !== "home" && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}><Btn ghost small onClick={reset}>← Inicio</Btn></div>}
         {view === "home" && <Home onPick={setView} />}
-        {view === "marcha" && <EnMarcha negocioInicial={negocioInicial} insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
+        {view === "marcha" && <EnMarcha negocioInicial={negocioInicial} pasoInicial={pasoInicial} onOmitir={onOmitir} insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
         {view === "nuevo" && <Nuevo insumos={insumos} setInsumos={setInsumos} articulos={articulos} setArticulos={setArticulos} onBrand={setBrand} businessId={businessId} setBusinessId={setBusinessId} onDone={onDone} />}
       </div>
     </div>
@@ -2622,13 +2626,15 @@ function MenuReview({ articulos, setArticulos, onBack, onNext, accent = C.maroon
     </>
   );
 }
-function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, businessId, setBusinessId, onDone, negocioInicial = null }) {
-  const [negocio, setNegocio] = useState(null);
+function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, businessId, setBusinessId, onDone, negocioInicial = null, pasoInicial = null, onOmitir }) {
+  // Retomar (pasoInicial): el local ya está creado, se arranca directo en el paso guardado.
+  const retoma = !!(pasoInicial && negocioInicial);
+  const [negocio, setNegocio] = useState(retoma ? negocioInicial : null);
   // Datos con los que se abre el paso "Local": los del negocio ya creado (/alta)
   // o los últimos cargados si se vuelve desde los pasos siguientes.
   const [negocioPrev, setNegocioPrev] = useState(negocioInicial);
   const volverALocal = () => { setNegocioPrev(negocio || negocioPrev); setNegocio(null); };
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(retoma && PASOS_ALTA.includes(pasoInicial) ? PASOS_ALTA.indexOf(pasoInicial) : 0);
   const [ventasRaw, setVentasRaw] = useState("");
   const [savedVentas, setSavedVentas] = useState(null); // estado del mapeo de ventas para poder volver a ajustarlo
   const [raw, setRaw] = useState("");
@@ -2737,7 +2743,13 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   // POS actual + integración por API
   const [pos, setPos] = useState("");
   const [posDone, setPosDone] = useState(false);
-  const [posView, setPosView] = useState(true); // mostrando el paso POS (navegable desde el stepper)
+  const [posView, setPosView] = useState(!(retoma && PASOS_ALTA.includes(pasoInicial))); // mostrando el paso POS (navegable desde el stepper)
+  // Paso actual del alta, guardado en el negocio para retomarlo si se sale (09/11).
+  useEffect(() => {
+    if (!businessId || !negocio) return;
+    const paso = posView ? "pos" : step <= 3 ? PASOS_ALTA[step] : step === 4 ? "insumos" : "tablero";
+    guardarAlta(businessId, "en_curso", paso);
+  }, [businessId, negocio, posView, step]);
   const [apiMode, setApiMode] = useState(false);
   const [integrar, setIntegrar] = useState({ ventas: false, menu: false, compras: false, insumos: false });
   const [posExtra, setPosExtra] = useState([]);   // POS sumados por la comunidad
@@ -2970,7 +2982,10 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   return (
     <div className="rise">
       <Steps items={["Local", ...["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)]} active={posView ? 1 : Math.min(step, 3) + 2} accent={marca.primary} onStep={(i) => { if (i === 0) volverALocal(); else if (i === 1) { setPosView(true); } else { setPosView(false); setStep(i - 2); } }}
-        accion={(posView || step <= 3) && !progress ? <Btn small accent={marca.primary} onClick={irAlTablero}>Finalizar y ver tablero →</Btn> : null} />
+        accion={(posView || step <= 3) && !progress ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          {onOmitir && businessId && <Btn ghost small accent={marca.primary} onClick={onOmitir}>Omitir: empiezo con mis artículos</Btn>}
+          <Btn small accent={marca.primary} onClick={irAlTablero}>Finalizar y ver tablero →</Btn>
+        </span> : null} />
       {posView ? posScreen : (<>
       {step <= 3 && step !== 1 && step !== 3 && !(step === 0 && ventasRaw.trim()) && !(step === 2 && comprasRaw.trim()) && (
         <AnthonyDice pose={step === 1 ? "presenta" : step === 0 ? "senala" : "investiga"} size={80} accent={marca.primary}>

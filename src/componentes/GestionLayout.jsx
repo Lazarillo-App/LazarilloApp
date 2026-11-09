@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
 import BarraGestion from './BarraGestion';
+import AvisoVolverAlAlta from './asistente/AvisoVolverAlAlta';
 import { BarraGestionProvider } from '@/context/BarraGestionContext';
 
 // Estilo "sectores redondeados" (tomado del Panel de Gestión, pedido de Diego
@@ -61,6 +62,7 @@ export default function GestionLayout() {
         }}
       >
         <div className="lz-barra-marco" style={{ display: diseno ? 'none' : 'block', padding: '14px 8px 0 8px', flexShrink: 0 }}>
+          <AvisoVolverAlAlta />
           <BarraGestion />
         </div>
         <div style={diseno ? undefined : { position: 'relative', flex: 1, minHeight: 0 }}>

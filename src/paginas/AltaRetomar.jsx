@@ -28,6 +28,8 @@ export default function AltaRetomar() {
       key={activeBusinessId}
       businessId={activeBusinessId}
       negocioInicial={negocio}
+      // Retoma en el paso guardado; entrando a mano (Anthony) arranca en POS, sin volver a pedir el local.
+      pasoInicial={p.onboarding?.alta_paso || 'pos'}
       onDone={async () => {
         try { await refetchBusinesses?.(); } catch { /* sin refetch, igual sale */ }
         navigate('/menu');

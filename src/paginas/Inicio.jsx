@@ -1,5 +1,6 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { altaEnCurso } from '@/componentes/asistente/altaEstado';
 import anthonyImg from '@/assets/brand/anthony.png';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
@@ -74,6 +75,8 @@ export default function Inicio() {
 
   const userName = getUserName();
   const celular = useAngosto();
+  // Alta a medias (se salió en Ventas, Menú…): se retoma donde quedó, no se muestra el panel (09/11).
+  if (!isStaff && altaEnCurso(active)) return <Navigate to="/alta" replace />;
   if (celular) return <InicioCelular grupos={grupos} userName={userName} onSelect={(to) => navigate(to)} />;
 
   return (

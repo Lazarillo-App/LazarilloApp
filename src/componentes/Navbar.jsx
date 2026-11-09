@@ -609,7 +609,8 @@ export default function Navbar() {
           pantalla). Un poco más clara/oscura que la barra para distinguirse
           sin agregar otro color nuevo. */}
       {/* En el asistente de alta no hay módulos que abrir todavía (09/11). */}
-      {!modulosOpen && !enAlta && (
+      {/* Tampoco en Inicio: ahí los módulos ya están en pantalla (09/11). */}
+      {!modulosOpen && !enAlta && location.pathname !== '/inicio' && (
         <Tooltip title="Módulos" placement="right">
           <Box
             component="button"
