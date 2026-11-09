@@ -124,6 +124,8 @@ export function AppMovil() {
         setCargaCruda(c);
     };
     const setTab = (t) => ir(t, t === "cargar" ? carga : null);
+    // Tocar «Inicio» estando en Inicio cierra lo que haya abierto adentro (ej. la evolución de Ventas).
+    const [reinicio, setReinicio] = useState(0);
     const setCarga = (c) => ir(c ? "cargar" : tab, c);
     function atras() {
         if (volverLocalRef.current?.())
@@ -202,7 +204,7 @@ export function AppMovil() {
                 atras();
         }}>
         {!actual ? <p className="py-10 text-center text-zinc-500">Cargando…</p>
-            : tab === "inicio" ? <Inicio sel={elegidos.map((p) => ({ localId: p.localId, pdvId: p.pdvId }))} irImpagas={() => setTab("impagas")} irSinCarga={(mes) => { setMesSc(mes); setTab("sincarga"); }}/>
+            : tab === "inicio" ? <Inicio reinicio={reinicio} sel={elegidos.map((p) => ({ localId: p.localId, pdvId: p.pdvId }))} irImpagas={() => setTab("impagas")} irSinCarga={(mes) => { setMesSc(mes); setTab("sincarga"); }}/>
                 : tab === "sincarga" ? <SinCarga pdvId={actual.pdvId} mesInicial={mesSc} nombrePdv={(id) => pdvs.find((p) => p.pdvId === id)?.label ?? "otro PDV"} onCargar={(sc, mes) => ir("cargar", { sc, mes })}/>
                     : tab === "impagas" ? <Impagas pdvId={actual.pdvId} volverLocalRef={volverLocalRef}/>
                         : carga && "sc" in carga ? (() => {
@@ -228,7 +230,8 @@ export function AppMovil() {
 
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
         {[["inicio", Home, "Inicio"], ["cargar", Plus, "Cargar"], ["impagas", CircleDot, "Impagas"], ["sincarga", ClipboardList, "Sin carga"]].map(([k, Icono, t]) => (<button key={k} type="button" onClick={() => { if (k === "sincarga")
-            setMesSc(null); ir(k, null); }} className={cn("flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", tab === k ? "font-bold text-zinc-900 dark:text-white" : "text-zinc-500")}>
+            setMesSc(null); if (k === "inicio" && tab === "inicio")
+            setReinicio((n) => n + 1); ir(k, null); }} className={cn("flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", tab === k ? "font-bold text-zinc-900 dark:text-white" : "text-zinc-500")}>
             <Icono className="size-5"/>{t}
           </button>))}
       </nav>
@@ -246,7 +249,7 @@ const pc = (x) => (x == null ? "—" : `${(x * 100).toLocaleString("es-AR", { mi
 // un mes pasado es real, y si le quedó algo sin cargar se suma (cartel ámbar). Resultado con
 // rentabilidad, chips Food cost · Personal · Mix vs el mes anterior, promedio mensual del año,
 // deuda y sin carga en una línea, y deslizar en cualquier parte cambia de mes.
-function Inicio({ sel, irImpagas, irSinCarga }) {
+function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
     // El primero, para lo que es de un PDV (la fecha de actualización).
     const { localId, pdvId } = sel[0];
     const ahora = new Date();
@@ -320,6 +323,13 @@ function Inicio({ sel, irImpagas, irSinCarga }) {
     // Rubro desplegado en "Gastos del mes por rubro" (Diego 29/10); se cierra al cambiar de mes.
     const [abiertoEn, setAbiertoEn] = useState(null);
     const abierto = abiertoEn?.clave === clave ? abiertoEn.rubro : null;
+    useEffect(() => { setEvolucion(null); }, [reinicio]);
+    useEffect(() => { try { window.scrollTo(0, 0); } catch { /* sin scroll */ } }, [evolucion]);
+    // La evolución (Ventas, Gastos, …) se muestra dentro de la app, con el mismo header (color del
+    // negocio, selector de negocio) y la barra de abajo (Diego 09/11/2026: «no quiero que navegar
+    // cambie el header»). Antes era una capa que tapaba todo.
+    if (evolucion)
+        return <Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>;
     return (<div className="touch-pan-y" onTouchStart={(e) => { const t = e.touches[0]; toque.current = { x: t.clientX, y: t.clientY }; }} onTouchEnd={(e) => {
             const s = toque.current;
             toque.current = null;
@@ -391,7 +401,6 @@ function Inicio({ sel, irImpagas, irSinCarga }) {
       </div>
       <p className="mt-2 text-center text-[11.5px] text-zinc-400">← deslizá para cambiar de mes →</p>
       <Link to="/gestion?completa=1" className="mt-3 block text-center text-[13px] text-sky-700 underline">Abrir el Panel completo</Link>
-      {evolucion && (<Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>)}
     </div>);
 }
 // Evolución de un indicador (Diego 29/10/2026, mockup_celu_pdvs_indicadores): barras de los últimos
@@ -426,8 +435,8 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     // La barra más baja queda en 40%: se ven las diferencias sin exagerarlas.
     const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
     const mesCorto = (m) => MESES[m - 1].slice(0, 3).toLowerCase();
-    return (<div className="fixed inset-0 z-[1340] overflow-y-auto bg-white dark:bg-zinc-950" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
-      <div className="sticky top-0 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur">
+    return (<div className="-mx-4 -mt-3 bg-white dark:bg-zinc-950" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
+      <div className="sticky z-10 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur" style={{ top: 56 }}>
         <button type="button" onClick={onClose} aria-label="Volver" className="-ml-2 flex items-center text-sky-700"><ChevronLeft className="size-6"/></button>
         <b className="text-[19px]">{info.titulo}</b>
         <span className="ml-auto text-[12px] text-zinc-500">hasta {MESES[hasta.mes - 1]} {hasta.anio}</span>
