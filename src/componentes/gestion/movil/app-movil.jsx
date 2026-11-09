@@ -169,16 +169,20 @@ export function AppMovil() {
     }
     const titulos = { inicio: "Inicio", cargar: carga ? ("gasto" in carga || ("sc" in carga && !carga.sc.proveedorId) ? "Gasto vario" : "Factura") : "Cargar", impagas: "Impagas", sincarga: "Sin carga" };
     const enInicio = tab === "inicio" && !carga;
-    return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950">
+    // overflow-x: clip (Diego 09/11/2026): en el iPhone la pantalla se veía partida (más ancha que el
+    // celular y corrida). «clip» y no «hidden», para que el header siga pegado arriba.
+    return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950" style={{ overflowX: "clip", maxWidth: "100%" }}>
       {/* Header con el color del negocio y 56 px, igual que la barra de la app en el celular (Diego 08/11/2026). */}
       <header className="sticky top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
         {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center" style={{ color: "inherit" }}><ChevronLeft className="size-6"/></button>)}
-        <b className="text-[19px]">{titulos[tab]}</b>
-        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto max-w-[62%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
-            {etiquetaSeleccion(locales ?? [], elegidos.map((p) => p.pdvId))} ▾
+        <b className="text-[19px]" style={{ flexShrink: 0 }}>{titulos[tab]}</b>
+        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto flex items-center rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "62%" }}>
+            {/* Safari no corta con «…» el texto suelto de un botón: va en un span propio. */}
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etiquetaSeleccion(locales ?? [], elegidos.map((p) => p.pdvId))}</span>
+            <span style={{ flexShrink: 0, marginLeft: 4 }}>▾</span>
           </button>) : (
         // Fuera de Inicio, con varios tildados: en cuál se trabaja.
-        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto max-w-[60%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
+        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto truncate rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "60%" }}>
             {elegidos.map((p) => <option key={p.pdvId} value={p.pdvId}>{p.label}</option>)}
           </select>))}
       </header>
