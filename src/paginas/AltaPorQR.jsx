@@ -3,6 +3,7 @@
 // una sucursal. El negocio ya viene resuelto por el código; la persona solo
 // carga su nombre, elige celular o email y confirma con un código.
 import React, { useEffect, useState } from 'react';
+import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
 import { useParams, Link } from 'react-router-dom';
 import '../css/Auth.css';
 import LOGO from '@/assets/brand/logo.png';
@@ -145,7 +146,7 @@ export default function AltaPorQR() {
     e.preventDefault();
     setErr('');
     if (otp.trim().length < 6) { setErr('Ingresá el código de 6 dígitos'); return; }
-    if (password.length < 6) { setErr('La contraseña debe tener al menos 6 caracteres'); return; }
+    if (!passwordValida(password)) { setErr(`${PASSWORD_REGLA} ${mensajePassword(password)}`); return; }
     setBusy(true);
     try {
       const r = await confirmarAccesoPublico(code, { requestId, otp: otp.trim(), password });
@@ -281,7 +282,7 @@ export default function AltaPorQR() {
 
               <label className="auth-label" htmlFor="password">Elegí una contraseña</label>
               <input id="password" type="password" className="input" value={password}
-                onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 10, con mayúscula y número" />
 
               <button className="btn btn-sky w-full" disabled={busy} style={{ marginTop: 12 }}>
                 {busy ? 'Confirmando…' : 'Confirmar'}

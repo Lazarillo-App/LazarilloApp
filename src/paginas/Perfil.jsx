@@ -2,6 +2,7 @@
 /* eslint-disable no-empty */
 // src/paginas/Perfil.jsx
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
 import {
   Box, Stack, Typography, Avatar, Chip, Button, Paper,
   Divider, IconButton, Tooltip, Table, TableHead, Snackbar,
@@ -545,7 +546,7 @@ function SecuritySection() {
 
   const ejecutarCambioPassword = async () => {
     setPwdError('');
-    if (newPwd.length < 6) { setPwdError('La contraseña nueva debe tener al menos 6 caracteres'); return; }
+    if (!passwordValida(newPwd)) { setPwdError(`${PASSWORD_REGLA} ${mensajePassword(newPwd)}`); return; }
     if (newPwd !== confirmPwd) { setPwdError('Las contraseñas no coinciden'); return; }
     setPwdSaving(true);
     try {
@@ -555,7 +556,7 @@ function SecuritySection() {
       closePwdDialog();
     } catch (e) {
       const code = e?.data?.error || e?.message;
-      setPwdError(code === 'wrong_current_password' ? 'La contraseña actual no es correcta' : 'No se pudo cambiar la contraseña');
+      setPwdError(code === 'wrong_current_password' ? 'La contraseña actual no es correcta' : code === 'password_weak' ? PASSWORD_REGLA : 'No se pudo cambiar la contraseña');
     } finally {
       setPwdSaving(false);
     }

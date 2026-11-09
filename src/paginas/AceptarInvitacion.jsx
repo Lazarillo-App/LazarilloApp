@@ -6,6 +6,7 @@
 // y define su contraseña + su nombre. Apenas la setea, lo logueamos y lo mandamos a la app.
 
 import React, { useState, useMemo } from 'react';
+import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Paper, Stack, Typography, TextField, Button, Alert,
@@ -30,11 +31,11 @@ export default function AceptarInvitacion() {
   const [error,    setError]    = useState(null);
 
   const valid = useMemo(() => {
-    return token && email && displayName.trim().length >= 2 && password.length >= 6 && password === confirm;
+    return token && email && displayName.trim().length >= 2 && passwordValida(password) && password === confirm;
   }, [token, email, displayName, password, confirm]);
 
   const passwordMismatch = confirm && password !== confirm;
-  const passwordTooShort = password && password.length < 6;
+  const passwordTooShort = password && !passwordValida(password);
   const nameTooShort = displayName.length > 0 && displayName.trim().length < 2;
 
   const handleSubmit = async (e) => {
@@ -61,7 +62,7 @@ export default function AceptarInvitacion() {
       let msg = 'No se pudo aceptar la invitación.';
       if (code === 'invalid_token')   msg = 'El enlace es inválido. Pedí uno nuevo a quien te invitó.';
       if (code === 'expired_token')   msg = 'El enlace expiró. Pedí uno nuevo.';
-      if (code === 'password_too_short') msg = 'La contraseña debe tener al menos 6 caracteres.';
+      if (code === 'password_too_short' || code === 'password_weak') msg = PASSWORD_REGLA;
       setError(msg);
     } finally {
       setLoading(false);
@@ -126,7 +127,7 @@ export default function AceptarInvitacion() {
               fullWidth
               size="small"
               error={!!passwordTooShort}
-              helperText={passwordTooShort ? 'Mínimo 6 caracteres' : ' '}
+              helperText={passwordTooShort ? mensajePassword(password) : PASSWORD_REGLA}
             />
             <TextField
               label="Repetir contraseña"

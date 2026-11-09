@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
 import '../css/Auth.css';
+import { PASSWORD_REGLA, passwordValida, mensajePassword } from '../utils/password';
 
 import DOG from '@/assets/brand/anthony.png';
 import LOGO from '@/assets/brand/logo.png';
@@ -15,7 +16,7 @@ const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
 
 function scorePassword(pw = '') {
   let s = 0;
-  if (pw.length >= 8) s++;
+  if (pw.length >= 10) s++;
   if (/[A-Z]/.test(pw)) s++;
   if (/[a-z]/.test(pw)) s++;
   if (/\d/.test(pw)) s++;
@@ -102,7 +103,7 @@ export default function Register() {
 
   const pwScore = useMemo(() => scorePassword(password), [password]);
   const valid = useMemo(
-    () => String(name).trim().length >= 2 && emailOk(email) && password.length >= 8,
+    () => String(name).trim().length >= 2 && emailOk(email) && passwordValida(password),
     [name, email, password],
   );
 
@@ -235,14 +236,14 @@ export default function Register() {
           )}
 
           <label className="auth-label" htmlFor="password">Contraseña</label>
-          <div className={`input input-with-action ${touched.password && password.length < 8 ? 'input-error' : ''}`}>
+          <div className={`input input-with-action ${touched.password && !passwordValida(password) ? 'input-error' : ''}`}>
             <input
               id="password"
               type={showPw ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPass(e.target.value)}
               onBlur={() => setTouched((s) => ({ ...s, password: true }))}
-              placeholder="Mínimo 8 caracteres"
+              placeholder="Mínimo 10, con mayúscula y número"
               style={{ border: 'none', outline: 'none', flex: 1, background: 'transparent' }}
             />
             <button
@@ -254,9 +255,10 @@ export default function Register() {
               {showPw ? 'Ocultar' : 'Mostrar'}
             </button>
           </div>
-          {touched.password && password.length < 8 && (
-            <div className="field-hint error">La contraseña debe tener al menos 8 caracteres.</div>
-          )}
+          {/* La regla se ve siempre; lo que falta, apenas empieza a escribir. */}
+          <div className={`field-hint ${password && !passwordValida(password) && touched.password ? 'error' : ''}`}>
+            {password && !passwordValida(password) ? mensajePassword(password) : PASSWORD_REGLA}
+          </div>
 
           {/* Medidor de fuerza */}
           <div className="pw-meter">

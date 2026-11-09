@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
 import '../css/Auth.css';
@@ -17,7 +18,7 @@ export default function ResetPassword() {
     e.preventDefault();
     setErr(''); setMsg('');
     if (!token) { setErr('Enlace inválido.'); return; }
-    if (password.length < 6) { setErr('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (!passwordValida(password)) { setErr(`${PASSWORD_REGLA} ${mensajePassword(password)}`); return; }
     if (password !== confirm) { setErr('Las contraseñas no coinciden.'); return; }
 
     setBusy(true);
