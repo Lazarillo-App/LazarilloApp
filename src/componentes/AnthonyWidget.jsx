@@ -9,6 +9,8 @@
 // arranca visible).
 import React, { useState } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
+import { useLocation } from 'react-router-dom';
+import { useBusiness } from '@/context/BusinessContext';
 
 // Número de soporte temporal — se reemplaza por el definitivo más adelante.
 const SOPORTE_WHATSAPP = '541130211649';
@@ -28,6 +30,12 @@ export default function AnthonyWidget() {
   // Logueado: ofrece volver al asistente de alta (Diego, 08/11), salvo si ya está en él.
   const logueado = (() => { try { return !!localStorage.getItem('token'); } catch { return false; } })();
   const enAsistente = typeof window !== 'undefined' && /^\/(alta|perfil)/.test(window.location.pathname);
+  // En el asistente de alta (usuario sin negocio) no se muestra: el asistente ya tiene su propio
+  // Anthony en pantalla (pedido de la usuaria, 09/11). Misma condición que el Navbar.
+  const location = useLocation();
+  const { items: negocios } = useBusiness() || {};
+  const enAlta = location.pathname.startsWith('/alta') || (location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0));
+  if (enAlta) return null;
 
   if (minimizado) {
     // Pestañita en el borde derecho: asoma la cabeza de Anthony.

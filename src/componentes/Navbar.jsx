@@ -541,14 +541,14 @@ export default function Navbar() {
                 </ClickAwayListener>
               )}
             </Box>
-            {/* 🔔 Notificaciones siempre visibles */}
-            {!isAppAdmin && logged && (
+            {/* 🔔 Notificaciones (no en el asistente de alta: todavía no hay negocio; pedido de la usuaria 09/11). */}
+            {!isAppAdmin && logged && !enAlta && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <NotificationsPanel businessId={activeBusinessId} />
               </Box>
             )}
             {/* ⚙ Configuración, a la derecha de la campana (pedido de Diego, 06/11). */}
-            {!isAppAdmin && !isStaff && logged && (puedeVer('configuracion') || puedeVer('conexiones')) && (
+            {!isAppAdmin && !isStaff && logged && !enAlta && (puedeVer('configuracion') || puedeVer('conexiones')) && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <Tooltip title="Configuración">
                   <IconButton
@@ -608,7 +608,8 @@ export default function Navbar() {
           se mete en el contenido de la página, que cambia de layout según la
           pantalla). Un poco más clara/oscura que la barra para distinguirse
           sin agregar otro color nuevo. */}
-      {!modulosOpen && (
+      {/* En el asistente de alta no hay módulos que abrir todavía (09/11). */}
+      {!modulosOpen && !enAlta && (
         <Tooltip title="Módulos" placement="right">
           <Box
             component="button"
