@@ -80,6 +80,7 @@ function sumar(datos) {
       return {
         importe: ss.reduce((t, x) => t + x.importe, 0), remitos: ss.reduce((t, x) => t + x.remitos, 0),
         porConcepto: unir(ss.map((x) => x.porConcepto), (x) => x.concepto).sort((a, b) => b.importe - a.importe),
+        porTurno: unir(ss.map((x) => x.porTurno), (x) => nombreTurno(x.turno)).sort((a, b) => b.importe - a.importe),
         articulos: unir(ss.map((x) => x.articulos), (x) => `${x.concepto}|${x.nombre}`).sort((a, b) => b.importe - a.importe),
       };
     })(),
@@ -162,6 +163,10 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
     encabezado = "Movimientos de stock"; total = st.importe;
     sub = `${num(st.remitos)} ${st.remitos === 1 ? "remito" : "remitos"} · ${pct1(st.importe, ventas)} de la venta · a precio de venta`;
     cuerpo = (<>
+      {(st.porTurno || []).length > 1 && (<>
+        <Seccion>Por turno</Seccion>
+        {st.porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<small style={{ color: GRIS }}>{num(x.remitos)} {x.remitos === 1 ? "remito" : "remitos"}</small><b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
+      </>)}
       <Seccion>Por concepto</Seccion>
       {st.porConcepto.map((c, i) => <Fila key={c.concepto} nombre={titulo2(c.concepto)} importe={c.importe} total={st.importe} color={COLORES[(i + 3) % COLORES.length]} sub={`${num(c.remitos)} ${c.remitos === 1 ? "remito" : "remitos"}`} />)}
       <Seccion derecha="cant · $">Qué salió</Seccion>
@@ -172,7 +177,7 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
           <small style={{ color: GRIS, flexShrink: 0 }}>× {num(a.cantidad)}</small>
           <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
         </div>)} />
-      <Nota>Salidas de stock que no son venta (informes 27 y 28 de MaxiRest), valuadas a precio de venta. No tienen turno: son del {esMes ? "mes" : "día"} entero.</Nota>
+      <Nota>Salidas de stock que no son venta (informes 27 y 28 de MaxiRest), valuadas a precio de venta.</Nota>
     </>);
   } else if (tipo === "anulaciones") {
     const an = d.anulaciones;
