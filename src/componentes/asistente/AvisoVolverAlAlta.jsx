@@ -53,7 +53,7 @@ export default function AvisoVolverAlAlta() {
             <b>¿Sumamos tus datos?</b>{' '}
             {pedirVentas && 'Con las ventas te muestro qué se vende y cuánto. '}
             {pedirCompras && 'Con las compras tengo el precio real de tus insumos. '}
-            <span style={{ color: '#5b6b7c' }}>No es obligatorio: si lo llevás a mano, seguí así.</span>
+            <span style={{ color: '#5b6b7c' }}>Si lo llevás a mano, podés ir cargándolo de a poco desde Gestión (las compras, en Carga de gastos).</span>
           </>
         ) : (
           <><b>¿Tenés un POS?</b> Podés volver al asistente para conectarlo.</>

@@ -11,6 +11,7 @@ import React, { useState } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 import { useLocation } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
+import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
 
 // Número de soporte temporal — se reemplaza por el definitivo más adelante.
 const SOPORTE_WHATSAPP = '541130211649';
@@ -93,6 +94,19 @@ export default function AnthonyWidget() {
               >
                 ↩ Volver al asistente de alta
               </a>
+            )}
+            {logueado && (
+              <button
+                type="button"
+                onClick={() => { setOpen(false); abrirChatAnthony(); }}
+                style={{
+                  marginTop: 14, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: '#2492C8', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5,
+                  borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                ✉ Escribirle al equipo
+              </button>
             )}
             <a
               href={`https://wa.me/${SOPORTE_WHATSAPP}`}

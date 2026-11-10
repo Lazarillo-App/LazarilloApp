@@ -11,6 +11,7 @@ import { showConfirm } from "../../servicios/appConfirm";
 import { showPrompt } from "../../servicios/appPrompt";
 import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 import AltaManual from "./AltaManual";
+import { abrirChatAnthony } from "./chatEvento";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
 // alguien sube un PDF acá — se carga con import() dinámico para no engordar
@@ -2931,6 +2932,8 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
         } catch (e) { console.warn("[alta] no se pudo anotar el pedido de POS:", e?.message); }
       }
       setPosPedido(true);
+      // El pedido también va al equipo por el chat, con el POS y los datos ya completados.
+      abrirChatAnthony({ opcion: "pos", respuesta: posName, mensaje: `Quiero conectar ${posName} y traer: ${que.replace("menu", "artículos/menú").split(",").join(", ")}.`, contexto: { origen: "alta_pos" } });
     };
     const algunaSel = integrar.ventas || integrar.menu || integrar.compras || integrar.insumos;
     const extras = posExtra.filter((p) => !POS_BASE.some((b) => b.toLowerCase() === p.toLowerCase()));
@@ -3011,6 +3014,10 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
             </div>
           )}
         </Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10, fontSize: 13.5, color: C.muted }}>
+          ¿No querés subir ni ordenar nada?
+          <Btn ghost small accent={marca.primary} onClick={() => abrirChatAnthony({ opcion: "armar", contexto: { origen: "alta_pos" } })}>Que lo arme Lazarillo</Btn>
+        </div>
       </>
     );
   })();

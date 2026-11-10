@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-
 
 import Navbar from './componentes/Navbar';
 import AnthonyWidget from './componentes/AnthonyWidget';
+import AnthonyChat from './componentes/asistente/AnthonyChat';
 //import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
@@ -238,6 +239,8 @@ export default function App() {
       {isLogged && <VerComoBanner />}
       {isLogged && role !== 'app_admin' && !enAppMovil && <Navbar />}
       {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
+      {/* Chat "Que lo haga Lazarillo": también en el alta (ahí el widget no se muestra). */}
+      {isLogged && role !== 'app_admin' && <AnthonyChat />}
 
       <Routes>
         <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
