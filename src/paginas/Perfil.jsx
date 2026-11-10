@@ -338,7 +338,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             <TableHead>
               <TableRow>
                 {['Alias', 'Email', 'Rol', 'Negocios', 'Estado', ''].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</TableCell>
+                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', ...(h === '' ? COL_ACCIONES : {}) }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -363,7 +363,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                      <TableCell title={m.email} sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {m.email}
                       </TableCell>
                       <TableCell>
@@ -376,7 +376,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                       </TableCell>
                       <TableCell>
                         {unSoloNegocio ? (
-                          <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                             {m.negocios[0].scopeName}
                           </Typography>
                         ) : (
@@ -399,7 +399,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           title={invitacionVencida ? 'El link venció — hay que reenviarla' : undefined}
                         />
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ ...COL_ACCIONES, bgcolor: 'background.paper' }}>
                         {puedeGestionar && (
                           <IconButton
                             size="small"
@@ -643,6 +643,10 @@ function SecuritySection() {
 /* ═══════════════════════════════════════
    PÁGINA PRINCIPAL
 ═══════════════════════════════════════ */
+// Columna de acciones (⋮) de Equipo: angosta y pegada a la derecha aunque la tabla
+// tenga que desplazarse, para que el ⋮ no quede fuera de la caja (Diego 10/11/2026).
+const COL_ACCIONES = { width: 44, pl: 0.5, pr: 1, position: 'sticky', right: 0 };
+
 function PerfilContenido() {
   const { organization } = useOrganization() || {};
   const { items, refetchBusinesses } = useBusiness() || {};
