@@ -484,8 +484,8 @@ export default function ItemRow({
             sx={{
               border: '1px solid',
               borderColor: isDuplicate ? 'error.main' : (item.supplyId || item.articleRefId) ? 'success.light' : 'warning.main',
-              borderRadius: 1, px: 0.75, py: 0.4, cursor: 'pointer',
-              minHeight: 30, display: 'flex', alignItems: 'center',
+              borderRadius: 1, px: 0.75, cursor: 'pointer',
+              height: 32, boxSizing: 'border-box', display: 'flex', alignItems: 'center',
               bgcolor: 'background.paper',
               '&:hover': { borderColor: PRIMARY },
             }}
@@ -898,9 +898,9 @@ export default function ItemRow({
             placeholder="0"
             inputProps={{
               inputMode: 'decimal',
-              style: { textAlign: 'right', fontSize: '0.78rem', padding: '4px 6px' }
+              style: { textAlign: 'center', fontSize: '0.78rem', padding: '0 6px' }
             }}
-            sx={{ flex: 1, minWidth: 0 }}
+            sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 32 } }}
           />
           <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <IconButton
@@ -941,9 +941,9 @@ export default function ItemRow({
             }
           }}
           sx={{
-            fontSize: '0.75rem',
+            fontSize: '0.75rem', height: 32,
             '& .MuiSelect-select': {
-              py: '4px', fontSize: '0.75rem',
+              fontSize: '0.75rem', textAlign: 'center',
               ...(unidadInvalida ? { color: '#ea580c', fontWeight: 700 } : {}),
             },
           }}
@@ -1002,7 +1002,7 @@ export default function ItemRow({
               }
             };
             return (
-              <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid', borderColor: PRIMARY, borderRadius: 1, px: 0.5, minHeight: 30, bgcolor: '#fff', overflow: 'hidden' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid', borderColor: PRIMARY, borderRadius: 1, px: 0.5, height: 32, boxSizing: 'border-box', bgcolor: '#fff', overflow: 'hidden' }}>
                 <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled', mr: 0.25 }}>$</Typography>
                 <TextField
                   autoFocus
@@ -1037,9 +1037,9 @@ export default function ItemRow({
                 ? () => { setPrecioManualVal(''); setPrecioManualEdit(true); }
                 : (abrirMermaAlClick ? () => onAdvancedOpen?.() : undefined)}
               sx={{
-                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: '1px solid', borderColor: unidadInvalida ? '#fdba74' : (superaPrecioVenta ? '#fecaca' : 'divider'),
-                borderRadius: 1, px: 0.75, minHeight: 30,
+                borderRadius: 1, px: 0.75, height: 32, boxSizing: 'border-box',
                 bgcolor: unidadInvalida ? '#fff7ed' : (superaPrecioVenta ? '#fef2f2' : (elaborado ? '#f0fdf4' : '#f8fafc')),
                 overflow: 'hidden', cursor: (sinPrecioEditable || abrirMermaAlClick) ? 'pointer' : 'default',
               }}
@@ -1062,7 +1062,7 @@ export default function ItemRow({
         })()}
         {/* ── $ sin promo (solo en promo, precio de venta del componente × cantidad) ── */}
         {esPromo && (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, minHeight: 30, bgcolor: '#faf5ff', overflow: 'hidden' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.75, height: 32, boxSizing: 'border-box', bgcolor: '#faf5ff', overflow: 'hidden' }}>
             {item.articleRefId ? (() => {
               const pSin = getPrecioSinPromo ? getPrecioSinPromo(item.articleRefId) : 0;
               const total = (Number(pSin) || 0) * (Number(item.cantidad) || 0);
@@ -1093,7 +1093,7 @@ export default function ItemRow({
           <Tooltip title={item.observaciones ? (item.updatedAt ? `Editado: ${fmtDate(item.updatedAt)} — ${item.observaciones}` : item.observaciones) : 'Agregar nota para este ingrediente'} placement="top">
             <Box onClick={() => setNotasOpen(true)} sx={{
               border: '1px solid', borderColor: item.observaciones ? `${PRIMARY}60` : 'divider',
-              borderRadius: 1, px: 0.75, minHeight: 30,
+              borderRadius: 1, px: 0.75, height: 32, boxSizing: 'border-box',
               display: 'flex', alignItems: 'center',
               cursor: 'pointer', bgcolor: 'background.paper',
               '&:hover': { borderColor: PRIMARY, bgcolor: `${PRIMARY}05` },

@@ -2397,7 +2397,8 @@ export default function RecetaModal({
                           value={nombre}
                           onChange={e => setNombre(e.target.value)}
                           placeholder={artNombre}
-                          sx={{ flex: 1 }}
+                          size="small"
+                          sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }}
                         />
                         {!modoInsumo && (
                           <ToggleButtonGroup
@@ -2449,17 +2450,17 @@ export default function RecetaModal({
                           >
                             <ToggleButton
                               value="producto"
-                              sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}
+                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
                             >
                               Producto
                             </ToggleButton>
-                            <ToggleButton value="promo" sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}>
+                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
                               Promoción
                             </ToggleButton>
                           </ToggleButtonGroup>
                         )}
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
                             gemelos, más abajo) ── */}
@@ -2468,7 +2469,7 @@ export default function RecetaModal({
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
                               display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer',
-                              py: 0.6, px: 1, borderRadius: 1,
+                              height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
                               bgcolor: rendimientoNoDefault ? 'rgba(3,105,161,0.05)' : 'transparent',
                               border: '1px solid', borderColor: rendimientoNoDefault ? 'rgba(3,105,161,0.2)' : 'divider',
                               '&:hover': { bgcolor: 'action.hover' }, transition: 'all .15s',
@@ -2495,8 +2496,8 @@ export default function RecetaModal({
                                   setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
                                 }}
                                 size="small"
-                                inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '6px 8px' } }}
-                                sx={{ width: 72, flexShrink: 0 }}
+                                inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '0 8px' } }}
+                                sx={{ width: 72, flexShrink: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
                               />
                               <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
                                 <Select
@@ -2512,7 +2513,7 @@ export default function RecetaModal({
                                     }
                                   }}
                                   MenuProps={downwardMenuProps()}
-                                  sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
+                                  sx={{ fontSize: '0.85rem', height: 40 }}
                                 >
                                   <MenuItem value="porcion">Porción</MenuItem>
                                   <MenuItem value="u">Unidad</MenuItem>
@@ -2538,8 +2539,8 @@ export default function RecetaModal({
                                     }}
                                     placeholder="—"
                                     size="small"
-                                    inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
-                                    sx={{ flex: 1, minWidth: 0 }}
+                                    inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '0 8px' } }}
+                                    sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
                                   />
                                   <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
                                     <Select
@@ -2548,7 +2549,7 @@ export default function RecetaModal({
                                       displayEmpty
                                       renderValue={(v) => v || 'u.'}
                                       MenuProps={downwardMenuProps()}
-                                      sx={{ fontSize: '0.8rem', color: unidadPeso ? 'inherit' : 'text.disabled', '& .MuiSelect-select': { py: '6px' } }}
+                                      sx={{ fontSize: '0.8rem', height: 40, color: unidadPeso ? 'inherit' : 'text.disabled' }}
                                     >
                                       <MenuItem value="gr">gr</MenuItem>
                                       <MenuItem value="kg">kg</MenuItem>
@@ -2572,7 +2573,7 @@ export default function RecetaModal({
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
                           InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined }}
+                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
                         />
                       </Box>
                     </Box>
@@ -2590,7 +2591,7 @@ export default function RecetaModal({
                       }}
                         sx={{
                           display: 'flex', alignItems: 'center', gap: 1,
-                          cursor: 'pointer', py: 0.6, px: 1, borderRadius: 1,
+                          cursor: 'pointer', height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
                           bgcolor: gemelosGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
                           border: '1px solid', borderColor: gemelosGroup ? 'rgba(124,58,237,0.2)' : 'divider',
                           '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
@@ -3273,42 +3274,65 @@ export default function RecetaModal({
                     {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
                   </Stack>
                 )}
-                {/* Barra de ajuste del Costo Objetivo — debajo del sugerido, visible siempre.
-                    +/- de a 1 punto, o doble click sobre el % de arriba para tipearlo directo. */}
+                {/* Barra de ajuste — debajo del sugerido, visible siempre.
+                    ARTÍCULO: la barra mueve el PRECIO sugerido (izquierda = más barato, derecha = más caro)
+                    y el % de costo objetivo lo sigue (% = costo ÷ precio). Se guarda igual que antes: como
+                    objetivo entero (commitObjetivo), así que el precio salta de a 1 punto de % (5% a 90%).
+                    Elaborados y promociones: la barra sigue moviendo el % directamente. */}
+                {(() => {
+                  const barraPorPrecio = !modoInsumo && !promoMode && costoXRendimiento > 0;
+                  const pctObj = Number(pctCostoIdeal) || 0;
+                  // La barra va al revés del %: a la derecha, % más bajo = precio más alto.
+                  // (Se usa el % negado como valor para que cada paso sea 1 punto parejo.)
+                  const botonSx = {
+                    width: 22, height: 22, p: 0,
+                    bgcolor: 'action.hover',
+                    '&:hover': { bgcolor: 'action.selected' },
+                  };
+                  return (
                 <Stack direction="row" alignItems="center" spacing={0.25} sx={!modoInsumo && !promoMode ? { width: 200, flexShrink: 0 } : { mt: 0.5 }}>
                   <IconButton
                     size="small"
-                    onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) - 1)}
-                    sx={{
-                      width: 22, height: 22, p: 0,
-                      bgcolor: 'action.hover',
-                      '&:hover': { bgcolor: 'action.selected' },
-                    }}
+                    title={barraPorPrecio ? 'Bajar el precio sugerido' : undefined}
+                    onClick={() => commitObjetivo(pctObj + (barraPorPrecio ? 1 : -1))}
+                    sx={botonSx}
                   >
                     <RemoveIcon sx={{ fontSize: 15 }} />
                   </IconButton>
-                  <Slider
-                    value={Number(pctCostoIdeal) || 0}
-                    min={0}
-                    max={100}
-                    step={1}
-                    size="small"
-                    onChange={(_, val) => setPctCostoIdeal(val)}
-                    onChangeCommitted={(_, val) => commitObjetivo(val)}
-                    sx={{ py: 0.5, flex: 1 }}
-                  />
+                  {barraPorPrecio ? (
+                    <Slider
+                      value={-Math.min(90, Math.max(5, pctObj || 50))}
+                      min={-90}
+                      max={-5}
+                      step={1}
+                      size="small"
+                      onChange={(_, val) => setPctCostoIdeal(-val)}
+                      onChangeCommitted={(_, val) => commitObjetivo(-val)}
+                      sx={{ py: 0.5, flex: 1 }}
+                    />
+                  ) : (
+                    <Slider
+                      value={pctObj}
+                      min={0}
+                      max={100}
+                      step={1}
+                      size="small"
+                      onChange={(_, val) => setPctCostoIdeal(val)}
+                      onChangeCommitted={(_, val) => commitObjetivo(val)}
+                      sx={{ py: 0.5, flex: 1 }}
+                    />
+                  )}
                   <IconButton
                     size="small"
-                    onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) + 1)}
-                    sx={{
-                      width: 22, height: 22, p: 0,
-                      bgcolor: 'action.hover',
-                      '&:hover': { bgcolor: 'action.selected' },
-                    }}
+                    title={barraPorPrecio ? 'Subir el precio sugerido' : undefined}
+                    onClick={() => commitObjetivo(pctObj + (barraPorPrecio ? -1 : 1))}
+                    sx={botonSx}
                   >
                     <AddIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Stack>
+                  );
+                })()}
                 </Box>
               </Box>}
               {!modoInsumo && promoMode && <Box sx={{ display: isStaff ? 'none' : undefined }}>
