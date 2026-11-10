@@ -19,6 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BASE } from '../servicios/apiBase';
 import { useBranch } from '@/hooks/useBranch';
+import { useSucursalModales } from '@/gestion/sucursalModales';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
@@ -600,6 +601,19 @@ export function ComprasDetalleContenido({
   const [extraLoading, setExtraLoading] = useState(false);
 
   const [selectedBranch, setSelectedBranch] = useState('all');
+  // Sucursal compartida con la cuenta corriente del proveedor (Diego 10/11/2026): arranca en la
+  // sucursal que se mira en la app y, si se cambia acá o allá, cambia en los dos.
+  const [sucCompartida, setSucCompartida] = useSucursalModales();
+  const aLocal = (v, lista) => {
+    if (v === 'all' || !v) return 'all';
+    if (v === 'main') { const m = (lista || []).find(b => b?.props?.is_main); return m ? String(m.id) : 'all'; }
+    return (lista || []).some(b => String(b.id) === String(v)) ? String(v) : 'all';
+  };
+  const aCompartida = (v, lista) => {
+    if (v === 'all') return 'all';
+    const b = (lista || []).find(x => String(x.id) === String(v));
+    return b?.props?.is_main ? 'main' : String(v);
+  };
   const [branchItems, setBranchItems] = useState([]);
   const [branchLoading, setBranchLoading] = useState(false);
 
@@ -631,11 +645,20 @@ export function ComprasDetalleContenido({
     if (open) {
       setSelectedBiz('current');
       setExtraItems([]);
-      setSelectedBranch('all');
+      setSelectedBranch(aLocal(sucCompartida, rawBranches));
       setBranchItems([]);
       setDynamicBranches(rawBranches || []);
     }
   }, [open]); // eslint-disable-line
+
+  // Si se cambia la sucursal en la cuenta corriente, este modal la sigue.
+  useEffect(() => {
+    if (!open || selectedBiz !== 'current') return;
+    setSelectedBranch((prev) => {
+      const nuevo = aLocal(sucCompartida, dynamicBranchesRef.current.length ? dynamicBranchesRef.current : rawBranches);
+      return prev === nuevo ? prev : nuevo;
+    });
+  }, [sucCompartida]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────── Ranking "Top por gasto" (solo si hay con quién navegar) ───────────
   // Acá se muestra inline (no hay un header propio para ponerlo al lado del
@@ -780,9 +803,9 @@ export function ComprasDetalleContenido({
 
   // Resetear sucursal al cambiar negocio
   useEffect(() => {
-    setSelectedBranch('all');
+    setSelectedBranch(selectedBiz === 'current' ? aLocal(sucCompartida, rawBranches) : 'all');
     setBranchItems([]);
-  }, [selectedBiz]);
+  }, [selectedBiz]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mapa de colores por sucursal (contexto + dinámicas)
   const branchColorMap = useMemo(() => {
@@ -1497,7 +1520,10 @@ export function ComprasDetalleContenido({
               <Select MenuProps={downwardMenuProps()}
                 value={selectedBranch}
                 label="Sucursal"
-                onChange={(e) => setSelectedBranch(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBranch(e.target.value);
+                  if (selectedBiz === 'current') setSucCompartida(aCompartida(e.target.value, dynamicBranches));
+                }}
               >
                 <MenuItem value="all">Todas</MenuItem>
 
