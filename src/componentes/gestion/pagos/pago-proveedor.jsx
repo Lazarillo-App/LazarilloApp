@@ -6,6 +6,7 @@ import { fmtPesos } from "@/gestion/impagasClasificar";
 import { importeAInput, normalizarReferencia, parsearImporteAR } from "@/gestion/impagasAperturas";
 import { FechaInput, ImporteInput, hoyISO } from "./deuda-pdv";
 import { useMediosPago } from "@/gestion/hooksPanel";
+import { useAbmMediosPago } from "../MediosPagoAbm";
 import { mediosParaElegir } from "@/gestion/cargaUtils";
 import { numeroPago } from "@/gestion/pagosImputar";
 export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm }) {
@@ -14,6 +15,7 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
     const [importe, setImporte] = useState(base > 0 ? importeAInput(base) : "");
     const [fecha, setFecha] = useState(editando ? modo.pago.fecha : hoyISO());
     const { data: medios } = useMediosPago();
+    const abmMedios = useAbmMediosPago();
     const lista = mediosParaElegir(medios, editando ? modo.pago.medio : null);
     const [medioSel, setMedio] = useState(editando ? modo.pago.medio : "");
     const medio = medioSel || lista[0]?.nombre || "";
@@ -124,12 +126,13 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
               <ImporteInput value={importe} onChange={setImporte} className={cn(input, "w-40 text-right tabular-nums")}/>
             </label>
             <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
-              <select value={medio} onChange={(e) => cambiarMedio(e.target.value)} className={cn(input, "w-56")}>
+              <select value={medio} onChange={abmMedios.alElegir(cambiarMedio)} className={cn(input, "w-56")}>
+                {abmMedios.opcion}
                 {lista.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}{m.activo ? "" : " (desactivado)"}</option>)}
                 {modo.tipo === "facturas" && aCuenta.length > 0 && (<optgroup label="Usar un pago a cuenta">
                     {aCuenta.map((p) => <option key={p.id} value={`cuenta:${p.id}`}>A cuenta — {numeroPago(p.id)} · disponible {fmtPesos(p.disponible)}</option>)}
                   </optgroup>)}
-              </select>
+              </select>{abmMedios.dialogo}
             </label>
             {!usado ? (<label className="flex items-center gap-1.5"><span className={etiqueta}>Fecha</span>
                 <FechaInput value={fecha} onChange={setFecha} className={cn(input, "w-32 tabular-nums")}/>
