@@ -7,6 +7,17 @@ import { useCallback, useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 
+// Solo para negocios nuevos (pedido de la usuaria, 10/11): los creados desde que salieron los
+// recorridos, tengan datos o no (un cliente nuevo de MaxiRest trae todo pero nunca usó Lazarillo).
+// Los negocios que ya existían no los ven. También los que pasaron por el asistente de alta nuevo.
+const DESDE = new Date('2026-11-10T00:00:00-03:00').getTime();
+export function negocioConRecorridos(negocio) {
+  if (!negocio) return false;
+  if (negocio.props?.onboarding?.alta_estado) return true;
+  const creado = new Date(negocio.created_at || 0).getTime();
+  return Number.isFinite(creado) && creado >= DESDE;
+}
+
 const claveSesion = (biz, id) => `lazarillo:recorrido-omitido:${biz}:${id}`;
 const omitidoEnSesion = (biz, id) => { try { return sessionStorage.getItem(claveSesion(biz, id)) === '1'; } catch { return false; } };
 
@@ -19,7 +30,7 @@ export function useRecorrido(id, pasos, activo = true) {
   const apagado = !!active?.props?.onboarding?.[`recorrido_${id}_off`];
   // "Omitir" se relee cada vez: hay recorridos que viven en muchas copias (el menú de cada fila de la
   // tabla) y omitirlo en una tiene que valer para todas.
-  const visible = !!activo && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado && !!activeBusinessId;
+  const visible = !!activo && negocioConRecorridos(active) && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado && !!activeBusinessId;
 
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
   const omitir = useCallback(() => {
