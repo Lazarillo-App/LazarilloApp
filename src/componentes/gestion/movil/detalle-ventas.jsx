@@ -33,6 +33,7 @@ const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin a
 const titulo = (s) => String(s || "").toLowerCase().replace(/(^|[\s(/-])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase());
 const SERVICIO = { SALON: "Salón", TAKEA: "Take away", DOMIC: "Delivery", MOSTR: "Mostrador" };
 const nombreServicio = (t) => SERVICIO[String(t).toUpperCase()] || titulo(t);
+const esSalon = (t) => /^SAL/i.test(String(t || ""));
 const TURNO = { "MAÑ": "Mañana", MAN: "Mañana", TAR: "Tarde", NOC: "Noche" };
 const nombreTurno = (t) => TURNO[String(t).toUpperCase()] || titulo(t);
 // «378.SALON» → «Salón»; «3029.Julieta Belen» → «Julieta Belen»
@@ -228,17 +229,18 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
           <span style={{ minWidth: 0, flex: 1 }}>{a.anula || a.comprobante}</span>
           <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
           <div style={{ width: "100%", fontSize: 11.5, color: GRIS }}>
-            {[esMes && fechaCorta(a.fecha), a.hora, a.mesa && `mesa ${a.mesa}`, nombreTurno(a.turno), a.tipo && nombreServicio(a.tipo), `anulada con ${a.comprobante}`].filter(Boolean).join(" · ")}
+            {/* «Mesa» solo en salón: en take away y delivery ese número no es una mesa (Diego 10/11/2026). */}
+            {[esMes && fechaCorta(a.fecha), a.hora, nombreTurno(a.turno), a.tipo && nombreServicio(a.tipo), esSalon(a.tipo) && a.mesa && `mesa ${a.mesa}`, `anulada con ${a.comprobante}`].filter(Boolean).join(" · ")}
           </div>
           {a.refacturada && (() => {
             const r = a.refacturada; const dif = r.importe - a.importe;
             return (<div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: Math.abs(dif) < 1 ? "#047857" : "#b45309" }}>
-              ↳ re-facturada en {r.comprobante} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después de la factura`}
+              ↳ re-facturada en {r.comprobante}{r.por === "siguiente" ? ` (el comprobante siguiente${r.tipo && r.tipo !== a.tipo ? `, como ${nombreServicio(r.tipo)}` : ""})` : ""} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después de la factura`}
               {Math.abs(dif) < 1 ? " · mismo importe" : ` · ${$(r.importe)} (${dif > 0 ? "+" : "−"}${$(Math.abs(dif)).replace("$ ", "$ ")})`}
             </div>);
           })()}
           {a.refacturada === null && (
-            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no hay otro ticket de {a.mesa ? `la mesa ${a.mesa}` : "esa mesa"} en los 90 minutos siguientes a la factura</div>
+            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no aparece otro ticket {esSalon(a.tipo) ? "de la misma mesa" : "del mismo pedido"} ni el comprobante siguiente</div>
           )}
         </div>)} />
     </>);
