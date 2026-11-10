@@ -2623,6 +2623,13 @@ export default function ArticulosMain(props) {
       }
     }
 
+    // Top 20 vacío (todavía no hay ventas) y ya hay artículos: se muestra "Todos" (negocio nuevo, 10/11).
+    if (currentSel && esTop20Group(currentSel) && !ventasLoading && top20Ids.size === 0 && !todoEmpty && todoId) {
+      setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
+      setCategoriaSeleccionada(null);
+      setFiltroBusqueda('');
+      return;
+    }
     if (currentSel && (isDiscontinuadosGroup(currentSel) || esTop20Group(currentSel))) return;
 
     // ── Si ya hay una agrupación real seleccionada y válida → no tocar ──
@@ -2674,6 +2681,8 @@ export default function ArticulosMain(props) {
     favoriteGroupId,
     agrupacionesRich,
     categorias,
+    top20Ids,
+    ventasLoading,
     setAgrupacionSeleccionada,
     setCategoriaSeleccionada,
     setFiltroBusqueda,
@@ -3222,6 +3231,15 @@ export default function ArticulosMain(props) {
         onClose={() => setAgregarArticuloOpen(false)}
         businessId={activeBusinessId}
         onCreated={() => {
+          // Si está en una vista que no puede mostrarlo (Top 20 = los que más facturaron, o
+          // Discontinuados), pasa a "Todos" para que el artículo recién creado se vea (10/11).
+          const sel = agrupSelRef.current;
+          const todoId = todoInfo?.todoGroupId;
+          if (todoId && (!sel || esTop20Group(sel) || isDiscontinuadosGroup(sel))) {
+            setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
+            setCategoriaSeleccionada(null);
+            setFiltroBusqueda('');
+          }
           // articulos:updated: lo escuchan TablaArticulos (refetch de la tabla)
           // y useGlobalSearchOptions (buscador global) — sin esto, un alta
           // manual desde el propio Menú no aparecía en ninguno de los dos
