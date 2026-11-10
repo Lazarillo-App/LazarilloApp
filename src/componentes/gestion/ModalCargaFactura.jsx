@@ -1368,7 +1368,7 @@ function ModalNuevaCarga(props) {
                       </span>
                     </span>
                     <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
-                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med}<span style={{ ...chica, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
+                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med} <span style={{ color: "#999", fontSize: 11 }}>de {fmtNum(fEnv)}</span><span style={{ ...chica, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
                       : `${l.cant} ${med}`}</span>
                     <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span> : <Imp v={parseImp(l.unit)} max={15} />}
                       {txtDesc && <span title={`Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)}`} style={{ ...chica, color: C.verde, fontWeight: 600 }}>{txtDesc}</span>}</span>
