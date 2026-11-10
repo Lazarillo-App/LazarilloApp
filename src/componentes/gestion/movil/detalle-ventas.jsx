@@ -5,7 +5,7 @@
 //  - Pestañas: Servicio · Cobro · Rubro (rubro/subrubro + top 10 por $ o unidades) · Mozo · Revisar.
 //  - Varios PDV elegidos: se pide uno por uno a /api/m/detalle y se suman acá.
 import { useEffect, useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import { gestionFetch } from "@/servicios/apiGestion";
 
 const AZUL = "#0369a1";
@@ -155,10 +155,13 @@ function Lista({ items, render, inicial = 5, etiqueta, valor = (x) => x.importe 
 const LINEA = { display: "flex", alignItems: "baseline", gap: 6, padding: "7px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 };
 const Chip = ({ children }) => <span style={{ flexShrink: 0, maxWidth: 78, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, background: "#f4f4f5", color: "#52525b", borderRadius: 10, padding: "1px 7px" }}>{children}</span>;
 const fechaCorta = (f) => `${f.slice(8)}/${f.slice(5, 7)}`;
-function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
+function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshabilitado }) {
   const ventas = d.total;
   let encabezado, total, sub, cuerpo;
-  if (tipo === "stock") {
+  if (tipo === "stock" && !d.stock) {
+    encabezado = "Movimientos de stock"; total = 0; sub = "todavía sin datos para este lugar";
+    cuerpo = <Nota>El kit de esta PC todavía no subió los informes 27 y 28.</Nota>;
+  } else if (tipo === "stock") {
     const st = d.stock;
     encabezado = "Movimientos de stock"; total = st.importe;
     sub = `${num(st.remitos)} ${st.remitos === 1 ? "remito" : "remitos"} · ${pct1(st.importe, ventas)} de la venta · a precio de venta`;
@@ -184,7 +187,22 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
     encabezado = "Anulaciones"; total = an.importe;
     sub = `${num(an.n)} ${an.n === 1 ? "nota de crédito" : "notas de crédito"} · ${pct1(an.importe, ventas)} de la venta`;
     const porTurno = unir(an.detalle.map((a) => [{ turno: a.turno, importe: a.importe }]), (x) => x.turno).sort((a, b) => b.importe - a.importe);
+    const sinRefact = an.detalle.filter((a) => a.refacturada === null);
+    const conRefact = an.detalle.filter((a) => a.refacturada);
     cuerpo = (<>
+      {(conRefact.length > 0 || sinRefact.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+          <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 10px" }}>
+            <div style={{ fontSize: 11.5, color: GRIS }}>Re-facturadas</div>
+            <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: "#047857" }}>{num(conRefact.length)}</b>
+            <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(conRefact.reduce((t, a) => t + a.refacturada.importe, 0))}</div>
+          </div>
+          <div style={{ border: `1px solid ${sinRefact.length ? "#fdba74" : BORDE}`, background: sinRefact.length ? "#fff7ed" : "#fff", borderRadius: 12, padding: "8px 10px" }}>
+            <div style={{ fontSize: 11.5, color: GRIS }}>Sin re-facturar</div>
+            <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: sinRefact.length ? "#c2410c" : undefined }}>{num(sinRefact.length)}</b>
+            <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(sinRefact.reduce((t, a) => t + a.importe, 0))}</div>
+          </div>
+        </div>)}
       <Seccion>Por turno</Seccion>
       {porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
       <Seccion>Detalle</Seccion>
@@ -195,6 +213,16 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
           <div style={{ width: "100%", fontSize: 11.5, color: GRIS }}>
             {[esMes && fechaCorta(a.fecha), a.hora, a.mesa && `mesa ${a.mesa}`, nombreTurno(a.turno), a.tipo && nombreServicio(a.tipo), `anulada con ${a.comprobante}`].filter(Boolean).join(" · ")}
           </div>
+          {a.refacturada && (() => {
+            const r = a.refacturada; const dif = r.importe - a.importe;
+            return (<div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: Math.abs(dif) < 1 ? "#047857" : "#b45309" }}>
+              ↳ re-facturada en {r.comprobante} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después`}
+              {Math.abs(dif) < 1 ? " · mismo importe" : ` · ${$(r.importe)} (${dif > 0 ? "+" : "−"}${$(Math.abs(dif)).replace("$ ", "$ ")})`}
+            </div>);
+          })()}
+          {a.refacturada === null && (
+            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no hay otro ticket de {a.mesa ? `la mesa ${a.mesa}` : "esa mesa"} en los 90 minutos siguientes</div>
+          )}
         </div>)} />
     </>);
   } else if (tipo === "descuentos") {
@@ -243,7 +271,11 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar }) {
         <div style={{ width: 40, height: 4, borderRadius: 2, background: "#d4d4d8", margin: "0 auto 10px" }} />
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <b style={{ fontSize: 17 }}>{encabezado}</b>
-          <span style={{ marginLeft: "auto", fontSize: 12, color: GRIS, whiteSpace: "nowrap" }}>{tituloPeriodo}</span>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <Flecha onClick={() => mover(-1)}>‹</Flecha>
+            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{tituloPeriodo}</span>
+            <Flecha onClick={() => mover(1)} deshabilitada={sigDeshabilitado}>›</Flecha>
+          </span>
           <button type="button" onClick={onCerrar} aria-label="Cerrar" style={{ border: 0, background: "#f4f4f5", borderRadius: 14, width: 28, height: 28, fontSize: 15, color: GRIS, cursor: "pointer", flexShrink: 0 }}>✕</button>
         </div>
         <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4, whiteSpace: "nowrap" }}>{$(total)}</div>
@@ -279,6 +311,8 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
       queryKey: ["m-detalle-ventas", s.pdvId, periodo.modo, periodo.dia, periodo.mes, turno],
       queryFn: async () => { const r = await gestionFetch(qs(s)); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); },
       staleTime: 5 * 60_000, retry: 1,
+      // Al pasar de día con una hoja de Revisar abierta, lo anterior queda hasta que llega lo nuevo.
+      placeholderData: keepPreviousData,
     })),
   });
   const listo = consultas.length > 0 && consultas.every((q) => q.data !== undefined);
@@ -444,7 +478,10 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
           {[
             ["descuentos", "Descuentos", $(d.descuentos.importe), `${num(d.descuentos.tickets)} tickets · ${pct1(d.descuentos.importe, d.bruto)} de lo bruto`],
             ["pagos", "Pagos desde la caja", $(d.pagosCaja.reduce((t, p) => t + p.importe, 0)), `${num(d.pagosCaja.length)} ${d.pagosCaja.length === 1 ? "pago" : "pagos"}`],
-            ["anulaciones", "Anulaciones", $(d.anulaciones.importe), `${num(d.anulaciones.n)} ${d.anulaciones.n === 1 ? "nota de crédito" : "notas de crédito"}`],
+            ["anulaciones", "Anulaciones", $(d.anulaciones.importe), (() => {
+              const sin = d.anulaciones.detalle.filter((a) => a.refacturada === null).length;
+              return sin ? `${num(sin)} sin re-facturar` : `${num(d.anulaciones.n)} ${d.anulaciones.n === 1 ? "nota de crédito" : "notas de crédito"}`;
+            })()],
             d.stock
               ? ["stock", "Movimientos de stock", $(d.stock.importe), `${num(d.stock.remitos)} ${d.stock.remitos === 1 ? "remito" : "remitos"}`]
               : ["stock", "Movimientos de stock", "—", "todavía sin datos", true],
@@ -459,7 +496,7 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
           ))}
         </div>
         <div style={{ fontSize: 11.5, color: GRIS, textAlign: "center", marginTop: 8 }}>tocá una tarjeta para ver el detalle</div>
-        {hoja && <HojaRevisar tipo={hoja} d={d} esMes={esMes} tituloPeriodo={tituloPeriodo} onCerrar={() => setHoja(null)} />}
+        {hoja && <HojaRevisar tipo={hoja} d={d} esMes={esMes} tituloPeriodo={tituloPeriodo} mover={mover} sigDeshabilitado={sigDeshabilitado} onCerrar={() => setHoja(null)} />}
       </>)}
     </div>
   );
