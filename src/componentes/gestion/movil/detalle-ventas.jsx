@@ -189,6 +189,8 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
     encabezado = "Anulaciones"; total = an.importe;
     sub = `${num(an.n)} ${an.n === 1 ? "nota de crédito" : "notas de crédito"} · ${pct1(an.importe, ventas)} de la venta`;
     const porTurno = unir(an.detalle.map((a) => [{ turno: a.turno, importe: a.importe }]), (x) => x.turno).sort((a, b) => b.importe - a.importe);
+    // Por servicio (Diego 10/11/2026): salón, delivery, take away…
+    const porServicio = unir(an.detalle.map((a) => [{ tipo: nombreServicio(a.tipo || "—"), importe: a.importe, n: 1 }]), (x) => x.tipo).sort((a, b) => b.importe - a.importe);
     const sinRefact = an.detalle.filter((a) => a.refacturada === null);
     const conRefact = an.detalle.filter((a) => a.refacturada);
     cuerpo = (<>
@@ -205,10 +207,12 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
             <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(sinRefact.reduce((t, a) => t + a.importe, 0))}</div>
           </div>
         </div>)}
+      <Seccion>Por servicio</Seccion>
+      {porServicio.map((x, i) => <Fila key={x.tipo} nombre={x.tipo} importe={x.importe} total={an.importe} color={COLORES[i % COLORES.length]} sub={`${num(x.n)} ${x.n === 1 ? "anulación" : "anulaciones"}`} />)}
       <Seccion>Por turno</Seccion>
       {porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
-      <Seccion>Detalle</Seccion>
-      <Lista items={an.detalle} inicial={10} etiqueta="anulaciones" render={(a) => (
+      <Seccion>{esMes ? "Todas las del mes" : "Detalle"}</Seccion>
+      <Lista items={[...an.detalle].sort((a, b) => (esMes ? (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : b.importe - a.importe) : b.importe - a.importe))} inicial={esMes ? 100 : 10} etiqueta="anulaciones" render={(a) => (
         <div key={`${a.fecha}|${a.comprobante}`} style={{ ...LINEA, flexWrap: "wrap" }}>
           <span style={{ minWidth: 0, flex: 1 }}>{a.anula || a.comprobante}</span>
           <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
@@ -218,12 +222,12 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
           {a.refacturada && (() => {
             const r = a.refacturada; const dif = r.importe - a.importe;
             return (<div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: Math.abs(dif) < 1 ? "#047857" : "#b45309" }}>
-              ↳ re-facturada en {r.comprobante} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después`}
+              ↳ re-facturada en {r.comprobante} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después de la factura`}
               {Math.abs(dif) < 1 ? " · mismo importe" : ` · ${$(r.importe)} (${dif > 0 ? "+" : "−"}${$(Math.abs(dif)).replace("$ ", "$ ")})`}
             </div>);
           })()}
           {a.refacturada === null && (
-            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no hay otro ticket de {a.mesa ? `la mesa ${a.mesa}` : "esa mesa"} en los 90 minutos siguientes</div>
+            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no hay otro ticket de {a.mesa ? `la mesa ${a.mesa}` : "esa mesa"} en los 90 minutos siguientes a la factura</div>
           )}
         </div>)} />
     </>);
