@@ -69,6 +69,8 @@ import { useInsumosRubros, useInsumosList, useInsumoGroups } from '@/hooks/useIn
 import { useAccess } from '@/context/AccessContext';
 import { useBarraGestion, useRegistrarBarra } from '@/context/BarraGestionContext';
 import ReactDOM from 'react-dom';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -1678,6 +1680,18 @@ export default function InsumosMain() {
     setUploadComprasOpen(true);
   }, [barraGestion.accionPendiente]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Recorrido de Anthony la primera vez en la tabla de insumos (10/11) ── */
+  const tourSidebarRef = useRef(null);
+  const tourTablaRef = useRef(null);
+  // "+ Agregar" vive en la barra de GestionLayout: se lo busca en el DOM.
+  const tourAgregarRef = useMemo(() => ({ get current() { return document.querySelector('[data-tour="barra-agregar"]'); } }), []);
+  const recInsumos = useRecorrido(
+    'tabla_insumos', 3,
+    !isStaff && !!businessId && barraGestion.paginaActiva === 'insumos'
+      && !nuevoInsumoOpen && !insumoEditando && !recetaInsumoModal && !groupModalOpen
+      && !uploadInsumosOpen && !uploadComprasOpen && !uploadRubrosOpen,
+  );
+
   /* ── Render ── */
   return (
     <div style={{
@@ -1725,7 +1739,7 @@ export default function InsumosMain() {
       )}
 
       <div className="lz-sectores" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
-        <div className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+        <div ref={tourSidebarRef} className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
           <InsumosSidebar
             staff={!!isStaff}
             rubros={rubrosTree}
@@ -1774,7 +1788,7 @@ export default function InsumosMain() {
           />
         </div>
 
-        <div id="insumos-scroll" style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
+        <div id="insumos-scroll" ref={tourTablaRef} style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
             puestosTop20={puestosTop20Insumos}
             branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
@@ -2021,6 +2035,19 @@ export default function InsumosMain() {
           {snack.msg}
         </Alert>
       </Snackbar>
+
+      {recInsumos.visible && recInsumos.paso === 1 && (
+        <SpotlightTour targetRef={tourTablaRef} pose="presenta" placement="bottom" {...recInsumos.props(1)}
+          text={<>Estos son tus <b>insumos</b>: lo que comprás para cocinar. De cada uno ves la unidad, el <b>precio</b> (se actualiza solo con tus compras), en cuántas recetas se usa y cuánto compraste en el período.</>} />
+      )}
+      {recInsumos.visible && recInsumos.paso === 2 && (
+        <SpotlightTour targetRef={tourSidebarRef} pose="senala" placement="bottom" {...recInsumos.props(2)}
+          text={<>Acá los ves por grupo: <b>Elaborados</b> son los que preparás vos con su propia receta (una salsa, una masa), <b>Top 20</b> los que más comprás, y también las agrupaciones que armes. Para marcar uno como elaborado, usá los <b>⋮</b> de su fila.</>} />
+      )}
+      {recInsumos.visible && recInsumos.paso === 3 && (
+        <SpotlightTour targetRef={tourAgregarRef} pose="senala" placement="bottom" {...recInsumos.props(3)}
+          text={<>Con <b>+ Agregar</b> sumás un insumo nuevo, o muchos juntos desde un archivo.</>} />
+      )}
     </div>
   );
 }

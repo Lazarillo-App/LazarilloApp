@@ -113,6 +113,7 @@ export default function BarraGestion() {
         <Button
           variant="contained"
           size="small"
+          data-tour="barra-agregar"
           onClick={(e) => setAgAnchor(e.currentTarget)}
           sx={{
             background: '#2492C8', '&:hover': { background: '#1a7aaa' }, borderRadius: '8px',
