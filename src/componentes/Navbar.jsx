@@ -147,6 +147,16 @@ export default function Navbar() {
     sev: 'success',
   });
 
+  // Nombre del módulo bajo el logo (Diego 10/11/2026): el mismo que en el menú de módulos.
+  const nombreModulo = (() => {
+    const p = location.pathname;
+    if (p.startsWith('/gestion/medios-pago')) return 'Medios de pago';
+    if (p.startsWith('/gestion')) return 'Resultados';
+    if (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) return 'Recetas';
+    if (p.startsWith('/rrhh')) return 'RRHH';
+    return null;
+  })();
+
   const isLightBg = colors.onPrimary === '#000000';
   const brandSrc = isLightBg ? logoDark : logoLight;
 
@@ -256,20 +266,29 @@ export default function Navbar() {
                 component={NavLink}
                 to={homeTo}
                 aria-label="Ir al inicio"
-                sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+                sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', textDecoration: 'none', color: 'inherit' }}
               >
                 <Box
                   component="img"
                   src={brandSrc}
                   alt="Lazarillo"
                   sx={{
-                    height: 45,
+                    // Con el módulo abajo el logo se achica para que el header no crezca.
+                    height: nombreModulo ? 30 : 45,
                     display: 'block',
                     filter: isLightBg
                       ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
                       : 'none',
                   }}
                 />
+                {nombreModulo && (
+                  <Box component="span" sx={{
+                    pl: '2px', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.22em', lineHeight: 1, textTransform: 'uppercase', opacity: 0.8, whiteSpace: 'nowrap',
+                  }}>
+                    {nombreModulo}
+                  </Box>
+                )}
               </Box>
               {!isAppAdmin && <PulsoDatos puedeActualizar={!isStaff} />}
             </Box>
