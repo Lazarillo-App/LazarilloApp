@@ -25,7 +25,7 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación',
     modules: [
-      { id: 'gestion-medios', label: 'Medios de pago', emoji: '💳', to: '/gestion/medios-pago' },
+      // Medios de pago salió del menú (Diego 10/11/2026): se gestionan desde el desplegable de cada pago.
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
     ],
   },
