@@ -454,7 +454,7 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
         }
         const m = medio;
         if (!m) {
-            setError("Elegí un medio de pago (se dan de alta en Medios de pago, en el menú).");
+            setError("Elegí un medio de pago (se dan de alta desde el mismo desplegable).");
             return;
         }
         // ID opcional (medios que piden ID); si se carga, letras y números.

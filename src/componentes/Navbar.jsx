@@ -12,6 +12,7 @@ import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
 import SucursalesChips from './SucursalesChips';
+import SucursalPrincipalFaltante from './SucursalPrincipalFaltante';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
@@ -225,6 +226,7 @@ export default function Navbar() {
 
   return (
     <>
+      {!isAppAdmin && <SucursalPrincipalFaltante />}
       <AppBar
         position="static"
         sx={{

@@ -81,7 +81,7 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
             return;
         }
         if (!medio) {
-            setError("Elegí un medio de pago (se dan de alta en Medios de pago, en el menú).");
+            setError("Elegí un medio de pago (se dan de alta desde el mismo desplegable).");
             return;
         }
         if (pdvPaga == null) {
