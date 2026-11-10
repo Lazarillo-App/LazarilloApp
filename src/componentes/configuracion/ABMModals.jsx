@@ -500,17 +500,18 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
         </Button>
       </DialogActions>
 
+      {/* Mismo orden que crear artículo: primero los datos, después la referencia (10/11). */}
       {rec.visible && rec.paso === 1 && (
-        <SpotlightTour targetRef={insPadrinoRef} pose="investiga" {...rec.props(1)}
-          text={<>Si este insumo se parece a otro que ya tenés, tildá acá y elegilo como <b>referencia</b>: copia su rubro, unidad y precio.</>} />
+        <SpotlightTour targetRef={insNombreRef} pose="presenta" {...rec.props(1)}
+          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del insumo (por ejemplo Verdulería o Lácteos): son los únicos datos obligatorios. Si el rubro no existe, escribilo y se crea.</>} />
       )}
       {rec.visible && rec.paso === 2 && (
-        <SpotlightTour targetRef={insNombreRef} pose="presenta" {...rec.props(2)}
-          text={<>Poné el <b>nombre</b> del insumo y, más abajo, su <b>rubro</b> (por ejemplo Verdulería o Lácteos). Son los únicos datos obligatorios.</>} />
+        <SpotlightTour targetRef={insUnidadRef} pose="senala" {...rec.props(2)}
+          text={<>Elegí en qué <b>unidad</b> lo comprás (kg, lt, unidad) y su <b>precio</b>. Con eso se calcula el costo en tus recetas; después se actualiza solo con tus compras.</>} />
       )}
       {rec.visible && rec.paso === 3 && (
-        <SpotlightTour targetRef={insUnidadRef} pose="senala" {...rec.props(3)}
-          text={<>Elegí en qué <b>unidad</b> lo comprás (kg, lt, unidad) y su <b>precio</b>. Con eso se calcula el costo en tus recetas; después se actualiza solo con tus compras.</>} />
+        <SpotlightTour targetRef={insPadrinoRef} pose="investiga" {...rec.props(3)}
+          text={<>Si tildás esto, elegís un insumo que ya tengas como <b>referencia</b>: copia su rubro, unidad y precio, así no completás todo desde cero.</>} />
       )}
       {rec.visible && rec.paso === 4 && (
         <SpotlightTour targetRef={insGuardarRef} pose="saluda" {...rec.props(4)}
@@ -950,7 +951,7 @@ export function ArticuloNuevoModal({
         <SpotlightTour
           targetRef={campoNombreRubroRef}
           pose="presenta"
-          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del artículo: son los únicos datos obligatorios. El resto (precio, subrubro, SKU) lo podés completar después.</>}
+          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del artículo: son los únicos datos obligatorios. Si el rubro no existe, escribilo y se crea. El resto (precio, subrubro, SKU) lo podés completar después.</>}
           {...rec.props(1)}
         />
       )}
