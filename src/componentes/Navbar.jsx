@@ -266,15 +266,14 @@ export default function Navbar() {
                 component={NavLink}
                 to={homeTo}
                 aria-label="Ir al inicio"
-                sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', textDecoration: 'none', color: 'inherit' }}
+                sx={{ position: 'relative', display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}
               >
                 <Box
                   component="img"
                   src={brandSrc}
                   alt="Lazarillo"
                   sx={{
-                    // Con el módulo abajo el logo se achica para que el header no crezca.
-                    height: nombreModulo ? 30 : 45,
+                    height: 45,
                     display: 'block',
                     filter: isLightBg
                       ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
@@ -282,8 +281,10 @@ export default function Navbar() {
                   }}
                 />
                 {nombreModulo && (
+                  // Colgado bajo el logo sin ocupar lugar: el logo mantiene su tamaño y el punto de
+                  // pulso queda centrado con él (Diego 10/11/2026: «quisiera el tamaño anterior»).
                   <Box component="span" sx={{
-                    pl: '2px', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
+                    position: 'absolute', left: 2, top: 'calc(100% + 1px)', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
                     letterSpacing: '0.22em', lineHeight: 1, textTransform: 'uppercase', opacity: 0.8, whiteSpace: 'nowrap',
                   }}>
                     {nombreModulo}
