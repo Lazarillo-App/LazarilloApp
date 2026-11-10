@@ -4,7 +4,8 @@ import { gestionFetch } from "@/servicios/apiGestion";
 import { useBusiness } from "@/context/BusinessContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Camera, ChevronLeft, ChevronRight, CircleDot, ClipboardList, Home, PenLine, Plus, Receipt } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, CircleDot, ClipboardList, Home, Menu, PenLine, Plus, Receipt } from "lucide-react";
+import ModulosDrawer from "@/componentes/ModulosDrawer";
 import { useFetchQuery } from "@/gestion/compat";
 import { cn } from "@/gestion/compat";
 import { agrupar, separar, saldo } from "@/gestion/impagasClasificar";
@@ -126,6 +127,8 @@ export function AppMovil() {
     const setTab = (t) => ir(t, t === "cargar" ? carga : null);
     // Tocar «Inicio» estando en Inicio cierra lo que haya abierto adentro (ej. la evolución de Ventas).
     const [reinicio, setReinicio] = useState(0);
+    // ☰ con el mismo menú de módulos de la app (Diego 10/11/2026: «no puedo navegar a otro sector»).
+    const [modulos, setModulos] = useState(false);
     const setCarga = (c) => ir(c ? "cargar" : tab, c);
     function atras() {
         if (volverLocalRef.current?.())
@@ -176,6 +179,7 @@ export function AppMovil() {
     return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950" style={{ overflowX: "clip", maxWidth: "100%" }}>
       {/* Header con el color del negocio y 56 px, igual que la barra de la app en el celular (Diego 08/11/2026). */}
       <header className="sticky top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
+        <button type="button" onClick={() => setModulos(true)} aria-label="Módulos" style={{ color: "inherit", marginLeft: -6, width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: 0, background: "transparent", cursor: "pointer" }}><Menu className="size-6"/></button>
         {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center" style={{ color: "inherit" }}><ChevronLeft className="size-6"/></button>)}
         <b className="text-[19px]" style={{ flexShrink: 0 }}>{titulos[tab]}</b>
         {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto flex items-center rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "62%" }}>
@@ -225,6 +229,7 @@ export function AppMovil() {
               <p className="mt-2 text-[12px] text-zinc-500">La foto se lee en el celular y no se guarda: solo se usa para leer el QR.</p>
             </div>)}
       </main>
+      <ModulosDrawer open={modulos} onClose={() => setModulos(false)}/>
       {eligiendo && <ElegirPdvs locales={locales ?? []} inicial={elegidos.map((p) => p.pdvId)} onListo={guardarSeleccion} onCerrar={() => setEligiendo(false)}
           negocios={negocios} negocioId={negocioId} onNegocio={cambiarNegocio}/>}
 
