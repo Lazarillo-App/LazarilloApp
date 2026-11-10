@@ -338,6 +338,7 @@ export default function ConfiguracionMain() {
       });
       notify('Configuración de precio de costeo guardada');
       window.dispatchEvent(new CustomEvent('config:costeo:changed', { detail: { modo: config.precio_costeo_insumos } }));
+      window.dispatchEvent(new CustomEvent('config:updated', { detail: { key: 'costo_con_impuestos', value: config.costo_con_impuestos !== false } }));
     } catch (e) {
       notify('Error al guardar: ' + (e.message || e), 'error');
     } finally {
