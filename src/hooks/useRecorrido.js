@@ -17,7 +17,9 @@ export function useRecorrido(id, pasos, activo = true) {
   const [cerrado, setCerrado] = useState(() => omitidoEnSesion(activeBusinessId, id));
 
   const apagado = !!active?.props?.onboarding?.[`recorrido_${id}_off`];
-  const visible = !!activo && !cerrado && !apagado && !!activeBusinessId;
+  // "Omitir" se relee cada vez: hay recorridos que viven en muchas copias (el menú de cada fila de la
+  // tabla) y omitirlo en una tiene que valer para todas.
+  const visible = !!activo && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado && !!activeBusinessId;
 
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
   const omitir = useCallback(() => {

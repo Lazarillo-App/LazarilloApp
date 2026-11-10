@@ -1,6 +1,8 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import SpotlightTour from './SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -774,6 +776,24 @@ function ArticuloAccionesMenu({
   // "Quitar de esta agrupación" y "Crear promoción").
   const ocultas = useMemo(() => new Set(accionesOcultas || []), [accionesOcultas]);
 
+  // Recorrido de Anthony la primera vez que se abre el menú (10/11): una frase por opción, solo de
+  // las opciones que se ven para este artículo.
+  const refsMenu = { editar: useRef(null), rubro: useRef(null), promo: useRef(null), discontinuar: useRef(null),
+    quitar: useRef(null), mover: useRef(null), crearAgr: useRef(null), excluir: useRef(null), eliminar: useRef(null) };
+  const pasosMenu = [
+    { k: 'editar', t: <>Cambiás el <b>nombre</b>, el <b>precio</b>, el rubro o el código del artículo.</> },
+    { k: 'rubro', t: <>Lo pasás a otro <b>rubro o subrubro</b>, que es la categoría de la carta.</> },
+    ...(!esPromo && !ocultas.has('crearPromo') ? [{ k: 'promo', t: <>Armás una <b>promo</b> a partir de este artículo (un 2x1, un combo) con su propio costo.</> }] : []),
+    { k: 'discontinuar', t: <>Si ya no lo vendés, lo <b>sacás de la vista</b> sin borrarlo. Lo podés reactivar cuando quieras.</> },
+    ...(!ocultas.has('quitarDeAgrupacion') ? [{ k: 'quitar', t: <>Lo sacás de la <b>agrupación</b> que estás mirando; el artículo sigue existiendo.</> }] : []),
+    { k: 'mover', t: <>Lo pasás a otra de tus <b>agrupaciones</b> (los grupos que armás para ordenar y analizar).</> },
+    { k: 'crearAgr', t: <>Creás una <b>agrupación nueva</b> que arranca con este artículo.</> },
+    ...(hayListasNoFavoritas ? [{ k: 'excluir', t: <>Hacés que este artículo <b>no aparezca</b> en las listas de precios que elijas.</> }] : []),
+    ...(esManual ? [{ k: 'eliminar', t: <>Lo <b>borrás del todo</b>. Solo está en los artículos que creaste a mano.</> }] : []),
+  ];
+  const recMenu = useRecorrido('menu_accion', pasosMenu.length, open);
+  const pasoMenu = pasosMenu[recMenu.paso - 1];
+
   const moverInlineDirecto = useCallback(() => {
     if (!Array.isArray(reparto) || reparto.length !== 1) return;
     ejecutarMover({ bizId: reparto[0].bizId ?? agrupBizId, groupId: Number(reparto[0].groupId), groupNombre: reparto[0].nombre });
@@ -808,35 +828,35 @@ function ArticuloAccionesMenu({
       </IconButton>
 
       <Menu open={open} onClose={handleClose} anchorEl={anchorEl}>
-        <MenuItem onClick={abrirEditarArticulo}>
+        <MenuItem ref={refsMenu.editar} onClick={abrirEditarArticulo}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Editar artículo</ListItemText>
         </MenuItem>
-        <MenuItem onClick={openMoverRubro}>
+        <MenuItem ref={refsMenu.rubro} onClick={openMoverRubro}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a otro rubro…</ListItemText>
         </MenuItem>
         {!esPromo && !ocultas.has('crearPromo') && (
-          <MenuItem onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
+          <MenuItem ref={refsMenu.promo} onClick={() => { handleClose(); setTimeout(() => onCrearPromo?.(articulo), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
             <ListItemText>Crear promoción</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={toggleDiscontinuado}>
+        <MenuItem ref={refsMenu.discontinuar} onClick={toggleDiscontinuado}>
           <ListItemIcon>{isInDiscontinuados ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}</ListItemIcon>
           <ListItemText>{isInDiscontinuados ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
         </MenuItem>
         {!ocultas.has('quitarDeAgrupacion') && (
-          <MenuItem onClick={quitarDeActual} disabled={isTodo}>
+          <MenuItem ref={refsMenu.quitar} onClick={quitarDeActual} disabled={isTodo}>
             <ListItemIcon><UndoIcon fontSize="small" /></ListItemIcon>
             <ListItemText>{isTodo ? 'Ya está en Sin agrupación' : 'Quitar de esta agrupación'}</ListItemText>
           </MenuItem>
         )}
-        <MenuItem onClick={openMover}>
+        <MenuItem ref={refsMenu.mover} onClick={openMover}>
           <ListItemIcon><DriveFileMoveIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Mover a otra agrupación…</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => {
+        <MenuItem ref={refsMenu.crearAgr} onClick={() => {
           handleClose();
           if (!Number.isFinite(articuloIdNum)) return;
           setPreselect({ articleIds: [articuloIdNum], fromGroupId: !isTodo && currentGroupId ? Number(currentGroupId) : null, todoGroupId: isTodo && todoGroupId ? Number(todoGroupId) : null, allowAssigned: true });
@@ -846,7 +866,7 @@ function ArticuloAccionesMenu({
           <ListItemText>{`Crear agrupación a partir de "${articuloDisplayName}"`}</ListItemText>
         </MenuItem>
         {hayListasNoFavoritas && (
-          <MenuItem onClick={() => { handleClose(); setTimeout(() => setExcluirOpen(true), 0); }}>
+          <MenuItem ref={refsMenu.excluir} onClick={() => { handleClose(); setTimeout(() => setExcluirOpen(true), 0); }}>
             <ListItemIcon><LocalOfferIcon fontSize="small" /></ListItemIcon>
             <ListItemText>
               Excluir de listas
@@ -860,6 +880,7 @@ function ArticuloAccionesMenu({
         )}
         {esManual && (
           <MenuItem
+            ref={refsMenu.eliminar}
             onClick={() => { handleClose(); setTimeout(() => setDlgEliminarOpen(true), 0); }}
             sx={{ color: 'error.main' }}
           >
@@ -868,6 +889,11 @@ function ArticuloAccionesMenu({
           </MenuItem>
         )}
       </Menu>
+
+      {recMenu.visible && pasoMenu && (
+        <SpotlightTour key={pasoMenu.k} targetRef={refsMenu[pasoMenu.k]} pose={recMenu.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          text={pasoMenu.t} {...recMenu.props(recMenu.paso)} />
+      )}
 
       {/* ── Modal unificado "Mover a…" ── */}
       <MoverAModal
