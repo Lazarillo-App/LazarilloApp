@@ -40,7 +40,6 @@ import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
 import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
 import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
-import { ActividadCampana } from '@/componentes/gestion/pagos/actividad-campana';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
 import { Popover as MuiPopover } from '@mui/material';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
@@ -304,7 +303,6 @@ function GestionPanelContenido() {
           onTodoElAnio={() => cambiar({ meses: [] })}
         />
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-          <BloqueSeguro nombre="Actividad" compacto><ScopeGestion><ActividadCampana /></ScopeGestion></BloqueSeguro>
           <Tooltip title="Notas">
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
               <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
