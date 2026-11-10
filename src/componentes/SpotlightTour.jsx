@@ -10,7 +10,7 @@
 // mismo <html> zoomeado, el navegador lo vuelve a escalar una segunda vez
 // (mismo bug que rompía el dropdown de perfil y los tooltips). Se compensa
 // dividiendo por el factor de zoom real (leído en vivo, no hardcodeado).
-import React, { useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 
 function getZoomFactor() {
@@ -36,6 +36,14 @@ export default function SpotlightTour({
   padding = 8,
 }) {
   const [rect, setRect] = useState(null);
+  // Alto real de la burbuja: si no entra debajo del elemento, va arriba (10/11: se cortaba abajo).
+  const burbujaRef = useRef(null);
+  const [altoBurbuja, setAltoBurbuja] = useState(0);
+  useLayoutEffect(() => {
+    const h = burbujaRef.current?.getBoundingClientRect().height || 0;
+    const z = getZoomFactor();
+    if (h && Math.abs(h / z - altoBurbuja) > 1) setAltoBurbuja(h / z);
+  }, [text, rect, altoBurbuja]); // se vuelve a medir al cambiar de paso
 
   const recompute = useCallback(() => {
     const el = targetRef?.current;
@@ -79,9 +87,14 @@ export default function SpotlightTour({
   const DIM = 'rgba(15, 23, 42, 0.6)';
   const Z = 1400;
 
-  const bubbleTop = placement === 'top'
-    ? Math.max(12, holeTop - 150)
-    : holeBottom + 14;
+  const zoom = getZoomFactor();
+  const altoVista = window.innerHeight / zoom;
+  const anchoVista = window.innerWidth / zoom;
+  const alto = altoBurbuja || 150;
+  const entraAbajo = holeBottom + 14 + alto <= altoVista - 12;
+  const entraArriba = holeTop - 14 - alto >= 12;
+  const arriba = placement === 'top' ? entraArriba || !entraAbajo : !entraAbajo && entraArriba;
+  const bubbleTop = Math.max(12, Math.min(arriba ? holeTop - 14 - alto : holeBottom + 14, altoVista - alto - 12));
 
   return (
     <>
@@ -102,8 +115,8 @@ export default function SpotlightTour({
       }} />
 
       {/* Burbuja de Anthony */}
-      <div style={{
-        position: 'fixed', top: bubbleTop, left: Math.max(12, Math.min(holeLeft, window.innerWidth - 420)),
+      <div ref={burbujaRef} style={{
+        position: 'fixed', top: bubbleTop, left: Math.max(12, Math.min(holeLeft, anchoVista - 420)),
         zIndex: Z + 2, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 400,
       }}>
         <img src={ANT[pose] || ANT.senala} alt="Anthony" style={{ height: 64, width: 'auto', objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 3px 6px rgba(20,30,50,.25))' }} />
