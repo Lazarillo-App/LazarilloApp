@@ -69,6 +69,11 @@ export const AdminAPI = {
   saveSoporteConfig: (config) => http('/admin/soporte/config', { method: 'PUT', body: { config } }),
   listSoporteMensajes: () => http('/admin/soporte/mensajes'),
 
+  // Super-admins: lista para todos; dar/quitar solo la cuenta de control, con código por mail.
+  listSuperadmins: () => http('/admin/superadmins'),
+  pedirCodigoSuperadmin: (accion, email) => http('/admin/superadmins/codigo', { method: 'POST', body: { accion, email } }),
+  confirmarSuperadmin: (accion, email, codigo) => http('/admin/superadmins/confirmar', { method: 'POST', body: { accion, email, codigo } }),
+
   listAudit: ({ entityType='', userId='', businessId='', page=1, pageSize=30 } = {}) => {
     const p = new URLSearchParams();
     if (entityType) p.set('entityType', entityType);

@@ -14,6 +14,7 @@ import AdminOrganizationDetail from './pages/AdminOrganizationDetail';
 import AdminMantenimiento from './pages/AdminMantenimiento';
 import AdminAuditoria from './pages/AdminAuditoria';
 import AdminChat from './pages/AdminChat';
+import AdminSuperadmins from './pages/AdminSuperadmins';
 
 // Lee el rol desde localStorage (y opcionalmente desde el JWT)
 const isAdmin = () => {
@@ -49,6 +50,7 @@ export default function AdminApp() {
         <Route path="mantenimiento" element={<AdminMantenimiento />} />
         <Route path="auditoria" element={<AdminAuditoria />} />
         <Route path="chat" element={<AdminChat />} />
+        <Route path="superadmins" element={<AdminSuperadmins />} />
       </Routes>
     </AdminLayout>
   );

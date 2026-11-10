@@ -14,6 +14,7 @@ import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import BuildIcon from '@mui/icons-material/Build';
 import HistoryIcon from '@mui/icons-material/History';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
+import ShieldIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
 
 import logoLight from '@/assets/brand/logo-light.png';
 import anthony from '@/assets/brand/anthony.png';
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { to: '/admin/mantenimiento', label: 'Mantenimiento', icon: BuildIcon },
   { to: '/admin/auditoria', label: 'Auditoría', icon: HistoryIcon },
   { to: '/admin/chat', label: 'Chat de Anthony', icon: ChatIcon },
+  { to: '/admin/superadmins', label: 'Super-admins', icon: ShieldIcon },
 ];
 
 const BRAND = {
