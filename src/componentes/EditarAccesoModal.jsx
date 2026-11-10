@@ -204,7 +204,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
 }
 
 export default function EditarAccesoModal({ open, onClose, persona, onChanged }) {
-  const { items: allBusinesses } = useBusiness() || {};
+  const { items: allBusinesses, activeId } = useBusiness() || {};
   const { canDo, isOwner } = useAccess() || {};
   const puedeInvitarAdmin = canDo?.('invite_admin');
 
@@ -223,14 +223,17 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
   // Roles a medida (Gerente, etc.) del negocio elegido para agregar — igual que en
   // la fila de cada negocio: solo el dueño los asigna (Diego 10/11/2026).
   const [rolesMedidaNuevo, setRolesMedidaNuevo] = useState([]);
+  // Sin negocio elegido todavía se muestran los del negocio activo (los roles son de la
+  // organización); al elegir negocio se recargan con los de ése (Diego 10/11/2026: «no veo el de gerente»).
+  const bizParaRoles = nuevoBizId || activeId || allBusinesses?.[0]?.id || null;
   useEffect(() => {
-    if (!isOwner || !nuevoBizId) { setRolesMedidaNuevo([]); return; }
+    if (!isOwner || !bizParaRoles) { setRolesMedidaNuevo([]); return; }
     let alive = true;
-    RolesAPI.list(nuevoBizId)
+    RolesAPI.list(bizParaRoles)
       .then((l) => { if (alive) setRolesMedidaNuevo((Array.isArray(l) ? l : []).filter((r) => !r.es_administracion && !r.esAdministracion)); })
       .catch(() => { if (alive) setRolesMedidaNuevo([]); });
     return () => { alive = false; };
-  }, [isOwner, nuevoBizId]);
+  }, [isOwner, bizParaRoles]);
   useEffect(() => {
     if (nuevoRol.startsWith('rol:') && !rolesMedidaNuevo.some((r) => `rol:${r.id}` === nuevoRol)) setNuevoRol('admin');
   }, [rolesMedidaNuevo]); // eslint-disable-line react-hooks/exhaustive-deps
