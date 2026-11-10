@@ -158,6 +158,8 @@ const LINEA = { display: "flex", alignItems: "baseline", gap: 6, padding: "7px 0
 const Chip = ({ children }) => <span style={{ flexShrink: 0, width: 84, boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, background: "#f4f4f5", color: "#52525b", borderRadius: 10, padding: "1px 7px" }}>{children}</span>;
 const fechaCorta = (f) => `${f.slice(8)}/${f.slice(5, 7)}`;
 function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshabilitado }) {
+  // Anulaciones: tocar «Re-facturadas» o «Sin re-facturar» filtra la hoja (Diego 10/11/2026).
+  const [filtroAnul, setFiltroAnul] = useState(null);
   const ventas = d.total;
   let encabezado, total, sub, cuerpo;
   if (tipo === "stock" && !d.stock) {
@@ -188,31 +190,40 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
     const an = d.anulaciones;
     encabezado = "Anulaciones"; total = an.importe;
     sub = `${num(an.n)} ${an.n === 1 ? "nota de crédito" : "notas de crédito"} · ${pct1(an.importe, ventas)} de la venta`;
-    const porTurno = unir(an.detalle.map((a) => [{ turno: a.turno, importe: a.importe }]), (x) => x.turno).sort((a, b) => b.importe - a.importe);
-    // Por servicio (Diego 10/11/2026): salón, delivery, take away…
-    const porServicio = unir(an.detalle.map((a) => [{ tipo: nombreServicio(a.tipo || "—"), importe: a.importe, n: 1 }]), (x) => x.tipo).sort((a, b) => b.importe - a.importe);
     const sinRefact = an.detalle.filter((a) => a.refacturada === null);
     const conRefact = an.detalle.filter((a) => a.refacturada);
+    const vistas = filtroAnul === "sin" ? sinRefact : filtroAnul === "con" ? conRefact : an.detalle;
+    const totVista = vistas.reduce((t, a) => t + a.importe, 0);
+    const porTurno = unir(vistas.map((a) => [{ turno: a.turno, importe: a.importe }]), (x) => x.turno).sort((a, b) => b.importe - a.importe);
+    // Por servicio (Diego 10/11/2026): salón, delivery, take away…
+    const porServicio = unir(vistas.map((a) => [{ tipo: nombreServicio(a.tipo || "—"), importe: a.importe, n: 1 }]), (x) => x.tipo).sort((a, b) => b.importe - a.importe);
+    const caja = (on, alerta) => ({ textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer", borderRadius: 12, padding: "8px 10px",
+      border: `${on ? 2 : 1}px solid ${on ? AZUL : alerta ? "#fdba74" : BORDE}`, background: alerta ? "#fff7ed" : "#fff" });
     cuerpo = (<>
       {(conRefact.length > 0 || sinRefact.length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-          <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 10px" }}>
+          <button type="button" onClick={() => setFiltroAnul((f) => (f === "con" ? null : "con"))} style={caja(filtroAnul === "con", false)}>
             <div style={{ fontSize: 11.5, color: GRIS }}>Re-facturadas</div>
             <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: "#047857" }}>{num(conRefact.length)}</b>
             <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(conRefact.reduce((t, a) => t + a.refacturada.importe, 0))}</div>
-          </div>
-          <div style={{ border: `1px solid ${sinRefact.length ? "#fdba74" : BORDE}`, background: sinRefact.length ? "#fff7ed" : "#fff", borderRadius: 12, padding: "8px 10px" }}>
+          </button>
+          <button type="button" onClick={() => setFiltroAnul((f) => (f === "sin" ? null : "sin"))} style={caja(filtroAnul === "sin", sinRefact.length > 0)}>
             <div style={{ fontSize: 11.5, color: GRIS }}>Sin re-facturar</div>
             <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: sinRefact.length ? "#c2410c" : undefined }}>{num(sinRefact.length)}</b>
             <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(sinRefact.reduce((t, a) => t + a.importe, 0))}</div>
-          </div>
+          </button>
+        </div>)}
+      {filtroAnul && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: GRIS }}>
+          <span>Viendo {filtroAnul === "sin" ? "sin re-facturar" : "re-facturadas"}: {num(vistas.length)} · {$(totVista)}</span>
+          <button type="button" onClick={() => setFiltroAnul(null)} style={{ marginLeft: "auto", border: 0, background: "none", color: AZUL, fontSize: 12, cursor: "pointer" }}>Ver todas</button>
         </div>)}
       <Seccion>Por servicio</Seccion>
-      {porServicio.map((x, i) => <Fila key={x.tipo} nombre={x.tipo} importe={x.importe} total={an.importe} color={COLORES[i % COLORES.length]} sub={`${num(x.n)} ${x.n === 1 ? "anulación" : "anulaciones"}`} />)}
+      {porServicio.map((x, i) => <Fila key={x.tipo} nombre={x.tipo} importe={x.importe} total={totVista} color={COLORES[i % COLORES.length]} sub={`${num(x.n)} ${x.n === 1 ? "anulación" : "anulaciones"}`} />)}
       <Seccion>Por turno</Seccion>
       {porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
       <Seccion>{esMes ? "Todas las del mes" : "Detalle"}</Seccion>
-      <Lista items={[...an.detalle].sort((a, b) => (esMes ? (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : b.importe - a.importe) : b.importe - a.importe))} inicial={esMes ? 100 : 10} etiqueta="anulaciones" render={(a) => (
+      <Lista key={filtroAnul || "todas"} items={[...vistas].sort((a, b) => (esMes ? (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : b.importe - a.importe) : b.importe - a.importe))} inicial={esMes ? 100 : 10} etiqueta="anulaciones" render={(a) => (
         <div key={`${a.fecha}|${a.comprobante}`} style={{ ...LINEA, flexWrap: "wrap" }}>
           <span style={{ minWidth: 0, flex: 1 }}>{a.anula || a.comprobante}</span>
           <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
