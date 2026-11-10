@@ -21,6 +21,7 @@ import { BASE } from '../servicios/apiBase';
 import { useBranch } from '@/hooks/useBranch';
 import { useSucursalModales } from '@/gestion/sucursalModales';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
+import { useConfig } from '@/context/ConfigContext';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
 import { BotonCargarFactura, useVerFacturaDeCompra, useFichaProveedorDeCompra } from './gestion/FacturaEnRecetas';
@@ -62,6 +63,18 @@ const AMBER = {
 // Cuántas compras muestra el modo por defecto. Mirar el precio de las últimas N
 // es lo que se usa en la práctica; el rango completo trae años y no dice nada.
 const ULTIMAS_N = 10;
+
+// Costo con impuestos (Diego 10/11/2026: «es siempre igual», A o Z): el renglón de una factura A
+// trae el IVA y los internos aparte; se suman para que A y Z se vean con el mismo criterio que el
+// costo de la receta. Las Z vienen con esas columnas en 0 y quedan como están.
+const conImpuestosFila = (it) => {
+  const iva = Number(it.iva_total ?? 0) || 0;
+  const ii = Number(it.imp_int_total ?? 0) || 0;
+  if (!(iva || ii)) return it;
+  const total = Number(it.precio_total ?? 0) + iva + ii;
+  const cant = Number(it.cantidad ?? 0);
+  return { ...it, precio_neto: it.precio, precio_total_neto: it.precio_total, precio_total: total, precio: cant > 0 ? total / cant : it.precio };
+};
 
 const precioUnit = (it) => {
   if (!it) return 0;
@@ -931,12 +944,14 @@ export function ComprasDetalleContenido({
   }, [selectedBiz, open, fetchForBiz]);
 
   // Items a mostrar
+  const conImpuestos = useConfig()?.costoConImpuestos !== false;
   const displayItems = useMemo(() => {
-    if (selectedBranch !== 'all') return branchItems;
-    if (selectedBiz === 'current') return items.map(r => ({ ...r, _bizId: Number(businessId) }));
-    if (selectedBiz === 'all') return [...items.map(r => ({ ...r, _bizId: Number(businessId) })), ...extraItems];
-    return extraItems;
-  }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId]);
+    const filas = selectedBranch !== 'all' ? branchItems
+      : selectedBiz === 'current' ? items.map(r => ({ ...r, _bizId: Number(businessId) }))
+      : selectedBiz === 'all' ? [...items.map(r => ({ ...r, _bizId: Number(businessId) })), ...extraItems]
+      : extraItems;
+    return conImpuestos ? filas.map(conImpuestosFila) : filas;
+  }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId, conImpuestos]);
 
   // Si el negocio ya tiene sucursales definidas, "sin sucursal" no es una categoría real
   // CUANDO hay duplicación real: mismo dato ya asignado a su sucursal aparte (mismo

@@ -276,7 +276,8 @@ const PreguntaConcepto = ({ opciones, elegido, noSe, nombreDe, onElegir, onNoSe 
   );
 };
 const o2t = (o, nombreDe) => `${o.codigo} · ${nombreDe(o.codigo)}`;
-const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px" }}>BONIFICADO</span>;
+// inline-block: en una celda con overflow hidden, el borde de un span inline (su padding no cuenta en el alto de la línea) se recortaba arriba y abajo.
+const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ display: "inline-block", lineHeight: "14px", whiteSpace: "nowrap", boxSizing: "border-box", maxWidth: "100%", fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px", margin: "1px 0" }}>BONIFICADO</span>;
 function Badge({ estado }) {
   const col = estado === "PAGA" ? C.verde : estado === "PARCIAL" ? C.nar : C.rojo;
   return <span style={{ background: col, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>{estado}</span>;
@@ -1329,7 +1330,9 @@ function ModalNuevaCarga(props) {
                 const ivaLinea = ivaDe(l);
                 const subtotal = neto + ivaLinea + ii;
                 const { med, base: medBase, factor: fEnv } = esIns ? medidaLinea(l) : { med: "", base: "", factor: null };
-                const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / cantN : 0;
+                // Precio final por unidad de medida (Diego 10/11/2026): con envase, por la unidad base (U), no por Caja/Pack.
+                const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / (cantN * (fEnv || 1)) : 0;
+                const medFinal = fEnv ? medBase : (med || "u");
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
                 const sinConc = !soloVer ? sinConceptoDe(l) : null;
@@ -1372,7 +1375,7 @@ function ModalNuevaCarga(props) {
                     <span style={celda}>{fmtNum(l.alic)}%</span>
                     <span style={celda}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />}</span>
                     <span style={{ ...celda, color: C.neg }}>{esIns && neto === 0 ? (descExcede(l) ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : <Bonif />) : <Imp v={subtotal} strong max={16} />}
-                      {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
+                      {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{medFinal} final</span>}</span>
                     <span style={{ display: soloVer ? "none" : "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
                       {/* registro precargado (repetir factura): el ⚠ reemplaza al lápiz, hacen lo mismo (abrir para revisar) */}
                       {l.precargada
@@ -1524,7 +1527,7 @@ function ModalNuevaCarga(props) {
                       </select>
                       <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>
                       <span style={{ fontSize: 12.5, ...celda, color: C.neg }}>{neto > 0 ? <Imp v={subtotal} strong max={16} /> : excede ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : esIns && cantN > 0 && l.item ? <Bonif /> : ""}
-                        {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
+                        {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{medFinal} final</span>}</span>
                       <span style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button type="button" onClick={() => {
                           if (faltaDe(l)) return;
