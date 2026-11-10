@@ -10,6 +10,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import { BASE } from '@/servicios/apiBase';
 import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useConfig } from '@/context/ConfigContext';
 
@@ -499,7 +500,6 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
 /* ─── Alta de Artículo ─── */
 export function ArticuloNuevoModal({
   open, onClose, businessId, onCreated, articulo = null,
-  tourStep = null, onTourNext, onTourSkip,
 }) {
   const themeColor = 'var(--color-primary, #3b82f6)';
   const { notificarAltaArticuloInsumo } = useConfig();
@@ -510,6 +510,8 @@ export function ArticuloNuevoModal({
   const subrubroNuevoRef = useRef(null);
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
   const isEdit = !!articulo;
+  // Recorrido de Anthony al crear un artículo (estaba escrito pero nunca se conectaba; 10/11).
+  const rec = useRecorrido('crear_articulo', 3, open && !isEdit);
   // Artículo manual (id < 0): la edición de SKU/código externo tiene sentido (aún no
   // sincronizó con Maxi). Artículo ya sincronizado (id > 0): el backend ni siquiera
   // procesa ese campo en el PATCH, así que no se muestra.
@@ -969,30 +971,28 @@ export function ArticuloNuevoModal({
         </Button>
       </DialogActions>
 
-      {tourStep === 2 && (
+      {rec.visible && rec.paso === 1 && (
         <SpotlightTour
           targetRef={campoNombreRubroRef}
           pose="presenta"
-          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del artículo — son los únicos datos obligatorios. El resto (precio, subrubro, SKU) lo podés completar después.</>}
-          onSkip={onTourSkip}
-          onNext={onTourNext}
+          text={<>Completá el <b>nombre</b> y el <b>rubro</b> del artículo: son los únicos datos obligatorios. El resto (precio, subrubro, SKU) lo podés completar después.</>}
+          {...rec.props(1)}
         />
       )}
-      {tourStep === 3 && (
+      {rec.visible && rec.paso === 2 && (
         <SpotlightTour
           targetRef={padrinoRef}
           pose="investiga"
-          text={<>Si tildás esto, podés elegir un artículo que ya tengas cargado como <b>referencia</b>: copia su rubro, subrubro, precio y agrupación automáticamente, así no completás todo desde cero.</>}
-          onSkip={onTourSkip}
-          onNext={onTourNext}
+          text={<>Si tildás esto, elegís un artículo que ya tengas como <b>referencia</b>: copia su rubro, subrubro, precio y agrupación, así no completás todo desde cero.</>}
+          {...rec.props(2)}
         />
       )}
-      {tourStep === 4 && (
+      {rec.visible && rec.paso === 3 && (
         <SpotlightTour
           targetRef={guardarRef}
           pose="saluda"
-          text="Cuando estés list@, guardá — tu artículo va a aparecer al instante en la tabla."
-          onSkip={onTourSkip}
+          text="Cuando esté listo, guardalo: el artículo aparece al instante en la tabla."
+          {...rec.props(3)}
         />
       )}
     </Dialog>

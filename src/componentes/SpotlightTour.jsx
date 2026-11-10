@@ -28,6 +28,8 @@ export default function SpotlightTour({
   pose = 'senala',
   onSkip,
   onNext,
+  onNever,           // "No mostrar más" (recorridos de primera vez)
+  paso = null,       // { actual, total } para mostrar "2 de 5"
   nextLabel = 'Siguiente',
   skipLabel = 'Omitir',
   placement = 'bottom',
@@ -112,7 +114,16 @@ export default function SpotlightTour({
         }}>
           <span style={{ position: 'absolute', left: -7, bottom: 10, width: 12, height: 12, background: '#eaf4fb', borderLeft: '1px solid #cfe6f5', borderBottom: '1px solid #cfe6f5', transform: 'rotate(45deg)' }} />
           <div style={{ marginBottom: 10 }}>{text}</div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+            {paso && <span style={{ marginRight: 'auto', fontSize: 11.5, color: '#5a7a8e' }}>{paso.actual} de {paso.total}</span>}
+            {onNever && (
+              <button
+                onClick={onNever}
+                style={{ border: 'none', background: 'transparent', color: '#5a7a8e', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 6px', textDecoration: 'underline' }}
+              >
+                No mostrar más
+              </button>
+            )}
             <button
               onClick={onSkip}
               style={{ border: 'none', background: 'transparent', color: '#5a7a8e', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 6px' }}
