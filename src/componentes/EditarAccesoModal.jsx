@@ -205,7 +205,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
 
 export default function EditarAccesoModal({ open, onClose, persona, onChanged }) {
   const { items: allBusinesses } = useBusiness() || {};
-  const { canDo } = useAccess() || {};
+  const { canDo, isOwner } = useAccess() || {};
   const puedeInvitarAdmin = canDo?.('invite_admin');
 
   const [error, setError] = useState(null);
@@ -219,6 +219,21 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
   const [gestionandoSectores, setGestionandoSectores] = useState(false);
 
   const negocios = persona?.negocios || [];
+
+  // Roles a medida (Gerente, etc.) del negocio elegido para agregar — igual que en
+  // la fila de cada negocio: solo el dueño los asigna (Diego 10/11/2026).
+  const [rolesMedidaNuevo, setRolesMedidaNuevo] = useState([]);
+  useEffect(() => {
+    if (!isOwner || !nuevoBizId) { setRolesMedidaNuevo([]); return; }
+    let alive = true;
+    RolesAPI.list(nuevoBizId)
+      .then((l) => { if (alive) setRolesMedidaNuevo((Array.isArray(l) ? l : []).filter((r) => !r.es_administracion && !r.esAdministracion)); })
+      .catch(() => { if (alive) setRolesMedidaNuevo([]); });
+    return () => { alive = false; };
+  }, [isOwner, nuevoBizId]);
+  useEffect(() => {
+    if (nuevoRol.startsWith('rol:') && !rolesMedidaNuevo.some((r) => `rol:${r.id}` === nuevoRol)) setNuevoRol('admin');
+  }, [rolesMedidaNuevo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sector (Vista Operación): mismo criterio que InvitarMiembroModal — solo
   // tiene sentido con rol Staff, y se carga para el negocio recién elegido.
@@ -269,7 +284,8 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
         email: persona.email,
         scopeType: 'business',
         scopeId: Number(nuevoBizId),
-        role: nuevoRol,
+        role: nuevoRol.startsWith('rol:') ? 'admin' : nuevoRol,
+        ...(nuevoRol.startsWith('rol:') ? { customRoleId: Number(nuevoRol.slice(4)) } : {}),
         alias: persona.alias || persona.email, // el backend igual lo pisa con el heredado
         sectorIds: nuevoRol === 'staff' && sectorIds.size ? Array.from(sectorIds) : undefined,
       });
@@ -356,6 +372,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   sx={{ width: 140 }}
                 >
                   {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
+                  {puedeInvitarAdmin && rolesMedidaNuevo.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
                   <MenuItem value="staff">Staff</MenuItem>
                 </TextField>
                 <Button
