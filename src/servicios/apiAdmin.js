@@ -64,6 +64,11 @@ export const AdminAPI = {
   getMaintenance: () => http('/admin/maintenance'),
   setMaintenance: (enabled, message) => http('/admin/maintenance', { method:'POST', body: { enabled, message } }),
 
+  // Chat de Anthony: mails que reciben, WhatsApp y menú/respuestas; últimos mensajes recibidos.
+  getSoporteConfig: () => http('/admin/soporte/config'),
+  saveSoporteConfig: (config) => http('/admin/soporte/config', { method: 'PUT', body: { config } }),
+  listSoporteMensajes: () => http('/admin/soporte/mensajes'),
+
   listAudit: ({ entityType='', userId='', businessId='', page=1, pageSize=30 } = {}) => {
     const p = new URLSearchParams();
     if (entityType) p.set('entityType', entityType);
