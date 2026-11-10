@@ -6,7 +6,7 @@
 // Pasos del port: 1 Compras, 2 Ventas, 3 Resultados + tarjetas KPI (hechos), 4 lo editable.
 // La sucursal sale del selector global de sucursales (BranchContext), como en el resto de la app.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -49,6 +49,8 @@ import { sxBotonBarra } from '@/gestion/estilos';
 import { PanelGestionContext } from '@/gestion/panelContext';
 import { MESES_IDX } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 
 const ANIO_ACTUAL = new Date().getFullYear();
 
@@ -260,6 +262,19 @@ function GestionPanelContenido() {
     ? (active?.name || 'Negocio')
     : `${active?.name || 'Negocio'} · ${nombreSucursal}`;
 
+  /* ── Recorrido de Anthony la primera vez en el Panel (10/11): solo los pasos que se ven. ── */
+  const refsTour = { periodo: useRef(null), ecofin: useRef(null), tabs: useRef(null), tarjetas: useRef(null), cargar: useRef(null) };
+  const pasosTour = [
+    { k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> },
+    ...(!sinEcoFin ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
+    { k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> },
+    ...(estado.mostrarTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
+    ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
+  ];
+  const recPanel = useRecorrido('gestion_panel', pasosTour.length,
+    verPanel && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas);
+  const pasoTour = pasosTour[recPanel.paso - 1];
+
   return (
     <PanelGestionContext.Provider value={panel}>
     <Toaster position="bottom-right" />
@@ -302,7 +317,7 @@ function GestionPanelContenido() {
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
           {verPanel && !sinEcoFin && (
           <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
-            <ToggleButtonGroup size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
+            <ToggleButtonGroup ref={refsTour.ecofin} size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
               <ToggleButton value="economica">Económica</ToggleButton>
               <ToggleButton value="financiera">Financiera</ToggleButton>
             </ToggleButtonGroup>
@@ -314,6 +329,7 @@ function GestionPanelContenido() {
       {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
           derecha. La sucursal se elige en el selector global de la app, no acá. */}
       <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: 3, pb: 2 }}>
+        <Box ref={refsTour.periodo} sx={{ display: 'inline-flex' }}>
         <FiltroPeriodo
           year={estado.year}
           meses={estado.meses}
@@ -323,9 +339,10 @@ function GestionPanelContenido() {
           onToggleMes={toggleMes}
           onTodoElAnio={() => cambiar({ meses: [] })}
         />
+        </Box>
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-            {verCarga && <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro>}
+            {verCarga && <Box ref={refsTour.cargar} sx={{ display: 'inline-flex' }}><BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro></Box>}
             {verPanel && !enParaMirar && pdvId != null && (
               <ScopeGestion>
                 {!oculto('btn.impagas') && <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>}
@@ -346,11 +363,12 @@ function GestionPanelContenido() {
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {verPanel && estado.mostrarTarjetas && <BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro>}
+      {verPanel && estado.mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
       {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <ToggleButtonGroup
+            ref={refsTour.tabs}
             exclusive
             value={estado.tab}
             onChange={(_, v) => v && cambiar({ tab: v })}
@@ -423,6 +441,10 @@ function GestionPanelContenido() {
       </Paper>}
       <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
       <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
+      {recPanel.visible && pasoTour && (
+        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recPanel.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          text={pasoTour.t} {...recPanel.props(recPanel.paso)} />
+      )}
     </Box>
     </PanelGestionContext.Provider>
   );
