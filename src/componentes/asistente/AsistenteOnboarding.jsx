@@ -2974,7 +2974,11 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Bajalo en la PC donde está MaxiRest, abrí “INSTALAR EN ESTA PC” y entrá con tu usuario de Lazarillo. Tus ventas, menú y compras llegan solos, sin subir archivos.</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <Btn accent={marca.primary} onClick={descargarInstalador} disabled={bajandoKit}>{bajandoKit ? "Preparando…" : "⬇ Instalar actualizador"}</Btn>
-                <Btn ghost small accent={marca.primary} onClick={() => onDone?.()}>Ya lo instalé: ir a mis artículos →</Btn>
+                <Btn ghost small accent={marca.primary} onClick={async () => {
+                  // Con MaxiRest las ventas y compras llegan por el actualizador: la tabla no las pide (09/11).
+                  if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", "Maxirest"); } catch { /* sigue igual */ } }
+                  onDone?.();
+                }}>Ya lo instalé: ir a mis artículos →</Btn>
                 <Btn ghost small accent={marca.primary} onClick={cargarManual}>Prefiero subir archivos</Btn>
               </div>
               {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
