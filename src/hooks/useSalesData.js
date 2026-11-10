@@ -2,6 +2,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BASE } from "@/servicios/apiBase";
 
+// Clave del total de ventas sin artículo dentro del mapa de ventas.
+export const SIN_ARTICULO = '__sinArticulo';
+
 /**
  * ✅ OPTIMIZADO: Usa /summary en lugar de /items
  *
@@ -101,9 +104,17 @@ export function useSalesData({
       else if (resp?.items) rows = Array.isArray(resp.items) ? resp.items : [];
 
       const map = new Map();
+      // Ventas sin artículo (id 0 de MaxiRest): no son un artículo (no entran a rankings ni filas),
+      // pero cuentan en el total del período (Diego 10/11/2026: «siempre debe contemplar todo»).
+      // Van bajo una clave de texto propia para que nada que recorra los ids numéricos las tome.
+      let sinArticulo = 0;
 
       for (const r of rows) {
         const id = Number(r.article_id ?? r.articuloId ?? r.articulo_id ?? r.id);
+        if (id === 0) {
+          sinArticulo += Number(r.total_amount ?? r.amount ?? r.total ?? 0) || 0;
+          continue;
+        }
         if (!Number.isFinite(id) || id <= 0) continue;
 
         const qty = Number(r.total_qty ?? r.qty ?? r.cantidad ?? r.unidades ?? 0);
@@ -129,6 +140,7 @@ export function useSalesData({
       for (const [id, data] of Array.from(map.entries())) {
         if (typeof id === "number") map.set(String(id), { ...data });
       }
+      if (sinArticulo) map.set(SIN_ARTICULO, { qty: 0, amount: sinArticulo });
 
       window.__DEBUG_VENTAS_MAP = map;
 
