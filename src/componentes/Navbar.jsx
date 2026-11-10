@@ -309,19 +309,24 @@ export default function Navbar() {
                     <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
                   ] : null}
-                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/gestion') ? [
+                    puedeVer('conceptos') && <MenuItem key="g-conc" component={NavLink} to="/gestion/conceptos" onClick={() => setNavEl(null)}>Conceptos de caja</MenuItem>,
+                    puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
+                    puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
+                  ] : null}
+                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -344,6 +349,7 @@ export default function Navbar() {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
+                const enGestion = !isAppAdmin && path.startsWith('/gestion');
                 // En la home no van los links de Recetas (Artículos/Insumos/Menú): ahí se elige el módulo.
                 const enInicio = path.startsWith('/inicio');
                 // Estilo de subrayado para la sección activa
@@ -380,6 +386,36 @@ export default function Navbar() {
                         component={NavLink} to="/rrhh/nomina">
                         Nómina
                       </Button>
+                    </>
+                  );
+                }
+                // Panel de Gestión (Diego 10/11/2026): CONCEPTOS DE CAJA · INSUMOS | PROVEEDORES
+                // (la cuenta corriente sin proveedor elegido). Sin Artículos ni Menú.
+                if (enGestion) {
+                  return (
+                    <>
+                      {puedeVer('conceptos') && (
+                        <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/gestion/conceptos')) }}
+                          component={NavLink} to="/gestion/conceptos">
+                          Conceptos de caja
+                        </Button>
+                      )}
+                      {puedeVer('recetas') && (
+                        <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}
+                          component={NavLink} to="/insumos">
+                          Insumos
+                        </Button>
+                      )}
+                      {puedeVer('carga') && (
+                        <>
+                          <Box component="span" aria-hidden
+                            sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                          <Button color="inherit" sx={{ color: 'inherit', position: 'relative' }}
+                            onClick={() => navigate('/gestion?proveedores=1')}>
+                            Proveedores
+                          </Button>
+                        </>
+                      )}
                     </>
                   );
                 }

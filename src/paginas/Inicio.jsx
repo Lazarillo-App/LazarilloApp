@@ -34,7 +34,6 @@ const GROUPS = [
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: null },
       { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
-      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', desc: 'Facturas, gastos varios y sueldos.', descCelular: 'Factura con foto del QR o gasto.', to: '/gestion?cargar=1', soloAdmin: true },
       { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
   },

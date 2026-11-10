@@ -38,6 +38,7 @@ import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
 import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
 import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
+import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
 import { ActividadCampana } from '@/componentes/gestion/pagos/actividad-campana';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
@@ -112,6 +113,13 @@ function GestionPanelContenido() {
   // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
   const [params, setParams] = useSearchParams();
   const [cargarAlEntrar] = useState(() => params.get('cargar') === '1');
+  // PROVEEDORES del header (Diego 10/11/2026): /gestion?proveedores=1 abre la cuenta corriente sin proveedor elegido.
+  const [verProveedores, setVerProveedores] = useState(false);
+  useEffect(() => {
+    if (params.get('proveedores') !== '1') return;
+    setVerProveedores(true);
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('proveedores'); return n; }, { replace: true });
+  }, [params, setParams]);
   const limpiarCargar = useCallback(() => {
     setParams((p) => { const n = new URLSearchParams(p); n.delete('cargar'); return n; }, { replace: true });
   }, [setParams]);
@@ -423,6 +431,11 @@ function GestionPanelContenido() {
       </Paper>}
       <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
       <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
+      {verProveedores && (
+        <BloqueSeguro nombre="la cuenta corriente de proveedores">
+          <ScopeGestion><CtaCteModal origen={{ codPro: '' }} onCerrar={() => setVerProveedores(false)} /></ScopeGestion>
+        </BloqueSeguro>
+      )}
     </Box>
     </PanelGestionContext.Provider>
   );

@@ -49,7 +49,7 @@ function Gris({ children, className }) {
     return <span title={PROXIMAMENTE} className={cn("inline-flex opacity-50 cursor-not-allowed", className)}>{children}</span>;
 }
 // Buscador de proveedor (cambiar de proveedor sin cerrar).
-function BuscadorProveedor({ valor, onElegir }) {
+function BuscadorProveedor({ valor, onElegir, autoFocus }) {
     const [texto, setTexto] = useState(null); // null = muestra el proveedor actual
     const [q, setQ] = useState("");
     useEffect(() => { const t = setTimeout(() => setQ((texto ?? "").trim()), 250); return () => clearTimeout(t); }, [texto]);
@@ -59,7 +59,7 @@ function BuscadorProveedor({ valor, onElegir }) {
     const elegir = (c) => { setTexto(null); onElegir(c); };
     return (<div className="relative w-60">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/>
-      <input value={texto ?? valor} placeholder="Buscar proveedor..." onFocus={(e) => { setTexto(valor); e.currentTarget.select(); }} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && opciones[0])
+      <input autoFocus={autoFocus} value={texto ?? valor} placeholder="Buscar proveedor..." onFocus={(e) => { setTexto(valor); e.currentTarget.select(); }} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && opciones[0])
         elegir(opciones[0].codPro); if (e.key === "Escape") {
         e.stopPropagation();
         setTexto(null);
@@ -83,7 +83,9 @@ function FilaMes({ ym, n, total, unidad }) {
 export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCerrar, titulo }) {
     const [origen, setOrigen] = useState(origenInicial);
     const esMovs = !!(origen.nombre && origen.pdvId);
-    const { data, isLoading, isError } = useFetchQuery(["cta-cte", origen.codPro, origen.pdvId ?? null, origen.nombre ?? null], urlDe(origen));
+    // Sin proveedor (botón PROVEEDORES del header, Diego 10/11/2026): no se pide nada hasta elegir uno.
+    const sinProveedor = !origen?.codPro;
+    const { data, isLoading, isError } = useFetchQuery(["cta-cte", origen.codPro, origen.pdvId ?? null, origen.nombre ?? null], urlDe(origen), { enabled: !sinProveedor });
     const [sel, setSel] = useState(resaltado ? claveF(resaltado) : null);
     const [verFact, setVerFact] = useState(null);
     const [per, setPer] = useState("hist");
@@ -311,7 +313,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     return (<div className="flex flex-col h-full min-h-0 px-6 pt-5 pb-4">
       {/* ===== encabezado ===== */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0">
-        <BuscadorProveedor valor={nombreHeader} onElegir={cambiarProv}/>
+        <BuscadorProveedor valor={nombreHeader} onElegir={cambiarProv} autoFocus={sinProveedor}/>
         {titulo ? titulo(tituloNodo) : tituloNodo}
         {data?.modo === "facturas" && data.pagoAutomatico && <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-zinc-100 text-zinc-600">pago automático</span>}
         {data?.modo === "movimientos" && (<span className="text-[12.5px] text-zinc-500">
@@ -320,7 +322,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         {onCerrar && (<button type="button" onClick={onCerrar} aria-label="Cerrar" className="ml-auto text-zinc-400 hover:text-zinc-700"><X className="h-5 w-5"/></button>)}
       </div>
 
-      {isLoading ? (<div className="flex-1 flex items-center justify-center"><Spinner size="lg"/></div>) : isError || !data ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No se pudo leer la cuenta corriente.</div>) : data.modo === "movimientos" ? (
+      {sinProveedor ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Buscá un proveedor arriba para ver su cuenta corriente.</div>) : isLoading ? (<div className="flex-1 flex items-center justify-center"><Spinner size="lg"/></div>) : isError || !data ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No se pudo leer la cuenta corriente.</div>) : data.modo === "movimientos" ? (
         /* ================= empleados / gastos varios ================= */
         <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-6 mt-4 flex-1 min-h-0">
           <div className="flex flex-col min-h-0">
