@@ -815,7 +815,11 @@ export function ComprasDetalleContenido({
         ?? (bizSel === 'current' || bizSel === 'all' ? businessId : Number(bizSel)));
 
     try {
-      const branchParam = branchSel === 'main' ? 'none' : branchSel;
+      // La sucursal principal (props.is_main) es la de las compras sin sucursal: el kit sube
+      // las del PDV principal con branch_id null (maxiPdvMap). Diego 10/11/2026: elegir
+      // «FC RAMOS» no mostraba nada.
+      const esMain = branchSel === 'main' || !!branchOwner?.props?.is_main;
+      const branchParam = esMain ? 'none' : branchSel;
       const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${rango.from}&to=${rango.to}&limit=500&branch_id=${branchParam}`;
       const res = await fetch(url, {
         headers: {
@@ -922,11 +926,12 @@ export function ComprasDetalleContenido({
   // el descarte solo corre si en el MISMO lote hay al menos una fila que sí trae
   // branch_id (ahí sí hay duplicación real que limpiar).
   const sortedItems = useMemo(() => {
-    const hayFilasConSucursal = displayItems.some(it => it.branch_id != null);
-    const base = (hasSucursales || dynamicBranches.length > 0) && hayFilasConSucursal
-      ? displayItems.filter(it => it.branch_id != null)
-      : displayItems;
-    return [...base].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+    // Las compras sin sucursal son las de la sucursal principal (el kit las sube con
+    // branch_id null). Antes, si había alguna con sucursal, se descartaban las sin
+    // sucursal como si fueran duplicados, y en «Todas» desaparecían las de la principal
+    // (Diego 10/11/2026: en un insumo de FC solo se veían las de San Justo). Verificado
+    // en la base: no hay compras duplicadas entre «sin sucursal» y una sucursal.
+    return [...displayItems].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
   }, [displayItems, hasSucursales, dynamicBranches]);
 
   // ── Detección de comprobantes con bonificación (líneas en $0) para pintar la tabla ──
@@ -1779,10 +1784,14 @@ export function ComprasDetalleContenido({
                 const bizId = Number(it._bizId);
                 const bizColor = bizColorMap.get(bizId) || themeColors.primary;
                 const branchId = it.branch_id ? String(it.branch_id) : 'main';
+                const principal = branchId === 'main'
+                  ? (dynamicBranches.find(b => b?.props?.is_main && (b._bizId == null || Number(b._bizId) === bizId))
+                    || (branches || []).find(b => b?.props?.is_main))
+                  : null;
 
                 const branchColor = showBranchColumn
                   ? (branchId === 'main'
-                    ? (bizColorMap.get(bizId) || themeColors.primary)
+                    ? (principal?.color || bizColorMap.get(bizId) || themeColors.primary)
                     : branchColorMap.get(branchId) || bizColor)
                   : bizColor;
 
@@ -1805,7 +1814,7 @@ export function ComprasDetalleContenido({
                   : ((showBizColumn || showBranchColumn) ? `3px solid ${branchColor}60` : 'none');
 
                 const branchName = branchId === 'main'
-                  ? 'Principal'
+                  ? (principal?.name || 'Principal')
                   : (dynamicBranches.find(b => String(b.id) === branchId)?.name
                     || (branches || []).find(b => String(b.id) === branchId)?.name
                     || `Suc. #${branchId}`);
