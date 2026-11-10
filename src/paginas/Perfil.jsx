@@ -399,7 +399,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           title={invitacionVencida ? 'El link venció — hay que reenviarla' : undefined}
                         />
                       </TableCell>
-                      <TableCell align="right" sx={{ ...COL_ACCIONES, bgcolor: 'background.paper' }}>
+                      <TableCell align="right" sx={{ ...COL_ACCIONES, backgroundColor: 'inherit' }}>
                         {puedeGestionar && (
                           <IconButton
                             size="small"
