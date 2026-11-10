@@ -105,7 +105,7 @@ export default function ConfiguracionMain() {
   const [config, setConfig] = useState({
     articulos_costo_ideal: '', insumos_costo_ideal: '',
     compras_alerta_semanas: '', ventas_alerta_dias: '',
-    divisa: '', precio_costeo_insumos: 'ultima_compra', redondeo_precios: null,
+    divisa: '', precio_costeo_insumos: 'ultima_compra', costo_con_impuestos: true, redondeo_precios: null,
     desperdicio_global_pct: '',
     notificar_alta_articulo_insumo: true,
   });
@@ -183,6 +183,7 @@ export default function ConfiguracionMain() {
           ventas_alerta_dias: String(cfg.ventas_alerta_dias ?? ''),
           divisa: String(cfg.divisa ?? ''),
           precio_costeo_insumos: cfg.precio_costeo_insumos || 'ultima_compra',
+          costo_con_impuestos: cfg.costo_con_impuestos !== false,
           desperdicio_global_pct: String(cfg.desperdicio_global_pct ?? ''),
           // Si DB devuelve null, usar localStorage como fallback
           redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
@@ -333,7 +334,7 @@ export default function ConfiguracionMain() {
       await fetch(`${BASE}/businesses/${businessId}/config-costeo`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modo: config.precio_costeo_insumos }),
+        body: JSON.stringify({ modo: config.precio_costeo_insumos, con_impuestos: config.costo_con_impuestos !== false }),
       });
       notify('Configuración de precio de costeo guardada');
       window.dispatchEvent(new CustomEvent('config:costeo:changed', { detail: { modo: config.precio_costeo_insumos } }));
@@ -342,7 +343,7 @@ export default function ConfiguracionMain() {
     } finally {
       setSaving(s => ({ ...s, precio_costeo: false }));
     }
-  }, [businessId, config.precio_costeo_insumos, notify]);
+  }, [businessId, config.precio_costeo_insumos, config.costo_con_impuestos, notify]);
 
   const saveRedondeo = useCallback(async () => {
     if (!businessId) return;
