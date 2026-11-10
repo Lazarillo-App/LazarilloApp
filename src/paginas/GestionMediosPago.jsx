@@ -66,7 +66,7 @@ function Fila({ inicial, onCerrar, onGuardado, onAviso }) {
   );
 }
 
-function Contenido() {
+export function ContenidoMediosPago() {
   const { data, isLoading, error } = useMediosPago();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(null);
@@ -151,5 +151,5 @@ function Contenido() {
 
 export default function GestionMediosPago() {
   const { activeBusinessId } = useBusiness() || {};
-  return <PanelGestionContext.Provider value={{ businessId: activeBusinessId }}><Contenido /></PanelGestionContext.Provider>;
+  return <PanelGestionContext.Provider value={{ businessId: activeBusinessId }}><ContenidoMediosPago /></PanelGestionContext.Provider>;
 }
