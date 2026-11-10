@@ -3114,7 +3114,9 @@ export default function RecetaModal({
               gridTemplateColumns: (() => {
                 const ocultarExtras = modoInsumo && !verCostosExtra;
                 const colPeso = Number(rendimientoPeso) > 0 ? 1 : 0;
-                const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : 2);
+                // Artículo: el % de costo va fusionado con el costo (no tiene columna propia).
+                const esPieArticulo = !modoInsumo && !promoMode;
+                const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : (esPieArticulo ? 1 : 2));
                 return `repeat(${cols}, 1fr)`;
               })(),
               gap: 1.5,
@@ -3146,7 +3148,27 @@ export default function RecetaModal({
                     ? labelPorUnidad
                     : 'Costo total'}
                 </Typography>
-                <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
+                {!modoInsumo && !promoMode ? (
+                  <>
+                    {/* Artículo: costo y su % sobre el precio actual en una sola línea, objetivo abajo */}
+                    <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap' }}>
+                      ${fmt(costoXRendimiento)}
+                      {!isStaff && pctCostoActual !== null && (
+                        <>
+                          <Box component="span" sx={{ color: 'text.disabled', fontWeight: 400, mx: 0.75 }}>·</Box>
+                          <Box component="span" sx={{ color: pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main' }}>{fmt(pctCostoActual, 1)}%</Box>
+                        </>
+                      )}
+                    </Typography>
+                    {!isStaff && (
+                      <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
+                        Objetivo: {pctCostoIdeal}%
+                      </Typography>
+                    )}
+                  </>
+                ) : (
+                  <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
+                )}
               </Box>
               {Number(rendimientoPeso) > 0 && (() => {
                 // Mostrar el costo por unidad GRANDE: gr→kg, ml→L (× 1000).
@@ -3282,7 +3304,7 @@ export default function RecetaModal({
                   </IconButton>
                 </Stack>
               </Box>}
-              {!modoInsumo && <Box sx={{ display: isStaff ? 'none' : undefined }}>
+              {!modoInsumo && promoMode && <Box sx={{ display: isStaff ? 'none' : undefined }}>
                 <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
                 {pctCostoActual !== null ? (
                   <>
