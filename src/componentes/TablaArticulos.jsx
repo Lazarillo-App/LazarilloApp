@@ -1211,6 +1211,8 @@ export default function TablaArticulos({
     });
     let total = 0;
     ids.forEach((id) => { total += getVentasAmount(id); });
+    // + las ventas sin artículo (id 0 de MaxiRest): el total del período contempla todo (Diego 10/11/2026).
+    total += Number(ventasPorArticulo?.get?.('__sinArticulo')?.amount) || 0;
     return total;
   }, [ventasPorArticulo, getVentasAmount]);
 
