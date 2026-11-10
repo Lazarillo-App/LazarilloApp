@@ -264,11 +264,22 @@ function GestionPanelContenido() {
 
   /* ── Recorrido de Anthony la primera vez en el Panel (10/11): solo los pasos que se ven. ── */
   const refsTour = { periodo: useRef(null), ecofin: useRef(null), tabs: useRef(null), tarjetas: useRef(null), cargar: useRef(null) };
+  // Las tarjetas no se dibujan sin datos, en Financiera ni con búsqueda: el paso va solo si se ven (10/11).
+  const [hayTarjetas, setHayTarjetas] = useState(false);
+  useEffect(() => {
+    const el = refsTour.tarjetas.current;
+    if (!el) { setHayTarjetas(false); return undefined; }
+    const medir = () => setHayTarjetas(el.getBoundingClientRect().height > 40);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [estado.mostrarTarjetas, verPanel]); // eslint-disable-line react-hooks/exhaustive-deps
   const pasosTour = [
     { k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> },
     ...(!sinEcoFin ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
     { k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> },
-    ...(estado.mostrarTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
+    ...(estado.mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
