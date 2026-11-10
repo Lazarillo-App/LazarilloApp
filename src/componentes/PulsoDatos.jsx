@@ -17,12 +17,21 @@
 // rojo después) y, en Recetas, por si la app ya tomó todo lo que subió (si no: ámbar, "falta
 // leer lo último"). Las fechas quedan como dato: "última venta" / "última compra".
 // Sin data.kit (negocio que no sube por el kit) sigue el criterio de antes (frescura por fecha).
+//
+// Diego, 10/11: "¿no debería cada sucursal tener su propio pulso?" y "¿por qué separa entre
+// Recetas y Balance? ¿no debería ser una única subida?". Con data.kit.sucursales: un renglón
+// por PC/sucursal (cuándo subió · ventas al · compras al), cada una juzgada por SU subida (antes
+// se tomaba la más nueva y una PC caída quedaba escondida). Balance y Recetas ya no se separan:
+// solo aparece un aviso si Lazarillo no tomó lo que subió (Recetas atrás de las fechas del kit en
+// esa sucursal, o Balance sin leer desde la última subida). El punto del header = la peor.
+// Con una sucursal elegida en el header, solo esa.
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/servicios/apiBase';
 import { useBusiness } from '@/context/BusinessContext';
+import { useBranch } from '@/hooks/useBranch';
 import { frescura, hoyArgentina } from '@/gestion/frescura';
 
 const PUNTO = { al_dia: '#059669', atrasado: '#f59e0b', viejo: '#dc2626' };
@@ -31,6 +40,8 @@ const PESO = { al_dia: 0, atrasado: 1, viejo: 2 };
 
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
 const fechas = (f) => [f.ventas && `última venta ${ddmm(f.ventas)}`, f.compras && `última compra ${ddmm(f.compras)}`]
+  .filter(Boolean).join(' · ');
+const fechas2 = (x) => [x.ventas && `ventas al ${ddmm(x.ventas)}`, x.compras && `compras al ${ddmm(x.compras)}`]
   .filter(Boolean).join(' · ');
 const hm = (d) => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
@@ -43,6 +54,46 @@ function estadoPorKit(nombre, f, kit) {
     && ((kit.ventas && (!f.ventas || f.ventas < kit.ventas)) || (kit.compras && (!f.compras || f.compras < kit.compras)));
   if (falta && estado === 'al_dia') estado = 'atrasado';
   return { estado, falta: !!falta };
+}
+
+const horasDesde = (iso) => (Date.now() - new Date(iso).getTime()) / 3_600_000;
+const porSubida = (iso) => {
+  if (!iso) return 'viejo';
+  const h = horasDesde(iso);
+  return h <= 26 ? 'al_dia' : h <= 72 ? 'atrasado' : 'viejo';
+};
+const peorDe = (estados) => estados.reduce((a, b) => (PESO[b] > PESO[a] ? b : a), 'al_dia');
+
+// Renglones por sucursal (data.kit.sucursales) + avisos de lo que Lazarillo no tomó todavía.
+function porSucursal(data, filtro) {
+  let filas = data.kit.sucursales;
+  if (filtro?.mode === 'main') filas = filas.filter((x) => x.branchId == null);
+  else if (filtro?.mode === 'branch') filas = filas.filter((x) => Number(x.branchId) === Number(filtro.branchId));
+  if (!filas.length) return null;
+  const conNombre = filas.length > 1; // con una sola (o una elegida) el nombre ya está en el título
+  const avisos = [];
+  const recetasAtras = filas.filter((x) => x.recetas && (
+    (x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas))
+    || (x.compras && (!x.recetas.compras || x.recetas.compras < x.compras))));
+  if (recetasAtras.length) {
+    const det = recetasAtras.map((x) => {
+      const f = x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas)
+        ? (x.recetas.ventas ? `ventas al ${ddmm(x.recetas.ventas)}` : 'sin ventas')
+        : (x.recetas.compras ? `compras al ${ddmm(x.recetas.compras)}` : 'sin compras');
+      return conNombre ? `${x.nombre}: ${f}` : f;
+    }).join(' · ');
+    avisos.push(`Recetas todavía no tomó lo último (${det})`);
+  }
+  const imp = data.balance?.importado;
+  const subidaMax = filas.reduce((a, x) => (x.subida && (!a || x.subida > a) ? x.subida : a), null);
+  // Balance lee lo del kit cada hora (minuto 5): recién avisa si pasó más de 1 h 15 desde la subida.
+  if (data.balance && subidaMax && (!imp || imp < subidaMax) && horasDesde(subidaMax) > 1.25) {
+    avisos.push('Balance todavía no leyó lo último');
+  }
+  const conEstado = filas.map((x) => ({ ...x, estado: porSubida(x.subida) }));
+  let peor = peorDe(conEstado.map((x) => x.estado));
+  if (avisos.length && peor === 'al_dia') peor = 'atrasado';
+  return { filas: conEstado, avisos, peor, conNombre };
 }
 
 // "hoy 11:37" / "ayer 08:02" / "05/11 08:01"
@@ -66,6 +117,7 @@ function Punto({ estado, size = 10, late = false }) {
 
 export default function PulsoDatos({ puedeActualizar = false }) {
   const { activeBusinessId, active } = useBusiness() || {};
+  const { activeBranchFilter, activeBranch } = useBranch() || {};
   const queryClient = useQueryClient();
   const [pedido, setPedido] = React.useState(false); // tocado, esperando que el back confirme
   const [aviso, setAviso] = React.useState(null);
@@ -118,6 +170,7 @@ export default function PulsoDatos({ puedeActualizar = false }) {
   };
 
   const hoy = hoyArgentina();
+  const suc = data?.kit?.sucursales?.length ? porSucursal(data, activeBranchFilter) : null;
   const fuentes = [
     ['Balance', data?.balance],
     ['Recetas', data?.recetas],
@@ -126,9 +179,9 @@ export default function PulsoDatos({ puedeActualizar = false }) {
     .map(([nombre, f]) => (data?.kit?.subida
       ? { nombre, f, ...estadoPorKit(nombre, f, data.kit) }
       : { nombre, f, estado: frescura(f.ventas ?? f.compras, hoy), falta: false }));
-  if (!fuentes.length) return null;
+  if (!suc && !fuentes.length) return null;
 
-  const peor = fuentes.reduce((a, b) => (PESO[b.estado] > PESO[a.estado] ? b : a)).estado;
+  const peor = suc ? suc.peor : fuentes.reduce((a, b) => (PESO[b.estado] > PESO[a.estado] ? b : a)).estado;
   const imp = data?.balance?.importado ? new Date(data.balance.importado) : null;
   const lectura = imp
     ? `${String(imp.getDate()).padStart(2, '0')}/${String(imp.getMonth() + 1).padStart(2, '0')} ${imp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
@@ -137,7 +190,7 @@ export default function PulsoDatos({ puedeActualizar = false }) {
     data?.balance && `Balance: lo que sube el kit${lectura ? `, última lectura ${lectura}` : ''}`,
     data?.recetas && 'Recetas: del kit al tocar el punto',
   ].filter(Boolean).join(' · ');
-  const nombre = active?.name || 'Negocio';
+  const nombre = (suc && activeBranchFilter && activeBranchFilter.mode !== 'all' && activeBranch?.name) || active?.name || 'Negocio';
 
   return (
     <Tooltip
@@ -147,12 +200,27 @@ export default function PulsoDatos({ puedeActualizar = false }) {
       title={
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 12, lineHeight: 1.45, py: 0.25 }}>
           <Box sx={{ fontWeight: 600 }}>{nombre} · {LEYENDA[peor]}</Box>
-          {data?.kit?.subida && (
+          {suc && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${suc.conNombre ? 4 : 3}, max-content)`, justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
+              {suc.filas.map((x) => (
+                <React.Fragment key={x.pdv}>
+                  <Punto estado={x.estado} size={9} />
+                  {suc.conNombre && <Box component="span" sx={{ fontWeight: 600 }}>{x.nombre}</Box>}
+                  <span>{x.subida ? `${horasDesde(x.subida) > 26 ? 'no sube desde' : 'subió'} ${cuando(x.subida, hoy)}` : 'todavía no subió'}</span>
+                  <Box component="span" sx={{ opacity: 0.8 }}>{fechas2(x)}</Box>
+                </React.Fragment>
+              ))}
+            </Box>
+          )}
+          {suc?.avisos.map((a) => (
+            <Box key={a} sx={{ color: '#fbbf24', whiteSpace: 'nowrap' }}>⚠ {a}</Box>
+          ))}
+          {!suc && data?.kit?.subida && (
             <Box sx={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
               {(Date.now() - new Date(data.kit.subida).getTime()) / 3_600_000 > 26 ? 'El kit no sube desde' : 'El kit subió'} {cuando(data.kit.subida, hoy)}
             </Box>
           )}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', justifyContent: 'start', alignItems: 'center', columnGap: 1, rowGap: 0.25, whiteSpace: 'nowrap' }}>
+          {!suc && <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', justifyContent: 'start', alignItems: 'center', columnGap: 1, rowGap: 0.25, whiteSpace: 'nowrap' }}>
             {fuentes.map(({ nombre: n, f, estado, falta }) => (
               <React.Fragment key={n}>
                 <Punto estado={estado} size={9} />
@@ -160,8 +228,8 @@ export default function PulsoDatos({ puedeActualizar = false }) {
                 <span>{fechas(f)}{falta ? ' — falta leer lo último' : (estado !== 'al_dia' ? ` — ${LEYENDA[estado]}` : '')}</span>
               </React.Fragment>
             ))}
-          </Box>
-          {pie && <Box sx={{ opacity: 0.7, mt: 0.25, whiteSpace: 'nowrap' }}>{pie}</Box>}
+          </Box>}
+          {!suc && pie && <Box sx={{ opacity: 0.7, mt: 0.25, whiteSpace: 'nowrap' }}>{pie}</Box>}
           {puedeActualizar && (
             <Box sx={{ mt: 0.25, fontWeight: 500 }}>
               {actualizando ? 'Actualizando…' : (aviso || 'Tocá el punto para actualizar ahora')}
