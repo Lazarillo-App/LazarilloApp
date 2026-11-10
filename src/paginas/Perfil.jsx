@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 // src/paginas/Perfil.jsx
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
 import {
   Box, Stack, Typography, Avatar, Chip, Button, Paper,
@@ -47,6 +47,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import AsistenteOnboarding from '@/componentes/asistente/AsistenteOnboarding';
 import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 
 const tc = 'var(--color-primary, #3b82f6)';
 
@@ -259,8 +261,21 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
 
   // La vista de equipo es consolidada (todos los negocios), no depende del negocio activo.
 
+  // Recorrido de Anthony la primera vez (10/11): invitar y QR.
+  const invitarRef = useRef(null);
+  const qrRef = useRef(null);
+  const recEquipo = useRecorrido('perfil_equipo', 2, puedeGestionar && !loading && !showInvite && !showAccesoQR && !showRoles);
+
   return (
     <>
+      {recEquipo.visible && recEquipo.paso === 1 && (
+        <SpotlightTour targetRef={invitarRef} pose="presenta" placement="bottom" {...recEquipo.props(1)}
+          text={<><b>Sumá a tu equipo</b>: invitás por mail y elegís si es administrador o staff, y a qué negocios entra.</>} />
+      )}
+      {recEquipo.visible && recEquipo.paso === 2 && (
+        <SpotlightTour targetRef={qrRef} pose="senala" placement="bottom" {...recEquipo.props(2)}
+          text={<>Un <b>QR</b> para que tu staff se dé de alta desde el celular, sin invitación por mail.</>} />
+      )}
       <Section
         icon={<GroupsIcon />}
         title="Equipo"
@@ -276,6 +291,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
               )}
               <Tooltip title="QR de acceso del equipo (negocio activo)">
                 <IconButton
+                  ref={qrRef}
                   size="small"
                   onClick={() => setShowAccesoQR(true)}
                   sx={{ color: tc }}
@@ -285,6 +301,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
               </Tooltip>
               <Tooltip title="Invitar miembro">
                 <IconButton
+                  ref={invitarRef}
                   size="small"
                   onClick={() => setShowInvite(true)}
                   sx={{ color: tc }}

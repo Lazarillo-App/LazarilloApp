@@ -3,7 +3,7 @@
 /* eslint-disable no-empty */
 // src/paginas/ConfiguracionMain.jsx
 // Shell liviano — la lógica de cada tab vive en su propio componente
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOrganization } from '@/context/OrganizationContext';
 import { useSearchParams } from 'react-router-dom';
 import { syncAll, isMaxiConfigured } from '@/servicios/syncService';
@@ -58,6 +58,8 @@ import { ArticuloNuevoModal, InsumoNuevoModal } from '../componentes/configuraci
 import '../css/global.css';
 import '../css/theme-layout.css';
 import { downwardMenuProps } from '@/utils/menuProps';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 
 export { getRedondeoConfig, saveRedondeoConfig };
 
@@ -447,6 +449,24 @@ export default function ConfiguracionMain() {
     }
   };
 
+  /* ── Recorrido de Anthony la primera vez (10/11): una frase por pestaña, solo las que se ven. ── */
+  const refsTabs = { art: useRef(null), ins: useRef(null), gral: useRef(null), org: useRef(null), con: useRef(null), hist: useRef(null), sect: useRef(null), aprob: useRef(null) };
+  const pasosTabs = [
+    { k: 'art', t: <><b>Artículos y ventas</b>: tus artículos, las listas de precios, el redondeo y la importación de ventas y del paso a paso de las recetas.</> },
+    { k: 'ins', t: <><b>Insumos y compras</b>: tus insumos, rubros y la importación de compras. También las alertas, por ejemplo cuando un insumo pasa semanas sin compra.</> },
+    { k: 'gral', t: <><b>General</b>: moneda, formato de los nombres y los avisos de la app.</> },
+    { k: 'org', t: <><b>Organización</b>: tus locales y sucursales.</> },
+    ...(puedeGestionarNegocio && verConexiones ? [{ k: 'con', t: <><b>Conexiones</b>: para conectar tu sistema de ventas (MaxiRest) y que los datos lleguen solos.</> }] : []),
+    ...(puedeGestionarNegocio ? [
+      { k: 'hist', t: <><b>Historial de actividad</b>: quién cambió qué y cuándo (recetas, precios, insumos, equipo).</> },
+      { k: 'sect', t: <><b>Sectores</b>: armá sectores como Barra, Cocina o Salón para que cada persona del staff vea solo las recetas de su sector.</> },
+      { k: 'aprob', t: <><b>Aprobaciones</b>: los cambios que propone tu staff, como una receta o discontinuar algo. Los aprobás o rechazás desde acá.</> },
+    ] : []),
+  ];
+  const recConfig = useRecorrido('configuracion', pasosTabs.length,
+    !configLoading && !soloConexiones && !showNuevoArticulo && !showNuevoInsumo && !showUploadInsumos && !showUploadArticulos && !showCreate);
+  const pasoTab = pasosTabs[recConfig.paso - 1];
+
   // ── RENDER ──
   return (
     <Box className="zoom-reset" sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -455,6 +475,10 @@ export default function ConfiguracionMain() {
         <TuneIcon sx={{ color: themeColor, fontSize: 26 }} />
         <Typography variant="h5" fontWeight={800}>Configuración</Typography>
       </Stack>
+      {recConfig.visible && pasoTab && (
+        <SpotlightTour key={pasoTab.k} targetRef={refsTabs[pasoTab.k]} pose={recConfig.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          text={pasoTab.t} {...recConfig.props(recConfig.paso)} />
+      )}
 
       {soloConexiones ? (
         <ConexionesTab businessId={businessId} themeColor={themeColor} />
@@ -479,28 +503,29 @@ export default function ConfiguracionMain() {
               '& .MuiTabs-indicator': { bgcolor: themeColor },
             }}
           >
-            <Tab icon={<RestaurantMenuIcon fontSize="small" />} iconPosition="start"
+            <Tab ref={refsTabs.art} icon={<RestaurantMenuIcon fontSize="small" />} iconPosition="start"
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                   Artículos y ventas
                 </Box>
               } />
-            <Tab icon={<ShoppingCartIcon fontSize="small" />} iconPosition="start" label="Insumos y compras" />
-            <Tab icon={<PublicIcon fontSize="small" />} iconPosition="start" label="General" />
-            <Tab icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
+            <Tab ref={refsTabs.ins} icon={<ShoppingCartIcon fontSize="small" />} iconPosition="start" label="Insumos y compras" />
+            <Tab ref={refsTabs.gral} icon={<PublicIcon fontSize="small" />} iconPosition="start" label="General" />
+            <Tab ref={refsTabs.org} icon={<BusinessIcon fontSize="small" />} iconPosition="start" label="Organización" />
             {/* Conexiones (kit vinculado sin Drive, Diego 08/11/2026): va al lado de Organización pero
                 con value 7, así no cambian los ?tab= de las pestañas que ya existían (4, 5, 6). */}
             {puedeGestionarNegocio && verConexiones && (
-              <Tab value={7} icon={<CableIcon fontSize="small" />} iconPosition="start" label="Conexiones" />
+              <Tab ref={refsTabs.con} value={7} icon={<CableIcon fontSize="small" />} iconPosition="start" label="Conexiones" />
             )}
             {puedeGestionarNegocio && (
-              <Tab value={4} icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
+              <Tab ref={refsTabs.hist} value={4} icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Historial de actividad" />
             )}
             {puedeGestionarNegocio && (
-              <Tab value={5} icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
+              <Tab ref={refsTabs.sect} value={5} icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Sectores" />
             )}
             {puedeGestionarNegocio && (
               <Tab
+                ref={refsTabs.aprob}
                 value={6}
                 icon={
                   <Badge badgeContent={pendingProposalsCount} color="warning" max={99}>

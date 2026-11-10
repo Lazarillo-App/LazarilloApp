@@ -22,6 +22,8 @@ import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
 import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
+import SpotlightTour from '../componentes/SpotlightTour';
+import { useRecorrido } from '../hooks/useRecorrido';
 import {
   T,
   FT,
@@ -559,6 +561,18 @@ export default function RrhhCronogramas() {
   const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, minWidth: 34 };
   const celTot = { padding: '4px 6px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, fontFamily: FB, fontSize: 12, color: T.text2, background: T.head };
 
+  /* ── Recorrido de Anthony la primera vez (10/11): solo con nómina (si no, la grilla no está). ── */
+  const refsTour = { semana: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
+  const pasosTour = [
+    { k: 'semana', t: <>Elegí la <b>semana</b> que querés armar o mirar.</> },
+    { k: 'grilla', t: <>Cada fila es una persona de tu nómina y cada columna un día: ahí cargás sus <b>turnos</b> y <b>francos</b>. Tocando el encabezado de un día marcás un <b>feriado</b> o un evento.</> },
+    { k: 'copiar', t: <><b>+ Semana</b> crea la semana siguiente copiando esta, así no la armás de cero.</> },
+    { k: 'exportar', t: <>Genera una <b>imagen</b> del cronograma y de los francos para mandar por WhatsApp al equipo.</> },
+  ];
+  const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
+    !cargando && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel);
+  const pasoTour = pasosTour[recCrono.paso - 1];
+
   /* ═════ render ═════ */
   if (cargando) {
     return <div style={{ padding: 32, fontFamily: FB, color: T.text2, background: T.bg, minHeight: '60vh' }}>Cargando Cronogramas…</div>;
@@ -576,6 +590,10 @@ export default function RrhhCronogramas() {
 
   return (
     <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box' }}>
+      {recCrono.visible && pasoTour && (
+        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          text={pasoTour.t} {...recCrono.props(recCrono.paso)} />
+      )}
       {/* barra del módulo — fila 1: espacios + acciones · fila 2: semana */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginRight: 6 }}>Cronogramas</div>
@@ -587,9 +605,10 @@ export default function RrhhCronogramas() {
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
         <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
-        <Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen del cronograma y de los francos para WhatsApp">🖼 Exportar imagen</Boton>
+        <span ref={refsTour.exportar} style={{ display: 'inline-flex' }}><Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen del cronograma y de los francos para WhatsApp">🖼 Exportar imagen</Boton></span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span ref={refsTour.semana} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <Boton onClick={() => setSemanaId((s) => s - 1)} title="Semana anterior">‹</Boton>
         <div onClick={() => setCalOpen(true)} title="Abrir calendario" style={{ textAlign: 'center', minWidth: 250, cursor: 'pointer' }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text, whiteSpace: 'nowrap' }}>
@@ -599,8 +618,9 @@ export default function RrhhCronogramas() {
         </div>
         <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
         <Boton onClick={() => { setSemanaId(idDeSemana(domingoDeHoy())); setDestelloHoy(true); setTimeout(() => setDestelloHoy(false), 1600); }} title="Ir a la semana de hoy">HOY</Boton>
+        </span>
         <div style={{ width: 1, alignSelf: 'stretch', background: T.border2, margin: '0 4px' }} />
-        <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton>
+        <span ref={refsTour.copiar} style={{ display: 'inline-flex' }}><Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton></span>
         <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)} title="Vaciar esta semana">Vaciar</Boton>
       </div>
 
@@ -633,7 +653,7 @@ export default function RrhhCronogramas() {
             </div>
           )}
 
-          <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: 'calc(100vh - 225px)' }}>
+          <div ref={refsTour.grilla} style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: 'calc(100vh - 225px)' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
