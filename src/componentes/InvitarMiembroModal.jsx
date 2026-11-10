@@ -17,6 +17,10 @@ import { useBusiness }        from '@/context/BusinessContext';
 import { useOrganization }    from '@/context/OrganizationContext';
 import GestionarSectoresModal from '@/componentes/GestionarSectoresModal';
 
+// Email válido para invitar (Diego 10/11/2026: «lautarozuccala@gmail» llegó sin el .com):
+// algo@dominio.tld, sin espacios.
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+
 const tc = 'var(--color-primary, #3b82f6)';
 
 /* ─── Bloque de sector de UN negocio puntual — se repite uno por cada
@@ -83,6 +87,8 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   const puedeInvitarStaff = canDo('invite_staff');
 
   const [email, setEmail]                     = useState('');
+  // Se marca en rojo recién cuando ya escribió algo con pinta de terminado (tiene @ o un espacio).
+  const emailMal = email.trim().length > 0 && /[@\s]/.test(email) && !EMAIL_OK.test(email.trim());
   const [alias, setAlias]                     = useState('');
   const [role, setRole]                       = useState(puedeInvitarAdmin ? 'admin' : 'staff');
   // Selección múltiple: uno o varios negocios/sub-negocios, o la organización entera.
@@ -196,6 +202,10 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
 
     if (!email.trim() || !alias.trim()) {
       setError('Completá email y alias');
+      return;
+    }
+    if (!EMAIL_OK.test(email.trim())) {
+      setError('Revisá el email: tiene que tener @ y terminar en un dominio, por ejemplo nombre@gmail.com');
       return;
     }
 
@@ -312,7 +322,8 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
                 type="email"
                 size="small"
                 autoFocus
-                helperText="Escribí un email nuevo o elegí a alguien de tu equipo"
+                error={emailMal}
+                helperText={emailMal ? 'Falta la @ o el dominio (ej.: nombre@gmail.com)' : 'Escribí un email nuevo o elegí a alguien de tu equipo'}
               />
             )}
           />
