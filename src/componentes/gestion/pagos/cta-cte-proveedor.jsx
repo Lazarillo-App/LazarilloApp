@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { numeroPago } from "@/gestion/pagosImputar";
 import { FormPagoProveedor } from "./pago-proveedor";
+import { useSucursalModales } from "@/gestion/sucursalModales";
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MESES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const PROXIMAMENTE = "Próximamente — disponible en la etapa 4 (carga de pagos y comprobantes)";
@@ -106,6 +107,13 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const [guardando, setGuardando] = useState(false);
     const [anulando, setAnulando] = useState(null);
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
+    // Sucursal (Diego 10/11/2026): la que se mira en la app por defecto, «Todas» como opción, y
+    // compartida con el modal de compras del insumo. 'main' = la principal (pdvId negativo).
+    const [sucursal, setSucursal] = useSucursalModales();
+    const bizLocal = locales?.[0]?.id ?? null;
+    const opcionesSuc = useMemo(() => (locales?.[0]?.puntosDeVenta ?? []).map((p) => ({ valor: Number(p.id) < 0 ? "main" : String(p.id), nombre: p.nombre })), [locales]);
+    const sucValida = sucursal === "all" || opcionesSuc.some((o) => o.valor === sucursal) ? sucursal : "all";
+    const enSucursal = (f) => sucValida === "all" || (sucValida === "main" ? Number(f.pdvId) === -Number(bizLocal) : String(f.pdvId) === sucValida);
     const pdvs = useMemo(() => (locales ?? []).flatMap((l) => l.puntosDeVenta.map((p) => ({ id: p.id, label: `${l.nombre} · ${p.nombre}` }))), [locales]);
     const enPeriodo = (iso) => per === "hist" || (per === "anio" ? iso.startsWith(String(anio)) : iso.startsWith(`${anio}-${String(mes + 1).padStart(2, "0")}`));
     const mover = (d) => {
@@ -131,7 +139,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const t = busca.trim().toLowerCase();
     const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0) * orden.dir;
     // ---- modo facturas ----
-    const facturas = useMemo(() => (data?.modo === "facturas" ? data.facturas : []), [data]);
+    const facturas = useMemo(() => (data?.modo === "facturas" ? data.facturas.filter(enSucursal) : []), [data, sucValida, bizLocal]); // eslint-disable-line react-hooks/exhaustive-deps
     const fact = facturas.find((f) => claveF(f) === sel) ?? null;
     const aCuenta = data?.modo === "facturas" ? data.aCuenta : [];
     const disponibleACuenta = aCuenta.reduce((s, p) => s + p.disponible, 0);
@@ -319,7 +327,14 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         {data?.modo === "movimientos" && (<span className="text-[12.5px] text-zinc-500">
             {data.esEmpleado ? "Empleado" : "Sin proveedor del maestro"} · {data.pdv}
           </span>)}
-        {onCerrar && (<button type="button" onClick={onCerrar} aria-label="Cerrar" className="ml-auto text-zinc-400 hover:text-zinc-700"><X className="h-5 w-5"/></button>)}
+        {opcionesSuc.length > 1 && (<label className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">
+            Sucursal
+            <select value={sucValida} onChange={(e) => setSucursal(e.target.value)} className="h-9 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 text-sm font-normal normal-case tracking-normal text-zinc-800 dark:text-zinc-100 outline-none focus:border-sky-500">
+              <option value="all">Todas</option>
+              {opcionesSuc.map((o) => <option key={o.valor} value={o.valor}>{o.nombre}</option>)}
+            </select>
+          </label>)}
+        {onCerrar && (<button type="button" onClick={onCerrar} aria-label="Cerrar" className={cn(opcionesSuc.length > 1 ? "ml-3" : "ml-auto", "text-zinc-400 hover:text-zinc-700")}><X className="h-5 w-5"/></button>)}
       </div>
 
       {sinProveedor ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Buscá un proveedor arriba para ver su cuenta corriente.</div>) : isLoading ? (<div className="flex-1 flex items-center justify-center"><Spinner size="lg"/></div>) : isError || !data ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No se pudo leer la cuenta corriente.</div>) : data.modo === "movimientos" ? (
