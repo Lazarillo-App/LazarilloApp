@@ -69,7 +69,18 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
   const elaboradoData = item.supplyId ? recetasElaborados[String(item.supplyId)] : null;
   const forzarCompra = insumoData?.costo_efectivo_origen === 'compra';
   const elaborado = forzarCompra ? null : elaboradoData;
-  const factorMerma = calcFactorMerma(item, appConfigDesperdicio, !!elaborado);
+  // Desperdicio propio del insumo (override): si el ítem no lo trae cargado (al reabrir una
+  // receta guardada no se carga), se toma del insumo — mismo criterio que el servidor.
+  const itemMerma = item.desperdicioPct == null && insumoData?.desperdicio_pct_override != null
+    ? { ...item, desperdicioPct: Number(insumoData.desperdicio_pct_override) }
+    : item;
+  const factorMerma = calcFactorMerma(itemMerma, appConfigDesperdicio, !!elaborado);
+  // Precio de un insumo comprado: SIEMPRE su precio_ref (precioRefDB), que el servidor calcula
+  // con la configuración de "Precio de costeo" (última compra / promedio, con o sin impuestos)
+  // y usa para costear las recetas. Antes acá se tomaba "precio_ultima_compra" por su cuenta
+  // (sin el modo ni el filtro de compras sospechosas) y el costo del modal no coincidía con
+  // el de la tabla. La última compra solo se usa para un ELABORADO marcado "costear por compra".
+  const usarUltimaCompra = forzarCompra && !!elaboradoData;
 
   // ── Si la unidad elegida es una equivalencia propia del insumo (prioridad) ──
   const eqSel = (item.equivalencias || []).find(e => eqNombreMatch(e.nombre, item.unidad));
@@ -80,7 +91,7 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
       const costoPorUnidadEq = calcCostoUnitarioElaborado(elaborado, item.supplyMedida, eqSel.unidad, tipoCosto);
       return contenido * costoPorUnidadEq * factorMerma;
     }
-    const precioParaCosto = forzarCompra
+    const precioParaCosto = usarUltimaCompra
       ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
       : (Number(item.precioRefDB) || 0);
     const precioBase = precioParaCosto * factorMerma;
@@ -132,7 +143,7 @@ export function calcCostoUnitarioItem(item, ctx = {}) {
   }
 
   // ── Insumo simple ──
-  const precioRef = forzarCompra
+  const precioRef = usarUltimaCompra
     ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
     : (Number(item.precioRefDB) || 0);
   const unidadDB = canonicalUnit(item.supplyMedida || 'u');
