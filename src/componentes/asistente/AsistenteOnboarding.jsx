@@ -10,6 +10,7 @@ import { showAlert } from "../../servicios/appAlert";
 import { showConfirm } from "../../servicios/appConfirm";
 import { showPrompt } from "../../servicios/appPrompt";
 import { PASOS_ALTA, guardarAlta } from "./altaEstado";
+import AltaManual from "./AltaManual";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
 // alguien sube un PDF acá — se carga con import() dinámico para no engordar
@@ -812,7 +813,7 @@ async function buildReceta(art, baseInsumos) {
 }
 
 // ───────────────────────── UI atoms ─────────────────────────
-const Btn = ({ children, onClick, disabled, ghost, small, style, accent }) => {
+export const Btn = ({ children, onClick, disabled, ghost, small, style, accent }) => {
   const a = accent || C.maroon;
   return (
   <button
@@ -855,7 +856,7 @@ const WArea = ({ label, value, onChange, ph, rows }) => (
     <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} rows={rows || 4} style={{ ...WInp, resize: "vertical", minHeight: 96, lineHeight: 1.5 }} />
   </div>
 );
-const Panel = ({ titulo, sub, children }) => (
+export const Panel = ({ titulo, sub, children }) => (
   <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 22 }}>
     {titulo != null && <h2 style={{ fontFamily: "'Sora',sans-serif", margin: "0 0 6px", color: C.maroonDark }}>{titulo}</h2>}
     {sub != null && <p style={{ color: C.muted, marginTop: 0 }}>{sub}</p>}
@@ -896,7 +897,7 @@ const MeAvatar = ({ size = 46 }) => (
     <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="8" r="4" /><path d="M12 14c-4.4 0-8 2.2-8 5.2V21h16v-1.8c0-3-3.6-5.2-8-5.2z" /></svg>
   </div>
 );
-const AnthonyDice = ({ pose = "senala", size = 84, children, accent }) => {
+export const AnthonyDice = ({ pose = "senala", size = 84, children, accent }) => {
   const a = accent || C.gold;
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 12, margin: "0 0 18px" }}>
@@ -1003,7 +1004,7 @@ function Home({ onPick }) {
 }
 
 // ───────────────────────── Stepper compartido ─────────────────────────
-function Steps({ items, active, accent, onStep, accion }) {
+export function Steps({ items, active, accent, onStep, accion }) {
   const a = accent || C.maroon;
   return (
     <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
@@ -2744,12 +2745,15 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   const [pos, setPos] = useState("");
   const [posDone, setPosDone] = useState(false);
   const [posView, setPosView] = useState(!(retoma && PASOS_ALTA.includes(pasoInicial))); // mostrando el paso POS (navegable desde el stepper)
+  // Alta sin POS, simple (09/11): archivo de artículos → archivo de insumos → tabla.
+  const [manualView, setManualView] = useState(retoma && String(pasoInicial).startsWith("manual_"));
+  const [posPedido, setPosPedido] = useState(false); // otro POS: pedido de conexión anotado para el equipo
   // Paso actual del alta, guardado en el negocio para retomarlo si se sale (09/11).
   useEffect(() => {
-    if (!businessId || !negocio) return;
+    if (!businessId || !negocio || manualView) return; // la vista manual guarda su propio paso
     const paso = posView ? "pos" : step <= 3 ? PASOS_ALTA[step] : step === 4 ? "insumos" : "tablero";
     guardarAlta(businessId, "en_curso", paso);
-  }, [businessId, negocio, posView, step]);
+  }, [businessId, negocio, posView, step, manualView]);
   const [apiMode, setApiMode] = useState(false);
   const [integrar, setIntegrar] = useState({ ventas: false, menu: false, compras: false, insumos: false });
   const [posExtra, setPosExtra] = useState([]);   // POS sumados por la comunidad
@@ -2914,8 +2918,20 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
     const posName = pos === POS_OTRO ? customName.trim() : pos;
     const valido = posName && pos !== POS_NINGUNO;
     const finalizarPos = () => { if (pos === POS_OTRO && customName.trim()) registrarPos(customName.trim()); };
-    const cargarManual = () => { finalizarPos(); setIntegrar({ ventas: false, menu: false, compras: false, insumos: false }); setPosDone(true); setPosView(false); setStep(0); };
-    const conectarApi = () => { finalizarPos(); setPosDone(true); setPosView(false); setStep(nextOpen(0)); };
+    const cargarManual = () => { finalizarPos(); setIntegrar({ ventas: false, menu: false, compras: false, insumos: false }); setPosDone(true); setManualView(true); };
+    // Otro POS (no MaxiRest): todavía no hay agente que lo lea. Se anota qué POS es y qué datos
+    // quiere traer, para que el equipo lo contacte y ajuste el agente; mientras, sigue manual (09/11).
+    const conectarApi = async () => {
+      finalizarPos();
+      const que = ["ventas", "menu", "compras", "insumos"].filter((k) => integrar[k]).join(",");
+      if (businessId) {
+        try {
+          await BusinessesAPI.setOnboardingFlag(businessId, "pos", posName);
+          await BusinessesAPI.setOnboardingFlag(businessId, "pos_pedido", que);
+        } catch (e) { console.warn("[alta] no se pudo anotar el pedido de POS:", e?.message); }
+      }
+      setPosPedido(true);
+    };
     const algunaSel = integrar.ventas || integrar.menu || integrar.compras || integrar.insumos;
     const extras = posExtra.filter((p) => !POS_BASE.some((b) => b.toLowerCase() === p.toLowerCase()));
     const ck = (k, l) => (
@@ -2945,11 +2961,21 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
 
           {pos === "Maxirest" ? (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, background: C.shade }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>MaxiRest se conecta con el instalador de Lazarillo</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>MaxiRest se conecta con el actualizador de Lazarillo</div>
+              <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.6, marginBottom: 10 }}>
+                <b>Qué va a pasar:</b> el actualizador lee tu MaxiRest todos los días y sube solo tus artículos, insumos, ventas y compras. No tenés que subir archivos ni elegir nada.
+                <ol style={{ margin: "8px 0 0 18px", padding: 0 }}>
+                  <li>Descargá el instalador <b>en la PC donde está MaxiRest</b>.</li>
+                  <li>Abrilo y elegí <b>“INSTALAR EN ESTA PC”</b>.</li>
+                  <li>Entrá con tu usuario y contraseña de Lazarillo y elegí este negocio.</li>
+                  <li>Listo: la primera carga tarda unos minutos; después se actualiza solo cada día.</li>
+                </ol>
+              </div>
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Bajalo en la PC donde está MaxiRest, abrí “INSTALAR EN ESTA PC” y entrá con tu usuario de Lazarillo. Tus ventas, menú y compras llegan solos, sin subir archivos.</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <Btn accent={marca.primary} onClick={descargarInstalador} disabled={bajandoKit}>{bajandoKit ? "Preparando…" : "⬇ Descargar instalador"}</Btn>
-                <Btn ghost small accent={marca.primary} onClick={cargarManual}>Lo subo manualmente →</Btn>
+                <Btn accent={marca.primary} onClick={descargarInstalador} disabled={bajandoKit}>{bajandoKit ? "Preparando…" : "⬇ Instalar actualizador"}</Btn>
+                <Btn ghost small accent={marca.primary} onClick={() => onDone?.()}>Ya lo instalé: ir a mis artículos →</Btn>
+                <Btn ghost small accent={marca.primary} onClick={cargarManual}>Prefiero subir archivos</Btn>
               </div>
               {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
             </div>
@@ -2961,7 +2987,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
           ) : (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, background: C.shade }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Integrar {posName} por API</div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>Elegí qué datos traer directo desde {posName}. Los pasos que integres se saltean; el resto los cargás vos.</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>Elegí qué datos querés traer de {posName}. Todavía no lo conectamos solo: el equipo de Lazarillo te va a contactar para hacerlo juntos. Mientras tanto, arrancás cargando tus artículos.</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {ck("ventas", "Ventas")}
                 {ck("menu", "Artículos / Menú")}
@@ -2969,15 +2995,26 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
                 {ck("insumos", "Insumos")}
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                <Btn accent={marca.primary} onClick={conectarApi} disabled={!algunaSel}>Conectar y continuar →</Btn>
+                <Btn accent={marca.primary} onClick={conectarApi} disabled={!algunaSel || posPedido}>{posPedido ? "Pedido enviado ✓" : "Pedir la conexión"}</Btn>
                 <Btn ghost small accent={marca.primary} onClick={() => setApiMode(false)}>← Volver</Btn>
               </div>
+              {posPedido && (
+                <div style={{ marginTop: 12, fontSize: 13, color: C.ink }}>
+                  ✓ Anotado: te vamos a contactar para conectar {posName}.{" "}
+                  <Btn small accent={marca.primary} onClick={cargarManual}>Mientras, cargo mis artículos →</Btn>
+                </div>
+              )}
             </div>
           )}
         </Panel>
       </>
     );
   })();
+
+  if (manualView) return (
+    <AltaManual businessId={businessId} accent={marca.primary} pasoInicial={pasoInicial} onTerminar={() => onDone?.()}
+      onVolverPos={() => { setManualView(false); setPosView(true); }} />
+  );
 
   return (
     <div className="rise">

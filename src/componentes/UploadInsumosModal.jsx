@@ -302,7 +302,7 @@ export default function UploadInsumosModal({
 
   const handleClose = () => {
     if (uploading) return;
-    if (step === 'done') onSuccess?.();
+    if (step === 'done') onSuccess?.(result); // el alta manual muestra cuántos se cargaron
     setFile(null); setFileRubros(null); setPreview(null); setMapeo({});
     setResult(null); setErrorMsg(''); setStep('upload');
     onClose();
