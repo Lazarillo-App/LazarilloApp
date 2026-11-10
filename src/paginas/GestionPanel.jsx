@@ -17,6 +17,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import GroupsIcon from '@mui/icons-material/Groups';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { MAIN_BRANCH_ID } from '@/context/BranchContext';
@@ -114,6 +116,14 @@ function GestionPanelContenido() {
   const [cargarAlEntrar] = useState(() => params.get('cargar') === '1');
   // PROVEEDORES del header (Diego 10/11/2026): /gestion?proveedores=1 abre la cuenta corriente sin proveedor elegido.
   const [verProveedores, setVerProveedores] = useState(false);
+  // Pantalla completa de la tabla (como en el Panel viejo, se perdió en la migración — Diego 10/11/2026).
+  const [maximizado, setMaximizado] = useState(false);
+  useEffect(() => {
+    if (!maximizado) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setMaximizado(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [maximizado]);
   useEffect(() => {
     if (params.get('proveedores') !== '1') return;
     setVerProveedores(true);
@@ -356,7 +366,9 @@ function GestionPanelContenido() {
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
       {verPanel && estado.mostrarTarjetas && <BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro>}
 
-      {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
+      {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
+        // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
+        ...(maximizado ? { position: 'fixed', inset: 0, zIndex: 1250, borderRadius: 0, m: 0 } : {}) }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <ToggleButtonGroup
             exclusive
@@ -368,6 +380,7 @@ function GestionPanelContenido() {
               <ToggleButton key={t.v} value={t.v} disabled={t.proximamente} title={t.proximamente ? 'Próximamente' : undefined}>{t.label}</ToggleButton>
             ))}
           </ToggleButtonGroup>
+          <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap" sx={{ ml: 'auto' }}>
           {estado.tab === 'compras' && (
             <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
               <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'inline' } }}>ver por</Typography>
@@ -385,6 +398,13 @@ function GestionPanelContenido() {
               )}
             </Stack>
           )}
+          <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
+            <IconButton size="small" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              sx={{ width: 34, height: 34, borderRadius: 2, border: 1, borderColor: "divider" }}>
+              {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 16 }} /> : <OpenInFullIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+          </Tooltip>
+          </Stack>
         </Stack>
         {estado.tab === 'compras' && (
           <BloqueSeguro nombre="la tabla de gastos">
