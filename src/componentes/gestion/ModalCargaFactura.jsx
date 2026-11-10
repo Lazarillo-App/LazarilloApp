@@ -14,6 +14,8 @@ import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 import { insumoCreate } from "@/servicios/apiInsumos";
 import EnvasesEditor, { conCambios } from "@/componentes/gestion/EnvasesEditor";
 import FichaProveedor from "@/componentes/gestion/FichaProveedor";
+import SpotlightTour from "@/componentes/SpotlightTour";
+import { useRecorrido } from "@/hooks/useRecorrido";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
@@ -1146,6 +1148,22 @@ function ModalNuevaCarga(props) {
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
   };
 
+  /* ── Recorrido de Anthony la primera vez que se abre la carga (10/11) ── */
+  const refsT = { tipo: useRef(null), periodo: useRef(null), cabecera: useRef(null), renglones: useRef(null), pagoF: useRef(null), pagoV: useRef(null) };
+  const pasosT = [
+    { k: "tipo", t: <>Elegí qué vas a cargar: una <b>factura</b> de un proveedor, un <b>gasto vario</b> (alquiler, servicios, algo sin factura) o un pago a <b>empleados</b> (sueldos y adelantos).</> },
+    { k: "periodo", t: <>El <b>mes</b> en el que cuenta este gasto en la vista Económica. Sigue la fecha, pero lo podés cambiar.</> },
+    ...(modo === "factura" ? [
+      { k: "cabecera", t: <>Proveedor, tipo, número, fecha y total. Si es un ticket sin número, tocá <b>Generar</b> y se arma uno solo.</> },
+      { k: "renglones", t: <>Con esos datos completos, acá aparecen los <b>renglones</b>. Cada uno es un <b>insumo</b>, que actualiza el costo de tus recetas, o un <b>concepto</b>, que es un gasto general. Con el selector de la izquierda de cada renglón elegís cuál.</> },
+      { k: "pagoF", t: <>Si ya la pagaste, tildá <b>Registrar el pago ahora</b> y elegí el medio y la fecha. Si no, queda como impaga y la ves en <b>Impagas</b>.</> },
+    ] : modo === "vario" ? [
+      { k: "pagoV", t: <>Si ya lo pagaste, dejá <b>Pagado</b> tildado y elegí el medio y la fecha. Si no, queda como impago y lo ves en <b>Impagas</b>.</> },
+    ] : []),
+  ];
+  const recCarga = useRecorrido("carga_gastos", pasosT.length, vista === "nueva" && !rde && !embebido && !fichaProvId);
+  const pasoT = pasosT[recCarga.paso - 1];
+
   const titulo = vista === "ver" ? `Factura ${ede ? ede.comp : ""}` : vista === "editar" ? `Editar factura ${ede ? ede.comp : ""}` : "Carga de factura";
   // Rediseño (Diego 05/11/2026): cabecera y pie fijos, lo único que scrollea es el cuerpo; bloques
   // con fondo gris claro y bordes redondeados como la vista tabla del Panel.
@@ -1159,7 +1177,7 @@ function ModalNuevaCarga(props) {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {vista === "nueva" && !rde ? (<>
               <span style={{ fontSize: 15, fontWeight: 700, color: C.gris }}>Carga de</span>
-              <div style={{ display: "inline-flex", gap: 3, background: "#f2f2f0", borderRadius: 10, padding: 3 }}>
+              <div ref={refsT.tipo} style={{ display: "inline-flex", gap: 3, background: "#f2f2f0", borderRadius: 10, padding: 3 }}>
                 {[["factura", "Factura"], ["vario", "Gastos Varios"], ["empleado", "Empleados"]].map(([k, t]) => (
                   <button key={k} type="button" tabIndex={-1} onClick={() => { setModo(k); setErrores([]); setErrFecha(false); setParecidoV(null); setAvisosAlGuardar(null); }}
                     style={{ border: "none", borderRadius: 8, padding: "6px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer",
@@ -1168,13 +1186,19 @@ function ModalNuevaCarga(props) {
               </div>
             </>) : <h2 style={{ fontSize: 17, margin: 0 }}>{titulo}</h2>}
             <span style={{ flex: 1 }} />
+            <span ref={refsT.periodo} style={{ display: "inline-flex" }}>
             {modo === "factura"
               ? <SelectorPeriodo valor={perF} soloVer={soloVer} onCambio={(x) => setPeriodoF(fechaValida(fecha) && x === periodoDe(fecha) ? null : x)}
                   nota={periodoF ? "distinto al de la fecha" : null} titulo="Mes en el que cuenta toda la factura en la vista Económica. Sigue la fecha salvo que lo cambies." />
               : modo === "vario" ? <SelectorPeriodo valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
               : <SelectorPeriodo valor={periodoE} onCambio={setPeriodoE} titulo="Período del sueldo o del adelanto" />}
+            </span>
             <button type="button" tabIndex={-1} onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer", marginLeft: 6 }}>×</button>
           </div>
+        {recCarga.visible && pasoT && (
+          <SpotlightTour key={pasoT.k} targetRef={refsT[pasoT.k]} pose={recCarga.paso === 1 ? "presenta" : "senala"} placement="bottom"
+            text={pasoT.t} {...recCarga.props(recCarga.paso)} />
+        )}
         {fichaProvId && <FichaProveedor id={fichaProvId} onCerrar={() => setFichaProvId(null)}
           onGuardado={(d) => {
             const antes = (proveedores.find((x) => x.id === d.id) || {}).nombre;
@@ -1194,7 +1218,7 @@ function ModalNuevaCarga(props) {
         )}
         {modo === "factura" && (
           <fieldset key={"cab" + reinicio} disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ ...bloque, padding: "8px 12px 10px", display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr 0.95fr 0.8fr 1fr", gap: 10, alignItems: "start" }}>
+            <div ref={refsT.cabecera} style={{ ...bloque, padding: "8px 12px 10px", display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr 0.95fr 0.8fr 1fr", gap: 10, alignItems: "start" }}>
               <div>{(() => {
                   const pr = proveedores.find((x) => x.nombre === prov);
                   return (
@@ -1271,7 +1295,7 @@ function ModalNuevaCarga(props) {
         </div>
 
         {/* ── Cuerpo: lo único que scrollea ── */}
-        <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? {} : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
+        <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? {} : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
             reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
@@ -1810,7 +1834,7 @@ function ModalNuevaCarga(props) {
           </div>
 
           {/* ── Pago del gasto: tildado de entrada; sin pago queda IMPAGO (Impagas y cta cte de Gastos Varios) ── */}
-          <div style={{ marginTop: 12, border: `1.5px solid ${pagarV ? "#bae6fd" : C.borde}`, background: pagarV ? "#f0f9ff" : "#fff", borderRadius: 11, padding: "10px 14px" }}>
+          <div ref={refsT.pagoV} style={{ marginTop: 12, border: `1.5px solid ${pagarV ? "#bae6fd" : C.borde}`, background: pagarV ? "#f0f9ff" : "#fff", borderRadius: 11, padding: "10px 14px" }}>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
               <input type="checkbox" checked={pagarV} onChange={(e) => setPagarV(e.target.checked)} style={{ width: 15, height: 15 }} />
               Pagado
@@ -1962,7 +1986,7 @@ function ModalNuevaCarga(props) {
               return (
                 <div style={{ display: "flex", gap: 10, alignItems: "center", borderTop: modo === "factura" ? "1px solid #e6e6e2" : "none", paddingTop: modo === "factura" ? 9 : 0, flexWrap: "wrap" }}>
                   {modo === "factura" && vista === "nueva" && (
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    <label ref={refsT.pagoF} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                       <input type="checkbox" tabIndex={-1} checked={pagarAhora} onChange={(e) => setPagarAhora(e.target.checked)} style={{ width: 15, height: 15 }} />
                       Registrar el pago ahora
                       {!pagarAhora && <span style={{ fontSize: 12, fontWeight: 400, color: "#999" }}>— si no, queda IMPAGA</span>}
