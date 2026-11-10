@@ -72,6 +72,7 @@ function sumar(datos) {
       importe: s((d) => d.descuentos?.importe), tickets: s((d) => d.descuentos?.tickets),
       porTurno: porImporte(unir(ok.map((d) => d.descuentos?.porTurno), (x) => x.turno)),
       porMozo: unir(ok.map((d) => d.descuentos?.porMozo), (x) => nombreMozo(x.mozo)).sort((a, b) => b.importe - a.importe),
+      porTipo: unir(ok.map((d) => d.descuentos?.porTipo), (x) => x.tipo).sort((a, b) => b.importe - a.importe),
       detalle: ok.flatMap((d) => d.descuentos?.detalle || []).sort((a, b) => b.descuento - a.descuento),
     },
     stock: (() => {
@@ -153,7 +154,8 @@ function Lista({ items, render, inicial = 5, etiqueta, valor = (x) => x.importe 
 
 // ── hoja de detalle de Revisar ─────────────────────────────────────────────
 const LINEA = { display: "flex", alignItems: "baseline", gap: 6, padding: "7px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 };
-const Chip = ({ children }) => <span style={{ flexShrink: 0, maxWidth: 78, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, background: "#f4f4f5", color: "#52525b", borderRadius: 10, padding: "1px 7px" }}>{children}</span>;
+// Ancho fijo: así los comprobantes / artículos de la lista quedan alineados.
+const Chip = ({ children }) => <span style={{ flexShrink: 0, width: 84, boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, background: "#f4f4f5", color: "#52525b", borderRadius: 10, padding: "1px 7px" }}>{children}</span>;
 const fechaCorta = (f) => `${f.slice(8)}/${f.slice(5, 7)}`;
 function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshabilitado }) {
   const ventas = d.total;
@@ -229,7 +231,13 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
     const ds = d.descuentos;
     encabezado = "Descuentos"; total = ds.importe;
     sub = `${num(ds.tickets)} tickets · ${pct1(ds.importe, d.bruto)} de lo bruto`;
+    const tipos = (ds.porTipo || []);
+    const hayTipos = tipos.some((t) => t.tipo !== "Sin tipo");
     cuerpo = (<>
+      {hayTipos && (<>
+        <Seccion>Por tipo</Seccion>
+        {tipos.map((t, i) => <Fila key={t.tipo} nombre={t.tipo} importe={t.importe} total={ds.importe} color={COLORES[(i + 2) % COLORES.length]} sub={`${num(t.tickets)} tickets`} />)}
+      </>)}
       {ds.porTurno.length > 0 && <Seccion>Por turno</Seccion>}
       {ds.porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
       {ds.porMozo.length > 1 && (<>
@@ -239,6 +247,7 @@ function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshab
       <Seccion derecha="descuento · %">Cada ticket</Seccion>
       <Lista items={ds.detalle} inicial={10} etiqueta="tickets" valor={(t) => t.descuento} render={(t) => (
         <div key={`${t.fecha}|${t.comprobante}|${t.turno}`} style={{ ...LINEA, flexWrap: "wrap" }}>
+          {t.tipo && <Chip>{t.tipo}</Chip>}
           <span style={{ minWidth: 0, flex: 1 }}>{t.comprobante || "Ticket"}</span>
           <b style={{ whiteSpace: "nowrap" }}>{$(t.descuento)}</b>
           <small style={{ color: GRIS, width: 44, textAlign: "right" }}>{pct1(t.descuento, t.cobrado + t.descuento)}</small>
