@@ -18,6 +18,7 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Popover,
 } from '@mui/material';
 
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -25,7 +26,20 @@ import CheckIcon from '@mui/icons-material/Check';
 import UndoIcon from '@mui/icons-material/Undo';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAccess } from '@/context/AccessContext';
+import { ScopeGestion } from '@/gestion/compat';
+import { ActividadContenido, useActividadNuevos } from '@/componentes/gestion/pagos/actividad-campana';
+import { agruparPorDia, horaDe } from '@/gestion/actividadFormato';
+
+const VerFactura = React.lazy(() => import('@/componentes/gestion/CargarFactura').then((m) => ({ default: m.VerFactura })));
+
+// Campana única (Diego 10/11/2026, opción A): una sola campana en el header con solapas por
+// módulo, que abre en el módulo donde estás. Resultados = Actividad (facturas cargadas, editadas,
+// eliminadas); Recetas = los avisos de artículos/insumos; Cuenta = pedidos de acceso.
+const moduloDeRuta = (p) => (p.startsWith('/gestion') ? 'resultados'
+  : (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) ? 'recetas' : null);
+const esDeCuenta = (n) => n?.kind === 'access_request';
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
@@ -83,6 +97,15 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
+  const botonRef = React.useRef(null);
+  const location = useLocation();
+  const { puedeVer = () => true, isStaff } = useAccess() || {};
+  const verResultados = !isStaff && puedeVer('resultados');
+  const moduloActual = moduloDeRuta(location.pathname);
+  const actividad = useActividadNuevos(verResultados);
+  const [solapa, setSolapa] = useState('recetas');
+  const [vistoAlAbrir, setVistoAlAbrir] = useState('');
+  const [verFactura, setVerFactura] = useState(null);
 
   // El panel solo se abre por interacción del usuario (clic en el ícono) o
   // por solicitud explícita de otro componente (evento 'notifications:open').
@@ -420,6 +443,25 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   // ✅ Badge: UI notifs + no leídas del backend (pedidos de acceso, sync, etc.)
   const badgeCount = unreadUiCount + (unreadCount || 0);
+  const noLeidaRecetas = (n) => !n.read && !esDeCuenta(n);
+  const nRecetas = useMemo(() => merged.filter(noLeidaRecetas).length, [merged]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nCuenta = useMemo(() => merged.filter((n) => !n.read && esDeCuenta(n)).length, [merged]);
+  const hayCuenta = merged.some(esDeCuenta);
+  // El número de la campana es el del módulo donde estás; fuera de un módulo, el total.
+  const numeroCampana = moduloActual === 'resultados' ? actividad.nuevos
+    : moduloActual === 'recetas' ? nRecetas
+      : nRecetas + nCuenta + (verResultados ? actividad.nuevos : 0);
+  const abrirCampana = () => {
+    setSolapa(moduloActual === 'resultados' && verResultados ? 'resultados'
+      : moduloActual === 'recetas' ? 'recetas'
+        : (verResultados && actividad.nuevos > 0 && nRecetas === 0) ? 'resultados' : 'recetas');
+    setVistoAlAbrir(actividad.visto);
+    setOpen(true);
+  };
+  const cerrarCampana = () => {
+    setOpen(false);
+    if (verResultados) actividad.marcarVisto();
+  };
 
   const handleNotifClick = useCallback((notif) => {
     if (notif.source === 'backend') {
@@ -484,10 +526,102 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     );
   };
 
+  // Un aviso de Recetas/Cuenta con el formato de Actividad: ícono, título, detalle, hora y acciones.
+  const renderAviso = (notif) => {
+    const canUndo = (notif) => {
+      if (!notif) return false;
+      const kind = notif.kind;
+      const scope = notif.scope || notif.payload?.scope || 'articulo';
+      if (kind === 'objetivo_update' || kind === 'objetivo_change') return true;
+      return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
+    };
+
+    // "Ir al artículo/insumo": solo cuando el payload trae UN solo id (alta,
+    // movimiento) — con varios de una no hay a dónde "ir" puntualmente.
+    // notif.payload (eventos 'ui' en vivo, esta sesión) o notif.metadata
+    // (notificación ya guardada y releída del backend — ver notificationService.js
+    // createUiNotification, que persiste el payload tal cual dentro de metadata).
+    const GOTO_KINDS = new Set(['move', 'articulo_create', 'insumo_create', 'articulo_move', 'insumo_move']);
+    const getGotoId = (notif) => {
+      if (!notif || !GOTO_KINDS.has(notif.kind)) return null;
+      const ids = notif.payload?.ids || notif.metadata?.ids;
+      if (!Array.isArray(ids) || ids.length !== 1) return null;
+      const id = Number(ids[0]);
+      return Number.isFinite(id) ? id : null;
+    };
+    // Mismo mecanismo de "foco pendiente" que ya usa el buscador global para
+    // saltar entre Artículos e Insumos (sessionStorage + efecto de montaje en
+    // cada página — ver ArticulosMain.jsx/InsumosMain.jsx, "pendingFocusX").
+    const goToTarget = (notif) => {
+      const id = getGotoId(notif);
+      if (id == null) return;
+      const scope = notif.scope || notif.payload?.scope || notif.metadata?.scope || 'articulo';
+      setOpen(false);
+      try {
+        sessionStorage.setItem(scope === 'insumo' ? 'pendingFocusInsumo' : 'pendingFocusArticulo', String(id));
+      } catch { /* sessionStorage puede no estar disponible */ }
+      // Si ya estás parada en la página correcta, navigate() a la MISMA ruta no
+      // remonta el componente — el efecto que lee pendingFocusX del sessionStorage
+      // nunca corre, y el click no hacía nada. Este evento cubre ese caso: si la
+      // página ya está montada y escuchando, foquea de una sin esperar un remount.
+      window.dispatchEvent(new CustomEvent(
+        scope === 'insumo' ? 'focus:pendingInsumo' : 'focus:pendingArticulo',
+        { detail: { id } }
+      ));
+      navigate(scope === 'insumo' ? '/insumos' : '/menu');
+    };
+
+    const getCountdownLabel = (notif) => {
+      const secs = countdowns[notif.id];
+      if (!secs) return null;
+      const m = Math.floor(secs / 60);
+      const s = String(secs % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    };
+
+
+    const fecha = new Date(notif.created_at);
+    return (
+      <Box key={notif.id} onClick={() => handleNotifClick(notif)}
+        sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 2, py: 1, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(91,194,234,.08)' } }}>
+        <Box sx={{ mt: 1.1, width: 6, height: 6, borderRadius: '50%', flexShrink: 0, bgcolor: notif.read ? 'transparent' : '#5BC2EA' }} />
+        <Box sx={{ width: 26, height: 26, borderRadius: '6px', bgcolor: '#f2f4f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+          {getIcon(notif)}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: notif.read ? 500 : 700, lineHeight: 1.35 }}>
+            {formatTitle(notif)}
+            {notif.scope === 'insumo' && <Chip label="Insumo" size="small" sx={{ ml: 0.75, height: 16, fontSize: '0.65rem' }} />}
+          </Typography>
+          {notif.message && <Typography sx={{ fontSize: 11.5, color: 'text.secondary', whiteSpace: 'pre-line' }}>{notif.message}</Typography>}
+          {(canUndo(notif) || getGotoId(notif) != null) && (
+            <Box sx={{ display: 'flex', gap: 1.5, mt: 0.25 }}>
+              {canUndo(notif) && (
+                <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); undoUiNotif(notif); }}
+                  sx={{ border: 0, bgcolor: 'transparent', p: 0, cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, color: '#b45309' }}>
+                  Deshacer{getCountdownLabel(notif) ? ` (${getCountdownLabel(notif)})` : ''} ›
+                </Box>
+              )}
+              {getGotoId(notif) != null && (
+                <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); goToTarget(notif); }}
+                  sx={{ border: 0, bgcolor: 'transparent', p: 0, cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, color: '#0d6fa8' }}>
+                  Ir {notif.scope === 'insumo' ? 'al insumo' : 'al artículo'} ›
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+        <Typography sx={{ mt: 0.25, fontSize: 11, color: 'text.secondary', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+          {Number.isFinite(fecha.getTime()) ? horaDe(fecha) : ''}
+        </Typography>
+      </Box>
+    );
+  };
+
   return (
     <>
-      <IconButton onClick={() => setOpen(true)} color="inherit" aria-label="Abrir notificaciones">
-        <Badge badgeContent={badgeCount} color="error">
+      <IconButton ref={botonRef} onClick={abrirCampana} color="inherit" aria-label="Abrir notificaciones">
+        <Badge badgeContent={numeroCampana} color="error">
           <NotificationsIcon />
         </Badge>
       </IconButton>
@@ -526,230 +660,70 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         </Box>
       )}
 
-      <Drawer anchor="right" open={open} onClose={() => setOpen(false)}>
-        <div style={{ width: 520, padding: '16px' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '16px'
-          }}>
-            <Typography variant="h6">Notificaciones</Typography>
-
-            <IconButton
-              onClick={() => setOpen(false)}
-              size="small"
-              aria-label="Cerrar panel"
-            >
-              <CloseIcon />
-            </IconButton>
-          </div>
-
-          {badgeCount > 0 && (
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <Button
-                size="small"
-                startIcon={<CheckIcon />}
-                onClick={markAllUiAsRead}
-                variant="outlined"
-              >
-                Marcar como leídas ({badgeCount})
-              </Button>
+      <Popover
+        open={open}
+        anchorEl={botonRef.current}
+        onClose={cerrarCampana}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { width: 420, maxWidth: '94vw', borderRadius: '14px', mt: 1, boxShadow: '0 18px 50px rgba(0,0,0,.22)', display: 'flex', flexDirection: 'column', maxHeight: 'min(640px, 78vh)' } } }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', px: 2, pt: 1.75, pb: 1 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 16, flex: 1 }}>Notificaciones</Typography>
+          <IconButton onClick={cerrarCampana} size="small" aria-label="Cerrar"><CloseIcon fontSize="small" /></IconButton>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 0.75, px: 2, pb: 1.25, flexWrap: 'wrap' }}>
+          {[
+            verResultados && { id: 'resultados', nombre: 'Resultados', n: actividad.nuevos },
+            { id: 'recetas', nombre: 'Recetas', n: nRecetas },
+            hayCuenta && { id: 'cuenta', nombre: 'Cuenta', n: nCuenta },
+          ].filter(Boolean).map((m) => (
+            <Box key={m.id} component="button" type="button" onClick={() => setSolapa(m.id)}
+              sx={{
+                display: 'inline-flex', alignItems: 'center', gap: 0.75, cursor: 'pointer', font: 'inherit', fontSize: 12,
+                px: 1.25, py: 0.5, borderRadius: 999, border: '1px solid',
+                borderColor: solapa === m.id ? '#15213E' : '#e3e6eb',
+                bgcolor: solapa === m.id ? '#15213E' : 'transparent', color: solapa === m.id ? '#fff' : '#5b6577',
+              }}>
+              {m.nombre}
+              {m.n > 0 && <Box component="span" sx={{ bgcolor: '#ef4444', color: '#fff', borderRadius: 999, px: 0.75, fontSize: 10.5, fontWeight: 700, lineHeight: '16px' }}>{m.n > 99 ? '99+' : m.n}</Box>}
             </Box>
-          )}
-          <Divider />
-
-          {loading ? (
-            <Box sx={{ display: 'grid', placeItems: 'center', py: 3 }}>
-              <CircularProgress size={20} />
-              <Typography variant="body2" sx={{ mt: 1, opacity: 0.75 }}>Cargando…</Typography>
-            </Box>
-          ) : merged.length === 0 ? (
-            <Typography variant="body2" color="textSecondary" style={{ marginTop: '32px', textAlign: 'center' }}>
-              No hay notificaciones
-            </Typography>
-          ) : (
-            <List>
-              {merged.map((notif) => {
-                const canUndo = (notif) => {
-                  if (!notif) return false;
-                  const kind = notif.kind;
-                  const scope = notif.scope || notif.payload?.scope || 'articulo';
-                  if (kind === 'objetivo_update' || kind === 'objetivo_change') return true;
-                  return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
-                };
-
-                // "Ir al artículo/insumo": solo cuando el payload trae UN solo id (alta,
-                // movimiento) — con varios de una no hay a dónde "ir" puntualmente.
-                // notif.payload (eventos 'ui' en vivo, esta sesión) o notif.metadata
-                // (notificación ya guardada y releída del backend — ver notificationService.js
-                // createUiNotification, que persiste el payload tal cual dentro de metadata).
-                const GOTO_KINDS = new Set(['move', 'articulo_create', 'insumo_create', 'articulo_move', 'insumo_move']);
-                const getGotoId = (notif) => {
-                  if (!notif || !GOTO_KINDS.has(notif.kind)) return null;
-                  const ids = notif.payload?.ids || notif.metadata?.ids;
-                  if (!Array.isArray(ids) || ids.length !== 1) return null;
-                  const id = Number(ids[0]);
-                  return Number.isFinite(id) ? id : null;
-                };
-                // Mismo mecanismo de "foco pendiente" que ya usa el buscador global para
-                // saltar entre Artículos e Insumos (sessionStorage + efecto de montaje en
-                // cada página — ver ArticulosMain.jsx/InsumosMain.jsx, "pendingFocusX").
-                const goToTarget = (notif) => {
-                  const id = getGotoId(notif);
-                  if (id == null) return;
-                  const scope = notif.scope || notif.payload?.scope || notif.metadata?.scope || 'articulo';
-                  setOpen(false);
-                  try {
-                    sessionStorage.setItem(scope === 'insumo' ? 'pendingFocusInsumo' : 'pendingFocusArticulo', String(id));
-                  } catch { /* sessionStorage puede no estar disponible */ }
-                  // Si ya estás parada en la página correcta, navigate() a la MISMA ruta no
-                  // remonta el componente — el efecto que lee pendingFocusX del sessionStorage
-                  // nunca corre, y el click no hacía nada. Este evento cubre ese caso: si la
-                  // página ya está montada y escuchando, foquea de una sin esperar un remount.
-                  window.dispatchEvent(new CustomEvent(
-                    scope === 'insumo' ? 'focus:pendingInsumo' : 'focus:pendingArticulo',
-                    { detail: { id } }
-                  ));
-                  navigate(scope === 'insumo' ? '/insumos' : '/menu');
-                };
-
-                const getCountdownLabel = (notif) => {
-                  const secs = countdowns[notif.id];
-                  if (!secs) return null;
-                  const m = Math.floor(secs / 60);
-                  const s = String(secs % 60).padStart(2, '0');
-                  return `${m}:${s}`;
-                };
-
-                return (
-                  <ListItem key={notif.id} disablePadding sx={{ mb: 1.25 }}>
-                    <ListItemButton
-                      onClick={() => handleNotifClick(notif)}
-                      sx={{
-                        borderRadius: 2,
-                        alignItems: 'flex-start',
-                        backgroundColor: notif.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
-                        border: '1px solid rgba(25, 118, 210, 0.15)',
-                        transition: 'all 0.2s ease',
-                        '&:hover': {
-                          backgroundColor: notif.read
-                            ? 'rgba(25, 118, 210, 0.04)'
-                            : 'rgba(25, 118, 210, 0.12)',
-                        },
-                      }}
-                    >
-                      <div style={{ marginRight: 12, fontSize: 22, marginTop: 2 }}>
-                        {getIcon(notif)}
-                      </div>
-
-                      <Box sx={{ flex: 1 }}>
-                        <ListItemText
-                          secondaryTypographyProps={{ component: 'div' }}
-                          primaryTypographyProps={{ component: 'div' }}
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography
-                                component="span"
-                                variant="subtitle2"
-                                sx={{
-                                  fontWeight: notif.read ? 600 : 900,
-                                  color: notif.read ? 'text.secondary' : 'text.primary',
-                                }}
-                              >
-                                {formatTitle(notif)}
-                              </Typography>
-
-                              {notif.scope === 'insumo' && (
-                                <Chip
-                                  label="Insumo"
-                                  size="small"
-                                  sx={{
-                                    height: 18,
-                                    fontSize: '0.7rem',
-                                    bgcolor: 'info.light',
-                                    color: 'info.contrastText',
-                                  }}
-                                />
-                              )}
-                            </Box>
-                          }
-                          secondary={
-                            <Box component="span">
-                              {notif.message && (
-                                <Typography
-                                  component="span"
-                                  variant="body2"
-                                  sx={{
-                                    display: 'block',
-                                    whiteSpace: 'pre-line',
-                                    mt: 0.5,
-                                    color: 'text.secondary',
-                                  }}
-                                >
-                                  {notif.message}
-                                </Typography>
-                              )}
-
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                sx={{
-                                  display: 'block',
-                                  mt: 0.75,
-                                  opacity: 0.8,
-                                  color: 'text.disabled',
-                                }}
-                              >
-                                {formatDate(notif.created_at)}
-                              </Typography>
-
-                              {(canUndo(notif) || getGotoId(notif) != null) && (
-                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-
-                                  {canUndo(notif) && (
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      color="warning"
-                                      startIcon={<UndoIcon />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        undoUiNotif(notif);
-                                      }}
-                                      sx={{ textTransform: 'none' }}
-                                    >
-                                      Deshacer
-                                    </Button>
-                                  )}
-                                  {getGotoId(notif) != null && (
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      startIcon={<ArrowForwardIcon />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        goToTarget(notif);
-                                      }}
-                                      sx={{ textTransform: 'none' }}
-                                    >
-                                      Ir {notif.scope === 'insumo' ? 'al insumo' : 'al artículo'}
-                                    </Button>
-                                  )}
-                                </Box>
-                              )}
-                            </Box>
-                          }
-                        />
-                      </Box>
-                    </ListItemButton>
-                  </ListItem>
-                );
-              })}
-            </List>
-          )}
-        </div>
-      </Drawer>
+          ))}
+        </Box>
+        <Divider />
+        <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          {solapa === 'resultados' ? (
+            <ScopeGestion>
+              <Box sx={{ pt: 1 }}>
+                <ActividadContenido vistoAlAbrir={vistoAlAbrir} onVer={(v) => { setVerFactura(v); cerrarCampana(); }} />
+              </Box>
+            </ScopeGestion>
+          ) : loading ? (
+            <Box sx={{ display: 'grid', placeItems: 'center', py: 3 }}><CircularProgress size={20} /></Box>
+          ) : (() => {
+            const lista = merged.filter((n) => (solapa === 'cuenta' ? esDeCuenta(n) : !esDeCuenta(n)));
+            if (!lista.length) return <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center', fontSize: 12.5 }}>No hay notificaciones</Typography>;
+            return agruparPorDia(lista.map((n) => ({ ...n, creadoEn: n.created_at }))).map((g) => (
+              <Box key={g.dia}>
+                <Box sx={{ px: 2, pt: 1.25, pb: 0.5, fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'text.secondary' }}>{g.dia}</Box>
+                {g.items.map((notif) => renderAviso(notif))}
+              </Box>
+            ));
+          })()}
+        </Box>
+        {solapa !== 'resultados' && badgeCount > 0 && (
+          <Box sx={{ borderTop: 1, borderColor: 'divider', px: 2, py: 1 }}>
+            <Button size="small" startIcon={<CheckIcon />} onClick={markAllUiAsRead} sx={{ textTransform: 'none', fontWeight: 600 }}>
+              Marcar como leídas ({badgeCount})
+            </Button>
+          </Box>
+        )}
+      </Popover>
+      {verFactura && (
+        <React.Suspense fallback={null}>
+          <ScopeGestion><VerFactura rowId={verFactura.rowId} detalle={verFactura.detalle} onClose={() => setVerFactura(null)} /></ScopeGestion>
+        </React.Suspense>
+      )}
     </>
   );
 }
