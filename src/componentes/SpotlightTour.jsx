@@ -11,6 +11,7 @@
 // (mismo bug que rompía el dropdown de perfil y los tooltips). Se compensa
 // dividiendo por el factor de zoom real (leído en vivo, no hardcodeado).
 import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 
 function getZoomFactor() {
@@ -22,7 +23,14 @@ function getZoomFactor() {
   }
 }
 
-export default function SpotlightTour({
+// Se dibuja en <body> (portal): dentro de un contenedor con su propio apilamiento (la tabla, que es
+// position: fixed) quedaba DEBAJO del modal de receta aunque tuviera z-index mayor (10/11).
+export default function SpotlightTour(props) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(<SpotlightTourContenido {...props} />, document.body);
+}
+
+function SpotlightTourContenido({
   targetRef,
   text,
   pose = 'senala',
