@@ -272,6 +272,16 @@
   margin-bottom: 14px;
 }
 
+.auth-success {
+  background: rgba(52,211,153,.12);
+  border: 1px solid rgba(52,211,153,.3);
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 13px;
+  color: #34d399;
+  margin-bottom: 14px;
+}
+
 /* ── Links y pie ────────────────────────────────────────────────── */
 .auth-link {
   color: var(--sky);
