@@ -9,6 +9,7 @@ import React, {
   useCallback,
   useDeferredValue,
 } from "react";
+import { esFormula, limpiarFormula, evaluarFormula } from '@/utils/formulaPrecio';
 import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip } from "@mui/material";
 
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
@@ -2568,12 +2569,25 @@ export default function TablaArticulos({
                           setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: '' }));
                         }}
                         onChange={(e) => {
+                          // Se puede tipear una cuenta (ej. 9600*5): se guarda el texto tal cual y se calcula al salir/Enter
+                          if (esFormula(e.target.value)) {
+                            setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: limpiarFormula(e.target.value) }));
+                            return;
+                          }
                           const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                           setManuales(s => ({ ...s, [`__list_${currentPriceListId}_${id}`]: raw === '' ? '' : Number(raw) }));
                         }}
                         onBlur={(e) => {
-                          const raw = String(manuales[`__list_${currentPriceListId}_${id}`] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
-                          const valEnLista = raw === '' ? null : Number(raw);
+                          const tipeado = manuales[`__list_${currentPriceListId}_${id}`];
+                          let valEnLista;
+                          if (esFormula(tipeado)) {
+                            const r = evaluarFormula(tipeado);
+                            // Cuenta mal escrita (o resultado ≤ 0): no se guarda nada, vuelve al valor anterior
+                            valEnLista = (r != null && r > 0) ? Math.round(r) : null;
+                          } else {
+                            const raw = String(tipeado ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                            valEnLista = raw === '' ? null : Number(raw);
+                          }
 
                           if (valEnLista === null) {
                             // Limpiar solo el override de visualización, no tocar nada más
@@ -2627,7 +2641,11 @@ export default function TablaArticulos({
               {
                 const rawManual = manuales[id] !== undefined ? manuales[id] : (priceConfig.byArticle?.[String(id)]?.precioManual ?? '');
                 const tieneValor = rawManual !== '' && rawManual != null;
-                const valorNum = tieneValor ? Number(String(rawManual).replace(/\./g, '')) : null;
+                // Mientras se tipea una cuenta (ej. 9600*5), la segunda línea ya muestra el resultado
+                const valorNum = !tieneValor ? null
+                  : esFormula(rawManual)
+                    ? (() => { const r = evaluarFormula(rawManual); return r != null && r > 0 ? Math.round(r) : null; })()
+                    : Number(String(rawManual).replace(/\./g, ''));
                 const paso = Number(redondeoConfig?.valor) || 0;
                 // Sugerido redondeado hacia arriba al paso (spec §5.2)
                 // `sugerido` ya viene redondeado hacia arriba al paso desde el origen (F1)
@@ -2716,6 +2734,12 @@ export default function TablaArticulos({
                             }}
                             onChange={(e) => {
                               manualTocadoRef.current.add(id);
+                              // Se puede tipear una cuenta (ej. 9600*5): se guarda el texto tal cual y se calcula al salir/Enter
+                              if (esFormula(e.target.value)) {
+                                setManuales(s => ({ ...s, [id]: limpiarFormula(e.target.value) }));
+                                setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+                                return;
+                              }
                               const raw = e.target.value.replace(/\./g, '').replace(/[^0-9]/g, '');
                               setManuales(s => ({ ...s, [id]: raw === '' ? '' : Number(raw) }));
                               setUsarChipIds(prev => { const n = new Set(prev); n.delete(id); return n; });
@@ -2723,10 +2747,22 @@ export default function TablaArticulos({
                             onBlur={(e) => {
                               setFocusedManualId(f => f === id ? null : f);
                               manualTocadoRef.current.delete(id);
-                              const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
-                              const val = raw === '' ? null : Number(raw);
                               const original = valorAlEnfocarRef.current[id] ?? null;
                               delete valorAlEnfocarRef.current[id];
+                              let val;
+                              if (esFormula(manuales[id])) {
+                                const r = evaluarFormula(manuales[id]);
+                                if (!(r != null && r > 0)) {
+                                  // Cuenta mal escrita: no se guarda nada y la caja vuelve al valor que tenía
+                                  setManuales(s => ({ ...s, [id]: original == null ? '' : original }));
+                                  return;
+                                }
+                                val = Math.round(r);
+                                setManuales(s => ({ ...s, [id]: val }));
+                              } else {
+                                const raw = String(manuales[id] ?? '').replace(/\./g, '').replace(/[^0-9]/g, '');
+                                val = raw === '' ? null : Number(raw);
+                              }
                               // Sin cambio real (no se tipeó nada, o se volvió a dejar igual):
                               // no disparar un guardado de más.
                               if (val === original) return;
