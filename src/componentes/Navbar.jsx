@@ -468,8 +468,9 @@ export default function Navbar() {
                 </Button>
               )}
             </Box>
-            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú). */}
-            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')) && (
+            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú y el Panel de
+                Gestión — Diego 10/11/2026: «le falta el selector de sucursal igual que en recetas»). */}
+            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos') || location.pathname === '/gestion') && (
               <Box sx={{ pl: 1, pb: 0.25 }}>
                 <SucursalesChips />
               </Box>
