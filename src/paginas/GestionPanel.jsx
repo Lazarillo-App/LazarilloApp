@@ -273,7 +273,9 @@ function GestionPanelContenido() {
     <Toaster position="bottom-right" />
     <SinRubroPanel />
     <Box sx={{ p: { xs: 1.5, md: 3 }, display: 'flex', flexDirection: 'column', height: { md: 'calc(100vh - 64px)' } }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} gap={1.5}>
+      {/* Título y subtítulo solo en pantallas chicas (Diego 10/11/2026): en la compu el módulo va bajo el
+          logo del header y la sucursal en sus chips; los íconos pasan a la barra de filtros. */}
+      <Stack direction="column" gap={1.5} sx={{ display: { xs: 'flex', md: 'none' } }}>
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
             <Typography variant="h5" fontWeight={600} noWrap>Panel de Gestión</Typography>
@@ -287,7 +289,21 @@ function GestionPanelContenido() {
             <Box sx={{ display: { xs: 'inline-flex', md: 'none' }, maxWidth: '100%' }}><ActualizadoAl nombre={nombreActualizado} /></Box>
           </Stack>
         </Box>
-        <Stack direction="row" alignItems="center" gap={1}>
+      </Stack>
+
+      {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
+          derecha. La sucursal se elige en el selector global de la app, no acá. */}
+      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: { xs: 3, md: 0.5 }, pb: 2 }}>
+        <FiltroPeriodo
+          year={estado.year}
+          meses={estado.meses}
+          minYear={rango.data?.minYear ?? undefined}
+          maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
+          onYear={(year) => cambiar({ year })}
+          onToggleMes={toggleMes}
+          onTodoElAnio={() => cambiar({ meses: [] })}
+        />
+        <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
           <BloqueSeguro nombre="Actividad" compacto><ScopeGestion><ActividadCampana /></ScopeGestion></BloqueSeguro>
           <Tooltip title="Notas">
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
@@ -317,22 +333,8 @@ function GestionPanelContenido() {
           </Tooltip>
           )}
         </Stack>
-      </Stack>
-
-      {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
-          derecha. La sucursal se elige en el selector global de la app, no acá. */}
-      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: 3, pb: 2 }}>
-        <FiltroPeriodo
-          year={estado.year}
-          meses={estado.meses}
-          minYear={rango.data?.minYear ?? undefined}
-          maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
-          onYear={(year) => cambiar({ year })}
-          onToggleMes={toggleMes}
-          onTodoElAnio={() => cambiar({ meses: [] })}
-        />
         {estado.tab !== 'ventas' && (
-          <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
+          <Stack direction="row" alignItems="center" gap={1}>
             {verCarga && <BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro>}
             {verPanel && !enParaMirar && pdvId != null && (
               <ScopeGestion>
