@@ -148,6 +148,8 @@ export default function Navbar() {
   });
 
   // Nombre del módulo bajo el logo (Diego 10/11/2026): el mismo que en el menú de módulos.
+  const conFilaSucursales = !isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')
+    || location.pathname === '/gestion' || location.pathname.startsWith('/rrhh/cronogramas'));
   const nombreModulo = (() => {
     const p = location.pathname;
     if (p.startsWith('/gestion/medios-pago')) return 'Medios de pago';
@@ -253,6 +255,9 @@ export default function Navbar() {
         <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
             {/* Logo + pulso de los datos (Diego, 06/11/2026: el punto va al lado del logo) */}
+            {/* Con la fila de sucursales abajo de los botones, el logo se alinea con la fila de
+                botones, no con el centro de la barra (Diego 10/11/2026: «antes el logo coincidía
+                con los botones»): misma altura y mismo margen de arriba que esa fila. */}
             <Box
               sx={{
                 mr: 2,
@@ -260,6 +265,7 @@ export default function Navbar() {
                 alignItems: 'center',
                 gap: 1,
                 pr: '50px',
+                ...(conFilaSucursales ? { alignSelf: 'flex-start', mt: 0.75, height: 36.5 } : {}),
               }}
             >
               <Box
