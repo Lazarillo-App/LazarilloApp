@@ -529,8 +529,6 @@ export function ArticuloNuevoModal({
   const campoNombreRubroRef = useRef(null);
   const padrinoRef = useRef(null);
   const guardarRef = useRef(null);
-  const rubroNuevoRef = useRef(null);
-  const subrubroNuevoRef = useRef(null);
   const EMPTY_FORM = { nombre: '', rubro: '', subrubro: '', precio: '', agrupacionId: '', skuExterno: '' };
   const isEdit = !!articulo;
   // Recorrido de Anthony al crear un artículo (estaba escrito pero nunca se conectaba; 10/11).
@@ -582,20 +580,6 @@ export function ArticuloNuevoModal({
   const esRubroNuevo = form.rubro === '__nuevo__';
   const esSubrubroNuevo = form.subrubro === '__nuevo__';
 
-  // El campo "Nombre del rubro/subrubro nuevo" tiene autoFocus, pero el propio
-  // <Select> de MUI devuelve el foco a sí mismo al cerrar su menú (accesibilidad) —
-  // esa devolución gana la carrera y el autoFocus del TextField se pierde. Forzar
-  // el foco acá, un tick después de que el Select termine su propia restauración.
-  useEffect(() => {
-    if (!esRubroNuevo) return;
-    const t = setTimeout(() => rubroNuevoRef.current?.focus(), 50);
-    return () => clearTimeout(t);
-  }, [esRubroNuevo]);
-  useEffect(() => {
-    if (!esSubrubroNuevo) return;
-    const t = setTimeout(() => subrubroNuevoRef.current?.focus(), 50);
-    return () => clearTimeout(t);
-  }, [esSubrubroNuevo]);
 
   // Cargar rubros y agrupaciones al abrir
   useEffect(() => {
@@ -907,60 +891,28 @@ export function ArticuloNuevoModal({
           />
           )}
 
-          {/* Rubro */}
+          {/* Rubro y subrubro: se escribe para filtrar y, si no existe, "+ Crear …" (como al crear un
+              insumo; pedido de la usuaria 10/11). Por detrás sigue el mismo estado: '__nuevo__' + el nombre. */}
           <Stack direction="row" spacing={1.5}>
-            <Stack sx={{ flex: 1 }} spacing={0.75}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Rubro *</InputLabel>
-                <Select MenuProps={downwardMenuProps()} label="Rubro *" value={form.rubro}
-                  onChange={e => setForm(f => ({
-                    ...f, rubro: e.target.value, subrubro: '',
-                  }))}>
-                  <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>
-                    + Crear rubro nuevo…
-                  </MenuItem>
-                  <Divider />
-                  {rubros.length === 0 && (
-                    <MenuItem disabled value="">
-                      <em style={{ color: '#94a3b8', fontSize: '0.82rem' }}>Sin rubros aún</em>
-                    </MenuItem>
-                  )}
-                  {rubros.map(r => <MenuItem key={r.nombre} value={r.nombre}>{r.nombre}</MenuItem>)}
-                </Select>
-              </FormControl>
-              {esRubroNuevo && (
-                <TextField size="small" fullWidth autoFocus inputRef={rubroNuevoRef}
-                  label="Nombre del rubro nuevo"
-                  placeholder="Ej: Bebidas, Comidas, Postres…"
-                  value={rubroNuevo}
-                  onChange={e => setRubroNuevo(e.target.value)}
-                />
-              )}
-            </Stack>
-
-            <Stack sx={{ flex: 1 }} spacing={0.75}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Subrubro</InputLabel>
-                <Select MenuProps={downwardMenuProps()} label="Subrubro" value={form.subrubro}
-                  onChange={e => setForm(f => ({ ...f, subrubro: e.target.value }))}
-                  disabled={!rubroEfectivo}>
-                  <MenuItem value="">Sin subrubro</MenuItem>
-                  <MenuItem value="__nuevo__" sx={{ color: themeColor, fontStyle: 'italic' }}>
-                    + Crear subrubro nuevo…
-                  </MenuItem>
-                  {(subrubrosDelRubro.length > 0 || esRubroNuevo) && <Divider />}
-                  {subrubrosDelRubro.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                </Select>
-              </FormControl>
-              {esSubrubroNuevo && (
-                <TextField size="small" fullWidth autoFocus inputRef={subrubroNuevoRef}
-                  label="Nombre del subrubro nuevo"
-                  placeholder="Ej: Cócteles, Sin alcohol…"
-                  value={subrubroNuevo}
-                  onChange={e => setSubrubroNuevo(e.target.value)}
-                />
-              )}
-            </Stack>
+            <CampoCrearOElegir
+              label="Rubro *" placeholder="Escribí para buscar o crear…" que="rubro" color={themeColor}
+              opciones={rubros.map(r => r.nombre)}
+              valor={esRubroNuevo ? rubroNuevo : form.rubro}
+              onCambio={(nombre, existe) => {
+                setForm(f => ({ ...f, rubro: !nombre ? '' : existe ? nombre : '__nuevo__', subrubro: '' }));
+                setRubroNuevo(existe ? '' : nombre);
+                setSubrubroNuevo('');
+              }}
+            />
+            <CampoCrearOElegir
+              label="Subrubro" placeholder={rubroEfectivo ? 'Escribí para buscar o crear…' : 'Elegí primero el rubro'} que="subrubro" color={themeColor}
+              opciones={subrubrosDelRubro} disabled={!rubroEfectivo}
+              valor={esSubrubroNuevo ? subrubroNuevo : form.subrubro}
+              onCambio={(nombre, existe) => {
+                setForm(f => ({ ...f, subrubro: !nombre ? '' : existe ? nombre : '__nuevo__' }));
+                setSubrubroNuevo(existe ? '' : nombre);
+              }}
+            />
           </Stack>
           </Stack>
 
@@ -1019,5 +971,42 @@ export function ArticuloNuevoModal({
         />
       )}
     </Dialog>
+  );
+}
+
+/* Campo de texto con lista que filtra al escribir; si lo escrito no existe ofrece "+ Crear …".
+   onCambio(nombre, existe): existe = es una opción de la lista (si no, es uno nuevo a crear). */
+function CampoCrearOElegir({ label, placeholder, que, opciones, valor, onCambio, disabled = false, color }) {
+  const buscar = (v) => opciones.find(o => o.toLowerCase() === String(v || '').trim().toLowerCase());
+  return (
+    <Autocomplete
+      size="small" sx={{ flex: 1 }} freeSolo autoHighlight openOnFocus disabled={disabled}
+      options={opciones}
+      value={valor || null}
+      filterOptions={(opts, { inputValue }) => {
+        const q = inputValue.trim().toLowerCase();
+        const filtradas = q ? opts.filter(o => o.toLowerCase().includes(q)) : opts;
+        return q && !buscar(q) ? [{ __crear: true, nombre: inputValue.trim() }, ...filtradas] : filtradas;
+      }}
+      getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre)}
+      isOptionEqualToValue={(o, v) => (typeof o === 'string' ? o : o.nombre) === (typeof v === 'string' ? v : v.nombre)}
+      onInputChange={(_, v, reason) => {
+        if (reason !== 'input') return;
+        const existente = buscar(v);
+        onCambio(existente || v.trim(), !!existente);
+      }}
+      onChange={(_, val) => {
+        if (val && typeof val === 'object') onCambio(val.nombre, false);
+        else if (typeof val === 'string') { const existente = buscar(val); onCambio(existente || val.trim(), !!existente); }
+        else onCambio('', false);
+      }}
+      renderOption={(props, o) => (
+        <li {...props} key={typeof o === 'string' ? o : 'crear-' + o.nombre}
+          style={typeof o === 'string' ? undefined : { color, fontStyle: 'italic' }}>
+          {typeof o === 'string' ? o : `+ Crear ${que} "${o.nombre}"`}
+        </li>
+      )}
+      renderInput={(params) => <TextField {...params} label={label} placeholder={placeholder} />}
+    />
   );
 }
