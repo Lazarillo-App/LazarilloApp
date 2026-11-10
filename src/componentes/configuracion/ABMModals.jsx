@@ -54,6 +54,12 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const themeColor = 'var(--color-primary, #3b82f6)';
   const { notificarAltaArticuloInsumo } = useConfig();
   const isEdit = !!insumo;
+  // Recorrido de Anthony al crear un insumo (igual que el de artículo; 10/11).
+  const rec = useRecorrido('crear_insumo', 4, open && !isEdit);
+  const insPadrinoRef = useRef(null);
+  const insNombreRef = useRef(null);
+  const insUnidadRef = useRef(null);
+  const insGuardarRef = useRef(null);
   // Insumo manual (no sincronizado con Maxi todavía): el código es provisorio
   // (L-...) y tiene sentido poder editarlo. Uno ya sincronizado no — el backend
   // ni siquiera procesa ese campo en el PUT (ver actualizar, insumosController).
@@ -320,7 +326,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           {/* Padrino: heredar rubro/unidad/precio/agrupación de otro insumo —
               también disponible al editar, para recategorizar copiando de otro
               insumo ya cargado (mismo criterio que ArticuloNuevoModal). */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box ref={insPadrinoRef} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Checkbox size="small" checked={usarPadrino} disabled={saving || !!success}
               onChange={e => { setUsarPadrino(e.target.checked); if (!e.target.checked) { setPadrinoSelected(null); setPadrinoQuery(''); } }} />
             <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
@@ -398,7 +404,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             </Stack>
           )}
 
-          <TextField label="Nombre *" size="small" fullWidth autoFocus
+          <TextField ref={insNombreRef} label="Nombre *" size="small" fullWidth autoFocus
             value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
             disabled={saving || !!success} />
 
@@ -460,7 +466,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           </FormControl>
           )}
 
-          <Stack direction="row" spacing={1.5}>
+          <Stack ref={insUnidadRef} direction="row" spacing={1.5}>
             <FormControl size="small" sx={{ width: 140 }}>
               <InputLabel>Unidad</InputLabel>
               <Select MenuProps={downwardMenuProps()} label="Unidad" value={form.unidadMed} disabled={saving || !!success}
@@ -487,12 +493,29 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
       </DialogContent>
       <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
         <Button size="small" color="inherit" onClick={handleClose} disabled={saving}>Cancelar</Button>
-        <Button size="small" variant="contained" onClick={handleSave} disabled={saving || !!success}
+        <Button ref={insGuardarRef} size="small" variant="contained" onClick={handleSave} disabled={saving || !!success}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
           sx={{ bgcolor: themeColor, '&:hover': { filter: 'brightness(0.9)', bgcolor: themeColor } }}>
           {saving ? (isEdit ? 'Guardando…' : 'Creando…') : (isEdit ? 'Guardar cambios' : 'Crear insumo')}
         </Button>
       </DialogActions>
+
+      {rec.visible && rec.paso === 1 && (
+        <SpotlightTour targetRef={insPadrinoRef} pose="investiga" {...rec.props(1)}
+          text={<>Si este insumo se parece a otro que ya tenés, tildá acá y elegilo como <b>referencia</b>: copia su rubro, unidad y precio.</>} />
+      )}
+      {rec.visible && rec.paso === 2 && (
+        <SpotlightTour targetRef={insNombreRef} pose="presenta" {...rec.props(2)}
+          text={<>Poné el <b>nombre</b> del insumo y, más abajo, su <b>rubro</b> (por ejemplo Verdulería o Lácteos). Son los únicos datos obligatorios.</>} />
+      )}
+      {rec.visible && rec.paso === 3 && (
+        <SpotlightTour targetRef={insUnidadRef} pose="senala" {...rec.props(3)}
+          text={<>Elegí en qué <b>unidad</b> lo comprás (kg, lt, unidad) y su <b>precio</b>. Con eso se calcula el costo en tus recetas; después se actualiza solo con tus compras.</>} />
+      )}
+      {rec.visible && rec.paso === 4 && (
+        <SpotlightTour targetRef={insGuardarRef} pose="saluda" {...rec.props(4)}
+          text="Cuando esté listo, guardalo: el insumo aparece al instante en la tabla y ya lo podés usar en tus recetas." />
+      )}
     </Dialog>
   );
 }

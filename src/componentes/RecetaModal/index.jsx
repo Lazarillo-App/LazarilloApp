@@ -14,6 +14,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { useRecorrido } from '@/hooks/useRecorrido';
 import {
   Modal, Box, Typography, TextField, Button, IconButton,
   Alert, CircularProgress, Divider, Chip, Tooltip,
@@ -278,6 +280,14 @@ export default function RecetaModal({
 
   // Sub-modales
   const [notasModalOpen, setNotasModalOpen] = useState(false);
+  // Recorrido de Anthony la primera vez en la receta de un artículo (10/11): resumen, agregar
+  // ingrediente, cantidad y unidad, foto y paso a paso, guardar. No en insumos ni para el staff.
+  const recResumenRef = useRef(null);
+  const recAgregarRef = useRef(null);
+  const recIngredientesRef = useRef(null);
+  const recFotoRef = useRef(null);
+  const recGuardarRef = useRef(null);
+  const rec = useRecorrido('receta', 5, open && !modoInsumo && !loading && !notasModalOpen && !isStaff);
   const [previewFotoOpen, setPreviewFotoOpen] = useState(false);
   const [editarFotoSrc, setEditarFotoSrc] = useState(null); // foto en edición desde el preview
   const [cocinaModalOpen, setCocinaModalOpen] = useState(false);
@@ -2340,6 +2350,7 @@ export default function RecetaModal({
                   }}>
                     {/* Columna izquierda: FOTO */}
                     <Box
+                      ref={recFotoRef}
                       onClick={() => setNotasModalOpen(true)}
                       sx={{
                         display: 'flex', flexDirection: 'column', gap: 0.5,
@@ -2932,7 +2943,7 @@ export default function RecetaModal({
                   )}
 
                   {items.length === 0 ? (
-                    <Box sx={{
+                    <Box ref={recIngredientesRef} sx={{
                       py: 4, textAlign: 'center',
                       border: '2px dashed', borderColor: 'divider', borderRadius: 1.5, mb: 1.5,
                     }}>
@@ -2941,7 +2952,7 @@ export default function RecetaModal({
                       </Typography>
                     </Box>
                   ) : (
-                    <Box sx={{ mb: 1.5 }}>
+                    <Box ref={recIngredientesRef} sx={{ mb: 1.5 }}>
                       {itemsOrdenados.map((item, i) => {
                         const realIndex = items.indexOf(item); // índice real en el array original
                         return (
@@ -3059,6 +3070,7 @@ export default function RecetaModal({
 
                   <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
                     <Button
+                      ref={recAgregarRef}
                       startIcon={insumosLoading ? <CircularProgress size={14} /> : <AddIcon />}
                       onClick={addItem}
                       size="small"
@@ -3089,7 +3101,7 @@ export default function RecetaModal({
                     </Box>
                   )}
 
-                  <Box sx={{
+                  <Box ref={recResumenRef} sx={{
                     display: 'grid',
                     gridTemplateColumns: (() => {
                       const ocultarExtras = modoInsumo && !verCostosExtra;
@@ -3326,6 +3338,7 @@ export default function RecetaModal({
               </Button>
 
               <Button
+                ref={recGuardarRef}
                 onClick={() => handleSave()}
                 variant="contained"
                 size="small"
@@ -3339,6 +3352,27 @@ export default function RecetaModal({
           </Box>
         </Box >
       </Modal >
+
+      {rec.visible && rec.paso === 1 && (
+        <SpotlightTour targetRef={recResumenRef} pose="presenta" {...rec.props(1)}
+          text={<>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué porcentaje del precio se lleva el costo (<b>food cost</b>).</>} />
+      )}
+      {rec.visible && rec.paso === 2 && (
+        <SpotlightTour targetRef={recAgregarRef} pose="senala" {...rec.props(2)}
+          text={<>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</>} />
+      )}
+      {rec.visible && rec.paso === 3 && (
+        <SpotlightTour targetRef={recIngredientesRef} pose="investiga" {...rec.props(3)}
+          text={<>En cada ingrediente poné <b>cuánto lleva</b> por porción y en qué <b>unidad</b> (gr, ml, unidad). El costo se calcula solo.</>} />
+      )}
+      {rec.visible && rec.paso === 4 && (
+        <SpotlightTour targetRef={recFotoRef} pose="presenta" {...rec.props(4)}
+          text={<>Acá va la <b>foto</b> del plato terminado y el <b>paso a paso</b> de la preparación.</>} />
+      )}
+      {rec.visible && rec.paso === 5 && (
+        <SpotlightTour targetRef={recGuardarRef} pose="saluda" {...rec.props(5)}
+          text="Cuando termines, guardá. Si cambia el precio de un insumo, el costo de la receta se actualiza solo." />
+      )}
 
       {/* ── Modal notas + foto ── */}
       {
