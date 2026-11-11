@@ -627,9 +627,17 @@ export default function ConfigInsumosTab({
               <CardBody>
                 {/* Fila 1: semanas sin compra */}
                 <Stack spacing={1.5} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }}>
-                  <Typography variant="body2" sx={{ flex: 1, fontWeight: 700, fontSize: '0.85rem' }}>
-                    Semanas sin compra
-                  </Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Semanas sin compra
+                    </Typography>
+                    {Number(config.compras_alerta_semanas) > 0 && (
+                      <Alert severity="warning" sx={{ py: 0.5, px: 1.25, alignItems: 'center', fontSize: '0.78rem', borderRadius: 1.5,
+                        '& .MuiAlert-icon': { p: 0, mr: 1, fontSize: 18 }, '& .MuiAlert-message': { p: 0, lineHeight: 1.4 } }}>
+                        Insumos sin compra en más de <strong>{config.compras_alerta_semanas} semanas</strong> aparecen como vencidos.
+                      </Alert>
+                    )}
+                  </Stack>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
                     <TextField size="small" type="number"
                       value={config.compras_alerta_semanas}
