@@ -10,7 +10,8 @@
 //    muestra/oculta sugerido y % (verCostosExtra).
 //  - ARTÍCULO (!modoInsumo && !promoMode): costo y % en una línea + objetivo;
 //    precio sugerido con la barra que mueve el PRECIO.
-//  - PROMOCIÓN (promoMode): venta sin promo, sugerido con barra de %, % costo actual.
+//  - PROMOCIÓN (promoMode): igual que el artículo (Diego 11/11/2026) + «Venta sin promo» con el
+//    descuento real arriba del sugerido.
 //  - STAFF (isStaff): sin sugerido ni %.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from 'react';
@@ -61,8 +62,9 @@ export default function PieCostos({
       gridTemplateColumns: (() => {
         const ocultarExtras = modoInsumo && !verCostosExtra;
         const colPeso = Number(rendimientoPeso) > 0 ? 1 : 0;
-        // Artículo: el % de costo va fusionado con el costo (no tiene columna propia).
-        const esPieArticulo = !modoInsumo && !promoMode;
+        // Artículo y promoción: el % de costo va fusionado con el costo (no tiene columna propia).
+        // Diego 11/11/2026: el pie de la promo es igual al de cualquier producto.
+        const esPieArticulo = !modoInsumo;
         const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : (esPieArticulo ? 1 : 2));
         return `repeat(${cols}, 1fr)`;
       })(),
@@ -95,9 +97,9 @@ export default function PieCostos({
             ? labelPorUnidad
             : 'Costo total'}
         </Typography>
-        {!modoInsumo && !promoMode ? (
+        {!modoInsumo ? (
           <>
-            {/* Artículo: costo y su % sobre el precio actual en una sola línea, objetivo abajo */}
+            {/* Artículo y promoción: costo y su % sobre el precio actual en una sola línea, objetivo abajo */}
             <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap' }}>
               ${fmt(costoXRendimiento)}
               {!isStaff && pctCostoActual !== null && (
@@ -139,8 +141,14 @@ export default function PieCostos({
       {(!modoInsumo || verCostosExtra) && <Box sx={{ display: isStaff ? 'none' : undefined }}>
         {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
         {promoMode && ventaSinPromo > 0 && (
-          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem' }}>
+          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
             Venta sin promo: ${fmt(ventaSinPromo)}
+            {/* Descuento real de la promo contra la venta sin promo (con el precio actual). */}
+            {precioActual > 0 && (
+              <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600, ml: 0.75 }}>
+                · {precioActual <= ventaSinPromo ? '−' : '+'}{fmt(Math.abs(1 - precioActual / ventaSinPromo) * 100, 1)}%
+              </Box>
+            )}
           </Typography>
         )}
         <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -209,7 +217,7 @@ export default function PieCostos({
           </Stack>
         )}
         {/* Artículo: "Actual" y la barra del objetivo comparten renglón (la barra, corta) */}
-        <Box sx={!modoInsumo && !promoMode ? { display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 } : undefined}>
+        <Box sx={!modoInsumo ? { display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 } : undefined}>
         {precioActual > 0 && (
           <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25} sx={{ whiteSpace: 'nowrap' }}>
             <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
@@ -222,7 +230,7 @@ export default function PieCostos({
             objetivo entero (commitObjetivo), así que el precio salta de a 1 punto de % (5% a 90%).
             Elaborados y promociones: la barra sigue moviendo el % directamente. */}
         {(() => {
-          const barraPorPrecio = !modoInsumo && !promoMode && costoXRendimiento > 0;
+          const barraPorPrecio = !modoInsumo && costoXRendimiento > 0;
           const pctObj = Number(pctCostoIdeal) || 0;
           // La barra va al revés del %: a la derecha, % más bajo = precio más alto.
           // (Se usa el % negado como valor para que cada paso sea 1 punto parejo.)
@@ -232,7 +240,7 @@ export default function PieCostos({
             '&:hover': { bgcolor: 'action.selected' },
           };
           return (
-        <Stack direction="row" alignItems="center" spacing={0.25} sx={!modoInsumo && !promoMode ? { width: 200, flexShrink: 0 } : { mt: 0.5 }}>
+        <Stack direction="row" alignItems="center" spacing={0.25} sx={!modoInsumo ? { width: 200, flexShrink: 0 } : { mt: 0.5 }}>
           <IconButton
             size="small"
             title={barraPorPrecio ? 'Bajar el precio sugerido' : undefined}
@@ -276,17 +284,6 @@ export default function PieCostos({
           );
         })()}
         </Box>
-      </Box>}
-      {!modoInsumo && promoMode && <Box sx={{ display: isStaff ? 'none' : undefined }}>
-        <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
-        {pctCostoActual !== null ? (
-          <>
-            <Typography variant="h6" fontWeight={800} color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>{fmt(pctCostoActual, 1)}%</Typography>
-            <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>Ideal: {pctCostoIdeal}%</Typography>
-          </>
-        ) : (
-          <Typography variant="h6" color="text.disabled">—</Typography>
-        )}
       </Box>}
     </Box>
     </Box>
