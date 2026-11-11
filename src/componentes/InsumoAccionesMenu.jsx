@@ -25,6 +25,7 @@ import {
   insumoUpdate,
 } from '../servicios/apiInsumos';
 import { proponerDiscontinuarInsumo } from '@/servicios/apiRecetaProposals';
+import { useAccess } from '@/context/AccessContext';
 import { esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 
 const getNum = (v) => Number(v ?? 0);
@@ -56,6 +57,7 @@ function InsumoAccionesMenu({
   // siguen siendo de aplicación directa, por eso quedan ocultas en este modo.
   staffMode = false,
 }) {
+  const { staffPuede = () => true } = useAccess() || {};
   const [anchorEl, setAnchorEl] = useState(null);
   const [dlgMoverOpen, setDlgMoverOpen] = useState(false);
   const [destId, setDestId] = useState('');
@@ -400,7 +402,8 @@ function InsumoAccionesMenu({
 
   return (
     <>
-      {isTodoView && Array.isArray(reparto) && (() => {
+      {/* Staff no mueve de Sin agrupación a otras agrupaciones salvo que se le habilite (Diego 11/11/2026). */}
+      {isTodoView && Array.isArray(reparto) && (!staffMode || staffPuede('mover_agrupacion')) && (() => {
         // Columna angosta: el texto se corta con «…» dentro del botón (el detalle va en el
         // tooltip) y nunca pisa el ⋮ de al lado.
         const uno = reparto.length === 1;

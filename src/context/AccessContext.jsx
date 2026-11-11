@@ -20,6 +20,12 @@ import { MeAPI } from '../servicios/apiMe';
 import { setVistaPrevia } from '../servicios/vistaPrevia';
 
 const AccessCtx = createContext(null);
+
+// Lo que Staff puede por defecto (Diego 11/11/2026). Todo lo que no figura, no.
+export const STAFF_DEFAULTS = {
+  staff: { mover_agrupacion: false },
+  jefe: { mover_agrupacion: false },
+};
 export const useAccess = () => useContext(AccessCtx);
 
 // Matriz mínima de permisos por rol. Se puede expandir sin tocar el resto del front.
@@ -153,6 +159,15 @@ export function AccessProvider({ children }) {
   // Jefe de cocina: subrol de Staff (Diego 11/11/2026). Ve precios y % de costo y da el OK a su equipo.
   // Con «Ver como › Jefe de cocina» el dueño ve la vista del jefe (Diego 11/11/2026).
   const isJefe = isStaff && (verComoActivo ? verComoActivo.subrol === 'jefe' : currentBusiness?.subrol === 'jefe');
+  // Permisos de Staff (Diego 11/11/2026): por defecto restringidos; el dueño los habilita después por rol.
+  // Clave → ¿lo puede hacer este staff? (admin/dueño siempre true).
+  const staffPuede = useCallback((clave) => {
+    if (!isStaff) return true;
+    const config = (verComoActivo ? null : currentBusiness?.staffPermisos) || null;
+    if (config && Object.prototype.hasOwnProperty.call(config, clave)) return !!config[clave];
+    const DEF = isJefe ? STAFF_DEFAULTS.jefe : STAFF_DEFAULTS.staff;
+    return !!DEF[clave];
+  }, [isStaff, isJefe, verComoActivo, currentBusiness]);
 
   // Setear negocio activo en backend + disparar evento
   const switchToBusiness = useCallback(async (bizId) => {
@@ -182,6 +197,7 @@ export function AccessProvider({ children }) {
     isAdmin,
     isStaff,
     isJefe,
+    staffPuede,
     switchToBusiness,
     permisos,
     puedeVer,
@@ -192,7 +208,7 @@ export function AccessProvider({ children }) {
   }), [
     loading, error, refetch, data,
     businesses, currentBusiness, currentRole, highestRole, currentAlias,
-    canDo, isOwner, isAdmin, isStaff, isJefe, switchToBusiness,
+    canDo, isOwner, isAdmin, isStaff, isJefe, staffPuede, switchToBusiness,
     permisos, puedeVer, oculto, rolReal, verComoActivo, setVerComo,
   ]);
 
