@@ -44,6 +44,7 @@ export default function ItemRow({
   insumosBizId,
   onOpenRecetaElaborado,
   onCrearMerma,
+  onCrearEquivalencia,
   colorSinPromo = '#7c3aed',
   searchOpen,
   onSearchOpen,
@@ -957,7 +958,11 @@ export default function ItemRow({
         <Select MenuProps={downwardMenuProps()}
           size="small"
           value={unidadActual}
-          onChange={e => onChange(index, { unidad: e.target.value })}
+          onChange={e => {
+            // "+ Crear equivalencia": abre el insumo en su pestaña Equivalencias (no es una unidad)
+            if (e.target.value === '__crear_eq') { onCrearEquivalencia?.(item); return; }
+            onChange(index, { unidad: e.target.value });
+          }}
           onKeyDown={e => {
             // Typeahead manual: saltar a la primera unidad que empiece con la tecla
             if (e.key.length === 1 && /[a-z]/i.test(e.key)) {
@@ -989,7 +994,19 @@ export default function ItemRow({
             // (deshabilitada, marcada ⚠) — así el combo NUNCA queda en blanco: siempre
             // se ve algo, aunque sea "esto está roto, elegí otra unidad".
             const opciones = unidadEsValida ? unidadOpciones : [unidadActual, ...unidadOpciones];
-            return opciones.map((u, idx) => {
+            // Acción primero, después la lista — mismo patrón que «+ Crear merma» / SelectorBuscable.
+            // Lleva al insumo, pestaña Equivalencias; al volver la fila recarga sus equivalencias
+            // (listener insumo:equivalencias-changed del modal).
+            const crearEq = onCrearEquivalencia && item.supplyId && !item.articleRefId && !item.esArticulo ? [
+              <MenuItem key="__crear_eq" value="__crear_eq" sx={{
+                fontSize: '0.82rem', fontWeight: 600, color: 'primary.main', justifyContent: 'center',
+                bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider',
+                '&:hover': { bgcolor: 'action.selected' },
+              }}>
+                + Crear equivalencia
+              </MenuItem>,
+            ] : [];
+            return [...crearEq, ...opciones.map((u, idx) => {
               const esRota = !unidadEsValida && idx === 0;
               const eqData = (item.equivalencias || []).find(e => e.nombre === u);
               const seleccionada = u === unidadActual;
@@ -1004,7 +1021,7 @@ export default function ItemRow({
                   {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u)}
                 </MenuItem>
               );
-            });
+            })];
           })()}
         </Select>
 
