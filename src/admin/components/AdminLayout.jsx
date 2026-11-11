@@ -190,16 +190,9 @@ export default function AdminLayout({ children }) {
     }}>
       {/* Logo */}
       <div style={{ padding: '24px 20px 12px' }}>
-        <Link to="/admin" style={{ textDecoration: 'none', display: 'block', marginBottom: 6 }}>
+        <Link to="/admin" style={{ textDecoration: 'none', display: 'block' }}>
           <img src={logoLight} alt="Lazarillo" style={{ height: 30 }} />
         </Link>
-        <span style={{
-          fontSize: 10, color: 'rgba(91,194,234,0.65)',
-          letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600,
-          fontFamily: "'Archivo', system-ui, sans-serif",
-        }}>
-          Admin panel
-        </span>
       </div>
 
       {/* Anthony + nombre */}
@@ -233,12 +226,17 @@ export default function AdminLayout({ children }) {
       <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.08)', margin: '0 16px 12px' }} />
 
       {/* Nav */}
-      <nav style={{ padding: '0 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Con pantallas bajas los botones scrollean solos y "Cerrar sesión" queda fijo abajo. */}
+      <nav style={{
+        padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 2,
+        scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.15) transparent',
+      }}>
         {NAV_ITEMS.map(item => <NavItem key={item.to} {...item} />)}
       </nav>
 
       {/* Footer logout */}
-      <div style={{ padding: '12px 10px', borderTop: '0.5px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ padding: '12px 10px', borderTop: '0.5px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
         <div
           onClick={handleLogout}
           style={{
