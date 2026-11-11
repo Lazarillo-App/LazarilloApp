@@ -81,7 +81,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\u0300-\\u036f]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -540,6 +540,7 @@ export default function InsumosMain() {
     queryClient.invalidateQueries({ queryKey: ['insumo-groups', rBiz] });
     if (businessId && String(businessId) !== String(resolvedBizId)) {
       queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(businessId) || 0] });
+      queryClient.invalidateQueries({ queryKey: ['insumos-rubros', Number(businessId) || 0] }); // nombres propios del subnegocio
     }
   }, [resolvedBizId, businessId, queryClient]);
   const onMutateGroups = useCallback((action) => setGroups((prev) => applyMutation(prev, action)), []);
@@ -803,6 +804,9 @@ export default function InsumosMain() {
   const businessIdNum = Number(businessId) || 0;
 
   const { data: rubrosData } = useInsumosRubros(resolvedBizIdNum);
+  // Subnegocio: nombres PROPIOS de rubro (Diego 11/11: renombrar en Container FC no debe
+  // cambiar el Bar). Los insumos y los códigos son los del principal; solo cambia el nombre.
+  const { data: rubrosLocalData } = useInsumosRubros(isSubneg ? businessIdNum : 0);
   const { data: insumosListData, isFetching: insumosListFetching } = useInsumosList({
     page: 1, limit: 999999, search: '', bizIdOverride: resolvedBizIdNum,
   });
@@ -827,13 +831,21 @@ export default function InsumosMain() {
       setSelectedGroupId(null); setRubroSeleccionado(null);
       return;
     }
+    // codigo → nombre propio del subnegocio (solo rubros reales con código numérico)
+    const nombresLocales = new Map();
+    if (isSubneg && rubrosLocalData) {
+      (rubrosLocalData?.items || rubrosLocalData?.data || []).forEach((r) => {
+        if (r?.origen === 'manual' || r?.codigo == null || !String(r?.nombre || '').trim()) return;
+        nombresLocales.set(String(r.codigo), String(r.nombre).trim());
+      });
+    }
     if (rubrosData) {
       const items = rubrosData?.items || rubrosData?.data || [];
       const map = new Map();
       const idMap = new Map(); // id → info (por si insumos usan ID interno)
       items.forEach((rubro) => {
         const codigo = String(rubro.codigo);
-        const info = { codigo: rubro.codigo, nombre: rubro.nombre || String(codigo), es_elaborador: rubro.es_elaborador === true };
+        const info = { codigo: rubro.codigo, nombre: nombresLocales.get(codigo) || rubro.nombre || String(codigo), es_elaborador: rubro.es_elaborador === true };
         map.set(codigo, info);
         if (rubro.id != null) idMap.set(String(rubro.id), info);
       });
@@ -849,10 +861,15 @@ export default function InsumosMain() {
     }
     if (insumosListData) {
       const dataAll = Array.isArray(insumosListData?.data) ? insumosListData.data : [];
-      setAllInsumos(dataAll);
+      setAllInsumos(nombresLocales.size
+        ? dataAll.map((i) => {
+          const local = nombresLocales.get(String(i?.rubro_codigo ?? i?.rubro ?? ''));
+          return local ? { ...i, rubro_nombre: local } : i;
+        })
+        : dataAll);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, rubrosData, groupsData, insumosListData]);
+  }, [businessId, rubrosData, groupsData, insumosListData, rubrosLocalData, isSubneg]);
 
   useLayoutEffect(() => {
     if (!businessId) return;
