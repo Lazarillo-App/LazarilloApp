@@ -1557,7 +1557,8 @@ export default function TablaArticulos({
     // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
     // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre. Nunca menos de 140px.
     const nombreCol = 'minmax(140px, 1fr)';
-    return `${check}minmax(56px, 90px) ${nombreCol} minmax(72px, .4fr) ${branchCols}${dynCols}`;
+    // Código más angosto (Diego 11/11/2026: «la veo muy ancha»): entra «L-1279» con su ícono.
+    return `${check}minmax(56px, 72px) ${nombreCol} minmax(72px, .4fr) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
