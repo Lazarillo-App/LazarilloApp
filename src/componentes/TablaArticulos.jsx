@@ -281,12 +281,12 @@ const STAFF_COLS = [
   { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
   { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
 ];
-// Jefe de cocina (subrol de Staff, Diego 11/11/2026): además ve precio y % de costo, sin editarlos.
-const STAFF_COLS_JEFE = [
-  { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
-  { id: 'precio', label: 'Precio', width: '.35fr', visible: true },
-  { id: 'rentabilidad', label: 'Costo %', width: '250px', visible: true },
-  { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
+// Staff según sus permisos (Diego 11/11/2026): precio y % de costo solo si el rol los habilita.
+const staffColsDe = (puede) => [
+  STAFF_COLS[0],
+  ...(puede('ver_precio') ? [{ id: 'precio', label: 'Precio', width: '.35fr', visible: true }] : []),
+  ...(puede('ver_costo_pct') ? [{ id: 'rentabilidad', label: 'Costo %', width: puede('ver_objetivo') ? '250px' : '.35fr', visible: true }] : []),
+  STAFF_COLS[1],
 ];
 
 /* ---------------- componente principal ---------------- */
@@ -450,7 +450,8 @@ export default function TablaArticulos({
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
   const [promoIds, setPromoIds] = useState(() => new Set());
   const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
-  const { isJefe } = useAccess() || {};
+  const { staffPuede = () => true } = useAccess() || {};
+  const staffVeObjetivo = !isStaff || staffPuede('ver_objetivo');
 
   // ── Definición canónica de columnas reordenables ──
   // "Últ. modificación" NO va acá a propósito: es una columna exclusiva de
@@ -501,7 +502,7 @@ export default function TablaArticulos({
   }, [agrupacionSeleccionada]);
 
   const visibleCols = useMemo(() => {
-    if (isStaff) return isJefe ? STAFF_COLS_JEFE : STAFF_COLS;
+    if (isStaff) return staffColsDe(staffPuede);
     const cols = colConfig.filter(c => c.visible);
     if (!estaEnPromociones) return cols;
     // Inyectar "$ Sin Promo" justo después de "costo" (o al inicio si no está)
@@ -509,7 +510,7 @@ export default function TablaArticulos({
     const sinPromoCol = { id: 'sinPromo', label: '$ Sin Promo', width: '.35fr', visible: true };
     if (idx === -1) return [sinPromoCol, ...cols];
     return [...cols.slice(0, idx + 1), sinPromoCol, ...cols.slice(idx + 1)];
-  }, [colConfig, estaEnPromociones, isStaff, isJefe]);
+  }, [colConfig, estaEnPromociones, isStaff, staffPuede]);
 
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
@@ -2312,7 +2313,7 @@ export default function TablaArticulos({
       ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
       : 0;
     // Staff (y el jefe de cocina) no marca precios: el objetivo no le dice nada (Diego 11/11/2026).
-    const superaObjetivo = !isStaff && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    const superaObjetivo = staffVeObjetivo && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
     const selectedStyle = isSelected ? { background: "color-mix(in srgb, var(--color-primary) 10%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)", position: "relative" } : null;
@@ -2471,7 +2472,7 @@ export default function TablaArticulos({
               return (
                 <div key="costo" style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, lineHeight: 1.15 }}>
                   <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
-                  {sugerido > 0 && !isStaff && (
+                  {sugerido > 0 && (!isStaff || staffPuede('ver_sugerido')) && (
                     <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
                       sug. {fmtCurrency(sugerido)}
                     </div>
@@ -2491,8 +2492,8 @@ export default function TablaArticulos({
             }
 
             case 'rentabilidad':
-              // Jefe de cocina: solo el % de costo, sin barra ni objetivo.
-              if (isStaff) return (
+              // Staff sin «ver costo objetivo»: solo el % de costo, sin barra ni objetivo.
+              if (!staffVeObjetivo) return (
                 <div key="rentabilidad" style={{ ...cellNum, color: TABLE_TEXT }}>
                   {costoPct > 0 ? `${fmt(costoPct, 1)}%` : <span style={{ color: TABLE_MUTED }}>—</span>}
                 </div>
@@ -3142,7 +3143,7 @@ export default function TablaArticulos({
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
                             Fila ámbar: costo poco confiable
                           </span>
-                          {!isStaff && (
+                          {staffVeObjetivo && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
                             Fila roja: excedido sobre el objetivo
@@ -3152,7 +3153,7 @@ export default function TablaArticulos({
                       }>
                         <span style={{ cursor: 'help' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                       </Tooltip>
-                      {!isStaff && (
+                      {staffVeObjetivo && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
                         costo actual
