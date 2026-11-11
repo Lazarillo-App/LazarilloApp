@@ -3,7 +3,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { nombreAgrupacionVisible, estiloAgrupacion } from '@/utils/agrupacionNombre';
+import { grupoVendenPoco, esVendenPocoGroup, VENDEN_POCO_ID } from '@/utils/articuloGruposEspeciales';
 import Top20Panel from './Top20Panel';
+import VendenPocoPanel from './VendenPocoPanel';
 import {
   FormControl,
   InputLabel,
@@ -61,6 +63,8 @@ const esTop20Group = (g) => {
   const n = norm(groupLabel(g));
   return n === 'top 20';
 };
+// Top 20 y «Venden poco»: vistas automáticas por ventas, sin gestión manual.
+const esVistaVentas = (g) => esTop20Group(g) || esVendenPocoGroup(g);
 
 const labelAgrup = (g) => groupLabel(g);
 // Lo que se ve en la lista (no el nombre guardado): ver utils/agrupacionNombre.js
@@ -112,6 +116,7 @@ const SIDEBAR_MODE_KEY = 'lazarillo:sidebarMode';
 
 function SidebarCategorias({
   resumenTop20 = null,
+  resumenVendenPoco = null,
   categorias = [],
   setCategoriaSeleccionada,
   agrupaciones = [],
@@ -231,6 +236,8 @@ function SidebarCategorias({
     // negocio (por monto) → Discontinuados, al final de todo.
     const ordered = [];
     if (top20) ordered.push(top20);
+    // «Venden poco» va justo debajo del Top 20 (vista virtual, Diego 11/11).
+    if (top20) ordered.push(grupoVendenPoco);
     if (isMainDivision && todo) ordered.push(todo);
     if (isMainDivision && promo) ordered.push(promo);
     ordered.push(...middle);
@@ -311,7 +318,7 @@ function SidebarCategorias({
 
   const activeIds = useMemo(() => {
     const g = agrupacionSeleccionada;
-    if (g && (esTodoGroup(g) || esTop20Group(g))) {
+    if (g && (esTodoGroup(g) || esVistaVentas(g))) {
       // Igual que "Sin agrupación": membresía calculada, no viene de
       // `g.articulos` (que para estas agrupaciones fijas siempre está vacío)
       // sino de `visibleIds` — sin esto, el árbol de rubros/subrubros del
@@ -472,7 +479,9 @@ function SidebarCategorias({
   const handleAgrupacionChange = useCallback((event) => {
     const val = event.target.value;
     const idSel = Number(val);
-    const seleccionada = (agrupaciones || []).find((g) => Number(g?.id) === idSel) || null;
+    const seleccionada = idSel === VENDEN_POCO_ID
+      ? grupoVendenPoco
+      : ((agrupaciones || []).find((g) => Number(g?.id) === idSel) || null);
     setAgrupacionSeleccionada?.(seleccionada);
     setFiltroBusqueda?.('');
     setCategoriaSeleccionada?.(null);
@@ -607,7 +616,7 @@ function SidebarCategorias({
                   <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
                       <span style={estiloAgrupacion({
-                        top20: esTop20Group(g),
+                        top20: esVistaVentas(g),
                         sistema: esTodoGroup(g) || esPromoGroup(g),
                         discontinuados: esDiscontinuadosGroup(g),
                       })}>
@@ -628,7 +637,7 @@ function SidebarCategorias({
                           const isTodo = esTodoGroup(g);
                           const isDisc = esDiscontinuadosGroup(g);
                           const isPromo = esPromoGroup(g);
-                          const isTop20 = esTop20Group(g);
+                          const isTop20 = esVistaVentas(g);
                           if (isDisc || isPromo || isTop20) return null;
                           if (isTodo) {
                             return onRenameGroup && (
@@ -812,9 +821,12 @@ function SidebarCategorias({
         {sidebarMode === 'agrupaciones' && esTop20Group(agrupacionSeleccionada) && (
           <Top20Panel datos={resumenTop20} />
         )}
+        {sidebarMode === 'agrupaciones' && esVendenPocoGroup(agrupacionSeleccionada) && (
+          <VendenPocoPanel datos={resumenVendenPoco} />
+        )}
 
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
-        {sidebarMode === 'agrupaciones' && !staff && !esTop20Group(agrupacionSeleccionada) && (
+        {sidebarMode === 'agrupaciones' && !staff && !esVistaVentas(agrupacionSeleccionada) && (
           <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ToggleButtonGroup
               size="small" exclusive value={localListMode}
@@ -829,7 +841,7 @@ function SidebarCategorias({
       </div>
 
       {/* ── Lista de rubros/subrubros (solo en modo agrupaciones) ── */}
-      {sidebarMode === 'agrupaciones' && !esTop20Group(agrupacionSeleccionada) && (
+      {sidebarMode === 'agrupaciones' && !esVistaVentas(agrupacionSeleccionada) && (
         <ul className="sidebar-draggable-list">
           {loading && <li style={{ opacity: 0.7 }}>Cargando {localListMode === 'by-categoria' ? 'categorías' : 'subrubros'}…</li>}
           {!loading && listaParaMostrar.map((sub) => {

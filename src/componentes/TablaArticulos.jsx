@@ -26,6 +26,8 @@ import { IconButton, Tooltip } from "@mui/material";  // sumarlo al import de MU
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
+import { esVendenPocoGroup } from '@/utils/articuloGruposEspeciales';
+import { nombreAgrupacionVisible } from '@/utils/agrupacionNombre';
 import { useConfig } from '@/context/ConfigContext';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
@@ -128,6 +130,8 @@ const esTop20Group = (g) => {
   const n = String(g?.nombre || "").trim().toUpperCase();
   return n === "TOP 20";
 };
+// Top 20 y «Venden poco»: vistas automáticas por ventas, de solo lectura.
+const esVistaVentas = (g) => esTop20Group(g) || esVendenPocoGroup(g);
 
 const TABLE_TEXT = "#111827";
 const TABLE_MUTED = "#6b7280";
@@ -1089,7 +1093,7 @@ export default function TablaArticulos({
     } else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
         base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
-      } else if (esTop20Group(agrupacionSeleccionada) || estaEnPromociones) {
+      } else if (esVistaVentas(agrupacionSeleccionada) || estaEnPromociones) {
         // Top 20 es una agrupación virtual: no guarda articulos propios, la
         // membresía llega vía `visibleIds` (= filterIds más abajo).
         // Promociones es un resumen: las promos siguen en su agrupación y llegan por visibleIds.
@@ -1217,6 +1221,27 @@ export default function TablaArticulos({
 
   const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
 
+  // «Venden poco»: a qué agrupación real pertenece cada artículo (la primera que lo tenga).
+  const agrupDeArticulo = useMemo(() => {
+    const m = new Map();
+    if (!esVendenPocoGroup(agrupacionSeleccionada)) return m;
+    const fuente = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
+    for (const g of (fuente || [])) {
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esVistaVentas(g)) continue;
+      if (String(g?.nombre || '').trim().toLowerCase() === 'promociones') continue;
+      const nombre = nombreAgrupacionVisible(g);
+      for (const a of (g?.articulos || [])) {
+        const id = getId(a);
+        if (id && !m.has(id)) m.set(id, nombre);
+      }
+      for (const raw of (g?.app_articles_ids || [])) {
+        const id = Number(raw);
+        if (id && !m.has(id)) m.set(id, nombre);
+      }
+    }
+    return m;
+  }, [agrupacionSeleccionada, agrupacionesAll, agrupaciones]);
+
   // Total de ventas de todas las agrupaciones reales (excluye Sin Agrupación y Discontinuados)
   // Es el denominador correcto para el % del header de agrupación
   const totalTodasAgrupaciones = useMemo(() => {
@@ -1282,7 +1307,7 @@ export default function TablaArticulos({
 
     if (esAgrupEspecifica && sections.length > 0) {
       // Top 20 no guarda miembros (se calcula): sus artículos son los de la vista.
-      const todosIdsAgrup = (esTop20Group(agrupacionSeleccionada)
+      const todosIdsAgrup = (esVistaVentas(agrupacionSeleccionada)
         ? sections.flatMap((sec) => sec.arts)
         : (agrupacionSeleccionada?.articulos || []))
         .map(getId)
@@ -1309,7 +1334,7 @@ export default function TablaArticulos({
         ventasByBranch: agrupByBranch,
         nombre: agrupacionSeleccionada?.nombre || '',
         // Top 20: cuánto del ingreso total del período explica (pedido de Diego, 05/11)
-        pctDelPeriodo: esTop20Group(agrupacionSeleccionada) && totalVentasPeriodo > 0
+        pctDelPeriodo: esVistaVentas(agrupacionSeleccionada) && totalVentasPeriodo > 0
           ? (totalVentasAgrup / totalVentasPeriodo) * 100 : null,
       });
     }
@@ -1332,6 +1357,47 @@ export default function TablaArticulos({
           puesto: puesto.get(id),
           art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
         });
+      }
+      return rows;
+    }
+
+    // «Venden poco» (Diego 11/11): agrupados por agrupación, las agrupaciones y los
+    // artículos de mayor a menor venta ($).
+    if (esVendenPocoGroup(agrupacionSeleccionada)) {
+      const porAgrup = new Map();
+      for (const sec of sections) {
+        for (const a of sec.arts) {
+          const id = getId(a);
+          const nombre = agrupDeArticulo.get(id) || 'Sin agrupación';
+          if (!porAgrup.has(nombre)) porAgrup.set(nombre, []);
+          porAgrup.get(nombre).push({ a, sec });
+        }
+      }
+      const grupos = [...porAgrup.entries()].map(([nombre, lista]) => {
+        lista.sort((x, y) => getVentasAmount(getId(y.a)) - getVentasAmount(getId(x.a)));
+        const monto = lista.reduce((acc, { a }) => acc + getVentasAmount(getId(a)), 0);
+        return { nombre, lista, monto };
+      }).sort((x, y) => y.monto - x.monto);
+      for (const { nombre, lista, monto } of grupos) {
+        rows.push({
+          kind: "header",
+          key: `H|poco|${nombre}`,
+          categoria: '', subrubro: `poco:${nombre}`,
+          agrupLabel: nombre,
+          ids: lista.map(({ a }) => getId(a)),
+          __ventasMonto: monto,
+          __ventasByBranch: {},
+          agrupTotalVentas: totalVentasAgrup,
+        });
+        for (const { a, sec } of lista) {
+          const id = getId(a);
+          rows.push({
+            kind: "item",
+            key: `I|poco|${nombre}|${id}`,
+            categoria: sec.categoria, subrubro: sec.subrubro,
+            art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+          });
+        }
       }
       return rows;
     }
@@ -1359,7 +1425,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
@@ -1574,7 +1640,7 @@ export default function TablaArticulos({
   const ITEM_H = 50;
   // Top 20 es una vista automática y de solo lectura — sin gestión manual
   // de ningún tipo, ni siquiera "quitar"/"mover" por artículo o por bloque.
-  const isTop20View = agrupSelView ? esTop20Group(agrupSelView) : false;
+  const isTop20View = agrupSelView ? esVistaVentas(agrupSelView) : false;
 
   const currentVisibleArticleIds = useMemo(
     () => flatRows.filter(r => r.kind === "item").map(r => getId(r.art)).filter(Boolean),
@@ -2113,7 +2179,7 @@ export default function TablaArticulos({
           if (sub) headerSr = sub;
         }
       }
-      const label = isRubroView ? `${headerSr} - ${headerCat}` : `${headerCat} - ${headerSr}`;
+      const label = row.agrupLabel || (isRubroView ? `${headerSr} - ${headerCat}` : `${headerCat} - ${headerSr}`);
       const groupKeyName = tableHeaderMode === "sr-first" ? headerCat : headerSr;
       const ids = row.ids || [];
       const totalQty = ids.reduce((acc, id) => acc + getVentasQty(id), 0);
@@ -2142,11 +2208,13 @@ export default function TablaArticulos({
             title={label}
             style={{
               gridColumn: "2 / 4",
-              cursor: 'pointer',
+              cursor: row.agrupLabel ? 'default' : 'pointer',
+              fontWeight: row.agrupLabel ? 700 : undefined,
               // Un solo renglón: los rubros largos («Promociones no-rec - Festejos comidas») van con «…»
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
             }}
             onClick={() => {
+              if (row.agrupLabel) return; // «Venden poco»: el encabezado es una agrupación, no un rubro
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
               setRubroEditModal({
@@ -2160,13 +2228,13 @@ export default function TablaArticulos({
                 rubroNombreActual: rubroKey,
               });
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseEnter={(e) => { if (!row.agrupLabel) e.currentTarget.style.textDecoration = 'underline'; }}
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
             {label}
             {(() => {
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
-              const objR = priceConfig.byRubro?.[rubroKey]?.objetivo;
+              const objR = row.agrupLabel ? null : priceConfig.byRubro?.[rubroKey]?.objetivo;
               return objR != null ? (
                 <span style={{ marginLeft: 8, fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
                   · objetivo {fmt(objR, 0)}%
@@ -2220,7 +2288,7 @@ export default function TablaArticulos({
                 <React.Fragment key="manual">
                 <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>
-                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO'}
+                    {row.agrupLabel ? 'AJUSTAR' : (tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO')}
                   </span>
                 </div>
                 <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -3252,6 +3320,7 @@ export default function TablaArticulos({
                   }}>
                     {(() => {
                       const hr = seccionSticky.headerRow;
+                      if (hr.agrupLabel) return hr.agrupLabel;
                       const cat = hr.categoria || '';
                       const sr = hr.subrubro || '';
                       return isRubroView ? `${sr} - ${cat}` : `${cat} - ${sr}`;
