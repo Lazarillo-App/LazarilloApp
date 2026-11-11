@@ -2121,6 +2121,9 @@ export default function RecetaModal({
     };
   }, [businessId, refrescarInsumoPuntual]);
 
+  // Fila desde la que se tocó "+ Crear merma" (para aplicarle la merma nueva al volver)
+  const mermaPendienteRef = useRef(null);
+
   // Mermas de un insumo cambiadas en el modal anidado (cascada): refrescar el insumo y
   // la lista de mermas cacheada en los items que lo usan, para que el factor de merma
   // (y por lo tanto el costo de línea) se recalcule con los datos nuevos.
@@ -2133,8 +2136,19 @@ export default function RecetaModal({
         .then(r => {
           const mermas = Array.isArray(r?.data) ? r.data : [];
           const existe = new Set(mermas.map(m => Number(m.id)));
-          setItems(prev => prev.map(it => {
+          // Merma creada con "+ Crear merma" desde una fila: queda aplicada en esa fila
+          // (reemplaza la que tenía). Solo la primera nueva y una sola vez.
+          const pend = mermaPendienteRef.current;
+          let nuevaId = null, filaPend = null;
+          if (pend && pend.supplyId === String(insId)) {
+            const nueva = mermas.find(m => !pend.antes.has(Number(m.id)));
+            if (nueva) { nuevaId = Number(nueva.id); filaPend = pend.index; mermaPendienteRef.current = null; }
+          }
+          setItems(prev => prev.map((it, i) => {
             if (String(it.supplyId) !== String(insId)) return it;
+            if (nuevaId != null && i === filaPend) {
+              return { ...it, mermas, mermaIds: [nuevaId], mermaId: nuevaId };
+            }
             // Una merma borrada no puede quedar elegida en la fila: si no, se seguía viendo
             // (con su factor) y al guardar la receta fallaba la base (merma_id inexistente).
             const ids = Array.isArray(it.mermaIds) ? it.mermaIds : (it.mermaId != null ? [it.mermaId] : []);
@@ -3127,6 +3141,12 @@ export default function RecetaModal({
                                 });
                               }}
                               onCrearMerma={async (it) => {
+                                // Recordar la fila: la merma que se cree allá queda aplicada acá al volver
+                                mermaPendienteRef.current = {
+                                  supplyId: String(it.supplyId),
+                                  index: realIndex,
+                                  antes: new Set((it.mermas || []).map(m => Number(m.id))),
+                                };
                                 await autoSave(); // guardar la receta antes de bajar al insumo
                                 const ins = insumos.find(i => String(i.id) === String(it.supplyId));
                                 pushElaborado({
