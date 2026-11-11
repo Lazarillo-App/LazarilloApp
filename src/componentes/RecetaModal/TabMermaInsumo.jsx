@@ -191,24 +191,23 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
       {info && <Alert severity="success" sx={{ mb: 1.5, py: 0.5 }} onClose={() => setInfo('')}>{info}</Alert>}
 
-      {/* Unidad de medida + precio de compra (solo lectura) */}
-      <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
-        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 220, bgcolor: 'action.hover' }}>
-          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Unidad de medida del insumo</Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>{unidad}</Typography>
+      {/* Una sola franja (Diego 11/11): a la izquierda qué es una merma (texto breve en gris) y a la
+          derecha, solo lectura, primero el precio de compra y después la unidad (recuadro chico). */}
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ flex: 1, minWidth: 0, pr: 1, fontSize: '0.78rem', color: 'text.secondary', lineHeight: 1.5 }}>
+          Las mermas de un insumo pueden darse por <b>procesamiento</b> (le quitás algo antes de usarlo: pelar, limpiar),
+          por <b>cocción</b> (lo freís, lo reducís) o por <b>cambio de temperatura</b> (lo recibís congelado y lo usás descongelado).
+          Cargala si en tus recetas usás el peso ya manipulado; si usás el peso tal como lo comprás, no hace falta.
+        </Typography>
+        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 180, flexShrink: 0 }}>
+          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>Precio de compra ($/{unidad})</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>${fmt(precioCompra)}</Typography>
         </Box>
-        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 200 }}>
-          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Precio de compra ($/{unidad})</Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>${fmt(precioCompra)}</Typography>
+        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 72, flexShrink: 0, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Unidad</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'center' }}>{unidad}</Typography>
         </Box>
       </Stack>
-
-      {/* Qué es una merma — texto breve en gris, no alerta (Diego 11/11) */}
-      <Typography variant="body2" sx={{ fontSize: '0.78rem', color: 'text.secondary', lineHeight: 1.5, mb: 1.5, maxWidth: 900 }}>
-        Las mermas de un insumo pueden darse por <b>procesamiento</b> (le quitás algo antes de usarlo: pelar, limpiar),
-        por <b>cocción</b> (lo freís, lo reducís) o por <b>cambio de temperatura</b> (lo recibís congelado y lo usás descongelado).
-        Cargala si en tus recetas usás el peso ya manipulado; si usás el peso tal como lo comprás, no hace falta.
-      </Typography>
 
       {/* Header columnas */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
