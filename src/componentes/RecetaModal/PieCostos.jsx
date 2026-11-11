@@ -22,6 +22,7 @@ import RemoveIcon from '@mui/icons-material/Remove';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { canonicalUnit, fmt } from './helpers';
+import { useAccess } from '@/context/AccessContext';
 
 export default function PieCostos({
   modoInsumo,
@@ -65,6 +66,7 @@ export default function PieCostos({
   // { nombre, precio, editado, onCambiar(v), paso }
   articuloPromo = null,
 }) {
+  const { isJefe } = useAccess() || {};
   const [editArt, setEditArt] = React.useState(null);
   const botonChico = { width: 22, height: 22, p: 0, bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } };
   return (
@@ -105,7 +107,8 @@ export default function PieCostos({
 
       {(() => {
         const labelBase = Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion' ? labelPorUnidad : 'Costo total';
-        const conPct = !modoInsumo && !isStaff && pctCostoActual !== null;
+        // Jefe de cocina (Diego 11/11/2026): ve el % de costo y el precio, sin editar objetivo ni precio.
+        const conPct = !modoInsumo && (!isStaff || isJefe) && pctCostoActual !== null;
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
         return (
@@ -139,6 +142,12 @@ export default function PieCostos({
                 </Typography>
               )}
             </Box>
+            {isJefe && !modoInsumo && Number(precioActual) > 0 && (
+              <Box>
+                <Typography {...titulo}>Precio de venta</Typography>
+                <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '36px' }}>${fmt(precioActual)}</Typography>
+              </Box>
+            )}
             {conObjetivo && (
               <Box>
                 <Typography {...titulo}>% costo objetivo</Typography>

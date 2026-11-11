@@ -175,6 +175,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           sectorIds: Array.isArray(r.sector_ids) ? r.sector_ids.map(Number) : [],
           customRoleId: r.custom_role_id != null ? Number(r.custom_role_id) : null,
           customRoleNombre: r.custom_role_nombre || null,
+          subrol: r.subrol || null,
         });
       }
       // Rol más alto por persona (para el chip principal)
@@ -188,7 +189,9 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         const admins = p.negocios.filter((n) => n.role === 'admin');
         const medida = rolMasAlto === 'admin' && admins.length && admins.every((n) => n.customRoleNombre)
           ? [...new Set(admins.map((n) => n.customRoleNombre))].join(' / ') : null;
-        return { ...p, rolMasAlto, rolNombre: medida || ROL_LABEL[rolMasAlto] || rolMasAlto };
+        // Jefe de cocina: subrol de Staff (Diego 11/11/2026).
+        const jefe = rolMasAlto === 'staff' && p.negocios.some((n) => n.role === 'staff' && n.subrol === 'jefe') ? 'Jefe de cocina' : null;
+        return { ...p, rolMasAlto, rolNombre: medida || jefe || ROL_LABEL[rolMasAlto] || rolMasAlto };
       });
       setMembers(lista);
     } catch (e) {
@@ -441,7 +444,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                                     <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                                       {n.scopeName}
                                     </Typography>
-                                    <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
+                                    <Chip label={n.customRoleNombre || (n.role === 'staff' && n.subrol === 'jefe' ? 'Jefe de cocina' : null) || ROL_LABEL[n.role] || n.role} size="small"
                                       sx={{ height: 18, fontSize: '0.62rem', bgcolor: `${tc}12`, color: tc }} />
                                   </Stack>
                                 ))}

@@ -33,7 +33,9 @@ const tc = 'var(--color-primary, #3b82f6)';
 /* ─── Fila de un negocio con acceso: ver, editar rol/sector, o quitar ─── */
 const ROL_LABEL = { owner: 'Dueño', admin: 'Administración', staff: 'Staff' };
 // Valor del selector: 'admin' | 'staff' | 'rol:<id>' (rol a medida, se guarda como admin + customRoleId).
-const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : n.role);
+const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : (n.role === 'staff' && n.subrol ? `staff:${n.subrol}` : n.role));
+// Subroles de Staff (11/11): por ahora solo Jefe de cocina. Mismo staff + ve precios, crea elaborados y da el OK a su equipo.
+const SUBROL_LABEL = { jefe: 'Jefe de cocina' };
 
 function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const { isOwner, businesses = [] } = useAccess() || {};
@@ -57,7 +59,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   }, [editando, isOwner, n.scopeType, n.scopeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cargarSectores = () => {
-    if (rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
+    if (!rol.startsWith('staff') || n.scopeType !== 'business') { setSectores([]); return; }
     listarSectores(n.scopeId)
       .then((list) => setSectores(Array.isArray(list) ? list : []))
       .catch(() => setSectores([]));
@@ -80,9 +82,10 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
     setGuardando(true); setErrorEdit(null);
     try {
       const esMedida = rol.startsWith('rol:');
-      const role = esMedida ? 'admin' : rol;
+      const role = esMedida ? 'admin' : (rol.startsWith('staff') ? 'staff' : rol);
       await updateAssignment(n.assignmentId, {
         role,
+        ...(role === 'staff' ? { subrol: rol.startsWith('staff:') ? rol.slice(6) : null } : {}),
         sectorIds: role === 'staff' ? Array.from(sectorIds) : [],
         // Solo el dueño toca el rol a medida (null = Administración completa).
         ...(isOwner && role === 'admin' ? { customRoleId: esMedida ? Number(rol.slice(4)) : null } : {}),
@@ -107,7 +110,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           {n.scopeName}
         </Typography>
         {!editando && (
-          <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
+          <Chip label={n.customRoleNombre || (n.role === 'staff' && n.subrol ? `Staff · ${SUBROL_LABEL[n.subrol] || n.subrol}` : null) || ROL_LABEL[n.role] || n.role} size="small"
             sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
         )}
         {n.account_status === 'invited' && (
@@ -147,6 +150,9 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
               {/* Si el rol a medida ya no está en la lista (otra organización), igual se muestra. */}
               {rol.startsWith('rol:') && !rolesMedida.some((r) => `rol:${r.id}` === rol) && <MenuItem value={rol}>{n.customRoleNombre || 'Rol a medida'}</MenuItem>}
               <MenuItem value="staff">Staff</MenuItem>
+              <MenuItem value="staff:jefe" sx={{ pl: 3.5 }}>
+                <Typography component="span" sx={{ fontSize: 'inherit', color: 'text.secondary', mr: 0.75 }}>└</Typography>Jefe de cocina
+              </MenuItem>
             </TextField>
             <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
             <Button size="small" variant="contained" onClick={guardar} disabled={guardando}
@@ -155,11 +161,16 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
             </Button>
           </Stack>
 
-          {rol === 'staff' && n.scopeType === 'business' && (
+          {rol.startsWith('staff') && n.scopeType === 'business' && (
             <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1 }}>
               <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                SECTOR DENTRO DE {n.scopeName}
+                {rol === 'staff:jefe' ? `SECTORES QUE CONDUCE EN ${n.scopeName}` : `SECTOR DENTRO DE ${n.scopeName}`}
               </Typography>
+              {rol === 'staff:jefe' && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Ve lo mismo que el staff de estos sectores, más precios y % de costo. Crea elaborados y da el OK a los cambios de su equipo antes de que lleguen a vos.
+                </Typography>
+              )}
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
                 {sectores.map((s) => {
                   const activo = sectorIds.has(s.id);

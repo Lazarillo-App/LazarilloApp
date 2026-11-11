@@ -13,6 +13,7 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import {
   listarPropuestas, aprobarPropuesta, rechazarPropuesta, pedirRevisionPropuesta,
+  listarPropuestasEquipo, jefeOkPropuesta,
 } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
 import { useAuth } from '@/context/AuthContext';
@@ -132,7 +133,8 @@ function ProposalDiff({ proposal }) {
   );
 }
 
-function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
+function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo = 'admin' }) {
+  const esJefe = modo === 'jefe';
   const [busy, setBusy] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionComment, setRevisionComment] = useState('');
@@ -186,9 +188,10 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
     }
   };
 
+  // Jefe de cocina: su OK no aplica nada, pasa la propuesta al administrador.
   const handleAprobar = () => runAction(
-    () => aprobarPropuesta(proposal.business_id, proposal.id),
-    'Propuesta aprobada y aplicada',
+    () => (esJefe ? jefeOkPropuesta(proposal.business_id, proposal.id) : aprobarPropuesta(proposal.business_id, proposal.id)),
+    esJefe ? 'Listo: pasó al administrador' : 'Propuesta aprobada y aplicada',
   );
   // Sin contenido (solo "marcada a revisión", sin cambio propuesto) no hay
   // nada que aprobar NI nada que rechazar — la acción real acá es sacarla de
@@ -223,6 +226,10 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
               {nombreDestino} — {esNueva ? 'receta nueva' : 'cambio en la receta'}
             </Typography>
             <Typography variant="caption" color="text.secondary">{subtitulo}</Typography>
+            {!esJefe && proposal.jefe_ok_por && (
+              <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize: 14 }} />} label={`OK de ${proposal.jefe_ok_por} · jefe de cocina`}
+                sx={{ display: 'flex', width: 'fit-content', mt: 0.75, height: 22, fontSize: '0.7rem', fontWeight: 600, bgcolor: '#e8f5e9', color: '#2e7d32', '& .MuiChip-icon': { color: '#2e7d32' } }} />
+            )}
             {proposal.status === 'in_revision' && proposal.admin_comment && (
               <Typography variant="caption" sx={{ display: 'block', fontStyle: 'italic' }} color="warning.main">
                 Tu comentario: "{proposal.admin_comment}"
@@ -231,9 +238,9 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
           </Box>
         </Stack>
         <Stack direction="row" spacing={1} flexShrink={0}>
-          {!sinContenido && (
+          {!sinContenido && !(esJefe && proposal.status !== 'pending') && (
             <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
-              Aprobar
+              {esJefe ? 'Dar OK' : 'Aprobar'}
             </Button>
           )}
           {!esPropia && (
@@ -297,7 +304,8 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta }) {
   );
 }
 
-export default function AprobacionesTab({ businessId, onCountChange, onAbrirReceta }) {
+export default function AprobacionesTab({ businessId, onCountChange, onAbrirReceta, modo = 'admin' }) {
+  const esJefe = modo === 'jefe';
   const { user } = useAuth() || {};
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -306,14 +314,14 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
     if (!businessId) return;
     setLoading(true);
     try {
-      const list = await listarPropuestas(businessId);
+      const list = await (esJefe ? listarPropuestasEquipo(businessId) : listarPropuestas(businessId));
       setProposals(list.map(p => ({ ...p, business_id: businessId })));
     } catch (e) {
       showAlert(e?.message || 'Error cargando propuestas', 'error');
     } finally {
       setLoading(false);
     }
-  }, [businessId]);
+  }, [businessId, esJefe]);
 
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { onCountChange?.(proposals.length); }, [proposals.length, onCountChange]);
@@ -325,12 +333,17 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
   return (
     <Box>
       <Typography variant="overline" fontWeight={800} color="success.main" sx={{ letterSpacing: '0.08em' }}>
-        La bandeja del administrador
+        {esJefe ? 'Tu equipo' : 'La bandeja del administrador'}
       </Typography>
+      {esJefe && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
+          Con tu OK el cambio pasa al administrador para la aprobación final. Nada impacta en los costos hasta entonces.
+        </Typography>
+      )}
 
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2, mt: 0.5 }}>
         <Typography fontWeight={700} fontSize="0.9rem" color="text.secondary" sx={{ letterSpacing: '0.04em' }}>
-          APROBACIONES PENDIENTES
+          {esJefe ? 'ESPERANDO TU OK' : 'APROBACIONES PENDIENTES'}
         </Typography>
         <Chip size="small" label={proposals.length} color={proposals.length ? 'warning' : 'default'} sx={{ fontWeight: 700 }} />
       </Stack>
@@ -344,7 +357,7 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
       ) : (
         <Stack spacing={1.5}>
           {proposals.map(p => (
-            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} onAbrirReceta={onAbrirReceta} />
+            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} onAbrirReceta={onAbrirReceta} modo={modo} />
           ))}
         </Stack>
       )}

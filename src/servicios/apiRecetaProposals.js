@@ -59,3 +59,19 @@ export async function marcarARevision(businessId, items, comment, asignadoA = nu
   try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento: el contador se actualiza al volver a abrir */ }
   return resp;
 }
+
+// Jefe de cocina (Diego 11/11/2026): lo de su equipo que espera su OK.
+// GET /api/businesses/:businessId/receta-proposals/equipo
+export async function listarPropuestasEquipo(businessId) {
+  const resp = await httpBiz(`/receta-proposals/equipo`, { method: 'GET' }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'Error obteniendo los cambios de tu equipo');
+  return resp.proposals || [];
+}
+
+// POST /api/businesses/:businessId/receta-proposals/:id/jefe-ok — pasa al administrador
+export async function jefeOkPropuesta(businessId, id) {
+  const resp = await httpBiz(`/receta-proposals/${id}/jefe-ok`, { method: 'POST', body: {} }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'No se pudo dar el OK');
+  try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento */ }
+  return resp;
+}
