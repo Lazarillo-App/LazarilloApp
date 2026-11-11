@@ -576,9 +576,13 @@ export default function ItemRow({
                     ? (rendUnid === 'porcion' ? 'porción' : canonicalUnit(rendUnid))
                     : canonicalUnit(item.supplyMedida || 'u');
 
+                  // Mismo precio que usa el costo de la fila (calcCostoUnitarioItem) y el servidor:
+                  // precio_ref del insumo (o el del local). La última compra solo para un elaborado
+                  // marcado "costear por compra". Antes acá un insumo comprado mostraba la última
+                  // compra y la fila costeaba con otro número (Diego 11/11: Heineken $4.334,58/u vs $4.303,07).
                   const precioMostrado = item.articleRefId
                     ? precioArt
-                    : forzarCompra
+                    : (forzarCompra && !!elaboradoData)
                       ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
                       : (Number(item.precioRefDB) || 0);
                   const tienePrecio = esElab
@@ -842,7 +846,10 @@ export default function ItemRow({
                           // iba precio_ref primero y el buscador mostraba otro número que la fila
                           // (Diego 10/11/2026: GATORADE 1.25 MANZANA $2.018,14 en la lista, $2.490,79 al elegirlo).
                           const pRef = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
-                          const p = ins.costo_efectivo_origen === 'compra' ? (Number(ins.precio_ultima_compra) || pRef) : pRef;
+                          // Insumo comprado → precio_ref (el del local, ya resuelto en la lista); última compra solo
+                          // para un elaborado marcado "costear por compra" (igual que calcCostoUnitarioItem).
+                          const esElabBusq = !!localRecetasElaborados[String(ins.id)] || !!ins.es_elaborado || !!ins.tiene_receta;
+                          const p = (ins.costo_efectivo_origen === 'compra' && esElabBusq) ? (Number(ins.precio_ultima_compra) || pRef) : pRef;
                           // Alerta si no hay compra reciente (dentro del período de config)
                           const sinCompraReciente = !!getAlertaColor(ins.fecha_ultima_compra, alertaSemanas, false);
                           // Tiene compras registradas y al día → verde; desactualizado → rojo; sin compras → base
