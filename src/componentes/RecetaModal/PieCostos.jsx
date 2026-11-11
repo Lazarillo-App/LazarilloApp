@@ -72,7 +72,11 @@ export default function PieCostos({
   precioSugeridoObjetivo = 0,
   onObjetivoMovido = null,
 }) {
-  const { isJefe } = useAccess() || {};
+  // Staff: lo que ve depende de su rol (Diego 11/11/2026).
+  const { staffPuede = () => true } = useAccess() || {};
+  const verPct = !isStaff || staffPuede('ver_costo_pct');
+  const verObjetivo = !isStaff || staffPuede('ver_objetivo');
+  const verPrecio = !isStaff || staffPuede('ver_precio');
   const [editArt, setEditArt] = React.useState(null);
   const [editandoObjPromo, setEditandoObjPromo] = React.useState(false);
   const botonChico = { width: 22, height: 22, p: 0, bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } };
@@ -115,14 +119,14 @@ export default function PieCostos({
       {(() => {
         const labelBase = Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion' ? labelPorUnidad : 'Costo total';
         // Jefe de cocina (Diego 11/11/2026): ve el % de costo y el precio, sin editar objetivo ni precio.
-        const conPct = !modoInsumo && (!isStaff || isJefe) && pctCostoActual !== null;
+        const conPct = !modoInsumo && verPct && pctCostoActual !== null;
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
         if (!modoInsumo) {
           // Artículo y promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
           // va pegado debajo del % costo actual (los dos % alineados) y el precio actual al final.
           // Staff/jefe: sin objetivo, el % va neutro (Diego 11/11/2026).
-          const colorPct = isStaff ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main');
+          const colorPct = !verObjetivo ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main');
           const ANCHO_PCT = 54;
           return (
             <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(112px, max-content) auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
@@ -163,7 +167,7 @@ export default function PieCostos({
                   corre el bloque del % entero y sigue alineado. */}
               <Typography variant="caption" sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo && !isStaff ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
                 {/* En el artículo común el actual ya está a la derecha, junto al sugerido; acá solo para promo y jefe. */}
-                {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `P. actual: $${fmt(precioActual, 0)}` : ''}
+                {precioActual > 0 && ((promoMode && !isStaff) || (isStaff && verPrecio)) ? `P. actual: $${fmt(precioActual, 0)}` : ''}
               </Typography>
               <span />
             </Box>
@@ -182,7 +186,7 @@ export default function PieCostos({
                 {conPct && (
                   <>
                     <Box component="span" sx={{ color: 'text.disabled', fontWeight: 400, mx: 0.75 }}>·</Box>
-                    <Box component="span" sx={{ color: isStaff ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main') }}>{fmt(pctCostoActual, 1)}%</Box>
+                    <Box component="span" sx={{ color: !verObjetivo ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main') }}>{fmt(pctCostoActual, 1)}%</Box>
                   </>
                 )}
               </Typography>
@@ -199,7 +203,7 @@ export default function PieCostos({
                 </Typography>
               )}
             </Box>
-            {isJefe && !modoInsumo && Number(precioActual) > 0 && (
+            {isStaff && verPrecio && !modoInsumo && Number(precioActual) > 0 && (
               <Box>
                 <Typography {...titulo}>Precio de venta</Typography>
                 <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '36px' }}>${fmt(precioActual)}</Typography>
