@@ -2250,7 +2250,7 @@ export default function RecetaModal({
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '99vw', sm: '98vw', md: '1240px' },
+          width: { xs: '99vw', sm: '98vw', md: 'min(1240px, 98vw)' },
           maxWidth: '1340px',
           maxHeight: '94vh',
           minHeight: 'min(94vh, calc(60vh + 140px))',
@@ -2772,7 +2772,8 @@ export default function RecetaModal({
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
                           InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
+                          // Artículo y promo: el objetivo se edita en el pie, abajo del costo real (Diego 11/11/2026).
+                          sx={{ width: 124, flexShrink: 0, display: isStaff || !modoInsumo ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
                         />
                       </Box>
                     </Box>
@@ -3058,6 +3059,7 @@ export default function RecetaModal({
                     display: 'grid',
                     gridTemplateColumns: gridIngredientes,
                     gap: '4px', px: 0.5, mb: 0.5,
+                    alignItems: 'end',   // en promo "$ Sin Promo" ocupa 2 renglones: los demás títulos se apoyan abajo
                   }}>
                     {(promoMode
                       ? ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '__SIN_PROMO__', '', 'Observaciones', '', '']
@@ -3081,7 +3083,7 @@ export default function RecetaModal({
                                   $ Sin Promo
                                 </Box>
                                 <Box component="span" sx={{ fontSize: '0.62rem', fontWeight: 700, color: colorSinPromo }}>
-                                  {listaActiva?.name || listaActiva?.nombre || 'Principal'}
+                                  {listaActiva?.name || listaActiva?.nombre || 'Principal'} ▾
                                 </Box>
                               </Box>
                             )}
@@ -3103,8 +3105,8 @@ export default function RecetaModal({
                               },
                             }}
                             sx={{
-                              '& .MuiSelect-select': { py: 0, textAlign: 'center' },
-                              '& .MuiSvgIcon-root': { fontSize: 14, color: colorSinPromo },
+                              '& .MuiSelect-select': { py: 0, pr: '0 !important', textAlign: 'center' },
+                              '& .MuiSvgIcon-root': { display: 'none' },   // la flechita va pegada a la lista (centrada), no en el borde
                             }}
                           >
                             <MenuItem value="_base" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
@@ -3361,6 +3363,7 @@ export default function RecetaModal({
               commitObjetivo={commitObjetivo}
               pctCostoIdeal={pctCostoIdeal}
               setPctCostoIdeal={setPctCostoIdeal}
+              cambiarObjetivo={(v) => setPctCostoIdeal(parseDecimal(v))}
               editandoPrecioSugerido={editandoPrecioSugerido}
               setEditandoPrecioSugerido={setEditandoPrecioSugerido}
               precioSugeridoDraft={precioSugeridoDraft}

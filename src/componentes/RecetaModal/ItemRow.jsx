@@ -899,7 +899,7 @@ export default function ItemRow({
         </Box>
 
         {/* ── Cantidad con flechitas de step progresivo ── */}
-        <Box sx={{ display: 'flex', alignItems: 'stretch', gap: '2px' }}>
+        <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
           <TextField
             inputRef={cantidadRef}
             size="small"
@@ -925,24 +925,32 @@ export default function ItemRow({
               inputMode: 'decimal',
               style: { textAlign: 'center', fontSize: '0.78rem', padding: '0 6px' }
             }}
-            sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 32 } }}
+            InputProps={{
+              // Las flechitas van ADENTRO del campo: así la caja ocupa toda la columna y queda
+              // centrada bajo "Cantidad" (antes quedaban afuera y corrían la caja 8px).
+              endAdornment: (
+                <InputAdornment position="end" sx={{ ml: 0, mr: '-8px', height: 'auto', maxHeight: 'none' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <IconButton
+                    size="small" tabIndex={-1}
+                    onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, +1) })}
+                    sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
+                  >
+                    <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▲</Box>
+                  </IconButton>
+                  <IconButton
+                    size="small" tabIndex={-1}
+                    onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, -1) })}
+                    sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
+                  >
+                    <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▼</Box>
+                  </IconButton>
+                </Box>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ width: '100%', minWidth: 0, '& .MuiOutlinedInput-root': { height: 32, pr: 1 } }}
           />
-          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <IconButton
-              size="small" tabIndex={-1}
-              onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, +1) })}
-              sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
-            >
-              <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▲</Box>
-            </IconButton>
-            <IconButton
-              size="small" tabIndex={-1}
-              onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, -1) })}
-              sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
-            >
-              <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▼</Box>
-            </IconButton>
-          </Box>
         </Box>
 
         {/* ── Unidad ── */}
