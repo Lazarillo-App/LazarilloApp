@@ -1073,9 +1073,10 @@ export default function TablaArticulos({
     } else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
         base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
-      } else if (esTop20Group(agrupacionSeleccionada)) {
+      } else if (esTop20Group(agrupacionSeleccionada) || estaEnPromociones) {
         // Top 20 es una agrupación virtual: no guarda articulos propios, la
         // membresía llega vía `visibleIds` (= filterIds más abajo).
+        // Promociones es un resumen: las promos siguen en su agrupación y llegan por visibleIds.
         base = allArticulos;
       } else {
         const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
@@ -1089,7 +1090,7 @@ export default function TablaArticulos({
     }
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
     return base;
-  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds]);
+  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones]);
 
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
@@ -2874,6 +2875,7 @@ export default function TablaArticulos({
                     priceListsByList={priceListsByList}
                     priceConfig={priceConfig}
                     promoIds={new Set([...promoIds, ...promoGroupIds])}
+                    promoGroupIds={promoGroupIds}
                   />
                 </div>
               );
