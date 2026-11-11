@@ -1535,13 +1535,24 @@ export default function TablaArticulos({
     // En Sin Agrupación, la columna de acciones también tiene que alojar el
     // botón de "Mover a X"/"Elegir agrupación" (texto, no solo el ⋮) — si no,
     // queda apretada contra la columna de "Nuevo precio" de al lado.
+    // Sin Agrupación (Diego 11/11/2026): cada fila es su propia grilla, y con columnas «.35fr» sin mínimo
+    // fijo cada fila las medía según su contenido → el encabezado y los datos quedaban corridos. Acá
+    // todas las columnas tienen un mínimo en px (igual en todas las filas), así quedan alineadas.
+    const MIN_TODO = { costo: '84px', precio: '84px', sinPromo: '84px', manual: '104px', ultimaModificacion: '72px' };
     const dynCols = visibleCols
-      .map(c => (c.id === 'acciones' && isTodo ? '154px' : c.width))
+      .map(c => {
+        if (!isTodo) return c.width;
+        if (c.id === 'acciones') return '150px';
+        if (c.id === 'rentabilidad') return 'minmax(200px, 250px)';
+        return String(c.width).endsWith('fr') ? `minmax(${MIN_TODO[c.id] || '64px'}, ${c.width})` : c.width;
+      })
       .join(' ');
-    // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
+    // En Sin Agrupación el botón va en 2 líneas con ancho fijo (150px = botón
     // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre.
-    const nombreCol = isTodo ? 'minmax(0, 1fr)' : 'minmax(0, .5fr)';
-    return `${check}minmax(56px, 90px) ${nombreCol} minmax(90px, 130px) ${branchCols}${dynCols}`;
+    const nombreCol = isTodo ? 'minmax(110px, 1fr)' : 'minmax(0, .5fr)';
+    const ventasCol = isTodo ? 'minmax(60px, 80px)' : 'minmax(90px, 130px)';
+    // Código más angosto (Diego 11/11/2026: «la veo muy ancha»): entra «L-1279» con su ícono.
+    return `${check}minmax(56px, 72px) ${nombreCol} ${ventasCol} ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
