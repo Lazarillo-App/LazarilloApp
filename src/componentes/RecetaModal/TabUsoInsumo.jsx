@@ -2,7 +2,7 @@
 // src/componentes/RecetaModal/TabUsoInsumo.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, Divider, IconButton, Tooltip,
+  Box, Typography, CircularProgress, Select, MenuItem, Button, Checkbox, IconButton, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -248,7 +248,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
             displayEmpty
             value={mermaElegidaId}
             onChange={e => setMermaElegidaId(e.target.value)}
-            sx={{ fontSize: '0.8rem', minWidth: 160, '& .MuiSelect-select': { py: 0.4 } }}
+            sx={{ fontSize: '0.8rem', minWidth: 160, height: 32 }}
           >
             <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>Elegir merma…</MenuItem>
             {mermas.map(m => (
@@ -257,6 +257,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
           </Select>
           <Button
             size="small" variant="outlined"
+            sx={{ height: 32 }}
             disabled={!mermaElegidaId}
             onClick={() => {
               const m = mermas.find(x => String(x.id) === String(mermaElegidaId));
@@ -311,17 +312,17 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
               sx={{ p: 0.25 }}
             />
             {[
-              ['codigo', 'Código art.', 'left'],
+              ['codigo', 'Código art.', 'center'],
               ['nombre', 'Nombre', 'left'],
-              ['cantidad', 'Cantidad', 'right'],
-              ['merma', 'Merma', 'left'],
+              ['cantidad', 'Cantidad', 'center'],
+              ['merma', 'Merma', 'center'],
             ].map(([key, label, align]) => (
               <div
                 key={key}
                 onClick={() => toggleSort(key)}
                 style={{
                   cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center',
-                  gap: 3, justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+                  gap: 3, justifyContent: align === 'center' ? 'center' : 'flex-start',
                 }}
               >
                 {label}
@@ -356,7 +357,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
                       onClick={abrir}
                       title={puedeAbrir ? 'Abrir esta receta' : undefined}
                       style={{
-                        color: '#64748b', fontVariantNumeric: 'tabular-nums',
+                        color: '#64748b', fontVariantNumeric: 'tabular-nums', textAlign: 'center',
                         cursor: puedeAbrir ? 'pointer' : 'default',
                       }}
                     >
@@ -396,7 +397,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
                     if (e.key === 'Escape') { setEditandoCantidadId(null); }
                   }}
                   style={{
-                    width: '100%', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    width: '100%', textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                     border: '1px solid', borderColor: PRIMARY, borderRadius: 4, padding: '2px 6px',
                     fontSize: '0.82rem', boxSizing: 'border-box',
                   }}
@@ -406,7 +407,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
                   onClick={() => { if (cambiandoItemId !== u.item_id) abrirEdicionCantidad(u); }}
                   title="Click para corregir la cantidad"
                   style={{
-                    textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                     cursor: cambiandoItemId === u.item_id ? 'default' : 'pointer',
                     opacity: cambiandoItemId === u.item_id ? 0.5 : 1,
                     borderBottom: '1px dashed transparent',
@@ -453,18 +454,18 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
                         .join(' + ');
                       return `${nombres} (×${factor.toFixed(2)})`;
                     }}
-                    sx={{ fontSize: '0.76rem', '& .MuiSelect-select': { py: 0.25 } }}
+                    sx={{ fontSize: '0.76rem', height: 32 }}
                   >
+                    {/* Acción primero, en franja gris (mismo diseño que SelectorBuscable y la merma de la receta) */}
+                    <MenuItem value={NUEVA_MERMA} sx={{ fontSize: '0.76rem', color: 'primary.main', fontWeight: 600, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'action.selected' } }}>
+                      + Crear merma
+                    </MenuItem>
                     {mermas.map(m => (
                       <MenuItem key={m.id} value={String(m.id)} sx={{ fontSize: '0.76rem' }}>
                         <Checkbox size="small" checked={sel.includes(String(m.id))} sx={{ p: 0.25, mr: 0.5 }} />
                         {m.nombre}
                       </MenuItem>
                     ))}
-                    {mermas.length > 0 && <Divider sx={{ my: 0.5 }} />}
-                    <MenuItem value={NUEVA_MERMA} sx={{ fontSize: '0.76rem', color: PRIMARY, fontWeight: 700 }}>
-                      + Nueva merma…
-                    </MenuItem>
                   </Select>
                 );
               })()}
