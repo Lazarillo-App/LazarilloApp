@@ -9,7 +9,7 @@
 // renglón levantado ocupa el lugar exacto donde va a quedar (resaltado celeste con sombra) y los
 // demás se corren con animación. Lo que se ve al soltar es lo que se guarda. Esc cancela.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Typography, IconButton, Popover, InputBase, Tooltip, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { Box, Typography, IconButton, Popover, InputBase, Tooltip, ToggleButtonGroup, ToggleButton, Divider, Button } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import CloseIcon from '@mui/icons-material/Close';
@@ -58,7 +58,7 @@ const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arras
         textAlign: 'center', cursor: armando ? 'pointer' : 'default',
       }}>
         <Typography sx={{ fontWeight: 800, fontStyle: 'italic', fontSize: '0.86rem', letterSpacing: '.02em', textTransform: 'uppercase', lineHeight: 1.1 }}>
-          {cant ? <span style={{ marginRight: 6 }}>{cant}</span> : null}{r.nombre}
+          {cant ? <span style={{ marginRight: 6 }}>{cant}</span> : null}{r.alias || r.nombre}
         </Typography>
       </Box>
       {armando && (r.extra ? (
@@ -74,6 +74,76 @@ const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arras
   );
 });
 
+// Panel al tocar un ingrediente en «Armar» (Diego 11/11/2026). Arriba, lo de ESTA receta
+// (cantidad, observación) si se habilita onEditarItem; abajo, lo de la VISTA, que vale para el
+// ingrediente en todas las recetas y plazas: alias, peso u observación, color.
+const lbl = { fontSize: '0.68rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '.04em', textAlign: 'center', mb: 0.5 };
+const campo = { height: 40, border: '1px solid', borderColor: 'divider', borderRadius: '6px', px: 1.25, fontSize: '0.85rem', width: '100%',
+  '&.Mui-focused': { borderColor: '#5BC2EA', boxShadow: '0 0 0 2px rgba(91,194,234,.25)' } };
+function PanelIngrediente({ r, producto, onCambiar, onEditarItem }) {
+  const [alias, setAlias] = useState(r.alias || '');
+  const [cantidad, setCantidad] = useState(r.cantidad != null ? String(r.cantidad).replace('.', ',') : '');
+  const [obs, setObs] = useState(r.obs || '');
+  const guardarAlias = () => { const a = alias.trim(); if (a !== (r.alias || '')) onCambiar({ alias: a }); };
+  const actual = r.mostrar === 'obs' ? 'obs' : 'peso';
+  const uni = String(r.unidad || '').toLowerCase() === 'gr' ? 'g' : (r.unidad || '');
+  const cambioReceta = cantidad !== (r.cantidad != null ? String(r.cantidad).replace('.', ',') : '') || obs !== (r.obs || '');
+  return (
+    <Box sx={{ p: 1.5, width: 300 }}>
+      <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '0.9rem', textAlign: 'center', textTransform: 'uppercase', lineHeight: 1.15, mb: 1.25 }}>
+        {r.nombre}
+      </Typography>
+      {onEditarItem && (
+        <>
+          <Typography sx={lbl}>EN ESTA RECETA · {String(producto || '').toUpperCase()}</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 1, mb: 1 }}>
+            <Box>
+              <Typography sx={{ ...lbl, fontWeight: 600 }}>Cantidad</Typography>
+              <InputBase value={cantidad} onChange={(e) => setCantidad(e.target.value.replace(/[^0-9.,]/g, ''))} sx={campo}
+                inputProps={{ style: { textAlign: 'center' }, inputMode: 'decimal' }}
+                endAdornment={<Box component="span" sx={{ fontSize: '0.78rem', color: 'text.secondary', ml: 0.5 }}>{uni}</Box>} />
+            </Box>
+            <Box>
+              <Typography sx={{ ...lbl, fontWeight: 600 }}>Observación</Typography>
+              <InputBase value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ej. 1 dip y medio" sx={campo} />
+            </Box>
+          </Box>
+          <Button fullWidth size="small" variant="contained" disableElevation disabled={!cambioReceta}
+            onClick={() => onEditarItem({ cantidad: Number(String(cantidad).replace(',', '.')), observaciones: obs.trim() })}
+            sx={{ height: 34, textTransform: 'none', fontWeight: 700 }}>
+            Guardar en la receta
+          </Button>
+          <Divider sx={{ my: 1.5 }} />
+        </>
+      )}
+      {!r.extra && (
+        <>
+          <Typography sx={lbl}>EN LA VISTA · TODAS LAS RECETAS Y PLAZAS</Typography>
+          <Typography sx={{ ...lbl, fontWeight: 600 }}>Alias</Typography>
+          <InputBase value={alias} onChange={(e) => setAlias(e.target.value)} onBlur={guardarAlias}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+            placeholder={r.nombre} sx={{ ...campo, mb: 1 }} inputProps={{ style: { textAlign: 'center', textTransform: 'uppercase' } }} />
+          <Typography sx={{ ...lbl, fontWeight: 600 }}>Mostrar</Typography>
+          <ToggleButtonGroup exclusive fullWidth size="small" value={actual}
+            onChange={(_, v) => { if (v && v !== actual) onCambiar({ mostrar: v }); }}
+            sx={{ mb: 1, '& .MuiToggleButton-root': { height: 34, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600 } }}>
+            <ToggleButton value="peso">Peso</ToggleButton>
+            <ToggleButton value="obs">Observación</ToggleButton>
+          </ToggleButtonGroup>
+        </>
+      )}
+      <Typography sx={{ ...lbl, fontWeight: 600 }}>Color</Typography>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.75, justifyItems: 'center' }}>
+        {PALETA.map((c, i) => (
+          <Box key={i} onClick={() => onCambiar({ color: i })} sx={{ width: 28, height: 28, borderRadius: '5px', bgcolor: c.bg, cursor: 'pointer',
+            border: c.borde ? '1.5px solid #111827' : '1px solid rgba(0,0,0,.15)',
+            outline: Number(r.color) === i ? '2px solid #2492C8' : 'none', outlineOffset: 1 }} />
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 // Pasa el elemento de la posición `desde` a la posición `hasta`.
 const moverEn = (lista, desde, hasta) => {
   const l = [...lista];
@@ -82,7 +152,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAbrir }) {
+function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -163,12 +233,6 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
     guardar([...p.renglones, { key: `x:${Date.now().toString(36)}`, nombre: texto, color: 11, extra: true, oculto: false }]);
     setNuevo('');
   };
-  const elegirColor = (i) => {
-    const r = paleta.renglon;
-    setPaleta(null);
-    if (r.extra) guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, color: i } : x)));
-    else onColorIngrediente(r.ref, i);
-  };
 
   // La tarjeta ocupa 2 filas de la grilla (título | renglones) con subgrid: todos los títulos de
   // una misma fila arrancan arriba y los renglones empiezan a la misma altura; si un título
@@ -205,42 +269,30 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
       )}
       <Popover open={!!paleta} anchorEl={paleta?.anchor} onClose={() => setPaleta(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} transformOrigin={{ vertical: 'top', horizontal: 'center' }}>
-        <Box sx={{ p: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 24px)', gap: 0.75 }}>
-          {PALETA.map((c, i) => (
-            <Box key={i} onClick={() => elegirColor(i)} sx={{ width: 24, height: 24, borderRadius: '4px', bgcolor: c.bg, cursor: 'pointer',
-              border: c.borde ? '1.5px solid #111827' : '1px solid rgba(0,0,0,.15)',
-              outline: Number(paleta?.renglon?.color) === i ? '2px solid #2492C8' : 'none', outlineOffset: 1 }} />
-          ))}
-        </Box>
-        {paleta && !paleta.renglon.extra && (() => {
-          const r = paleta.renglon;
-          const actual = r.mostrar === 'obs' ? 'obs' : 'peso';
-          return (
-            <Box sx={{ px: 1, pb: 1 }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: 'text.secondary', textAlign: 'center', mb: 0.5 }}>MOSTRAR</Typography>
-              <ToggleButtonGroup exclusive fullWidth size="small" value={actual}
-                onChange={(_, v) => { if (!v || v === actual) return; setPaleta({ ...paleta, renglon: { ...r, mostrar: v } }); onMostrarIngrediente?.(r.ref, v); }}
-                sx={{ '& .MuiToggleButton-root': { height: 30, textTransform: 'none', fontSize: '0.78rem', fontWeight: 600 } }}>
-                <ToggleButton value="peso">Peso</ToggleButton>
-                <ToggleButton value="obs">Observación</ToggleButton>
-              </ToggleButtonGroup>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.75, maxWidth: 220, mx: 'auto', lineHeight: 1.3 }}>
-                Color y lo que se muestra valen para este ingrediente en todas las recetas y plazas
-              </Typography>
-            </Box>
-          );
-        })()}
+        {paleta && (
+          <PanelIngrediente key={paleta.renglon.key} r={paleta.renglon} producto={p.nombre}
+            onCambiar={(cambio) => {
+              const r = paleta.renglon;
+              setPaleta({ ...paleta, renglon: { ...r, ...cambio } });
+              if (r.extra) { if (cambio.color != null) guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, color: cambio.color } : x))); return; }
+              if (cambio.color != null) onColorIngrediente?.(r.ref, cambio.color);
+              if (cambio.mostrar) onMostrarIngrediente?.(r.ref, cambio.mostrar);
+              if (cambio.alias !== undefined) onAliasIngrediente?.(r.ref, cambio.alias);
+            }}
+            onEditarItem={onEditarItem && !paleta.renglon.extra ? (datos) => onEditarItem(p.articleId, paleta.renglon, datos) : null} />
+        )}
       </Popover>
       </Box>
     </Box>
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente} onAbrir={onAbrir} />
+        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
+          onAliasIngrediente={onAliasIngrediente} onEditarItem={onEditarItem} onAbrir={onAbrir} />
       ))}
     </Box>
   );
