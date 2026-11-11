@@ -2311,7 +2311,8 @@ export default function TablaArticulos({
     const sugerido = sugeridoCrudo > 0
       ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
       : 0;
-    const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    // Staff (y el jefe de cocina) no marca precios: el objetivo no le dice nada (Diego 11/11/2026).
+    const superaObjetivo = !isStaff && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
     const selectedStyle = isSelected ? { background: "color-mix(in srgb, var(--color-primary) 10%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)", position: "relative" } : null;
@@ -2468,7 +2469,7 @@ export default function TablaArticulos({
               return (
                 <div key="costo" style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, lineHeight: 1.15 }}>
                   <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
-                  {sugerido > 0 && (
+                  {sugerido > 0 && !isStaff && (
                     <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
                       sug. {fmtCurrency(sugerido)}
                     </div>
@@ -2488,6 +2489,12 @@ export default function TablaArticulos({
             }
 
             case 'rentabilidad':
+              // Jefe de cocina: solo el % de costo, sin barra ni objetivo.
+              if (isStaff) return (
+                <div key="rentabilidad" style={{ ...cellNum, color: TABLE_TEXT }}>
+                  {costoPct > 0 ? `${fmt(costoPct, 1)}%` : <span style={{ color: TABLE_MUTED }}>—</span>}
+                </div>
+              );
               return (
                 <div key="rentabilidad" style={{ ...cellNum }}>
                   <BarraRentabilidad
@@ -3133,20 +3140,24 @@ export default function TablaArticulos({
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
                             Fila ámbar: costo poco confiable
                           </span>
+                          {!isStaff && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
                             Fila roja: excedido sobre el objetivo
                           </span>
+                          )}
                         </span>
                       }>
                         <span style={{ cursor: 'help' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                       </Tooltip>
+                      {!isStaff && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
                         costo actual
                         <span style={{ width: 2, height: 10, background: '#4A555F', display: 'inline-block', margin: '0 1px' }} />
                         objetivo
                       </span>
+                      )}
                     </div>
                   );
                   case 'manual': {
