@@ -1,13 +1,15 @@
 // src/paginas/PlazaPage.jsx — /plaza/:id: la vista «diseño» de una plaza de despacho (Diego 11/11/2026).
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, Typography, Button, CircularProgress, Alert, Stack } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 import { useBusiness } from '@/context/BusinessContext';
 import RecetaModal from '@/componentes/RecetaModal';
+import { useOrganization } from '@/context/OrganizationContext';
+import { BASE } from '@/servicios/apiBase';
 
 // Lo que se guarda de cada tarjeta: orden de todos los renglones, ocultos y extras.
 const fichaDe = (renglones) => ({
@@ -23,6 +25,12 @@ export default function PlazaPage() {
   const [error, setError] = useState(null);
   const [armando, setArmando] = useState(false);
   const [receta, setReceta] = useState(null); // { id, nombre } del producto abierto
+  const [insumoEq, setInsumoEq] = useState(null); // { id, nombre, articleId }: «+ Crear equivalencia»
+  const [aviso, setAviso] = useState('');
+  // Negocio donde viven los insumos (el principal de la organización), igual que InsumosMain.
+  const { rootBusiness, organization } = useOrganization() || {};
+  const enOrg = (organization?.businesses || []).some((b) => String(b.id) === String(activeId));
+  const insumosBizId = rootBusiness?.id && enOrg ? String(rootBusiness.id) : activeId;
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -59,6 +67,16 @@ export default function PlazaPage() {
     } catch (e) { setError(e.message); }
   };
 
+  // «En esta receta»: guarda cantidad / unidad / observación de un ingrediente y refresca solo esa tarjeta.
+  const editarItem = async (articleId, datos) => {
+    try {
+      const r = await PlazasAPI.editarItem(id, articleId, datos);
+      if (r.pending) setAviso('Quedó como propuesta: se aplica cuando la aprueben');
+      else { setAviso('Guardado en la receta'); await refrescarProducto(articleId); }
+      return true;
+    } catch (e) { setError(e.message); return false; }
+  };
+
   if (error && !data) return <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>;
   if (!data) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
 
@@ -85,6 +103,11 @@ export default function PlazaPage() {
         <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Se asignan en ⚙ Configuración › Sectores.</Typography>
       ) : (
         <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente}
+          onEditarItem={editarItem}
+          onCrearEquivalencia={(articleId, r) => {
+            const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
+            if (insumoId) setInsumoEq({ id: insumoId, nombre: r.nombre, articleId });
+          }}
           onAbrir={(p) => setReceta({ id: p.articleId, nombre: p.nombre })} />
       )}
       {receta && (
@@ -92,6 +115,19 @@ export default function PlazaPage() {
           businessId={activeId} activeBizId={activeId} recetasElaborados={{}}
           onSaved={() => refrescarProducto(receta.id)} />
       )}
+      {insumoEq && (
+        // El insumo, directo en su pestaña Equivalencias; al cerrar se refresca la tarjeta para que
+        // la equivalencia nueva aparezca en «Unidad».
+        <RecetaModal open modoInsumo saltarSelector initialTab="equivalencias"
+          onClose={() => { const a = insumoEq.articleId; setInsumoEq(null); refrescarProducto(a); setAviso('Elegí la equivalencia nueva en «Unidad»'); }}
+          articulo={{ id: insumoEq.id, nombre: insumoEq.nombre, precio: 0 }}
+          businessId={insumosBizId} activeBizId={activeId}
+          getRecetaUrl={`${BASE}/businesses/${insumosBizId}/insumos/${insumoEq.id}/receta`}
+          saveRecetaUrl={`${BASE}/businesses/${insumosBizId}/insumos/${insumoEq.id}/receta`}
+          onSaved={() => {}} />
+      )}
+      <Snackbar open={!!aviso} autoHideDuration={3500} onClose={() => setAviso('')} message={aviso}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 }
