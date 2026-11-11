@@ -14,7 +14,7 @@ import { BusinessesAPI, httpBiz, RecetasAPI, PriceConfigAPI } from "../servicios
 import { BASE, api } from "../servicios/apiBase";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
-import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group, esPromoGroup } from '../utils/articuloGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group, esPromoGroup, esVendenPocoGroup, esVistaVentas } from '../utils/articuloGruposEspeciales';
 import { ensureTop20 } from '../servicios/apiAgrupacionesTodo';
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
@@ -365,7 +365,7 @@ export default function ArticulosMain(props) {
       const bid = activeBizId;
       const groupId = Number(g?.id);
 
-      if (bid && Number.isFinite(groupId)) {
+      if (bid && Number.isFinite(groupId) && groupId > 0) {
         setViewModeByGroup((prev) => ({
           ...prev,
           [groupId]: mode,
@@ -1644,6 +1644,14 @@ export default function ArticulosMain(props) {
     () => new Set(rankingVentas.pares.slice(0, 20).map(([id]) => id)),
     [rankingVentas]);
 
+  // «Venden poco» (Diego 11/11): los de letra C = suman el último 5 % del ingreso.
+  // Solo los que vendieron en el período (pares ya excluye los que están en 0 y los discontinuados).
+  const vendenPocoIds = useMemo(() => {
+    const s = new Set();
+    rankingVentas.abc.forEach((letra, id) => { if (letra === 'C') s.add(id); });
+    return s;
+  }, [rankingVentas]);
+
   // Números del panel lateral del Top 20. El % se calcula sobre los artículos que
   // VENDIERON en el período (los que están en 0 no cuentan, Diego 11/11).
   const resumenTop20 = useMemo(() => {
@@ -1661,6 +1669,18 @@ export default function ArticulosMain(props) {
       curva: rankingVentas.curva,
     };
   }, [top20Ids, rankingVentas]);
+
+  // Números del panel lateral de «Venden poco».
+  const resumenVendenPoco = useMemo(() => {
+    let monto = 0;
+    for (const [id, a] of rankingVentas.pares) if (vendenPocoIds.has(id)) monto += a;
+    return {
+      n: vendenPocoIds.size,
+      monto,
+      pctIngreso: rankingVentas.total > 0 ? (monto / rankingVentas.total) * 100 : 0,
+      conVentas: rankingVentas.pares.length,
+    };
+  }, [vendenPocoIds, rankingVentas]);
 
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
@@ -1987,6 +2007,10 @@ export default function ArticulosMain(props) {
       return top20Ids;
     }
 
+    if (esVendenPocoGroup(sel)) {
+      return vendenPocoIds;
+    }
+
     if (isDiscontinuadosGroup(sel)) {
       return discIds;
     }
@@ -2023,7 +2047,7 @@ export default function ArticulosMain(props) {
       s.add(id);
     }
     return s;
-  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, promoIdsResumen]);
+  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, vendenPocoIds, promoIdsResumen]);
 
   // Si hay lista activa en el sidebar → usar esos IDs como filtro
   const effectiveVisibleIds = useMemo(() => {
@@ -2774,14 +2798,14 @@ export default function ArticulosMain(props) {
       setFiltroBusqueda('');
       return;
     }
-    if (currentSel && (isDiscontinuadosGroup(currentSel) || esTop20Group(currentSel))) return;
+    if (currentSel && (isDiscontinuadosGroup(currentSel) || esVistaVentas(currentSel))) return;
 
     // ── Si ya hay una agrupación real seleccionada y válida → no tocar ──
     // Esto evita que cualquier mutación que cambie agrupacionesRich fuerce
     // la navegación a Sin Agrupación mientras el usuario está trabajando.
     const selEsAgrupacionReal = currentSel &&
       !isDiscontinuadosGroup(currentSel) &&
-      !esTop20Group(currentSel) &&
+      !esVistaVentas(currentSel) &&
       todoId && Number(currentSel.id) !== Number(todoId) &&
       (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
 
@@ -3164,6 +3188,7 @@ export default function ArticulosMain(props) {
           }}>
           <SidebarCategorias
             resumenTop20={resumenTop20}
+            resumenVendenPoco={resumenVendenPoco}
             staff={!!isStaff}
             businessId={activeBizId}
             categorias={categorias}
@@ -3382,7 +3407,7 @@ export default function ArticulosMain(props) {
           // Discontinuados), pasa a "Todos" para que el artículo recién creado se vea (10/11).
           const sel = agrupSelRef.current;
           const todoId = todoInfo?.todoGroupId;
-          if (todoId && (!sel || esTop20Group(sel) || isDiscontinuadosGroup(sel))) {
+          if (todoId && (!sel || esVistaVentas(sel) || isDiscontinuadosGroup(sel))) {
             setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
             setCategoriaSeleccionada(null);
             setFiltroBusqueda('');
