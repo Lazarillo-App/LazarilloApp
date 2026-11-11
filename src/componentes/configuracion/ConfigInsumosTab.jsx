@@ -623,30 +623,25 @@ export default function ConfigInsumosTab({
           <Grid size={{ xs: 12 }}>
             <Card>
               <CardHeader icon={<WarningAmberIcon />} title="Umbral de alerta de compras"
-                subtitle="Semanas sin compra para marcar un insumo como vencido" />
+                subtitle="Cuándo un insumo de receta se marca con ⚠" />
               <CardBody>
-                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
-                  <Stack spacing={1.5} sx={{ flex: 1 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                      Si un insumo no fue comprado en N semanas y está en una receta activa, se marca como vencido y aparece en las alertas de abajo.
-                    </Typography>
-                    {Number(config.compras_alerta_semanas) > 0 && (
-                      <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
-                        Insumos sin compra en más de <strong>{config.compras_alerta_semanas} semanas</strong> aparecen como vencidos.
-                      </Alert>
-                    )}
-                  </Stack>
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
-                    <TextField size="small" type="number" label="Semanas sin compra"
+                {/* Fila 1: semanas sin compra */}
+                <Stack spacing={1.5} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }}>
+                  <Typography variant="body2" sx={{ flex: 1, fontWeight: 700, fontSize: '0.85rem' }}>
+                    Semanas sin compra
+                  </Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
+                    <TextField size="small" type="number"
                       value={config.compras_alerta_semanas}
                       onChange={e => setConfig(c => ({ ...c, compras_alerta_semanas: e.target.value }))}
-                      inputProps={{ min: 1, max: 52, step: 1 }}
-                      sx={{ width: 170 }}
+                      inputProps={{ min: 1, max: 52, step: 1, 'aria-label': 'Semanas sin compra' }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">semanas</InputAdornment> }}
+                      sx={{ flex: 1 }}
                     />
                     <Button variant="contained" size="small" disabled={!!saving.compras_alerta_semanas}
                       startIcon={saving.compras_alerta_semanas ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
                       onClick={() => saveConfig('compras_alerta_semanas')}
-                      sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
+                      sx={{ height: 40, bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
                       {saving.compras_alerta_semanas ? 'Guardando…' : 'Guardar'}
                     </Button>
                   </Stack>
@@ -654,17 +649,17 @@ export default function ConfigInsumosTab({
 
                 <Divider sx={{ my: 2 }} />
 
-                {/* Rubros que no alertan (ej. Especias: se compran cada muchos meses) */}
-                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
-                  <Stack spacing={0.5} sx={{ flex: 1 }}>
+                {/* Fila 2: rubros que no alertan (ej. Especias: se compran cada muchos meses) */}
+                <Stack spacing={1.5} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
+                  <Stack spacing={0.25} sx={{ flex: 1, pt: { sm: 0.5 } }}>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
                       Rubros sin alerta
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                      Rubros que se compran cada mucho tiempo (por ejemplo, especias). Sus insumos no marcan ⚠ en las recetas ni aparecen en la lista de abajo.
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                      Los que se compran cada mucho (ej. especias)
                     </Typography>
                   </Stack>
-                  <Box sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
+                  <Stack spacing={1} sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
                     <Autocomplete
                       multiple size="small" disableCloseOnSelect
                       options={alertasRubros || []}
@@ -688,32 +683,29 @@ export default function ConfigInsumosTab({
                         </li>
                       )}
                       renderInput={(params) => (
-                        <TextField {...params} label="Rubros sin alerta"
-                          placeholder={rubrosExcluidosValor.length ? '' : 'Elegí uno o más rubros'} />
+                        <TextField {...params} inputProps={{ ...params.inputProps, 'aria-label': 'Rubros sin alerta' }}
+                          placeholder={rubrosExcluidosValor.length ? '' : 'Agregar rubro…'} />
                       )}
                     />
-                  </Box>
-                </Stack>
-
-                {rubrosSugeridos.length > 0 && (
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}
-                    sx={{ mt: 1.5, p: 1.25, borderRadius: 1.5, bgcolor: '#fffbeb', border: '1px solid #fde68a' }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#92400e', flex: 1, minWidth: 0 }}>
-                      <strong>Sugerencia:</strong> en estos rubros casi todos los insumos están en alerta.
-                      Si se compran cada mucho tiempo, conviene sacarlos.
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
-                      {rubrosSugeridos.map(r => (
-                        <Chip key={r.codigo} size="small" clickable
-                          disabled={!!saving.alertas_rubros_excluidos}
-                          onClick={() => saveRubrosExcluidos?.([...(config.alertas_rubros_excluidos || []), String(r.codigo)])}
-                          label={<span><strong>{r.nombre}</strong> · {r.enAlerta} de {r.insumos} &nbsp;+ Sacar</span>}
-                          sx={{ height: 26, bgcolor: '#fff', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.75rem',
-                            '&:hover': { bgcolor: '#fef3c7' } }} />
-                      ))}
-                    </Stack>
+                    {/* Sugeridos: rubros con casi todos sus insumos en alerta (el detalle va en el tooltip) */}
+                    {rubrosSugeridos.length > 0 && (
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography component="span" sx={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 700 }}>
+                          Sugeridos:
+                        </Typography>
+                        {rubrosSugeridos.map(r => (
+                          <Chip key={r.codigo} size="small" clickable
+                            title={`${r.enAlerta} de ${r.insumos} insumos de este rubro están en alerta. Tocá para sacarlo.`}
+                            disabled={!!saving.alertas_rubros_excluidos}
+                            onClick={() => saveRubrosExcluidos?.([...(config.alertas_rubros_excluidos || []), String(r.codigo)])}
+                            label={`+ ${r.nombre} · ${r.enAlerta}/${r.insumos}`}
+                            sx={{ height: 24, bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.72rem',
+                              '&:hover': { bgcolor: '#fef3c7' } }} />
+                        ))}
+                      </Stack>
+                    )}
                   </Stack>
-                )}
+                </Stack>
               </CardBody>
             </Card>
           </Grid>
