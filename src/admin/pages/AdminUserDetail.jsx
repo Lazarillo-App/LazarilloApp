@@ -96,7 +96,7 @@ export default function AdminUserDetail() {
       const code = e?.data?.error;
       const msg = code === 'CONFIRM_EMAIL_MISMATCH'
         ? 'El email no coincide — no se borró nada.'
-        : (e?.message || 'No se pudo borrar la cuenta');
+        : (e?.data?.detail ? `No se pudo borrar la cuenta: ${e.data.detail}` : (e?.message || 'No se pudo borrar la cuenta'));
       showAlert(msg, 'error');
     } finally {
       setHardDeleting(false);
