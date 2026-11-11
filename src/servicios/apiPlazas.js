@@ -11,6 +11,6 @@ export const PlazasAPI = {
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
   async vista(id, articleId) { return ok(await httpBiz(`/plazas/${id}/vista${articleId ? `?articleId=${articleId}` : ''}`, { method: 'GET', cache: false }), 'No se pudo cargar la plaza'); },
   async guardarFicha(id, articleId, ficha) { return ok(await httpBiz(`/plazas/${id}/fichas/${articleId}`, { method: 'PUT', body: ficha }), 'No se pudo guardar'); },
-  // color y/o mostrar ('peso' | 'obs'): lo que no se manda queda como estaba.
-  async guardarColor(ref, color, mostrar) { return ok(await httpBiz('/plazas/colores', { method: 'PUT', body: { ref, color, mostrar } }), 'No se pudo guardar el ingrediente'); },
+  // color, mostrar ('peso' | 'obs') y/o alias ('' lo borra): lo que no se manda queda como estaba.
+  async guardarColor(ref, color, mostrar, alias) { return ok(await httpBiz('/plazas/colores', { method: 'PUT', body: { ref, color, mostrar, alias } }), 'No se pudo guardar el ingrediente'); },
 };

@@ -40,6 +40,11 @@ export default function PlazaPage() {
     setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, mostrar } : r)) })) }));
     try { await PlazasAPI.guardarColor(ref, undefined, mostrar); } catch (e) { setError(e.message); }
   };
+  // Alias: solo cambia cómo se ve el ingrediente en las plazas (no la receta).
+  const aliasIngrediente = async (ref, alias) => {
+    setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, alias } : r)) })) }));
+    try { await PlazasAPI.guardarColor(ref, undefined, undefined, alias); } catch (e) { setError(e.message); }
+  };
   const colorIngrediente = async (ref, color) => {
     setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, color } : r)) })) }));
     try { await PlazasAPI.guardarColor(ref, color); } catch (e) { setError(e.message); }
@@ -79,7 +84,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Se asignan en ⚙ Configuración › Sectores.</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente}
+        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente}
           onAbrir={(p) => setReceta({ id: p.articleId, nombre: p.nombre })} />
       )}
       {receta && (
