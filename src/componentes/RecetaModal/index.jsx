@@ -2077,15 +2077,23 @@ export default function RecetaModal({
       insumoMermasList(insId, insumoBizId)
         .then(r => {
           const mermas = Array.isArray(r?.data) ? r.data : [];
-          setItems(prev => prev.map(it =>
-            String(it.supplyId) === String(insId) ? { ...it, mermas } : it
-          ));
+          const existe = new Set(mermas.map(m => Number(m.id)));
+          setItems(prev => prev.map(it => {
+            if (String(it.supplyId) !== String(insId)) return it;
+            // Una merma borrada no puede quedar elegida en la fila: si no, se seguía viendo
+            // (con su factor) y al guardar la receta fallaba la base (merma_id inexistente).
+            const ids = Array.isArray(it.mermaIds) ? it.mermaIds : (it.mermaId != null ? [it.mermaId] : []);
+            const validos = ids.map(Number).filter(id => existe.has(id));
+            return { ...it, mermas, mermaIds: validos, mermaId: validos[0] ?? null };
+          }));
         })
         .catch(() => { });
     };
     window.addEventListener('insumo:mermas-changed', handler);
     return () => window.removeEventListener('insumo:mermas-changed', handler);
-  }, [businessId, refrescarInsumoPuntual]);
+    // insumoBizId: los insumos pueden vivir en otro negocio de la organización; sin esta
+    // dependencia la lista se pedía al negocio equivocado y la fila quedaba con mermas viejas.
+  }, [businessId, insumoBizId, refrescarInsumoPuntual]);
 
   // Navegación por teclado: ← anterior, → siguiente.
   // Solo si el foco NO está en un input/textarea/select (para no interferir al escribir).
