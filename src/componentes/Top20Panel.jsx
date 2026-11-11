@@ -35,7 +35,7 @@ function Curva({ curva = [], n }) {
 
 export default function Top20Panel({ datos }) {
   if (!datos) return null;
-  const { n, monto, pctIngreso, conVentas, pctConVentas, n50, nUltimo5, curva } = datos;
+  const { n, monto, pctIngreso, conVentas, pctConVentas, n50, curva } = datos;
   const fila = (valor, texto) => (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '3px 0' }}>
       <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{valor}</span>
@@ -54,7 +54,6 @@ export default function Top20Panel({ datos }) {
           {fila(fmtM(monto), `${fmtPct(pctIngreso)} del ingreso`)}
           {fila(n, `artículos · ${fmtPct(pctConVentas)} de los ${conVentas} que vendieron`)}
           {fila(n50, 'hacen el 50 % del ingreso')}
-          {fila(nUltimo5, 'suman el último 5 % (letra C)')}
           <div style={{ marginTop: 8 }}>
             <Curva curva={curva} n={n} />
           </div>
