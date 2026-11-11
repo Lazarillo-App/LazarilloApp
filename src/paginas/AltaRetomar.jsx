@@ -32,6 +32,7 @@ export default function AltaRetomar() {
       pasoInicial={p.onboarding?.alta_paso || 'pos'}
       onDone={async () => {
         try { await refetchBusinesses?.(); } catch { /* sin refetch, igual sale */ }
+        window.dispatchEvent(new CustomEvent('business:created')); // refresca permisos y guard
         navigate('/menu');
       }}
     />

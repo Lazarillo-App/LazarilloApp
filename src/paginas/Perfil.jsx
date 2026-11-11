@@ -940,6 +940,9 @@ export default function Perfil() {
       <AsistenteOnboarding
         onDone={async () => {
           try { await refetchBusinesses?.(); } catch { }
+          // Avisa que hay negocio nuevo: permisos (rol dueño → Configuración completa y
+          // Equipo), selector de negocio y guard se cargaron sin negocio y se refrescan.
+          window.dispatchEvent(new CustomEvent('business:created'));
           navigate('/menu');
         }}
       />
