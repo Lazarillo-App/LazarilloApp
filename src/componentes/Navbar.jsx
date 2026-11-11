@@ -222,7 +222,8 @@ export default function Navbar() {
 
   // Nunca a "/" (landing de marketing): este navbar solo se muestra logueada,
   // así que el logo tiene que llevar siempre adentro de la app.
-  const homeTo = isAppAdmin ? '/admin' : '/inicio';
+  // Staff no tiene Inicio ni menú de módulos: su casa es Recetas (11/11).
+  const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/menu' : '/inicio');
 
   return (
     <>
@@ -675,7 +676,7 @@ export default function Navbar() {
           sin agregar otro color nuevo. */}
       {/* En el asistente de alta no hay módulos que abrir todavía (09/11). */}
       {/* Tampoco en Inicio: ahí los módulos ya están en pantalla (09/11). */}
-      {!modulosOpen && !enAlta && location.pathname !== '/inicio' && (
+      {!modulosOpen && !enAlta && !isStaff && location.pathname !== '/inicio' && (
         <Tooltip title="Módulos" placement="right">
           <Box
             component="button"
@@ -707,7 +708,7 @@ export default function Navbar() {
         </Tooltip>
       )}
 
-      <ModulosDrawer open={modulosOpen} onClose={() => setModulosOpen(false)} />
+      {!isStaff && <ModulosDrawer open={modulosOpen} onClose={() => setModulosOpen(false)} />}
     </>
   );
 }
