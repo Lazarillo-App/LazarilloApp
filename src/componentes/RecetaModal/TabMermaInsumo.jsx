@@ -6,12 +6,13 @@ import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack,
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { insumoMermasList, insumoMermaCreate, insumoMermaUpdate, insumoMermaDelete } from '@/servicios/apiInsumos';
+import { insumoMermasList, insumoMermaCreate, insumoMermaUpdate, insumoMermaDelete, insumoMermaUso } from '@/servicios/apiInsumos';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal } from '@/utils/decimales';
 import { canonicalUnit, fmt, PRIMARY } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
+import BorrarMermaEnUsoDialog from './BorrarMermaEnUsoDialog';
 
 export default function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5, todosInsumos = [] }) {
   const [lista, setLista] = useState([]);
@@ -176,10 +177,29 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
   };
 
   const [aBorrar, setABorrar] = useState(null); // merma a borrar (confirmación)
-  const borrar = async (mId) => {
+  // Recetas que la usan: si hay, en vez del "¿seguro?" se avisa cuáles y se ofrece
+  // reemplazarla por otra merma del insumo (Diego 11/11).
+  const [usoBorrar, setUsoBorrar] = useState(null); // { cargando, total, recetas }
+  useEffect(() => {
+    if (!aBorrar?.id) { setUsoBorrar(null); return; }
+    let vivo = true;
+    setUsoBorrar({ cargando: true, total: 0, recetas: [] });
+    insumoMermaUso(insumoId, aBorrar.id, businessId)
+      .then(r => { if (vivo) setUsoBorrar({ cargando: false, total: Number(r?.total) || 0, recetas: r?.recetas || [] }); })
+      .catch(() => { if (vivo) setUsoBorrar({ cargando: false, total: 0, recetas: [] }); });
+    return () => { vivo = false; };
+  }, [aBorrar?.id, insumoId, businessId]);
+  const borrar = async (mId, reemplazoId = null) => {
     try {
-      await insumoMermaDelete(insumoId, mId, businessId);
+      const r = await insumoMermaDelete(insumoId, mId, businessId, reemplazoId);
       setLista(prev => prev.filter(x => x.id !== mId));
+      const n = Number(r?.recetasAfectadas) || 0;
+      if (n > 0) {
+        const nombreReemplazo = reemplazoId != null ? lista.find(x => x.id === reemplazoId)?.nombre : null;
+        setInfo(nombreReemplazo
+          ? `Merma borrada. ${n} receta${n === 1 ? '' : 's'} pasa${n === 1 ? '' : 'n'} a «${nombreReemplazo}».`
+          : `Merma borrada. ${n} receta${n === 1 ? '' : 's'} queda${n === 1 ? '' : 'n'} sin esta merma.`);
+      }
       avisarCambio();
     } catch (e) { setError(e.message || 'No se pudo borrar'); }
   };
@@ -381,11 +401,19 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
         </>
       )}
       <ConfirmDialog
-        open={!!aBorrar}
+        open={!!aBorrar && !!usoBorrar && !usoBorrar.cargando && usoBorrar.total === 0}
         tipo="merma"
         nombre={aBorrar?.nombre || ''}
         onCancel={() => setABorrar(null)}
         onConfirm={async () => { const id = aBorrar?.id; setABorrar(null); if (id != null) await borrar(id); }}
+      />
+      <BorrarMermaEnUsoDialog
+        open={!!aBorrar && !!usoBorrar && !usoBorrar.cargando && usoBorrar.total > 0}
+        merma={aBorrar}
+        recetas={usoBorrar?.recetas || []}
+        otras={lista.filter(x => x.id !== aBorrar?.id)}
+        onCancel={() => setABorrar(null)}
+        onConfirm={async (reemplazoId) => { const id = aBorrar?.id; setABorrar(null); if (id != null) await borrar(id, reemplazoId); }}
       />
       {mermaParaAplicar && (
         <ModalAplicarMermaDefault
