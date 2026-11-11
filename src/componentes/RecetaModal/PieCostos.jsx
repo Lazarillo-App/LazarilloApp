@@ -115,7 +115,8 @@ export default function PieCostos({
         if (!modoInsumo) {
           // Artículo y promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
           // va pegado debajo del % costo actual (los dos % alineados) y el precio actual al final.
-          const colorPct = pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main';
+          // Staff/jefe: sin objetivo, el % va neutro (Diego 11/11/2026).
+          const colorPct = isStaff ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main');
           const ANCHO_PCT = 54;
           return (
             <Box sx={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
@@ -153,7 +154,7 @@ export default function PieCostos({
               </>) : null}
               {/* Ocupa las dos columnas: así no ensancha la del costo y el % queda a la misma distancia
                   que en el artículo común (Diego 11/11/2026). */}
-              <Typography variant="caption" sx={{ gridColumn: '1 / -1', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
+              <Typography variant="caption" sx={{ gridColumn: '1 / -1', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo && !isStaff ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
                 {/* En el artículo común el actual ya está a la derecha, junto al sugerido; acá solo para promo y jefe. */}
                 {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
               </Typography>
@@ -173,7 +174,7 @@ export default function PieCostos({
                 {conPct && (
                   <>
                     <Box component="span" sx={{ color: 'text.disabled', fontWeight: 400, mx: 0.75 }}>·</Box>
-                    <Box component="span" sx={{ color: pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main' }}>{fmt(pctCostoActual, 1)}%</Box>
+                    <Box component="span" sx={{ color: isStaff ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main') }}>{fmt(pctCostoActual, 1)}%</Box>
                   </>
                 )}
               </Typography>
