@@ -308,7 +308,7 @@ function textoAlertaReceta(recetaData) {
 }
 
 export default function TablaArticulos({
-  // «Lo que más vende»: letra A/B/C por artículo (A = hasta el 80 % del ingreso,
+  // Letra A/B/C por artículo según el ingreso del período (A = hasta el 80 % del ingreso,
   // B = 80–95 %, C = último 5 %) y % acumulado, calculados en ArticulosMain.
   abcVentas = null,
   acumuladoVentas = null,
@@ -1307,7 +1307,7 @@ export default function TablaArticulos({
         ids: todosIdsAgrup,
         totalVentas: totalVentasAgrup,
         ventasByBranch: agrupByBranch,
-        nombre: esTop20Group(agrupacionSeleccionada) ? 'Lo que más vende' : (agrupacionSeleccionada?.nombre || ''),
+        nombre: agrupacionSeleccionada?.nombre || '',
         // Top 20: cuánto del ingreso total del período explica (pedido de Diego, 05/11)
         pctDelPeriodo: esTop20Group(agrupacionSeleccionada) && totalVentasPeriodo > 0
           ? (totalVentasAgrup / totalVentasPeriodo) * 100 : null,
