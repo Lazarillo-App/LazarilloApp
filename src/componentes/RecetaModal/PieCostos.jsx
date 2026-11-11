@@ -68,6 +68,7 @@ export default function PieCostos({
 }) {
   const { isJefe } = useAccess() || {};
   const [editArt, setEditArt] = React.useState(null);
+  const [editandoObjPromo, setEditandoObjPromo] = React.useState(false);
   const botonChico = { width: 22, height: 22, p: 0, bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } };
   return (
     <Box sx={{ flexShrink: 0, px: 2.5, pt: 1.5 }}>
@@ -111,11 +112,56 @@ export default function PieCostos({
         const conPct = !modoInsumo && (!isStaff || isJefe) && pctCostoActual !== null;
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
+        if (promoMode) {
+          // Promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
+          // va pegado debajo del % costo actual (los dos % alineados) y el precio actual al final.
+          const colorPct = pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main';
+          const ANCHO_PCT = 54;
+          return (
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
+              <Typography {...titulo}>{labelBase}</Typography>
+              <Typography {...titulo} sx={{ ...titulo.sx, justifySelf: 'end' }}>% costo actual</Typography>
+              <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '30px' }}>${fmt(costoXRendimiento)}</Typography>
+              {/* Mismo armado que el campo de abajo (caja de ANCHO_PCT + «%») para que el 65 y el 66
+                  arranquen en el mismo lugar y los dos % queden alineados (Diego 11/11/2026). */}
+              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ justifySelf: 'end', color: colorPct }}>
+                <Typography variant="h6" fontWeight={800} sx={{ width: ANCHO_PCT, pl: '4px', boxSizing: 'border-box', whiteSpace: 'nowrap', lineHeight: '30px', color: 'inherit' }}>
+                  {conPct ? fmt(pctCostoActual, 1) : '—'}
+                </Typography>
+                <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1, color: 'inherit' }}>%</Typography>
+              </Stack>
+              {/* Objetivo (Diego 11/11/2026): título en la columna izquierda y el precio actual debajo;
+                  el campo, chico, en la columna del %, con el % afuera y alineado con el % actual. */}
+              {conObjetivo ? (<>
+                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary', alignSelf: 'center' }}>% costo objetivo</Typography>
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ justifySelf: 'end' }}>
+                  <TextField
+                    size="small"
+                    type="text"
+                    inputMode="decimal"
+                    // Con un decimal, igual que el % actual (66,0); al editar se ve el número tal cual.
+                    value={editandoObjPromo ? String(pctCostoIdeal ?? '').replace('.', ',') : fmt(pctCostoIdeal, 1)}
+                    onChange={(e) => cambiarObjetivo(e.target.value)}
+                    onFocus={(e) => { setEditandoObjPromo(true); const el = e.target; setTimeout(() => el.select(), 0); }}
+                    onBlur={() => { setEditandoObjPromo(false); commitObjetivo(pctCostoIdeal); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    inputProps={{ style: { textAlign: 'left', fontSize: '1.25rem', fontWeight: 800, padding: '0 0 0 4px' } }}
+                    sx={{ width: ANCHO_PCT, bgcolor: 'background.paper', '& .MuiOutlinedInput-root': { height: 32 } }}
+                  />
+                  <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1 }}>%</Typography>
+                </Stack>
+              </>) : null}
+              <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
+                {precioActual > 0 && (!isStaff || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
+              </Typography>
+              <span />
+            </Box>
+          );
+        }
         return (
           // Artículo y promo: "% costo actual" y "% costo objetivo" lado a lado, títulos en la misma
           // línea y valores en la misma línea (Diego 11/11/2026). El objetivo se edita acá.
-          // Promo: el objetivo va ABAJO del actual (Diego 11/11/2026).
-          <Stack direction={promoMode ? 'column' : 'row'} spacing={promoMode ? 1 : 4} alignItems="flex-start">
+          <Stack direction="row" spacing={4} alignItems="flex-start">
             <Box>
               <Typography {...titulo}>
                 {conPct ? (labelBase === 'Costo total' ? '% costo actual' : `${labelBase} · % costo actual`) : labelBase}
