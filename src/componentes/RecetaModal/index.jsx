@@ -320,7 +320,15 @@ export default function RecetaModal({
   }, []);
 
   const artNombre = articulo?.nombre || '';
-  const precioActual = Number(articulo?.precio || 0);
+  // Nuevo precio del artículo común, puesto desde el pie (escrito o con + / −). Diego 11/11/2026: el
+  // objetivo no cambia y el nuevo precio pasa a ser el actual (se guarda como «nuevo precio», el mismo
+  // de la columna de la tabla).
+  const [precioNuevoProd, setPrecioNuevoProd] = useState(null);
+  useEffect(() => { setPrecioNuevoProd(null); }, [open, articulo?.id]);
+  const precioManualGuardado = Number(priceListsByList?._base?.byArticle?.[String(articulo?.id)]?.precioManual) || 0;
+  const precioActual = Number(precioNuevoProd) > 0
+    ? Number(precioNuevoProd)
+    : (precioManualGuardado > 0 ? precioManualGuardado : Number(articulo?.precio || 0));
 
   const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
   const recetasElabRef = useRef(recetasElaborados);
@@ -1561,9 +1569,27 @@ export default function RecetaModal({
     : fijarPrecioPromo((precioSugerido || 0) + signo * pasoPrecio));
   // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
   // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
+  // Artículo común: el precio que se escribe (cualquier importe) o se mueve con + / − (paso = redondeo)
+  // queda como nuevo precio; se guarda enseguida, con una pausa para no mandar un guardado por clic.
+  const esArticuloComun = !promoMode && !modoInsumo;
+  const guardarNuevoPrecioTimer = useRef(null);
+  const fijarPrecioNuevoProd = (precio) => {
+    const v = Math.round(Number(precio) || 0);
+    if (!(v > 0) || !articulo?.id) return;
+    setPrecioNuevoProd(v);
+    clearTimeout(guardarNuevoPrecioTimer.current);
+    guardarNuevoPrecioTimer.current = setTimeout(() => {
+      try { onPriceConfigSave?.({ scope: 'articulo', scopeId: String(articulo.id), precioManual: v }); } catch { }
+    }, 700);
+  };
+  const ajustarPrecioProd = (signo) => {
+    const base = Number(precioNuevoProd) > 0 ? Number(precioNuevoProd) : (precioSugerido || precioActual || 0);
+    fijarPrecioNuevoProd(aplicarRedondeo(base + signo * pasoPrecio, appConfig.redondeoPrecios));
+  };
   const commitPrecioSugerido = (val) => {
     const precio = Number(val);
     if (reglaPromoActiva) { fijarPrecioPromo(precio); return; }
+    if (esArticuloComun) { fijarPrecioNuevoProd(precio); return; }
     if (!(precio > 0) || !(costoXRendimiento > 0)) return;
     commitObjetivo((costoXRendimiento / precio) * 100);
   };
@@ -3371,6 +3397,10 @@ export default function RecetaModal({
               ventaSinPromo={ventaSinPromo}
               etiquetaRegla={etiquetaRegla}
               onAjustarPrecioPromo={reglaPromoActiva ? ajustarPrecioPromo : null}
+              onAjustarPrecio={esArticuloComun ? ajustarPrecioProd : null}
+              precioEsNuevo={esArticuloComun && Number(precioNuevoProd) > 0}
+              precioSugeridoObjetivo={precioSugerido}
+              onObjetivoMovido={esArticuloComun ? () => setPrecioNuevoProd(null) : null}
               articuloPromo={reglaPromoActiva && articuloUnicoPromo ? {
                 nombre: articuloUnicoPromo.supplyNombre || articuloUnicoPromo.nombre || 'Artículo',
                 precio: precioArticuloUnico,
@@ -3386,13 +3416,13 @@ export default function RecetaModal({
               commitObjetivo={commitObjetivo}
               pctCostoIdeal={pctCostoIdeal}
               setPctCostoIdeal={setPctCostoIdeal}
-              cambiarObjetivo={(v) => setPctCostoIdeal(parseDecimal(v))}
+              cambiarObjetivo={(v) => { if (esArticuloComun) setPrecioNuevoProd(null); setPctCostoIdeal(parseDecimal(v)); }}
               editandoPrecioSugerido={editandoPrecioSugerido}
               setEditandoPrecioSugerido={setEditandoPrecioSugerido}
               precioSugeridoDraft={precioSugeridoDraft}
               setPrecioSugeridoDraft={setPrecioSugeridoDraft}
               commitPrecioSugerido={commitPrecioSugerido}
-              precioSugerido={precioSugerido}
+              precioSugerido={esArticuloComun && Number(precioNuevoProd) > 0 ? Number(precioNuevoProd) : precioSugerido}
               sugeridoExcedeVenta={sugeridoExcedeVenta}
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}
