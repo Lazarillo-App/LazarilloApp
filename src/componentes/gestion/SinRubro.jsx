@@ -4,7 +4,7 @@
 // (primera línea, solo si hay algo) y desde el chip «corregir» de la fila Sin rubro de la tabla.
 // El panel se monta una sola vez (GestionPanel) y se abre con abrirSinRubro().
 import React, { useEffect, useState } from 'react';
-import { Box, Button, Drawer, IconButton, CircularProgress, TextField, Typography } from '@mui/material';
+import { Autocomplete, Box, Button, Drawer, IconButton, CircularProgress, Paper, TextField, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,13 +13,74 @@ import { usePanelGestion } from '@/gestion/panelContext';
 import { fmtARS } from '@/gestion/formato';
 import { VerFactura } from './CargarFactura';
 import { Buscador, Formulario as FormularioConcepto } from '@/paginas/GestionConceptos';
-import { esPropio } from '@/gestion/cargaUtils';
+import { esPropio, proximoCodigoLazarillo } from '@/gestion/cargaUtils';
 
 const AMBAR = '#b45309';
 const EVENTO = 'lz:sin-rubro';
 const millones = (n) => `$ ${(n / 1e6).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`;
 
 export const abrirSinRubro = () => window.dispatchEvent(new CustomEvent(EVENTO));
+
+// Desplegable de conceptos de caja con la acción PRIMERO (Diego 11/11/2026, mismo diseño que
+// SelectorBuscable): franja gris con «+ Crear concepto de caja», fija arriba de la lista. Crear abre el
+// formulario de Conceptos ahí mismo y el concepto nuevo queda elegido.
+const PaperConCrear = React.forwardRef(function PaperConCrear({ children, onCrear, textoCrear, ...rest }, ref) {
+  return (
+    <Paper ref={ref} {...rest}>
+      {onCrear && (
+        <Box onMouseDown={(e) => e.preventDefault()} onClick={onCrear}
+          sx={{ px: 1.6, py: 1.1, cursor: 'pointer', borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } }}>
+          <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'primary.main' }}>+ {textoCrear}</Typography>
+        </Box>
+      )}
+      {children}
+    </Paper>
+  );
+});
+
+function BuscadorConcepto({ valor, maestros, placeholder = 'Concepto', ancho = '100%', onCambio }) {
+  const queryClient = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [creando, setCreando] = useState(null);
+  const [nuevos, setNuevos] = useState([]);   // creados acá, hasta que vuelva la lista
+  const conceptos = maestros?.conceptos ?? [];
+  const todos = [...conceptos, ...nuevos.filter((n) => !conceptos.some((c) => c.codigo === n.codigo))];
+  const opciones = todos.map((c) => ({ valor: String(c.codigo), texto: `${c.codigo} · ${c.nombre}` }));
+  const elegido = opciones.find((o) => o.valor === valor) ?? null;
+  const crear = () => {
+    setAbierto(false);
+    setCreando({ codigo: null, nombre: elegido ? '' : texto.trim(), tipo: '-', codRubro: '', padrino: null });
+  };
+  return (
+    <Box sx={{ width: ancho, minWidth: 0 }}>
+      <Autocomplete
+        size="small" value={elegido} options={opciones} open={abierto} onOpen={() => setAbierto(true)} onClose={() => setAbierto(false)}
+        getOptionLabel={(o) => o.texto} isOptionEqualToValue={(a, b) => a.valor === b.valor} noOptionsText="Sin resultados."
+        onInputChange={(_, v, motivo) => { if (motivo === 'input') setTexto(v); }}
+        onChange={(_, o) => onCambio(o?.valor ?? '')}
+        slots={{ paper: PaperConCrear }}
+        slotProps={{ paper: { onCrear: crear, textoCrear: texto.trim() && !elegido ? `Crear concepto «${texto.trim()}»` : 'Crear concepto de caja' } }}
+        renderInput={(p) => <TextField {...p} placeholder={placeholder} />}
+      />
+      {creando && (
+        <Box sx={{ mx: -2 }}>
+          <FormularioConcepto inicial={creando} proximo={proximoCodigoLazarillo(todos.map((c) => c.codigo))}
+            rubros={maestros?.rubros ?? []} conceptos={conceptos} onAviso={() => {}}
+            onCerrar={() => setCreando(null)}
+            onGuardado={(d) => {
+              setCreando(null);
+              queryClient.invalidateQueries({ queryKey: ['gestionConceptos'] });
+              if (d?.codigo != null) {
+                setNuevos((xs) => [...xs, { codigo: d.codigo, nombre: d.nombre ?? creando.nombre }]);
+                onCambio(String(d.codigo));
+              }
+            }} />
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 export function useSinRubro() {
   const { businessId, year, sucursal } = usePanelGestion();
@@ -69,7 +130,7 @@ const sxCaja = { mx: 2, my: 1, borderRadius: 2, border: '1px solid #bae6fd', bgc
 // compra sin insumo → concepto, concepto → rubro (el mismo formulario del sector Conceptos).
 // Rubro de insumo: siempre el mismo concepto, o «depende de la compra» con varias opciones (Diego 07/11/2026,
 // ej. Vajilla: Reposición → 702 Vajilla M / Ítem nuevo → 514 Vajilla I). Con opciones, al cargar se pregunta.
-function EditorRubro({ it, conceptos, onCerrar, onGuardado }) {
+function EditorRubro({ it, maestros, onCerrar, onGuardado }) {
   const e = it.editar;
   const previas = (e.alternativas ?? []).map((a) => ({ etiqueta: a.etiqueta, concepto: String(a.concepto) }));
   const [modo, setModo] = useState(previas.length >= 2 ? 'varios' : 'uno');
@@ -77,7 +138,6 @@ function EditorRubro({ it, conceptos, onCerrar, onGuardado }) {
   const [alts, setAlts] = useState(previas.length >= 2 ? previas : [{ etiqueta: '', concepto: '' }, { etiqueta: '', concepto: '' }]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
-  const opciones = conceptos.map((c) => ({ valor: String(c.codigo), texto: `${c.codigo} · ${c.nombre}` }));
   const cambiar = (k, campo, v) => setAlts((xs) => xs.map((x, i) => (i === k ? { ...x, [campo]: v } : x)));
   const completas = alts.filter((a) => a.etiqueta.trim() && a.concepto);
   const listo = modo === 'uno' ? !!valor : completas.length >= 2 && completas.length === alts.length;
@@ -104,7 +164,7 @@ function EditorRubro({ it, conceptos, onCerrar, onGuardado }) {
       </Box>
       {modo === 'uno' ? (
         <>
-          <Box sx={{ mb: 1 }}><Buscador valor={valor} opciones={opciones} placeholder="Elegí un concepto" ancho={300} onCambio={setValor} /></Box>
+          <Box sx={{ mb: 1 }}><BuscadorConcepto valor={valor} maestros={maestros} placeholder="Elegí un concepto" ancho={300} onCambio={setValor} /></Box>
           <Typography fontSize={11.5} color="text.secondary" sx={{ mb: 1.25 }}>Vale para todos sus insumos, también lo ya cargado.</Typography>
         </>
       ) : (
@@ -114,7 +174,7 @@ function EditorRubro({ it, conceptos, onCerrar, onGuardado }) {
             <Box key={k} sx={{ display: 'grid', gridTemplateColumns: '112px minmax(0,1fr) 22px', gap: 1, alignItems: 'center', mb: 1 }}>
               <TextField size="small" value={a.etiqueta} placeholder={k === 0 ? 'Ej. Reposición' : k === 1 ? 'Ej. Ítem nuevo' : 'Nombre'}
                 slotProps={{ htmlInput: { maxLength: 40 } }} onChange={(ev) => cambiar(k, 'etiqueta', ev.target.value)} />
-              <Buscador valor={a.concepto} opciones={opciones} placeholder="Concepto" ancho="100%" onCambio={(v) => cambiar(k, 'concepto', v)} />
+              <BuscadorConcepto valor={a.concepto} maestros={maestros} placeholder="Concepto" onCambio={(v) => cambiar(k, 'concepto', v)} />
               <IconButton size="small" aria-label="Quitar opción" disabled={alts.length <= 2} onClick={() => setAlts((xs) => xs.filter((_, i) => i !== k))}>
                 <CloseIcon sx={{ fontSize: 16 }} /></IconButton>
             </Box>
@@ -138,9 +198,13 @@ function EditorRubro({ it, conceptos, onCerrar, onGuardado }) {
 }
 
 // Una compra de un rubro con varios conceptos: un toque y queda resuelta (Diego 07/11/2026).
-function CompraPorDecidir({ c, opciones, onVer, onResuelta }) {
+function CompraPorDecidir({ c, opciones, maestros, onVer, onResuelta }) {
   const [elegida, setElegida] = useState(null);
   const [error, setError] = useState(null);
+  // «Otro concepto» (Diego 11/11/2026): la compra no es ninguna de las opciones del rubro; se elige
+  // (o se crea) un concepto cualquiera solo para esta compra.
+  const [otro, setOtro] = useState(null);
+  const OTRO = 'Otro concepto';
   async function elegir(o) {
     if (elegida) return;
     setElegida(o.etiqueta); setError(null);
@@ -172,9 +236,25 @@ function CompraPorDecidir({ c, opciones, onVer, onResuelta }) {
                 opacity: elegida && !on ? 0.5 : 1, '&:hover': elegida ? {} : { borderColor: '#0d6fa8' } }}>{o.etiqueta}</Box>
           );
         })}
+        {(() => {
+          const on = elegida === OTRO || otro != null;
+          return (
+            <Box component="button" type="button" onClick={() => { if (!elegida) setOtro((v) => (v == null ? '' : null)); }}
+              sx={{ all: 'unset', cursor: elegida ? 'default' : 'pointer', height: 28, display: 'inline-flex', alignItems: 'center', px: 1.25, borderRadius: 14, fontSize: 12.5, whiteSpace: 'nowrap',
+                border: `1px ${on ? 'solid' : 'dashed'} ${on ? '#0d6fa8' : '#cbd5e1'}`, bgcolor: elegida === OTRO ? '#0d6fa8' : '#fff', color: elegida === OTRO ? '#fff' : on ? '#0d6fa8' : 'text.secondary',
+                opacity: elegida && elegida !== OTRO ? 0.5 : 1, '&:hover': elegida ? {} : { borderColor: '#0d6fa8' } }}>{OTRO}…</Box>
+          );
+        })()}
         {elegida ? <Box component="span" sx={{ fontSize: 11.5, color: '#2e7d32', ml: 0.5 }}>✓ guardado</Box>
           : c.insumos?.length ? <Box component="span" sx={{ fontSize: 11.5, color: 'text.secondary', ml: 0.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.insumos.join(', ')}</Box> : null}
       </Box>
+      {otro != null && !elegida && (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mt: 0.75 }}>
+          <BuscadorConcepto valor={otro} maestros={maestros} placeholder="Elegí un concepto" onCambio={setOtro} />
+          <Button size="small" variant="contained" disabled={!otro} sx={{ height: 40, flexShrink: 0 }}
+            onClick={() => elegir({ etiqueta: OTRO, concepto: otro })}>Guardar</Button>
+        </Box>
+      )}
       {error && <Typography color="error" fontSize={12} sx={{ mt: 0.5 }}>{error}</Typography>}
     </Box>
   );
@@ -182,7 +262,7 @@ function CompraPorDecidir({ c, opciones, onVer, onResuelta }) {
 
 function Editor({ it, maestros, rubrosInsumo, onCerrar, onGuardado }) {
   const e = it.editar;
-  if (e.tipo === 'rubro-insumo') return <EditorRubro it={it} conceptos={maestros?.conceptos ?? []} onCerrar={onCerrar} onGuardado={onGuardado} />;
+  if (e.tipo === 'rubro-insumo') return <EditorRubro it={it} maestros={maestros} onCerrar={onCerrar} onGuardado={onGuardado} />;
   return <EditorSimple it={it} maestros={maestros} rubrosInsumo={rubrosInsumo} onCerrar={onCerrar} onGuardado={onGuardado} />;
 }
 
@@ -220,7 +300,9 @@ function EditorSimple({ it, maestros, rubrosInsumo, onCerrar, onGuardado }) {
     <Box sx={sxCaja}>
       <Typography fontSize={12} fontWeight={500} sx={{ mb: 1 }}>{titulo}</Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-        <Buscador valor={valor} opciones={opciones} placeholder={porRubro ? 'Elegí un rubro' : 'Elegí un concepto'} ancho={300} onCambio={setValor} />
+        {porRubro
+          ? <Buscador valor={valor} opciones={opciones} placeholder="Elegí un rubro" ancho={300} onCambio={setValor} />
+          : <BuscadorConcepto valor={valor} maestros={maestros} placeholder="Elegí un concepto" ancho={300} onCambio={setValor} />}
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button size="small" variant="outlined" disabled={guardando} onClick={onCerrar}>Cancelar</Button>
           <Button size="small" variant="contained" disabled={guardando || !valor} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
@@ -231,7 +313,7 @@ function EditorSimple({ it, maestros, rubrosInsumo, onCerrar, onGuardado }) {
   );
 }
 
-function Item({ it, onVer, editando, onEditar, editor, onResuelta }) {
+function Item({ it, maestros, onVer, editando, onEditar, editor, onResuelta }) {
   const [abierto, setAbierto] = useState(false);
   const porCompra = !!it.opciones;
   const ej = porCompra ? `¿${it.opciones.map((o) => o.etiqueta).join(' o ')}?`
@@ -258,7 +340,7 @@ function Item({ it, onVer, editando, onEditar, editor, onResuelta }) {
         <Box sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmtARS(it.importe)}</Box>
       </Box>
       {editando && editor}
-      {porCompra && it.comprobantes.map((c) => <CompraPorDecidir key={c.rowId} c={c} opciones={it.opciones} onVer={onVer} onResuelta={onResuelta} />)}
+      {porCompra && it.comprobantes.map((c) => <CompraPorDecidir key={c.rowId} c={c} opciones={it.opciones} maestros={maestros} onVer={onVer} onResuelta={onResuelta} />)}
       {porCompra && it.cantidadComprobantes > it.comprobantes.length && <Box sx={{ px: 2, pb: 1, fontSize: 11.5, color: 'text.secondary' }}>+ {it.cantidadComprobantes - it.comprobantes.length} más (resolvé estas y aparecen)</Box>}
       {!porCompra && abierto && (
         <Box sx={{ px: 2, pb: 1 }}>
@@ -325,7 +407,7 @@ export function SinRubroPanel() {
             {g.items.map((it) => {
               const k = `${g.tipo}|${it.nombre}`;
               return (
-                <Item key={k} it={it} onVer={setVer} editando={editando === k} onEditar={() => setEditando(editando === k ? null : k)} onResuelta={recalcular}
+                <Item key={k} it={it} maestros={maestros} onVer={setVer} editando={editando === k} onEditar={() => setEditando(editando === k ? null : k)} onResuelta={recalcular}
                   editor={<Editor key={k} it={it} maestros={maestros} rubrosInsumo={data.rubrosInsumo ?? []} onCerrar={() => setEditando(null)} onGuardado={guardado} />} />
               );
             })}
