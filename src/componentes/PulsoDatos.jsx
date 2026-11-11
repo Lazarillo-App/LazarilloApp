@@ -25,6 +25,13 @@
 // solo aparece un aviso si Lazarillo no tomó lo que subió (Recetas atrás de las fechas del kit en
 // esa sucursal, o Balance sin leer desde la última subida). El punto del header = la peor.
 // Con una sucursal elegida en el header, solo esa.
+//
+// Diego, 11/11: "el pulso debería ser para saber cuándo se subió el último lote a Render, no para
+// saber cuándo se cargó la última compra". Cada renglón muestra SOLO cuándo subió esa PC (sin
+// "ventas al / compras al"). El aviso de Recetas ya no compara fechas (una factura cargada en
+// MaxiRest al día siguiente de su fecha daba un falso "no tomó lo último"): avisa si la PC subió
+// lo que lee Recetas (12/25/80) y Recetas no pasó después (leidoVentas/leidoCompras), con 1 h 15
+// de margen para la pasada de cada hora.
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
@@ -40,8 +47,6 @@ const PESO = { al_dia: 0, atrasado: 1, viejo: 2 };
 
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
 const fechas = (f) => [f.ventas && `última venta ${ddmm(f.ventas)}`, f.compras && `última compra ${ddmm(f.compras)}`]
-  .filter(Boolean).join(' · ');
-const fechas2 = (x) => [x.ventas && `ventas al ${ddmm(x.ventas)}`, x.compras && `compras al ${ddmm(x.compras)}`]
   .filter(Boolean).join(' · ');
 const hm = (d) => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
@@ -72,17 +77,15 @@ function porSucursal(data, filtro) {
   if (!filas.length) return null;
   const conNombre = filas.length > 1; // con una sola (o una elegida) el nombre ya está en el título
   const avisos = [];
-  const recetasAtras = filas.filter((x) => x.recetas && (
-    (x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas))
-    || (x.compras && (!x.recetas.compras || x.recetas.compras < x.compras))));
+  // Recetas pasa cada hora (minuto 20) o al tocar el punto: avisa si la PC subió lo que lee Recetas
+  // hace más de 1 h 15 y Recetas no pasó después (ventas o compras), o nunca pasó.
+  const recetasAtras = filas.filter((x) => {
+    if (!x.recetas || !x.subidaRecetas || horasDesde(x.subidaRecetas) <= 1.25) return false;
+    const { leidoVentas: lv, leidoCompras: lc } = x.recetas;
+    return (!lv && !lc) || (lv && lv < x.subidaRecetas) || (lc && lc < x.subidaRecetas);
+  });
   if (recetasAtras.length) {
-    const det = recetasAtras.map((x) => {
-      const f = x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas)
-        ? (x.recetas.ventas ? `ventas al ${ddmm(x.recetas.ventas)}` : 'sin ventas')
-        : (x.recetas.compras ? `compras al ${ddmm(x.recetas.compras)}` : 'sin compras');
-      return conNombre ? `${x.nombre}: ${f}` : f;
-    }).join(' · ');
-    avisos.push(`Recetas todavía no tomó lo último (${det})`);
+    avisos.push(`Recetas todavía no leyó la última subida${conNombre ? ` (${recetasAtras.map((x) => x.nombre).join(', ')})` : ''}`);
   }
   const imp = data.balance?.importado;
   const subidaMax = filas.reduce((a, x) => (x.subida && (!a || x.subida > a) ? x.subida : a), null);
@@ -201,13 +204,12 @@ export default function PulsoDatos({ puedeActualizar = false }) {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 12, lineHeight: 1.45, py: 0.25 }}>
           <Box sx={{ fontWeight: 600 }}>{nombre} · {LEYENDA[peor]}</Box>
           {suc && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${suc.conNombre ? 4 : 3}, max-content)`, justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${suc.conNombre ? 3 : 2}, max-content)`, justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
               {suc.filas.map((x) => (
                 <React.Fragment key={x.pdv}>
                   <Punto estado={x.estado} size={9} />
                   {suc.conNombre && <Box component="span" sx={{ fontWeight: 600 }}>{x.nombre}</Box>}
                   <span>{x.subida ? `${horasDesde(x.subida) > 26 ? 'no sube desde' : 'subió'} ${cuando(x.subida, hoy)}` : 'todavía no subió'}</span>
-                  <Box component="span" sx={{ opacity: 0.8 }}>{fechas2(x)}</Box>
                 </React.Fragment>
               ))}
             </Box>
