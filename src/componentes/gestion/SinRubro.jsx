@@ -45,6 +45,13 @@ export function SinRubroLinea() {
   );
 }
 
+// Fecha de la compra, corta (dd/mm/aa). Diego 11/11/2026: sin la fecha no se sabe si es reposición o
+// algo nuevo; va primero para que no la corte un proveedor largo.
+const fechaCorta = (f) => (f && /^\d{4}-\d{2}-\d{2}/.test(f) ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : null);
+const FechaCompra = ({ f }) => (fechaCorta(f)
+  ? <Box component="span" sx={{ color: 'text.primary', fontVariantNumeric: 'tabular-nums', mr: 0.75 }}>{fechaCorta(f)}</Box>
+  : null);
+
 // Chip de la fila Sin rubro de la tabla.
 export function ChipCorregir() {
   return (
@@ -149,6 +156,7 @@ function CompraPorDecidir({ c, opciones, onVer, onResuelta }) {
     <Box sx={{ borderTop: '1px solid #f2f2f0', px: 2, py: 0.75 }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 104px', gap: 1, fontSize: 12, color: 'text.secondary', alignItems: 'center' }}>
         <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <FechaCompra f={c.fecha} />
           <Box component="button" type="button" onClick={() => onVer(c)} sx={{ all: 'unset', cursor: 'pointer', color: '#0d6fa8', textDecoration: 'underline' }}>{c.comprobante}</Box>
           {c.proveedor ? <> · <Box component="span" sx={{ color: 'text.primary' }}>{c.proveedor}</Box></> : ''}
         </Box>
@@ -257,6 +265,7 @@ function Item({ it, onVer, editando, onEditar, editor, onResuelta }) {
           {it.comprobantes.map((c) => (
             <Box key={c.rowId} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 104px', gap: 1, py: 0.4, fontSize: 12, color: 'text.secondary' }}>
               <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <FechaCompra f={c.fecha} />
                 <Box component="button" type="button" onClick={() => onVer(c)} sx={{ all: 'unset', cursor: 'pointer', color: '#0d6fa8', textDecoration: 'underline' }}>{c.comprobante}</Box>
                 {c.proveedor ? ` · ${c.proveedor}` : ''}
               </Box>
