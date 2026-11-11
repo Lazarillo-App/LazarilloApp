@@ -14,7 +14,7 @@ import { BusinessesAPI, httpBiz, RecetasAPI, PriceConfigAPI } from "../servicios
 import { BASE, api } from "../servicios/apiBase";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
-import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group } from '../utils/articuloGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group, esPromoGroup } from '../utils/articuloGruposEspeciales';
 import { ensureTop20 } from '../servicios/apiAgrupacionesTodo';
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
@@ -1890,9 +1890,40 @@ export default function ArticulosMain(props) {
     return s;
   }, [allIds, idsAsignados]);
 
+  // Artículos cuya receta es una promo (para el resumen de la agrupación Promociones)
+  const [promoIdsResumen, setPromoIdsResumen] = useState(() => new Set());
+  const [promoIdsTick, setPromoIdsTick] = useState(0);
+  useEffect(() => {
+    if (!activeBizId) { setPromoIdsResumen(new Set()); return; }
+    let cancel = false;
+    RecetasAPI.getPromoIds(Number(activeBizId))
+      .then(r => { if (!cancel) setPromoIdsResumen(new Set((r?.ids || []).map(Number))); })
+      .catch(() => { });
+    return () => { cancel = true; };
+  }, [activeBizId, promoIdsTick]);
+  useEffect(() => {
+    const h = () => setPromoIdsTick(t => t + 1);
+    window.addEventListener('articulos:updated', h);
+    window.addEventListener('receta:saved', h);
+    return () => { window.removeEventListener('articulos:updated', h); window.removeEventListener('receta:saved', h); };
+  }, []);
+
   const visibleIds = useMemo(() => {
     const sel = agrupacionSeleccionada;
     if (!sel) return null;
+
+    // Promociones es un RESUMEN (Diego 11/11): muestra todas las promos estén donde estén
+    // (receta con componentes = es_promo), más lo que ya viva en esa agrupación.
+    if (esPromoGroup(sel)) {
+      const s = new Set();
+      const selFresh = (agrupaciones || []).find(g => Number(g.id) === Number(sel.id)) || sel;
+      for (const a of getGroupItemsRaw(selFresh)) {
+        const id = getArtId(a);
+        if (id != null && !discIds.has(id)) s.add(id);
+      }
+      for (const id of promoIdsResumen) if (!discIds.has(id)) s.add(id);
+      return s;
+    }
 
     if (esTop20Group(sel)) {
       return top20Ids;
@@ -1934,7 +1965,7 @@ export default function ArticulosMain(props) {
       s.add(id);
     }
     return s;
-  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids]);
+  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, promoIdsResumen]);
 
   // Si hay lista activa en el sidebar → usar esos IDs como filtro
   const effectiveVisibleIds = useMemo(() => {
