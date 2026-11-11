@@ -111,7 +111,8 @@ export default function PieCostos({
         return (
           // Artículo y promo: "% costo actual" y "% costo objetivo" lado a lado, títulos en la misma
           // línea y valores en la misma línea (Diego 11/11/2026). El objetivo se edita acá.
-          <Stack direction="row" spacing={4} alignItems="flex-start">
+          // Promo: el objetivo va ABAJO del actual (Diego 11/11/2026).
+          <Stack direction={promoMode ? 'column' : 'row'} spacing={promoMode ? 1 : 4} alignItems="flex-start">
             <Box>
               <Typography {...titulo}>
                 {conPct ? (labelBase === 'Costo total' ? '% costo actual' : `${labelBase} · % costo actual`) : labelBase}
