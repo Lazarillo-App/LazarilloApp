@@ -1647,7 +1647,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
           <div style={{ flex: 1 }} />
           {ws < 2
             ? <Btn accent={brand.primary} onClick={() => setWs(ws + 1)} disabled={ws === 0 && !d.nombre.trim()}>Siguiente →</Btn>
-            : <Btn accent={brand.primary} onClick={async () => { try { await onDone(d); } catch { /* el error se muestra abajo */ } }} disabled={creando || !d.nombre.trim()}>{creando ? (inicial ? "Guardando…" : "Creando tu negocio…") : "Seguir con mis datos →"}</Btn>}
+            : <Btn accent={brand.primary} onClick={async () => { try { await onDone(d); } catch { /* el error se muestra abajo */ } }} disabled={creando || !d.nombre.trim()}>{creando ? (inicial ? "Guardando…" : "Creando tu negocio…") : "Organizar mi negocio →"}</Btn>}
         </div>
         {errCrear && <p style={{ color: C.danger, fontSize: 13, marginTop: 12, textAlign: "right" }}>{errCrear}</p>}
       </div>
