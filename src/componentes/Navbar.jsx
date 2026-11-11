@@ -20,6 +20,7 @@ import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
+import PlazasBoton from './plazas/PlazasBoton';
 import PulsoDatos from './PulsoDatos';
 import { VerComoItems } from '@/componentes/VerComo';
 
@@ -484,6 +485,12 @@ export default function Navbar() {
                               </Button>
                             </>
                           )}
+                          {/* Plazas de despacho: el Staff la ve donde el dueño ve «Menú» (Diego 11/11/2026). */}
+                          {isStaff && (
+                            <Box component="span" aria-hidden
+                              sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                          )}
+                          <PlazasBoton activeSx={activeSx} />
                         </>
                       );
                     })()}
