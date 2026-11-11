@@ -2408,6 +2408,8 @@ export default function TablaArticulos({
           {/* Chip PROMO: marca las promociones en la tabla (Diego 11/11/2026). Mismo violeta que el buscador. */}
           {(a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)))) && (
             <span title="Promoción" style={{
+              // marginLeft auto: el chip va contra el borde derecho de la celda, alineado en todas las filas
+              marginLeft: 'auto', marginRight: 8,
               flexShrink: 0, marginTop: 1, padding: '0 5px', borderRadius: 4, lineHeight: '15px',
               fontSize: '0.6rem', fontWeight: 800, letterSpacing: 0.3,
               color: '#6d28d9', background: 'rgba(124,58,237,0.12)',
