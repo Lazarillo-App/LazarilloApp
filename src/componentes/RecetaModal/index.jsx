@@ -235,6 +235,10 @@ export default function RecetaModal({
   const [promoOffPct, setPromoOffPct] = useState('');
   const [promoLlevas, setPromoLlevas] = useState('');
   const [promoPagas, setPromoPagas] = useState('');
+  // Precio individual de los artículos de la promo editado desde el modal (Diego 11/11/2026: «cambio
+  // desde acá el precio de la Heineken y voy viendo cómo queda la promo, y al revés»). { [articleId]: precio }.
+  // Al guardar se graba como nuevo precio de ese artículo.
+  const [preciosArticuloPromo, setPreciosArticuloPromo] = useState({});
 
   // Base de la receta (articles/:id/receta o insumos/:id/receta, según el modo) —
   // misma resolución que ya usa handleSave para postUrl. Se reutiliza para
@@ -873,6 +877,8 @@ export default function RecetaModal({
 
   const getPrecioSinPromo = useCallback((articleRefId) => {
     if (!articleRefId) return null;
+    const editado = Number(preciosArticuloPromo[String(articleRefId)]);
+    if (editado > 0) return editado;
     const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(articleRefId));
     if (!art) return 0;
     // Precio base (lista principal): nuevo precio si se definió en la tabla, sino el precio de venta
@@ -894,7 +900,7 @@ export default function RecetaModal({
       return Number(r?.precio) || precioBase;
     }
     return precioBase;
-  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList]);
+  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList, preciosArticuloPromo]);
 
   /* ── Cargar receta ── */
   useEffect(() => {
@@ -986,6 +992,7 @@ export default function RecetaModal({
           setAlmacenamientoFreezer(rec.almacenamiento_freezer || '');
           setAlmacenamientoHeladera(rec.almacenamiento_heladera || '');
           setPromoRegla(['off', 'nxm'].includes(rec.promo_regla) ? rec.promo_regla : 'margen');
+          setPreciosArticuloPromo({});
           setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
           setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
           setPromoPagas(rec.promo_pagas != null ? String(rec.promo_pagas) : '');
@@ -1493,10 +1500,48 @@ export default function RecetaModal({
     ? `${fmt(Number(promoOffPct) || 0, 0)}% off`
     : reglaPromoActiva === 'nxm' ? `${promoLlevasEf || 'N'}x${promoPagas || 'M'}` : null;
   const precioSugerido = reglaPromoActiva ? precioPorRegla : precioSugeridoMargen;
+
+  // Precio de la promo y de su artículo, atados (solo % off y llevás N pagás M):
+  //  - un solo artículo: mover el precio de la promo recalcula el del artículo (y al revés);
+  //  - combo: mover el precio de la promo no toca los artículos, recalcula el % off; tope = venta sin promo.
+  // El paso de + / − es el redondeo de Configuración.
+  const pasoPrecio = Number(appConfig.redondeoPrecios) > 0 ? Number(appConfig.redondeoPrecios) : 100;
+  const articulosDePromo = items.filter(it => it.articleRefId);
+  const articuloUnicoPromo = articulosDePromo.length === 1 ? articulosDePromo[0] : null;
+  const factorRegla = (() => {
+    if (reglaPromoActiva === 'off') { const off = Number(promoOffPct); return off > 0 && off < 100 ? 1 - off / 100 : 0; }
+    if (reglaPromoActiva === 'nxm') { const n = Number(promoLlevasEf), m = Number(promoPagas); return n > 0 && m > 0 && m <= n ? m / n : 0; }
+    return 0;
+  })();
+  const precioArticuloUnico = articuloUnicoPromo ? Number(getPrecioSinPromo(articuloUnicoPromo.articleRefId)) || 0 : 0;
+  const cambiarPrecioArticuloPromo = (articleRefId, precio) => {
+    const v = aplicarRedondeo(Number(precio) || 0, appConfig.redondeoPrecios);
+    if (!(v > 0)) return;
+    setPreciosArticuloPromo(prev => ({ ...prev, [String(articleRefId)]: v }));
+  };
+  const fijarPrecioPromo = (precio) => {
+    let v = Number(precio) || 0;
+    if (!(v > 0) || !reglaPromoActiva) return;
+    if (articuloUnicoPromo) {
+      const cant = Number(articuloUnicoPromo.cantidad) || 0;
+      if (!(cant > 0) || !(factorRegla > 0)) return;
+      cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, v / (cant * factorRegla));
+    } else if (reglaPromoActiva === 'off' && ventaSinPromo > 0) {
+      v = Math.min(v, ventaSinPromo);   // un combo no puede costar más que sus artículos sueltos
+      const off = (1 - v / ventaSinPromo) * 100;
+      setPromoOffPct(String(Math.round(off * 10) / 10));
+    }
+  };
+  // Con un solo artículo el paso se da en el precio del artículo (si no, el redondeo del artículo puede
+  // devolver la promo al mismo precio y el botón «no hace nada»); en un combo, en el precio de la promo.
+  const ajustarPrecioPromo = (signo) => (articuloUnicoPromo
+    ? cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, precioArticuloUnico + signo * pasoPrecio)
+    : fijarPrecioPromo((precioSugerido || 0) + signo * pasoPrecio));
   // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
   // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
   const commitPrecioSugerido = (val) => {
     const precio = Number(val);
+    if (reglaPromoActiva) { fijarPrecioPromo(precio); return; }
     if (!(precio > 0) || !(costoXRendimiento > 0)) return;
     commitObjetivo((costoXRendimiento / precio) * 100);
   };
@@ -1788,6 +1833,10 @@ export default function RecetaModal({
       // (Diego 11/11/2026: «cambia, no propone, están atados»).
       if (reglaPromoActiva && precioPorRegla > 0 && articulo?.id) {
         try {
+          // Primero los artículos cuyo precio se cambió desde la promo, después la promo.
+          Object.entries(preciosArticuloPromo).forEach(([id, precio]) => {
+            if (Number(precio) > 0) onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: Number(precio) });
+          });
           onPriceConfigSave?.({ scope: 'articulo', scopeId: String(articulo.id), precioManual: precioPorRegla });
         } catch { /* el guardado de la receta ya está hecho */ }
       }
@@ -3296,6 +3345,14 @@ export default function RecetaModal({
               promoMode={promoMode}
               ventaSinPromo={ventaSinPromo}
               etiquetaRegla={etiquetaRegla}
+              onAjustarPrecioPromo={reglaPromoActiva ? ajustarPrecioPromo : null}
+              articuloPromo={reglaPromoActiva && articuloUnicoPromo ? {
+                nombre: articuloUnicoPromo.supplyNombre || articuloUnicoPromo.nombre || 'Artículo',
+                precio: precioArticuloUnico,
+                editado: Number(preciosArticuloPromo[String(articuloUnicoPromo.articleRefId)]) > 0,
+                onCambiar: (v) => cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, v),
+                paso: pasoPrecio,
+              } : null}
               colorSinPromo={colorSinPromo}
               editandoObjetivo={editandoObjetivo}
               setEditandoObjetivo={setEditandoObjetivo}

@@ -57,7 +57,14 @@ export default function PieCostos({
   // Promo con regla '% off' o 'llevás N, pagás M' (ej. "10% off", "6x5"): el precio sale de la
   // regla y no se toca a mano — sin barra ni doble clic.
   etiquetaRegla = null,
+  // % off / llevás N pagás M: + / − mueven el PRECIO de la promo (paso = redondeo de Configuración).
+  onAjustarPrecioPromo = null,
+  // Promo de un solo artículo: su precio individual, editable acá (atado al de la promo).
+  // { nombre, precio, editado, onCambiar(v), paso }
+  articuloPromo = null,
 }) {
+  const [editArt, setEditArt] = React.useState(null);
+  const botonChico = { width: 22, height: 22, p: 0, bgcolor: 'action.hover', '&:hover': { bgcolor: 'action.selected' } };
   return (
     <Box sx={{ flexShrink: 0, px: 2.5, pt: 1.5 }}>
     <Box sx={{
@@ -156,6 +163,36 @@ export default function PieCostos({
             )}
           </Typography>
         )}
+        {articuloPromo && (
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ my: 0.25, whiteSpace: 'nowrap' }}>
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
+              {articuloPromo.nombre} c/u:
+            </Typography>
+            <IconButton size="small" title="Bajar el precio del artículo" onClick={() => articuloPromo.onCambiar(articuloPromo.precio - articuloPromo.paso)} sx={botonChico}>
+              <RemoveIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+            {editArt != null ? (
+              <input autoFocus type="number" value={editArt}
+                onChange={(e) => setEditArt(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onBlur={() => { articuloPromo.onCambiar(editArt); setEditArt(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { articuloPromo.onCambiar(editArt); setEditArt(null); } if (e.key === 'Escape') setEditArt(null); }}
+                style={{ width: 80, font: 'inherit', fontSize: '0.8rem', fontWeight: 700, textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4 }} />
+            ) : (
+              <Typography variant="caption" title="Doble clic para escribir el precio"
+                onDoubleClick={() => setEditArt(String(Math.round(articuloPromo.precio)))}
+                sx={{ fontSize: '0.8rem', fontWeight: 800, cursor: 'text', color: articuloPromo.editado ? 'primary.main' : 'text.primary' }}>
+                ${fmt(articuloPromo.precio)}
+              </Typography>
+            )}
+            <IconButton size="small" title="Subir el precio del artículo" onClick={() => articuloPromo.onCambiar(articuloPromo.precio + articuloPromo.paso)} sx={botonChico}>
+              <AddIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+            {articuloPromo.editado && (
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'primary.main', fontWeight: 600 }}>nuevo precio</Typography>
+            )}
+          </Stack>
+        )}
         {etiquetaRegla ? (
           <Typography variant="caption" color="text.secondary" fontWeight={600}>
             Precio de la promo ({etiquetaRegla})
@@ -191,7 +228,7 @@ export default function PieCostos({
           % costo)
         </Typography>
         )}
-        {editandoPrecioSugerido && !etiquetaRegla ? (
+        {editandoPrecioSugerido ? (
           <TextField
             autoFocus
             size="small"
@@ -212,9 +249,9 @@ export default function PieCostos({
           <Typography
             variant="h6"
             fontWeight={800}
-            onDoubleClick={etiquetaRegla ? undefined : () => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
-            title={etiquetaRegla ? 'Sale de la regla de la promo' : 'Doble click para editar'}
-            sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: etiquetaRegla ? 'default' : 'text' }}
+            onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
+            title="Doble click para editar"
+            sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
           >
             {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
           </Typography>
@@ -246,6 +283,16 @@ export default function PieCostos({
             y el % de costo objetivo lo sigue (% = costo ÷ precio). Se guarda igual que antes: como
             objetivo entero (commitObjetivo), así que el precio salta de a 1 punto de % (5% a 90%).
             Elaborados y promociones: la barra sigue moviendo el % directamente. */}
+        {etiquetaRegla && onAjustarPrecioPromo && (
+          <Stack direction="row" alignItems="center" spacing={0.25} sx={{ flexShrink: 0 }}>
+            <IconButton size="small" title="Bajar el precio de la promo" onClick={() => onAjustarPrecioPromo(-1)} sx={botonChico}>
+              <RemoveIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+            <IconButton size="small" title="Subir el precio de la promo" onClick={() => onAjustarPrecioPromo(1)} sx={botonChico}>
+              <AddIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Stack>
+        )}
         {!etiquetaRegla && (() => {
           const barraPorPrecio = !modoInsumo && costoXRendimiento > 0;
           const pctObj = Number(pctCostoIdeal) || 0;
