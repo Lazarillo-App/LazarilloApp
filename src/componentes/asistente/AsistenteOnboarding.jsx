@@ -2915,11 +2915,18 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
     finally { setBajandoKit(false); }
   };
 
+  // Pasa a la carga de artículos e insumos (AltaManual). También lo usa el paso a paso de arriba.
+  const irAManual = () => {
+    if (pos === POS_OTRO && customName.trim()) registrarPos(customName.trim());
+    setIntegrar({ ventas: false, menu: false, compras: false, insumos: false });
+    setPosDone(true); setManualView(true);
+  };
+
   const posScreen = (() => {
     const posName = pos === POS_OTRO ? customName.trim() : pos;
     const valido = posName && pos !== POS_NINGUNO;
     const finalizarPos = () => { if (pos === POS_OTRO && customName.trim()) registrarPos(customName.trim()); };
-    const cargarManual = () => { finalizarPos(); setIntegrar({ ventas: false, menu: false, compras: false, insumos: false }); setPosDone(true); setManualView(true); };
+    const cargarManual = irAManual;
     // Otro POS (no MaxiRest): todavía no hay agente que lo lea. Se anota qué POS es y qué datos
     // quiere traer, para que el equipo lo contacte y ajuste el agente; mientras, sigue manual (09/11).
     const conectarApi = async () => {
@@ -2946,10 +2953,10 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
     return (
       <>
         <AnthonyDice pose="saluda" size={80} accent={marca.primary}>
-          Antes de arrancar con tus datos, contame: <b>¿qué sistema POS usás hoy?</b><br />Si tiene integración por API, traigo la info directo y te salteo esos pasos.
+          Contame: <b>¿con qué sistema cobrás hoy?</b><br />Si es MaxiRest, traigo tus datos solo. Si no, los cargamos juntos en dos pasos.
         </AnthonyDice>
         <Panel titulo={null}>
-          <Lbl>Tu sistema POS actual</Lbl>
+          <Lbl>Tu sistema de cobro (POS)</Lbl>
           <select value={pos} onChange={(e) => setPos(e.target.value)} style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, color: C.ink, background: C.paper, fontFamily: "inherit", marginBottom: 4 }}>
             <option value="">Elegí tu POS…</option>
             {[...POS_BASE, ...extras].map((p) => <option key={p} value={p}>{p}</option>)}
@@ -2986,10 +2993,22 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
               </div>
               {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
             </div>
-          ) : !apiMode ? (
+          ) : !pos ? null : pos === POS_NINGUNO ? (
+            // Sin POS: un solo camino, sin "Conectar por API" ni "Lo subo manualmente" (usuaria 11/11).
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Btn accent={marca.primary} onClick={() => setApiMode(true)} disabled={!valido}>🔌 Conectar por API</Btn>
-              <Btn ghost small accent={marca.primary} onClick={cargarManual}>Lo subo manualmente →</Btn>
+              <Btn accent={marca.primary} onClick={cargarManual}>Seguir con mis artículos →</Btn>
+            </div>
+          ) : !apiMode ? (
+            // Otro POS: todavía no hay conexión automática. Sigue con sus artículos y, si quiere,
+            // pide la conexión (el equipo lo contacta).
+            <div>
+              <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.5, marginBottom: 12 }}>
+                Con {posName || "ese sistema"} todavía no nos conectamos solos. Seguí con tus artículos y, si querés, pedí la conexión: el equipo de Lazarillo te contacta.
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Btn accent={marca.primary} onClick={cargarManual} disabled={!valido}>Seguir con mis artículos →</Btn>
+                <Btn ghost small accent={marca.primary} onClick={() => setApiMode(true)} disabled={!valido}>Pedir la conexión</Btn>
+              </div>
             </div>
           ) : (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, background: C.shade }}>
@@ -3029,11 +3048,20 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
 
   return (
     <div className="rise">
-      <Steps items={["Local", ...["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)]} active={posView ? 1 : Math.min(step, 3) + 2} accent={marca.primary} onStep={(i) => { if (i === 0) volverALocal(); else if (i === 1) { setPosView(true); } else { setPosView(false); setStep(i - 2); } }}
-        accion={(posView || step <= 3) && !progress ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+      {/* En el POS se muestran los mismos 4 pasos que en la carga manual (usuaria 11/11):
+          ventas y compras no van en el alta, se piden desde la tabla. Sin "Finalizar y ver
+          tablero": solo queda Omitir, para no abrumar. */}
+      {posView ? (
+        <Steps items={["Local", "POS", "Artículos", "Insumos"]} active={1} accent={marca.primary}
+          onStep={(i) => { if (i === 0) volverALocal(); else if (i >= 2) irAManual(); }}
+          accion={onOmitir && businessId ? <Btn ghost small accent={marca.primary} onClick={onOmitir}>Omitir: empiezo con mis artículos</Btn> : null} />
+      ) : (
+      <Steps items={["Local", ...["POS", "Ventas", "Menú", "Compras", "Insumos"].map((l, i) => (i > 0 && integrar[STEPKEY[i - 1]]) ? `${l} ✓` : l)]} active={Math.min(step, 3) + 2} accent={marca.primary} onStep={(i) => { if (i === 0) volverALocal(); else if (i === 1) { setPosView(true); } else { setPosView(false); setStep(i - 2); } }}
+        accion={step <= 3 && !progress ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
           {onOmitir && businessId && <Btn ghost small accent={marca.primary} onClick={onOmitir}>Omitir: empiezo con mis artículos</Btn>}
           <Btn small accent={marca.primary} onClick={irAlTablero}>Finalizar y ver tablero →</Btn>
         </span> : null} />
+      )}
       {posView ? posScreen : (<>
       {step <= 3 && step !== 1 && step !== 3 && !(step === 0 && ventasRaw.trim()) && !(step === 2 && comprasRaw.trim()) && (
         <AnthonyDice pose={step === 1 ? "presenta" : step === 0 ? "senala" : "investiga"} size={80} accent={marca.primary}>
