@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabMermaInsumo.jsx
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -78,8 +78,14 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
     }
   };
 
+  // Fila nueva completa = nombre + peso inicial + peso final (final ≤ inicial: si no, la merma da negativa).
+  const finalMayor = Number(nuevo.peso_inicial) > 0 && Number(nuevo.peso_final) > Number(nuevo.peso_inicial);
+  const nuevaCompleta = !!nuevo.nombre.trim() && Number(nuevo.peso_inicial) > 0 && Number(nuevo.peso_final) > 0 && !finalMayor;
+  const guardandoRef = useRef(false);   // evita crearla dos veces (clic afuera + cierre del modal)
+
   const agregar = async () => {
-    if (!nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)) return;
+    if (!nuevaCompleta || guardandoRef.current) return;
+    guardandoRef.current = true;
     setGuardando(true); setError(''); setInfo('');
     const payload = {
       nombre: nuevo.nombre.trim(),
@@ -117,8 +123,30 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
       cargar();
       avisarCambio();
     } catch (e) { setError(e.message || 'No se pudo agregar'); }
-    finally { setGuardando(false); }
+    finally { setGuardando(false); guardandoRef.current = false; }
   };
+
+  // ── Guardado automático de la fila nueva (Diego 11/11: "muchas veces olvidé apretar el +") ──
+  // Apenas la fila está completa y se sale de ella (Tab, clic en cualquier otro lado o cierre del
+  // modal), la merma queda creada. Mientras se elige a qué otros insumos aplicarla, no se guarda:
+  // la fila y ese panel son una misma "zona".
+  const zonaNuevaRef = useRef(null);
+  const agregarRef = useRef(agregar);
+  agregarRef.current = agregar;
+  const completaRef = useRef(nuevaCompleta);
+  completaRef.current = nuevaCompleta;
+  useEffect(() => {
+    const alClicAfuera = (e) => {
+      if (!completaRef.current) return;
+      if (zonaNuevaRef.current && zonaNuevaRef.current.contains(e.target)) return;
+      agregarRef.current();
+    };
+    document.addEventListener('mousedown', alClicAfuera, true);
+    return () => {
+      document.removeEventListener('mousedown', alClicAfuera, true);
+      if (completaRef.current) agregarRef.current();   // se cerró el modal con la fila completa
+    };
+  }, []);
 
   // Avisa a los modales ancestros en cascada (receta padre que usa este insumo como
   // ingrediente) que la merma cambió, para que refresquen costo e insumo.
@@ -234,6 +262,15 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
             );
           })}
 
+          {/* Fila nueva + panel "aplicar a otros": una sola zona para el guardado automático */}
+          <Box ref={zonaNuevaRef}
+            onBlur={(e) => {
+              if (zonaNuevaRef.current && zonaNuevaRef.current.contains(e.relatedTarget)) return;
+              // El foco que vuelve al contenedor del modal (focus trap de MUI al tocar un texto de la
+              // zona) no cuenta como "salir": solo Tab o foco a otro campo fuera de la zona.
+              if (e.relatedTarget && e.relatedTarget.contains(zonaNuevaRef.current)) return;
+              if (e.relatedTarget && nuevaCompleta) agregar();
+            }}>
           {/* Fila nueva */}
           <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <Box />
@@ -253,10 +290,15 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
             <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>
               {Number(nuevo.peso_final) > 0 ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
             </Typography>
-            <IconButton size="small" onClick={agregar} disabled={guardando || !nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)} sx={{ color: PRIMARY }}>
-              <AddIcon sx={{ fontSize: 18 }} />
+            <IconButton size="small" onClick={agregar} disabled={guardando || !nuevaCompleta} title="Se guarda sola al completar la fila y salir de ella" sx={{ color: PRIMARY }}>
+              {guardando ? <CircularProgress size={14} /> : <AddIcon sx={{ fontSize: 18 }} />}
             </IconButton>
           </Box>
+          {finalMayor && (
+            <Typography variant="caption" sx={{ display: 'block', px: 0.5, color: G.rojo, fontWeight: 600 }}>
+              El peso final no puede ser mayor al inicial: la merma daría negativa y no se guarda.
+            </Typography>
+          )}
 
           {/* Aplicar la merma que se está por crear a otros insumos también (misma
               nombre/pesos) — evita cargarla insumo por insumo cuando varios comparten
@@ -304,6 +346,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
               )}
             </Box>
           )}
+          </Box>
 
           {/* Texto explicativo */}
           <Box sx={{ mt: 2, bgcolor: '#fdeaea', border: '1px solid #f2b8be', borderRadius: 1, px: 2, py: 1.25 }}>
