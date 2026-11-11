@@ -1610,7 +1610,8 @@ export default function RecetaModal({
     // costo_total nuevo. Sin esta excepción, clickear "Guardar" frente al aviso de
     // "el costo guardado no coincide" no hacía nada (el snapshot de campos daba
     // igual) y el aviso quedaba ahí para siempre.
-    if (!modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
+    // itemsOverride (deshacer la promo) siempre guarda: sin esto el snapshot daba «sin cambios» y no hacía nada.
+    if (!itemsOverride && !modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
       const snapshotActual = buildDirtySnapshot();
       if (snapshotActual === pristineSnapshotRef.current) {
         if (!keepOpen) onClose?.();
@@ -1623,6 +1624,7 @@ export default function RecetaModal({
       if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .filter(it => Number(it.articleRefId) !== Number(articulo?.id))   // nunca la promo dentro de sí misma
         .map(it => ({
           articleId: Number(it.articleRefId),
           cantidad: Number(it.cantidad) || 1,
@@ -1674,9 +1676,13 @@ export default function RecetaModal({
     // handleDelete), así que guardar una promo ya creada caía en el guardado
     // genérico de receta de más abajo — que no actualiza la promo real, por
     // eso los cambios no quedaban guardados.
-    if (esPromo && articulo?.id) {
+    // Con itemsOverride (deshacer la promo → producto) NO: tiene que ir al guardado común, que deja
+    // es_promo = FALSE. Antes esta rama lo agarraba igual y la volvía a guardar como promo (Diego 11/11/2026:
+    // «si quiero deshacer la promo no me deja»).
+    if (esPromo && articulo?.id && !itemsOverride) {
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .filter(it => Number(it.articleRefId) !== Number(articulo.id))   // nunca la promo dentro de sí misma
         .map(it => ({
           articleId: Number(it.articleRefId),
           cantidad: Number(it.cantidad) || 1,
@@ -1726,7 +1732,7 @@ export default function RecetaModal({
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
     const itemsBase = itemsOverride || items;
     const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
-    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
+    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido && !itemsOverride) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
     // No guardar con un ingrediente a medio definir: si su unidad ya no es válida (la
     // sub-receta/equivalente de ese insumo cambió), hay que elegirle una unidad de nuevo
@@ -2609,31 +2615,11 @@ export default function RecetaModal({
                                 setPromoMode(true);                   // activar: sin confirmación
                                 const artId = Number(articulo?.id);
                                 const viveEnPromo = promoIds.has(artId);
-                                // Artículo común → se convierte en promo v1: auto-agregarlo como primer componente.
+                                // Artículo común → se convierte en promo. Ya NO se agrega a sí mismo como componente
+                                // (Diego 11/11/2026: «eso no lo debe hacer más»): la promo se arma con los artículos
+                                // que se elijan.
                                 if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
                                   setConvertirEnPromo(true);
-                                  const yaEsta = items.some(it => Number(it.articleRefId) === artId);
-                                  if (!yaEsta) {
-                                    // Costo real del artículo: buscar en allArticulos (trae costoTotal de receta).
-                                    // Jerarquía: costo total de receta > precio (mismo criterio que el backend).
-                                    const artFull = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId) || {};
-                                    const costoArt = Number(artFull.costoTotal) || Number(articulo?.costoTotal) || Number(artFull.precio) || Number(articulo?.precio) || 0;
-                                    // La receta propia del artículo queda representada por su costo como componente;
-                                    // sus insumos NO se arrastran sueltos a la promo. Se reemplaza la lista por el artículo.
-                                    setItems([{
-                                      esArticulo: true,
-                                      articleRefId: artId,
-                                      supplyId: null,
-                                      supplyNombre: artNombre,
-                                      supplyMedida: 'u',
-                                      precioRefDB: costoArt,
-                                      codigoMaxi: articulo?.codigo || articulo?.codigo_maxi || '',
-                                      unidad: 'u',
-                                      cantidad: 1,
-                                      tipoCosto: 'total',
-                                      ultimaCompra: null,
-                                    }]);
-                                  }
                                   // Nombre por defecto: el del artículo principal
                                   if (!nombre.trim()) setNombre(artNombre);
                                 }
