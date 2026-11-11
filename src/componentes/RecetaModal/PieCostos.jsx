@@ -118,7 +118,7 @@ export default function PieCostos({
           const colorPct = pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main';
           const ANCHO_PCT = 54;
           return (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(112px, max-content) auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
               <Typography {...titulo}>{labelBase}</Typography>
               <Typography {...titulo} sx={{ ...titulo.sx, justifySelf: 'end' }}>% costo actual</Typography>
               <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '30px' }}>${fmt(costoXRendimiento)}</Typography>
@@ -151,12 +151,14 @@ export default function PieCostos({
                   <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1 }}>%</Typography>
                 </Stack>
               </>) : null}
-              {/* Ocupa las dos columnas: así no ensancha la del costo y el % queda a la misma distancia
-                  que en el artículo común (Diego 11/11/2026). */}
-              <Typography variant="caption" sx={{ gridColumn: '1 / -1', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
+              {/* «P. actual» sin decimales (Diego 11/11/2026). La columna del costo tiene un ancho mínimo
+                  que lo contiene, así el % queda igual en artículo y promo; si el precio es más largo,
+                  corre el bloque del % entero y sigue alineado. */}
+              <Typography variant="caption" sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
                 {/* En el artículo común el actual ya está a la derecha, junto al sugerido; acá solo para promo y jefe. */}
-                {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
+                {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `P. actual: $${fmt(precioActual, 0)}` : ''}
               </Typography>
+              <span />
             </Box>
           );
         }
@@ -288,6 +290,8 @@ export default function PieCostos({
               <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block' }}>
                 {etiquetaRegla ? `Promo (${etiquetaRegla})` : `Promo (${pctCostoIdeal}% costo)`}
               </Typography>
+              {/* Precio de la promo y su % de costo: el % va centrado debajo del precio (Diego 11/11/2026). */}
+              <Box sx={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
             {editandoPrecioSugerido ? (
               <TextField
                 autoFocus
@@ -323,6 +327,7 @@ export default function PieCostos({
                   {fmt((costoXRendimiento / precioSugerido) * 100, 1)}% de costo
                 </Typography>
               )}
+              </Box>
             </Box>
             {precioSugerido > 0 && precioSugerido < ventaSinPromo && (
               <Typography variant="h6" sx={{ fontSize: '0.95rem', fontWeight: 800, color: '#7c3aed', pt: '24px' }}>
