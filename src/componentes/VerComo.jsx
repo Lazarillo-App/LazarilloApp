@@ -25,10 +25,12 @@ export function VerComoItems({ onElegido }) {
           permisos: administracion?.ajustada ? { secciones: administracion.secciones, ocultos: administracion.ocultos } : null },
         ...roles.map((r) => ({ id: `rol:${r.id}`, nombre: r.nombre, rol: 'admin', permisos: { secciones: r.secciones, ocultos: r.ocultos } })),
         { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null },
+        { id: 'staff:jefe', nombre: '└ Jefe de cocina', rol: 'staff', subrol: 'jefe', permisos: null },
       ]))
       .catch(() => setOpciones([
         { id: 'admin', nombre: 'Administración', rol: 'admin', permisos: null },
         { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null },
+        { id: 'staff:jefe', nombre: '└ Jefe de cocina', rol: 'staff', subrol: 'jefe', permisos: null },
       ]));
   }, [rolReal]);
 
@@ -36,7 +38,7 @@ export function VerComoItems({ onElegido }) {
 
   const elegir = (o) => {
     onElegido?.();
-    setVerComo(o ? { id: o.id, nombre: o.nombre, rol: o.rol, permisos: o.permisos } : null);
+    setVerComo(o ? { id: o.id, nombre: o.nombre.replace(/^└\s*/, ''), rol: o.rol, subrol: o.subrol || null, permisos: o.permisos } : null);
     navigate('/inicio');
   };
 
