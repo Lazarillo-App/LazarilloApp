@@ -44,6 +44,7 @@ export default function PieCostos({
   commitObjetivo,
   pctCostoIdeal,
   setPctCostoIdeal,
+  cambiarObjetivo,
   editandoPrecioSugerido,
   setEditandoPrecioSugerido,
   precioSugeridoDraft,
@@ -101,35 +102,56 @@ export default function PieCostos({
         </Box>
       )}
 
-      <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-          {Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion'
-            ? labelPorUnidad
-            : 'Costo total'}
-        </Typography>
-        {!modoInsumo ? (
-          <>
-            {/* Artículo y promoción: costo y su % sobre el precio actual en una sola línea, objetivo abajo */}
-            <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap' }}>
-              ${fmt(costoXRendimiento)}
-              {!isStaff && pctCostoActual !== null && (
-                <>
-                  <Box component="span" sx={{ color: 'text.disabled', fontWeight: 400, mx: 0.75 }}>·</Box>
-                  <Box component="span" sx={{ color: pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main' }}>{fmt(pctCostoActual, 1)}%</Box>
-                </>
-              )}
-            </Typography>
-            {!isStaff && (
-              <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
-                {/* % off y llevás N pagás M no tienen objetivo: el precio sale de la regla (Diego 11/11/2026). */}
-                {etiquetaRegla ? '% con el precio actual' : `Objetivo: ${pctCostoIdeal}%`}
+      {(() => {
+        const labelBase = Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion' ? labelPorUnidad : 'Costo total';
+        const conPct = !modoInsumo && !isStaff && pctCostoActual !== null;
+        const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
+        const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
+        return (
+          // Artículo y promo: "% costo actual" y "% costo objetivo" lado a lado, títulos en la misma
+          // línea y valores en la misma línea (Diego 11/11/2026). El objetivo se edita acá.
+          <Stack direction="row" spacing={4} alignItems="flex-start">
+            <Box>
+              <Typography {...titulo}>
+                {conPct ? (labelBase === 'Costo total' ? '% costo actual' : `${labelBase} · % costo actual`) : labelBase}
               </Typography>
+              <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '36px' }}>
+                ${fmt(costoXRendimiento)}
+                {conPct && (
+                  <>
+                    <Box component="span" sx={{ color: 'text.disabled', fontWeight: 400, mx: 0.75 }}>·</Box>
+                    <Box component="span" sx={{ color: pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main' }}>{fmt(pctCostoActual, 1)}%</Box>
+                  </>
+                )}
+              </Typography>
+              {/* % off y llevás N pagás M no tienen objetivo: el precio sale de la regla */}
+              {!modoInsumo && !isStaff && etiquetaRegla && (
+                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
+                  % con el precio actual
+                </Typography>
+              )}
+            </Box>
+            {conObjetivo && (
+              <Box>
+                <Typography {...titulo}>% costo objetivo</Typography>
+                <TextField
+                  size="small"
+                  type="text"
+                  inputMode="decimal"
+                  value={String(pctCostoIdeal ?? '').replace('.', ',')}
+                  onChange={(e) => cambiarObjetivo(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => commitObjetivo(pctCostoIdeal)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                  InputProps={{ endAdornment: <InputAdornment position="end" sx={{ ml: 0.25, '& p': { fontSize: '1.1rem', fontWeight: 800, color: 'text.primary' } }}>%</InputAdornment> }}
+                  inputProps={{ style: { textAlign: 'center', fontSize: '1.25rem', fontWeight: 800, padding: '0 4px' } }}
+                  sx={{ width: 96, bgcolor: 'background.paper', '& .MuiOutlinedInput-root': { height: 36, pr: 1.25 } }}
+                />
+              </Box>
             )}
-          </>
-        ) : (
-          <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
-        )}
-      </Box>
+          </Stack>
+        );
+      })()}
       {Number(rendimientoPeso) > 0 && (() => {
         // Mostrar el costo por unidad GRANDE: gr→kg, ml→L (× 1000).
         const uBase = canonicalUnit(unidadPeso || 'gr');
@@ -199,33 +221,7 @@ export default function PieCostos({
           </Typography>
         ) : (
         <Typography variant="caption" color="text.secondary" fontWeight={600}>
-          Precio sugerido (
-          {editandoObjetivo ? (
-            <input
-              autoFocus
-              type="number"
-              min={0}
-              max={150}
-              value={objetivoDraft}
-              onChange={(e) => setObjetivoDraft(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              onBlur={() => { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }
-                if (e.key === 'Escape') setEditandoObjetivo(false);
-              }}
-              style={{ width: 34, font: 'inherit', fontWeight: 700, textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4 }}
-            />
-          ) : (
-            <span
-              onDoubleClick={() => { setObjetivoDraft(String(pctCostoIdeal)); setEditandoObjetivo(true); }}
-              title="Doble click para editar"
-              style={{ cursor: 'text', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}
-            >
-              {pctCostoIdeal}
-            </span>
-          )}
-          % costo)
+          Precio sugerido ({pctCostoIdeal}% costo)
         </Typography>
         )}
         {editandoPrecioSugerido ? (
