@@ -12,6 +12,7 @@ import { showPrompt } from "../../servicios/appPrompt";
 import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 import AltaManual from "./AltaManual";
 import { abrirChatAnthony } from "./chatEvento";
+import { POS_BASE, POS_OTRO, POS_NINGUNO } from "./posLista";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
 // alguien sube un PDF acá — se carga con import() dinámico para no engordar
@@ -295,10 +296,6 @@ const FIELDS_BY_KIND = {
 };
 
 // Campos de Lazarillo que vamos confirmando de a uno (campo Lazarillo -> columna del archivo)
-// POS gastronómicos más usados en Argentina (para el desplegable de integración)
-const POS_BASE = ["Nucleo", "Fudo", "Maxirest", "Bistrosoft", "Popapp", "HivePOS", "iRestora PLUS", "Toteat", "Lightspeed Restaurant", "Square", "Loyverse", "Waitry"];
-const POS_OTRO = "Otro (no está en la lista)";
-const POS_NINGUNO = "Ninguno / lo llevo en papel o planilla";
 // alta automática: cuando varias personas cargan un POS que no está, se suma a la lista (almacenamiento compartido)
 const POS_UMBRAL = 2;
 async function loadPosExtra() {

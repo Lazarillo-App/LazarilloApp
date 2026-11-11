@@ -4,19 +4,32 @@
 //     Desvincular (corta la llave de esa PC al instante).
 //   - Vincular una PC nueva: 3 pasos + "Descargar instalador" (Diego: "el kit quiero bajarlo
 //     desde lazarillo"). El zip trae la última versión del kit y ya apunta a este servidor.
-//   - Por API (Waitry, Fudo): próximamente, en gris.
+//   - Sin PC vinculada: primero "¿Con qué sistema cobrás?" (usuaria 11/11). MaxiRest → lo de abajo;
+//     otro POS → pedir la conexión; ninguno → no hace falta conectar nada.
 //   El kit NO se publica desde la app: vive en el servidor (carpeta kit/ del repo del back),
 //   Diego 08/11: "no quiero que se publique desde usuario".
 // Back: GET/POST /api/businesses/:id/kit/{pcs, pcs/:id/desvincular, version, instalador}.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box, Stack, Paper, Typography, Button, Chip, CircularProgress, Alert, Table, TableHead,
-  TableBody, TableRow, TableCell, Tooltip,
+  TableBody, TableRow, TableCell, Tooltip, TextField, MenuItem,
 } from '@mui/material';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { api, BASE, getSession } from '@/servicios/apiBase';
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
+import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { useBusiness } from '@/context/BusinessContext';
+import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
+import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador } from '@/componentes/asistente/posLista';
+import { downwardMenuProps } from '@/utils/menuProps';
+
+// Valor del desplegable a partir del POS guardado (un nombre que no está en la lista es "Otro").
+const valorSelect = (pos) => {
+  if (!pos) return '';
+  if (pos === POS_NINGUNO) return POS_NINGUNO;
+  return POS_BASE.find((p) => p.toLowerCase() === pos.toLowerCase()) || POS_OTRO;
+};
 
 const VERDE = '#059669';
 const AMBAR = '#f59e0b';
@@ -66,6 +79,24 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
   const [version, setVersion] = useState(null);
   const [bajando, setBajando] = useState(false);
   const nuevaRef = useRef(null);
+
+  // Con qué sistema cobra el negocio (usuaria 11/11): hoy solo MaxiRest tiene actualizador.
+  // Se precarga con lo elegido en el alta (props.onboarding.pos).
+  const { items } = useBusiness() || {};
+  const posGuardado = (items || []).find((b) => String(b.id) === String(businessId))?.props?.onboarding?.pos || '';
+  const [pos, setPos] = useState(null);           // null = todavía lo que vino guardado
+  const [otroNombre, setOtroNombre] = useState('');
+  const elegido = pos ?? posGuardado;
+  const guardarPos = async (nombre) => {
+    setPos(nombre);
+    if (!businessId || !nombre) return;
+    try {
+      await BusinessesAPI.setOnboardingFlag(businessId, 'pos', nombre);
+      window.dispatchEvent(new CustomEvent('business:updated'));
+    } catch (e) {
+      showAlert(`No se pudo guardar el sistema: ${e?.message || e}`, 'error');
+    }
+  };
 
   const cargar = useCallback(async () => {
     if (!businessId) return;
@@ -126,11 +157,69 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
   };
 
   const activas = (pcs || []).filter((p) => !p.revocado_en);
+  const sel = valorSelect(elegido);
+  const nombrePos = sel === POS_OTRO ? (pos === POS_OTRO ? otroNombre.trim() : elegido) : elegido;
+  // Con una PC ya vinculada es MaxiRest seguro: no se pregunta nada.
+  const modo = activas.length > 0 || tieneActualizador(elegido) ? 'actualizador'
+    : !elegido ? 'sin_elegir'
+    : elegido === POS_NINGUNO ? 'ninguno'
+    : 'otro';
 
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error">No pude leer las conexiones: {error}</Alert>}
 
+      {activas.length === 0 && (
+        <Caja titulo="Tu sistema de cobro">
+          <Stack spacing={1.5} sx={{ px: 2, py: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              Hoy se conecta solo <b>MaxiRest</b>, con un actualizador que se instala en su PC. Los demás sistemas se van a ir sumando.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'center' }}>
+              <TextField select size="small" label="¿Con qué sistema cobrás?" value={sel} sx={{ minWidth: 280 }}
+                SelectProps={{ MenuProps: downwardMenuProps() }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === POS_OTRO) { setPos(POS_OTRO); setOtroNombre(''); } else guardarPos(v);
+                }}>
+                {POS_BASE.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                <MenuItem value={POS_OTRO}>{POS_OTRO}</MenuItem>
+                <MenuItem value={POS_NINGUNO}>{POS_NINGUNO}</MenuItem>
+              </TextField>
+              {pos === POS_OTRO && (
+                <>
+                  <TextField size="small" label="Nombre de tu sistema" value={otroNombre} autoFocus
+                    onChange={(e) => setOtroNombre(e.target.value)} />
+                  <Button variant="outlined" size="small" disabled={!otroNombre.trim()} onClick={() => guardarPos(otroNombre.trim())}
+                    sx={{ height: 38, textTransform: 'none', fontWeight: 700, borderColor: themeColor, color: themeColor }}>
+                    Guardar
+                  </Button>
+                </>
+              )}
+            </Stack>
+          </Stack>
+        </Caja>
+      )}
+
+      {modo === 'ninguno' && (
+        <Alert severity="info">
+          No necesitás conectar nada: tus artículos, insumos, ventas y compras los cargás desde las tablas.
+        </Alert>
+      )}
+
+      {modo === 'otro' && nombrePos && pos !== POS_OTRO && (
+        <Alert severity="info"
+          action={
+            <Button size="small" sx={{ textTransform: 'none', fontWeight: 700 }}
+              onClick={() => abrirChatAnthony({ opcion: 'pos', respuesta: nombrePos, mensaje: `Quiero conectar ${nombrePos} con Lazarillo.`, contexto: { origen: 'config_conexiones' } })}>
+              Pedir la conexión
+            </Button>
+          }>
+          Con {nombrePos} todavía no tenemos actualizador. Mientras, cargás tus datos desde las tablas; si pedís la conexión, el equipo de Lazarillo te avisa cuando esté.
+        </Alert>
+      )}
+
+      {modo === 'actualizador' && (<>
       <Caja
         titulo="PC vinculadas"
         chip={<Chip size="small" label="MaxiRest" sx={{ height: 24, fontWeight: 600, bgcolor: `${themeColor}14`, color: themeColor }} />}
@@ -227,10 +316,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
           </Typography>
         </Caja>
       </Box>
-
-      <Caja titulo="Por API" gris
-        chip={<Chip size="small" label="próximamente" sx={{ height: 24, fontWeight: 600 }} />}
-        accion={<Typography variant="body2" color="text.secondary">Waitry · Fudo</Typography>} />
+      </>)}
     </Stack>
   );
 }
