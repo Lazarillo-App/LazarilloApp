@@ -400,27 +400,25 @@ function InsumoAccionesMenu({
 
   return (
     <>
-      {isTodoView && Array.isArray(reparto) && (
-        reparto.length === 1 ? (
+      {isTodoView && Array.isArray(reparto) && (() => {
+        // Columna angosta: el texto se corta con «…» dentro del botón (el detalle va en el
+        // tooltip) y nunca pisa el ⋮ de al lado.
+        const uno = reparto.length === 1;
+        const texto = uno ? `→ ${reparto[0].nombre}` : (reparto.length > 1 ? '⚠ Elegir' : '⚠ Sin agrupar');
+        const ayuda = uno ? `Mover a ${reparto[0].nombre}` : (reparto.length > 1 ? 'Elegir agrupación' : 'Insumo sin agrupar: elegí a qué agrupación va');
+        return (
           <Button
-            size="small" variant="outlined" color="success"
-            onClick={() => ejecutarMoverA(Number(reparto[0].groupId))}
-            disabled={isMoving}
-            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
+            size="small" variant="outlined" color={uno ? 'success' : 'warning'}
+            title={ayuda}
+            onClick={uno ? () => ejecutarMoverA(Number(reparto[0].groupId)) : openMoverInline}
+            disabled={uno && isMoving}
+            sx={{ fontSize: '0.68rem', height: 24, py: 0, px: 0.8, lineHeight: 1, minWidth: 0, maxWidth: 'calc(100% - 34px)', flexShrink: 1 }}
           >
-            → Mover a {reparto[0].nombre}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{texto}</span>
           </Button>
-        ) : (
-          <Button
-            size="small" variant="outlined" color="warning"
-            onClick={openMoverInline}
-            sx={{ fontSize: '0.68rem', py: 0.1, px: 0.8, lineHeight: 1.3, whiteSpace: 'nowrap', minWidth: 0 }}
-          >
-            {reparto.length > 1 ? '⚠ Elegir agrupación' : '⚠ Insumo sin agrupar'}
-          </Button>
-        )
-      )}
-      <IconButton size="small" onClick={handleOpen} disabled={staffMode && proponiendo}>
+        );
+      })()}
+      <IconButton size="small" onClick={handleOpen} disabled={staffMode && proponiendo} sx={{ flexShrink: 0 }}>
         <MoreVertIcon fontSize="small" />
       </IconButton>
 

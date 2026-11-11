@@ -1496,7 +1496,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         return null;
                       })}
 
-                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
@@ -1588,7 +1588,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           </div>
                         );
                       })}
-                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
