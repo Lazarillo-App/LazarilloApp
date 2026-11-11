@@ -10,8 +10,9 @@
 //    muestra/oculta sugerido y % (verCostosExtra).
 //  - ARTÍCULO (!modoInsumo && !promoMode): costo y % en una línea + objetivo;
 //    precio sugerido con la barra que mueve el PRECIO.
-//  - PROMOCIÓN (promoMode): igual que el artículo (Diego 11/11/2026) + «Venta sin promo» con el
-//    descuento real arriba del sugerido.
+//  - PROMOCIÓN (promoMode): igual que el artículo (Diego 11/11/2026); a la derecha «sin promo →
+//    promo → descuento» en una línea y el % de costo debajo del precio de la promo; el precio
+//    actual va a la izquierda.
 //  - STAFF (isStaff): sin sugerido ni %.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from 'react';
@@ -130,6 +131,12 @@ export default function PieCostos({
                   % con el precio actual
                 </Typography>
               )}
+              {/* Promo: el precio actual va a la izquierda, con todo lo actual (Diego 11/11/2026). */}
+              {!isStaff && promoMode && precioActual > 0 && (
+                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>
+                  Precio actual: ${fmt(precioActual)}
+                </Typography>
+              )}
             </Box>
             {conObjetivo && (
               <Box>
@@ -172,19 +179,6 @@ export default function PieCostos({
         );
       })()}
       {(!modoInsumo || verCostosExtra) && <Box sx={{ display: isStaff ? 'none' : undefined }}>
-        {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
-        {promoMode && ventaSinPromo > 0 && (
-          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-            Venta sin promo: ${fmt(ventaSinPromo)}
-            {/* Descuento de la promo: su precio contra la venta sin promo (Diego 11/11/2026: el «−19,3%»
-                suelto confundía; ahora dice qué es y usa el precio de la promo, no el actual). */}
-            {precioSugerido > 0 && precioSugerido < ventaSinPromo && (
-              <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600, ml: 0.75 }}>
-                · descuento {fmt((1 - precioSugerido / ventaSinPromo) * 100, 1)}%
-              </Box>
-            )}
-          </Typography>
-        )}
         {articuloPromo && (
           <Stack direction="row" alignItems="center" spacing={0.5} sx={{ my: 0.25, whiteSpace: 'nowrap' }}>
             <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
@@ -215,7 +209,7 @@ export default function PieCostos({
             )}
           </Stack>
         )}
-        {etiquetaRegla ? (
+        {promoMode && ventaSinPromo > 0 ? null : etiquetaRegla ? (
           <Typography variant="caption" color="text.secondary" fontWeight={600}>
             Precio de la promo ({etiquetaRegla})
           </Typography>
@@ -224,6 +218,62 @@ export default function PieCostos({
           Precio sugerido ({pctCostoIdeal}% costo)
         </Typography>
         )}
+        {/* Promo: «sin promo → promo → descuento» en una línea para comparar de un vistazo (Diego 11/11/2026). */}
+        {promoMode && ventaSinPromo > 0 ? (
+          <Stack direction="row" alignItems="flex-start" spacing={1.25} sx={{ whiteSpace: 'nowrap' }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block' }}>Sin promo</Typography>
+              <Typography variant="h6" fontWeight={700} sx={{ color: 'text.secondary' }}>${fmt(ventaSinPromo)}</Typography>
+            </Box>
+            <Typography variant="h6" sx={{ color: 'text.disabled', fontWeight: 400, pt: '20px' }}>→</Typography>
+            <Box>
+              <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block' }}>
+                {etiquetaRegla ? `Promo (${etiquetaRegla})` : `Promo (${pctCostoIdeal}% costo)`}
+              </Typography>
+            {editandoPrecioSugerido ? (
+              <TextField
+                autoFocus
+                size="small"
+                type="number"
+                variant="standard"
+                value={precioSugeridoDraft}
+                onChange={(e) => setPrecioSugeridoDraft(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onBlur={() => { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }
+                  if (e.key === 'Escape') setEditandoPrecioSugerido(false);
+                }}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: '1.25rem', fontWeight: 800 } }}
+                sx={{ width: 120 }}
+              />
+            ) : (
+              <Typography
+                variant="h6"
+                fontWeight={800}
+                onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
+                title="Doble click para editar"
+                sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
+              >
+                {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
+              </Typography>
+            )}
+              {/* % de costo con el precio de la promo: debajo del precio al que se refiere; solo si se movió. */}
+              {precioSugerido > 0 && costoXRendimiento > 0 && Math.round(precioSugerido) !== Math.round(precioActual || 0) && (
+                <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', fontWeight: 700,
+                  color: etiquetaRegla ? 'text.secondary' : ((costoXRendimiento / precioSugerido) * 100 > pctCostoIdeal ? '#ef4444' : 'success.main') }}>
+                  {fmt((costoXRendimiento / precioSugerido) * 100, 1)}% de costo
+                </Typography>
+              )}
+            </Box>
+            {precioSugerido > 0 && precioSugerido < ventaSinPromo && (
+              <Typography variant="h6" sx={{ fontSize: '0.95rem', fontWeight: 800, color: '#7c3aed', pt: '24px' }}>
+                −{fmt((1 - precioSugerido / ventaSinPromo) * 100, 1)}%
+              </Typography>
+            )}
+          </Stack>
+        ) : (
+          <>
         {editandoPrecioSugerido ? (
           <TextField
             autoFocus
@@ -252,6 +302,8 @@ export default function PieCostos({
             {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
           </Typography>
         )}
+          </>
+        )}
         {sugeridoExcedeVenta && (
           <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
             <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />
@@ -260,7 +312,7 @@ export default function PieCostos({
             </Typography>
           </Stack>
         )}
-        {promoMode && precioSugerido > 0 && costoXRendimiento > 0 && (
+        {promoMode && !(ventaSinPromo > 0) && precioSugerido > 0 && costoXRendimiento > 0 && (
           <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', whiteSpace: 'nowrap',
             color: etiquetaRegla ? 'text.secondary' : ((costoXRendimiento / precioSugerido) * 100 > pctCostoIdeal ? '#ef4444' : 'success.main') }}>
             {fmt((costoXRendimiento / precioSugerido) * 100, 1)}% de costo con este precio
@@ -268,7 +320,7 @@ export default function PieCostos({
         )}
         {/* Artículo: "Actual" y la barra del objetivo comparten renglón (la barra, corta) */}
         <Box sx={!modoInsumo ? { display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 } : undefined}>
-        {precioActual > 0 && (
+        {precioActual > 0 && !promoMode && (
           <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25} sx={{ whiteSpace: 'nowrap' }}>
             <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
             {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
@@ -279,7 +331,8 @@ export default function PieCostos({
             y el % de costo objetivo lo sigue (% = costo ÷ precio). Se guarda igual que antes: como
             objetivo entero (commitObjetivo), así que el precio salta de a 1 punto de % (5% a 90%).
             Elaborados y promociones: la barra sigue moviendo el % directamente. */}
-        {etiquetaRegla && onAjustarPrecioPromo && (
+        {/* Promo de un solo artículo: el precio se mueve desde el artículo c/u; estos +/- sobran. */}
+        {etiquetaRegla && onAjustarPrecioPromo && !articuloPromo && (
           <Stack direction="row" alignItems="center" spacing={0.25} sx={{ flexShrink: 0 }}>
             <IconButton size="small" title="Bajar el precio de la promo" onClick={() => onAjustarPrecioPromo(-1)} sx={botonChico}>
               <RemoveIcon sx={{ fontSize: 15 }} />
