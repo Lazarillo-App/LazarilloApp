@@ -114,7 +114,8 @@ export default function PieCostos({
             </Typography>
             {!isStaff && (
               <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
-                Objetivo: {pctCostoIdeal}%
+                {/* % off y llevás N pagás M no tienen objetivo: el precio sale de la regla (Diego 11/11/2026). */}
+                {etiquetaRegla ? '% con el precio actual' : `Objetivo: ${pctCostoIdeal}%`}
               </Typography>
             )}
           </>
@@ -146,10 +147,11 @@ export default function PieCostos({
         {promoMode && ventaSinPromo > 0 && (
           <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
             Venta sin promo: ${fmt(ventaSinPromo)}
-            {/* Descuento real de la promo contra la venta sin promo (con el precio actual). */}
-            {precioActual > 0 && (
+            {/* Descuento de la promo: su precio contra la venta sin promo (Diego 11/11/2026: el «−19,3%»
+                suelto confundía; ahora dice qué es y usa el precio de la promo, no el actual). */}
+            {precioSugerido > 0 && precioSugerido < ventaSinPromo && (
               <Box component="span" sx={{ color: 'text.secondary', fontWeight: 600, ml: 0.75 }}>
-                · {precioActual <= ventaSinPromo ? '−' : '+'}{fmt(Math.abs(1 - precioActual / ventaSinPromo) * 100, 1)}%
+                · descuento {fmt((1 - precioSugerido / ventaSinPromo) * 100, 1)}%
               </Box>
             )}
           </Typography>
@@ -224,6 +226,12 @@ export default function PieCostos({
               Supera la venta sin promo
             </Typography>
           </Stack>
+        )}
+        {promoMode && precioSugerido > 0 && costoXRendimiento > 0 && (
+          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 700, display: 'block', whiteSpace: 'nowrap',
+            color: etiquetaRegla ? 'text.secondary' : ((costoXRendimiento / precioSugerido) * 100 > pctCostoIdeal ? '#ef4444' : 'success.main') }}>
+            {fmt((costoXRendimiento / precioSugerido) * 100, 1)}% de costo con este precio
+          </Typography>
         )}
         {/* Artículo: "Actual" y la barra del objetivo comparten renglón (la barra, corta) */}
         <Box sx={!modoInsumo ? { display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 } : undefined}>
