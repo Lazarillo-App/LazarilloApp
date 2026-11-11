@@ -357,6 +357,16 @@ export default function ConfigInsumosTab({
     return (config.alertas_rubros_excluidos || []).map(c => porCodigo.get(String(c)) || { codigo: String(c), nombre: `Rubro ${c}`, insumos: 0 });
   }, [alertasRubros, config.alertas_rubros_excluidos]);
 
+  // Sugerencia: rubros (todavía no excluidos) donde la mayoría de los insumos está en
+  // alerta — suele ser algo que se compra cada mucho (vajilla, especias), no un faltante.
+  const rubrosSugeridos = React.useMemo(() => {
+    const excl = new Set((config.alertas_rubros_excluidos || []).map(String));
+    return (alertasRubros || [])
+      .filter(r => !excl.has(String(r.codigo)) && Number(r.enAlerta) >= 3 && Number(r.enAlerta) / Math.max(1, Number(r.insumos)) >= 0.5)
+      .sort((a, b) => Number(b.enAlerta) - Number(a.enAlerta))
+      .slice(0, 3);
+  }, [alertasRubros, config.alertas_rubros_excluidos]);
+
   const handleConfirm = () => {
     if (!confirmDlg) return;
     if (confirmDlg.type === 'costo_ideal') {
@@ -668,8 +678,11 @@ export default function ConfigInsumosTab({
                         <li {...props} key={o.codigo}>
                           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%', fontSize: '0.85rem' }}>
                             <span>{o.nombre}</span>
-                            <Typography component="span" variant="caption" color="text.secondary">
-                              {o.insumos} insumo{o.insumos === 1 ? '' : 's'}
+                            <Typography component="span" variant="caption"
+                              sx={{ color: Number(o.enAlerta) > 0 ? '#b45309' : 'text.secondary' }}>
+                              {Number(o.enAlerta) > 0
+                                ? `${o.enAlerta} de ${o.insumos} en alerta`
+                                : `${o.insumos} insumo${o.insumos === 1 ? '' : 's'}`}
                             </Typography>
                           </Stack>
                         </li>
@@ -681,6 +694,26 @@ export default function ConfigInsumosTab({
                     />
                   </Box>
                 </Stack>
+
+                {rubrosSugeridos.length > 0 && (
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}
+                    sx={{ mt: 1.5, p: 1.25, borderRadius: 1.5, bgcolor: '#fffbeb', border: '1px solid #fde68a' }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#92400e', flex: 1, minWidth: 0 }}>
+                      <strong>Sugerencia:</strong> en estos rubros casi todos los insumos están en alerta.
+                      Si se compran cada mucho tiempo, conviene sacarlos.
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
+                      {rubrosSugeridos.map(r => (
+                        <Chip key={r.codigo} size="small" clickable
+                          disabled={!!saving.alertas_rubros_excluidos}
+                          onClick={() => saveRubrosExcluidos?.([...(config.alertas_rubros_excluidos || []), String(r.codigo)])}
+                          label={<span><strong>{r.nombre}</strong> · {r.enAlerta} de {r.insumos} &nbsp;+ Sacar</span>}
+                          sx={{ height: 26, bgcolor: '#fff', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.75rem',
+                            '&:hover': { bgcolor: '#fef3c7' } }} />
+                      ))}
+                    </Stack>
+                  </Stack>
+                )}
               </CardBody>
             </Card>
           </Grid>
