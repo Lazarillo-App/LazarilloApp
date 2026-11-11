@@ -272,6 +272,16 @@
   margin-bottom: 14px;
 }
 
+.auth-success {
+  background: rgba(52,211,153,.12);
+  border: 1px solid rgba(52,211,153,.3);
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 13px;
+  color: #34d399;
+  margin-bottom: 14px;
+}
+
 /* ── Links y pie ────────────────────────────────────────────────── */
 .auth-link {
   color: var(--sky);
@@ -318,6 +328,12 @@
   }
   .auth-aside-wa-hint { width: 100%; }
   .auth-main { min-height: unset; padding: 28px 20px; }
+  /* En el celular el login va directo al formulario (Diego 09/11/2026): sin los mensajes que
+     rotan, ni «Pedí una demo» ni «Respondemos en…». El botón de WhatsApp queda. */
+  .solo-escritorio { display: none !important; }
+  /* Título del formulario centrado en el celular (Diego 09/11/2026). */
+  .auth-head { text-align: center; }
+  .auth-aside-actions { margin-bottom: 0; }
 }
 
 @media (max-width: 480px) {

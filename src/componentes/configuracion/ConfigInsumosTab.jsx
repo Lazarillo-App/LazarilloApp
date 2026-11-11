@@ -152,11 +152,19 @@ const MODOS_COSTEO = [
   { value: 'precio_db', label: 'Precio DB', desc: 'Precio de referencia del sistema como fallback' },
 ];
 
-function ModosCosteo({ value, onChange }) {
+// Costo con o sin impuestos (Diego 10/11/2026: por defecto con impuestos, en A y en Z).
+const IMPUESTOS_COSTEO = [
+  { value: true, label: 'Con impuestos', badge: true,
+    desc: 'Neto + IVA + impuestos internos de cada renglón, sea factura A o Z.' },
+  { value: false, label: 'Sin impuestos',
+    desc: 'Solo el neto en facturas A. Las Z quedan como vienen (el IVA va incluido).' },
+];
+
+function ModosCosteo({ value, onChange, opciones = MODOS_COSTEO }) {
   const tc = 'var(--color-primary, #3b82f6)';
   return (
     <Stack spacing={0.75}>
-      {MODOS_COSTEO.map(m => (
+      {opciones.map(m => (
         <Box key={m.value} onClick={() => onChange(m.value)} sx={{
           p: 1.25, borderRadius: 1.5, cursor: 'pointer',
           border: `1.5px solid ${value === m.value ? tc : '#e2e8f0'}`,
@@ -470,6 +478,14 @@ export default function ConfigInsumosTab({
                   <ModosCosteo
                     value={config.precio_costeo_insumos}
                     onChange={v => setConfig(c => ({ ...c, precio_costeo_insumos: v }))}
+                  />
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                    Impuestos
+                  </Typography>
+                  <ModosCosteo
+                    opciones={IMPUESTOS_COSTEO}
+                    value={config.costo_con_impuestos !== false}
+                    onChange={v => setConfig(c => ({ ...c, costo_con_impuestos: v }))}
                   />
                   <Divider />
                   <Button variant="contained" size="small" disabled={!!saving.precio_costeo}

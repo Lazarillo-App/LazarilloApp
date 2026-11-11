@@ -8,6 +8,7 @@ import { aCuenta, contarAntesDelCursor, cursorTrasSignificativos, disponibleOP, 
 import { dias, fmtComprobante, fmtFecha, fmtPesos, normalizarBusqueda } from "@/gestion/impagasClasificar";
 import { Antiguedad, Boton } from "./ui";
 import { useMediosPago } from "@/gestion/hooksPanel";
+import { useAbmMediosPago } from "../MediosPagoAbm";
 import { mediosParaElegir } from "@/gestion/cargaUtils";
 import { HistorialPagosModal, OrdenPagoModal } from "./orden-pago-modal";
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -409,6 +410,7 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
     // Medio: uno del gestor de medios de pago o "op:ID" = usar el disponible de una OP existente.
     // Sin elegir todavía, el primero de la lista.
     const { data: medios } = useMediosPago();
+    const abmMedios = useAbmMediosPago();
     const lista = mediosParaElegir(medios, editando ? modo.pago.medio : null);
     const [medioSel, setMedio] = useState(editando ? modo.pago.medio : "");
     const medio = medioSel || lista[0]?.nombre || "";
@@ -452,7 +454,7 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
         }
         const m = medio;
         if (!m) {
-            setError("Elegí un medio de pago (se dan de alta en Medios de pago, en el menú).");
+            setError("Elegí un medio de pago (se dan de alta desde el mismo desplegable).");
             return;
         }
         // ID opcional (medios que piden ID); si se carga, letras y números.
@@ -486,12 +488,13 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
             <ImporteInput value={importe} onChange={setImporte} className={cn(input, "w-40 text-right tabular-nums")}/>
           </label>
           <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
-            <select value={medio} onChange={(e) => cambiarMedio(e.target.value)} className={cn(input, "w-56")}>
+            <select value={medio} onChange={abmMedios.alElegir(cambiarMedio)} className={cn(input, "w-56")}>
+                {abmMedios.opcion}
               {lista.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}{m.activo ? "" : " (desactivado)"}</option>)}
               {modo.tipo === "elegidos" && ops.length > 0 && (<optgroup label="Usar una orden sin imputar">
                   {ops.map((o) => (<option key={o.id} value={`op:${o.id}`}>{numeroOP(o.id)} · disponible {fmtPesos(disponibleOP(o))}</option>))}
                 </optgroup>)}
-            </select>
+            </select>{abmMedios.dialogo}
           </label>
           {!opElegida ? (<label className="flex items-center gap-1.5"><span className="text-muted-foreground">Fecha</span>
               <FechaInput value={fecha} onChange={setFecha} className={cn(input, "w-32 tabular-nums")}/>

@@ -19,7 +19,9 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BASE } from '../servicios/apiBase';
 import { useBranch } from '@/hooks/useBranch';
+import { useSucursalModales } from '@/gestion/sucursalModales';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
+import { useConfig } from '@/context/ConfigContext';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
 import { BotonCargarFactura, useVerFacturaDeCompra, useFichaProveedorDeCompra } from './gestion/FacturaEnRecetas';
@@ -61,6 +63,18 @@ const AMBER = {
 // Cuántas compras muestra el modo por defecto. Mirar el precio de las últimas N
 // es lo que se usa en la práctica; el rango completo trae años y no dice nada.
 const ULTIMAS_N = 10;
+
+// Costo con impuestos (Diego 10/11/2026: «es siempre igual», A o Z): el renglón de una factura A
+// trae el IVA y los internos aparte; se suman para que A y Z se vean con el mismo criterio que el
+// costo de la receta. Las Z vienen con esas columnas en 0 y quedan como están.
+const conImpuestosFila = (it) => {
+  const iva = Number(it.iva_total ?? 0) || 0;
+  const ii = Number(it.imp_int_total ?? 0) || 0;
+  if (!(iva || ii)) return it;
+  const total = Number(it.precio_total ?? 0) + iva + ii;
+  const cant = Number(it.cantidad ?? 0);
+  return { ...it, precio_neto: it.precio, precio_total_neto: it.precio_total, precio_total: total, precio: cant > 0 ? total / cant : it.precio };
+};
 
 const precioUnit = (it) => {
   if (!it) return 0;
@@ -600,6 +614,19 @@ export function ComprasDetalleContenido({
   const [extraLoading, setExtraLoading] = useState(false);
 
   const [selectedBranch, setSelectedBranch] = useState('all');
+  // Sucursal compartida con la cuenta corriente del proveedor (Diego 10/11/2026): arranca en la
+  // sucursal que se mira en la app y, si se cambia acá o allá, cambia en los dos.
+  const [sucCompartida, setSucCompartida] = useSucursalModales();
+  const aLocal = (v, lista) => {
+    if (v === 'all' || !v) return 'all';
+    if (v === 'main') { const m = (lista || []).find(b => b?.props?.is_main); return m ? String(m.id) : 'all'; }
+    return (lista || []).some(b => String(b.id) === String(v)) ? String(v) : 'all';
+  };
+  const aCompartida = (v, lista) => {
+    if (v === 'all') return 'all';
+    const b = (lista || []).find(x => String(x.id) === String(v));
+    return b?.props?.is_main ? 'main' : String(v);
+  };
   const [branchItems, setBranchItems] = useState([]);
   const [branchLoading, setBranchLoading] = useState(false);
 
@@ -631,11 +658,20 @@ export function ComprasDetalleContenido({
     if (open) {
       setSelectedBiz('current');
       setExtraItems([]);
-      setSelectedBranch('all');
+      setSelectedBranch(aLocal(sucCompartida, rawBranches));
       setBranchItems([]);
       setDynamicBranches(rawBranches || []);
     }
   }, [open]); // eslint-disable-line
+
+  // Si se cambia la sucursal en la cuenta corriente, este modal la sigue.
+  useEffect(() => {
+    if (!open || selectedBiz !== 'current') return;
+    setSelectedBranch((prev) => {
+      const nuevo = aLocal(sucCompartida, dynamicBranchesRef.current.length ? dynamicBranchesRef.current : rawBranches);
+      return prev === nuevo ? prev : nuevo;
+    });
+  }, [sucCompartida]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────── Ranking "Top por gasto" (solo si hay con quién navegar) ───────────
   // Acá se muestra inline (no hay un header propio para ponerlo al lado del
@@ -780,9 +816,9 @@ export function ComprasDetalleContenido({
 
   // Resetear sucursal al cambiar negocio
   useEffect(() => {
-    setSelectedBranch('all');
+    setSelectedBranch(selectedBiz === 'current' ? aLocal(sucCompartida, rawBranches) : 'all');
     setBranchItems([]);
-  }, [selectedBiz]);
+  }, [selectedBiz]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mapa de colores por sucursal (contexto + dinámicas)
   const branchColorMap = useMemo(() => {
@@ -815,7 +851,11 @@ export function ComprasDetalleContenido({
         ?? (bizSel === 'current' || bizSel === 'all' ? businessId : Number(bizSel)));
 
     try {
-      const branchParam = branchSel === 'main' ? 'none' : branchSel;
+      // La sucursal principal (props.is_main) es la de las compras sin sucursal: el kit sube
+      // las del PDV principal con branch_id null (maxiPdvMap). Diego 10/11/2026: elegir
+      // «FC RAMOS» no mostraba nada.
+      const esMain = branchSel === 'main' || !!branchOwner?.props?.is_main;
+      const branchParam = esMain ? 'none' : branchSel;
       const url = `${BASE}/purchases?insumo_id=${insumoId}&from=${rango.from}&to=${rango.to}&limit=500&branch_id=${branchParam}`;
       const res = await fetch(url, {
         headers: {
@@ -904,12 +944,14 @@ export function ComprasDetalleContenido({
   }, [selectedBiz, open, fetchForBiz]);
 
   // Items a mostrar
+  const conImpuestos = useConfig()?.costoConImpuestos !== false;
   const displayItems = useMemo(() => {
-    if (selectedBranch !== 'all') return branchItems;
-    if (selectedBiz === 'current') return items.map(r => ({ ...r, _bizId: Number(businessId) }));
-    if (selectedBiz === 'all') return [...items.map(r => ({ ...r, _bizId: Number(businessId) })), ...extraItems];
-    return extraItems;
-  }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId]);
+    const filas = selectedBranch !== 'all' ? branchItems
+      : selectedBiz === 'current' ? items.map(r => ({ ...r, _bizId: Number(businessId) }))
+      : selectedBiz === 'all' ? [...items.map(r => ({ ...r, _bizId: Number(businessId) })), ...extraItems]
+      : extraItems;
+    return conImpuestos ? filas.map(conImpuestosFila) : filas;
+  }, [selectedBranch, branchItems, selectedBiz, items, extraItems, businessId, conImpuestos]);
 
   // Si el negocio ya tiene sucursales definidas, "sin sucursal" no es una categoría real
   // CUANDO hay duplicación real: mismo dato ya asignado a su sucursal aparte (mismo
@@ -922,11 +964,12 @@ export function ComprasDetalleContenido({
   // el descarte solo corre si en el MISMO lote hay al menos una fila que sí trae
   // branch_id (ahí sí hay duplicación real que limpiar).
   const sortedItems = useMemo(() => {
-    const hayFilasConSucursal = displayItems.some(it => it.branch_id != null);
-    const base = (hasSucursales || dynamicBranches.length > 0) && hayFilasConSucursal
-      ? displayItems.filter(it => it.branch_id != null)
-      : displayItems;
-    return [...base].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+    // Las compras sin sucursal son las de la sucursal principal (el kit las sube con
+    // branch_id null). Antes, si había alguna con sucursal, se descartaban las sin
+    // sucursal como si fueran duplicados, y en «Todas» desaparecían las de la principal
+    // (Diego 10/11/2026: en un insumo de FC solo se veían las de San Justo). Verificado
+    // en la base: no hay compras duplicadas entre «sin sucursal» y una sucursal.
+    return [...displayItems].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
   }, [displayItems, hasSucursales, dynamicBranches]);
 
   // ── Detección de comprobantes con bonificación (líneas en $0) para pintar la tabla ──
@@ -1492,7 +1535,10 @@ export function ComprasDetalleContenido({
               <Select MenuProps={downwardMenuProps()}
                 value={selectedBranch}
                 label="Sucursal"
-                onChange={(e) => setSelectedBranch(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBranch(e.target.value);
+                  if (selectedBiz === 'current') setSucCompartida(aCompartida(e.target.value, dynamicBranches));
+                }}
               >
                 <MenuItem value="all">Todas</MenuItem>
 
@@ -1779,10 +1825,14 @@ export function ComprasDetalleContenido({
                 const bizId = Number(it._bizId);
                 const bizColor = bizColorMap.get(bizId) || themeColors.primary;
                 const branchId = it.branch_id ? String(it.branch_id) : 'main';
+                const principal = branchId === 'main'
+                  ? (dynamicBranches.find(b => b?.props?.is_main && (b._bizId == null || Number(b._bizId) === bizId))
+                    || (branches || []).find(b => b?.props?.is_main))
+                  : null;
 
                 const branchColor = showBranchColumn
                   ? (branchId === 'main'
-                    ? (bizColorMap.get(bizId) || themeColors.primary)
+                    ? (principal?.color || bizColorMap.get(bizId) || themeColors.primary)
                     : branchColorMap.get(branchId) || bizColor)
                   : bizColor;
 
@@ -1805,7 +1855,7 @@ export function ComprasDetalleContenido({
                   : ((showBizColumn || showBranchColumn) ? `3px solid ${branchColor}60` : 'none');
 
                 const branchName = branchId === 'main'
-                  ? 'Principal'
+                  ? (principal?.name || 'Principal')
                   : (dynamicBranches.find(b => String(b.id) === branchId)?.name
                     || (branches || []).find(b => String(b.id) === branchId)?.name
                     || `Suc. #${branchId}`);

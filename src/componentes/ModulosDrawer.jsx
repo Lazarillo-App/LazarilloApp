@@ -25,8 +25,7 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación',
     modules: [
-      { id: 'gestion-conceptos', label: 'Conceptos de caja', emoji: '🏷️', to: '/gestion/conceptos' },
-      { id: 'gestion-medios', label: 'Medios de pago', emoji: '💳', to: '/gestion/medios-pago' },
+      // Medios de pago salió del menú (Diego 10/11/2026): se gestionan desde el desplegable de cada pago.
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
     ],
   },
@@ -44,7 +43,8 @@ const GROUPS = [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: null },
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
       { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
-      { id: 'carga-gastos', label: 'Carga de gastos', emoji: '🧾', to: '/gestion?cargar=1' },
+      // Conceptos de caja y Carga de gastos salen del menú (Diego 10/11/2026): Conceptos va en el
+      // header del Panel de Gestión y la carga se hace desde el panel («Cargar Gastos»).
       // Sin "Versión celular" (usuaria 08/11/2026: se sigue desarrollando, pero no hace falta un botón
       // que la muestre). /m sigue andando: un teléfono que entra a /gestion va solo ahí.
       { id: 'balance', label: 'Balance', emoji: '💳', to: null },

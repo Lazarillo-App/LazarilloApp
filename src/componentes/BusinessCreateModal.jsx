@@ -2,6 +2,7 @@
 // src/componentes/BusinessCreateModal.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BusinessesAPI } from "@/servicios/apiBusinesses";
+import { BranchesAPI } from "@/servicios/apiBranches";
 import { useBizTheme } from "../tema/ThemeProviderNegocio";
 
 /* ───────────────── Color Field ───────────────── */
@@ -46,6 +47,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
   // Paso 0 — Datos del local
   const [name, setName] = useState("");
+  // Sucursal obligatoria (Diego 10/11/2026): el principal no puede quedar sin sucursal asignada.
+  const [sucursal, setSucursal] = useState("");
   const [phone, setPhone] = useState("");
   const [description, setDescription] = useState("");
   const [addrLine1, setAddrLine1] = useState("");
@@ -173,12 +176,12 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
 
   /* ─── Validaciones por paso ─── */
   const canNext = useMemo(() => {
-    if (step === 0) return name.trim().length > 0; // Datos
+    if (step === 0) return name.trim().length > 0 && sucursal.trim().length > 0; // Datos
     if (step === 1) return true; // Estilos
     if (step === 2) return true; // Redes
     if (step === 3) return true; // Maxi — opcional, se puede crear sin credenciales
     return false;
-  }, [step, name]);
+  }, [step, name, sucursal]);
 
   /* ─── Crear local si aún no existe ─── */
   async function ensureBusinessCreated() {
@@ -215,6 +218,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     const resp = await BusinessesAPI.create(payload);
     const biz = resp?.business ?? resp;
     if (!biz?.id) throw new Error("No se pudo crear el local.");
+    // La sucursal principal con el nombre cargado (no con el del negocio).
+    await BranchesAPI.updateMain(biz.id, { name: sucursal.trim() });
 
     // 🔥 GUARDAR CREDENCIALES MAXI PRIMERO
     if (mxEmail && mxPass && mxCod) {
@@ -429,6 +434,19 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
+                </div>
+                <div className="gc-field">
+                  <label htmlFor="gc-sucursal" className="gc-label">
+                    Sucursal *
+                  </label>
+                  <input
+                    id="gc-sucursal"
+                    className="gc-input"
+                    placeholder="Ej.: Ramos Mejia"
+                    value={sucursal}
+                    onChange={(e) => setSucursal(e.target.value)}
+                  />
+                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Generalmente es el nombre de la zona, por ejemplo, Ramos Mejia</div>
                 </div>
                 <div className="gc-grid-3">
                   <div className="gc-field">

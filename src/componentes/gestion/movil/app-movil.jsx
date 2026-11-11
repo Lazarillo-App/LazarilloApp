@@ -4,7 +4,8 @@ import { gestionFetch } from "@/servicios/apiGestion";
 import { useBusiness } from "@/context/BusinessContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Camera, ChevronLeft, ChevronRight, CircleDot, ClipboardList, Home, PenLine, Plus, Receipt } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, CircleDot, ClipboardList, Home, Menu, PenLine, Plus, Receipt } from "lucide-react";
+import ModulosDrawer from "@/componentes/ModulosDrawer";
 import { useFetchQuery } from "@/gestion/compat";
 import { cn } from "@/gestion/compat";
 import { agrupar, separar, saldo } from "@/gestion/impagasClasificar";
@@ -124,6 +125,10 @@ export function AppMovil() {
         setCargaCruda(c);
     };
     const setTab = (t) => ir(t, t === "cargar" ? carga : null);
+    // Tocar «Inicio» estando en Inicio cierra lo que haya abierto adentro (ej. la evolución de Ventas).
+    const [reinicio, setReinicio] = useState(0);
+    // ☰ con el mismo menú de módulos de la app (Diego 10/11/2026: «no puedo navegar a otro sector»).
+    const [modulos, setModulos] = useState(false);
     const setCarga = (c) => ir(c ? "cargar" : tab, c);
     function atras() {
         if (volverLocalRef.current?.())
@@ -169,16 +174,21 @@ export function AppMovil() {
     }
     const titulos = { inicio: "Inicio", cargar: carga ? ("gasto" in carga || ("sc" in carga && !carga.sc.proveedorId) ? "Gasto vario" : "Factura") : "Cargar", impagas: "Impagas", sincarga: "Sin carga" };
     const enInicio = tab === "inicio" && !carga;
-    return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950">
+    // overflow-x: clip (Diego 09/11/2026): en el iPhone la pantalla se veía partida (más ancha que el
+    // celular y corrida). «clip» y no «hidden», para que el header siga pegado arriba.
+    return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950" style={{ overflowX: "clip", maxWidth: "100%" }}>
       {/* Header con el color del negocio y 56 px, igual que la barra de la app en el celular (Diego 08/11/2026). */}
       <header className="sticky top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
+        <button type="button" onClick={() => setModulos(true)} aria-label="Módulos" style={{ color: "inherit", marginLeft: -6, width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: 0, background: "transparent", cursor: "pointer" }}><Menu className="size-6"/></button>
         {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center" style={{ color: "inherit" }}><ChevronLeft className="size-6"/></button>)}
-        <b className="text-[19px]">{titulos[tab]}</b>
-        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto max-w-[62%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
-            {etiquetaSeleccion(locales ?? [], elegidos.map((p) => p.pdvId))} ▾
+        <b className="text-[19px]" style={{ flexShrink: 0 }}>{titulos[tab]}</b>
+        {pdvs.length > 0 && (enInicio || elegidos.length === 1 ? (<button type="button" onClick={() => setEligiendo(true)} className="ml-auto flex items-center rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "62%" }}>
+            {/* Safari no corta con «…» el texto suelto de un botón: va en un span propio. */}
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etiquetaSeleccion(locales ?? [], elegidos.map((p) => p.pdvId))}</span>
+            <span style={{ flexShrink: 0, marginLeft: 4 }}>▾</span>
           </button>) : (
         // Fuera de Inicio, con varios tildados: en cuál se trabaja.
-        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto max-w-[60%] truncate rounded-full px-3 py-1.5 text-[13px]" style={CHIP_HEADER}>
+        <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto truncate rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "60%" }}>
             {elegidos.map((p) => <option key={p.pdvId} value={p.pdvId}>{p.label}</option>)}
           </select>))}
       </header>
@@ -198,7 +208,7 @@ export function AppMovil() {
                 atras();
         }}>
         {!actual ? <p className="py-10 text-center text-zinc-500">Cargando…</p>
-            : tab === "inicio" ? <Inicio sel={elegidos.map((p) => ({ localId: p.localId, pdvId: p.pdvId }))} irImpagas={() => setTab("impagas")} irSinCarga={(mes) => { setMesSc(mes); setTab("sincarga"); }}/>
+            : tab === "inicio" ? <Inicio reinicio={reinicio} sel={elegidos.map((p) => ({ localId: p.localId, pdvId: p.pdvId }))} irImpagas={() => setTab("impagas")} irSinCarga={(mes) => { setMesSc(mes); setTab("sincarga"); }}/>
                 : tab === "sincarga" ? <SinCarga pdvId={actual.pdvId} mesInicial={mesSc} nombrePdv={(id) => pdvs.find((p) => p.pdvId === id)?.label ?? "otro PDV"} onCargar={(sc, mes) => ir("cargar", { sc, mes })}/>
                     : tab === "impagas" ? <Impagas pdvId={actual.pdvId} volverLocalRef={volverLocalRef}/>
                         : carga && "sc" in carga ? (() => {
@@ -219,12 +229,14 @@ export function AppMovil() {
               <p className="mt-2 text-[12px] text-zinc-500">La foto se lee en el celular y no se guarda: solo se usa para leer el QR.</p>
             </div>)}
       </main>
+      <ModulosDrawer open={modulos} onClose={() => setModulos(false)}/>
       {eligiendo && <ElegirPdvs locales={locales ?? []} inicial={elegidos.map((p) => p.pdvId)} onListo={guardarSeleccion} onCerrar={() => setEligiendo(false)}
           negocios={negocios} negocioId={negocioId} onNegocio={cambiarNegocio}/>}
 
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
         {[["inicio", Home, "Inicio"], ["cargar", Plus, "Cargar"], ["impagas", CircleDot, "Impagas"], ["sincarga", ClipboardList, "Sin carga"]].map(([k, Icono, t]) => (<button key={k} type="button" onClick={() => { if (k === "sincarga")
-            setMesSc(null); ir(k, null); }} className={cn("flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", tab === k ? "font-bold text-zinc-900 dark:text-white" : "text-zinc-500")}>
+            setMesSc(null); if (k === "inicio" && tab === "inicio")
+            setReinicio((n) => n + 1); ir(k, null); }} className={cn("flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", tab === k ? "font-bold text-zinc-900 dark:text-white" : "text-zinc-500")}>
             <Icono className="size-5"/>{t}
           </button>))}
       </nav>
@@ -242,7 +254,7 @@ const pc = (x) => (x == null ? "—" : `${(x * 100).toLocaleString("es-AR", { mi
 // un mes pasado es real, y si le quedó algo sin cargar se suma (cartel ámbar). Resultado con
 // rentabilidad, chips Food cost · Personal · Mix vs el mes anterior, promedio mensual del año,
 // deuda y sin carga en una línea, y deslizar en cualquier parte cambia de mes.
-function Inicio({ sel, irImpagas, irSinCarga }) {
+function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
     // El primero, para lo que es de un PDV (la fecha de actualización).
     const { localId, pdvId } = sel[0];
     const ahora = new Date();
@@ -316,6 +328,13 @@ function Inicio({ sel, irImpagas, irSinCarga }) {
     // Rubro desplegado en "Gastos del mes por rubro" (Diego 29/10); se cierra al cambiar de mes.
     const [abiertoEn, setAbiertoEn] = useState(null);
     const abierto = abiertoEn?.clave === clave ? abiertoEn.rubro : null;
+    useEffect(() => { setEvolucion(null); }, [reinicio]);
+    useEffect(() => { try { window.scrollTo(0, 0); } catch { /* sin scroll */ } }, [evolucion]);
+    // La evolución (Ventas, Gastos, …) se muestra dentro de la app, con el mismo header (color del
+    // negocio, selector de negocio) y la barra de abajo (Diego 09/11/2026: «no quiero que navegar
+    // cambie el header»). Antes era una capa que tapaba todo.
+    if (evolucion)
+        return <Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>;
     return (<div className="touch-pan-y" onTouchStart={(e) => { const t = e.touches[0]; toque.current = { x: t.clientX, y: t.clientY }; }} onTouchEnd={(e) => {
             const s = toque.current;
             toque.current = null;
@@ -387,7 +406,6 @@ function Inicio({ sel, irImpagas, irSinCarga }) {
       </div>
       <p className="mt-2 text-center text-[11.5px] text-zinc-400">← deslizá para cambiar de mes →</p>
       <Link to="/gestion?completa=1" className="mt-3 block text-center text-[13px] text-sky-700 underline">Abrir el Panel completo</Link>
-      {evolucion && (<Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>)}
     </div>);
 }
 // Evolución de un indicador (Diego 29/10/2026, mockup_celu_pdvs_indicadores): barras de los últimos
@@ -422,8 +440,8 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     // La barra más baja queda en 40%: se ven las diferencias sin exagerarlas.
     const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
     const mesCorto = (m) => MESES[m - 1].slice(0, 3).toLowerCase();
-    return (<div className="fixed inset-0 z-[1340] overflow-y-auto bg-white dark:bg-zinc-950" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
-      <div className="sticky top-0 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur">
+    return (<div className="-mx-4 -mt-3 bg-white dark:bg-zinc-950" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
+      <div className="sticky z-10 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur" style={{ top: 56 }}>
         <button type="button" onClick={onClose} aria-label="Volver" className="-ml-2 flex items-center text-sky-700"><ChevronLeft className="size-6"/></button>
         <b className="text-[19px]">{info.titulo}</b>
         <span className="ml-auto text-[12px] text-zinc-500">hasta {MESES[hasta.mes - 1]} {hasta.anio}</span>

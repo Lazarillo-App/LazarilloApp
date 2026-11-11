@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { PASSWORD_REGLA, passwordValida, mensajePassword } from '@/utils/password';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
-import '../css/Auth.css';
+import AuthLayout from '@/componentes/auth/AuthLayout';
 
 export default function ResetPassword() {
   const [params] = useSearchParams();
@@ -34,22 +34,28 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="auth-wrap">
-      <form className="card auth-card" onSubmit={onSubmit}>
-        <h2 className="auth-title">Nueva contraseña</h2>
-        {msg ? <div className="auth-success">{msg}</div> : null}
+    <AuthLayout titulo="Creá tu contraseña nueva" bajada="Elegí una que te acuerdes y que nadie más sepa.">
+      <form className="auth-card compact" onSubmit={onSubmit} noValidate>
+        <header className="auth-head">
+          <h2 className="auth-title">Nueva contraseña</h2>
+          <p className="auth-sub">{PASSWORD_REGLA}</p>
+        </header>
+        {msg ? <div className="auth-success" style={{ marginBottom: 10 }}>{msg}</div> : null}
         {err ? <div className="auth-error">{err}</div> : null}
 
-        <label className="auth-label">Contraseña</label>
-        <input className="input" type="password" value={password} onChange={e=>setPass(e.target.value)} />
+        <label className="auth-label" htmlFor="pw1">Contraseña</label>
+        <input id="pw1" className="input" type="password" autoComplete="new-password" value={password} onChange={e => setPass(e.target.value)} />
 
-        <label className="auth-label">Confirmar contraseña</label>
-        <input className="input" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} />
+        <label className="auth-label" htmlFor="pw2">Confirmar contraseña</label>
+        <input id="pw2" className="input" type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} />
 
-        <button className="btn w-full" disabled={busy}>
-          {busy ? 'Guardando…' : 'Guardar'}
+        <button className="btn btn-sky w-full" style={{ marginTop: 18 }} disabled={busy}>
+          {busy ? 'Guardando…' : 'Guardar contraseña'}
         </button>
+        <div className="auth-cta-row" style={{ justifyContent: 'center' }}>
+          <Link to="/login" className="auth-link">← Volver a iniciar sesión</Link>
+        </div>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

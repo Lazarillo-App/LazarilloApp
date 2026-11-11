@@ -17,6 +17,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import GroupsIcon from '@mui/icons-material/Groups';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { MAIN_BRANCH_ID } from '@/context/BranchContext';
@@ -38,8 +40,8 @@ import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
 import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
 import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
+import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
-import { ActividadCampana } from '@/componentes/gestion/pagos/actividad-campana';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
 import { Popover as MuiPopover } from '@mui/material';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
@@ -114,6 +116,21 @@ function GestionPanelContenido() {
   // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
   const [params, setParams] = useSearchParams();
   const [cargarAlEntrar] = useState(() => params.get('cargar') === '1');
+  // PROVEEDORES del header (Diego 10/11/2026): /gestion?proveedores=1 abre la cuenta corriente sin proveedor elegido.
+  const [verProveedores, setVerProveedores] = useState(false);
+  // Pantalla completa de la tabla (como en el Panel viejo, se perdió en la migración — Diego 10/11/2026).
+  const [maximizado, setMaximizado] = useState(false);
+  useEffect(() => {
+    if (!maximizado) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setMaximizado(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [maximizado]);
+  useEffect(() => {
+    if (params.get('proveedores') !== '1') return;
+    setVerProveedores(true);
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('proveedores'); return n; }, { replace: true });
+  }, [params, setParams]);
   const limpiarCargar = useCallback(() => {
     setParams((p) => { const n = new URLSearchParams(p); n.delete('cargar'); return n; }, { replace: true });
   }, [setParams]);
@@ -283,7 +300,7 @@ function GestionPanelContenido() {
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
-    verPanel && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas);
+    verPanel && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores);
   const pasoTour = pasosTour[recPanel.paso - 1];
 
   return (
@@ -291,7 +308,9 @@ function GestionPanelContenido() {
     <Toaster position="bottom-right" />
     <SinRubroPanel />
     <Box sx={{ p: { xs: 1.5, md: 3 }, display: 'flex', flexDirection: 'column', height: { md: 'calc(100vh - 64px)' } }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} gap={1.5}>
+      {/* Título y subtítulo solo en pantallas chicas (Diego 10/11/2026): en la compu el módulo va bajo el
+          logo del header y la sucursal en sus chips; los íconos pasan a la barra de filtros. */}
+      <Stack direction="column" gap={1.5} sx={{ display: { xs: 'flex', md: 'none' } }}>
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
             <Typography variant="h5" fontWeight={600} noWrap>Panel de Gestión</Typography>
@@ -305,8 +324,23 @@ function GestionPanelContenido() {
             <Box sx={{ display: { xs: 'inline-flex', md: 'none' }, maxWidth: '100%' }}><ActualizadoAl nombre={nombreActualizado} /></Box>
           </Stack>
         </Box>
-        <Stack direction="row" alignItems="center" gap={1}>
-          <BloqueSeguro nombre="Actividad" compacto><ScopeGestion><ActividadCampana /></ScopeGestion></BloqueSeguro>
+      </Stack>
+
+      {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
+          derecha. La sucursal se elige en el selector global de la app, no acá. */}
+      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: { xs: 3, md: 0.5 }, pb: 2 }}>
+        <Box ref={refsTour.periodo} sx={{ display: 'inline-flex' }}>
+        <FiltroPeriodo
+          year={estado.year}
+          meses={estado.meses}
+          minYear={rango.data?.minYear ?? undefined}
+          maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
+          onYear={(year) => cambiar({ year })}
+          onToggleMes={toggleMes}
+          onTodoElAnio={() => cambiar({ meses: [] })}
+        />
+        </Box>
+        <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
           <Tooltip title="Notas">
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
               <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
@@ -335,24 +369,8 @@ function GestionPanelContenido() {
           </Tooltip>
           )}
         </Stack>
-      </Stack>
-
-      {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
-          derecha. La sucursal se elige en el selector global de la app, no acá. */}
-      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: 3, pb: 2 }}>
-        <Box ref={refsTour.periodo} sx={{ display: 'inline-flex' }}>
-        <FiltroPeriodo
-          year={estado.year}
-          meses={estado.meses}
-          minYear={rango.data?.minYear ?? undefined}
-          maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
-          onYear={(year) => cambiar({ year })}
-          onToggleMes={toggleMes}
-          onTodoElAnio={() => cambiar({ meses: [] })}
-        />
-        </Box>
         {estado.tab !== 'ventas' && (
-          <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
+          <Stack direction="row" alignItems="center" gap={1}>
             {verCarga && <Box ref={refsTour.cargar} sx={{ display: 'inline-flex' }}><BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro></Box>}
             {verPanel && !enParaMirar && pdvId != null && (
               <ScopeGestion>
@@ -376,7 +394,9 @@ function GestionPanelContenido() {
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
       {verPanel && estado.mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
-      {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 }}>
+      {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
+        // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
+        ...(maximizado ? { position: 'fixed', inset: 0, zIndex: 1250, borderRadius: 0, m: 0 } : {}) }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <ToggleButtonGroup
             ref={refsTour.tabs}
@@ -389,6 +409,7 @@ function GestionPanelContenido() {
               <ToggleButton key={t.v} value={t.v} disabled={t.proximamente} title={t.proximamente ? 'Próximamente' : undefined}>{t.label}</ToggleButton>
             ))}
           </ToggleButtonGroup>
+          <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap" sx={{ ml: 'auto' }}>
           {estado.tab === 'compras' && (
             <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
               <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'inline' } }}>ver por</Typography>
@@ -406,6 +427,13 @@ function GestionPanelContenido() {
               )}
             </Stack>
           )}
+          <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
+            <IconButton size="small" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              sx={{ width: 34, height: 34, borderRadius: 2, border: 1, borderColor: "divider" }}>
+              {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 16 }} /> : <OpenInFullIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+          </Tooltip>
+          </Stack>
         </Stack>
         {estado.tab === 'compras' && (
           <BloqueSeguro nombre="la tabla de gastos">
@@ -455,6 +483,11 @@ function GestionPanelContenido() {
       {recPanel.visible && pasoTour && (
         <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recPanel.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
           text={pasoTour.t} {...recPanel.props(recPanel.paso)} />
+      )}
+      {verProveedores && (
+        <BloqueSeguro nombre="la cuenta corriente de proveedores">
+          <ScopeGestion><CtaCteModal origen={{ codPro: '' }} onCerrar={() => setVerProveedores(false)} /></ScopeGestion>
+        </BloqueSeguro>
       )}
     </Box>
     </PanelGestionContext.Provider>

@@ -64,6 +64,7 @@ import EditorFotoModal from './EditorFotoModal';
 import VistaPreviaFotoModal from './VistaPreviaFotoModal';
 import VistaCocinaModal from './VistaCocinaModal';
 import ItemRow from './ItemRow';
+import PieCostos from './PieCostos';
 import ModalReemplazarInsumo from './ModalReemplazarInsumo';
 import TabMermaInsumo from './TabMermaInsumo';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
@@ -777,13 +778,23 @@ export default function RecetaModal({
   }, [insumos, articulo?.id, resolverTabRecetaCompras]);
 
   /* ── Cargar insumos ── */
+  // Costo POR LOCAL: si el local de esta receta (businessId) compró el insumo, se costea con el
+  // precio de SUS compras (costos_locales, lo calcula el servidor con la config de costeo), igual
+  // que el servidor al guardar el costo de la receta. Si no, queda precio_ref (el del grupo).
+  // Con bonificación aceptada manda precio_ref (ya es el costo real), igual que en el servidor.
+  const conPrecioDelLocal = useCallback((ins) => {
+    const loc = ins?.costos_locales?.[String(businessId)];
+    if (loc == null || !(Number(loc) > 0) || ins.bonif_aceptada === true) return ins;
+    return { ...ins, precio_ref: Number(loc), precio_ref_grupo: ins.precio_ref };
+  }, [businessId]);
+
   useEffect(() => {
     if (!open || !businessId) return;
     setInsumosLoading(true);
     insumosList(insumosBizId || businessId, { limit: 99999 })
       .then(resp => {
         const lista = Array.isArray(resp?.data) ? resp.data : Array.isArray(resp?.insumos) ? resp.insumos : [];
-        setInsumos(lista);
+        setInsumos(lista.map(conPrecioDelLocal));
       })
       .catch(() => setError('No se pudieron cargar los insumos'))
       .finally(() => setInsumosLoading(false));
@@ -1132,7 +1143,7 @@ export default function RecetaModal({
       const r = await insumoGet(insumoId, insumoBizId);
       const fresh = r?.data;
       if (fresh) {
-        setInsumos(prev => prev.map(i => String(i.id) === String(insumoId) ? { ...i, ...fresh } : i));
+        setInsumos(prev => prev.map(i => String(i.id) === String(insumoId) ? conPrecioDelLocal({ ...i, ...fresh }) : i));
       }
     } catch { /* refresco best-effort: si falla, el usuario puede reabrir el modal */ }
   }, [businessId, insumoBizId]);
@@ -2116,6 +2127,7 @@ export default function RecetaModal({
           width: { xs: '99vw', sm: '98vw', md: '1240px' },
           maxWidth: '1340px',
           maxHeight: '94vh',
+          minHeight: 'min(94vh, calc(60vh + 140px))',
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
           display: 'flex', flexDirection: 'column', outline: 'none', overflow: 'hidden',
@@ -2256,7 +2268,10 @@ export default function RecetaModal({
           </Box>
 
           {/* ── BODY ── */}
-          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: '60vh' }}>
+          {/* minHeight 0: el cuerpo es lo que cede si no entra todo, así el pie y los botones
+              siempre quedan a la vista. El alto mínimo de antes (cuerpo 60vh, que incluía el pie)
+              ahora lo pone el Paper, para que el modal no cambie de alto entre recetas. */}
+          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -2404,7 +2419,8 @@ export default function RecetaModal({
                           value={nombre}
                           onChange={e => setNombre(e.target.value)}
                           placeholder={artNombre}
-                          sx={{ flex: 1 }}
+                          size="small"
+                          sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }}
                         />
                         {!modoInsumo && (
                           <ToggleButtonGroup
@@ -2456,17 +2472,17 @@ export default function RecetaModal({
                           >
                             <ToggleButton
                               value="producto"
-                              sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}
+                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
                             >
                               Producto
                             </ToggleButton>
-                            <ToggleButton value="promo" sx={{ px: 1.5, fontSize: '0.7rem', fontWeight: 700 }}>
+                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
                               Promoción
                             </ToggleButton>
                           </ToggleButtonGroup>
                         )}
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
                             gemelos, más abajo) ── */}
@@ -2475,7 +2491,7 @@ export default function RecetaModal({
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
                               display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer',
-                              py: 0.6, px: 1, borderRadius: 1,
+                              height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
                               bgcolor: rendimientoNoDefault ? 'rgba(3,105,161,0.05)' : 'transparent',
                               border: '1px solid', borderColor: rendimientoNoDefault ? 'rgba(3,105,161,0.2)' : 'divider',
                               '&:hover': { bgcolor: 'action.hover' }, transition: 'all .15s',
@@ -2502,8 +2518,8 @@ export default function RecetaModal({
                                   setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
                                 }}
                                 size="small"
-                                inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '6px 8px' } }}
-                                sx={{ width: 72, flexShrink: 0 }}
+                                inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '0 8px' } }}
+                                sx={{ width: 72, flexShrink: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
                               />
                               <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
                                 <Select
@@ -2519,7 +2535,7 @@ export default function RecetaModal({
                                     }
                                   }}
                                   MenuProps={downwardMenuProps()}
-                                  sx={{ fontSize: '0.85rem', '& .MuiSelect-select': { py: '6px' } }}
+                                  sx={{ fontSize: '0.85rem', height: 40 }}
                                 >
                                   <MenuItem value="porcion">Porción</MenuItem>
                                   <MenuItem value="u">Unidad</MenuItem>
@@ -2545,8 +2561,8 @@ export default function RecetaModal({
                                     }}
                                     placeholder="—"
                                     size="small"
-                                    inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '6px 8px' } }}
-                                    sx={{ flex: 1, minWidth: 0 }}
+                                    inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '0 8px' } }}
+                                    sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
                                   />
                                   <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
                                     <Select
@@ -2555,7 +2571,7 @@ export default function RecetaModal({
                                       displayEmpty
                                       renderValue={(v) => v || 'u.'}
                                       MenuProps={downwardMenuProps()}
-                                      sx={{ fontSize: '0.8rem', color: unidadPeso ? 'inherit' : 'text.disabled', '& .MuiSelect-select': { py: '6px' } }}
+                                      sx={{ fontSize: '0.8rem', height: 40, color: unidadPeso ? 'inherit' : 'text.disabled' }}
                                     >
                                       <MenuItem value="gr">gr</MenuItem>
                                       <MenuItem value="kg">kg</MenuItem>
@@ -2579,7 +2595,7 @@ export default function RecetaModal({
                           size="small"
                           inputProps={{ min: 0, max: 150 }}
                           InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined }}
+                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
                         />
                       </Box>
                     </Box>
@@ -2597,7 +2613,7 @@ export default function RecetaModal({
                       }}
                         sx={{
                           display: 'flex', alignItems: 'center', gap: 1,
-                          cursor: 'pointer', py: 0.6, px: 1, borderRadius: 1,
+                          cursor: 'pointer', height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
                           bgcolor: gemelosGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
                           border: '1px solid', borderColor: gemelosGroup ? 'rgba(124,58,237,0.2)' : 'divider',
                           '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
@@ -3101,192 +3117,6 @@ export default function RecetaModal({
                     </Box>
                   )}
 
-                  <Box ref={recResumenRef} sx={{
-                    display: 'grid',
-                    gridTemplateColumns: (() => {
-                      const ocultarExtras = modoInsumo && !verCostosExtra;
-                      const colPeso = Number(rendimientoPeso) > 0 ? 1 : 0;
-                      const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : 2);
-                      return `repeat(${cols}, 1fr)`;
-                    })(),
-                    gap: 1.5,
-                    bgcolor: 'action.hover',
-                    borderRadius: 1.5, p: 2,
-                    mb: 2,
-                    position: 'relative',
-                  }}>
-                    {modoInsumo && (
-                      <IconButton
-                        size="small"
-                        onClick={() => setVerCostosExtra(v => !v)}
-                        sx={{ position: 'absolute', top: 4, right: 4, p: 0.25 }}
-                        title={verCostosExtra ? 'Ocultar sugerido y % costo' : 'Ver sugerido y % costo'}
-                      >
-                        <VisibilityIcon sx={{ fontSize: 16, opacity: 0.6 }} />
-                      </IconButton>
-                    )}
-                    {Number(rendimiento) > 1 && (
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>Costo total</Typography>
-                        <Typography variant="h6" fontWeight={800}>${fmt(costoTotalMostrado)}</Typography>
-                      </Box>
-                    )}
-
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                        {Number(rendimiento) > 1 || rendimientoUnidad !== 'porcion'
-                          ? labelPorUnidad
-                          : 'Costo total'}
-                      </Typography>
-                      <Typography variant="h6" fontWeight={800}>${fmt(costoXRendimiento)}</Typography>
-                    </Box>
-                    {Number(rendimientoPeso) > 0 && (() => {
-                      // Mostrar el costo por unidad GRANDE: gr→kg, ml→L (× 1000).
-                      const uBase = canonicalUnit(unidadPeso || 'gr');
-                      const esPeso = uBase === 'gr' || uBase === 'kg';
-                      const uGrande = esPeso ? 'kg' : 'lt';
-                      // costo por unidad base (gr/ml) × 1000 = costo por unidad grande (kg/L)
-                      const costoUnitBase = costoXRendimiento / Number(rendimientoPeso);
-                      const costoGrande = costoUnitBase * 1000;
-                      return (
-                        <Box>
-                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            Costo / {uGrande} (÷{fmt(Number(rendimientoPeso))} {uBase})
-                          </Typography>
-                          <Typography variant="h6" fontWeight={800}>
-                            ${fmt(costoGrande)}
-                          </Typography>
-                        </Box>
-                      );
-                    })()}
-                    {(!modoInsumo || verCostosExtra) && <Box sx={{ display: isStaff ? 'none' : undefined }}>
-                      {/* KPI Venta sin promo — solo en promos, como leyenda arriba del sugerido */}
-                      {promoMode && ventaSinPromo > 0 && (
-                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: colorSinPromo, fontSize: '0.75rem' }}>
-                          Venta sin promo: ${fmt(ventaSinPromo)}
-                        </Typography>
-                      )}
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                        Precio sugerido (
-                        {editandoObjetivo ? (
-                          <input
-                            autoFocus
-                            type="number"
-                            min={0}
-                            max={150}
-                            value={objetivoDraft}
-                            onChange={(e) => setObjetivoDraft(e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            onBlur={() => { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') { commitObjetivo(objetivoDraft); setEditandoObjetivo(false); }
-                              if (e.key === 'Escape') setEditandoObjetivo(false);
-                            }}
-                            style={{ width: 34, font: 'inherit', fontWeight: 700, textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4 }}
-                          />
-                        ) : (
-                          <span
-                            onDoubleClick={() => { setObjetivoDraft(String(pctCostoIdeal)); setEditandoObjetivo(true); }}
-                            title="Doble click para editar"
-                            style={{ cursor: 'text', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}
-                          >
-                            {pctCostoIdeal}
-                          </span>
-                        )}
-                        % costo)
-                      </Typography>
-                      {editandoPrecioSugerido ? (
-                        <TextField
-                          autoFocus
-                          size="small"
-                          type="number"
-                          variant="standard"
-                          value={precioSugeridoDraft}
-                          onChange={(e) => setPrecioSugeridoDraft(e.target.value)}
-                          onFocus={(e) => e.target.select()}
-                          onBlur={() => { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }
-                            if (e.key === 'Escape') setEditandoPrecioSugerido(false);
-                          }}
-                          InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: '1.25rem', fontWeight: 800 } }}
-                          sx={{ width: 120 }}
-                        />
-                      ) : (
-                        <Typography
-                          variant="h6"
-                          fontWeight={800}
-                          onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
-                          title="Doble click para editar"
-                          sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
-                        >
-                          {precioSugerido > 0 ? `$${fmt(precioSugerido)}` : '—'}
-                        </Typography>
-                      )}
-                      {sugeridoExcedeVenta && (
-                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
-                          <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />
-                          <Typography variant="caption" sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#ef4444' }}>
-                            Supera la venta sin promo
-                          </Typography>
-                        </Stack>
-                      )}
-                      {precioActual > 0 && (
-                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
-                          <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
-                          {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
-                        </Stack>
-                      )}
-                      {/* Barra de ajuste del Costo Objetivo — debajo del sugerido, visible siempre.
-                          +/- de a 1 punto, o doble click sobre el % de arriba para tipearlo directo. */}
-                      <Stack direction="row" alignItems="center" spacing={0.25} sx={{ mt: 0.5 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) - 1)}
-                          sx={{
-                            width: 22, height: 22, p: 0,
-                            bgcolor: 'action.hover',
-                            '&:hover': { bgcolor: 'action.selected' },
-                          }}
-                        >
-                          <RemoveIcon sx={{ fontSize: 15 }} />
-                        </IconButton>
-                        <Slider
-                          value={Number(pctCostoIdeal) || 0}
-                          min={0}
-                          max={100}
-                          step={1}
-                          size="small"
-                          onChange={(_, val) => setPctCostoIdeal(val)}
-                          onChangeCommitted={(_, val) => commitObjetivo(val)}
-                          sx={{ py: 0.5, flex: 1 }}
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => commitObjetivo((Number(pctCostoIdeal) || 0) + 1)}
-                          sx={{
-                            width: 22, height: 22, p: 0,
-                            bgcolor: 'action.hover',
-                            '&:hover': { bgcolor: 'action.selected' },
-                          }}
-                        >
-                          <AddIcon sx={{ fontSize: 15 }} />
-                        </IconButton>
-                      </Stack>
-                    </Box>}
-                    {!modoInsumo && <Box sx={{ display: isStaff ? 'none' : undefined }}>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>% Costo actual</Typography>
-                      {pctCostoActual !== null ? (
-                        <>
-                          <Typography variant="h6" fontWeight={800} color={pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main'}>{fmt(pctCostoActual, 1)}%</Typography>
-                          <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.disabled' }}>Ideal: {pctCostoIdeal}%</Typography>
-                        </>
-                      ) : (
-                        <Typography variant="h6" color="text.disabled">—</Typography>
-                      )}
-                    </Box>}
-                  </Box>
-
                   {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
                   {success && <Alert severity="success" sx={{ mb: 1.5 }}>¡Receta guardada!</Alert>}
                   {pendingApproval && (
@@ -3298,6 +3128,50 @@ export default function RecetaModal({
               );
             })()}
           </Box>
+
+          {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
+              no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
+          {!(modoInsumo && !entradaElegida)
+            && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
+            && !(modoInsumo && ['merma', 'compras', 'equivalencias', 'uso'].includes(tab))
+            && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada)
+            && (
+            <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
+            <PieCostos
+              modoInsumo={modoInsumo}
+              verCostosExtra={verCostosExtra}
+              setVerCostosExtra={setVerCostosExtra}
+              rendimientoPeso={rendimientoPeso}
+              rendimiento={rendimiento}
+              rendimientoUnidad={rendimientoUnidad}
+              costoTotalMostrado={costoTotalMostrado}
+              labelPorUnidad={labelPorUnidad}
+              costoXRendimiento={costoXRendimiento}
+              unidadPeso={unidadPeso}
+              isStaff={isStaff}
+              promoMode={promoMode}
+              ventaSinPromo={ventaSinPromo}
+              colorSinPromo={colorSinPromo}
+              editandoObjetivo={editandoObjetivo}
+              setEditandoObjetivo={setEditandoObjetivo}
+              objetivoDraft={objetivoDraft}
+              setObjetivoDraft={setObjetivoDraft}
+              commitObjetivo={commitObjetivo}
+              pctCostoIdeal={pctCostoIdeal}
+              setPctCostoIdeal={setPctCostoIdeal}
+              editandoPrecioSugerido={editandoPrecioSugerido}
+              setEditandoPrecioSugerido={setEditandoPrecioSugerido}
+              precioSugeridoDraft={precioSugeridoDraft}
+              setPrecioSugeridoDraft={setPrecioSugeridoDraft}
+              commitPrecioSugerido={commitPrecioSugerido}
+              precioSugerido={precioSugerido}
+              sugeridoExcedeVenta={sugeridoExcedeVenta}
+              precioActual={precioActual}
+              estaPorDebajo={estaPorDebajo}
+              pctCostoActual={pctCostoActual}
+            />
+            </Box>
+          )}
 
           {marcarModo && (
             <Box sx={{ px: 3, py: 1.25, borderTop: '1px solid', borderColor: 'divider', bgcolor: '#fff8e6', display: 'flex', gap: 1.5, alignItems: 'center' }}>

@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
+import { useAbmMediosPago } from "./MediosPagoAbm";
 import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
@@ -278,7 +279,8 @@ const PreguntaConcepto = ({ opciones, elegido, noSe, nombreDe, onElegir, onNoSe 
   );
 };
 const o2t = (o, nombreDe) => `${o.codigo} · ${nombreDe(o.codigo)}`;
-const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px" }}>BONIFICADO</span>;
+// inline-block: en una celda con overflow hidden, el borde de un span inline (su padding no cuenta en el alto de la línea) se recortaba arriba y abajo.
+const Bonif = () => <span title="Insumo bonificado: importe $ 0, se registra la cantidad" style={{ display: "inline-block", lineHeight: "14px", whiteSpace: "nowrap", boxSizing: "border-box", maxWidth: "100%", fontSize: 10, fontWeight: 700, color: C.verde, border: `1.2px solid ${C.verde}`, borderRadius: 6, padding: "1px 6px", margin: "1px 0" }}>BONIFICADO</span>;
 function Badge({ estado }) {
   const col = estado === "PAGA" ? C.verde : estado === "PARCIAL" ? C.nar : C.rojo;
   return <span style={{ background: col, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>{estado}</span>;
@@ -809,6 +811,7 @@ function ModalNuevaCarga(props) {
   const [pagadoPor, setPagadoPor] = useState(pdvActual || PDVS[0]);
   const { data: mediosData } = useMediosPago();
   const mediosPago = mediosParaElegir(mediosData);
+  const abmMedios = useAbmMediosPago();
   const [medioPagoSel, setMedioPago] = useState("");
   const medioPago = medioPagoSel || (mediosPago[0] && mediosPago[0].nombre) || "";
   const pidePagoId = !!(mediosPago.find((m) => m.nombre === medioPago) || {}).pideId;
@@ -1000,7 +1003,7 @@ function ModalNuevaCarga(props) {
     if (!(parseImp(importeV) > 0)) faltan.push("Poné el importe del gasto.");
     if (!fechaValida(fAct)) faltan.push("Falta una fecha del gasto válida.");
     if (pagarV) {
-      if (!medioPago) faltan.push("Elegí el medio de pago (se dan de alta en Medios de pago, en el menú).");
+      if (!medioPago) faltan.push("Elegí el medio de pago (se dan de alta desde el mismo desplegable).");
       if (!fechaValida(fechaPago)) faltan.push("Falta una fecha de pago válida.");
     }
     // El 15 del período puede ser posterior a hoy y está bien; otra fecha futura se confirma.
@@ -1056,7 +1059,7 @@ function ModalNuevaCarga(props) {
     }
     if (yaCargada) faltan.push("Esta factura ya está cargada: no se vuelve a cargar.");
     if (modo === "factura" && vista === "nueva" && pagarAhora) {
-      if (!medioPago) faltan.push("Elegí el medio de pago (se dan de alta en Medios de pago, en el menú).");
+      if (!medioPago) faltan.push("Elegí el medio de pago (se dan de alta desde el mismo desplegable).");
       if (!fechaValida(fechaPago)) faltan.push("Falta una fecha de pago válida.");
     }
     // Fecha posterior a hoy: casi siempre es un error de tipeo (pasó con un ticket guardado en noviembre).
@@ -1172,6 +1175,7 @@ function ModalNuevaCarga(props) {
   const deEstructura = lineas.filter((l) => l.desdePre).length;
   return (
     <div style={embebido ? { display: "contents" } : { position: "fixed", inset: 0, background: "rgba(40,40,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1300 }} onClick={embebido ? undefined : onCerrar}>
+      {abmMedios.dialogo}
       <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1320px, 98vw)", maxHeight: "94vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
         <div style={{ padding: "14px 20px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1353,7 +1357,9 @@ function ModalNuevaCarga(props) {
                 const ivaLinea = ivaDe(l);
                 const subtotal = neto + ivaLinea + ii;
                 const { med, base: medBase, factor: fEnv } = esIns ? medidaLinea(l) : { med: "", base: "", factor: null };
-                const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / cantN : 0;
+                // Precio final por unidad de medida (Diego 10/11/2026): con envase, por la unidad base (U), no por Caja/Pack.
+                const final = esIns && cantN > 0 && subtotal > 0 ? subtotal / (cantN * (fEnv || 1)) : 0;
+                const medFinal = fEnv ? medBase : (med || "u");
                 const aviso = !soloVer && (!l.editando || l.tocado) ? avisoDe(l) : null;
                 const avisoUI = aviso && <AvisoLinea a={aviso} onCorregir={() => corregirPrecio(i, aviso.sugerido)} onAceptar={() => aceptarPrecio(i)} />;
                 const sinConc = !soloVer ? sinConceptoDe(l) : null;
@@ -1386,7 +1392,7 @@ function ModalNuevaCarga(props) {
                       </span>
                     </span>
                     <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span>
-                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med}<span style={{ ...chica, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
+                      : fEnv ? <span title={`${l.cant} envases ${med} de ${fEnv} ${medBase}`}>{l.cant} × {med} <span style={{ color: "#999", fontSize: 11 }}>de {fmtNum(fEnv)}</span><span style={{ ...chica, color: "#999" }}>= {fmtNum(Math.round(cantN * fEnv * 100) / 100)} {medBase}</span></span>
                       : `${l.cant} ${med}`}</span>
                     <span style={celda}>{!esIns ? <span style={{ color: "#ddd" }}>—</span> : <Imp v={parseImp(l.unit)} max={15} />}
                       {txtDesc && <span title={`Bruto ${$fmt(brutoDe(l))} − ${$fmt(desc)}`} style={{ ...chica, color: C.verde, fontWeight: 600 }}>{txtDesc}</span>}</span>
@@ -1396,7 +1402,7 @@ function ModalNuevaCarga(props) {
                     <span style={celda}>{fmtNum(l.alic)}%</span>
                     <span style={celda}>{esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />}</span>
                     <span style={{ ...celda, color: C.neg }}>{esIns && neto === 0 ? (descExcede(l) ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : <Bonif />) : <Imp v={subtotal} strong max={16} />}
-                      {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
+                      {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{medFinal} final</span>}</span>
                     <span style={{ display: soloVer ? "none" : "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
                       {/* registro precargado (repetir factura): el ⚠ reemplaza al lápiz, hacen lo mismo (abrir para revisar) */}
                       {l.precargada
@@ -1548,7 +1554,7 @@ function ModalNuevaCarga(props) {
                       </select>
                       <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>
                       <span style={{ fontSize: 12.5, ...celda, color: C.neg }}>{neto > 0 ? <Imp v={subtotal} strong max={16} /> : excede ? <span style={{ color: C.rojo, fontWeight: 700 }}>—</span> : esIns && cantN > 0 && l.item ? <Bonif /> : ""}
-                        {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{med || "u"} final</span>}</span>
+                        {final > 0 && <span style={{ ...chica, color: "#64748b" }}>{$fmt(final)} /{medFinal} final</span>}</span>
                       <span style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button type="button" onClick={() => {
                           if (faltaDe(l)) return;
@@ -1843,7 +1849,7 @@ function ModalNuevaCarga(props) {
             {pagarV && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, marginTop: 10, alignItems: "end" }}>
                 <div><span style={lab}>Medio</span>
-                  <select style={sel} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
+                  <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{abmMedios.opcion}
                     {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                   </select></div>
                 <div><span style={lab}>Fecha de pago</span>
@@ -1940,7 +1946,7 @@ function ModalNuevaCarga(props) {
                     <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
                       title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value, e.nativeEvent))} /></div>
                   <div><span style={lab}>Medio</span>
-                    <select style={sel} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
+                    <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{abmMedios.opcion}
                       {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                     </select></div>
                   <div><span style={lab}>Fecha de pago</span>
@@ -2055,6 +2061,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   const totalTxt = total ?? totalSug;
   const [verCuenta, setVerCuenta] = useState("concepto"); // concepto | medio
   const medios = mediosPago.map((m) => m.nombre);
+  const abmMedios = useAbmMediosPago();
   const medioDef = medios[0] || "Efectivo";
   // Conceptos de personal (rubros de personal), sin el de adelantos que es fijo.
   const codAdel = nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.codigo : null;
@@ -2169,7 +2176,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value, e.nativeEvent))} /></div>
             <div><span style={lab}>Forma de pago</span>
-              <select style={sel} value={medioA || medioDef} onChange={(e) => setMedioA(e.target.value)}>{medios.map((m) => <option key={m}>{m}</option>)}</select></div>
+              <select style={sel} value={medioA || medioDef} onChange={abmMedios.alElegir(setMedioA)}>{abmMedios.opcion}{medios.map((m) => <option key={m}>{m}</option>)}</select>{abmMedios.dialogo}</div>
             <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#888" }}>Concepto fijo: <b>{nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.nombre : "Adelanto Sueldo"}</b> · va a la cuenta del empleado en {nombrePeriodo(periodo)} y se descuenta del sueldo.</div>
           </div>
         ) : (
@@ -2191,8 +2198,8 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {l.pagos.map((p, k) => (
                       <div key={k} style={{ display: "flex", gap: 6 }}>
-                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={(e) => tocar((x) => { x[i].pagos[k].medio = e.target.value; return x; })}>
-                          {[...(adelantos > 0 ? [ADEL] : []), ...medios].map((m) => <option key={m}>{m}</option>)}</select>
+                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={abmMedios.alElegir((v) => tocar((x) => { x[i].pagos[k].medio = v; return x; }))}>
+                          {abmMedios.opcion}{[...(adelantos > 0 ? [ADEL] : []), ...medios].map((m) => <option key={m}>{m}</option>)}</select>
                         <input style={{ ...inp, width: 130, textAlign: "right" }} value={p.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => {
                           x[i].pagos[k].importe = v;
                           // Con dos formas de pago, la otra es lo que falta para el importe del concepto (Diego 29/10).

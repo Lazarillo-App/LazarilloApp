@@ -5,7 +5,7 @@
 //  - Pestañas: Servicio · Cobro · Rubro (rubro/subrubro + top 10 por $ o unidades) · Mozo · Revisar.
 //  - Varios PDV elegidos: se pide uno por uno a /api/m/detalle y se suman acá.
 import { useEffect, useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import { gestionFetch } from "@/servicios/apiGestion";
 
 const AZUL = "#0369a1";
@@ -20,6 +20,7 @@ const COLORES = ["#0ea5e9", "#22c55e", "#a78bfa", "#f59e0b", "#f97316", "#ec4899
 const $ = (n) => "$ " + Math.round(n || 0).toLocaleString("es-AR");
 const num = (n) => Math.round(n || 0).toLocaleString("es-AR");
 const pct = (x, t) => (t ? Math.round((x / t) * 100) : 0);
+const pct1 = (x, t) => `${(t ? (x / t) * 100 : 0).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 const pad = (n) => String(n).padStart(2, "0");
 const fechaDe = (s) => new Date(`${s}T12:00:00`);
 const isoDe = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -32,6 +33,7 @@ const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin a
 const titulo = (s) => String(s || "").toLowerCase().replace(/(^|[\s(/-])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase());
 const SERVICIO = { SALON: "Salón", TAKEA: "Take away", DOMIC: "Delivery", MOSTR: "Mostrador" };
 const nombreServicio = (t) => SERVICIO[String(t).toUpperCase()] || titulo(t);
+const esSalon = (t) => /^SAL/i.test(String(t || ""));
 const TURNO = { "MAÑ": "Mañana", MAN: "Mañana", TAR: "Tarde", NOC: "Noche" };
 const nombreTurno = (t) => TURNO[String(t).toUpperCase()] || titulo(t);
 // «378.SALON» → «Salón»; «3029.Julieta Belen» → «Julieta Belen»
@@ -67,7 +69,23 @@ function sumar(datos) {
     servicio: porImporte(unir(ok.map((d) => d.servicio), (x) => x.tipo)),
     cobro: porImporte(unir(ok.map((d) => d.cobro), (x) => x.cobro)),
     mozos: porImporte(unir(ok.map((d) => d.mozos), (x) => nombreMozo(x.mozo))),
-    descuentos: { importe: s((d) => d.descuentos?.importe), tickets: s((d) => d.descuentos?.tickets), porTurno: porImporte(unir(ok.map((d) => d.descuentos?.porTurno), (x) => x.turno)) },
+    descuentos: {
+      importe: s((d) => d.descuentos?.importe), tickets: s((d) => d.descuentos?.tickets),
+      porTurno: porImporte(unir(ok.map((d) => d.descuentos?.porTurno), (x) => x.turno)),
+      porMozo: unir(ok.map((d) => d.descuentos?.porMozo), (x) => nombreMozo(x.mozo)).sort((a, b) => b.importe - a.importe),
+      porTipo: unir(ok.map((d) => d.descuentos?.porTipo), (x) => x.tipo).sort((a, b) => b.importe - a.importe),
+      detalle: ok.flatMap((d) => d.descuentos?.detalle || []).sort((a, b) => b.descuento - a.descuento),
+    },
+    stock: (() => {
+      const ss = ok.map((d) => d.stock).filter(Boolean);
+      if (!ss.length) return null;
+      return {
+        importe: ss.reduce((t, x) => t + x.importe, 0), remitos: ss.reduce((t, x) => t + x.remitos, 0),
+        porConcepto: unir(ss.map((x) => x.porConcepto), (x) => x.concepto).sort((a, b) => b.importe - a.importe),
+        porTurno: unir(ss.map((x) => x.porTurno), (x) => nombreTurno(x.turno)).sort((a, b) => b.importe - a.importe),
+        articulos: unir(ss.map((x) => x.articulos), (x) => `${x.concepto}|${x.nombre}`).sort((a, b) => b.importe - a.importe),
+      };
+    })(),
     pagosCaja: ok.flatMap((d) => d.pagosCaja || []).sort((a, b) => b.importe - a.importe),
     anulaciones: (() => {
       const det = ok.flatMap((d) => d.anulaciones?.detalle || []).sort((a, b) => b.importe - a.importe);
@@ -121,7 +139,7 @@ function Fila({ nombre, importe, total, sub, color = CELESTE }) {
     </div>
   );
 }
-function Lista({ items, render, inicial = 5, etiqueta }) {
+function Lista({ items, render, inicial = 5, etiqueta, valor = (x) => x.importe }) {
   const [todos, setTodos] = useState(false);
   const vis = todos ? items : items.slice(0, inicial);
   const resto = items.slice(inicial);
@@ -129,16 +147,179 @@ function Lista({ items, render, inicial = 5, etiqueta }) {
     {vis.map(render)}
     {resto.length > 0 && (
       <button type="button" onClick={() => setTodos((v) => !v)} style={{ display: "block", width: "100%", marginTop: 10, border: 0, background: "none", color: AZUL, fontSize: 12.5, cursor: "pointer" }}>
-        {todos ? "Ver menos" : `+ ${resto.length} ${etiqueta} más · ${$(resto.reduce((t, x) => t + x.importe, 0))}`}
+        {todos ? "Ver menos" : `+ ${resto.length} ${etiqueta} más · ${$(resto.reduce((t, x) => t + (valor(x) || 0), 0))}`}
       </button>
     )}
   </>);
 }
 
+// ── hoja de detalle de Revisar ─────────────────────────────────────────────
+const LINEA = { display: "flex", alignItems: "baseline", gap: 6, padding: "7px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 };
+// Ancho fijo: así los comprobantes / artículos de la lista quedan alineados.
+const Chip = ({ children }) => <span style={{ flexShrink: 0, width: 84, boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, background: "#f4f4f5", color: "#52525b", borderRadius: 10, padding: "1px 7px" }}>{children}</span>;
+const fechaCorta = (f) => `${f.slice(8)}/${f.slice(5, 7)}`;
+function HojaRevisar({ tipo, d, esMes, tituloPeriodo, onCerrar, mover, sigDeshabilitado }) {
+  // Anulaciones: tocar «Re-facturadas» o «Sin re-facturar» filtra la hoja (Diego 10/11/2026).
+  const [filtroAnul, setFiltroAnul] = useState(null);
+  const ventas = d.total;
+  let encabezado, total, sub, cuerpo;
+  if (tipo === "stock" && !d.stock) {
+    encabezado = "Movimientos de stock"; total = 0; sub = "todavía sin datos para este lugar";
+    cuerpo = <Nota>El kit de esta PC todavía no subió los informes 27 y 28.</Nota>;
+  } else if (tipo === "stock") {
+    const st = d.stock;
+    encabezado = "Movimientos de stock"; total = st.importe;
+    sub = `${num(st.remitos)} ${st.remitos === 1 ? "remito" : "remitos"} · ${pct1(st.importe, ventas)} de la venta · a precio de venta`;
+    cuerpo = (<>
+      {(st.porTurno || []).length > 1 && (<>
+        <Seccion>Por turno</Seccion>
+        {st.porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<small style={{ color: GRIS }}>{num(x.remitos)} {x.remitos === 1 ? "remito" : "remitos"}</small><b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
+      </>)}
+      <Seccion>Por concepto</Seccion>
+      {st.porConcepto.map((c, i) => <Fila key={c.concepto} nombre={titulo2(c.concepto)} importe={c.importe} total={st.importe} color={COLORES[(i + 3) % COLORES.length]} sub={`${num(c.remitos)} ${c.remitos === 1 ? "remito" : "remitos"}`} />)}
+      <Seccion derecha="cant · $">Qué salió</Seccion>
+      <Lista items={st.articulos} inicial={8} etiqueta="artículos" render={(a) => (
+        <div key={`${a.concepto}|${a.nombre}`} style={LINEA}>
+          {st.porConcepto.length > 1 && <Chip>{titulo2(a.concepto)}</Chip>}
+          <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titulo(a.nombre)}</span>
+          <small style={{ color: GRIS, flexShrink: 0 }}>× {num(a.cantidad)}</small>
+          <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
+        </div>)} />
+      <Nota>Salidas de stock que no son venta (informes 27 y 28 de MaxiRest), valuadas a precio de venta.</Nota>
+    </>);
+  } else if (tipo === "anulaciones") {
+    const an = d.anulaciones;
+    encabezado = "Anulaciones"; total = an.importe;
+    sub = `${num(an.n)} ${an.n === 1 ? "nota de crédito" : "notas de crédito"} · ${pct1(an.importe, ventas)} de la venta`;
+    const sinRefact = an.detalle.filter((a) => a.refacturada === null);
+    const conRefact = an.detalle.filter((a) => a.refacturada);
+    const vistas = filtroAnul === "sin" ? sinRefact : filtroAnul === "con" ? conRefact : an.detalle;
+    const totVista = vistas.reduce((t, a) => t + a.importe, 0);
+    const porTurno = unir(vistas.map((a) => [{ turno: a.turno, importe: a.importe }]), (x) => x.turno).sort((a, b) => b.importe - a.importe);
+    // Por servicio (Diego 10/11/2026): salón, delivery, take away…
+    const porServicio = unir(vistas.map((a) => [{ tipo: nombreServicio(a.tipo || "—"), importe: a.importe, n: 1 }]), (x) => x.tipo).sort((a, b) => b.importe - a.importe);
+    const caja = (on, alerta) => ({ textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer", borderRadius: 12, padding: "8px 10px",
+      border: `${on ? 2 : 1}px solid ${on ? AZUL : alerta ? "#fdba74" : BORDE}`, background: alerta ? "#fff7ed" : "#fff" });
+    cuerpo = (<>
+      {(conRefact.length > 0 || sinRefact.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+          <button type="button" onClick={() => setFiltroAnul((f) => (f === "con" ? null : "con"))} style={caja(filtroAnul === "con", false)}>
+            <div style={{ fontSize: 11.5, color: GRIS }}>Re-facturadas</div>
+            <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: "#047857" }}>{num(conRefact.length)}</b>
+            <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(conRefact.reduce((t, a) => t + a.refacturada.importe, 0))}</div>
+          </button>
+          <button type="button" onClick={() => setFiltroAnul((f) => (f === "sin" ? null : "sin"))} style={caja(filtroAnul === "sin", sinRefact.length > 0)}>
+            <div style={{ fontSize: 11.5, color: GRIS }}>Sin re-facturar</div>
+            <b style={{ display: "block", fontSize: 16, whiteSpace: "nowrap", color: sinRefact.length ? "#c2410c" : undefined }}>{num(sinRefact.length)}</b>
+            <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap" }}>{$(sinRefact.reduce((t, a) => t + a.importe, 0))}</div>
+          </button>
+        </div>)}
+      {filtroAnul && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 12, color: GRIS }}>
+          <span>Viendo {filtroAnul === "sin" ? "sin re-facturar" : "re-facturadas"}: {num(vistas.length)} · {$(totVista)}</span>
+          <button type="button" onClick={() => setFiltroAnul(null)} style={{ marginLeft: "auto", border: 0, background: "none", color: AZUL, fontSize: 12, cursor: "pointer" }}>Ver todas</button>
+        </div>)}
+      <Seccion>Por servicio</Seccion>
+      {porServicio.map((x, i) => <Fila key={x.tipo} nombre={x.tipo} importe={x.importe} total={totVista} color={COLORES[i % COLORES.length]} sub={`${num(x.n)} ${x.n === 1 ? "anulación" : "anulaciones"}`} />)}
+      <Seccion>Por turno</Seccion>
+      {porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
+      <Seccion>{esMes ? "Todas las del mes" : "Detalle"}</Seccion>
+      <Lista key={filtroAnul || "todas"} items={[...vistas].sort((a, b) => (esMes ? (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : b.importe - a.importe) : b.importe - a.importe))} inicial={esMes ? 100 : 10} etiqueta="anulaciones" render={(a) => (
+        <div key={`${a.fecha}|${a.comprobante}`} style={{ ...LINEA, flexWrap: "wrap" }}>
+          <span style={{ minWidth: 0, flex: 1 }}>{a.anula || a.comprobante}</span>
+          <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
+          <div style={{ width: "100%", fontSize: 11.5, color: GRIS }}>
+            {/* «Mesa» solo en salón: en take away y delivery ese número no es una mesa (Diego 10/11/2026). */}
+            {[esMes && fechaCorta(a.fecha), a.hora, nombreTurno(a.turno), a.tipo && nombreServicio(a.tipo), esSalon(a.tipo) && a.mesa && `mesa ${a.mesa}`, `anulada con ${a.comprobante}`].filter(Boolean).join(" · ")}
+          </div>
+          {a.refacturada && (() => {
+            const r = a.refacturada; const dif = r.importe - a.importe;
+            return (<div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: Math.abs(dif) < 1 ? "#047857" : "#b45309" }}>
+              ↳ re-facturada en {r.comprobante}{r.por === "siguiente" ? ` (el comprobante siguiente${r.tipo && r.tipo !== a.tipo ? `, como ${nombreServicio(r.tipo)}` : ""})` : ""} · {r.cobro || "—"} · {r.minutos <= 0 ? "en el momento" : `${r.minutos} min después de la factura`}
+              {Math.abs(dif) < 1 ? " · mismo importe" : ` · ${$(r.importe)} (${dif > 0 ? "+" : "−"}${$(Math.abs(dif)).replace("$ ", "$ ")})`}
+            </div>);
+          })()}
+          {a.refacturada === null && (
+            <div style={{ width: "100%", fontSize: 11.5, marginTop: 2, color: "#c2410c" }}>↳ sin re-facturar: no aparece otro ticket {esSalon(a.tipo) ? "de la misma mesa" : "del mismo pedido"} ni el comprobante siguiente</div>
+          )}
+        </div>)} />
+    </>);
+  } else if (tipo === "descuentos") {
+    const ds = d.descuentos;
+    encabezado = "Descuentos"; total = ds.importe;
+    sub = `${num(ds.tickets)} tickets · ${pct1(ds.importe, d.bruto)} de lo bruto`;
+    const tipos = (ds.porTipo || []);
+    const hayTipos = tipos.some((t) => t.tipo !== "Sin tipo");
+    cuerpo = (<>
+      {hayTipos && (<>
+        <Seccion>Por tipo</Seccion>
+        {tipos.map((t, i) => <Fila key={t.tipo} nombre={t.tipo} importe={t.importe} total={ds.importe} color={COLORES[(i + 2) % COLORES.length]} sub={`${num(t.tickets)} tickets`} />)}
+      </>)}
+      {ds.porTurno.length > 0 && <Seccion>Por turno</Seccion>}
+      {ds.porTurno.map((x) => <div key={x.turno} style={LINEA}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
+      {ds.porMozo.length > 1 && (<>
+        <Seccion>Por mozo</Seccion>
+        {ds.porMozo.map((x) => <div key={x.mozo} style={LINEA}>{nombreMozo(x.mozo)}<small style={{ color: GRIS }}>{num(x.tickets)} tickets</small><b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>)}
+      </>)}
+      <Seccion derecha="descuento · %">Cada ticket</Seccion>
+      <Lista items={ds.detalle} inicial={10} etiqueta="tickets" valor={(t) => t.descuento} render={(t) => (
+        <div key={`${t.fecha}|${t.comprobante}|${t.turno}`} style={{ ...LINEA, flexWrap: "wrap" }}>
+          {t.tipo && <Chip>{t.tipo}</Chip>}
+          <span style={{ minWidth: 0, flex: 1 }}>{t.comprobante || "Ticket"}</span>
+          <b style={{ whiteSpace: "nowrap" }}>{$(t.descuento)}</b>
+          <small style={{ color: GRIS, width: 44, textAlign: "right" }}>{pct1(t.descuento, t.cobrado + t.descuento)}</small>
+          <div style={{ width: "100%", fontSize: 11.5, color: GRIS }}>
+            {[esMes && fechaCorta(t.fecha), t.hora, t.mesa && `mesa ${t.mesa}`, nombreTurno(t.turno), nombreMozo(t.mozo), `cobrado ${$(t.cobrado)}`].filter(Boolean).join(" · ")}
+          </div>
+        </div>)} />
+    </>);
+  } else {
+    const ps = d.pagosCaja;
+    encabezado = "Pagos desde la caja"; total = ps.reduce((t, p) => t + p.importe, 0);
+    sub = `${num(ps.length)} ${ps.length === 1 ? "pago" : "pagos"} · con la caja del turno (adición)`;
+    const porConcepto = unir(ps.map((p) => [{ concepto: p.concepto || p.proveedor || "Pago", importe: p.importe, n: 1 }]), (x) => x.concepto).sort((a, b) => b.importe - a.importe);
+    cuerpo = (<>
+      <Seccion>Por concepto</Seccion>
+      {porConcepto.map((c, i) => <Fila key={c.concepto} nombre={titulo2(c.concepto)} importe={c.importe} total={total} color={COLORES[i % COLORES.length]} sub={`${num(c.n)} ${c.n === 1 ? "pago" : "pagos"}`} />)}
+      <Seccion>Cada pago</Seccion>
+      <Lista items={ps} inicial={10} etiqueta="pagos" render={(p, i) => (
+        <div key={i} style={{ ...LINEA, flexWrap: "wrap" }}>
+          <span style={{ minWidth: 0, flex: 1 }}>{titulo2(p.concepto || p.proveedor || "Pago")}</span>
+          <b style={{ whiteSpace: "nowrap" }}>{$(p.importe)}</b>
+          {(p.observacion || esMes) && <div style={{ width: "100%", fontSize: 11.5, color: GRIS }}>{[esMes && p.fecha && fechaCorta(p.fecha), p.observacion].filter(Boolean).join(" · ")}</div>}
+        </div>)} />
+    </>);
+  }
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 1360, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}
+        style={{ width: "100%", maxHeight: "85svh", overflowY: "auto", background: "#fff", borderRadius: "22px 22px 0 0", padding: "10px 16px calc(18px + env(safe-area-inset-bottom))" }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: "#d4d4d8", margin: "0 auto 10px" }} />
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <b style={{ fontSize: 17 }}>{encabezado}</b>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <Flecha onClick={() => mover(-1)}>‹</Flecha>
+            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{tituloPeriodo}</span>
+            <Flecha onClick={() => mover(1)} deshabilitada={sigDeshabilitado}>›</Flecha>
+          </span>
+          <button type="button" onClick={onCerrar} aria-label="Cerrar" style={{ border: 0, background: "#f4f4f5", borderRadius: 14, width: 28, height: 28, fontSize: 15, color: GRIS, cursor: "pointer", flexShrink: 0 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4, whiteSpace: "nowrap" }}>{$(total)}</div>
+        <div style={{ fontSize: 12, color: GRIS }}>{sub}</div>
+        {cuerpo}
+      </div>
+    </div>
+  );
+}
+const Nota = ({ children }) => <div style={{ marginTop: 12, border: "1px dashed #d4d4d8", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: GRIS, lineHeight: 1.45 }}>{children}</div>;
+// «Comida de Personal» se respeta; «BOX BRUNCHEAR» → «Box Brunchear».
+const titulo2 = (t) => { const x = String(t || ""); return x === x.toUpperCase() ? titulo(x) : x; };
+
 // ── componente ─────────────────────────────────────────────────────────────
 export function DetalleVentas({ sel, periodo, setPeriodo }) {
   const [turno, setTurno] = useState(null);
   const [tab, setTab] = useState("servicio");
+  const [hoja, setHoja] = useState(null);
   const [vistaRubro, setVistaRubroCrudo] = useState(() => leer("m:vista-rubro", "rubro"));
   const [modoTop, setModoTopCrudo] = useState(() => leer("m:modo-top", "importe"));
   const setVistaRubro = (v) => { setVistaRubroCrudo(v); guardar("m:vista-rubro", v); };
@@ -156,6 +337,8 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
       queryKey: ["m-detalle-ventas", s.pdvId, periodo.modo, periodo.dia, periodo.mes, turno],
       queryFn: async () => { const r = await gestionFetch(qs(s)); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); },
       staleTime: 5 * 60_000, retry: 1,
+      // Al pasar de día con una hoja de Revisar abierta, lo anterior queda hasta que llega lo nuevo.
+      placeholderData: keepPreviousData,
     })),
   });
   const listo = consultas.length > 0 && consultas.every((q) => q.data !== undefined);
@@ -315,52 +498,31 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
       </>)}
 
       {tab === "revisar" && (<>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+        {/* Revisar (Diego 09/11/2026, mockup_revisar_detalle): 4 tarjetas del mismo alto; cada una abre
+            una hoja con su resumen y su detalle. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "1fr", gap: 8, marginTop: 12 }}>
           {[
-            ["Descuentos", $(d.descuentos.importe), `${num(d.descuentos.tickets)} tickets · ${d.bruto ? (d.descuentos.importe / d.bruto * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 }) : 0}% de lo bruto`],
-            ["Pagos desde la caja", $(d.pagosCaja.reduce((t, p) => t + p.importe, 0)), `${num(d.pagosCaja.length)} pagos`],
-            ["Anulaciones", $(d.anulaciones.importe), `${num(d.anulaciones.n)} ${d.anulaciones.n === 1 ? "nota de crédito" : "notas de crédito"}`],
-            ["Movimientos de stock", "—", "falta el dato", true],
-          ].map(([t, v, s, gris]) => (
-            <div key={t} style={{ border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 10px", background: gris ? "#fafafa" : "#fff", minWidth: 0 }}>
+            ["descuentos", "Descuentos", $(d.descuentos.importe), `${num(d.descuentos.tickets)} tickets · ${pct1(d.descuentos.importe, d.bruto)} de lo bruto`],
+            ["pagos", "Pagos desde la caja", $(d.pagosCaja.reduce((t, p) => t + p.importe, 0)), `${num(d.pagosCaja.length)} ${d.pagosCaja.length === 1 ? "pago" : "pagos"}`],
+            ["anulaciones", "Anulaciones", $(d.anulaciones.importe), (() => {
+              const sin = d.anulaciones.detalle.filter((a) => a.refacturada === null).length;
+              return sin ? `${num(sin)} sin re-facturar` : `${num(d.anulaciones.n)} ${d.anulaciones.n === 1 ? "nota de crédito" : "notas de crédito"}`;
+            })()],
+            d.stock
+              ? ["stock", "Movimientos de stock", $(d.stock.importe), `${num(d.stock.remitos)} ${d.stock.remitos === 1 ? "remito" : "remitos"}`]
+              : ["stock", "Movimientos de stock", "—", "todavía sin datos", true],
+          ].map(([k, t, v, sub, gris]) => (
+            <button key={k} type="button" disabled={gris} onClick={() => setHoja(k)}
+              style={{ position: "relative", textAlign: "left", font: "inherit", color: "inherit", cursor: gris ? "default" : "pointer", border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 22px 8px 10px", background: gris ? "#fafafa" : "#fff", minWidth: 0 }}>
+              {!gris && <span style={{ position: "absolute", right: 9, top: 7, color: AZUL, fontSize: 15 }}>›</span>}
               <div style={{ fontSize: 11.5, color: GRIS }}>{t}</div>
               <b style={{ display: "block", fontSize: 16, marginTop: 1, whiteSpace: "nowrap", color: gris ? "#a1a1aa" : undefined }}>{v}</b>
-              <div style={{ fontSize: 11.5, color: GRIS }}>{s}</div>
-            </div>
+              <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+            </button>
           ))}
         </div>
-        {d.descuentos.porTurno.length > 0 && (<>
-          <Seccion>Descuentos por turno</Seccion>
-          {d.descuentos.porTurno.map((x) => (
-            <div key={x.turno} style={{ display: "flex", padding: "6px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 }}>{nombreTurno(x.turno)}<b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(x.importe)}</b></div>
-          ))}
-        </>)}
-        {d.anulaciones.n > 0 && (<>
-          <Seccion>Anulaciones</Seccion>
-          <Lista key={`anu-${periodo.modo}-${periodo.dia || periodo.mes}`} items={d.anulaciones.detalle} etiqueta="anulaciones" render={(a) => (
-            <div key={`${a.fecha}|${a.comprobante}`} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "6px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 }}>
-              <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {esMes && <span style={{ color: GRIS }}>{a.fecha.slice(8)}/{a.fecha.slice(5, 7)} · </span>}
-                {a.anula || a.comprobante}
-                <small style={{ color: GRIS }}> · {nombreTurno(a.turno)}{a.tipo ? ` · ${nombreServicio(a.tipo)}` : ""}</small>
-              </span>
-              <b style={{ whiteSpace: "nowrap" }}>{$(a.importe)}</b>
-            </div>
-          )} />
-        </>)}
-        {d.pagosCaja.length > 0 && (<>
-          <Seccion>Pagos desde la caja</Seccion>
-          {unir(d.pagosCaja.map((p) => [{ ...p, n: 1 }]), (p) => `${p.concepto}|${p.proveedor}`).sort((a, b) => b.importe - a.importe).map((p) => (
-            <div key={`${p.concepto}|${p.proveedor}`} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "6px 0", borderBottom: "1px solid #f4f4f5", fontSize: 13.5 }}>
-              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titulo(p.concepto || p.proveedor || "Pago")}</span>
-              {p.n > 1 && <small style={{ color: GRIS }}>× {p.n}</small>}
-              <b style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{$(p.importe)}</b>
-            </div>
-          ))}
-        </>)}
-        <div style={{ marginTop: 12, border: "1px dashed #d4d4d8", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: GRIS, lineHeight: 1.45 }}>
-          <b>Pagos desde la caja</b>: todo lo que se pagó con la caja del turno (la de la adición). <b>Anulaciones</b>: las notas de crédito (salen del informe 22); al lado, el comprobante que anulan. <b>Movimientos de stock</b>: salen de los informes 27 y 28, ya en Render; falta mostrarlos acá.
-        </div>
+        <div style={{ fontSize: 11.5, color: GRIS, textAlign: "center", marginTop: 8 }}>tocá una tarjeta para ver el detalle</div>
+        {hoja && <HojaRevisar tipo={hoja} d={d} esMes={esMes} tituloPeriodo={tituloPeriodo} mover={mover} sigDeshabilitado={sigDeshabilitado} onCerrar={() => setHoja(null)} />}
       </>)}
     </div>
   );

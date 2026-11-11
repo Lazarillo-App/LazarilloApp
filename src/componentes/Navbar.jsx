@@ -12,6 +12,7 @@ import logoLight from '@/assets/brand/logo-light.png';
 import logoDark from '@/assets/brand/logo-dark.png';
 import SucursalSelector from './SucursalSelector';
 import SucursalesChips from './SucursalesChips';
+import SucursalPrincipalFaltante from './SucursalPrincipalFaltante';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { RecetasAPI } from '@/servicios/apiBusinesses';
@@ -147,6 +148,18 @@ export default function Navbar() {
     sev: 'success',
   });
 
+  // Nombre del módulo bajo el logo (Diego 10/11/2026): el mismo que en el menú de módulos.
+  const conFilaSucursales = !isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')
+    || location.pathname === '/gestion' || location.pathname.startsWith('/rrhh/cronogramas'));
+  const nombreModulo = (() => {
+    const p = location.pathname;
+    if (p.startsWith('/gestion/medios-pago')) return 'Medios de pago';
+    if (p.startsWith('/gestion')) return 'Resultados';
+    if (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) return 'Recetas';
+    if (p.startsWith('/rrhh')) return 'RRHH';
+    return null;
+  })();
+
   const isLightBg = colors.onPrimary === '#000000';
   const brandSrc = isLightBg ? logoDark : logoLight;
 
@@ -213,6 +226,7 @@ export default function Navbar() {
 
   return (
     <>
+      {!isAppAdmin && <SucursalPrincipalFaltante />}
       <AppBar
         position="static"
         sx={{
@@ -243,6 +257,9 @@ export default function Navbar() {
         <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
           <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
             {/* Logo + pulso de los datos (Diego, 06/11/2026: el punto va al lado del logo) */}
+            {/* Con la fila de sucursales abajo de los botones, el logo se alinea con la fila de
+                botones, no con el centro de la barra (Diego 10/11/2026: «antes el logo coincidía
+                con los botones»): misma altura y mismo margen de arriba que esa fila. */}
             <Box
               sx={{
                 mr: 2,
@@ -250,13 +267,14 @@ export default function Navbar() {
                 alignItems: 'center',
                 gap: 1,
                 pr: '50px',
+                ...(conFilaSucursales ? { alignSelf: 'flex-start', mt: 0.75, height: 36.5 } : {}),
               }}
             >
               <Box
                 component={NavLink}
                 to={homeTo}
                 aria-label="Ir al inicio"
-                sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+                sx={{ position: 'relative', display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}
               >
                 <Box
                   component="img"
@@ -270,6 +288,16 @@ export default function Navbar() {
                       : 'none',
                   }}
                 />
+                {nombreModulo && (
+                  // Colgado bajo el logo sin ocupar lugar: el logo mantiene su tamaño y el punto de
+                  // pulso queda centrado con él (Diego 10/11/2026: «quisiera el tamaño anterior»).
+                  <Box component="span" sx={{
+                    position: 'absolute', left: 2, top: 'calc(100% + 1px)', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.22em', lineHeight: 1, textTransform: 'uppercase', opacity: 0.8, whiteSpace: 'nowrap',
+                  }}>
+                    {nombreModulo}
+                  </Box>
+                )}
               </Box>
               {!isAppAdmin && <PulsoDatos puedeActualizar={!isStaff} />}
             </Box>
@@ -309,19 +337,24 @@ export default function Navbar() {
                     <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
                   ] : null}
-                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/gestion') ? [
+                    puedeVer('conceptos') && <MenuItem key="g-conc" component={NavLink} to="/gestion/conceptos" onClick={() => setNavEl(null)}>Conceptos de caja</MenuItem>,
+                    puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
+                    puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
+                  ] : null}
+                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && (
+                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -344,6 +377,7 @@ export default function Navbar() {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
+                const enGestion = !isAppAdmin && path.startsWith('/gestion');
                 // En la home no van los links de Recetas (Artículos/Insumos/Menú): ahí se elige el módulo.
                 const enInicio = path.startsWith('/inicio');
                 // Estilo de subrayado para la sección activa
@@ -380,6 +414,36 @@ export default function Navbar() {
                         component={NavLink} to="/rrhh/nomina">
                         Nómina
                       </Button>
+                    </>
+                  );
+                }
+                // Panel de Gestión (Diego 10/11/2026): CONCEPTOS DE CAJA · INSUMOS | PROVEEDORES
+                // (la cuenta corriente sin proveedor elegido). Sin Artículos ni Menú.
+                if (enGestion) {
+                  return (
+                    <>
+                      {puedeVer('conceptos') && (
+                        <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/gestion/conceptos')) }}
+                          component={NavLink} to="/gestion/conceptos">
+                          Conceptos de caja
+                        </Button>
+                      )}
+                      {puedeVer('recetas') && (
+                        <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enInsumos) }}
+                          component={NavLink} to="/insumos">
+                          Insumos
+                        </Button>
+                      )}
+                      {puedeVer('carga') && (
+                        <>
+                          <Box component="span" aria-hidden
+                            sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                          <Button color="inherit" sx={{ color: 'inherit', position: 'relative' }}
+                            onClick={() => navigate('/gestion?proveedores=1')}>
+                            Proveedores
+                          </Button>
+                        </>
+                      )}
                     </>
                   );
                 }
@@ -432,8 +496,9 @@ export default function Navbar() {
                 </Button>
               )}
             </Box>
-            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú). */}
-            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos')) && (
+            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú y el Panel de
+                Gestión — Diego 10/11/2026: «le falta el selector de sucursal igual que en recetas»). */}
+            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos') || location.pathname === '/gestion') && (
               <Box sx={{ pl: 1, pb: 0.25 }}>
                 <SucursalesChips />
               </Box>
