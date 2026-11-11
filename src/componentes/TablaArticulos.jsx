@@ -308,6 +308,10 @@ function textoAlertaReceta(recetaData) {
 }
 
 export default function TablaArticulos({
+  // «Lo que más vende»: letra A/B/C por artículo (A = hasta el 80 % del ingreso,
+  // B = 80–95 %, C = último 5 %) y % acumulado, calculados en ArticulosMain.
+  abcVentas = null,
+  acumuladoVentas = null,
   isStaff = false,
   filtroBusqueda = "",
   agrupacionSeleccionada,
@@ -1301,7 +1305,7 @@ export default function TablaArticulos({
         ids: todosIdsAgrup,
         totalVentas: totalVentasAgrup,
         ventasByBranch: agrupByBranch,
-        nombre: agrupacionSeleccionada?.nombre || '',
+        nombre: esTop20Group(agrupacionSeleccionada) ? 'Lo que más vende' : (agrupacionSeleccionada?.nombre || ''),
         // Top 20: cuánto del ingreso total del período explica (pedido de Diego, 05/11)
         pctDelPeriodo: esTop20Group(agrupacionSeleccionada) && totalVentasPeriodo > 0
           ? (totalVentasAgrup / totalVentasPeriodo) * 100 : null,
@@ -2358,7 +2362,7 @@ export default function TablaArticulos({
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
             {/* Top 20: puesto por facturación, en gris */}
             {row.puesto != null && !(!isStaff && selectionMode !== 'link' && isLinked) && (
-              <span title="Puesto en el Top 20 por facturación ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
+              <span title={`Puesto ${row.puesto} por facturación ($)${acumuladoVentas?.get?.(Number(id)) != null ? ` · acumulado ${acumuladoVentas.get(Number(id)).toLocaleString('es-AR', { maximumFractionDigits: 1 })} % del ingreso` : ''}`} style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
             )}
             {!isStaff && selectionMode !== 'link' && isLinked && (
               <>
@@ -2387,6 +2391,22 @@ export default function TablaArticulos({
           >
             {(a.origen === 'manual' || Number(id) < 0) ? `L${id}` : id}
           </span>
+          {/* Letra A/B/C de «Lo que más vende» (todas las agrupaciones) */}
+          {(() => {
+            const letra = abcVentas?.get?.(Number(id));
+            if (!letra) return null;
+            const ayuda = letra === 'A' ? 'A · está entre los que hacen el 80 % del ingreso'
+              : letra === 'B' ? 'B · entre el 80 % y el 95 % del ingreso'
+                : 'C · del último 5 % del ingreso: candidato a sacar o revisar precio';
+            return (
+              <span title={ayuda} style={{
+                fontSize: '0.6rem', fontWeight: 800, width: 14, height: 14, lineHeight: '14px', textAlign: 'center',
+                borderRadius: 3, flexShrink: 0,
+                color: letra === 'C' ? '#b91c1c' : letra === 'B' ? '#92400e' : '#475569',
+                background: letra === 'C' ? 'rgba(239,68,68,0.10)' : letra === 'B' ? 'rgba(245,158,11,0.12)' : 'rgba(100,116,139,0.10)',
+              }}>{letra}</span>
+            );
+          })()}
         </div>
 
         <div onClick={() => {
