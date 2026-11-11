@@ -223,7 +223,7 @@ export default function Navbar() {
   // Nunca a "/" (landing de marketing): este navbar solo se muestra logueada,
   // así que el logo tiene que llevar siempre adentro de la app.
   // Staff no tiene Inicio ni menú de módulos: su casa es Recetas (11/11).
-  const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/menu' : '/inicio');
+  const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/insumos' : '/inicio');
 
   return (
     <>
