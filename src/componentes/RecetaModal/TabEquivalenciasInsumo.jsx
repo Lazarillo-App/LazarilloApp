@@ -15,7 +15,6 @@ import { sanitizeDecimal } from '@/utils/decimales';
 import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
-import { EnvasesCompraFicha } from '@/componentes/gestion/FacturaEnRecetas';
 
 export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo = null }) {
   const [lista, setLista] = useState([]);
@@ -262,18 +261,18 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               onChange={e => setEnvase(v => ({ ...v, contenido: sanitizeDecimal(e.target.value) }))}
               onBlur={() => guardarEnvase()}
               placeholder="000"
-              inputProps={{ style: { textAlign: 'right', padding: '6px 8px' } }}
-              sx={{ width: 90 }}
+              inputProps={{ style: { textAlign: 'center' } }}
+              sx={{ width: 100 }}
             />
-            <FormControl size="small" sx={{ width: 80 }}>
+            <FormControl size="small" sx={{ width: 100 }}>
               <Select MenuProps={downwardMenuProps()}
+                sx={{ '& .MuiSelect-select': { textAlign: 'center', pl: '24px' } }}
                 value={envase.unidad}
                 onChange={e => {
                   const nuevaUnidad = e.target.value;
                   setEnvase(v => ({ ...v, unidad: nuevaUnidad }));
                   guardarEnvase({ unidad: nuevaUnidad });   // guardar con el valor nuevo, no el del estado stale
                 }}
-                sx={{ '& .MuiSelect-select': { py: '6px' } }}
               >
                 <MenuItem value="ml">ml</MenuItem>
                 <MenuItem value="lt">lt</MenuItem>
@@ -314,9 +313,9 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
 
       {/* Header */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, mb: 0.5 }}>
         {['Nombre', 'Contenido', 'Unidad', 'Costo', ''].map((h, i) => (
-          <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.68rem' }}>{h}</Typography>
+          <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.68rem', textAlign: i === 0 ? 'left' : 'center' }}>{h}</Typography>
         ))}
       </Box>
 
@@ -325,20 +324,20 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       ) : (
         <>
           {lista.map(eq => (
-            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
               <TextField size="small" defaultValue={eq.nombre}
                 onBlur={e => { if (e.target.value.trim() && e.target.value !== eq.nombre) editar(eq, 'nombre', e.target.value.trim()); }}
                 inputProps={{ style: { fontSize: '0.8rem' } }} />
               <TextField size="small" type="text" inputMode="decimal"
                 defaultValue={String(Number(eq.contenido)).replace('.', ',')}
                 onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(eq.contenido)) editar(eq, 'contenido', v); }}
-                inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+                inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
               <Select MenuProps={downwardMenuProps()} size="small" value={eq.unidad}
                 onChange={e => editar(eq, 'unidad', e.target.value)}
-                sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' } }}>
+                sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { textAlign: 'center', pl: '24px' } }}>
                 {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
               </Select>
-              <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 700, color: PRIMARY }}>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 700, color: PRIMARY, textAlign: 'center' }}>
                 {calcCosto(eq.contenido, eq.unidad) > 0 ? `$${fmt(calcCosto(eq.contenido, eq.unidad))}` : '—'}
               </Typography>
               <IconButton size="small" onClick={() => setABorrar({ id: eq.id, nombre: eq.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
@@ -353,7 +352,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               // Guardar solo cuando el foco sale de TODA la fila (no al saltar entre sus campos)
               if (!e.currentTarget.contains(e.relatedTarget)) guardarNueva();
             }}
-            sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+            sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <TextField size="small" placeholder="Ej: Cucharada sopera" value={nuevo.nombre}
               onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
@@ -361,29 +360,22 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
             <TextField size="small" type="text" inputMode="decimal" placeholder="15" value={nuevo.contenido}
               onChange={e => setNuevo(n => ({ ...n, contenido: sanitizeDecimal(e.target.value) }))}
               onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
-              inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+              inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
             <Select MenuProps={downwardMenuProps()} size="small" value={nuevo.unidad} displayEmpty
               onChange={e => setNuevo(n => ({ ...n, unidad: e.target.value }))}
-              sx={{ fontSize: '0.78rem', '& .MuiSelect-select': { py: '4px' }, color: nuevo.unidad ? 'inherit' : 'text.disabled' }}>
+              sx={{ fontSize: '0.8rem', '& .MuiSelect-select': { textAlign: 'center', pl: '24px' }, color: nuevo.unidad ? 'inherit' : 'text.disabled' }}>
               <MenuItem value="" disabled sx={{ fontSize: '0.8rem' }}>unidad</MenuItem>
               {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
             </Select>
-            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
+            {/* El costo iba repetido dos veces y el segundo «—» caía en un renglón aparte */}
+            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', textAlign: 'center' }}>
               {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
-            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
-              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
-            </Typography>
+            <Box />
           </Box>
         </>
       )}
-      {/* Envases de compra (X6, Pack…): los mismos de la carga de facturas (Diego 06/11/2026). */}
-      {(insumoFull?.codigo_maxi || insumoData?.codigo_maxi) && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Envases de compra</Typography>
-          <EnvasesCompraFicha codigo={String(insumoFull?.codigo_maxi || insumoData?.codigo_maxi)} nombre={insumoFull?.nombre || insumoData?.nombre} />
-        </Box>
-      )}
+      {/* Los envases de compra pasaron a la pestaña FICHA (Diego 11/11/2026). */}
       <ConfirmDialog
         open={!!aBorrar}
         tipo="equivalencia"
