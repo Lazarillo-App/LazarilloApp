@@ -1175,6 +1175,9 @@ const LogoImg = ({ url, onFail, style }) => {
 const PLATAFORMAS_WEB = ["waitry", "fu.do", "fudo", "pedidosya", "rappi", "ubereats", "linktr.ee", "linkin.bio", "beacons.ai",
   "instagram.com", "facebook.com", "wa.me", "whatsapp", "google.", "goo.gl", "maps.app", "mercadopago", "bit.ly",
   "tiktok.com", "menu.club", "cartadigital", "meniu", "tuucarta", "menutech"];
+// Link "Buscalo en Google Imágenes ↗" en el logo de locales sin web: APAGADO hasta charlarlo
+// con Diego (usuaria 11/11: "la idea está buena pero no me convence mucho"). true = se muestra.
+const MOSTRAR_LINK_GOOGLE_IMAGENES = false;
 const esPlataformaWeb = (dominio) => PLATAFORMAS_WEB.some((p) => String(dominio || "").toLowerCase().includes(p));
 // El sandbox no muestra imágenes externas: traemos los bytes (vía proxy CORS) y los volvemos data: URL.
 async function fetchAsDataUrl(url) {
@@ -1610,7 +1613,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
                     {/* Locales sin web: el logo casi siempre aparece en Google Imágenes (Instagram,
                         Facebook). Se abre la búsqueda en otra pestaña — gratis, sin API — y el
                         usuario pega la dirección de la imagen o la sube (usuaria 11/11). */}
-                    {!(buscandoLogos || buscandoWeb) && d.nombre?.trim() && (
+                    {MOSTRAR_LINK_GOOGLE_IMAGENES && !(buscandoLogos || buscandoWeb) && d.nombre?.trim() && (
                       <div style={{ marginTop: 14, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
                         ¿No está? <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${d.nombre.trim()} logo${d.ciudad ? ` ${d.ciudad}` : ""}`)}`}
                           target="_blank" rel="noopener noreferrer" style={{ color: brand.primary, fontWeight: 700 }}>Buscalo en Google Imágenes ↗</a>
