@@ -1466,6 +1466,18 @@ export default function RecetaModal({
     : 0;
   // Promo con regla '% off' o 'llevás N, pagás M': el precio sale de la venta sin promo, no del margen.
   const reglaPromoActiva = promoMode && (promoRegla === 'off' || promoRegla === 'nxm') ? promoRegla : null;
+  // Llevás N, pagás M: «llevás» ES la cantidad del artículo de la promo (de ahí sale el costo), así que
+  // se muestran atados — cambiar uno cambia el otro (Diego 11/11/2026).
+  const idxArticuloPromo = items.findIndex(it => it.articleRefId);
+  const promoLlevasEf = promoRegla === 'nxm' && idxArticuloPromo >= 0
+    ? String(Number(items[idxArticuloPromo].cantidad) || '')
+    : promoLlevas;
+  const cambiarLlevas = (v) => {
+    setPromoLlevas(v);
+    if (promoRegla === 'nxm' && idxArticuloPromo >= 0 && Number(v) > 0) {
+      setItems(prev => prev.map((it, i) => (i === idxArticuloPromo ? { ...it, cantidad: Number(v) } : it)));
+    }
+  };
   const precioPorRegla = (() => {
     if (!reglaPromoActiva || !(ventaSinPromo > 0)) return 0;
     if (reglaPromoActiva === 'off') {
@@ -1473,13 +1485,13 @@ export default function RecetaModal({
       if (!(off > 0 && off < 100)) return 0;
       return aplicarRedondeo(ventaSinPromo * (1 - off / 100), appConfig.redondeoPrecios);
     }
-    const n = Number(promoLlevas), m = Number(promoPagas);
+    const n = Number(promoLlevasEf), m = Number(promoPagas);
     if (!(n > 0 && m > 0 && m <= n)) return 0;
     return aplicarRedondeo(ventaSinPromo * m / n, appConfig.redondeoPrecios);
   })();
   const etiquetaRegla = reglaPromoActiva === 'off'
     ? `${fmt(Number(promoOffPct) || 0, 0)}% off`
-    : reglaPromoActiva === 'nxm' ? `${promoLlevas || 'N'}x${promoPagas || 'M'}` : null;
+    : reglaPromoActiva === 'nxm' ? `${promoLlevasEf || 'N'}x${promoPagas || 'M'}` : null;
   const precioSugerido = reglaPromoActiva ? precioPorRegla : precioSugeridoMargen;
   // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
   // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
@@ -1692,7 +1704,7 @@ export default function RecetaModal({
       ...(promoMode ? {
         promoRegla,
         promoOffPct: promoRegla === 'off' ? Number(promoOffPct) || null : null,
-        promoLlevas: promoRegla === 'nxm' ? Number(promoLlevas) || null : null,
+        promoLlevas: promoRegla === 'nxm' ? Number(promoLlevasEf) || null : null,
         promoPagas: promoRegla === 'nxm' ? Number(promoPagas) || null : null,
       } : {}),
       items: itemsOrdenados.map(it => {
@@ -2534,10 +2546,61 @@ export default function RecetaModal({
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        {promoMode && !isStaff && (() => {
+                    // Regla de precio de la promo (Diego 11/11/2026). Va en el lugar del rendimiento del lote (una promo no tiene rendimiento — Diego 11/11/2026); alto 40 como esa fila.
+                    const campo = (val, set, w, title) => (
+                      <TextField size="small" value={val} title={title}
+                        onChange={(e) => set(e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.'))}
+                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', padding: '5px 6px', fontWeight: 700 } }}
+                        sx={{ width: w, '& .MuiOutlinedInput-root': { height: 40 } }} />
+                    );
+                    const unSoloArticulo = items.filter(it => it.articleRefId).length;
+                    return (
+                      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" sx={{ flex: 1, minWidth: 260, rowGap: 1 }}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: '0.04em' }}>
+                          REGLA DE PRECIO
+                        </Typography>
+                        <ToggleButtonGroup exclusive size="small" value={promoRegla}
+                          onChange={(_, v) => v && setPromoRegla(v)}
+                          sx={{ '& .MuiToggleButton-root': { height: 40, px: 1.5, textTransform: 'none', fontSize: 13, fontWeight: 600 } }}>
+                          <ToggleButton value="off">% off</ToggleButton>
+                          <ToggleButton value="nxm">Llevás N, pagás M</ToggleButton>
+                          <ToggleButton value="margen">Margen</ToggleButton>
+                        </ToggleButtonGroup>
+                        {promoRegla === 'off' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {campo(promoOffPct, setPromoOffPct, 64, '% de descuento sobre la venta sin promo')}
+                            <Typography variant="body2" color="text.secondary">% off sobre la venta sin promo</Typography>
+                          </Stack>
+                        )}
+                        {promoRegla === 'nxm' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <Typography variant="body2" color="text.secondary">Llevás</Typography>
+                            {campo(promoLlevasEf, cambiarLlevas, 52, 'Unidades que se llevan (es la cantidad del artículo: de ahí sale el costo)')}
+                            <Typography variant="body2" color="text.secondary">pagás</Typography>
+                            {campo(promoPagas, setPromoPagas, 52, 'Unidades que se pagan')}
+                          </Stack>
+                        )}
+                        {promoRegla === 'margen' && (
+                          <Typography variant="body2" color="text.secondary">Precio = costo ÷ objetivo (también se escribe el precio con doble clic)</Typography>
+                        )}
+                        {reglaPromoActiva && !(ventaSinPromo > 0) && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            Para que tome el precio, los ingredientes tienen que ser artículos (no insumos): de ahí sale la venta sin promo.
+                          </Typography>
+                        )}
+                        {promoRegla === 'nxm' && unSoloArticulo > 1 && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            «Llevás N, pagás M» es para un solo artículo: con varios, usá % off.
+                          </Typography>
+                        )}
+                      </Stack>
+                    );
+                        })()}
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
                             gemelos, más abajo) ── */}
-                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
+                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff || promoMode ? 'none' : undefined }}>
                           <Box
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
@@ -2914,57 +2977,6 @@ export default function RecetaModal({
                     </Box>
                   )}
 
-                  {promoMode && !isStaff && (() => {
-                    // Regla de precio de la promo (Diego 11/11/2026). Mismo alto (32px) para el grupo y los campos.
-                    const campo = (val, set, w, title) => (
-                      <TextField size="small" value={val} title={title}
-                        onChange={(e) => set(e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.'))}
-                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', padding: '5px 6px', fontWeight: 700 } }}
-                        sx={{ width: w, '& .MuiOutlinedInput-root': { height: 32 } }} />
-                    );
-                    const unSoloArticulo = items.filter(it => it.articleRefId).length;
-                    return (
-                      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" sx={{ mb: 1.5, rowGap: 1 }}>
-                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: '0.04em' }}>
-                          REGLA DE PRECIO
-                        </Typography>
-                        <ToggleButtonGroup exclusive size="small" value={promoRegla}
-                          onChange={(_, v) => v && setPromoRegla(v)}
-                          sx={{ '& .MuiToggleButton-root': { height: 32, px: 1.5, textTransform: 'none', fontSize: 13, fontWeight: 600 } }}>
-                          <ToggleButton value="off">% off</ToggleButton>
-                          <ToggleButton value="nxm">Llevás N, pagás M</ToggleButton>
-                          <ToggleButton value="margen">Margen</ToggleButton>
-                        </ToggleButtonGroup>
-                        {promoRegla === 'off' && (
-                          <Stack direction="row" alignItems="center" spacing={0.75}>
-                            {campo(promoOffPct, setPromoOffPct, 64, '% de descuento sobre la venta sin promo')}
-                            <Typography variant="body2" color="text.secondary">% off sobre la venta sin promo</Typography>
-                          </Stack>
-                        )}
-                        {promoRegla === 'nxm' && (
-                          <Stack direction="row" alignItems="center" spacing={0.75}>
-                            <Typography variant="body2" color="text.secondary">Llevás</Typography>
-                            {campo(promoLlevas, setPromoLlevas, 52, 'Unidades que se llevan')}
-                            <Typography variant="body2" color="text.secondary">pagás</Typography>
-                            {campo(promoPagas, setPromoPagas, 52, 'Unidades que se pagan')}
-                          </Stack>
-                        )}
-                        {promoRegla === 'margen' && (
-                          <Typography variant="body2" color="text.secondary">Precio = costo ÷ objetivo (también se escribe el precio con doble clic)</Typography>
-                        )}
-                        {reglaPromoActiva && !(ventaSinPromo > 0) && (
-                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
-                            Para que tome el precio, los ingredientes tienen que ser artículos (no insumos): de ahí sale la venta sin promo.
-                          </Typography>
-                        )}
-                        {promoRegla === 'nxm' && unSoloArticulo > 1 && (
-                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
-                            «Llevás N, pagás M» es para un solo artículo: con varios, usá % off.
-                          </Typography>
-                        )}
-                      </Stack>
-                    );
-                  })()}
                   <Divider sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>
