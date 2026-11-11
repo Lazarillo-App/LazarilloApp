@@ -1302,6 +1302,41 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
   const [busqError, setBusqError] = useState(""); // mensaje de error de búsqueda (inline)
   const [logoUrl, setLogoUrl] = useState("");    // texto del campo de URL manual
   const [logoTried, setLogoTried] = useState(false); // ya intentamos traer logos para este negocio
+  // Búsqueda de imágenes (Brave) para locales sin web propia (usuaria 11/11). Si el back no
+  // tiene la key responde 501 y la opción se esconde.
+  const [imgQ, setImgQ] = useState("");
+  const [imgRes, setImgRes] = useState(null);        // null = todavía no se buscó
+  const [imgCargando, setImgCargando] = useState(false);
+  const [imgDisponible, setImgDisponible] = useState(true);
+  const [imgUsando, setImgUsando] = useState("");
+  const buscarImagenes = async (q) => {
+    const texto = String(q || "").trim();
+    if (!texto) return;
+    setImgQ(texto); setImgCargando(true);
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API_BASE}/places/imagenes?q=${encodeURIComponent(texto)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (r.status === 501) { setImgDisponible(false); return; }
+      const j = await r.json().catch(() => ({}));
+      setImgRes(r.ok && Array.isArray(j.imagenes) ? j.imagenes : []);
+    } catch { setImgRes([]); }
+    finally { setImgCargando(false); }
+  };
+  const usarImagen = async (thumb) => {
+    setImgUsando(thumb);
+    try {
+      const token = localStorage.getItem("token");
+      const r = await fetch(`${API_BASE}/places/imagen?url=${encodeURIComponent(thumb)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.dataUrl) {
+        setLogoOpts((prev) => [...new Set([j.dataUrl, ...prev])].slice(0, 8));
+        await elegirLogo(j.dataUrl);
+      } else {
+        setPaletaMsg("No pude bajar esa imagen. Probá con otra o subí el logo.");
+      }
+    } catch { setPaletaMsg("No pude bajar esa imagen. Probá con otra o subí el logo."); }
+    finally { setImgUsando(""); }
+  };
   const [logoColores, setLogoColores] = useState(null); // paleta original generada por el logo (para resetear)
   const [d, setD] = useState({ nombre: "", telefono: "", ciudad: "", calle: "", numero: "", descripcion: "", logo: "", instagram: "", facebook: "", tiktok: "", web: "", wifiNombre: "", wifiClave: "", fuente: "'Archivo', sans-serif", colores: { ...COLORES_INICIALES }, ...PERFIL_VACIO(),
     // Volviendo al paso "Local" con el negocio ya creado: arranca con sus datos.
@@ -1409,6 +1444,12 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
         if (!dRef.current.logo) { logoDeBusqueda.current = true; await elegirLogo(r.logos[0]); partes.push("logo"); }
       }
       if (partes.length) setWebMsg(`✓ Completé desde la web: ${partes.join(", ")}. Revisalo.`);
+      // Sin web propia y sin logo: se busca en imágenes, como haría uno en Google (usuaria 11/11).
+      let domW = ""; try { domW = new URL(o.web).hostname; } catch { /* sin web */ }
+      const sinWebPropia = !domW || esPlataformaWeb(domW);
+      if (sinWebPropia && !(Array.isArray(r.logos) && r.logos.length) && !dRef.current.logo) {
+        buscarImagenes(`${o.nombre} logo${o.ciudad ? ` ${o.ciudad}` : ""}`);
+      }
     });
     if (o.fotos?.length) fotosDeGoogle(o.fotos).then((fs) => {
       if (tok !== searchRef.current || !fs.length) return;
@@ -1420,6 +1461,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
     // es el de la plataforma y no el del local (usuaria 11/11): no se busca por dominio.
     if (dominio && !esPlataformaWeb(dominio)) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
     setLogoFail([]); setLogoOpts([]); setOpciones([]); setLogoTried(true);
+    setImgRes(null); setImgQ(`${o.nombre} logo${o.ciudad ? ` ${o.ciudad}` : ""}`);
     if (!cands.length) return;
     setBuscandoLogos(true);
     try {
@@ -1607,6 +1649,30 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
                         </>
                       );
                     })()}
+                    {/* Búsqueda de imágenes: se puede corregir el texto y buscar de nuevo. */}
+                    {imgDisponible && !(buscandoLogos || buscandoWeb) && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>Buscar el logo en imágenes de internet:</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <input value={imgQ} onChange={(e) => setImgQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") buscarImagenes(imgQ); }}
+                            placeholder="Nombre del local + logo"
+                            style={{ flex: "1 1 220px", border: `1px solid ${C.border}`, borderRadius: 10, padding: "9px 12px", fontSize: 14, color: C.ink, background: C.paper, fontFamily: "inherit" }} />
+                          <Btn ghost small accent={brand.primary} onClick={() => buscarImagenes(imgQ)} disabled={imgCargando || !imgQ.trim()}>{imgCargando ? "Buscando…" : imgRes ? "Buscar de nuevo" : "Buscar"}</Btn>
+                        </div>
+                        {imgRes && !imgCargando && (imgRes.length ? (
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                            {imgRes.map((im, i) => (
+                              <button key={i} onClick={() => usarImagen(im.thumb)} disabled={!!imgUsando} title={[im.titulo, im.fuente].filter(Boolean).join(" · ") || "Usar esta imagen"}
+                                style={{ width: 72, height: 72, borderRadius: 10, border: `2px solid ${imgUsando === im.thumb ? C.maroon : C.border}`, background: "#fff", cursor: "pointer", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", opacity: imgUsando && imgUsando !== im.thumb ? 0.5 : 1 }}>
+                                <img src={im.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>No encontré imágenes con eso. Probá con otras palabras o subí el logo.</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
