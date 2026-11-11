@@ -151,11 +151,12 @@ export default function PieCostos({
                   <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1 }}>%</Typography>
                 </Stack>
               </>) : null}
-              <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
+              {/* Ocupa las dos columnas: así no ensancha la del costo y el % queda a la misma distancia
+                  que en el artículo común (Diego 11/11/2026). */}
+              <Typography variant="caption" sx={{ gridColumn: '1 / -1', fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
                 {/* En el artículo común el actual ya está a la derecha, junto al sugerido; acá solo para promo y jefe. */}
                 {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
               </Typography>
-              <span />
             </Box>
           );
         }
