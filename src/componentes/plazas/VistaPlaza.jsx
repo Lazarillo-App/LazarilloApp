@@ -9,7 +9,7 @@
 // renglón levantado ocupa el lugar exacto donde va a quedar (resaltado celeste con sombra) y los
 // demás se corren con animación. Lo que se ve al soltar es lo que se guarda. Esc cancela.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Typography, IconButton, Popover, InputBase, Tooltip } from '@mui/material';
+import { Box, Typography, IconButton, Popover, InputBase, Tooltip, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import CloseIcon from '@mui/icons-material/Close';
@@ -34,7 +34,9 @@ const fmtCant = (c, u) => {
 
 const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arrastreActivo, onOcultar, onBorrar, onColor, onAgarrar }, ref) {
   const c = PALETA[(Number(r.color) || 0) % PALETA.length];
-  const cant = fmtCant(r.cantidad, r.unidad);
+  // Peso de la receta u observación del renglón, según lo elegido para ese ingrediente (vale en
+  // todas las recetas). Si se eligió observación y esta receta no la tiene, va el peso.
+  const cant = r.mostrar === 'obs' && r.obs ? r.obs : fmtCant(r.cantidad, r.unidad);
   if (!armando && r.oculto) return null;
   return (
     <Box ref={ref} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: '5px', opacity: r.oculto && !levantado ? 0.35 : 1,
@@ -80,7 +82,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onAbrir }) {
+function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -168,10 +170,13 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onAbrir }) {
     else onColorIngrediente(r.ref, i);
   };
 
+  // La tarjeta ocupa 2 filas de la grilla (título | renglones) con subgrid: todos los títulos de
+  // una misma fila arrancan arriba y los renglones empiezan a la misma altura; si un título
+  // usa menos renglones, queda el espacio (Diego 11/11/2026).
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', display: 'grid', gridRow: 'span 2', gridTemplateRows: 'subgrid', rowGap: 0 }}>
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.3rem', textAlign: 'center',
-        textTransform: 'uppercase', lineHeight: 1.05, mb: 1, minHeight: '2.2em', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+        textTransform: 'uppercase', lineHeight: 1.05, mb: 1, alignSelf: 'start' }}>
         <Tooltip title={onAbrir ? 'Abrir la receta' : ''} placement="top">
           <Box component="span" onClick={onAbrir ? () => onAbrir(p) : undefined}
             sx={{ cursor: onAbrir ? 'pointer' : 'default', '&:hover': onAbrir ? { color: '#2492C8' } : undefined }}>
@@ -179,6 +184,7 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onAbrir }) {
           </Box>
         </Tooltip>
       </Typography>
+      <Box>
       {visibles.map((r) => (
         <Renglon key={r.key} r={r} armando={armando}
           ref={(el) => { if (el) nodos.current.set(r.key, el); else nodos.current.delete(r.key); }}
@@ -206,19 +212,35 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onAbrir }) {
               outline: Number(paleta?.renglon?.color) === i ? '2px solid #2492C8' : 'none', outlineOffset: 1 }} />
           ))}
         </Box>
-        {paleta && !paleta.renglon.extra && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 1, pb: 1 }}>Cambia este ingrediente en todas las plazas</Typography>
-        )}
+        {paleta && !paleta.renglon.extra && (() => {
+          const r = paleta.renglon;
+          const actual = r.mostrar === 'obs' ? 'obs' : 'peso';
+          return (
+            <Box sx={{ px: 1, pb: 1 }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: 'text.secondary', textAlign: 'center', mb: 0.5 }}>MOSTRAR</Typography>
+              <ToggleButtonGroup exclusive fullWidth size="small" value={actual}
+                onChange={(_, v) => { if (!v || v === actual) return; setPaleta({ ...paleta, renglon: { ...r, mostrar: v } }); onMostrarIngrediente?.(r.ref, v); }}
+                sx={{ '& .MuiToggleButton-root': { height: 30, textTransform: 'none', fontSize: '0.78rem', fontWeight: 600 } }}>
+                <ToggleButton value="peso">Peso</ToggleButton>
+                <ToggleButton value="obs">Observación</ToggleButton>
+              </ToggleButtonGroup>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.75, maxWidth: 220, mx: 'auto', lineHeight: 1.3 }}>
+                Color y lo que se muestra valen para este ingrediente en todas las recetas y plazas
+              </Typography>
+            </Box>
+          );
+        })()}
       </Popover>
+      </Box>
     </Box>
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onAbrir={onAbrir} />
+        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente} onAbrir={onAbrir} />
       ))}
     </Box>
   );
