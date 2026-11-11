@@ -150,12 +150,21 @@ export default function InsumosMain() {
     useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
   const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
 
-  // Ojito «solo con compras»: la vista SIEMPRE arranca activa (Diego 11/11). Se puede
-  // apagar mientras se navega, pero no se recuerda entre visitas.
-  const [soloConCompras, setSoloConCompras] = useState(true);
+  // Ojito «solo con compras»: arranca ACTIVO la primera vez; después recuerda la última
+  // elección (apagado o prendido) en este navegador (Diego 11/11).
+  const [soloConCompras, setSoloConCompras] = useState(() => {
+    try {
+      const v = localStorage.getItem('insumosFiltroConCompras');
+      return v == null ? true : v === 'true';
+    } catch { return true; }
+  });
 
   const toggleSoloConCompras = useCallback(() => {
-    setSoloConCompras(prev => !prev);
+    setSoloConCompras(prev => {
+      const next = !prev;
+      try { localStorage.setItem('insumosFiltroConCompras', String(next)); } catch { }
+      return next;
+    });
   }, []);
 
   const handleOpenRecetaElaborado = useCallback((insumo, opts = {}) => {
