@@ -42,6 +42,7 @@ export default function ItemRow({
   businessId,
   insumosBizId,
   onOpenRecetaElaborado,
+  onCrearMerma,
   colorSinPromo = '#7c3aed',
   searchOpen,
   onSearchOpen,
@@ -1174,7 +1175,10 @@ export default function ItemRow({
               value={Array.isArray(item.mermaIds) ? item.mermaIds : (item.mermaId != null ? [item.mermaId] : [])}
               onChange={e => {
                 const v = e.target.value;
-                onChange(index, { mermaIds: (typeof v === 'string' ? v.split(',') : v).map(Number) });
+                const lista = typeof v === 'string' ? v.split(',') : v;
+                // "+ Crear merma": abre el insumo en su pestaña Merma (no es una merma a tildar)
+                if (lista.includes('__crear')) { onCrearMerma?.(item); return; }
+                onChange(index, { mermaIds: lista.map(Number) });
               }}
               renderValue={(sel) => {
                 if (!sel || sel.length === 0) return 'No';
@@ -1191,6 +1195,18 @@ export default function ItemRow({
               }}
               sx={{ fontSize: '0.75rem', minWidth: 140, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
             >
+              {/* Acción primero, después la lista — mismo patrón que SelectorBuscable ("+ Crear …" arriba,
+                  fondo gris, separada de las opciones). Lleva al insumo, pestaña Merma; al volver se
+                  recargan las mermas de la fila. */}
+              {onCrearMerma && item.supplyId && (
+                <MenuItem value="__crear" sx={{
+                  fontSize: '0.82rem', fontWeight: 600, color: 'primary.main',
+                  bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider',
+                  '&:hover': { bgcolor: 'action.selected' },
+                }}>
+                  + Crear merma
+                </MenuItem>
+              )}
               {(item.mermas || []).map(m => {
                 const factor = (Number(m.peso_final) > 0 && Number(m.peso_inicial) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
                 const sel = Array.isArray(item.mermaIds) ? item.mermaIds : [];

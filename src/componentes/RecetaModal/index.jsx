@@ -3012,6 +3012,16 @@ export default function RecetaModal({
                                   precio: ins?.precio_ref || ins?.precio || 0,
                                 });
                               }}
+                              onCrearMerma={async (it) => {
+                                await autoSave(); // guardar la receta antes de bajar al insumo
+                                const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+                                pushElaborado({
+                                  id: it.supplyId,
+                                  nombre: it.supplyNombre,
+                                  precio: ins?.precio_ref || ins?.precio || 0,
+                                  initialTab: 'merma',
+                                });
+                              }}
                               insumos={insumos}
                               usedSupplyIds={usedSupplyIds}
                               alertaSemanas={alertaSemanas}
