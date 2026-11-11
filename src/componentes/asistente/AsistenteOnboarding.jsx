@@ -1170,6 +1170,12 @@ const LogoImg = ({ url, onFail, style }) => {
       }} />
   );
 };
+// Dominios de plataformas (menú digital, delivery, links, redes): su ícono no es el logo del local.
+// Misma lista que PLATAFORMAS en el back (completarNegocioController.js).
+const PLATAFORMAS_WEB = ["waitry", "fu.do", "fudo", "pedidosya", "rappi", "ubereats", "linktr.ee", "linkin.bio", "beacons.ai",
+  "instagram.com", "facebook.com", "wa.me", "whatsapp", "google.", "goo.gl", "maps.app", "mercadopago", "bit.ly",
+  "tiktok.com", "menu.club", "cartadigital", "meniu", "tuucarta", "menutech"];
+const esPlataformaWeb = (dominio) => PLATAFORMAS_WEB.some((p) => String(dominio || "").toLowerCase().includes(p));
 // El sandbox no muestra imágenes externas: traemos los bytes (vía proxy CORS) y los volvemos data: URL.
 async function fetchAsDataUrl(url) {
   const toData = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
@@ -1410,7 +1416,9 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
     });
     const cands = Array.isArray(o.logos) ? o.logos.filter((u) => typeof u === "string" && u.startsWith("http")) : [];
     let dominio = ""; try { dominio = new URL(o.web).hostname.replace(/^www\./, ""); } catch { /* sin web */ }
-    if (dominio) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
+    // Si la "web" de Google es una plataforma (Waitry, Fudo, PedidosYa, Instagram…), su ícono
+    // es el de la plataforma y no el del local (usuaria 11/11): no se busca por dominio.
+    if (dominio && !esPlataformaWeb(dominio)) { cands.push(`https://logo.clearbit.com/${dominio}`); cands.push(`https://www.google.com/s2/favicons?domain=${dominio}&sz=256`); cands.push(`https://icons.duckduckgo.com/ip3/${dominio}.ico`); }
     setLogoFail([]); setLogoOpts([]); setOpciones([]); setLogoTried(true);
     if (!cands.length) return;
     setBuscandoLogos(true);
@@ -1580,6 +1588,25 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
                         ))}
                       </div>
                     )}
+                    {/* Muchos locales sin web tienen el logo entre sus fotos de Google: se ofrecen
+                        como opción más (usuaria 11/11). */}
+                    {!(buscandoLogos || buscandoWeb) && (() => {
+                      const fotosG = (d.fotos || []).filter((u) => /^https?:/.test(u)).slice(0, 8);
+                      if (!fotosG.length) return null;
+                      return (
+                        <>
+                          <div style={{ fontSize: 12.5, color: C.muted, margin: "12px 0 6px" }}>¿Tu logo está entre tus fotos de Google? Tocalo para usarlo:</div>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            {fotosG.map((u, i) => (
+                              <button key={i} onClick={() => elegirLogo(u)} title="Usar esta foto como logo"
+                                style={{ width: 56, height: 56, borderRadius: 10, border: `2px solid ${d.logo === u ? C.maroon : C.border}`, background: "#fff", cursor: "pointer", padding: 0, overflow: "hidden" }}>
+                                <img src={u} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               })()}
