@@ -88,7 +88,7 @@ export function VerComoBanner() {
       <span>
         {aviso
           ? 'No se guardó: en "Ver como" la app es solo para mirar.'
-          : <>Estás viendo la app como <b>{verComo.nombre}</b> · no se guardan cambios</>}
+          : <>Estás viendo la app como <b>{verComo.nombre}</b> · los cambios se guardan con tu usuario</>}
       </span>
       <Button size="small" onClick={volver} variant="contained" disableElevation
         sx={{ bgcolor: '#fff', color: '#111827', textTransform: 'none', fontWeight: 700, height: 26, '&:hover': { bgcolor: '#e5e7eb' } }}>

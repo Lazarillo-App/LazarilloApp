@@ -1,7 +1,9 @@
 // src/servicios/vistaPrevia.js
-// "Ver como" (dueño): mientras está activa, la app no guarda nada. Se cortan los pedidos
-// que modifican (POST/PUT/PATCH/DELETE) a la API y se avisa con el evento
-// 'vista-previa:bloqueado'. Los GET pasan normal (es la sesión del dueño).
+// "Ver como" (dueño): marca que la app se está mostrando como otro rol. Desde el 11/11/2026
+// (Diego) en "Ver como" SE PUEDEN HACER CAMBIOS: se guardan con el usuario del dueño, así que
+// no se corta ningún pedido. BLOQUEAR queda en false; si algún día se quiere volver al modo
+// solo-mirar, alcanza con ponerlo en true.
+const BLOQUEAR = false;
 let activa = false;
 let instalado = false;
 
@@ -11,7 +13,7 @@ const PERMITIDOS = [/\/businesses\/\d+\/select\b/, /\/businesses\/active\b/, /\/
 const esApi = (url) => /\/api\//.test(String(url || ''));
 const bloquea = (method, url) => {
   const m = String(method || 'GET').toUpperCase();
-  if (!activa || m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return false;
+  if (!BLOQUEAR || !activa || m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return false;
   if (!esApi(url)) return false;
   return !PERMITIDOS.some((re) => re.test(String(url)));
 };
