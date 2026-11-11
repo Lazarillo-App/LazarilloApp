@@ -2,7 +2,7 @@
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabMermaInsumo.jsx
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox } from '@mui/material';
+import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox, Tooltip } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -203,17 +203,45 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
         </Box>
       </Stack>
 
+      {/* Qué es una merma — texto breve en gris, no alerta (Diego 11/11) */}
+      <Typography variant="body2" sx={{ fontSize: '0.78rem', color: 'text.secondary', lineHeight: 1.5, mb: 1.5, maxWidth: 900 }}>
+        Las mermas de un insumo pueden darse por <b>procesamiento</b> (le quitás algo antes de usarlo: pelar, limpiar),
+        por <b>cocción</b> (lo freís, lo reducís) o por <b>cambio de temperatura</b> (lo recibís congelado y lo usás descongelado).
+        Cargala si en tus recetas usás el peso ya manipulado; si usás el peso tal como lo comprás, no hace falta.
+      </Typography>
+
       {/* Header columnas */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
-        {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', `Precio c/merma`, ''].map((h, i) => (
-          <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left') }}>{h}</Typography>
-        ))}
+        {/* La explicación de qué es cada cosa va en el tooltip de cada título (antes era una leyenda
+            roja al pie que Diego encontró confusa, 11/11). */}
+        {[
+          ['Default', 'Si la tildás, esta merma se aplica sola cada vez que agregues este insumo a una receta.'],
+          ['Nombre de la merma', 'Qué le hacés al insumo antes de usarlo: pelar, limpiar, cocinar, descarozar…'],
+          ['Peso inicial', 'Cuánto entra: el peso tal como lo comprás (ej. 1.000 g de papa con cáscara).'],
+          ['Peso final', 'Cuánto queda para usar después de ese proceso (ej. 800 g de papa pelada, frita, etc.).'],
+          ['% Merma', 'Lo que se pierde en el proceso: (peso inicial − peso final) ÷ peso inicial.'],
+          ['Precio c/merma', `Lo que te cuesta de verdad cada ${unidad} que usás: el precio de compra con el desperdicio, repartido en lo que queda.`],
+          ['', ''],
+        ].map(([h, ayuda], i) => {
+          const titulo = (
+            <Typography variant="caption" fontWeight={700} color="text.secondary"
+              sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left'),
+                ...(ayuda ? { cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 } : {}) }}>
+              {h}
+            </Typography>
+          );
+          return ayuda
+            ? <Tooltip key={i} title={ayuda} arrow placement="top">{titulo}</Tooltip>
+            : <Box key={i}>{titulo}</Box>;
+        })}
       </Box>
 
       {/* ── Fila del desperdicio GLOBAL (no eliminable, no default) ── */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, alignItems: 'center', bgcolor: '#fef9c3', borderRadius: 1, mb: 0.5 }}>
         <Box />
-        <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f' }}>Desperdicio global</Typography>
+        <Tooltip arrow placement="top" title="Un % que se suma al precio de TODOS los insumos del local (roturas, sobrantes, lo que se tira). Se cambia acá o en Configuración.">
+          <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f', cursor: 'help', width: 'fit-content' }}>Desperdicio global</Typography>
+        </Tooltip>
         {/* Peso bruto / neto: no aplican a la global (es un % directo) */}
         <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
         <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
@@ -239,7 +267,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
             return (
               <Box key={m.id} sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.5, alignItems: 'center', borderRadius: 1, bgcolor: esDef ? '#f2fbf2' : 'transparent' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <IconButton size="small" onClick={() => marcarDefault(m)} title="Usar por default"
+                  <IconButton size="small" onClick={() => marcarDefault(m)} title={esDef ? 'Esta merma se aplica sola cada vez que agregás este insumo a una receta' : 'Si la tildás, esta merma se aplica sola cada vez que agregues este insumo a una receta'}
                     sx={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${esDef ? G.verde : '#ccc'}`, bgcolor: esDef ? G.verde : '#fff', color: '#fff', '&:hover': { bgcolor: esDef ? G.verde : '#f5f5f5' } }}>
                     {esDef && <CheckCircleIcon sx={{ fontSize: 15, color: '#fff' }} />}
                   </IconButton>
@@ -350,12 +378,6 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
           )}
           </Box>
 
-          {/* Texto explicativo */}
-          <Box sx={{ mt: 2, bgcolor: '#fdeaea', border: '1px solid #f2b8be', borderRadius: 1, px: 2, py: 1.25 }}>
-            <Typography variant="caption" sx={{ fontSize: '0.75rem', color: '#7a3034', lineHeight: 1.5 }}>
-              La merma marcada como <b>default</b> ✓ es la que usan las recetas. El <b>precio con merma</b> es el precio de compra (con el desperdicio global aplicado) dividido por el rendimiento (neto/bruto): lo que realmente cuesta cada {unidad} utilizable.
-            </Typography>
-          </Box>
         </>
       )}
       <ConfirmDialog
