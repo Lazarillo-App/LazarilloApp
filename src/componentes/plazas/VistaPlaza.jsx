@@ -9,7 +9,7 @@
 // renglón levantado ocupa el lugar exacto donde va a quedar (resaltado celeste con sombra) y los
 // demás se corren con animación. Lo que se ve al soltar es lo que se guarda. Esc cancela.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Box, Typography, IconButton, Popover, InputBase, Tooltip, ToggleButtonGroup, ToggleButton, Divider, Button } from '@mui/material';
+import { Box, Typography, IconButton, Popover, InputBase, Tooltip, ToggleButtonGroup, ToggleButton, Divider, Button, Select, MenuItem } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import CloseIcon from '@mui/icons-material/Close';
@@ -80,38 +80,75 @@ const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arras
 const lbl = { fontSize: '0.68rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '.04em', textAlign: 'center', mb: 0.5 };
 const campo = { height: 40, border: '1px solid', borderColor: 'divider', borderRadius: '6px', px: 1.25, fontSize: '0.85rem', width: '100%',
   '&.Mui-focused': { borderColor: '#5BC2EA', boxShadow: '0 0 0 2px rgba(91,194,234,.25)' } };
-function PanelIngrediente({ r, producto, onCambiar, onEditarItem }) {
+function PanelIngrediente({ r, producto, onCambiar, onEditarItem, onCrearEquivalencia }) {
   const [alias, setAlias] = useState(r.alias || '');
   const [cantidad, setCantidad] = useState(r.cantidad != null ? String(r.cantidad).replace('.', ',') : '');
   const [obs, setObs] = useState(r.obs || '');
+  const [unidad, setUnidad] = useState(r.unidad || '');
+  const [guardando, setGuardando] = useState(false);
+  // Unidades del ingrediente: las físicas de su familia + sus equivalencias
+  // (r.unidades: [{ nombre, detalle, familia, valor }], valor = tamaño en gr / ml / u).
+  const unidades = Array.isArray(r.unidades) && r.unidades.length ? r.unidades : [{ nombre: r.unidad || 'u' }];
+  const datosDe = (nombre) => unidades.find((u) => String(u.nombre).toLowerCase() === String(nombre || '').toLowerCase());
+  const actualU = datosDe(unidad);
+  // Cambiar de unidad mantiene la misma cantidad real: 75 g → 1,5 dip (si el dip es 50 g).
+  const cambiarUnidad = (nueva) => {
+    const a = datosDe(unidad), b = datosDe(nueva);
+    const n = Number(String(cantidad).replace(',', '.'));
+    if (a?.valor > 0 && b?.valor > 0 && a.familia === b.familia && Number.isFinite(n)) {
+      const conv = Math.round((n * a.valor / b.valor) * 1000) / 1000;
+      setCantidad(String(conv).replace('.', ','));
+    }
+    setUnidad(nueva);
+  };
   const guardarAlias = () => { const a = alias.trim(); if (a !== (r.alias || '')) onCambiar({ alias: a }); };
   const actual = r.mostrar === 'obs' ? 'obs' : 'peso';
-  const uni = String(r.unidad || '').toLowerCase() === 'gr' ? 'g' : (r.unidad || '');
-  const cambioReceta = cantidad !== (r.cantidad != null ? String(r.cantidad).replace('.', ',') : '') || obs !== (r.obs || '');
+  const cambioReceta = cantidad !== (r.cantidad != null ? String(r.cantidad).replace('.', ',') : '') || obs !== (r.obs || '') || unidad !== (r.unidad || '');
   return (
     <Box sx={{ p: 1.5, width: 300 }}>
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '0.9rem', textAlign: 'center', textTransform: 'uppercase', lineHeight: 1.15, mb: 1.25 }}>
         {r.nombre}
       </Typography>
-      {onEditarItem && (
+      {onEditarItem && r.editable && (
         <>
           <Typography sx={lbl}>EN ESTA RECETA · {String(producto || '').toUpperCase()}</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 1, mb: 1 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 1 }}>
             <Box>
               <Typography sx={{ ...lbl, fontWeight: 600 }}>Cantidad</Typography>
               <InputBase value={cantidad} onChange={(e) => setCantidad(e.target.value.replace(/[^0-9.,]/g, ''))} sx={campo}
-                inputProps={{ style: { textAlign: 'center' }, inputMode: 'decimal' }}
-                endAdornment={<Box component="span" sx={{ fontSize: '0.78rem', color: 'text.secondary', ml: 0.5 }}>{uni}</Box>} />
+                inputProps={{ style: { textAlign: 'center' }, inputMode: 'decimal' }} />
             </Box>
             <Box>
-              <Typography sx={{ ...lbl, fontWeight: 600 }}>Observación</Typography>
-              <InputBase value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ej. 1 dip y medio" sx={campo} />
+              <Typography sx={{ ...lbl, fontWeight: 600 }}>Unidad</Typography>
+              <Select value={unidad} size="small" fullWidth
+                onChange={(e) => { if (e.target.value === '__crear_eq') { onCrearEquivalencia?.(r); return; } cambiarUnidad(e.target.value); }}
+                sx={{ height: 40, borderRadius: '6px', fontSize: '0.85rem', '& .MuiSelect-select': { textAlign: 'center' } }}>
+                {/* Acción primero, en franja gris (mismo patrón que «+ Crear merma» / SelectorBuscable). */}
+                <MenuItem value="__crear_eq" sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'primary.main', justifyContent: 'center',
+                  bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'action.selected' } }}>
+                  + Crear equivalencia
+                </MenuItem>
+                {unidades.map((u) => (
+                  // Una unidad de otra familia (g ↔ ml ↔ u) no se puede convertir desde acá.
+                  <MenuItem key={u.nombre} value={u.nombre} disabled={!!actualU?.familia && !!u.familia && u.familia !== actualU.familia}
+                    sx={{ fontSize: '0.85rem', justifyContent: 'center' }}>
+                    {u.detalle ? `${u.nombre} (${u.detalle})` : u.nombre}
+                  </MenuItem>
+                ))}
+              </Select>
             </Box>
           </Box>
-          <Button fullWidth size="small" variant="contained" disableElevation disabled={!cambioReceta}
-            onClick={() => onEditarItem({ cantidad: Number(String(cantidad).replace(',', '.')), observaciones: obs.trim() })}
+          <Typography sx={{ ...lbl, fontWeight: 600 }}>Observación</Typography>
+          <InputBase value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ej. 1 dip y medio" sx={{ ...campo, mb: 1 }}
+            inputProps={{ style: { textAlign: 'center' } }} />
+          <Button fullWidth size="small" variant="contained" disableElevation disabled={!cambioReceta || guardando}
+            onClick={async () => {
+              setGuardando(true);
+              try { await onEditarItem({ key: r.key, cantidad: Number(String(cantidad).replace(',', '.')), unidad, observaciones: obs.trim() }); }
+              finally { setGuardando(false); }
+            }}
             sx={{ height: 34, textTransform: 'none', fontWeight: 700 }}>
-            Guardar en la receta
+            {guardando ? 'Guardando…' : 'Guardar en la receta'}
           </Button>
           <Divider sx={{ my: 1.5 }} />
         </>
@@ -152,7 +189,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onAbrir }) {
+function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -279,7 +316,10 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
               if (cambio.mostrar) onMostrarIngrediente?.(r.ref, cambio.mostrar);
               if (cambio.alias !== undefined) onAliasIngrediente?.(r.ref, cambio.alias);
             }}
-            onEditarItem={onEditarItem && !paleta.renglon.extra ? (datos) => onEditarItem(p.articleId, paleta.renglon, datos) : null} />
+            onEditarItem={onEditarItem && !paleta.renglon.extra ? async (datos) => {
+              if (await onEditarItem(p.articleId, datos)) setPaleta(null);
+            } : null}
+            onCrearEquivalencia={onCrearEquivalencia ? (r) => { setPaleta(null); onCrearEquivalencia(p.articleId, r); } : null} />
         )}
       </Popover>
       </Box>
@@ -287,12 +327,12 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
         <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
-          onAliasIngrediente={onAliasIngrediente} onEditarItem={onEditarItem} onAbrir={onAbrir} />
+          onAliasIngrediente={onAliasIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       ))}
     </Box>
   );
