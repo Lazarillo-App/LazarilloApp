@@ -1598,20 +1598,10 @@ export default function ArticulosMain(props) {
     return localDiscIds;
   }, [discIds, localDiscIds]);
 
-  // «Lo que más vende» (antes Top 20, Diego 11/11): los artículos que hacen falta para
-  // llegar al CORTE (50/80/95 %) del ingreso del período YA elegido arriba, sin
-  // discontinuados. Además, letra A/B/C para cada artículo: A = hasta el 80 %,
-  // B = 80–95 %, C = el último 5 % (candidatos a sacar o revisar precio).
-  const CORTES_VENTA = [50, 80, 95];
-  const [corteVentas, setCorteVentas] = useState(() => {
-    try { const v = Number(localStorage.getItem('lzCorteVentas')); return CORTES_VENTA.includes(v) ? v : 80; }
-    catch { return 80; }
-  });
-  const cambiarCorteVentas = useCallback((v) => {
-    setCorteVentas(v);
-    try { localStorage.setItem('lzCorteVentas', String(v)); } catch { }
-  }, []);
-
+  // Top 20 (Diego 11/11: volvió al Top 20 después de probar el 80/20): los 20 artículos que
+  // más facturaron en el período elegido arriba, sin discontinuados. Se calcula además la
+  // letra A/B/C de cada artículo (A = hasta el 80 % del ingreso, B = 80–95 %, C = último 5 %)
+  // y la curva acumulada que muestra el panel lateral.
   const rankingVentas = useMemo(() => {
     const pares = [];
     let total = 0;
@@ -1650,37 +1640,27 @@ export default function ArticulosMain(props) {
     return { pares, total, abc, acumulado, curva, n50: cuantosPara(50), nUltimo5: nC, cuantosPara };
   }, [ventasMap, effectiveDiscIds]);
 
-  const top20Ids = useMemo(() => {
-    const n = rankingVentas.cuantosPara(corteVentas);
-    return new Set(rankingVentas.pares.slice(0, n).map(([id]) => id));
-  }, [rankingVentas, corteVentas]);
+  const top20Ids = useMemo(
+    () => new Set(rankingVentas.pares.slice(0, 20).map(([id]) => id)),
+    [rankingVentas]);
 
-  // Números del panel lateral de «Lo que más vende»
-  const resumenLoQueMasVende = useMemo(() => {
+  // Números del panel lateral del Top 20. El % se calcula sobre los artículos que
+  // VENDIERON en el período (los que están en 0 no cuentan, Diego 11/11).
+  const resumenTop20 = useMemo(() => {
     const n = top20Ids.size;
     const monto = rankingVentas.pares.slice(0, n).reduce((acc, [, a]) => acc + a, 0);
-    let carta = 0;
-    for (const sub of categorias || []) {
-      for (const cat of (sub.categorias || [])) {
-        for (const a of (cat.articulos || [])) {
-          const id = getArtId(a);
-          if (id != null && !effectiveDiscIds.has(id)) carta++;
-        }
-      }
-    }
+    const conVentas = rankingVentas.pares.length;
     return {
-      corte: corteVentas,
       n,
       monto,
       pctIngreso: rankingVentas.total > 0 ? (monto / rankingVentas.total) * 100 : 0,
-      carta,
-      pctCarta: carta > 0 ? (n / carta) * 100 : 0,
+      conVentas,
+      pctConVentas: conVentas > 0 ? (n / conVentas) * 100 : 0,
       n50: rankingVentas.n50,
       nUltimo5: rankingVentas.nUltimo5,
       curva: rankingVentas.curva,
-      conVentas: rankingVentas.pares.length,
     };
-  }, [top20Ids, rankingVentas, categorias, effectiveDiscIds, corteVentas]);
+  }, [top20Ids, rankingVentas]);
 
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
@@ -3183,8 +3163,7 @@ export default function ArticulosMain(props) {
             height: '100%',
           }}>
           <SidebarCategorias
-            loQueMasVende={resumenLoQueMasVende}
-            onCorteVentas={cambiarCorteVentas}
+            resumenTop20={resumenTop20}
             staff={!!isStaff}
             businessId={activeBizId}
             categorias={categorias}
