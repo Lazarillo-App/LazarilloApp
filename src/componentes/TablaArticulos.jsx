@@ -10,7 +10,7 @@ import React, {
   useDeferredValue,
 } from "react";
 import { esFormula, limpiarFormula, evaluarFormula } from '@/utils/formulaPrecio';
-import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip } from "@mui/material";
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip, useMediaQuery } from "@mui/material";
 
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
@@ -159,11 +159,11 @@ function BarraRentabilidad({ costoPct, objetivo, supera, individual, onFijar }) 
   const barColor = supera ? (excesoLeve ? naranja : rojo) : verde;
   const inkColor = supera ? (excesoLeve ? naranjaInk : rojoInk) : verdeInk;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 0 }}>
       <span style={{ fontWeight: 700, fontSize: '0.82rem', color: inkColor, fontVariantNumeric: 'tabular-nums' }}>
         {fmt(costoPct, 1)}%
       </span>
-      <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 0 ${RENT_BAR_W}px` }}>
+      <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 1 ${RENT_BAR_W}px`, minWidth: 36 }}>
         <span style={{
           position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4,
           width: `${fillPct}%`, background: barColor, transition: 'width .25s ease, background .25s ease'
@@ -824,6 +824,8 @@ export default function TablaArticulos({
   // IDs de artículos que VIVEN en la agrupación "Promociones" (fuente de verdad de ubicación).
   // Se usa para tratar como promo a un artículo que está en esa agrupación aunque su receta
   // aún no tenga es_promo=TRUE (ej. recién movido, sin componentes todavía).
+  // Pantallas chicas: el chip PROMO pasa a «P» para dejarle lugar al nombre (Diego 11/11/2026).
+  const chipPromoCorto = useMediaQuery('(max-width: 1500px)');
   const promoGroupIds = useMemo(() => {
     const s = new Set();
     const norm = (x) => String(x ?? '').trim().toLowerCase();
@@ -1535,13 +1537,27 @@ export default function TablaArticulos({
     // En Sin Agrupación, la columna de acciones también tiene que alojar el
     // botón de "Mover a X"/"Elegir agrupación" (texto, no solo el ⋮) — si no,
     // queda apretada contra la columna de "Nuevo precio" de al lado.
+    // Columnas en fr con mínimo 0: si no, cada «.35fr» crece hasta el ancho de su contenido
+    // (el input de Nuevo precio, «sug. $ 53.400»…) y se lo saca al Nombre — en pantallas chicas
+    // el Nombre quedaba en 2 letras y el encabezado (con otro contenido) no coincidía con las
+    // filas: títulos corridos de sus valores (Diego 11/11/2026). Costo % se achica hasta 140px.
     const dynCols = visibleCols
-      .map(c => (c.id === 'acciones' && isTodo ? '154px' : c.width))
+      .map(c => {
+        if (c.id === 'acciones' && isTodo) return '154px';
+        // Costo %: se achica antes que los montos (la barra mide 150 adentro).
+        if (c.id === 'rentabilidad' && c.width === '250px') return 'minmax(140px, .7fr)';
+        // Montos: nunca menos de lo que ocupa «sug. $ 53.400» en un renglón.
+        if (['costo', 'precio', 'sinPromo'].includes(c.id) && /fr$/.test(String(c.width))) return `minmax(88px, ${c.width})`;
+        // Nuevo precio: el input se achica hasta 116 (entra «USAR $ 32.584»); el espacio va al Nombre.
+        if (c.id === 'manual' && /fr$/.test(String(c.width))) return `minmax(116px, .3fr)`;
+        if (c.id === 'acciones' && /fr$/.test(String(c.width))) return `minmax(28px, ${c.width})`;
+        return /fr$/.test(String(c.width)) ? `minmax(0, ${c.width})` : c.width;
+      })
       .join(' ');
     // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
-    // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre.
-    const nombreCol = isTodo ? 'minmax(0, 1fr)' : 'minmax(0, .5fr)';
-    return `${check}minmax(56px, 90px) ${nombreCol} minmax(90px, 130px) ${branchCols}${dynCols}`;
+    // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre. Nunca menos de 140px.
+    const nombreCol = 'minmax(140px, 1fr)';
+    return `${check}minmax(56px, 90px) ${nombreCol} minmax(72px, .4fr) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
@@ -2118,9 +2134,12 @@ export default function TablaArticulos({
             )}
           </div>
           <div
+            title={label}
             style={{
               gridColumn: "2 / 4",
               cursor: 'pointer',
+              // Un solo renglón: los rubros largos («Promociones no-rec - Festejos comidas») van con «…»
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
             }}
             onClick={() => {
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
@@ -2405,17 +2424,17 @@ export default function TablaArticulos({
               achica y con una sola línea el nombre quedaba cortado demasiado pronto. */}
           <span style={{
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0,
+            whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0, flex: 1,
           }}>{a.nombre}</span>
           {/* Chip PROMO: marca las promociones en la tabla (Diego 11/11/2026). Mismo violeta que el buscador. */}
           {(a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)))) && (
             <span title="Promoción" style={{
-              // marginLeft auto: el chip va contra el borde derecho de la celda, alineado en todas las filas
-              marginLeft: 'auto', marginRight: 8,
+              // Contra el borde derecho de la celda (el nombre ocupa el resto), alineado en todas las filas
+              marginLeft: 'auto', marginRight: 0,
               flexShrink: 0, marginTop: 1, padding: '0 5px', borderRadius: 4, lineHeight: '15px',
               fontSize: '0.6rem', fontWeight: 800, letterSpacing: 0.3,
               color: '#6d28d9', background: 'rgba(124,58,237,0.12)',
-            }}>PROMO</span>
+            }}>{chipPromoCorto ? 'P' : 'PROMO'}</span>
           )}
         </div>
 
@@ -2453,7 +2472,7 @@ export default function TablaArticulos({
                 <div key="precio" style={{ ...cellNum, textAlign: 'center', lineHeight: 1.15 }}>
                   <div>{fmtCurrency(num(a.precio))}</div>
                   {costoArticulo > 0 && (
-                    <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600 }}>
+                    <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600, whiteSpace: 'nowrap' }}>
                       gan. {fmtCurrency(gananciaAct)}
                     </div>
                   )}
@@ -2462,7 +2481,7 @@ export default function TablaArticulos({
             }
             case 'sinPromo': {
               const vsp = ventaSinPromoMap?.[Number(getId(a))] ?? 0;
-              return <div key="sinPromo" style={{ ...cellNum, color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
+              return <div key="sinPromo" style={{ ...cellNum, textAlign: 'center', color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
             }
 
             case 'costo': {
@@ -2473,7 +2492,7 @@ export default function TablaArticulos({
                 <div key="costo" style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, lineHeight: 1.15 }}>
                   <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
                   {sugerido > 0 && (!isStaff || staffPuede('ver_sugerido')) && (
-                    <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
+                    <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600, whiteSpace: 'nowrap' }}>
                       sug. {fmtCurrency(sugerido)}
                     </div>
                   )}
@@ -2734,7 +2753,7 @@ export default function TablaArticulos({
                   <div key="manual" style={{ ...cellNum, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     {/* Contenedor de ancho fijo: input centrado, botones absolutos a los lados.
                         El layout no cambia entre estados — solo aparece/desaparece contenido. */}
-                    <div style={{ position: 'relative', width: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'relative', width: '100%', maxWidth: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {/* Paso − (izquierda, absoluto): solo con valor, visible en hover de fila.
                           tabIndex=-1: fuera del orden de tabulación — Tab desde el input de
                           precio debe ir derecho al input de la fila de abajo, no pasar por
@@ -2756,7 +2775,7 @@ export default function TablaArticulos({
                         </button>
                       ) : (
                         /* Input (centrado, ancho fijo) */
-                        <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${tieneValor ? '#86efac' : '#d1d5db'}`, borderRadius: 6, overflow: 'hidden', background: tieneValor ? '#f0fdf4' : '#fff', width: 160 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${tieneValor ? '#86efac' : '#d1d5db'}`, borderRadius: 6, overflow: 'hidden', background: tieneValor ? '#f0fdf4' : '#fff', width: '100%', maxWidth: 160 }}>
                           <span style={{ padding: '0 6px', fontSize: '0.75rem', color: TABLE_MUTED, background: '#f9fafb', borderRight: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>$</span>
                           <input
                             type="text"
