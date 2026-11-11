@@ -2,7 +2,7 @@
 /* eslint-disable no-empty */
 // src/componentes/RecetaModal/TabMermaInsumo.jsx
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox, Tooltip } from '@mui/material';
+import { Box, Typography, TextField, IconButton, CircularProgress, Alert, Stack, Checkbox, Tooltip, InputAdornment } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -230,7 +230,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
       </Stack>
 
       {/* Header columnas */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 100px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
         {/* La explicación de qué es cada cosa va en el tooltip de cada título (antes era una leyenda
             roja al pie que Diego encontró confusa, 11/11). */}
         {[
@@ -244,7 +244,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
         ].map(([h, ayuda], i) => {
           const titulo = (
             <Typography variant="caption" fontWeight={700} color="text.secondary"
-              sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left'),
+              sx={{ fontSize: '0.66rem', textAlign: i === 1 ? 'left' : 'center',
                 ...(ayuda ? { cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 } : {}) }}>
               {h}
             </Typography>
@@ -256,24 +256,23 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
       </Box>
 
       {/* ── Fila del desperdicio GLOBAL (no eliminable, no default) ── */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, alignItems: 'center', bgcolor: '#fef9c3', borderRadius: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 100px 130px 36px', gap: 1, px: 0.5, py: 0.75, alignItems: 'center', bgcolor: '#fef9c3', borderRadius: 1, mb: 0.5 }}>
         <Box />
         <Tooltip arrow placement="top" title="Un % que se suma al precio de TODOS los insumos del local (roturas, sobrantes, lo que se tira). Se cambia acá o en Configuración.">
           <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f', cursor: 'help', width: 'fit-content' }}>Desperdicio global</Typography>
         </Tooltip>
         {/* Peso bruto / neto: no aplican a la global (es un % directo) */}
-        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
-        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'right' }}>—</Typography>
+        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'center' }}>—</Typography>
+        <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'center' }}>—</Typography>
         {/* % Merma: acá sí, editable (único lugar del %) */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.25 }}>
-          <TextField size="small" type="text" inputMode="decimal"
-            value={String(globalPct).replace('.', ',')}
-            onChange={e => setGlobalPct(sanitizeDecimal(e.target.value))}
-            onBlur={e => guardarGlobal(sanitizeDecimal(e.target.value))}
-            inputProps={{ style: { textAlign: 'right', fontSize: '0.78rem', width: 40 } }} />
-          <Typography variant="caption">%</Typography>
-        </Box>
-        <Typography variant="body2" sx={{ textAlign: 'right', fontWeight: 700, color: '#111' }}>${fmt(precioConGlobal)}</Typography>
+        {/* El % va adentro del campo: mismo ancho y alto que los otros campos, centrado bajo su título */}
+        <TextField size="small" type="text" inputMode="decimal"
+          value={String(globalPct).replace('.', ',')}
+          onChange={e => setGlobalPct(sanitizeDecimal(e.target.value))}
+          onBlur={e => guardarGlobal(sanitizeDecimal(e.target.value))}
+          InputProps={{ endAdornment: <InputAdornment position="end" sx={{ ml: 0.25, '& p': { fontSize: '0.8rem' } }}>%</InputAdornment> }}
+          inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
+        <Typography variant="body2" sx={{ textAlign: 'center', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConGlobal)}</Typography>
         <Box />
       </Box>
 
@@ -284,7 +283,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
           {lista.map(m => {
             const esDef = m.es_default;
             return (
-              <Box key={m.id} sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.5, alignItems: 'center', borderRadius: 1, bgcolor: esDef ? '#f2fbf2' : 'transparent' }}>
+              <Box key={m.id} sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 100px 130px 36px', gap: 1, px: 0.5, py: 0.5, alignItems: 'center', borderRadius: 1, bgcolor: esDef ? '#f2fbf2' : 'transparent' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                   <IconButton size="small" onClick={() => marcarDefault(m)} title={esDef ? 'Esta merma se aplica sola cada vez que agregás este insumo a una receta' : 'Si la tildás, esta merma se aplica sola cada vez que agregues este insumo a una receta'}
                     sx={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${esDef ? G.verde : '#ccc'}`, bgcolor: esDef ? G.verde : '#fff', color: '#fff', '&:hover': { bgcolor: esDef ? G.verde : '#f5f5f5' } }}>
@@ -296,12 +295,12 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
                   inputProps={{ style: { fontSize: '0.8rem' } }} />
                 <TextField size="small" type="text" inputMode="decimal" defaultValue={String(Number(m.peso_inicial)).replace('.', ',')}
                   onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(m.peso_inicial)) editar(m, 'peso_inicial', v); }}
-                  inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+                  inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
                 <TextField size="small" type="text" inputMode="decimal" defaultValue={String(Number(m.peso_final)).replace('.', ',')}
                   onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(m.peso_final)) editar(m, 'peso_final', v); }}
-                  inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
-                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: G.rojo }}>{pctMerma(m.peso_inicial, m.peso_final).toFixed(1)}%</Typography>
-                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConMerma(m.peso_inicial, m.peso_final))}</Typography>
+                  inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
+                <Typography variant="body2" sx={{ textAlign: 'center', fontSize: '0.8rem', fontWeight: 800, color: G.rojo }}>{pctMerma(m.peso_inicial, m.peso_final).toFixed(1)}%</Typography>
+                <Typography variant="body2" sx={{ textAlign: 'center', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConMerma(m.peso_inicial, m.peso_final))}</Typography>
                 <IconButton size="small" onClick={() => setABorrar({ id: m.id, nombre: m.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -319,7 +318,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
               if (e.relatedTarget && nuevaCompleta) agregar();
             }}>
           {/* Fila nueva */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 100px 130px 36px', gap: 1, px: 0.5, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <Box />
             <TextField size="small" placeholder="Ej: Pelada, Cepillada…" value={nuevo.nombre}
               onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
@@ -327,14 +326,14 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
               inputProps={{ style: { fontSize: '0.8rem' } }} />
             <TextField size="small" type="text" inputMode="decimal" placeholder="1000" value={nuevo.peso_inicial}
               onChange={e => setNuevo(n => ({ ...n, peso_inicial: sanitizeDecimal(e.target.value) }))}
-              inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
+              inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
             <TextField size="small" type="text" inputMode="decimal" placeholder="930" value={nuevo.peso_final}
               onChange={e => setNuevo(n => ({ ...n, peso_final: sanitizeDecimal(e.target.value) }))}
-              inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
-            <Typography variant="caption" sx={{ textAlign: 'right', color: G.rojo, fontWeight: 700 }}>
+              inputProps={{ style: { textAlign: 'center', fontSize: '0.8rem' } }} />
+            <Typography variant="body2" sx={{ textAlign: 'center', fontSize: '0.8rem', color: G.rojo, fontWeight: 800 }}>
               {Number(nuevo.peso_inicial) > 0 && Number(nuevo.peso_final) > 0 ? `${pctMerma(nuevo.peso_inicial, nuevo.peso_final).toFixed(1)}%` : '—'}
             </Typography>
-            <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>
+            <Typography variant="body2" sx={{ textAlign: 'center', fontSize: '0.8rem', fontWeight: 800 }}>
               {Number(nuevo.peso_final) > 0 ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
             </Typography>
             {/* Sin botón "+": la fila se guarda sola al completarla y salir (Diego 11/11: "¿para qué usaría el +?").
