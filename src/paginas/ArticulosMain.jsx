@@ -882,9 +882,13 @@ export default function ArticulosMain(props) {
     };
     window.addEventListener('recetas:bulk-deleted', handler);
     window.addEventListener('recetas:bulk-added', handler);
+    // Crear/editar/borrar una merma recalcula en el servidor las recetas que la usan:
+    // sin esto la tabla seguía mostrando el costo viejo hasta abrir y cerrar la receta.
+    window.addEventListener('insumo:mermas-changed', handler);
     return () => {
       window.removeEventListener('recetas:bulk-deleted', handler);
       window.removeEventListener('recetas:bulk-added', handler);
+      window.removeEventListener('insumo:mermas-changed', handler);
     };
   }, [activeBizId, queryClient]);
 
