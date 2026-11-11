@@ -884,11 +884,23 @@ export default function ArticulosMain(props) {
     window.addEventListener('recetas:bulk-added', handler);
     // Crear/editar/borrar una merma recalcula en el servidor las recetas que la usan:
     // sin esto la tabla seguía mostrando el costo viejo hasta abrir y cerrar la receta.
-    window.addEventListener('insumo:mermas-changed', handler);
+    // Se piden SOLO los artículos afectados por ese insumo (directo o vía elaborados) y se
+    // mezclan con lo que ya había — no se recarga la tabla entera (navegación fluida).
+    const onMermas = async (e) => {
+      const insumoId = Number(e?.detail?.insumoId);
+      if (!Number.isFinite(insumoId) || insumoId <= 0) return handler();
+      try {
+        const res = await RecetasAPI.getCostos(Number(activeBizId), { insumoId });
+        if (res?.costos) setRecetasCostos(prev => ({ ...prev, ...res.costos }));
+      } catch (err) {
+        console.warn('[insumo:mermas-changed] refetch parcial falló:', err.message);
+      }
+    };
+    window.addEventListener('insumo:mermas-changed', onMermas);
     return () => {
       window.removeEventListener('recetas:bulk-deleted', handler);
       window.removeEventListener('recetas:bulk-added', handler);
-      window.removeEventListener('insumo:mermas-changed', handler);
+      window.removeEventListener('insumo:mermas-changed', onMermas);
     };
   }, [activeBizId, queryClient]);
 
