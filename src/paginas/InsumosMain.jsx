@@ -1791,7 +1791,7 @@ export default function InsumosMain() {
         <div id="insumos-scroll" ref={tourTablaRef} style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
             puestosTop20={puestosTop20Insumos}
-            branches={activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
+            branches={!isStaff && activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}
             rows={tableRowsFiltrados}
             loading={false}

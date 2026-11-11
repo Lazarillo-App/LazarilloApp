@@ -1451,7 +1451,7 @@ export function ComprasDetalleContenido({
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
 
-          {onCambiarInsumo && (
+          {onCambiarInsumo && !isStaff && (
             <RankingChip
               ranking={ranking}
               loading={rankingLoading}
@@ -1584,7 +1584,7 @@ export function ComprasDetalleContenido({
       {/* ───────── Franja de KPI / gráfico ─────────
           Reemplaza a los tres chips de totales. El switch de la derecha cambia
           números por evolución sin sumar altura: los dos modos miden casi lo mismo. */}
-      {!isLoading && itemsVisibles.length > 0 && (
+      {!isStaff && !isLoading && itemsVisibles.length > 0 && (
         <Box sx={{
           border: '1px solid', borderColor: 'divider', borderRadius: 2,
           bgcolor: 'action.hover', display: 'flex', flexWrap: 'wrap', alignItems: 'stretch',
@@ -1742,7 +1742,7 @@ export function ComprasDetalleContenido({
       )}
 
       {/* Chip de bonificación: pasa a su propia línea, alineado a la derecha */}
-      {!isLoading && !bonifLoading && bonif && (
+      {!isStaff && !isLoading && !bonifLoading && bonif && (
         <Stack direction="row" alignItems="center">
           <Box sx={{ flex: 1 }} />
           <Box ref={chipRef} sx={{ display: 'inline-flex' }}>
@@ -1814,13 +1814,13 @@ export function ComprasDetalleContenido({
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>
+                {!isStaff && <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>}
                 <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
                 {showBizColumn && <TableCell sx={{ fontWeight: 700 }}>Negocio</TableCell>}
                 {showBranchColumn && <TableCell sx={{ fontWeight: 700 }}>Sucursal</TableCell>}
                 <TableCell align="right" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+                {!isStaff && <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>}
+                {!isStaff && <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1868,7 +1868,7 @@ export function ComprasDetalleContenido({
                 return (
                   <React.Fragment key={i}>
                     {/* Banda de encabezado del grupo bonificado (spec §5.5) */}
-                    {esPrimeraDelGrupo && grupo && (
+                    {!isStaff && esPrimeraDelGrupo && grupo && (
                       <TableRow sx={{ bgcolor: AMBER.bg }}>
                         <TableCell colSpan={colSpanTotal} sx={{ py: 0.5, borderBottom: 'none' }}>
                           <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.5}>
@@ -1897,7 +1897,7 @@ export function ComprasDetalleContenido({
                       }}
                     >
                       <TableCell>{fmtFecha(it.fecha)}</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      {!isStaff && <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                         {/* El comprobante es el vínculo a la factura y el proveedor a su ficha, como en
                             Detalle de compras (Diego 06/11/2026: sin botón "ver"). */}
                         {!isStaff && it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
@@ -1907,7 +1907,7 @@ export function ComprasDetalleContenido({
                             {it.factura ?? it.comprob ?? it.referencia ?? '-'}
                           </Box>
                         ) : (it.factura ?? it.comprob ?? it.referencia ?? '-')}
-                      </TableCell>
+                      </TableCell>}
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
                         {!isStaff && (it.proveedor_nombre ?? it.proveedor) && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
                           <Box component="span" role="button" title="Ver la ficha del proveedor"
@@ -1948,7 +1948,7 @@ export function ComprasDetalleContenido({
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                      {!isStaff && <TableCell align="right" sx={{ color: 'text.secondary' }}>
                         {esBonificada ? (
                           <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
                             <span style={{ color: '#94a3b8' }}>$ 0,00</span>
@@ -1960,13 +1960,13 @@ export function ComprasDetalleContenido({
                             </Box>
                           </Stack>
                         ) : (it.precio ? fmtMoney(it.precio) : '-')}
-                      </TableCell>
-                      <TableCell align="right" sx={{
+                      </TableCell>}
+                      {!isStaff && <TableCell align="right" sx={{
                         fontWeight: 600,
                         color: esBonificada ? AMBER.strong : branchColor,
                       }}>
                         {fmtMoney(it.precio_total ?? it.importe)}
-                      </TableCell>
+                      </TableCell>}
                     </TableRow>
                   </React.Fragment>
                 );

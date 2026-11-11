@@ -24,6 +24,7 @@ import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
 import { InsumoNuevoModal } from '@/componentes/configuracion/ABMModals';
 import { downwardMenuProps } from '@/utils/menuProps';
+import { useAccess } from '@/context/AccessContext';
 
 /* ════════════════════════════════════════
    FILA DE INGREDIENTE
@@ -59,6 +60,9 @@ export default function ItemRow({
   rendimiento = 1,
   onInsumoCreated,
 }) {
+  // Staff: nada con valores de plata (usuaria 10/11): sin $/unidad, sin costo de la línea, sin precios
+  // en el buscador ni el tipo de costo. Cantidad, unidad, merma y notas quedan igual.
+  const { isStaff: sinPlata } = useAccess() || {};
   const [search, setSearch] = useState('');
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
   const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
@@ -552,7 +556,7 @@ export default function ItemRow({
                 {/* Precio + unidad base — siempre visible cuando hay insumo seleccionado.
                     Si no hay precio cargado (insumo sin compras), muestra solo la unidad
                     en gris para que el contexto de la fila siga siendo claro. */}
-                {(item.supplyId || item.articleRefId) && (() => {
+                {!sinPlata && (item.supplyId || item.articleRefId) && (() => {
                   const unidadStr = item.supplyMedida || 'u';
                   // Para item-artículo: costo del artículo con jerarquía (costoTotal receta > costo > precio)
                   const precioArt = item.articleRefId
@@ -759,7 +763,7 @@ export default function ItemRow({
                         <Typography variant="body2" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.8rem', flexShrink: 0, ml: 1 }}>
                           {(() => {
                             const p = Number(ins.precio ?? ins.price ?? ins.precio_venta) || 0;
-                            return p > 0 ? `$${fmt(p)}` : '—';
+                            return sinPlata ? '' : (p > 0 ? `$${fmt(p)}` : '—');
                           })()}
                         </Typography>
                       </Box>
@@ -833,7 +837,7 @@ export default function ItemRow({
                               : '';   // sin rendimiento: costo total, sin sufijo de unidad
                             return (
                               <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a', fontSize: '0.8rem' }}>
-                                {valor > 0 ? `$${fmt(valor)}${etiqueta}` : ''}
+                                {!sinPlata && valor > 0 ? `$${fmt(valor)}${etiqueta}` : ''}
                               </Typography>
                             );
                           }
@@ -859,7 +863,7 @@ export default function ItemRow({
                               )}
                               <Typography variant="body2" fontWeight={700}
                                 sx={{ color: colorPrecio, fontSize: '0.8rem' }}>
-                                {p > 0 ? `$${fmt(p)}` : '—'}
+                                {sinPlata ? '' : (p > 0 ? `$${fmt(p)}` : '—')}
                               </Typography>
                             </>
                           );
@@ -976,7 +980,7 @@ export default function ItemRow({
         </Select>
 
         {/* ── $ total (unitario × cantidad) ── */}
-        {(() => {
+        {sinPlata ? <Box /> : (() => {
           // Insumo simple SIN precio todavía (nunca se compró, sin precio_ref) — en vez
           // de mostrar "—" sin más, dejar cargar un precio ACÁ MISMO. Se guarda en el
           // insumo (precio_ref), no solo en esta fila: vale para cualquier receta que
@@ -1068,7 +1072,7 @@ export default function ItemRow({
               const total = (Number(pSin) || 0) * (Number(item.cantidad) || 0);
               return (
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: total > 0 ? colorSinPromo : 'text.disabled', whiteSpace: 'nowrap' }}>
-                  {total > 0 ? `$${fmt(total)}` : '—'}
+                  {sinPlata ? '' : (total > 0 ? `$${fmt(total)}` : '—')}
                 </Typography>
               );
             })() : (
@@ -1228,7 +1232,7 @@ export default function ItemRow({
           </Box>
 
           {/* Tipo costo */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          {!sinPlata && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>Tipo:</Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {TIPO_COSTO_OPTS.map(o => (
@@ -1247,7 +1251,7 @@ export default function ItemRow({
                 />
               ))}
             </Box>
-          </Box>
+          </Box>}
 
           {/* Cerrar */}
           <Box sx={{ ml: 'auto' }}>

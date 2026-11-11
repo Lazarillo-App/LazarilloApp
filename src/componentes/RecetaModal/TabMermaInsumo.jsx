@@ -12,8 +12,11 @@ import { sanitizeDecimal } from '@/utils/decimales';
 import { canonicalUnit, fmt, PRIMARY } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
+import { useAccess } from '@/context/AccessContext';
 
 export default function TabMermaInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5, todosInsumos = [] }) {
+  // Staff: nada con valores de plata (usuaria 10/11). Pesos, %, contenidos y unidades quedan.
+  const { isStaff: sinPlata } = useAccess() || {};
   const [lista, setLista] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -169,15 +172,15 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
           <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Unidad de medida del insumo</Typography>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{unidad}</Typography>
         </Box>
-        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 200 }}>
+        {!sinPlata && <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 200 }}>
           <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Precio de compra ($/{unidad})</Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>${fmt(precioCompra)}</Typography>
-        </Box>
+          <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right' }}>{sinPlata ? '' : `$${fmt(precioCompra)}`}</Typography>
+        </Box>}
       </Stack>
 
       {/* Header columnas */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 100px 75px 130px 36px', gap: 1, px: 0.5, mb: 0.5 }}>
-        {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', `Precio c/merma`, ''].map((h, i) => (
+        {['Default', 'Nombre de la merma', 'Peso inicial', 'Peso final', '% Merma', sinPlata ? '' : `Precio c/merma`, ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.66rem', textAlign: i >= 2 && i <= 5 ? 'right' : (i === 0 ? 'center' : 'left') }}>{h}</Typography>
         ))}
       </Box>
@@ -198,7 +201,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
             inputProps={{ style: { textAlign: 'right', fontSize: '0.78rem', width: 40 } }} />
           <Typography variant="caption">%</Typography>
         </Box>
-        <Typography variant="body2" sx={{ textAlign: 'right', fontWeight: 700, color: '#111' }}>${fmt(precioConGlobal)}</Typography>
+        <Typography variant="body2" sx={{ textAlign: 'right', fontWeight: 700, color: '#111' }}>{sinPlata ? '' : `$${fmt(precioConGlobal)}`}</Typography>
         <Box />
       </Box>
 
@@ -226,7 +229,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
                   onBlur={e => { const v = sanitizeDecimal(e.target.value); if (Number(v) > 0 && Number(v) !== Number(m.peso_final)) editar(m, 'peso_final', v); }}
                   inputProps={{ style: { textAlign: 'right', fontSize: '0.8rem' } }} />
                 <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: G.rojo }}>{pctMerma(m.peso_inicial, m.peso_final).toFixed(1)}%</Typography>
-                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>${fmt(precioConMerma(m.peso_inicial, m.peso_final))}</Typography>
+                <Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.8rem', fontWeight: 800, color: '#111' }}>{sinPlata ? '' : `$${fmt(precioConMerma(m.peso_inicial, m.peso_final))}`}</Typography>
                 <IconButton size="small" onClick={() => setABorrar({ id: m.id, nombre: m.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -251,7 +254,7 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
               {Number(nuevo.peso_inicial) > 0 && Number(nuevo.peso_final) > 0 ? `${pctMerma(nuevo.peso_inicial, nuevo.peso_final).toFixed(1)}%` : '—'}
             </Typography>
             <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>
-              {Number(nuevo.peso_final) > 0 ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
+              {Number(nuevo.peso_final) > 0 && !sinPlata ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
             </Typography>
             <IconButton size="small" onClick={agregar} disabled={guardando || !nuevo.nombre.trim() || !(Number(nuevo.peso_inicial) > 0) || !(Number(nuevo.peso_final) > 0)} sx={{ color: PRIMARY }}>
               <AddIcon sx={{ fontSize: 18 }} />

@@ -14,6 +14,7 @@ import { showConfirm } from '@/servicios/appConfirm';
 import { PRIMARY } from './helpers';
 import ModalAplicarMermaDefault from './ModalAplicarMermaDefault';
 import { downwardMenuProps } from '@/utils/menuProps';
+import { useAccess } from '@/context/AccessContext';
 
 const NUEVA_MERMA = '__nueva__';
 
@@ -21,6 +22,8 @@ const NUEVA_MERMA = '__nueva__';
    TAB USO — recetas donde se usa el insumo
 ════════════════════════════════════════ */
 export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperdicioGlobalPct = 5, onReemplazar, onAbrirReceta }) {
+  // Staff: nada con valores de plata (usuaria 10/11). Pesos, %, contenidos y unidades quedan.
+  const { isStaff: sinPlata } = useAccess() || {};
   const [uso, setUso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mermas, setMermas] = useState([]);
@@ -524,7 +527,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
                         ? `Merma: ${hayPesos ? `${pctMermaPreview(bruto, neto).toFixed(1)}%` : '—'}`
                         : 'Sin precio de referencia cargado para este insumo'}
                     </Typography>
-                    {precioCompra > 0 && (
+                    {precioCompra > 0 && !sinPlata && (
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {hayPesos
                           ? `$ ${precioConMermaPreview(bruto, neto).toLocaleString('es-AR', { maximumFractionDigits: 2 })} / ${unidadBase}`

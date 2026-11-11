@@ -2,6 +2,7 @@
 import { Box, Typography, Chip, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { PRIMARY, fmt, fmtDate, getAlertaColor, canonicalUnit } from './helpers';
+import { useAccess } from '@/context/AccessContext';
 
 /**
  * Fila de resultado de búsqueda (insumo). Compartida entre el buscador de
@@ -11,6 +12,8 @@ import { PRIMARY, fmt, fmtDate, getAlertaColor, canonicalUnit } from './helpers'
  * @param {object} opts - { alertaSemanas, onClick, keySuffix, selected }
  */
 export default function FilaResultadoInsumo({ ins, alertaSemanas, onClick, selected = false }) {
+  // Staff: nada con valores de plata (usuaria 10/11). Pesos, %, contenidos y unidades quedan.
+  const { isStaff: sinPlata } = useAccess() || {};
   const esElab = ins.es_elaborado === true || ins.tiene_receta === true;
   return (
     <Box
@@ -54,7 +57,7 @@ export default function FilaResultadoInsumo({ ins, alertaSemanas, onClick, selec
               : '';
             return (
               <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a', fontSize: '0.8rem' }}>
-                {valor > 0 ? `$${fmt(valor)}${etiqueta}` : ''}
+                {!sinPlata && valor > 0 ? `$${fmt(valor)}${etiqueta}` : ''}
               </Typography>
             );
           }
@@ -72,7 +75,7 @@ export default function FilaResultadoInsumo({ ins, alertaSemanas, onClick, selec
                 </Tooltip>
               )}
               <Typography variant="body2" fontWeight={700} sx={{ color: colorPrecio, fontSize: '0.8rem' }}>
-                {p > 0 ? `$${fmt(p)}` : '—'}
+                {sinPlata ? '' : (p > 0 ? `$${fmt(p)}` : '—')}
               </Typography>
             </>
           );

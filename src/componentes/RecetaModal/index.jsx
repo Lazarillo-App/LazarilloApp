@@ -2179,7 +2179,7 @@ export default function RecetaModal({
             </Stack>
             {modoInsumo && entradaElegida && (
               <Stack direction="row" alignItems="center" spacing={1} sx={{ alignSelf: 'flex-end' }}>
-                {tab === 'compras' && onSaltarAInsumo && (
+                {tab === 'compras' && onSaltarAInsumo && !isStaff && (
                   <RankingChip
                     ranking={comprasRanking}
                     loading={comprasRankingLoading}
@@ -2883,8 +2883,8 @@ export default function RecetaModal({
                     gap: '4px', px: 0.5, mb: 0.5,
                   }}>
                     {(promoMode
-                      ? ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '__SIN_PROMO__', '', 'Observaciones', '', '']
-                      : ['', 'Ingrediente', 'Cantidad', 'Unidad', '$ Costo Total', '', 'Observaciones', '', '']
+                      ? ['', 'Ingrediente', 'Cantidad', 'Unidad', isStaff ? '' : '$ Costo Total', isStaff ? '' : '__SIN_PROMO__', '', 'Observaciones', '', '']
+                      : ['', 'Ingrediente', 'Cantidad', 'Unidad', isStaff ? '' : '$ Costo Total', '', 'Observaciones', '', '']
                     ).map((col, i) => {
                       if (col === '__SIN_PROMO__') {
                         const listaActiva = listaSinPromo
@@ -3101,7 +3101,7 @@ export default function RecetaModal({
 
                   <Divider sx={{ mb: 2 }} />
 
-                  {costoGuardadoDesactualizado && (
+                  {costoGuardadoDesactualizado && !isStaff && (
                     <Box sx={{
                       display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
                       bgcolor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 1.5,

@@ -16,8 +16,11 @@ import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { EnvasesCompraFicha } from '@/componentes/gestion/FacturaEnRecetas';
+import { useAccess } from '@/context/AccessContext';
 
 export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoData, recetaInfo = null }) {
+  // Staff: nada con valores de plata (usuaria 10/11). Pesos, %, contenidos y unidades quedan.
+  const { isStaff: sinPlata } = useAccess() || {};
   const [lista, setLista] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -210,7 +213,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
         Definí medidas propias de este insumo (ej: "Cucharada sopera = 15 gr"). Luego las usás como unidad en la receta.
       </Typography>
       {/* Info del insumo: base de cálculo según el caso (elaborado con peso / simple medible) */}
-      {(() => {
+      {!sinPlata && (() => {
         const fmtAR = (n) => Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         // Caso elaborado con rendimiento en peso: mostrar costo por unidad de rendimiento y por peso
         if (recetaInfo?.esElaborado && Number(recetaInfo.rendimientoPeso) > 0 && Number(recetaInfo.cantidad) > 0) {
@@ -281,7 +284,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
                 <MenuItem value="kg">kg</MenuItem>
               </Select>
             </FormControl>
-            {precioRef > 0 && (() => {
+            {!sinPlata && precioRef > 0 && (() => {
               const cont = Number(String(envase.contenido).replace(',', '.')) || 0;
               const uCh = canonicalUnit(envase.unidad || 'ml');           // unidad chica (ml/gr)
               const uGr = (uCh === 'ml' || uCh === 'lt') ? 'lt'
@@ -315,7 +318,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
 
       {/* Header */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1.5fr 90px 90px 120px 90px', gap: 1, px: 1, mb: 0.5 }}>
-        {['Nombre', 'Contenido', 'Unidad', 'Costo', ''].map((h, i) => (
+        {['Nombre', 'Contenido', 'Unidad', sinPlata ? '' : 'Costo', ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.68rem' }}>{h}</Typography>
         ))}
       </Box>
@@ -339,7 +342,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
                 {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
               </Select>
               <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 700, color: PRIMARY }}>
-                {calcCosto(eq.contenido, eq.unidad) > 0 ? `$${fmt(calcCosto(eq.contenido, eq.unidad))}` : '—'}
+                {calcCosto(eq.contenido, eq.unidad) > 0 && !sinPlata ? `$${fmt(calcCosto(eq.contenido, eq.unidad))}` : '—'}
               </Typography>
               <IconButton size="small" onClick={() => setABorrar({ id: eq.id, nombre: eq.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                 <DeleteOutlineIcon sx={{ fontSize: 16 }} />
@@ -369,10 +372,10 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               {UNIDADES_EQ.map(u => <MenuItem key={u} value={u} sx={{ fontSize: '0.8rem' }}>{u}</MenuItem>)}
             </Select>
             <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
-              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
+              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 && !sinPlata ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
             <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.disabled', gridColumn: 'span 2' }}>
-              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
+              {calcCosto(nuevo.contenido, nuevo.unidad) > 0 && !sinPlata ? `$${fmt(calcCosto(nuevo.contenido, nuevo.unidad))}` : '—'}
             </Typography>
           </Box>
         </>

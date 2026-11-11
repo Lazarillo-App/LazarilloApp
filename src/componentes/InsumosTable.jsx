@@ -475,8 +475,11 @@ const InsumosTable = forwardRef(function InsumosTable({
   // Columnas FIJAS al inicio: check, código(.4fr), nombre(2fr), unidad(.35-.45fr), precio(.7fr)
   // Luego van las columnas reordenables (visibleCols)
   // Al final: branches dinámicas + acciones(.4fr)
-  const fixedStartElab = `${checkCol}.4fr 2fr .45fr .7fr`;
-  const fixedStartNoElab = `${checkCol}.4fr 2fr .35fr .7fr`;
+  // Staff: sin plata (usuaria 10/11) — la columna de precio queda en 0 de ancho y vacía (así no se
+  // corren los gridColumn de las filas de rubro).
+  const colPrecio = isStaff ? '0px' : '.7fr';
+  const fixedStartElab = `${checkCol}.4fr 2fr .45fr ${colPrecio}`;
+  const fixedStartNoElab = `${checkCol}.4fr 2fr .35fr ${colPrecio}`;
   const dynCols = visibleCols.map(c => c.width).join(' ');
   const fixedEnd = branches && branches.length > 1 ? `${branchExtraCols} .4fr` : '.4fr';
 
@@ -1038,9 +1041,11 @@ const InsumosTable = forwardRef(function InsumosTable({
             <div onClick={() => toggleSort("unidad")} className="col-sortable">
               U. medida {sortIcon("unidad")}
             </div>
+            {isStaff ? <div /> : (
             <div onClick={() => toggleSort("precio")} className="col-sortable">
               {precioHeaderLabel} {sortIcon("precio")}
             </div>
+            )}
 
             {/* Columnas reordenables (drag-and-drop) */}
             {visibleCols.map((col, colIdx) => {
@@ -1450,6 +1455,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   </div>
 
                   <div>{r.unidad_med || "-"}</div>
+                  {isStaff ? <div /> : (
                   <div
                     title={
                       r.precio_promedio
@@ -1463,6 +1469,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                       <span title="Diferencia >5% entre precio ref y promedio de compras" style={{ color: '#f59e0b', marginLeft: 3, fontSize: '0.75rem' }}>⚠</span>
                     )}
                   </div>
+                  )}
 
                   {isElaborados ? (
                     <>

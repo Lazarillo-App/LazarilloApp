@@ -54,6 +54,8 @@ export default function PieCostos({
   estaPorDebajo,
   pctCostoActual,
 }) {
+  // Staff: el pie es todo plata (costos, precio, sugerido): no se muestra (usuaria 10/11).
+  if (isStaff) return null;
   return (
     <Box sx={{ flexShrink: 0, px: 2.5, pt: 1.5 }}>
     <Box sx={{

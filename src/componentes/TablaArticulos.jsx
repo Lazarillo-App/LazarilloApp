@@ -276,8 +276,8 @@ function ColOrderModal({ open, cols, onSave, onClose }) {
 
 // Vista Staff (Fase 4): columnas fijas, no configurables — código/nombre/ventas
 // ya están siempre fijos fuera de colConfig (ver header/filas más abajo).
+// Staff: sin plata (usuaria 10/11): ni costo ni precio; ve ventas en unidades y la última modificación.
 const STAFF_COLS = [
-  { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
   { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
 ];
 
