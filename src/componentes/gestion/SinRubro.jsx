@@ -130,7 +130,7 @@ const sxCaja = { mx: 2, my: 1, borderRadius: 2, border: '1px solid #bae6fd', bgc
 // compra sin insumo → concepto, concepto → rubro (el mismo formulario del sector Conceptos).
 // Rubro de insumo: siempre el mismo concepto, o «depende de la compra» con varias opciones (Diego 07/11/2026,
 // ej. Vajilla: Reposición → 702 Vajilla M / Ítem nuevo → 514 Vajilla I). Con opciones, al cargar se pregunta.
-function EditorRubro({ it, maestros, etiquetasUsadas = [], onCerrar, onGuardado }) {
+function EditorRubro({ it, maestros, etiquetasUsadas = [], conceptoPorEtiqueta = {}, onCerrar, onGuardado }) {
   const e = it.editar;
   const previas = (e.alternativas ?? []).map((a) => ({ etiqueta: a.etiqueta, concepto: String(a.concepto) }));
   const [modo, setModo] = useState(previas.length >= 2 ? 'varios' : 'uno');
@@ -176,6 +176,11 @@ function EditorRubro({ it, maestros, etiquetasUsadas = [], onCerrar, onGuardado 
               <Autocomplete freeSolo size="small" disableClearable
                 options={etiquetasUsadas.filter((x) => !alts.some((o, i) => i !== k && o.etiqueta.trim().toLowerCase() === x.toLowerCase()))}
                 inputValue={a.etiqueta} onInputChange={(_, v) => cambiar(k, 'etiqueta', String(v ?? '').slice(0, 40))}
+                // Al elegir un nombre ya usado se completa su concepto (el más usado con ese nombre), si estaba vacío.
+                onChange={(_, v, motivo) => {
+                  const c = motivo === 'selectOption' && typeof v === 'string' ? conceptoPorEtiqueta[v] : null;
+                  if (c && !a.concepto) cambiar(k, 'concepto', String(c));
+                }}
                 slotProps={{ paper: { sx: { minWidth: 220 } } }}
                 renderInput={(p) => <TextField {...p} placeholder={k === 0 ? 'Ej. Reposición' : k === 1 ? 'Ej. Ítem nuevo' : 'Nombre'} />} />
               <BuscadorConcepto valor={a.concepto} maestros={maestros} placeholder="Concepto" onCambio={(v) => cambiar(k, 'concepto', v)} />
@@ -264,9 +269,9 @@ function CompraPorDecidir({ c, opciones, maestros, onVer, onResuelta }) {
   );
 }
 
-function Editor({ it, maestros, rubrosInsumo, etiquetasUsadas, onCerrar, onGuardado }) {
+function Editor({ it, maestros, rubrosInsumo, etiquetasUsadas, conceptoPorEtiqueta, onCerrar, onGuardado }) {
   const e = it.editar;
-  if (e.tipo === 'rubro-insumo') return <EditorRubro it={it} maestros={maestros} etiquetasUsadas={etiquetasUsadas} onCerrar={onCerrar} onGuardado={onGuardado} />;
+  if (e.tipo === 'rubro-insumo') return <EditorRubro it={it} maestros={maestros} etiquetasUsadas={etiquetasUsadas} conceptoPorEtiqueta={conceptoPorEtiqueta} onCerrar={onCerrar} onGuardado={onGuardado} />;
   return <EditorSimple it={it} maestros={maestros} rubrosInsumo={rubrosInsumo} onCerrar={onCerrar} onGuardado={onGuardado} />;
 }
 
@@ -412,7 +417,7 @@ export function SinRubroPanel() {
               const k = `${g.tipo}|${it.nombre}`;
               return (
                 <Item key={k} it={it} maestros={maestros} onVer={setVer} editando={editando === k} onEditar={() => setEditando(editando === k ? null : k)} onResuelta={recalcular}
-                  editor={<Editor key={k} it={it} maestros={maestros} rubrosInsumo={data.rubrosInsumo ?? []} etiquetasUsadas={data.etiquetasUsadas ?? []} onCerrar={() => setEditando(null)} onGuardado={guardado} />} />
+                  editor={<Editor key={k} it={it} maestros={maestros} rubrosInsumo={data.rubrosInsumo ?? []} etiquetasUsadas={data.etiquetasUsadas ?? []} conceptoPorEtiqueta={data.conceptoPorEtiqueta ?? {}} onCerrar={() => setEditando(null)} onGuardado={guardado} />} />
               );
             })}
           </Box>
