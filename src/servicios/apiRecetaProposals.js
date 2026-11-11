@@ -1,6 +1,7 @@
 // src/servicios/apiRecetaProposals.js
 // Vista Operación — Fase 3: bandeja de aprobación de recetas propuestas por Staff.
 import { httpBiz } from './apiBusinesses';
+import { vistaPreviaActiva } from './vistaPrevia';
 
 // GET /api/businesses/:businessId/receta-proposals?status=pending,in_revision
 export async function listarPropuestas(businessId, status = 'pending,in_revision') {
@@ -63,7 +64,8 @@ export async function marcarARevision(businessId, items, comment, asignadoA = nu
 // Jefe de cocina (Diego 11/11/2026): lo de su equipo que espera su OK.
 // GET /api/businesses/:businessId/receta-proposals/equipo
 export async function listarPropuestasEquipo(businessId) {
-  const resp = await httpBiz(`/receta-proposals/equipo`, { method: 'GET' }, businessId);
+  // En «Ver como › Jefe de cocina» el dueño ve todo lo que espera el OK de algún jefe.
+  const resp = await httpBiz(`/receta-proposals/equipo${vistaPreviaActiva() ? '?vista=jefe' : ''}`, { method: 'GET' }, businessId);
   if (!resp?.ok) throw new Error(resp?.error || 'Error obteniendo los cambios de tu equipo');
   return resp.proposals || [];
 }

@@ -151,7 +151,8 @@ export function AccessProvider({ children }) {
   const isAdmin = currentRole === 'admin';
   const isStaff = currentRole === 'staff';
   // Jefe de cocina: subrol de Staff (Diego 11/11/2026). Ve precios y % de costo y da el OK a su equipo.
-  const isJefe = isStaff && !verComoActivo && currentBusiness?.subrol === 'jefe';
+  // Con «Ver como › Jefe de cocina» el dueño ve la vista del jefe (Diego 11/11/2026).
+  const isJefe = isStaff && (verComoActivo ? verComoActivo.subrol === 'jefe' : currentBusiness?.subrol === 'jefe');
 
   // Setear negocio activo en backend + disparar evento
   const switchToBusiness = useCallback(async (bizId) => {
