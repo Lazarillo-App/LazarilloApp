@@ -383,6 +383,21 @@ export default function RecetaModal({
     setGuardarMermaPendiente(t => t + 1);
     return copia;
   };
+  // Lo mismo con «+ Crear equivalencia» (Diego 11/11/2026): la equivalencia nueva pasa a ser la
+  // unidad de esa fila (reemplaza la que tenía) y se guarda sola (mismo disparador que la merma).
+  const eqPendienteRef = useRef(null);   // { supplyId, index, antes:Set(nombres), nueva, hasta }
+  const aplicarEqPendiente = (lista) => {
+    const pend = eqPendienteRef.current;
+    if (!pend?.nueva || Date.now() > pend.hasta) return lista;
+    const idx = (lista[pend.index] && String(lista[pend.index].supplyId) === pend.supplyId)
+      ? pend.index
+      : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
+    if (idx < 0 || lista[idx].unidad === pend.nueva) return lista;
+    const copia = lista.slice();
+    copia[idx] = { ...lista[idx], unidad: pend.nueva };
+    setGuardarMermaPendiente(t => t + 1);
+    return copia;
+  };
 
   const pushElaborado = useCallback((item) => {
     setElaboradosStack(prev => [...prev, item]);
@@ -1028,7 +1043,7 @@ export default function RecetaModal({
           setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
           setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
           setPromoPagas(rec.promo_pagas != null ? String(rec.promo_pagas) : '');
-          setItems(aplicarMermaPendiente((rec.items || []).map(it => {
+          setItems(aplicarEqPendiente(aplicarMermaPendiente((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
             const unidadOriginal = it.unidad || supplyMedidaRaw;
@@ -1069,7 +1084,7 @@ export default function RecetaModal({
               })(),
               updatedAt: it.updated_at || it.updatedAt || null,
             };
-          })));
+          }))));
 
           // Costos de sub-recetas (elaborados) en una sola llamada; si falla, se piden de a 4
           const elaboradosIds = (rec.items || [])
@@ -2206,14 +2221,21 @@ export default function RecetaModal({
       insumoEquivalenciasList(insId, insumoBizId)
         .then(r => {
           const eqs = Array.isArray(r?.data) ? r.data : [];
-          setItems(prev => prev.map(it => {
+          // Equivalencia creada con «+ Crear equivalencia» desde una fila: la primera nueva
+          // queda como unidad de esa fila (una sola vez, válido 60 s).
+          const pend = eqPendienteRef.current;
+          if (pend && pend.supplyId === String(insId) && !pend.nueva) {
+            const nueva = eqs.find(e => e?.nombre && !pend.antes.has(e.nombre));
+            if (nueva) { pend.nueva = nueva.nombre; pend.hasta = Date.now() + 60000; }
+          }
+          setItems(prev => aplicarEqPendiente(prev.map(it => {
             if (String(it.supplyId) !== String(insId)) return it;
             return {
               ...it,
               equivalencias: eqs,
               unidad: resolverUnidadConEquivalencia(it.unidad, eqs, it.supplyMedida),
             };
-          }));
+          })));
         })
         .catch(() => { });
     };
@@ -3313,6 +3335,19 @@ export default function RecetaModal({
                                 });
                               }}
                               onCrearEquivalencia={async (it) => {
+                                // Recordar la fila: la equivalencia que se cree allá queda como su unidad al volver
+                                eqPendienteRef.current = {
+                                  supplyId: String(it.supplyId),
+                                  index: realIndex,
+                                  antes: new Set((it.equivalencias || []).map(e => e?.nombre).filter(Boolean)),
+                                  nueva: null, hasta: 0,
+                                };
+                                // Las de la fila pueden no estar cargadas todavía: se toman las del servidor
+                                // para no confundir una equivalencia vieja con la nueva.
+                                try {
+                                  const r = await insumoEquivalenciasList(it.supplyId, insumoBizId);
+                                  (Array.isArray(r?.data) ? r.data : []).forEach(e => e?.nombre && eqPendienteRef.current?.antes.add(e.nombre));
+                                } catch { /* sigue con las de la fila */ }
                                 await autoSave(); // guardar la receta antes de bajar al insumo
                                 const ins = insumos.find(i => String(i.id) === String(it.supplyId));
                                 pushElaborado({
