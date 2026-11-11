@@ -3,7 +3,7 @@ import React from 'react';
 import {
   Grid, Stack, Tabs, Tab, Box, Button, Typography, Alert,
   TextField, InputAdornment, Chip, CircularProgress, Divider,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete,
 } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -316,6 +316,9 @@ export default function ConfigInsumosTab({
   setAlertasLoading,
   setAlertasInsumos,
   setAlertasTotal,
+  alertasRubros = [],
+  setAlertasRubros,
+  saveRubrosExcluidos,
   onNuevoInsumo,
   onUploadInsumos,
   onUploadInsumosRubros,
@@ -347,6 +350,13 @@ export default function ConfigInsumosTab({
     return [...map.entries()].map(([rubro, insumos]) => ({ rubro, insumos }));
   }, [alertasInsumos]);
 
+  // Rubros excluidos de la alerta: opciones = rubros de insumos usados en recetas;
+  // un excluido que ya no está en ninguna receta igual se muestra (por su código).
+  const rubrosExcluidosValor = React.useMemo(() => {
+    const porCodigo = new Map((alertasRubros || []).map(r => [String(r.codigo), r]));
+    return (config.alertas_rubros_excluidos || []).map(c => porCodigo.get(String(c)) || { codigo: String(c), nombre: `Rubro ${c}`, insumos: 0 });
+  }, [alertasRubros, config.alertas_rubros_excluidos]);
+
   const handleConfirm = () => {
     if (!confirmDlg) return;
     if (confirmDlg.type === 'costo_ideal') {
@@ -364,7 +374,7 @@ export default function ConfigInsumosTab({
   const refreshAlertas = () => {
     setAlertasLoading(true);
     RecetasAPI.getAlertas(Number(businessId))
-      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
+      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); setAlertasRubros?.(res?.rubrosEnRecetas || []); })
       .catch(() => { })
       .finally(() => setAlertasLoading(false));
   };
@@ -630,6 +640,46 @@ export default function ConfigInsumosTab({
                       {saving.compras_alerta_semanas ? 'Guardando…' : 'Guardar'}
                     </Button>
                   </Stack>
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                {/* Rubros que no alertan (ej. Especias: se compran cada muchos meses) */}
+                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
+                  <Stack spacing={0.5} sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Rubros sin alerta
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
+                      Rubros que se compran cada mucho tiempo (por ejemplo, especias). Sus insumos no marcan ⚠ en las recetas ni aparecen en la lista de abajo.
+                    </Typography>
+                  </Stack>
+                  <Box sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
+                    <Autocomplete
+                      multiple size="small" disableCloseOnSelect
+                      options={alertasRubros || []}
+                      value={rubrosExcluidosValor}
+                      isOptionEqualToValue={(o, v) => String(o.codigo) === String(v.codigo)}
+                      getOptionLabel={(o) => o?.nombre || ''}
+                      onChange={(_, nuevos) => saveRubrosExcluidos?.(nuevos.map(r => String(r.codigo)))}
+                      disabled={!!saving.alertas_rubros_excluidos}
+                      noOptionsText="No hay rubros en las recetas"
+                      renderOption={(props, o) => (
+                        <li {...props} key={o.codigo}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%', fontSize: '0.85rem' }}>
+                            <span>{o.nombre}</span>
+                            <Typography component="span" variant="caption" color="text.secondary">
+                              {o.insumos} insumo{o.insumos === 1 ? '' : 's'}
+                            </Typography>
+                          </Stack>
+                        </li>
+                      )}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Rubros sin alerta"
+                          placeholder={rubrosExcluidosValor.length ? '' : 'Elegí uno o más rubros'} />
+                      )}
+                    />
+                  </Box>
                 </Stack>
               </CardBody>
             </Card>

@@ -129,6 +129,8 @@ export default function ConfiguracionMain() {
   const [alertasInsumos, setAlertasInsumos] = useState([]);
   const [alertasLoading, setAlertasLoading] = useState(false);
   const [alertasTotal, setAlertasTotal] = useState(0);
+  // Rubros de los insumos usados en recetas (para elegir cuáles no alertan)
+  const [alertasRubros, setAlertasRubros] = useState([]);
   const [alertaExpanded, setAlertaExpanded] = useState(null);
   const [recetaModalData, setRecetaModalData] = useState(null);
 
@@ -191,6 +193,7 @@ export default function ConfiguracionMain() {
           redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
           redondeo_mostrar_modal: cfg.redondeo_mostrar_modal ?? localRedondeo?.mostrarModal ?? true,
           notificar_alta_articulo_insumo: cfg.notificar_alta_articulo_insumo ?? true,
+          alertas_rubros_excluidos: Array.isArray(cfg.alertas_rubros_excluidos) ? cfg.alertas_rubros_excluidos.map(String) : [],
         });
         if (cfg.redondeo_precios !== undefined) {
           const local = getRedondeoConfig(businessId);
@@ -241,10 +244,32 @@ export default function ConfiguracionMain() {
     if (tab !== 1 || subTabIns !== 0 || !businessId) return;
     setAlertasLoading(true);
     RecetasAPI.getAlertas(Number(businessId))
-      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
+      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); setAlertasRubros(res?.rubrosEnRecetas || []); })
       .catch(() => setAlertasInsumos([]))
       .finally(() => setAlertasLoading(false));
   }, [tab, subTabIns, businessId]);
+
+  // ── Rubros de insumo que no generan la alerta de compras (se guarda al elegir) ──
+  const saveRubrosExcluidos = useCallback(async (lista) => {
+    if (!businessId) return;
+    const limpia = [...new Set((lista || []).map(String))];
+    setConfig(c => ({ ...c, alertas_rubros_excluidos: limpia }));
+    setSaving(s => ({ ...s, alertas_rubros_excluidos: true }));
+    try {
+      await BusinessesAPI.update(businessId, { props: { alertas_rubros_excluidos: limpia } });
+      const res = await RecetasAPI.getAlertas(Number(businessId)).catch(() => null);
+      if (res) {
+        setAlertasInsumos(res.insumos || []);
+        setAlertasTotal(res.total || 0);
+        setAlertasRubros(res.rubrosEnRecetas || []);
+      }
+      notify('Rubros sin alerta guardados');
+    } catch (e) {
+      notify('Error al guardar: ' + (e.message || e), 'error');
+    } finally {
+      setSaving(s => ({ ...s, alertas_rubros_excluidos: false }));
+    }
+  }, [businessId, notify]);
 
   // ── Guardar config ──
   const saveConfig = useCallback(async (key) => {
@@ -579,6 +604,9 @@ export default function ConfiguracionMain() {
               setAlertasLoading={setAlertasLoading}
               setAlertasInsumos={setAlertasInsumos}
               setAlertasTotal={setAlertasTotal}
+              alertasRubros={alertasRubros}
+              setAlertasRubros={setAlertasRubros}
+              saveRubrosExcluidos={saveRubrosExcluidos}
               onNuevoInsumo={() => setShowNuevoInsumo(true)}
               onUploadInsumos={() => setShowUploadInsumos(true)}
               onOpenReceta={rec => setRecetaModalData({ id: rec.articleId, nombre: rec.nombre })}
