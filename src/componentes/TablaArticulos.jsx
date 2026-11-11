@@ -30,6 +30,7 @@ import { useConfig } from '@/context/ConfigContext';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
 import { useOrganization } from '@/context/OrganizationContext';
+import { useAccess } from '@/context/AccessContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
@@ -280,6 +281,13 @@ const STAFF_COLS = [
   { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
   { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
 ];
+// Jefe de cocina (subrol de Staff, Diego 11/11/2026): además ve precio y % de costo, sin editarlos.
+const STAFF_COLS_JEFE = [
+  { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
+  { id: 'precio', label: 'Precio', width: '.35fr', visible: true },
+  { id: 'rentabilidad', label: 'Costo %', width: '250px', visible: true },
+  { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
+];
 
 /* ---------------- componente principal ---------------- */
 /* Tooltip del ⚠ de la fila: qué insumos de la receta no se compran hace rato y desde cuándo.
@@ -442,6 +450,7 @@ export default function TablaArticulos({
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
   const [promoIds, setPromoIds] = useState(() => new Set());
   const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
+  const { isJefe } = useAccess() || {};
 
   // ── Definición canónica de columnas reordenables ──
   // "Últ. modificación" NO va acá a propósito: es una columna exclusiva de
@@ -492,7 +501,7 @@ export default function TablaArticulos({
   }, [agrupacionSeleccionada]);
 
   const visibleCols = useMemo(() => {
-    if (isStaff) return STAFF_COLS;
+    if (isStaff) return isJefe ? STAFF_COLS_JEFE : STAFF_COLS;
     const cols = colConfig.filter(c => c.visible);
     if (!estaEnPromociones) return cols;
     // Inyectar "$ Sin Promo" justo después de "costo" (o al inicio si no está)
@@ -500,7 +509,7 @@ export default function TablaArticulos({
     const sinPromoCol = { id: 'sinPromo', label: '$ Sin Promo', width: '.35fr', visible: true };
     if (idx === -1) return [sinPromoCol, ...cols];
     return [...cols.slice(0, idx + 1), sinPromoCol, ...cols.slice(idx + 1)];
-  }, [colConfig, estaEnPromociones, isStaff]);
+  }, [colConfig, estaEnPromociones, isStaff, isJefe]);
 
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
@@ -2486,7 +2495,7 @@ export default function TablaArticulos({
                     objetivo={objetivoArticulo}
                     supera={superaObjetivo}
                     individual={tieneObjetivoIndividual(id)}
-                    onFijar={(nuevoObj) => fijarObjetivoEnCostoActual(id, costoPct)}
+                    onFijar={isStaff ? undefined : (nuevoObj) => fijarObjetivoEnCostoActual(id, costoPct)}
                   />
                 </div>
               );
