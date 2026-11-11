@@ -32,6 +32,11 @@
 // MaxiRest al día siguiente de su fecha daba un falso "no tomó lo último"): avisa si la PC subió
 // lo que lee Recetas (12/25/80) y Recetas no pasó después (leidoVentas/leidoCompras), con 1 h 15
 // de margen para la pasada de cada hora.
+//
+// Diego, 11/11 (después): "si la información está subida, el resto es problema nuestro… tenemos que
+// trabajar en que no suceda". Sin avisos de Recetas ni de Balance en el pulso: solo la subida de cada
+// PC. Lazarillo lee lo subido apenas la PC termina (back: services/kit/despuesDeSubir.js) y una
+// lectura que falla queda en el log del servidor, no en la pantalla del cliente.
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
@@ -69,34 +74,16 @@ const porSubida = (iso) => {
 };
 const peorDe = (estados) => estados.reduce((a, b) => (PESO[b] > PESO[a] ? b : a), 'al_dia');
 
-// Renglones por sucursal (data.kit.sucursales) + avisos de lo que Lazarillo no tomó todavía.
+// Renglones por sucursal (data.kit.sucursales): cuándo subió cada PC.
 function porSucursal(data, filtro) {
   let filas = data.kit.sucursales;
   if (filtro?.mode === 'main') filas = filas.filter((x) => x.branchId == null);
   else if (filtro?.mode === 'branch') filas = filas.filter((x) => Number(x.branchId) === Number(filtro.branchId));
   if (!filas.length) return null;
   const conNombre = filas.length > 1; // con una sola (o una elegida) el nombre ya está en el título
-  const avisos = [];
-  // Recetas pasa cada hora (minuto 20) o al tocar el punto: avisa si la PC subió lo que lee Recetas
-  // hace más de 1 h 15 y Recetas no pasó después (ventas o compras), o nunca pasó.
-  const recetasAtras = filas.filter((x) => {
-    if (!x.recetas || !x.subidaRecetas || horasDesde(x.subidaRecetas) <= 1.25) return false;
-    const { leidoVentas: lv, leidoCompras: lc } = x.recetas;
-    return (!lv && !lc) || (lv && lv < x.subidaRecetas) || (lc && lc < x.subidaRecetas);
-  });
-  if (recetasAtras.length) {
-    avisos.push(`Recetas todavía no leyó la última subida${conNombre ? ` (${recetasAtras.map((x) => x.nombre).join(', ')})` : ''}`);
-  }
-  const imp = data.balance?.importado;
-  const subidaMax = filas.reduce((a, x) => (x.subida && (!a || x.subida > a) ? x.subida : a), null);
-  // Balance lee lo del kit cada hora (minuto 5): recién avisa si pasó más de 1 h 15 desde la subida.
-  if (data.balance && subidaMax && (!imp || imp < subidaMax) && horasDesde(subidaMax) > 1.25) {
-    avisos.push('Balance todavía no leyó lo último');
-  }
   const conEstado = filas.map((x) => ({ ...x, estado: porSubida(x.subida) }));
-  let peor = peorDe(conEstado.map((x) => x.estado));
-  if (avisos.length && peor === 'al_dia') peor = 'atrasado';
-  return { filas: conEstado, avisos, peor, conNombre };
+  const peor = peorDe(conEstado.map((x) => x.estado));
+  return { filas: conEstado, peor, conNombre };
 }
 
 // "hoy 11:37" / "ayer 08:02" / "05/11 08:01"
@@ -214,9 +201,6 @@ export default function PulsoDatos({ puedeActualizar = false }) {
               ))}
             </Box>
           )}
-          {suc?.avisos.map((a) => (
-            <Box key={a} sx={{ color: '#fbbf24', whiteSpace: 'nowrap' }}>⚠ {a}</Box>
-          ))}
           {!suc && data?.kit?.subida && (
             <Box sx={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
               {(Date.now() - new Date(data.kit.subida).getTime()) / 3_600_000 > 26 ? 'El kit no sube desde' : 'El kit subió'} {cuando(data.kit.subida, hoy)}
