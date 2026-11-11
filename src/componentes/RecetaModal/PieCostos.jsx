@@ -112,8 +112,8 @@ export default function PieCostos({
         const conPct = !modoInsumo && (!isStaff || isJefe) && pctCostoActual !== null;
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
-        if (promoMode) {
-          // Promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
+        if (!modoInsumo) {
+          // Artículo y promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
           // va pegado debajo del % costo actual (los dos % alineados) y el precio actual al final.
           const colorPct = pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main';
           const ANCHO_PCT = 54;
@@ -152,7 +152,8 @@ export default function PieCostos({
                 </Stack>
               </>) : null}
               <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary', mt: 0.5 }}>
-                {precioActual > 0 && (!isStaff || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
+                {/* En el artículo común el actual ya está a la derecha, junto al sugerido; acá solo para promo y jefe. */}
+                {precioActual > 0 && ((promoMode && !isStaff) || isJefe) ? `Precio actual: $${fmt(precioActual)}` : ''}
               </Typography>
               <span />
             </Box>
