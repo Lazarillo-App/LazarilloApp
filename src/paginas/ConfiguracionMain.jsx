@@ -91,17 +91,40 @@ export default function ConfiguracionMain() {
   const themeColor = 'var(--color-primary, #3b82f6)';
 
   // ── Tabs ──
+  // Al cambiar de negocio la pantalla se desmonta un instante (se recargan los permisos)
+  // y perdía la pestaña: se recuerda en sessionStorage (por pestaña del navegador).
+  const leerPantalla = (clave) => {
+    try { const v = Number(sessionStorage.getItem(`lz-config-${clave}`)); return Number.isFinite(v) && v >= 0 ? v : 0; }
+    catch { return 0; }
+  };
   const [tab, setTab] = useState(() => {
-    const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 7 ? t : 0;
+    const raw = searchParams.get('tab');
+    const t = Number(raw);
+    if (raw != null && Number.isFinite(t) && t >= 0 && t <= 7) return t;
+    const g = leerPantalla('tab');
+    return g <= 7 ? g : 0;
   });
   // Si ya está abierta y llega otro ?tab= (ej. desde un aviso de aprobación), cambia de pestaña
   useEffect(() => {
-    const t = Number(searchParams.get('tab'));
-    if (Number.isFinite(t) && t >= 0 && t <= 7) setTab(t);
+    const raw = searchParams.get('tab');
+    const t = Number(raw);
+    // Sin ?tab= no se toca (Number(null) daba 0 y mandaba siempre a la primera pestaña)
+    if (raw != null && Number.isFinite(t) && t >= 0 && t <= 7) setTab(t);
   }, [searchParams]);
-  const [subTabArt, setSubTabArt] = useState(0);
-  const [subTabIns, setSubTabIns] = useState(0);
+  const [subTabArt, setSubTabArt] = useState(() => leerPantalla('subArt'));
+  const [subTabIns, setSubTabIns] = useState(() => leerPantalla('subIns'));
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('lz-config-tab', String(tab));
+      sessionStorage.setItem('lz-config-subArt', String(subTabArt));
+      sessionStorage.setItem('lz-config-subIns', String(subTabIns));
+    } catch { /* sin storage: arranca en la primera pestaña */ }
+  }, [tab, subTabArt, subTabIns]);
+  // Si la pestaña recordada no existe en este negocio (otro rol), vuelve a la primera
+  useEffect(() => {
+    if (tab >= 4 && !puedeGestionarNegocio) setTab(0);
+    else if (tab === 7 && !verConexiones) setTab(0);
+  }, [tab, puedeGestionarNegocio, verConexiones]);
 
   // ── Config global ──
   const [config, setConfig] = useState({
