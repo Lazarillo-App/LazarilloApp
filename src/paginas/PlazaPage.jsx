@@ -7,6 +7,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 import { useBusiness } from '@/context/BusinessContext';
+import RecetaModal from '@/componentes/RecetaModal';
 
 // Lo que se guarda de cada tarjeta: orden de todos los renglones, ocultos y extras.
 const fichaDe = (renglones) => ({
@@ -21,6 +22,7 @@ export default function PlazaPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [armando, setArmando] = useState(false);
+  const [receta, setReceta] = useState(null); // { id, nombre } del producto abierto
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -36,6 +38,15 @@ export default function PlazaPage() {
   const colorIngrediente = async (ref, color) => {
     setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, color } : r)) })) }));
     try { await PlazasAPI.guardarColor(ref, color); } catch (e) { setError(e.message); }
+  };
+
+  // Después de guardar la receta se refresca SOLO esa tarjeta (no la plaza entera).
+  const refrescarProducto = async (articleId) => {
+    try {
+      const r = await PlazasAPI.vista(id, articleId);
+      const nuevo = r?.productos?.[0];
+      if (nuevo) setData((d) => ({ ...d, productos: d.productos.map((p) => (p.articleId === articleId ? nuevo : p)) }));
+    } catch (e) { setError(e.message); }
   };
 
   if (error && !data) return <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>;
@@ -63,7 +74,13 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Se asignan en ⚙ Configuración › Sectores.</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} />
+        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente}
+          onAbrir={(p) => setReceta({ id: p.articleId, nombre: p.nombre })} />
+      )}
+      {receta && (
+        <RecetaModal open onClose={() => setReceta(null)} articulo={receta}
+          businessId={activeId} activeBizId={activeId} recetasElaborados={{}}
+          onSaved={() => refrescarProducto(receta.id)} />
       )}
     </Box>
   );

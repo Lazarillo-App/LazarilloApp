@@ -93,7 +93,9 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner, isStaff, puedeVer = () => true, rolReal } = useAccess() || {};
+  const { isOwner, isStaff, puedeVer = () => true, rolReal, staffPuede = () => false } = useAccess() || {};
+  // Menú (vista diseño, la carta): el Staff no lo usa; se habilita por rol con «ver_menu» (Diego 11/11/2026).
+  const veMenuDiseno = !isStaff || staffPuede('ver_menu');
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
@@ -356,7 +358,7 @@ export default function Navbar() {
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
+                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -474,7 +476,7 @@ export default function Navbar() {
                             component={NavLink} to="/insumos">
                             Insumos
                           </Button>
-                          {!isStaff && (
+                          {veMenuDiseno && (
                             <>
                               <Box component="span" aria-hidden
                                 sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
@@ -486,7 +488,7 @@ export default function Navbar() {
                             </>
                           )}
                           {/* Plazas de despacho: el Staff la ve donde el dueño ve «Menú» (Diego 11/11/2026). */}
-                          {isStaff && (
+                          {isStaff && !veMenuDiseno && (
                             <Box component="span" aria-hidden
                               sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
                           )}

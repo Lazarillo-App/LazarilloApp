@@ -71,6 +71,7 @@ const PERMISOS_STAFF = [
     ['ver_objetivo', 'Ver el costo objetivo'],
     ['ver_sugerido', 'Ver el precio sugerido'],
     ['mover_agrupacion', 'Mover de Sin agrupación a otras agrupaciones'],
+    ['ver_menu', 'Ver el Menú (vista diseño de la carta)'],
   ] },
   { grupo: 'Equipo', items: [
     ['aprobar_equipo', 'Dar el OK a los cambios de su equipo (es el jefe de sus sectores)'],

@@ -2,8 +2,13 @@
 // Vista de una plaza de despacho (Diego 11/11/2026): una tarjeta por producto con su nombre y los
 // ingredientes de la receta apilados en el orden en que se arma, cada uno con su color.
 // En modo «Armar»: arrastrar para ordenar, ojito para ocultar, renglones extra (notas, vajilla) y
-// color por ingrediente (tocando la muestra; vale en todas las plazas).
-import React, { useState } from 'react';
+// color por ingrediente (tocando la muestra; vale en todas las plazas). Tocando el nombre se abre la receta.
+//
+// Arrastre (Diego 11/11/2026: «no me queda claro dónde va a quedar»): con pointer events (mouse y
+// touch, no el drag nativo del navegador). Mientras se arrastra, la lista se REORDENA EN VIVO: el
+// renglón levantado ocupa el lugar exacto donde va a quedar (resaltado celeste con sombra) y los
+// demás se corren con animación. Lo que se ve al soltar es lo que se guarda. Esc cancela.
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Box, Typography, IconButton, Popover, InputBase, Tooltip } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
@@ -27,13 +32,24 @@ const fmtCant = (c, u) => {
   return `${n} ${uu === 'gr' ? 'g' : uu}`;
 };
 
-function Renglon({ r, armando, onOcultar, onBorrar, onColor, dragProps }) {
+const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arrastreActivo, onOcultar, onBorrar, onColor, onAgarrar }, ref) {
   const c = PALETA[(Number(r.color) || 0) % PALETA.length];
   const cant = fmtCant(r.cantidad, r.unidad);
   if (!armando && r.oculto) return null;
   return (
-    <Box {...dragProps} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: '5px', opacity: r.oculto ? 0.35 : 1 }}>
-      {armando && <DragIndicatorIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'grab', flexShrink: 0 }} />}
+    <Box ref={ref} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: '5px', opacity: r.oculto && !levantado ? 0.35 : 1,
+      position: 'relative', zIndex: levantado ? 2 : 'auto', borderRadius: '4px',
+      outline: levantado ? '2px solid #5BC2EA' : 'none', outlineOffset: 2,
+      boxShadow: levantado ? '0 8px 18px rgba(0,0,0,.22)' : 'none', bgcolor: levantado ? '#fff' : 'transparent',
+      transform: levantado ? 'scale(1.03)' : 'none', transition: 'box-shadow .12s, transform .12s',
+      pointerEvents: arrastreActivo && !levantado ? 'none' : 'auto' }}>
+      {armando && (
+        <Box onPointerDown={onAgarrar} title="Arrastrar para ordenar"
+          sx={{ width: 22, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            cursor: levantado ? 'grabbing' : 'grab', touchAction: 'none', borderRadius: '3px', '&:hover': { bgcolor: 'action.hover' } }}>
+          <DragIndicatorIcon sx={{ fontSize: 18, color: levantado ? '#2492C8' : 'text.disabled' }} />
+        </Box>
+      )}
       <Box onClick={armando ? onColor : undefined} sx={{
         flex: 1, minWidth: 0, bgcolor: c.bg, color: c.fg, border: c.borde ? '1.5px solid #111827' : '1px solid rgba(0,0,0,.08)',
         borderRadius: '3px', px: 0.75, py: 0.4, minHeight: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -54,21 +70,91 @@ function Renglon({ r, armando, onOcultar, onBorrar, onColor, dragProps }) {
       ))}
     </Box>
   );
-}
+});
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente }) {
-  const [arrastrando, setArrastrando] = useState(null);
+// Pasa el elemento de la posición `desde` a la posición `hasta`.
+const moverEn = (lista, desde, hasta) => {
+  const l = [...lista];
+  const [x] = l.splice(desde, 1);
+  l.splice(hasta, 0, x);
+  return l;
+};
+
+function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onAbrir }) {
+  // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
+  const [arrastre, setArrastre] = useState(null);
+  const arrastreRef = useRef(null);
+  arrastreRef.current = arrastre;
+  const nodos = useRef(new Map());     // key → elemento, para medir y animar
+  const posAntes = useRef(new Map());  // key → top antes del último reordenamiento (animación FLIP)
   const [nuevo, setNuevo] = useState('');
   const [paleta, setPaleta] = useState(null); // { anchor, renglon }
 
   const guardar = (renglones) => onCambiar(p.articleId, renglones);
-  const mover = (desde, hasta) => {
-    if (desde === hasta || desde == null) return;
-    const lista = [...p.renglones];
-    const [x] = lista.splice(desde, 1);
-    lista.splice(hasta, 0, x);
-    guardar(lista);
+
+  // Lo que se pinta: mientras se arrastra, la lista ya reordenada (vista previa exacta del resultado).
+  const visibles = arrastre ? moverEn(p.renglones, arrastre.desde, arrastre.hasta) : p.renglones;
+
+  const medirTops = () => {
+    const m = new Map();
+    nodos.current.forEach((el, k) => { if (el) m.set(k, el.getBoundingClientRect().top); });
+    return m;
   };
+  // Animación: cada renglón que cambió de lugar se desliza desde su posición anterior.
+  useLayoutEffect(() => {
+    const antes = posAntes.current;
+    if (!antes.size) return;
+    nodos.current.forEach((el, k) => {
+      if (!el || !antes.has(k) || k === arrastre?.key) return;
+      const dy = antes.get(k) - el.getBoundingClientRect().top;
+      if (!dy) return;
+      el.style.transition = 'none';
+      el.style.translate = `0 ${dy}px`;
+      requestAnimationFrame(() => { el.style.transition = 'translate .15s ease'; el.style.translate = '0 0'; });
+    });
+    posAntes.current = new Map();
+  }, [arrastre?.hasta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const agarrar = (e, i) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    const mids = p.renglones.map((r) => {
+      const b = nodos.current.get(r.key)?.getBoundingClientRect();
+      return b ? b.top + b.height / 2 : 0;
+    });
+    setArrastre({ key: p.renglones[i].key, desde: i, hasta: i, mids });
+  };
+
+  useEffect(() => {
+    if (!arrastre) return undefined;
+    const alMover = (e) => {
+      const a = arrastreRef.current;
+      if (!a) return;
+      // Destino = cuántos de los OTROS renglones tienen el centro por encima del puntero.
+      const hasta = a.mids.reduce((n, m, j) => (j !== a.desde && m < e.clientY ? n + 1 : n), 0);
+      if (hasta !== a.hasta) { posAntes.current = medirTops(); setArrastre({ ...a, hasta }); }
+    };
+    const alSoltar = () => {
+      const a = arrastreRef.current;
+      setArrastre(null);
+      if (a && a.hasta !== a.desde) guardar(moverEn(p.renglones, a.desde, a.hasta));
+    };
+    const alTecla = (e) => { if (e.key === 'Escape') setArrastre(null); };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', alMover);
+    window.addEventListener('pointerup', alSoltar);
+    window.addEventListener('pointercancel', alSoltar);
+    window.addEventListener('keydown', alTecla);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', alMover);
+      window.removeEventListener('pointerup', alSoltar);
+      window.removeEventListener('pointercancel', alSoltar);
+      window.removeEventListener('keydown', alTecla);
+    };
+  }, [!!arrastre, p.renglones]); // eslint-disable-line react-hooks/exhaustive-deps
   const agregar = () => {
     const texto = nuevo.trim();
     if (!texto) return;
@@ -86,16 +172,18 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente }) {
     <Box sx={{ width: '100%' }}>
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.3rem', textAlign: 'center',
         textTransform: 'uppercase', lineHeight: 1.05, mb: 1, minHeight: '2.2em', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-        {p.nombre}
+        <Tooltip title={onAbrir ? 'Abrir la receta' : ''} placement="top">
+          <Box component="span" onClick={onAbrir ? () => onAbrir(p) : undefined}
+            sx={{ cursor: onAbrir ? 'pointer' : 'default', '&:hover': onAbrir ? { color: '#2492C8' } : undefined }}>
+            {p.nombre}
+          </Box>
+        </Tooltip>
       </Typography>
-      {p.renglones.map((r, i) => (
+      {visibles.map((r) => (
         <Renglon key={r.key} r={r} armando={armando}
-          dragProps={armando ? {
-            draggable: true,
-            onDragStart: () => setArrastrando(i),
-            onDragOver: (e) => e.preventDefault(),
-            onDrop: () => { mover(arrastrando, i); setArrastrando(null); },
-          } : {}}
+          ref={(el) => { if (el) nodos.current.set(r.key, el); else nodos.current.delete(r.key); }}
+          levantado={arrastre?.key === r.key} arrastreActivo={!!arrastre}
+          onAgarrar={(e) => agarrar(e, p.renglones.findIndex((x) => x.key === r.key))}
           onOcultar={() => guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, oculto: !x.oculto } : x)))}
           onBorrar={() => guardar(p.renglones.filter((x) => x.key !== r.key))}
           onColor={(e) => setPaleta({ anchor: e.currentTarget, renglon: r })} />
@@ -126,11 +214,11 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente }) {
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente }) {
+export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} />
+        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onAbrir={onAbrir} />
       ))}
     </Box>
   );
