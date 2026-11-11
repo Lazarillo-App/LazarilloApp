@@ -2411,22 +2411,6 @@ export default function TablaArticulos({
           >
             {(a.origen === 'manual' || Number(id) < 0) ? `L${id}` : id}
           </span>
-          {/* Letra A/B/C de «Lo que más vende» (todas las agrupaciones) */}
-          {(() => {
-            const letra = abcVentas?.get?.(Number(id));
-            if (!letra) return null;
-            const ayuda = letra === 'A' ? 'A · está entre los que hacen el 80 % del ingreso'
-              : letra === 'B' ? 'B · entre el 80 % y el 95 % del ingreso'
-                : 'C · del último 5 % del ingreso: candidato a sacar o revisar precio';
-            return (
-              <span title={ayuda} style={{
-                fontSize: '0.6rem', fontWeight: 800, width: 14, height: 14, lineHeight: '14px', textAlign: 'center',
-                borderRadius: 3, flexShrink: 0,
-                color: letra === 'C' ? '#b91c1c' : letra === 'B' ? '#92400e' : '#475569',
-                background: letra === 'C' ? 'rgba(239,68,68,0.10)' : letra === 'B' ? 'rgba(245,158,11,0.12)' : 'rgba(100,116,139,0.10)',
-              }}>{letra}</span>
-            );
-          })()}
         </div>
 
         <div onClick={() => {
