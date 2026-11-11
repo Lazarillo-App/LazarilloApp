@@ -3,6 +3,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { nombreAgrupacionVisible, estiloAgrupacion } from '@/utils/agrupacionNombre';
+import LoQueMasVendePanel from './LoQueMasVendePanel';
 import {
   FormControl,
   InputLabel,
@@ -63,7 +64,8 @@ const esTop20Group = (g) => {
 
 const labelAgrup = (g) => groupLabel(g);
 // Lo que se ve en la lista (no el nombre guardado): ver utils/agrupacionNombre.js
-const labelVisible = (g) => nombreAgrupacionVisible(g);
+// En Menú el «Top 20» se muestra como «Lo que más vende» (Diego 11/11); en Insumos sigue Top 20.
+const labelVisible = (g) => (esTop20Group(g) ? 'Lo que más vende' : nombreAgrupacionVisible(g));
 
 const safeId = (a) => {
   const raw =
@@ -110,6 +112,8 @@ const resolveArticuloMonto = (art, getAmountForId, metaById) => {
 const SIDEBAR_MODE_KEY = 'lazarillo:sidebarMode';
 
 function SidebarCategorias({
+  loQueMasVende = null,
+  onCorteVentas,
   categorias = [],
   setCategoriaSeleccionada,
   agrupaciones = [],
@@ -808,9 +812,7 @@ function SidebarCategorias({
         {/* Top 20: lista simple, sin divisiones (pedido de Diego, 02/11) — no
             hay rubros que navegar; en su lugar, qué es el Top 20. */}
         {sidebarMode === 'agrupaciones' && esTop20Group(agrupacionSeleccionada) && (
-          <div style={{ padding: '4px 4px 8px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.45 }}>
-            Los 20 artículos que más facturaron ($) en el período elegido arriba.
-          </div>
+          <LoQueMasVendePanel datos={loQueMasVende} onCorte={onCorteVentas} />
         )}
 
         {/* ── Toggle Rubro/SubRubro (solo en modo agrupaciones) ── */}
