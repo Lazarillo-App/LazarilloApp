@@ -81,7 +81,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\u0300-\\u036f]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1796,7 +1796,9 @@ export default function InsumosMain() {
             rows={tableRowsFiltrados}
             loading={false}
             onEdit={() => { }}
-            onOpenEditModal={(ins) => setInsumoEditando(ins)}
+            // El código abre el modal completo del insumo en su pestaña FICHA (Diego 11/11/2026);
+            // antes abría "Editar insumo" (EditarItemModal) solo con los datos.
+            onOpenEditModal={(ins) => handleOpenRecetaElaborado(ins, { initialTab: 'ficha', saltarSelector: true })}
             onItemsOrdenados={setInsumosOrdenados}
             onDelete={() => { }}
             noBusiness={!businessId}
