@@ -9,6 +9,7 @@ const norm = (s) => String(s ?? '').trim().toLowerCase()
 
 const DE_SISTEMA = {
   'top 20': 'Top 20',
+  'venden poco': 'Venden poco',
   'todo': 'Sin agrupación',
   'sin agrupacion': 'Sin agrupación',
   'sin agrupar': 'Sin agrupación',
