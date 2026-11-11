@@ -297,7 +297,8 @@ export function SinRubroPanel() {
   }, []);
   return (
     <>
-      <Drawer anchor="right" open={open} onClose={() => setOpen(false)} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)' } } }}>
+      {/* zIndex de modal (1300): con el panel maximizado (1250) el cajón quedaba atrás y «corregir» no se veía. */}
+      <Drawer anchor="right" open={open} onClose={() => setOpen(false)} sx={{ zIndex: 1300 }} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)' } } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: '1px solid #e8e8e6' }}>
           <Box sx={{ fontWeight: 700, fontSize: 15 }}>Sin rubro · por qué</Box>
           <Box sx={{ ml: 'auto', color: 'text.secondary', fontSize: 13 }}>{year}{data ? ` · ${fmtARS(data.importe)}` : ''}</Box>
