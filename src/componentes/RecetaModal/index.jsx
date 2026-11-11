@@ -22,7 +22,7 @@ import {
   InputAdornment, Select, MenuItem, FormControl,
   Checkbox, Stack, Dialog, DialogTitle, DialogContent,
   DialogActions, DialogContentText,
-  ToggleButton, ToggleButtonGroup, Slider, Popover,
+  ToggleButton, ToggleButtonGroup, Slider, Popover, InputBase,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -125,7 +125,9 @@ export default function RecetaModal({
   const comprasBizId = activeBizId || businessId;
   const { allBusinesses } = useOrganization() || {};
   const [receta, setReceta] = useState(null);
-  const [tab, setTab] = useState('receta'); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
+  const [tab, setTab] = useState('receta');
+  // Foto en el header (propuesta 11/11/2026): artículo/promo siempre; insumo solo en su pestaña Receta.
+  const [fotoChica, setFotoChica] = useState(false); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
   // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
   const [entradaElegida, setEntradaElegida] = useState(!modoInsumo || saltarSelector);
   // Rango de la pestaña Compras: por defecto los últimos 5 años, pero el botón
@@ -2290,6 +2292,8 @@ export default function RecetaModal({
     return () => window.removeEventListener('keydown', handler);
   }, [open, onNavigate, canNavigate, autoSave, hayOverlayEncima]);
 
+  const fotoEnHeader = !modoInsumo || (entradaElegida && tab === 'receta');
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
@@ -2308,6 +2312,9 @@ export default function RecetaModal({
           {/* ── HEADER ── */}
           <Box sx={{
             px: 3, py: 1.5,
+            // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
+            ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
+            position: 'relative', zIndex: 2,
             bgcolor: PRIMARY, color: ON_PRIMARY,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             // `gap` asegura un mínimo entre los 3 grupos (nombre, pestañas,
@@ -2326,6 +2333,24 @@ export default function RecetaModal({
                 </IconButton>
               )}
 
+              {fotoEnHeader ? (
+                <Box sx={{ minWidth: modoInsumo ? 150 : 260, flex: 1 }}>
+                  <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, display: 'block', lineHeight: 1.2 }}>
+                    {promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
+                  </Typography>
+                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo) */}
+                  <InputBase value={nombre} onChange={e => setNombre(e.target.value)} placeholder={artNombre}
+                    inputProps={{ 'aria-label': 'Nombre' }}
+                    sx={{ color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: modoInsumo ? 0 : 280,
+                      borderBottom: '1px dashed rgba(255,255,255,0.45)', '&:hover, &.Mui-focused': { borderBottomColor: '#fff' },
+                      '& input': { p: 0, pb: '2px' }, '& input::placeholder': { color: 'inherit', opacity: 0.7 } }}
+                    endAdornment={modoInsumo ? (() => {
+                      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+                      const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
+                      return u ? <Box component="span" sx={{ fontWeight: 800, whiteSpace: 'nowrap', ml: 1 }}>× {canonicalUnit(u).toUpperCase()}</Box> : null;
+                    })() : null} />
+                </Box>
+              ) : (
               <Box sx={{ minWidth: 260 }}>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
                   {modoInsumo
@@ -2340,6 +2365,7 @@ export default function RecetaModal({
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
                 )}
               </Box>
+              )}
               {/* Flecha siguiente — a la derecha del nombre */}
               {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
@@ -2441,11 +2467,54 @@ export default function RecetaModal({
             </Stack>
           </Box>
 
+          {/* Foto que arranca en el header (artículo/promo, y la receta del insumo); al bajar la lista se achica */}
+          {fotoEnHeader && entradaElegida && (<>
+                    {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
+                    <Box
+                      ref={recFotoRef}
+                                            onClick={() => setNotasModalOpen(true)}
+                      sx={{
+                        display: 'flex', flexDirection: 'column', gap: 0.5,
+                        cursor: 'pointer',
+                        position: 'absolute', top: fotoChica ? 8 : 14, left: fotoChica ? 92 : 24, width: fotoChica ? 56 : 132, zIndex: 5,
+                        transition: 'all .2s ease',
+                        '& > div:first-of-type': { bgcolor: '#fff', border: '3px solid #fff', boxShadow: '0 4px 14px rgba(0,0,0,0.18)' },
+                        '& > .MuiTypography-root': { display: fotoChica ? 'none' : undefined },
+                        // Chica: solo la imagen o el ícono, sin el texto de adentro
+                        '& .MuiTypography-caption': { display: fotoChica ? 'none' : undefined },
+                      }}
+                    >
+                      <Box sx={{
+                        position: 'relative', width: '100%', aspectRatio: '1 / 1',
+                        borderRadius: 1.5, overflow: 'hidden',
+                        border: '1px solid', borderColor: 'divider',
+                        bgcolor: `${PRIMARY}08`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        '&:hover': { borderColor: PRIMARY },
+                        transition: 'border-color 0.15s',
+                      }}>
+                        {foto ? (
+                          <img src={foto} alt="Foto receta" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                        ) : (
+                          <Box sx={{ textAlign: 'center', px: 1 }}>
+                            <ImageIcon sx={{ fontSize: 32, color: `${PRIMARY}80` }} />
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mt: 0.5 }}>
+                              Foto del producto
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.disabled', fontSize: '0.62rem' }}>
+                        {foto ? 'Tocá la foto para editar' : 'Tocá para agregar foto'}
+                      </Typography>
+                    </Box>
+
+          </>)}
           {/* ── BODY ── */}
           {/* minHeight 0: el cuerpo es lo que cede si no entra todo, así el pie y los botones
               siempre quedan a la vista. El alto mínimo de antes (cuerpo 60vh, que incluía el pie)
               ahora lo pone el Paper, para que el modal no cambie de alto entre recetas. */}
-          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
+          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -2539,13 +2608,13 @@ export default function RecetaModal({
                   {/* ── Datos generales con foto ── */}
                   <Box sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '150px 1fr' },
+                    gridTemplateColumns: { xs: '1fr', sm: fotoEnHeader ? '132px 1fr' : '150px 1fr' },
                     gap: 2, mb: 2,
                     alignItems: 'stretch',
                   }}>
-                    {/* Columna izquierda: FOTO */}
+                    {!fotoEnHeader ? (<>
+                    {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
                     <Box
-                      ref={recFotoRef}
                       onClick={() => setNotasModalOpen(true)}
                       sx={{
                         display: 'flex', flexDirection: 'column', gap: 0.5,
@@ -2577,6 +2646,7 @@ export default function RecetaModal({
                       </Typography>
                     </Box>
 
+                    </>) : <Box sx={{ minHeight: 84 }} />}
                     {/* Columna derecha: nombre + rendimiento + objetivo */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                       {modoInsumo && (() => {
@@ -2594,53 +2664,14 @@ export default function RecetaModal({
                         );
                       })()}
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                        <TextField
+                        {!fotoEnHeader ? <TextField
                           label={promoMode ? "Nombre" : "Nombre"}
                           value={nombre}
                           onChange={e => setNombre(e.target.value)}
                           placeholder={artNombre}
                           size="small"
                           sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }}
-                        />
-                        {!modoInsumo && (
-                          <ToggleButtonGroup
-                            value={promoMode ? 'promo' : 'producto'}
-                            exclusive
-                            size="small"
-                            onChange={(e, val) => {
-                              if (val == null) return;               // no permitir deseleccionar
-                              const quierePromo = val === 'promo';
-                              if (quierePromo === promoMode) return;  // sin cambio
-                              if (quierePromo) {
-                                setPromoMode(true);                   // activar: sin confirmación
-                                const artId = Number(articulo?.id);
-                                const viveEnPromo = promoIds.has(artId);
-                                // Artículo común → se convierte en promo. Ya NO se agrega a sí mismo como componente
-                                // (Diego 11/11/2026: «eso no lo debe hacer más»): la promo se arma con los artículos
-                                // que se elijan.
-                                if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
-                                  setConvertirEnPromo(true);
-                                  // Nombre por defecto: el del artículo principal
-                                  if (!nombre.trim()) setNombre(artNombre);
-                                }
-                              } else {
-                                setConfirmarDesactivar(true);         // desactivar: pedir confirmación
-                              }
-                            }}
-                            disabled={saving || deleting}
-                            sx={{ flexShrink: 0 }}
-                          >
-                            <ToggleButton
-                              value="producto"
-                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
-                            >
-                              Producto
-                            </ToggleButton>
-                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
-                              Promoción
-                            </ToggleButton>
-                          </ToggleButtonGroup>
-                        )}
+                        /> : null}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         {promoMode && !isStaff && (() => {
@@ -2795,27 +2826,9 @@ export default function RecetaModal({
                             </Box>
                           )}
                         </Box>
-                        {/* Costo objetivo */}
-                        <TextField
-                          label="Costo Objetivo"
-                          type="text"
-                          inputMode="decimal"
-                          value={pctCostoIdeal}
-                          onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
-                          onBlur={(e) => commitObjetivo(e.target.value)}
-                          size="small"
-                          inputProps={{ min: 0, max: 150 }}
-                          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          // Artículo y promo: el objetivo se edita en el pie, abajo del costo real (Diego 11/11/2026).
-                          sx={{ width: 124, flexShrink: 0, display: isStaff || !modoInsumo ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
-                        />
-                      </Box>
-                    </Box>
-                  </Box>
-
                   {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
                   {!esElaborado && !promoMode && (
-                    <Box ref={gemelosPanelRef} sx={{ mb: 1.5, display: isStaff ? 'none' : undefined }}>
+                    <Box ref={gemelosPanelRef} sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
                       {/* Header colapsable */}
                       <Box onClick={() => {
                         setGemelosOpen(v => !v);
@@ -3074,6 +3087,63 @@ export default function RecetaModal({
                       )}
                     </Box>
                   )}
+
+                        {!modoInsumo && (
+                          <ToggleButtonGroup
+                            value={promoMode ? 'promo' : 'producto'}
+                            exclusive
+                            size="small"
+                            onChange={(e, val) => {
+                              if (val == null) return;               // no permitir deseleccionar
+                              const quierePromo = val === 'promo';
+                              if (quierePromo === promoMode) return;  // sin cambio
+                              if (quierePromo) {
+                                setPromoMode(true);                   // activar: sin confirmación
+                                const artId = Number(articulo?.id);
+                                const viveEnPromo = promoIds.has(artId);
+                                // Artículo común → se convierte en promo. Ya NO se agrega a sí mismo como componente
+                                // (Diego 11/11/2026: «eso no lo debe hacer más»): la promo se arma con los artículos
+                                // que se elijan.
+                                if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
+                                  setConvertirEnPromo(true);
+                                  // Nombre por defecto: el del artículo principal
+                                  if (!nombre.trim()) setNombre(artNombre);
+                                }
+                              } else {
+                                setConfirmarDesactivar(true);         // desactivar: pedir confirmación
+                              }
+                            }}
+                            disabled={saving || deleting}
+                            sx={{ flexShrink: 0 }}
+                          >
+                            <ToggleButton
+                              value="producto"
+                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
+                            >
+                              Producto
+                            </ToggleButton>
+                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
+                              Promoción
+                            </ToggleButton>
+                          </ToggleButtonGroup>
+                        )}
+                        {/* Costo objetivo */}
+                        <TextField
+                          label="Costo Objetivo"
+                          type="text"
+                          inputMode="decimal"
+                          value={pctCostoIdeal}
+                          onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
+                          onBlur={(e) => commitObjetivo(e.target.value)}
+                          size="small"
+                          inputProps={{ min: 0, max: 150 }}
+                          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                          // Artículo y promo: el objetivo se edita en el pie, abajo del costo real (Diego 11/11/2026).
+                          sx={{ width: 124, flexShrink: 0, display: isStaff || !modoInsumo ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
+                        />
+                      </Box>
+                    </Box>
+                  </Box>
 
                   <Divider sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
