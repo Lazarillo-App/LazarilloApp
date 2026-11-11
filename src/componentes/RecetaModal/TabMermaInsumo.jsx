@@ -203,8 +203,8 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
           <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>Precio de compra ($/{unidad})</Typography>
           <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>${fmt(precioCompra)}</Typography>
         </Box>
-        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 72, flexShrink: 0, bgcolor: 'action.hover' }}>
-          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary' }}>Unidad</Typography>
+        <Box sx={{ position: 'relative', border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1, width: 96, flexShrink: 0, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" sx={{ position: 'absolute', top: -8, left: 8, bgcolor: 'background.paper', px: 0.5, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>U de medida</Typography>
           <Typography variant="body2" sx={{ fontWeight: 600, textAlign: 'center' }}>{unidad}</Typography>
         </Box>
       </Stack>
