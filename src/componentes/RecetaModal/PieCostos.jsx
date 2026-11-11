@@ -65,6 +65,12 @@ export default function PieCostos({
   // Promo de un solo artículo: su precio individual, editable acá (atado al de la promo).
   // { nombre, precio, editado, onCambiar(v), paso }
   articuloPromo = null,
+  // Artículo común (Diego 11/11/2026): + / − mueven el PRECIO (paso = redondeo) y el importe escrito
+  // queda tal cual como nuevo precio; el objetivo no cambia.
+  onAjustarPrecio = null,
+  precioEsNuevo = false,
+  precioSugeridoObjetivo = 0,
+  onObjetivoMovido = null,
 }) {
   const { isJefe } = useAccess() || {};
   const [editArt, setEditArt] = React.useState(null);
@@ -276,7 +282,7 @@ export default function PieCostos({
           </Typography>
         ) : (
         <Typography variant="caption" color="text.secondary" fontWeight={600}>
-          Precio sugerido ({pctCostoIdeal}% costo)
+          {precioEsNuevo ? 'Nuevo precio' : `Precio sugerido (${pctCostoIdeal}% costo)`}
         </Typography>
         )}
         {/* Promo: «sin promo → promo → descuento» en una línea para comparar de un vistazo (Diego 11/11/2026). */}
@@ -386,7 +392,10 @@ export default function PieCostos({
         <Box sx={!modoInsumo ? { display: 'flex', alignItems: 'center', gap: 2, mt: 0.25 } : undefined}>
         {precioActual > 0 && !promoMode && (
           <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25} sx={{ whiteSpace: 'nowrap' }}>
-            <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>Actual: ${fmt(precioActual)}</Typography>
+            {/* Con nuevo precio, el actual ES ese precio: acá se muestra el sugerido para comparar. */}
+            <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, color: estaPorDebajo ? '#ef4444' : 'text.secondary' }}>
+              {precioEsNuevo ? `Sugerido (${pctCostoIdeal}%): $${fmt(precioSugeridoObjetivo)}` : `Actual: $${fmt(precioActual)}`}
+            </Typography>
             {estaPorDebajo && <WarningAmberIcon sx={{ fontSize: 13, color: '#ef4444' }} />}
           </Stack>
         )}
@@ -420,8 +429,8 @@ export default function PieCostos({
         <Stack direction="row" alignItems="center" spacing={0.25} sx={!modoInsumo ? { width: 200, flexShrink: 0 } : { mt: 0.5 }}>
           <IconButton
             size="small"
-            title={barraPorPrecio ? 'Bajar el precio sugerido' : undefined}
-            onClick={() => commitObjetivo(pctObj + (barraPorPrecio ? 1 : -1))}
+            title={barraPorPrecio ? 'Bajar el precio' : undefined}
+            onClick={() => (onAjustarPrecio ? onAjustarPrecio(-1) : commitObjetivo(pctObj + (barraPorPrecio ? 1 : -1)))}
             sx={botonSx}
           >
             <RemoveIcon sx={{ fontSize: 15 }} />
@@ -433,7 +442,7 @@ export default function PieCostos({
               max={-5}
               step={1}
               size="small"
-              onChange={(_, val) => setPctCostoIdeal(-val)}
+              onChange={(_, val) => { onObjetivoMovido?.(); setPctCostoIdeal(-val); }}
               onChangeCommitted={(_, val) => commitObjetivo(-val)}
               sx={{ py: 0.5, flex: 1 }}
             />
@@ -451,8 +460,8 @@ export default function PieCostos({
           )}
           <IconButton
             size="small"
-            title={barraPorPrecio ? 'Subir el precio sugerido' : undefined}
-            onClick={() => commitObjetivo(pctObj + (barraPorPrecio ? -1 : 1))}
+            title={barraPorPrecio ? 'Subir el precio' : undefined}
+            onClick={() => (onAjustarPrecio ? onAjustarPrecio(1) : commitObjetivo(pctObj + (barraPorPrecio ? -1 : 1)))}
             sx={botonSx}
           >
             <AddIcon sx={{ fontSize: 15 }} />
