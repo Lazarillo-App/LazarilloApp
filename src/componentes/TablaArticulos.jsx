@@ -282,6 +282,23 @@ const STAFF_COLS = [
 ];
 
 /* ---------------- componente principal ---------------- */
+/* Tooltip del ⚠ de la fila: qué insumos de la receta no se compran hace rato y desde cuándo.
+   Solo las filas con advertencia llevan tooltip (el nombre del artículo no lo necesita). */
+function textoAlertaReceta(recetaData) {
+  const semanas = Number(recetaData?.alertaSemanas) || null;
+  const lista = Array.isArray(recetaData?.alertas) ? recetaData.alertas : [];
+  const titulo = semanas
+    ? `La receta tiene insumos sin compras hace más de ${semanas} semana${semanas === 1 ? '' : 's'}:`
+    : 'La receta tiene insumos sin compras recientes';
+  if (!lista.length) return titulo;
+  const fecha = (iso) => {
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
+    return d && m && y ? `${d}/${m}/${y}` : iso;
+  };
+  const renglones = lista.map((x) => `• ${x.nombre} — ${x.fechaUltimaCompra ? `no se compra desde el ${fecha(x.fechaUltimaCompra)}` : 'sin compras registradas'}`);
+  return [titulo, ...renglones].join(String.fromCharCode(10)); // salto de línea del tooltip nativo
+}
+
 export default function TablaArticulos({
   isStaff = false,
   filtroBusqueda = "",
@@ -2366,7 +2383,7 @@ export default function TablaArticulos({
           setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
         }}
           style={{ cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', gap: 4 }}
-          title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
+          title={hayAlertaInsumo ? textoAlertaReceta(recetaData) : undefined}>
           <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem', marginTop: 2 }}>
             {hayAlertaInsumo ? <span style={{ color: '#f59e0b' }}>⚠</span>
               : hayReceta ? <span style={{ color: '#6366f1' }}>●</span>
@@ -2377,7 +2394,7 @@ export default function TablaArticulos({
           <span style={{
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0,
-          }} title={a.nombre}>{a.nombre}</span>
+          }}>{a.nombre}</span>
         </div>
 
         <div style={{ ...cellNum, textAlign: 'center' }}>
