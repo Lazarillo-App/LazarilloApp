@@ -25,6 +25,7 @@ import { useConfig } from '@/context/ConfigContext';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SalesPickerIcon from './SalesPickerIcon';
 import { BotonCargarFactura, useVerFacturaDeCompra, useFichaProveedorDeCompra } from './gestion/FacturaEnRecetas';
+import { useAccess } from '@/context/AccessContext';
 
 const fmtMoney = (v) => {
   const n = Number(v ?? 0);
@@ -608,6 +609,8 @@ export function ComprasDetalleContenido({
   // Factura de la compra con el formato de la carga (ver / editar) y «Cargar factura» (Diego 05/11/2026).
   const verFactura = useVerFacturaDeCompra();
   const fichaProv = useFichaProveedorDeCompra();
+  // Staff: ve las compras pero no carga ni abre facturas ni proveedores (eso es gestión, usuaria 10/11).
+  const { isStaff } = useAccess() || {};
 
   const [selectedBiz, setSelectedBiz] = useState('current');
   const [extraItems, setExtraItems] = useState([]);
@@ -1500,7 +1503,7 @@ export function ComprasDetalleContenido({
         </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
-          <BotonCargarFactura />
+          {!isStaff && <BotonCargarFactura />}
           {/* Selector de negocio */}
           {bizOptions.length > 1 && (
             <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -1897,7 +1900,7 @@ export function ComprasDetalleContenido({
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                         {/* El comprobante es el vínculo a la factura y el proveedor a su ficha, como en
                             Detalle de compras (Diego 06/11/2026: sin botón "ver"). */}
-                        {it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
+                        {!isStaff && it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
                           <Box component="span" role="button" title="Ver la factura con el formato de la carga (y editarla si se cargó en Lazarillo)"
                             onClick={(e) => { e.stopPropagation(); verFactura.abrir(it.purchase_id, it.factura ?? it.comprob ?? it.referencia ?? ''); }}
                             sx={{ color: '#0369a1', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px', '&:hover': { textDecorationStyle: 'solid' }, opacity: verFactura.buscando === it.purchase_id ? 0.5 : 1 }}>
@@ -1906,7 +1909,7 @@ export function ComprasDetalleContenido({
                         ) : (it.factura ?? it.comprob ?? it.referencia ?? '-')}
                       </TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                        {(it.proveedor_nombre ?? it.proveedor) && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
+                        {!isStaff && (it.proveedor_nombre ?? it.proveedor) && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
                           <Box component="span" role="button" title="Ver la ficha del proveedor"
                             onClick={(e) => { e.stopPropagation(); fichaProv.abrir(it); }}
                             sx={{ color: '#0369a1', cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px', '&:hover': { textDecorationStyle: 'solid' } }}>

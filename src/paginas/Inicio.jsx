@@ -75,7 +75,9 @@ export default function Inicio() {
   const userName = getUserName();
   const celular = useAngosto();
   // Alta a medias (se salió en Ventas, Menú…): se retoma donde quedó, no se muestra el panel (09/11).
-  if (!isStaff && altaEnCurso(active)) return <Navigate to="/alta" replace />;
+  // Staff: no ve Inicio ni los módulos; va directo a sus artículos (usuaria 10/11).
+  if (isStaff) return <Navigate to="/menu" replace />;
+  if (altaEnCurso(active)) return <Navigate to="/alta" replace />;
   if (celular) return <InicioCelular grupos={grupos} userName={userName} onSelect={(to) => navigate(to)} />;
 
   return (

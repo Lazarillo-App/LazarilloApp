@@ -305,8 +305,8 @@ export default function App() {
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}
                 />
                 {/* ── RRHH › Cronogramas (Etapa 1) ── */}
-                <Route path="/rrhh/cronogramas" element={<RequireSeccion seccion="rrhh"><RrhhCronogramas /></RequireSeccion>} />
-                <Route path="/rrhh/nomina" element={<RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion>} />
+                <Route path="/rrhh/cronogramas" element={<RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhCronogramas /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/rrhh/nomina" element={<RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion></RequireAdminOrOwner>} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
