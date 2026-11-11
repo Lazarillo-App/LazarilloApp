@@ -48,7 +48,18 @@ export default function OnboardingGuard() {
     };
   }, [checkBiz]);
 
-  if (loading) return <div className="page-wrap">Cargando…</div>;
+  // Si al montar no había negocio, el alta lo crea después y al terminar navega a la
+  // tabla. Antes de mandar al perfil se vuelve a preguntar, una vez por ruta: si no,
+  // el "no hay negocio" del montaje dejaba al usuario en el perfil (usuaria 11/11).
+  const [revisadoEn, setRevisadoEn] = useState(null);
+  const debeRevisar = !loading && !hasBiz && loc.pathname !== '/perfil' && revisadoEn !== loc.pathname;
+  useEffect(() => {
+    if (!debeRevisar) return;
+    const ruta = loc.pathname;
+    checkBiz().finally(() => setRevisadoEn(ruta));
+  }, [debeRevisar, loc.pathname, checkBiz]);
+
+  if (loading || debeRevisar) return <div className="page-wrap">Cargando…</div>;
   if (!hasBiz && loc.pathname !== '/perfil') return <Navigate to="/perfil" replace />;
   return <Outlet />;
 }
