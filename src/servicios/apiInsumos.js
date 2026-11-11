@@ -882,10 +882,20 @@ export const insumoMermaUpdate = async (insumoId, mermaId, payload, bizId) => {
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al actualizar merma');
   return data;
 };
-export const insumoMermaDelete = async (insumoId, mermaId, bizId) => {
-  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}`, { method: 'DELETE', headers: authHeaders(bizId) });
+// reemplazoId (opcional): las recetas que tenían esta merma pasan a esa otra merma del insumo
+export const insumoMermaDelete = async (insumoId, mermaId, bizId, reemplazoId = null) => {
+  const qs = reemplazoId != null ? `?reemplazoId=${encodeURIComponent(reemplazoId)}` : '';
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}${qs}`, { method: 'DELETE', headers: authHeaders(bizId) });
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al eliminar merma');
+  return data;
+};
+
+// Recetas activas que tienen elegida esta merma (para avisar antes de borrarla)
+export const insumoMermaUso = async (insumoId, mermaId, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/mermas/${mermaId}/uso`, { headers: authHeaders(bizId) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) throw new Error((data && data.error) || 'Error al consultar el uso de la merma');
   return data;
 };
 
