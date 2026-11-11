@@ -102,6 +102,7 @@ export default function RecetaModal({
   priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   allArticulos = [],
   promoIds = new Set(),
+  promoGroupIds = new Set(),   // artículos que VIVEN en la agrupación Promociones (movidos antes del 11/11)
   priceLists = [],
   priceListsByList = {},
   modoInsumo = false,
@@ -352,6 +353,26 @@ export default function RecetaModal({
   // arreglando de a uno y volver a subir sin perder por dónde veníamos. autoSave() ya corre
   // antes de cada llamada a pushElaborado (ver cada onClick/onOpenRecetaElaborado), así que
   // lo que estaba editado en el nivel de arriba queda guardado antes de bajar un nivel más.
+  // Fila desde la que se tocó "+ Crear merma": la merma nueva queda aplicada ahí al volver.
+  // Se reaplica (60 s) si la receta se recarga del servidor antes de guardarse, y se guarda sola.
+  const mermaPendienteRef = useRef(null);   // { supplyId, index, antes:Set, nuevaId, hasta }
+  const [guardarMermaPendiente, setGuardarMermaPendiente] = useState(0);
+  const aplicarMermaPendiente = (lista) => {
+    const pend = mermaPendienteRef.current;
+    if (!pend?.nuevaId || Date.now() > pend.hasta) return lista;
+    let idx = (lista[pend.index] && String(lista[pend.index].supplyId) === pend.supplyId)
+      ? pend.index
+      : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
+    if (idx < 0) return lista;
+    const it = lista[idx];
+    const ya = Array.isArray(it.mermaIds) && it.mermaIds.length === 1 && Number(it.mermaIds[0]) === pend.nuevaId;
+    if (ya) return lista;
+    const copia = lista.slice();
+    copia[idx] = { ...it, mermaIds: [pend.nuevaId], mermaId: pend.nuevaId };
+    setGuardarMermaPendiente(t => t + 1);
+    return copia;
+  };
+
   const pushElaborado = useCallback((item) => {
     setElaboradosStack(prev => [...prev, item]);
   }, []);
@@ -996,7 +1017,7 @@ export default function RecetaModal({
           setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
           setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
           setPromoPagas(rec.promo_pagas != null ? String(rec.promo_pagas) : '');
-          setItems((rec.items || []).map(it => {
+          setItems(aplicarMermaPendiente((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
             const unidadOriginal = it.unidad || supplyMedidaRaw;
@@ -1037,7 +1058,7 @@ export default function RecetaModal({
               })(),
               updatedAt: it.updated_at || it.updatedAt || null,
             };
-          }));
+          })));
 
           // Costos de sub-recetas (elaborados) en una sola llamada; si falla, se piden de a 4
           const elaboradosIds = (rec.items || [])
@@ -1886,21 +1907,9 @@ export default function RecetaModal({
         }
       }
 
-      // ── Promo: SOLO el dueño va a "Promociones", y solo si no está ya ahí.
-      //    Los componentes (article_ref_id) se referencian en la receta y NUNCA se mueven
-      //    de su agrupación de origen — igual que un insumo dentro de una receta. ──
-      const hayComponentesArticulo = payload.items
-        .some(it => it.articleRefId != null && Number(it.articleRefId) !== 0);
-      const dueñoYaEnPromo = promoIds.has(Number(articulo.id));
-      if (hayComponentesArticulo && !dueñoYaEnPromo) {
-        try {
-          // Solo el dueño. Ningún componente entra en ids.
-          await createOrMoveAgrupacion(businessId, { nombre: 'Promociones', ids: [Number(articulo.id)] });
-          window.dispatchEvent(new CustomEvent('articulos:updated'));
-        } catch (e) {
-          console.warn('[promo] no se pudo mover el dueño a Promociones:', e.message);
-        }
-      }
+      // ── Promo: el artículo se queda en su agrupación (Diego 11/11: antes se MOVÍA a
+      //    "Promociones"). Promociones es un resumen que lista las promos estén donde estén.
+      try { window.dispatchEvent(new CustomEvent('receta:saved', { detail: { articleId: articulo?.id } })); } catch { }
 
       // ← Propagar a gemelos si los hay
       if (gemelosGroup?.members?.length > 1) {
@@ -2057,6 +2066,13 @@ export default function RecetaModal({
     }
   }, [saving, deleting, modoInsumo, tab, items, notas, foto, hasDuplicates, handleSave, modoPromoNueva]);
 
+  // Merma creada desde una fila y aplicada al volver: se guarda sola (si no, la recarga de la
+  // receta desde el servidor la pisaba y la fila volvía a "No").
+  useEffect(() => {
+    if (!guardarMermaPendiente) return;
+    autoSave();
+  }, [guardarMermaPendiente]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const abrirDesdeLupa = useCallback(async (item) => {
     setLupaAnchor(null);
     setLupaQuery('');
@@ -2094,11 +2110,15 @@ export default function RecetaModal({
       // Devolver el dueño a su agrupación de origen si llegó a Promociones por el switch
       // (tiene fromGroupName); si ya vivía en Promociones desde siempre (sin origen), pasa
       // a "Sin Agrupación" como un artículo común — nunca se queda pegado en Promociones.
-      const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
-      try {
-        await createOrMoveAgrupacion(businessId, { nombre: origen || 'Sin Agrupación', ids: [artId] });
-      } catch (e) {
-        console.warn('[desactivarPromo] no se pudo mover a destino:', e.message);
+      // Desde el 11/11 una promo no se mueve de su agrupación: solo se reubica si quedó
+      // viviendo en "Promociones" por la lógica vieja.
+      if (promoGroupIds.has(artId)) {
+        const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
+        try {
+          await createOrMoveAgrupacion(businessId, { nombre: origen || 'Sin Agrupación', ids: [artId] });
+        } catch (e) {
+          console.warn('[desactivarPromo] no se pudo mover a destino:', e.message);
+        }
       }
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       setPromoMode(false);
@@ -2170,9 +2190,6 @@ export default function RecetaModal({
     };
   }, [businessId, refrescarInsumoPuntual]);
 
-  // Fila desde la que se tocó "+ Crear merma" (para aplicarle la merma nueva al volver)
-  const mermaPendienteRef = useRef(null);
-
   // Mermas de un insumo cambiadas en el modal anidado (cascada): refrescar el insumo y
   // la lista de mermas cacheada en los items que lo usan, para que el factor de merma
   // (y por lo tanto el costo de línea) se recalcule con los datos nuevos.
@@ -2188,22 +2205,18 @@ export default function RecetaModal({
           // Merma creada con "+ Crear merma" desde una fila: queda aplicada en esa fila
           // (reemplaza la que tenía). Solo la primera nueva y una sola vez.
           const pend = mermaPendienteRef.current;
-          let nuevaId = null, filaPend = null;
-          if (pend && pend.supplyId === String(insId)) {
+          if (pend && pend.supplyId === String(insId) && !pend.nuevaId) {
             const nueva = mermas.find(m => !pend.antes.has(Number(m.id)));
-            if (nueva) { nuevaId = Number(nueva.id); filaPend = pend.index; mermaPendienteRef.current = null; }
+            if (nueva) { pend.nuevaId = Number(nueva.id); pend.hasta = Date.now() + 60000; }
           }
-          setItems(prev => prev.map((it, i) => {
+          setItems(prev => aplicarMermaPendiente(prev.map((it) => {
             if (String(it.supplyId) !== String(insId)) return it;
-            if (nuevaId != null && i === filaPend) {
-              return { ...it, mermas, mermaIds: [nuevaId], mermaId: nuevaId };
-            }
             // Una merma borrada no puede quedar elegida en la fila: si no, se seguía viendo
             // (con su factor) y al guardar la receta fallaba la base (merma_id inexistente).
             const ids = Array.isArray(it.mermaIds) ? it.mermaIds : (it.mermaId != null ? [it.mermaId] : []);
             const validos = ids.map(Number).filter(id => existe.has(id));
             return { ...it, mermas, mermaIds: validos, mermaId: validos[0] ?? null };
-          }));
+          })));
         })
         .catch(() => { });
     };
@@ -3195,6 +3208,7 @@ export default function RecetaModal({
                                   supplyId: String(it.supplyId),
                                   index: realIndex,
                                   antes: new Set((it.mermas || []).map(m => Number(m.id))),
+                                  nuevaId: null, hasta: 0,
                                 };
                                 await autoSave(); // guardar la receta antes de bajar al insumo
                                 const ins = insumos.find(i => String(i.id) === String(it.supplyId));
