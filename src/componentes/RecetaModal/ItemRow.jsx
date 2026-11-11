@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box, Typography, TextField, IconButton, Tooltip, Chip,
   Select, MenuItem, Checkbox, InputAdornment,
+  Popover,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchIcon from '@mui/icons-material/Search';
@@ -61,6 +62,7 @@ export default function ItemRow({
   onInsumoCreated,
 }) {
   const [search, setSearch] = useState('');
+  const [selectorEl, setSelectorEl] = useState(null);   // ancla del desplegable de búsqueda (Popover)
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
   const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
   // Insumo de la fila (no artículo ni promo) — lo edita el ícono de lápiz chico
@@ -480,7 +482,7 @@ export default function ItemRow({
         </Tooltip>
 
         {/* ── Selector insumo ── */}
-        <Box sx={{ position: 'relative', minWidth: 0 }}>
+        <Box ref={setSelectorEl} sx={{ position: 'relative', minWidth: 0 }}>
           <Box
             sx={{
               border: '1px solid',
@@ -663,8 +665,22 @@ export default function ItemRow({
           </Box>
 
           {/* Dropdown búsqueda */}
-          {searchOpen && (
-            <Box data-search-dropdown sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
+          {/* Flota por ENCIMA de todo (pie de costos, botones y bordes del modal): antes era un Box
+              absoluto dentro del cuerpo que scrollea y quedaba cortado (Diego 11/11). Popover = capa
+              propia del modal (MUI respeta el foco del de más arriba); si no entra abajo, se abre arriba. */}
+          {searchOpen && selectorEl && (
+            <Popover
+              open
+              anchorEl={selectorEl}
+              onClose={onSearchClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              disableAutoFocus
+              disableRestoreFocus
+              marginThreshold={8}
+              slotProps={{ paper: { sx: { mt: 0.5, borderRadius: 1.5, boxShadow: 6, border: '1px solid', borderColor: 'divider', overflow: 'visible' } } }}
+            >
+            <Box data-search-dropdown sx={{ bgcolor: 'background.paper', borderRadius: 1.5, minWidth: Math.max(340, selectorEl.offsetWidth || 0) }}>
               <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
                   value={search}
@@ -878,6 +894,7 @@ export default function ItemRow({
                 })}
               </Box>
             </Box>
+            </Popover>
           )}
         </Box>
 

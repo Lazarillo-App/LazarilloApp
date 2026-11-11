@@ -290,9 +290,11 @@ export default function TabMermaInsumo({ insumoId, businessId, insumoData, despe
             <Typography variant="caption" sx={{ textAlign: 'right', fontWeight: 700 }}>
               {Number(nuevo.peso_final) > 0 ? `$${fmt(precioConMerma(nuevo.peso_inicial, nuevo.peso_final))}` : '—'}
             </Typography>
-            <IconButton size="small" onClick={agregar} disabled={guardando || !nuevaCompleta} title="Se guarda sola al completar la fila y salir de ella" sx={{ color: PRIMARY }}>
-              {guardando ? <CircularProgress size={14} /> : <AddIcon sx={{ fontSize: 18 }} />}
-            </IconButton>
+            {/* Sin botón "+": la fila se guarda sola al completarla y salir (Diego 11/11: "¿para qué usaría el +?").
+                Solo se ve la ruedita mientras se guarda. */}
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              {guardando && <CircularProgress size={14} />}
+            </Box>
           </Box>
           {finalMayor && (
             <Typography variant="caption" sx={{ display: 'block', px: 0.5, color: G.rojo, fontWeight: 600 }}>
