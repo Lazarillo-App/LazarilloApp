@@ -81,7 +81,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -150,17 +150,12 @@ export default function InsumosMain() {
     useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
   const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
 
-  const [soloConCompras, setSoloConCompras] = useState(() => {
-    try { return localStorage.getItem('insumosFiltroCon Compras') === 'true'; }
-    catch { return false; }
-  });
+  // Ojito «solo con compras»: la vista SIEMPRE arranca activa (Diego 11/11). Se puede
+  // apagar mientras se navega, pero no se recuerda entre visitas.
+  const [soloConCompras, setSoloConCompras] = useState(true);
 
   const toggleSoloConCompras = useCallback(() => {
-    setSoloConCompras(prev => {
-      const next = !prev;
-      try { localStorage.setItem('insumosFiltroConCompras', String(next)); } catch { }
-      return next;
-    });
+    setSoloConCompras(prev => !prev);
   }, []);
 
   const handleOpenRecetaElaborado = useCallback((insumo, opts = {}) => {
@@ -1112,13 +1107,20 @@ export default function InsumosMain() {
   // filas en la tabla — antes el árbol de rubros del sidebar no se enteraba,
   // así que un rubro que se quedaba sin ningún insumo con compras seguía
   // apareciendo entero (con su conteo completo, ignorando el filtro).
+  // Excepción del ojito: un insumo dado de alta hace poco (DIAS_INSUMO_NUEVO) se ve
+  // aunque todavía no tenga compras — si no, el que se acaba de agregar desaparecía.
+  const DIAS_INSUMO_NUEVO = 30;
+  const pasaOjito = useCallback((insumo) => {
+    const c = comprasMap.get(Number(insumo?.id));
+    if (c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0) return true;
+    const alta = new Date(insumo?.created_at || insumo?.createdAt || 0).getTime();
+    return Number.isFinite(alta) && alta > 0 && (Date.now() - alta) <= DIAS_INSUMO_NUEVO * 86400000;
+  }, [comprasMap]);
+
   const rubrosTreeBase = useMemo(() => {
     if (!(soloConCompras && !isElaboradosView)) return filteredBase;
-    return filteredBase.filter((insumo) => {
-      const c = comprasMap.get(Number(insumo.id));
-      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
-    });
-  }, [filteredBase, soloConCompras, isElaboradosView, comprasMap]);
+    return filteredBase.filter(pasaOjito);
+  }, [filteredBase, soloConCompras, isElaboradosView, pasaOjito]);
 
   const rubrosTree = useMemo(() => {
     if (!rubrosTreeBase.length) return [];
@@ -1166,11 +1168,8 @@ export default function InsumosMain() {
 
   const tableRowsFiltrados = useMemo(() => {
     if (!soloConCompras) return tableRows;
-    return tableRows.filter(r => {
-      const c = comprasMap.get(Number(r.id));
-      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
-    });
-  }, [tableRows, soloConCompras, comprasMap]);
+    return tableRows.filter(pasaOjito);
+  }, [tableRows, soloConCompras, pasaOjito]);
 
   const navRecetaInsumo = useMemo(() => {
     const idx = tableRowsFiltrados.findIndex((r) => Number(r.id) === Number(recetaInsumoModal?.id));
