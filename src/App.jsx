@@ -8,6 +8,7 @@ import AnthonyChat from './componentes/asistente/AnthonyChat';
 //import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
+import PlazaPage from './paginas/PlazaPage';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
@@ -300,6 +301,8 @@ export default function App() {
                   }
                 />
                 </Route>
+                {/* Plaza de despacho (Diego 11/11/2026): la lámina de armado de sus productos. */}
+                <Route path="/plaza/:id" element={<RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion>} />
                 <Route
                   path="/agrupacioneslist"
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}
