@@ -228,6 +228,13 @@ export default function RecetaModal({
   const [pasos, setPasos] = useState([]);
   const [almacenamientoFreezer, setAlmacenamientoFreezer] = useState('');
   const [almacenamientoHeladera, setAlmacenamientoHeladera] = useState('');
+  // Regla de precio de la promo (Diego 11/11/2026): 'margen' (costo ÷ objetivo, como siempre),
+  // 'off' (% off sobre la venta sin promo) o 'nxm' (llevás N, pagás M). En 'off' y 'nxm' el precio
+  // sale solo y queda atado al de sus artículos; no se edita a mano.
+  const [promoRegla, setPromoRegla] = useState('margen');
+  const [promoOffPct, setPromoOffPct] = useState('');
+  const [promoLlevas, setPromoLlevas] = useState('');
+  const [promoPagas, setPromoPagas] = useState('');
 
   // Base de la receta (articles/:id/receta o insumos/:id/receta, según el modo) —
   // misma resolución que ya usa handleSave para postUrl. Se reutiliza para
@@ -978,6 +985,10 @@ export default function RecetaModal({
           setPasos(Array.isArray(rec.pasos) ? rec.pasos : []);
           setAlmacenamientoFreezer(rec.almacenamiento_freezer || '');
           setAlmacenamientoHeladera(rec.almacenamiento_heladera || '');
+          setPromoRegla(['off', 'nxm'].includes(rec.promo_regla) ? rec.promo_regla : 'margen');
+          setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
+          setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
+          setPromoPagas(rec.promo_pagas != null ? String(rec.promo_pagas) : '');
           setItems((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
@@ -1125,6 +1136,7 @@ export default function RecetaModal({
           setTemperatura('');
           setTiempoMin('');
           setPasos([]);
+          setPromoRegla('margen'); setPromoOffPct(''); setPromoLlevas(''); setPromoPagas('');
           setItems([]);
         }
       })
@@ -1439,10 +1451,36 @@ export default function RecetaModal({
   const costoXRendimiento = divisorRendCanonico > 0 ? costoTotalMostrado / divisorRendCanonico : 0;
   // Redondeado con el mismo criterio elegido en Configuración (múltiplo más cercano),
   // igual que los precios manuales/aumentos masivos en la tabla de artículos.
+  // Venta sin promo: suma de los precios de venta de los componentes-artículo
+  const ventaSinPromo = useMemo(() => {
+    if (!promoMode) return 0;
+    return items.reduce((acc, it) => {
+      if (!it.articleRefId) return acc;
+      const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
+      return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
+    }, 0);
+  }, [items, promoMode, getPrecioSinPromo]);
   const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
-  const precioSugerido = precioSugeridoCrudo > 0
+  const precioSugeridoMargen = precioSugeridoCrudo > 0
     ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
     : 0;
+  // Promo con regla '% off' o 'llevás N, pagás M': el precio sale de la venta sin promo, no del margen.
+  const reglaPromoActiva = promoMode && (promoRegla === 'off' || promoRegla === 'nxm') ? promoRegla : null;
+  const precioPorRegla = (() => {
+    if (!reglaPromoActiva || !(ventaSinPromo > 0)) return 0;
+    if (reglaPromoActiva === 'off') {
+      const off = Number(promoOffPct);
+      if (!(off > 0 && off < 100)) return 0;
+      return aplicarRedondeo(ventaSinPromo * (1 - off / 100), appConfig.redondeoPrecios);
+    }
+    const n = Number(promoLlevas), m = Number(promoPagas);
+    if (!(n > 0 && m > 0 && m <= n)) return 0;
+    return aplicarRedondeo(ventaSinPromo * m / n, appConfig.redondeoPrecios);
+  })();
+  const etiquetaRegla = reglaPromoActiva === 'off'
+    ? `${fmt(Number(promoOffPct) || 0, 0)}% off`
+    : reglaPromoActiva === 'nxm' ? `${promoLlevas || 'N'}x${promoPagas || 'M'}` : null;
+  const precioSugerido = reglaPromoActiva ? precioPorRegla : precioSugeridoMargen;
   // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
   // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
   const commitPrecioSugerido = (val) => {
@@ -1453,15 +1491,6 @@ export default function RecetaModal({
   const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
   const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
 
-  // Venta sin promo: suma de los precios de venta de los componentes-artículo
-  const ventaSinPromo = useMemo(() => {
-    if (!promoMode) return 0;
-    return items.reduce((acc, it) => {
-      if (!it.articleRefId) return acc;
-      const p = getPrecioSinPromo ? getPrecioSinPromo(it.articleRefId) : 0;
-      return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
-    }, 0);
-  }, [items, promoMode, getPrecioSinPromo]);
   const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
 
   const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
@@ -1660,6 +1689,12 @@ export default function RecetaModal({
       pasos,
       almacenamientoFreezer,
       almacenamientoHeladera,
+      ...(promoMode ? {
+        promoRegla,
+        promoOffPct: promoRegla === 'off' ? Number(promoOffPct) || null : null,
+        promoLlevas: promoRegla === 'nxm' ? Number(promoLlevas) || null : null,
+        promoPagas: promoRegla === 'nxm' ? Number(promoPagas) || null : null,
+      } : {}),
       items: itemsOrdenados.map(it => {
         let precioRefDbItem = Number(it.precioRefDB) || 0;
         // ── Costo unitario CON merma: derivado de calcCostoItem (única fuente de verdad
@@ -1736,6 +1771,14 @@ export default function RecetaModal({
       const saved = json?.receta ?? json;
       setReceta(saved);
       setSuccess(true);
+
+      // Promo atada (% off o llevás N pagás M): su nuevo precio es el que sale de la regla, directo
+      // (Diego 11/11/2026: «cambia, no propone, están atados»).
+      if (reglaPromoActiva && precioPorRegla > 0 && articulo?.id) {
+        try {
+          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(articulo.id), precioManual: precioPorRegla });
+        } catch { /* el guardado de la receta ya está hecho */ }
+      }
 
       // Avisar SIEMPRE que se guardó la receta de un insumo/elaborado (cambie o no
       // el nombre) — sin esto, la tabla de Insumos (InsumosMain.jsx) solo refrescaba
@@ -2871,6 +2914,57 @@ export default function RecetaModal({
                     </Box>
                   )}
 
+                  {promoMode && !isStaff && (() => {
+                    // Regla de precio de la promo (Diego 11/11/2026). Mismo alto (32px) para el grupo y los campos.
+                    const campo = (val, set, w, title) => (
+                      <TextField size="small" value={val} title={title}
+                        onChange={(e) => set(e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.'))}
+                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', padding: '5px 6px', fontWeight: 700 } }}
+                        sx={{ width: w, '& .MuiOutlinedInput-root': { height: 32 } }} />
+                    );
+                    const unSoloArticulo = items.filter(it => it.articleRefId).length;
+                    return (
+                      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" sx={{ mb: 1.5, rowGap: 1 }}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: '0.04em' }}>
+                          REGLA DE PRECIO
+                        </Typography>
+                        <ToggleButtonGroup exclusive size="small" value={promoRegla}
+                          onChange={(_, v) => v && setPromoRegla(v)}
+                          sx={{ '& .MuiToggleButton-root': { height: 32, px: 1.5, textTransform: 'none', fontSize: 13, fontWeight: 600 } }}>
+                          <ToggleButton value="off">% off</ToggleButton>
+                          <ToggleButton value="nxm">Llevás N, pagás M</ToggleButton>
+                          <ToggleButton value="margen">Margen</ToggleButton>
+                        </ToggleButtonGroup>
+                        {promoRegla === 'off' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {campo(promoOffPct, setPromoOffPct, 64, '% de descuento sobre la venta sin promo')}
+                            <Typography variant="body2" color="text.secondary">% off sobre la venta sin promo</Typography>
+                          </Stack>
+                        )}
+                        {promoRegla === 'nxm' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <Typography variant="body2" color="text.secondary">Llevás</Typography>
+                            {campo(promoLlevas, setPromoLlevas, 52, 'Unidades que se llevan')}
+                            <Typography variant="body2" color="text.secondary">pagás</Typography>
+                            {campo(promoPagas, setPromoPagas, 52, 'Unidades que se pagan')}
+                          </Stack>
+                        )}
+                        {promoRegla === 'margen' && (
+                          <Typography variant="body2" color="text.secondary">Precio = costo ÷ objetivo (también se escribe el precio con doble clic)</Typography>
+                        )}
+                        {reglaPromoActiva && !(ventaSinPromo > 0) && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            Para que tome el precio, los ingredientes tienen que ser artículos (no insumos): de ahí sale la venta sin promo.
+                          </Typography>
+                        )}
+                        {promoRegla === 'nxm' && unSoloArticulo > 1 && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            «Llevás N, pagás M» es para un solo artículo: con varios, usá % off.
+                          </Typography>
+                        )}
+                      </Stack>
+                    );
+                  })()}
                   <Divider sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -3169,6 +3263,7 @@ export default function RecetaModal({
               isStaff={isStaff}
               promoMode={promoMode}
               ventaSinPromo={ventaSinPromo}
+              etiquetaRegla={etiquetaRegla}
               colorSinPromo={colorSinPromo}
               editandoObjetivo={editandoObjetivo}
               setEditandoObjetivo={setEditandoObjetivo}

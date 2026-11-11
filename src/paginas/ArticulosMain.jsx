@@ -41,7 +41,7 @@ import {
   notifyGroupFavoriteChanged,
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
-import { saveRedondeoConfig, getRedondeoConfig } from '@/utils/redondeoUtils';
+import { saveRedondeoConfig, getRedondeoConfig, aplicarRedondeo } from '@/utils/redondeoUtils';
 import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -97,7 +97,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -112,7 +112,7 @@ const isRealTodoGroup = (g, todoId) => {
 const esTodoGroupByName = (g) => {
   if (!g) return false;
   const n = String(g.nombre || g.name || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupar' || n === 'sin grupo';
 };
 
@@ -679,6 +679,48 @@ export default function ArticulosMain(props) {
   // un estado anterior (el "a veces no lo hace" al borrar). priceConfigSaveSeqRef
   // descarta cualquier respuesta que no sea la del último guardado disparado.
   const priceConfigSaveSeqRef = useRef(0);
+  // Promos atadas al precio de sus artículos (Diego 11/11/2026: «si cambio la Heineken, la promo
+  // que la incluya se adapta al nuevo precio según la regla; cambia, no propone»). Después de guardar
+  // el precio de uno o más artículos, se recalculan las promos con regla '% off' o 'llevás N, pagás M'
+  // que los usan y se les guarda el nuevo precio. Mismo cálculo que el modal de receta: venta sin
+  // promo = Σ cantidad × (nuevo precio del artículo o, si no tiene, su precio de venta).
+  const metaByIdRef = useRef(null);
+  const recalcularPromosAtadas = React.useCallback(async (bizId, byArticle, cambiados) => {
+    if (!bizId || !cambiados?.size) return false;
+    try {
+      const token = localStorage.getItem('token') || '';
+      const resp = await fetch(`${BASE}/businesses/${bizId}/promos-reglas`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(bizId) },
+      });
+      const data = await resp.json().catch(() => ({}));
+      const promos = (data?.promos || []).filter((p) => (p.componentes || []).some((c) => cambiados.has(Number(c.articleId))));
+      if (!promos.length) return false;
+      const redondeo = getRedondeoConfig(bizId)?.valor ?? null;
+      const precioDe = (id) => {
+        const manual = Number(byArticle?.[String(id)]?.precioManual);
+        if (manual > 0) return manual;
+        return Number(metaByIdRef.current?.get?.(Number(id))?.precio) || 0;
+      };
+      let guardadas = 0;
+      for (const p of promos) {
+        const venta = p.componentes.reduce((acc, c) => acc + precioDe(c.articleId) * (Number(c.cantidad) || 0), 0);
+        if (!(venta > 0)) continue;
+        let precio = 0;
+        if (p.regla === 'off' && p.offPct > 0 && p.offPct < 100) precio = venta * (1 - p.offPct / 100);
+        if (p.regla === 'nxm' && p.llevas > 0 && p.pagas > 0 && p.pagas <= p.llevas) precio = venta * p.pagas / p.llevas;
+        precio = precio > 0 ? aplicarRedondeo(precio, redondeo) : 0;
+        if (!(precio > 0)) continue;
+        if (Number(byArticle?.[String(p.articleId)]?.precioManual) === precio) continue;
+        await PriceConfigAPI.save(bizId, { scope: 'articulo', scopeId: String(p.articleId), precioManual: precio });
+        guardadas++;
+      }
+      return guardadas > 0;
+    } catch (e) {
+      console.error('[recalcularPromosAtadas]', e);
+      return false;
+    }
+  }, []);
+
   const handlePriceConfigSave = React.useCallback((body) => {
     const bizId = Number(activeBizId);
     const mySeq = ++priceConfigSaveSeqRef.current;
@@ -702,7 +744,12 @@ export default function ArticulosMain(props) {
     const doSave = async () => {
       try {
         await PriceConfigAPI.save(bizId, body);
-        const r = await PriceConfigAPI.getAll(bizId);
+        let r = await PriceConfigAPI.getAll(bizId);
+        // Cambió el precio de un artículo: las promos atadas a él se recalculan.
+        if (body?.scope === 'articulo' && body?.scopeId != null && (body.precioManual != null || body._deleteManual)) {
+          const hubo = await recalcularPromosAtadas(bizId, r?.byArticle || {}, new Set([Number(body.scopeId)]));
+          if (hubo) r = await PriceConfigAPI.getAll(bizId);
+        }
         if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
         setPriceConfig({
           byArticle: r?.byArticle || {},
@@ -721,7 +768,7 @@ export default function ArticulosMain(props) {
     };
 
     doSave();
-  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists, recalcularPromosAtadas]);
 
   const handleBulkManualSave = React.useCallback(async (updates) => {
     const bizId = Number(activeBizId);
@@ -767,7 +814,10 @@ export default function ArticulosMain(props) {
         },
         body: JSON.stringify({ updates: realUpdates, deletes }),
       });
-      const r = await PriceConfigAPI.getAll(bizId);
+      let r = await PriceConfigAPI.getAll(bizId);
+      // Promos atadas a los artículos que cambiaron de precio.
+      const cambiados = new Set([...realUpdates, ...deletes].map(({ artId }) => Number(artId)));
+      if (await recalcularPromosAtadas(bizId, r?.byArticle || {}, cambiados)) r = await PriceConfigAPI.getAll(bizId);
       if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
       setPriceConfig({
         byArticle: r?.byArticle || {},
@@ -779,7 +829,7 @@ export default function ArticulosMain(props) {
     } catch (e) {
       console.error('[handleBulkManualSave]', e);
     }
-  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists, recalcularPromosAtadas]);
 
   // Escuchar ui:undo para restaurar el objetivo previo
   React.useEffect(() => {
@@ -1291,6 +1341,7 @@ export default function ArticulosMain(props) {
     );
     return m;
   }, [categorias]);
+  metaByIdRef.current = metaById;
 
   const agrupacionesRich = useMemo(() => {
     return (agrupaciones || []).map(g => ({
@@ -1912,7 +1963,7 @@ export default function ArticulosMain(props) {
         }
       }
 
-      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
       const esGlobalGroup = (gid) => {
         const g = allGroups.find(x => Number(x.id) === Number(gid));
         const n = normN(g?.nombre);
@@ -2291,7 +2342,7 @@ export default function ArticulosMain(props) {
   //   - está en sus agrupaciones locales, O
   //   - NO está asignado a ningún subnegocio (está en sin agrupar del principal)
   const idsNegocioActivo = useMemo(() => {
-    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
     const esGlobal = (g) => {
       const n = normNombre(g?.nombre);
       return n === 'sin agrupacion' || n === 'discontinuados' || n === 'descontinuados';
