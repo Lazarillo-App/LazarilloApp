@@ -1810,14 +1810,14 @@ export function ComprasDetalleContenido({
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Fecha</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Comprobante</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
                 {showBizColumn && <TableCell sx={{ fontWeight: 700 }}>Negocio</TableCell>}
                 {showBranchColumn && <TableCell sx={{ fontWeight: 700 }}>Sucursal</TableCell>}
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Total</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1893,8 +1893,8 @@ export function ComprasDetalleContenido({
                         transition: 'background 0.12s',
                       }}
                     >
-                      <TableCell>{fmtFecha(it.fecha)}</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      <TableCell align="center">{fmtFecha(it.fecha)}</TableCell>
+                      <TableCell align="center" sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                         {/* El comprobante es el vínculo a la factura y el proveedor a su ficha, como en
                             Detalle de compras (Diego 06/11/2026: sin botón "ver"). */}
                         {it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
@@ -1937,7 +1937,7 @@ export function ComprasDetalleContenido({
                         </TableCell>
                       )}
 
-                      <TableCell align="right">
+                      <TableCell align="center">
                         {fmtNum(it.cantidad)}
                         {insumoUnidad && (
                           <Typography component="span" sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}>
@@ -1945,9 +1945,9 @@ export function ComprasDetalleContenido({
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                      <TableCell align="center" sx={{ color: 'text.secondary' }}>
                         {esBonificada ? (
-                          <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
+                          <Stack direction="row" alignItems="center" justifyContent="center" spacing={0.75}>
                             <span style={{ color: '#94a3b8' }}>$ 0,00</span>
                             <Box component="span" sx={{
                               px: 0.6, py: 0.1, borderRadius: 0.75, fontSize: '0.62rem', fontWeight: 800,
@@ -1958,7 +1958,7 @@ export function ComprasDetalleContenido({
                           </Stack>
                         ) : (it.precio ? fmtMoney(it.precio) : '-')}
                       </TableCell>
-                      <TableCell align="right" sx={{
+                      <TableCell align="center" sx={{
                         fontWeight: 600,
                         color: esBonificada ? AMBER.strong : branchColor,
                       }}>

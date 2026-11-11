@@ -72,6 +72,7 @@ import TabComprasInsumo from './TabComprasInsumo';
 import { RankingChip } from '../ComprasMiniDetalleModal';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
+import TabFichaInsumo from './TabFichaInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
 import { useAccess } from '@/context/AccessContext';
@@ -623,7 +624,7 @@ export default function RecetaModal({
     setEntradaElegida(!modoInsumo || saltarSelector);
     // Buscador (lupa) del header: se abrió desde una pestaña puntual (ej. Merma) → se
     // mantiene esa misma pestaña en el insumo destino, en vez de re-adivinar Receta/Compras.
-    const TABS_VALIDOS = ['receta', 'merma', 'compras', 'equivalencias', 'uso'];
+    const TABS_VALIDOS = ['ficha', 'receta', 'merma', 'compras', 'equivalencias', 'uso'];
     if (modoInsumo && saltarSelector && TABS_VALIDOS.includes(initialTab)) {
       setTab(initialTab);
       tabResueltoParaRef.current = articulo?.id;
@@ -2329,9 +2330,10 @@ export default function RecetaModal({
                 )}
                 <Stack direction="row" spacing={0.5}>
                 {[
-                  { id: 'merma', label: 'MERMA' },
+                  { id: 'ficha', label: 'FICHA' },   // datos del insumo + envases (Diego 11/11/2026)
                   { id: 'receta', label: 'RECETA' },
                   { id: 'compras', label: 'COMPRAS' },
+                  { id: 'merma', label: 'MERMA' },   // después de Compras (Diego 11/11/2026)
                   { id: 'equivalencias', label: 'EQUIVALENCIAS' },
                   { id: 'uso', label: 'USO' },
                 ].map(t => (
@@ -2353,10 +2355,11 @@ export default function RecetaModal({
                 </Stack>
               </Stack>
             )}
-            <Stack direction="row" alignItems="center" spacing={0.5}>
+            {/* Todo a 32 px: Marcar medía 29 y los íconos 30/34 (revisión de alineación 11/11/2026) */}
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ '& .MuiIconButton-root': { width: 32, height: 32 } }}>
               {!isStaff && !promoMode && (
                 <Button size="small" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
-                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0.25 }}>
+                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32 }}>
                   {marcarModo ? 'Listo' : 'Marcar'}
                 </Button>
               )}
@@ -2420,6 +2423,12 @@ export default function RecetaModal({
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
               </Box>
+            ) : modoInsumo && tab === 'ficha' ? (
+              <TabFichaInsumo
+                insumoId={articulo?.id}
+                businessId={insumoBizId}
+                insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
+              />
             ) : modoInsumo && tab === 'merma' ? (
               <TabMermaInsumo
                 insumoId={articulo?.id}
@@ -3342,7 +3351,7 @@ export default function RecetaModal({
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
           {!(modoInsumo && !entradaElegida)
             && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
-            && !(modoInsumo && ['merma', 'compras', 'equivalencias', 'uso'].includes(tab))
+            && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
             && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada)
             && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
