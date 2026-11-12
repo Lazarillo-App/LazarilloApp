@@ -111,9 +111,10 @@ export default function RrhhCronogramas() {
   const filasRef = useRef(filas);
   filasRef.current = filas;
 
-  const avisar = useCallback((msj, tipo = 'ok') => {
-    setToast({ msj, tipo });
-    setTimeout(() => setToast((t) => (t && t.msj === msj ? null : t)), 3200);
+  // accion opcional: { label, fn } → botón en el aviso (ej. Deshacer); dura un poco más
+  const avisar = useCallback((msj, tipo = 'ok', accion = null) => {
+    setToast({ msj, tipo, accion });
+    setTimeout(() => setToast((t) => (t && t.msj === msj ? null : t)), accion ? 6000 : 3200);
   }, []);
 
   /* ── carga inicial: config (siembra defaults) + índice de semanas ── */
@@ -358,6 +359,36 @@ export default function RrhhCronogramas() {
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
     setCeldaSel(null);
+  };
+
+  /* ── acciones de Nómina desde la lista de asignar ── */
+  // Alta rápida con lo que se escribió en el buscador: 1ª palabra nombre, el resto apellido.
+  const crearEmpleadoRapido = async (texto) => {
+    const [nombre, ...ap] = String(texto || '').trim().split(/\s+/);
+    if (!nombre) return null;
+    try {
+      const r = await RrhhAPI.crearEmpleado({ nombre, apellido: ap.join(' ') || undefined });
+      const emp = { ...r.empleado, espacios: [], noAplica: false, sugerirBaja: false };
+      setConfig((c) => ({ ...c, empleados: [...c.empleados, emp] }));
+      avisar(`${nombreDe(emp)} dado de alta en la nómina ✓`);
+      return emp;
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo dar de alta.', 'error');
+      return null;
+    }
+  };
+  // "No aplica a cronogramas" (usuarios del POS, contador…): sale de la lista al instante.
+  const marcarNoAplica = async (emp, valor = true) => {
+    const poner = (v) => setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? { ...e, noAplica: v } : e)) }));
+    poner(valor);
+    try {
+      await RrhhAPI.editarEmpleado(emp.id, { noAplica: valor });
+      if (valor) avisar(`${nombreDe(emp)} no va en cronogramas`, 'ok', { label: 'Deshacer', fn: () => marcarNoAplica(emp, false) });
+      else avisar(`${nombreDe(emp)} vuelve a cronogramas ✓`);
+    } catch (e) {
+      poner(!valor);
+      avisar(e?.data?.message || e.message || 'No se pudo guardar.', 'error');
+    }
   };
 
   const sacarCelda = (fila, dia) => {
@@ -897,6 +928,8 @@ export default function RrhhCronogramas() {
           empleados={config.empleados}
           puestos={config.puestos}
           espacio={espacio}
+          onCrear={crearEmpleadoRapido}
+          onNoAplica={marcarNoAplica}
           onGuardar={guardarCelda}
           onCerrar={() => setCeldaSel(null)}
         />
@@ -904,6 +937,10 @@ export default function RrhhCronogramas() {
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: T.band, border: `1px solid ${toast.tipo === 'error' ? T.bad : T.accent}88`, color: toast.tipo === 'error' ? T.bad : T.text, fontFamily: FB, fontSize: 13.5, fontWeight: 600, padding: '11px 18px', borderRadius: 12, boxShadow: T.sombra, zIndex: 60 }}>
           {toast.msj}
+          {toast.accion && (
+            <span onClick={() => { const a = toast.accion; setToast(null); a.fn(); }}
+              style={{ marginLeft: 12, color: T.accentTxt, fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>{toast.accion.label}</span>
+          )}
         </div>
       )}
     </div>
