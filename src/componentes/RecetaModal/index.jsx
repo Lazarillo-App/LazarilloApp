@@ -1035,7 +1035,9 @@ export default function RecetaModal({
         if (cancelled) return;
         setReceta(rec);
         if (rec) {
-          setNombre(rec.nombre || artNombre);
+          // El nombre que se muestra es el del artículo/insumo (el de la tabla), no el guardado en la receta:
+          // si difieren, el modal mostraba uno que la tabla no tenía (Diego 12/11/2026, promo #571).
+          setNombre(artNombre || rec.nombre);
           setRendimiento(Number(rec.porciones) || Number(rec.rendimiento) || 1);
           setRendimientoUnidad(rec.rendimiento_unidad || 'porcion');
           setRendimientoPeso(rec.rendimiento_peso != null ? Number(rec.rendimiento_peso) : null);
@@ -1765,6 +1767,20 @@ export default function RecetaModal({
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
           throw new Error(d?.error || d?.message || `Error ${res.status}`);
+        }
+        // El PUT de la promo solo renombra la receta: el nombre del ARTÍCULO (el que muestra la tabla)
+        // se cambia aparte, igual que en un producto (Diego 12/11/2026: «cambié el nombre y no impactó en la tabla»).
+        const nombrePromoNuevo = (nombre || '').trim();
+        if (nombrePromoNuevo && nombrePromoNuevo !== (artNombre || '').trim()) {
+          const rn = await fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre: nombrePromoNuevo }),
+          });
+          if (!rn.ok) {
+            const d = await rn.json().catch(() => ({}));
+            throw new Error('La promoción se guardó, pero no se pudo cambiar el nombre: ' + (d?.message || d?.error || `Error ${rn.status}`));
+          }
         }
         setSuccess(true);
         try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
