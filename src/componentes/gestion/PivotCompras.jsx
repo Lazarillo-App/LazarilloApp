@@ -83,6 +83,7 @@ const Punto = ({ color, title }) => (
 
 export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
+  historiaPrev = null, // pivot del año anterior (solo roles sin totales por rubro): lo habitual cruza el año
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
   // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
@@ -153,6 +154,8 @@ export default function PivotCompras({
   }, [data, porProveedor, sort, expanded, mostrar]);
 
   if (isLoading) return <PivotLoading />;
+  // Meses del año anterior por rubro, para comparar en enero/febrero/marzo con el año pasado.
+  const prevPorRubro = new Map((historiaPrev?.rows || []).map((r) => [r.rubroCodigo, r.values || {}]));
   if (error) return <PivotError />;
   if (!data || data.rows.length === 0) return <PivotEmpty />;
 
@@ -213,7 +216,7 @@ export default function PivotCompras({
   // Sin rubro (Diego 06/11/2026): siempre primero, en ámbar y con «corregir» (abre el porqué).
   const filaRubro = (rubro) => {
     const sinRubro = rubro.rubroCodigo === '__sin_rubro';
-    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year) : null;
+    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year, new Date(), prevPorRubro.get(rubro.rubroCodigo) || null) : null;
     return (
     <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
@@ -409,7 +412,7 @@ export default function PivotCompras({
             <TableRow>
               <TableCell colSpan={colSpan} sx={{ bgcolor: MUTED, pt: 0, pb: 0.75, px: 0, borderBottom: 0 }}>
                 <Box sx={{ ...sxStickyNombre(MUTED), display: 'inline-block', px: 2, fontSize: 11.5, color: 'text.disabled', whiteSpace: 'nowrap' }}>
-                  Rubros en millones · la barra compara cada mes con lo que el rubro suele tener (meses de hace 3 o más; los rubros esporádicos no se comparan)
+                  Rubros en millones · la barra compara con lo habitual del rubro (meses de hace 3 o más, aunque sean del año anterior)
                 </Box>
               </TableCell>
             </TableRow>

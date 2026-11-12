@@ -24,15 +24,27 @@ function mediana(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Lo habitual del rubro: { importe, meses: [números de mes usados] } o null si no hay historia. */
-export function habitualRubro(values, months, anio, hoy = new Date()) {
+/**
+ * Lo habitual del rubro: { importe, meses: [{ anio, mes }] } o null si no hay historia.
+ * `valoresPrev` = los meses del año anterior del mismo rubro: el año no es barrera (Diego
+ * 12/11/2026) — en enero se compara con octubre, septiembre… del año pasado. Se toman los
+ * últimos VENTANA meses cerrados (con 3+ meses de antigüedad): con la inflación, los meses muy
+ * viejos dan importes más chicos y harían parecer completo lo que no lo está.
+ */
+export const VENTANA = 6;
+export function habitualRubro(values, months, anio, hoy = new Date(), valoresPrev = null) {
   const corte = indice(hoy.getFullYear(), hoy.getMonth() + 1) - MESES_ATRAS;
-  // Desde el primer mes con carga del rubro (un negocio que arrancó a mitad de año no es «esporádico»).
-  const primero = months.find((m) => tieneValor(values?.[m]));
-  const cerrados = months.filter((m) => primero != null && m >= primero && indice(anio, m) <= corte);
-  const refs = cerrados.filter((m) => tieneValor(values?.[m]));
+  const serie = [
+    ...(valoresPrev ? Array.from({ length: 12 }, (_, i) => ({ anio: anio - 1, mes: i + 1, v: valoresPrev[i + 1] })) : []),
+    ...months.map((m) => ({ anio, mes: m, v: values?.[m] })),
+  ];
+  // Desde el primer mes con carga del rubro (un negocio que arrancó hace poco no es «esporádico»).
+  const iPrimero = serie.findIndex((x) => tieneValor(x.v));
+  if (iPrimero < 0) return null;
+  const cerrados = serie.slice(iPrimero).filter((x) => indice(x.anio, x.mes) <= corte).slice(-VENTANA);
+  const refs = cerrados.filter((x) => tieneValor(x.v));
   if (refs.length < MIN_REFERENCIAS || refs.length < cerrados.length * MIN_REGULARIDAD) return null;
-  return { importe: mediana(refs.map((m) => values[m])), meses: refs };
+  return { importe: mediana(refs.map((x) => x.v)), meses: refs.map(({ anio: a, mes }) => ({ anio: a, mes })) };
 }
 
 /**
@@ -65,11 +77,15 @@ export function colorCompletitud(pct) {
   return '#ef4444';
 }
 
-/** «ene–ago» / «ene, mar y abr» para explicar de dónde sale lo habitual. */
+/** [{anio, mes}] → «may–oct» (mismo año) o «sep 25–feb 26» (cruza el año); con huecos, la lista. */
 export function rangoMeses(meses) {
   if (!meses?.length) return '';
-  const contiguos = meses.every((m, i) => i === 0 || m === meses[i - 1] + 1);
-  if (contiguos) return meses.length === 1 ? MESES[meses[0] - 1] : `${MESES[meses[0] - 1]}–${MESES[meses[meses.length - 1] - 1]}`;
-  const n = meses.map((m) => MESES[m - 1]);
+  const norm = meses.map((x) => (typeof x === 'number' ? { anio: null, mes: x } : x));
+  const variosAnios = new Set(norm.map((x) => x.anio)).size > 1;
+  const et = (x) => `${MESES[x.mes - 1]}${variosAnios && x.anio != null ? ` ${String(x.anio).slice(-2)}` : ''}`;
+  const idx = (x) => (x.anio ?? 0) * 12 + x.mes;
+  const contiguos = norm.every((x, i) => i === 0 || idx(x) === idx(norm[i - 1]) + 1);
+  if (contiguos) return norm.length === 1 ? et(norm[0]) : `${et(norm[0])}–${et(norm[norm.length - 1])}`;
+  const n = norm.map(et);
   return `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}`;
 }
