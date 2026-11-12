@@ -30,6 +30,7 @@ import {
   PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
 } from './piezasPivot';
 import { useAccess } from '@/context/AccessContext';
+import { habitualRubro, estadoMes, millones, colorCompletitud, rangoMeses } from '@/gestion/completitud';
 
 // Rubro "Gastos En Personal": los "proveedores" suelen ser personas de planilla con nombres
 // ambiguos — ahí se antepone el código del ERP (constants.ts de gestion).
@@ -89,6 +90,8 @@ export default function PivotCompras({
   const { oculto = () => false } = useAccess() || {};
   const sinTotalesRubro = oculto('tabla.totales_rubro');
   const sinIngEgr = oculto('tabla.ing_egr');
+  // Columna Total: un rol a medida no la ve salvo que se la habiliten (Diego 12/11/2026).
+  const sinColTotal = oculto('tabla.col_total');
   const aperturaPanel = useAperturaPanel();
   const { pdvId: lugarPanel } = useDashboard();
   const { data: conceptosFijos } = useConceptosEmpleado(lugarPanel);
@@ -161,7 +164,8 @@ export default function PivotCompras({
     : fmtARS(valor));
   const pctDenominator = pctMode === 'ingresos' ? (ventas?.grandTotal ?? 0) : data.grandTotal;
   const fmtPct = (rowTotal) => computePctLabel(rowTotal, pctDenominator, pctMode === 'ingresos' && ventasLoading);
-  const colSpan = months.length + 3;
+  const colSpan = months.length + (sinColTotal ? 2 : 3);
+  const colsDespues = months.length + (sinColTotal ? 1 : 2); // meses + Total + %
 
   // Click en una celda con valor: abre el detalle de lo que suma.
   const clic = (valor, extra) => (hasValue(valor) ? { onClick: () => abrirDetalle(extra) } : {});
@@ -171,24 +175,61 @@ export default function PivotCompras({
     <TableCell sx={{ ...sxNum, px: 1.5, fontSize: 12, color: 'text.secondary', opacity: 0.7, ...sx }}>{fmtPct(rowTotal)}</TableCell>
   );
 
+  // Rol sin totales por rubro: cada mes del rubro va resumido en millones con una barra de cuánto
+  // se cargó contra lo habitual (ver gestion/completitud.js). Mes vacío que suele tener gastos:
+  // «sin cargar». Sin historia suficiente solo el número.
+  const celdaCompletitud = (rubro, mes, sinRubro, habitual) => {
+    const e = estadoMes(rubro.values, mes, year, habitual);
+    const v = rubro.values[mes];
+    const bg = sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25);
+    const color = e.tipo === 'valor' ? colorCompletitud(e.pct) : null;
+    const ref = habitual ? `lo habitual: ${millones(habitual.importe)} M (mediana de ${rangoMeses(habitual.meses)})` : 'sin comparar: el rubro todavía no tiene historia o no es de todos los meses';
+    const tip = e.tipo === 'vacio' ? `Nada cargado este mes · ${ref}`
+      : e.tipo === 'valor' ? `${fmtARS(v)}${e.pct != null ? ` · ${Math.round(e.pct * 100)}% de ${ref}` : ` · ${ref}`}`
+        : '';
+    return (
+      <TableCell key={mes} {...clic(v, { mes, rubroCodigo: rubro.rubroCodigo })}
+        sx={{ ...sxNum, px: 1.5, py: 1.25, position: 'relative', bgcolor: bg, ...sxDe(v) }}>
+        {e.tipo === 'valor' && (
+          <Tooltip title={tip} placement="top">
+            <Box component="span" sx={{ whiteSpace: 'nowrap', color: color && color !== '#5BC2EA' ? color : 'text.primary' }}>{millones(v)}</Box>
+          </Tooltip>
+        )}
+        {e.tipo === 'vacio' && (
+          <Tooltip title={tip} placement="top">
+            <Box component="span" sx={{ whiteSpace: 'nowrap', fontSize: 12, fontWeight: 500, color: '#ef4444' }}>sin cargar</Box>
+          </Tooltip>
+        )}
+        {e.tipo === 'valor' && e.pct != null && (
+          <Box sx={{ position: 'absolute', left: 12, right: 12, bottom: 5, height: 3, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+            <Box sx={{ width: `${Math.min(e.pct, 1) * 100}%`, height: '100%', bgcolor: color, borderRadius: 2 }} />
+          </Box>
+        )}
+      </TableCell>
+    );
+  };
+
   // Fila de rubro (pivot-rubro-row.tsx): fondo gris, semibold.
   // Sin rubro (Diego 06/11/2026): siempre primero, en ámbar y con «corregir» (abre el porqué).
   const filaRubro = (rubro) => {
     const sinRubro = rubro.rubroCodigo === '__sin_rubro';
+    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year) : null;
     return (
     <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
         <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{sinRubro ? <>⚠ {rubro.nombre}<ChipCorregir /></> : rubro.nombre}</Expansor>
       </TableCell>
-      {sinTotalesRubro ? (
-        <TableCell colSpan={months.length + 2} sx={{ bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25) }} />
-      ) : (<>
+      {sinTotalesRubro ? (<>
+      {months.map((mes) => celdaCompletitud(rubro, mes, sinRubro, habitual))}
+      {!sinColTotal && <TableCell sx={{ bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25) }} />}
+      <TableCell sx={{ bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25) }} />
+      </>) : (<>
       {months.map((mes) => (
         <TableCell key={mes} {...clic(rubro.values[mes], { mes, rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(rubro.values[mes]) }}>
           {fmtCelda(rubro.values[mes], mes)}
         </TableCell>
       ))}
-      <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>
+      {!sinColTotal && <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>}
       {celdaPct(rubro.rowTotal, { py: 1.25 })}
       </>)}
     </TableRow>
@@ -244,7 +285,7 @@ export default function PivotCompras({
             </ComposicionTooltip>
           );
         })}
-        <TableCell onClick={() => abrirDetalle(filtro)} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(c.rowTotal)}</TableCell>
+        {!sinColTotal && <TableCell onClick={() => abrirDetalle(filtro)} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(c.rowTotal)}</TableCell>}
         {celdaPct(c.rowTotal, { py: 1, opacity: 0.5 })}
       </TableRow>
     );
@@ -271,7 +312,7 @@ export default function PivotCompras({
           {fmtCelda(r.values[mes], mes)}
         </TableCell>
       ))}
-      <TableCell onClick={() => abrirDetalle({ rowId: r.rowId, distribucionId: r.distribucionId ?? undefined })} sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxClic }}>{fmtARS(r.rowTotal)}</TableCell>
+      {!sinColTotal && <TableCell onClick={() => abrirDetalle({ rowId: r.rowId, distribucionId: r.distribucionId ?? undefined })} sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxClic }}>{fmtARS(r.rowTotal)}</TableCell>}
       {celdaPct(r.rowTotal, { py: 0.75, opacity: 0.4 })}
     </TableRow>
   );
@@ -305,7 +346,7 @@ export default function PivotCompras({
                 <TableCell {...clic(d.values[mes], { mes, ...filtroFilaProveedor(d) })} sx={{ ...sxNum, px: 1.5, py: 1.25, ...sxDe(d.values[mes]) }}>{fmtCelda(d.values[mes], mes)}</TableCell>
               </ComposicionTooltip>
             ))}
-            <TableCell onClick={() => abrirDetalle(filtroFilaProveedor(d))} sx={{ ...sxNum, px: 2, py: 1.25, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>
+            {!sinColTotal && <TableCell onClick={() => abrirDetalle(filtroFilaProveedor(d))} sx={{ ...sxNum, px: 2, py: 1.25, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>}
             {celdaPct(d.rowTotal, { py: 1.25 })}
           </TableRow>
         );
@@ -322,7 +363,7 @@ export default function PivotCompras({
             <TableCell sx={{ ...sxStickyNombre(), px: 2, pl: 7, py: 0.75, fontSize: 12, color: 'text.secondary' }}>
               <FilaMasRegistros fila={d} onVerMas={verMas} />
             </TableCell>
-            <TableCell colSpan={months.length + 2} />
+            <TableCell colSpan={colsDespues} />
           </TableRow>
         );
       default:
@@ -341,7 +382,7 @@ export default function PivotCompras({
             {months.map((mes) => (
               <CabeceraOrden key={mes} col={mes} sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />
             ))}
-            <CabeceraOrden col="total" label="Total" total sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />
+            {!sinColTotal && <CabeceraOrden col="total" label="Total" total sortCol={sort.col} sortDir={sort.dir} onSort={onSort} />}
             <TableCell
               onClick={() => setPctMode((m) => (m === 'ingresos' ? 'egresos' : 'ingresos'))}
               title={pctMode === 'ingresos' ? '% sobre ingresos — click para cambiar a % sobre egresos' : '% sobre egresos — click para cambiar a % sobre ingresos'}
@@ -360,9 +401,19 @@ export default function PivotCompras({
             ingresosTotal={ventas?.grandTotal}
             egresosTotal={data.grandTotal}
             ingresosReady={ingresosReady}
+            sinTotal={sinColTotal}
           />
           )}
           <SectionDivider label="Gastos por rubro" icon={LayersIcon} colSpan={colSpan} />
+          {sinTotalesRubro && (
+            <TableRow>
+              <TableCell colSpan={colSpan} sx={{ bgcolor: MUTED, pt: 0, pb: 0.75, px: 0, borderBottom: 0 }}>
+                <Box sx={{ ...sxStickyNombre(MUTED), display: 'inline-block', px: 2, fontSize: 11.5, color: 'text.disabled', whiteSpace: 'nowrap' }}>
+                  Rubros en millones · la barra compara cada mes con lo que el rubro suele tener (meses de hace 3 o más; los rubros esporádicos no se comparan)
+                </Box>
+              </TableCell>
+            </TableRow>
+          )}
           {filas.map(renderFila)}
         </TableBody>
         {!sinTotalesRubro && <TableFooter>
@@ -371,7 +422,7 @@ export default function PivotCompras({
             {months.map((mes) => (
               <TableCell key={mes} {...clic(data.columnTotals[mes], { mes })} sx={{ ...sxNum, px: 1.5, ...sxDe(data.columnTotals[mes]) }}>{fmtCelda(data.columnTotals[mes], mes)}</TableCell>
             ))}
-            <TableCell onClick={() => abrirDetalle({})} sx={{ ...sxNum, px: 2, color: 'primary.main !important', cursor: 'pointer' }}>{fmtARS(data.grandTotal)}</TableCell>
+            {!sinColTotal && <TableCell onClick={() => abrirDetalle({})} sx={{ ...sxNum, px: 2, color: 'primary.main !important', cursor: 'pointer' }}>{fmtARS(data.grandTotal)}</TableCell>}
             <TableCell sx={{ ...sxNum, px: 1.5, fontSize: '12px !important', color: 'text.secondary !important' }}>
               {pctMode === 'egresos' ? '—' : fmtPct(data.grandTotal)}
             </TableCell>

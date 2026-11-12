@@ -14,6 +14,7 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { RolesAPI } from '@/servicios/apiRoles';
 import { showConfirm } from '@/servicios/appConfirm';
+import { esOculto, alternarOculto } from '@/gestion/ocultosRol';
 
 // Catálogo de lo que se puede ocultar. Cada clave = un permiso (lo que no figura, se ve).
 const SECCIONES = [
@@ -28,6 +29,7 @@ const SECCIONES = [
         ['tabla.totales_rubro', 'Totales por rubro'],
         ['tabla.ing_egr', 'Ingresos, egresos, resultado y equilibrio'],
         ['tabla.dif_caja', 'Flujo y diferencia de caja'], ['tabla.pct', 'Vista en % de ingresos'],
+        ['tabla.col_total', 'Columna Total (oculta salvo que la habilites)'],
       ] },
       { nombre: 'Pestañas y botones', items: [
         ['tab.ventas', 'Pestaña Ventas'], ['tab.resultados', 'Pestaña Resultados'],
@@ -99,7 +101,8 @@ function resumen(rol) {
   }
   if (rol.base && !rol.ajustada) return 'Ve y edita todo';
   const vis = SECCIONES.filter((s) => rol.secciones[s.id]).map((s) => s.nombre);
-  const parcial = rol.ocultos.length ? ` · ${rol.ocultos.length} oculto${rol.ocultos.length !== 1 ? 's' : ''}` : '';
+  const nOcultos = SECCIONES.flatMap((s) => s.grupos.flatMap((g) => g.items)).filter(([k]) => esOculto(rol.ocultos, k)).length;
+  const parcial = nOcultos ? ` · ${nOcultos} oculto${nOcultos !== 1 ? 's' : ''}` : '';
   return (vis.join(', ') || 'Sin secciones') + parcial;
 }
 
@@ -148,7 +151,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
 
   const rol = borrador;
   const seccion = SECCIONES.find((s) => s.id === seccionId);
-  const ocultos = useMemo(() => new Set(rol?.ocultos || []), [rol]);
+  const ocultos = useMemo(() => ({ has: (k) => esOculto(rol?.ocultos, k) }), [rol]);
   const editable = !!rol && !rol.fijo && !soloLectura;
   const original = rolId === 'nuevo' ? NUEVO : rolId === 'staff:nuevo' ? SUBROL_NUEVO : todos.find((x) => x.id === rolId);
   const normPerm = (p) => Object.keys(p || {}).filter((k) => p[k]).sort();
@@ -161,7 +164,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     return { ...r, secciones: s };
   });
   const setModo = (id, modo) => modo && cambiar((r) => ({ ...r, secciones: { ...r.secciones, [id]: modo } }));
-  const toggleItem = (k) => cambiar((r) => ({ ...r, ocultos: ocultos.has(k) ? r.ocultos.filter((x) => x !== k) : [...r.ocultos, k] }));
+  const toggleItem = (k) => cambiar((r) => ({ ...r, ocultos: alternarOculto(r.ocultos, k) }));
   const ocultosDe = (s) => s.grupos.flatMap((g) => g.items).filter(([k]) => ocultos.has(k)).length;
 
   const guardar = async () => {
