@@ -24,6 +24,8 @@ import { useBranch } from '../hooks/useBranch';
 import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
 import SpotlightTour from '../componentes/SpotlightTour';
 import { useRecorrido } from '../hooks/useRecorrido';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import {
   T,
   FT,
@@ -92,6 +94,14 @@ export default function RrhhCronogramas() {
   const { active: negocioActivo, activeBusinessId } = useBusiness() || {};
   const [sinReplica, setSinReplica] = useState(false);   // el negocio no tiene MaxiRest conectado
   const [ejemploVisto, setEjemploVisto] = useState(false); // ya tocó "Armar la semana" sobre el ejemplo
+  // Pantalla completa (como el Panel de Gestión): el módulo tapa el header de la app; Esc sale.
+  const [maximizado, setMaximizado] = useState(false);
+  useEffect(() => {
+    if (!maximizado) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[data-rrhh-modal]')) setMaximizado(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [maximizado]);
   const [eligiendoNomina, setEligiendoNomina] = useState(false);
   const [turnoSel, setTurnoSel] = useState(null);         // turno en edición
   const [destelloHoy, setDestelloHoy] = useState(false);  // al apretar HOY la columna se ilumina un momento
@@ -632,7 +642,9 @@ export default function RrhhCronogramas() {
   const listos = (config?.empleados || []).filter((e) => e.activo !== false && !e.noAplica).length;
 
   return (
-    <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box' }}>
+    <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box',
+      // maximizado: ocupa toda la ventana; los modales y avisos son hijos, así que quedan encima
+      ...(maximizado ? { position: 'fixed', inset: 0, zIndex: 1250, overflow: 'auto', minHeight: 0 } : {}) }}>
       {recCrono.visible && pasoTour && (
         <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
           text={pasoTour.t} {...recCrono.props(recCrono.paso)} />
@@ -648,6 +660,11 @@ export default function RrhhCronogramas() {
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
         <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
+        <Boton onClick={() => setMaximizado((v) => !v)} title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'top', height: 14.5 }}>
+            {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 14 }} /> : <OpenInFullIcon sx={{ fontSize: 14 }} />}
+          </span>
+        </Boton>
         <span ref={refsTour.exportar} style={{ display: 'inline-flex' }}><Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen del cronograma y de los francos para WhatsApp">🖼 Exportar imagen</Boton></span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -709,7 +726,7 @@ export default function RrhhCronogramas() {
             </div>
           )}
 
-          <div ref={refsTour.grilla} style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: 'calc(100vh - 225px)' }}>
+          <div ref={refsTour.grilla} style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: maximizado ? 'calc(100vh - 150px)' : 'calc(100vh - 225px)' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
               <thead>
                 <tr>
