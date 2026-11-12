@@ -49,7 +49,6 @@ const GROUPS = [
       // header del Panel de Gestión y la carga se hace desde el panel («Cargar Gastos»).
       // Sin "Versión celular" (usuaria 08/11/2026: se sigue desarrollando, pero no hace falta un botón
       // que la muestre). /m sigue andando: un teléfono que entra a /gestion va solo ahí.
-      { id: 'balance', label: 'Balance', emoji: '💳', to: null },
     ],
   },
 ];
