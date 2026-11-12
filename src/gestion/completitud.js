@@ -24,27 +24,15 @@ function mediana(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/**
- * Lo habitual del rubro: { importe, meses: [{ anio, mes }] } o null si no hay historia.
- * `valoresPrev` = los meses del año anterior del mismo rubro: el año no es barrera (Diego
- * 12/11/2026) — en enero se compara con octubre, septiembre… del año pasado. Se toman los
- * últimos VENTANA meses cerrados (con 3+ meses de antigüedad): con la inflación, los meses muy
- * viejos dan importes más chicos y harían parecer completo lo que no lo está.
- */
-export const VENTANA = 6;
-export function habitualRubro(values, months, anio, hoy = new Date(), valoresPrev = null) {
+/** Lo habitual del rubro: { importe, meses: [números de mes usados] } o null si no hay historia. */
+export function habitualRubro(values, months, anio, hoy = new Date()) {
   const corte = indice(hoy.getFullYear(), hoy.getMonth() + 1) - MESES_ATRAS;
-  const serie = [
-    ...(valoresPrev ? Array.from({ length: 12 }, (_, i) => ({ anio: anio - 1, mes: i + 1, v: valoresPrev[i + 1] })) : []),
-    ...months.map((m) => ({ anio, mes: m, v: values?.[m] })),
-  ];
-  // Desde el primer mes con carga del rubro (un negocio que arrancó hace poco no es «esporádico»).
-  const iPrimero = serie.findIndex((x) => tieneValor(x.v));
-  if (iPrimero < 0) return null;
-  const cerrados = serie.slice(iPrimero).filter((x) => indice(x.anio, x.mes) <= corte).slice(-VENTANA);
-  const refs = cerrados.filter((x) => tieneValor(x.v));
+  // Desde el primer mes con carga del rubro (un negocio que arrancó a mitad de año no es «esporádico»).
+  const primero = months.find((m) => tieneValor(values?.[m]));
+  const cerrados = months.filter((m) => primero != null && m >= primero && indice(anio, m) <= corte);
+  const refs = cerrados.filter((m) => tieneValor(values?.[m]));
   if (refs.length < MIN_REFERENCIAS || refs.length < cerrados.length * MIN_REGULARIDAD) return null;
-  return { importe: mediana(refs.map((x) => x.v)), meses: refs.map(({ anio: a, mes }) => ({ anio: a, mes })) };
+  return { importe: mediana(refs.map((m) => values[m])), meses: refs };
 }
 
 /**
@@ -54,11 +42,30 @@ export function habitualRubro(values, months, anio, hoy = new Date(), valoresPre
  *  { tipo: 'sin_dato' }                    nada cargado y sin historia para comparar
  *  { tipo: 'valor', pct: number|null }     con carga; pct = cargado / habitual (null sin historia)
  */
-export function estadoMes(values, mes, anio, habitual, hoy = new Date()) {
+export function estadoMes(values, mes, anio, habitual, hoy = new Date(), pendiente = null) {
   if (indice(anio, mes) > indice(hoy.getFullYear(), hoy.getMonth() + 1)) return { tipo: 'futuro' };
   const v = values?.[mes];
-  if (!tieneValor(v)) return { tipo: habitual ? 'vacio' : 'sin_dato' };
-  return { tipo: 'valor', pct: habitual && habitual.importe > 0 ? v / habitual.importe : null };
+  if (!tieneValor(v)) return { tipo: habitual || pendiente?.n ? 'vacio' : 'sin_dato', pendiente };
+  const pct = habitual && habitual.importe > 0 ? v / habitual.importe : null;
+  // Con gastos de «Sin carga» pendientes en ese rubro y mes (Diego 12/11: «octubre debería estar
+  // más en amarillo, tiene gastos pendientes de carga»): manda cuánto falta, y nunca se ve completo.
+  const completo = pendiente?.importe > 0 ? v / (v + pendiente.importe) : null;
+  return { tipo: 'valor', pct, completo, pendiente };
+}
+
+/** Suma Sin carga por mes ('YYYY-MM') y rubro → { 'YYYY-MM': { rubro: { n, importe } } }. */
+export function pendientesPorMes(sinCarga) {
+  const out = {};
+  for (const m of sinCarga?.meses ?? []) {
+    const r = (out[m.mes] = {});
+    for (const it of m.items ?? []) {
+      const k = String(it.rubro || '').trim().toLowerCase();
+      if (!k) continue;
+      (r[k] ??= { n: 0, importe: 0 });
+      r[k].n += 1; r[k].importe += Number(it.ultimo) || 0;
+    }
+  }
+  return out;
 }
 
 /** 42104000 → «42,1» (millones, un decimal). Menos de 50 mil → «<0,1». */
@@ -69,23 +76,39 @@ export function millones(v) {
   return m.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-/** Color de la barra: completo (≥80%), a medias (40–80%), muy por debajo (<40%). */
-export function colorCompletitud(pct) {
-  if (pct == null) return null;
-  if (pct >= 0.8) return '#5BC2EA';
-  if (pct >= 0.4) return '#f59e0b';
-  return '#ef4444';
-}
+/**
+ * Escala de la barra contra lo habitual (Diego 12/11/2026: «todo se ve azul y hay diferencias»).
+ * Cinco tramos: los de abajo avisan que falta cargar, el del medio es lo normal y el de arriba
+ * marca un mes por encima de lo habitual (aguinaldo, compra grande) para que también se note.
+ */
+export const TRAMOS = [
+  { hasta: 0.5, color: '#ef4444', nombre: 'muy por debajo' },
+  { hasta: 0.8, color: '#f59e0b', nombre: 'por debajo' },
+  { hasta: 0.95, color: '#a9dcf2', nombre: 'un poco por debajo' },
+  { hasta: 1.15, color: '#5BC2EA', nombre: 'lo habitual' },
+  { hasta: Infinity, color: '#1d6fa5', nombre: 'por encima' },
+];
+const tramo = (pct) => TRAMOS.find((t) => pct < t.hasta);
+// Con pendientes manda lo que falta (cargado / cargado + pendiente) y el tope es «casi completo».
+// Amarillo = «casi completo, pero hay gastos de Sin carga pendientes»: solo con pendientes.
+const CASI = { hasta: 0.95, color: '#eab308', nombre: 'faltan cargar gastos' };
+const tramoDe = (e) => {
+  if (e?.completo != null) { const t = tramo(Math.min(e.completo, 0.94)); return t.hasta === 0.95 ? CASI : t; }
+  return e?.pct != null ? tramo(e.pct) : null;
+};
+export function colorCompletitud(e) { return tramoDe(e)?.color ?? null; }
+export const nombreTramo = (e) => tramoDe(e)?.nombre ?? '';
+/** El número se pinta cuando falta algo (rojo / naranja / amarillo); lo normal y lo de más, en negro. */
+export const colorNumero = (e) => { const t = tramoDe(e); return t && (t.hasta <= 0.8 || t === CASI) ? t.color : null; };
+/** Largo de la barra: la barra llena es 150% de lo habitual; la marca de lo habitual queda a 2/3. */
+export const TOPE_BARRA = 1.5;
+export const anchoBarra = (pct) => Math.min(Math.max(pct, 0), TOPE_BARRA) / TOPE_BARRA;
 
-/** [{anio, mes}] → «may–oct» (mismo año) o «sep 25–feb 26» (cruza el año); con huecos, la lista. */
+/** «ene–ago» / «ene, mar y abr» para explicar de dónde sale lo habitual. */
 export function rangoMeses(meses) {
   if (!meses?.length) return '';
-  const norm = meses.map((x) => (typeof x === 'number' ? { anio: null, mes: x } : x));
-  const variosAnios = new Set(norm.map((x) => x.anio)).size > 1;
-  const et = (x) => `${MESES[x.mes - 1]}${variosAnios && x.anio != null ? ` ${String(x.anio).slice(-2)}` : ''}`;
-  const idx = (x) => (x.anio ?? 0) * 12 + x.mes;
-  const contiguos = norm.every((x, i) => i === 0 || idx(x) === idx(norm[i - 1]) + 1);
-  if (contiguos) return norm.length === 1 ? et(norm[0]) : `${et(norm[0])}–${et(norm[norm.length - 1])}`;
-  const n = norm.map(et);
+  const contiguos = meses.every((m, i) => i === 0 || m === meses[i - 1] + 1);
+  if (contiguos) return meses.length === 1 ? MESES[meses[0] - 1] : `${MESES[meses[0] - 1]}–${MESES[meses[meses.length - 1] - 1]}`;
+  const n = meses.map((m) => MESES[m - 1]);
   return `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}`;
 }
