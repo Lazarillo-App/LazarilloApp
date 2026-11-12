@@ -25,6 +25,7 @@ import { canonicalUnit, fmt } from './helpers';
 import { useAccess } from '@/context/AccessContext';
 
 export default function PieCostos({
+  acciones = null,
   modoInsumo,
   verCostosExtra,
   setVerCostosExtra,
@@ -94,7 +95,8 @@ export default function PieCostos({
         // Diego 11/11/2026: el pie de la promo es igual al de cualquier producto.
         const esPieArticulo = !modoInsumo;
         const cols = (Number(rendimiento) > 1 ? 2 : 1) + colPeso + (ocultarExtras ? 0 : (esPieArticulo ? 1 : 2));
-        return `repeat(${cols}, 1fr)`;
+        // Artículo: los botones Guardar · Borrar · Cancelar van en esta misma franja (PR 2 del pie).
+        return `repeat(${cols}, 1fr)${acciones ? ' auto' : ''}`;
       })(),
       gap: 1.5,
       bgcolor: 'action.hover',
@@ -478,6 +480,7 @@ export default function PieCostos({
         })()}
         </Box>
       </Box>}
+      {acciones && <Box sx={{ gridRow: 1, gridColumn: -2, display: 'flex', alignItems: 'center', pl: 1 }}>{acciones}</Box>}
     </Box>
     </Box>
   );

@@ -659,7 +659,7 @@ export const RecetasAPI = {
   // Devuelve { [articleId]: { costoTotal, porciones, tieneAlerta, insumosAlerta } }
   // opts.insumoId: solo los artículos cuyas recetas usan ese insumo (directo o vía elaborados)
   getCostos: (businessId, opts = {}) =>
-    http(`/businesses/${businessId}/recetas-costos${opts.insumoId ? `?insumoId=${encodeURIComponent(opts.insumoId)}` : ''}`, { withBusinessId: false }),
+    http(`/businesses/${businessId}/recetas-costos${opts.insumoId ? `?insumoId=${encodeURIComponent(opts.insumoId)}` : opts.articleId ? `?articleId=${encodeURIComponent(opts.articleId)}` : ''}`, { withBusinessId: false }),
 
   // GET /businesses/:id/recetas-alertas
   // Devuelve lista de insumos con compras vencidas usados en recetas
