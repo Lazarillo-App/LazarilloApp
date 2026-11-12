@@ -13,7 +13,7 @@ import {
 } from '@/servicios/apiInsumos';
 import { showConfirm } from '@/servicios/appConfirm';
 import { sanitizeDecimal } from '@/utils/decimales';
-import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
+import { PRIMARY, canonicalUnit, getConversionFactor, fmt, ETIQUETA_REND_PLURAL } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useAccess } from '@/context/AccessContext';
@@ -246,7 +246,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
           return (
             <Box sx={{ mb: 1.5, bgcolor: '#eaf1fb', border: '1px solid #c3d7f0', borderRadius: 1, px: 2, py: 1 }}>
               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', color: '#2d4a6b' }}>
-                Rinde {recetaInfo.cantidad} {recetaInfo.rendimientoUnidad || 'porción'}(es) de {recetaInfo.rendimientoPeso} {uPeso} c/u · Costo total ${fmtAR(recetaInfo.costoTotal)}
+                Rinde {recetaInfo.cantidad} {ETIQUETA_REND_PLURAL[recetaInfo.rendimientoUnidad || 'porcion'] || recetaInfo.rendimientoUnidad} de {recetaInfo.rendimientoPeso} {uPeso} c/u · Costo total ${fmtAR(recetaInfo.costoTotal)}
               </Typography>
               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#2d4a6b' }}>
                 Costo por {uPeso} = ${fmtAR(costoPorPeso)}

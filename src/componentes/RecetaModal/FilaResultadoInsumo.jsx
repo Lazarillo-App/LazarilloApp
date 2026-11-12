@@ -1,7 +1,7 @@
 // src/componentes/RecetaModal/FilaResultadoInsumo.jsx
 import { Box, Typography, Chip, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import { PRIMARY, fmt, fmtDate, getAlertaColor, canonicalUnit } from './helpers';
+import { PRIMARY, fmt, fmtDate, getAlertaColor, etiquetaUnidadRend } from './helpers';
 import { useAccess } from '@/context/AccessContext';
 
 /**
@@ -54,7 +54,7 @@ export default function FilaResultadoInsumo({ ins, alertaSemanas, onClick, selec
             const conRendimiento = porc > 1;
             const valor = conRendimiento ? costoUnit : costoTot;
             const etiqueta = conRendimiento
-              ? (rendU === 'porcion' ? '/porción' : `/${canonicalUnit(rendU)}`)
+              ? `/${etiquetaUnidadRend(rendU)}`
               : '';
             return (
               <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a', fontSize: '0.8rem' }}>

@@ -28,7 +28,7 @@ const fmtCant = (c, u) => {
   if (c == null || !(Number(c) > 0)) return '';
   const n = Number(c).toLocaleString('es-AR', { maximumFractionDigits: 2 });
   const uu = String(u || '').toLowerCase();
-  if (!uu || uu === 'u' || uu === 'un' || uu === 'unidad' || uu === 'porcion') return n;
+  if (!uu || uu === 'u' || uu === 'un' || uu === 'unidad' || uu === 'porcion' || uu === 'media_porcion') return n;
   return `${n} ${uu === 'gr' ? 'g' : uu}`;
 };
 
