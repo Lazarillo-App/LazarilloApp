@@ -454,8 +454,14 @@ function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo
 
 // Gastos varios: historial del concepto elegido a la derecha (Diego 05/11/2026), como la cuenta del
 // empleado: por período, con lo habitual (mediana de las últimas 6) y un atajo para usar el último.
+// Editar una carga desde «Últimas cargas» abre el mismo Ver / editar que Actividad y Detalle de compras
+// (Diego 12/11/2026). Import diferido: CargarFactura importa este archivo.
+const VerFacturaDiferida = React.lazy(() => import("./CargarFactura").then((m) => ({ default: m.VerFactura })));
+
 function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar, onPeriodo }) {
   const [filas, setFilas] = useState(null);
+  const [editar, setEditar] = useState(null); // rowId de la carga que se está editando
+  const [recarga, setRecarga] = useState(0);
   // Eliminar desde acá cualquier carga de Lazarillo (Diego 12/11/2026). Las de MaxiRest se borran en
   // MaxiRest: si se borraran acá volverían con la próxima importación.
   const qc = useQueryClient();
@@ -482,15 +488,16 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
     gestionFetch(`/api/gastos-varios/historial?conceptoCodigo=${encodeURIComponent(codigo)}&pdvId=${pdvId}`)
       .then((r) => r.json()).then((d) => { if (vivo) setFilas((d && d.filas) || []); }).catch(() => vivo && setFilas([]));
     return () => { vivo = false; };
-  }, [codigo, pdvId]);
+  }, [codigo, pdvId, recarga]);
   // Al cambiar el período se lleva a la vista; y al revés, tocar un período lo elige arriba (Diego 06/11/2026).
   const lista = useRef(null);
   useEffect(() => {
     const el = lista.current && lista.current.querySelector(`[data-periodo="${periodo}"]`);
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [periodo, filas]);
-  const caja = { background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px", fontSize: 12.5 };
-  if (!codigo) return <div style={{ ...caja, color: C.gris }}><div style={{ fontWeight: 700, fontSize: 13.5, color: C.neg, marginBottom: 4 }}>Últimas cargas</div>Elegí un concepto para ver lo último que se cargó.</div>;
+  // Fuente 2 puntos más grande que el resto del modal (Diego 12/11/2026: se lee mejor).
+  const caja = { background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px", fontSize: 14.5 };
+  if (!codigo) return <div style={{ ...caja, color: C.gris }}><div style={{ fontWeight: 700, fontSize: 15.5, color: C.neg, marginBottom: 4 }}>Últimas cargas</div>Elegí un concepto para ver lo último que se cargó.</div>;
   const ult6 = (filas || []).slice(0, 6).map((f) => f.importe).sort((a, b) => a - b);
   const mediana = ult6.length ? (ult6.length % 2 ? ult6[(ult6.length - 1) / 2] : (ult6[ult6.length / 2 - 1] + ult6[ult6.length / 2]) / 2) : null;
   const porPeriodo = [];
@@ -498,7 +505,7 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
   const tieneActual = porPeriodo.some((g) => g.p === periodo);
   return (
     <div style={caja}>
-      <div style={{ fontWeight: 700, fontSize: 13.5 }}>Últimas cargas · {concepto}</div>
+      <div style={{ fontWeight: 700, fontSize: 15.5 }}>Últimas cargas · {concepto}</div>
       <div style={{ display: "flex", justifyContent: "space-between", color: C.gris, margin: "2px 0 6px" }}><span>{pdvNombre} · últimos 12 meses</span>{filas && <span>{filas.length} carga{filas.length === 1 ? "" : "s"}</span>}</div>
       {!filas ? <div style={{ color: C.gris }}>Cargando…</div> : (<>
         {!tieneActual && <div style={{ background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 8, padding: "4px 8px", fontWeight: 700 }}>{nombrePeriodo(periodo)} <span style={{ fontWeight: 400, color: "#2a88ad" }}>· este período, sin cargar</span></div>}
@@ -510,9 +517,9 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
               <b style={{ display: "block" }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
               {g.filas.map((f, k) => (
                 // Columnas fijas: texto | origen (L = Lazarillo, MX = MaxiRest) | importe — siempre alineados.
-                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 24px 104px 20px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "2px 0" }}>
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 26px 120px 22px 22px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "3px 0" }}>
                   {borrar && borrar.rowId === f.rowId && f.rowId ? (
-                    <span onClick={(e) => e.stopPropagation()} style={{ gridColumn: "1 / -1", fontSize: 11.5, lineHeight: "18px", textAlign: "right" }}>
+                    <span onClick={(e) => e.stopPropagation()} style={{ gridColumn: "1 / -1", fontSize: 13.5, lineHeight: "20px", textAlign: "right" }}>
                       <span style={{ color: "#555", float: "left" }}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} · ` : ""}{$fmt(f.importe)}</span>
                       {borrar.enCurso ? <span style={{ color: C.gris }}>Eliminando…</span> : (<>
                         <span style={{ color: C.rojo, fontWeight: 700 }}>{borrar.pagos ? `Tiene ${typeof borrar.pagos === "number" ? `${$fmt(borrar.pagos)} pagados` : "pagos"} · ¿eliminar con el pago?` : "¿Eliminar?"}</span>{" "}
@@ -522,13 +529,18 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
                   ) : <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>}
                   {!(borrar && borrar.rowId === f.rowId && f.rowId) && (<>
-                  <span title={f.lazarillo ? "Cargado en Lazarillo" : "Viene de MaxiRest"} style={{ textAlign: "center", fontSize: 9.5, fontWeight: 700, borderRadius: 4, lineHeight: "15px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
+                  <span title={f.lazarillo ? "Cargado en Lazarillo" : "Viene de MaxiRest"} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, borderRadius: 4, lineHeight: "17px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
                   <b style={{ whiteSpace: "nowrap", textAlign: "right" }}>{$fmt(f.importe)}</b>
                   {f.lazarillo && f.rowId ? (
+                    <span role="button" title="Editar esta carga" onClick={(e) => { e.stopPropagation(); setEditar(f.rowId); }}
+                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 14, lineHeight: "20px", borderRadius: 4 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = C.cel; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#b5b5b5"; }}>✎</span>
+                  ) : <span title="Viene de MaxiRest: se edita en MaxiRest" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 14, lineHeight: "20px", cursor: "default" }}>✎</span>}
+                  {f.lazarillo && f.rowId ? (
                     <span role="button" title="Eliminar esta carga" onClick={(e) => { e.stopPropagation(); setBorrar({ rowId: f.rowId }); }}
-                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 15, lineHeight: "18px", borderRadius: 4 }}
+                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 17, lineHeight: "20px", borderRadius: 4 }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = C.rojo; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#b5b5b5"; }}>×</span>
-                  ) : <span title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 15, lineHeight: "18px", cursor: "default" }}>×</span>}
+                  ) : <span title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 17, lineHeight: "20px", cursor: "default" }}>×</span>}
                   </>)}
                 </div>
               ))}
@@ -537,9 +549,15 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
         </div>
         {mediana != null && (<>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" }}><span>Habitual (mediana últimas {ult6.length})</span><b>{$fmt(mediana)}</b></div>
-          <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0])} title="Trae importe, detalle y medio de pago de la última carga" style={{ color: C.cel, fontWeight: 600, fontSize: 11.5, cursor: "pointer" }}>usar el último ({$fmt(filas[0].importe)}{filas[0].detalle ? ` · ${filas[0].detalle}` : ""}) ›</span></div>
+          <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0])} title="Trae importe, detalle y medio de pago de la última carga" style={{ color: C.cel, fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>usar el último ({$fmt(filas[0].importe)}{filas[0].detalle ? ` · ${filas[0].detalle}` : ""}) ›</span></div>
         </>)}
       </>)}
+      {editar && (
+        <React.Suspense fallback={null}>
+          <VerFacturaDiferida rowId={editar} vistaInicial="editar"
+            onClose={() => { setEditar(null); setRecarga((n) => n + 1); refrescarCompras(qc); }} />
+        </React.Suspense>
+      )}
     </div>
   );
 }
@@ -1823,7 +1841,7 @@ function ModalNuevaCarga(props) {
 
           </>
         ) : (
-          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 14, alignItems: "start" }}>
+          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 40%)", gap: 14, alignItems: "start" }}>
           <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {/* El período está arriba, en la barra del título (mismo lugar en las 3 pestañas, Diego 06/11/2026). */}
