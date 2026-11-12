@@ -394,7 +394,18 @@ export default function RecetaModal({
       : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
     if (idx < 0 || lista[idx].unidad === pend.nueva) return lista;
     const copia = lista.slice();
-    copia[idx] = { ...lista[idx], unidad: pend.nueva };
+    // La cantidad se pasa a la unidad nueva (75 gr → 1 «dip y medio» de 75 gr), así el costo no cambia.
+    const FAM = { gr: ['p', 1], kg: ['p', 1000], ml: ['v', 1], lt: ['v', 1000], u: ['u', 1] };
+    const tam = (u) => {
+      const eq = pend.eq && String(pend.eq.nombre).toLowerCase() === String(u || '').toLowerCase() ? pend.eq : null;
+      const b = FAM[canonicalUnit(eq ? eq.unidad : u)];
+      return b ? { f: b[0], v: (eq ? Number(eq.contenido) || 0 : 1) * b[1] } : null;
+    };
+    const a = tam(lista[idx].unidad), b = tam(pend.nueva);
+    const cant = Number(lista[idx].cantidad);
+    const cantidad = a && b && a.f === b.f && b.v > 0 && Number.isFinite(cant)
+      ? Math.round((cant * a.v / b.v) * 1000) / 1000 : lista[idx].cantidad;
+    copia[idx] = { ...lista[idx], unidad: pend.nueva, cantidad };
     setGuardarMermaPendiente(t => t + 1);
     return copia;
   };
@@ -2226,7 +2237,7 @@ export default function RecetaModal({
           const pend = eqPendienteRef.current;
           if (pend && pend.supplyId === String(insId) && !pend.nueva) {
             const nueva = eqs.find(e => e?.nombre && !pend.antes.has(e.nombre));
-            if (nueva) { pend.nueva = nueva.nombre; pend.hasta = Date.now() + 60000; }
+            if (nueva) { pend.nueva = nueva.nombre; pend.eq = nueva; pend.hasta = Date.now() + 60000; }
           }
           setItems(prev => aplicarEqPendiente(prev.map(it => {
             if (String(it.supplyId) !== String(insId)) return it;
