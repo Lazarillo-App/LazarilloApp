@@ -7,18 +7,40 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography, InputBase } from '@mui/material';
 import { httpBiz } from '@/servicios/apiBusinesses';
 
+const limpio = (v) => String(v ?? '').trim();
+
 export default function DescripcionArticulo({ articulo, businessId, editable = true }) {
-  const original = String(articulo?.descripcion_original ?? '').trim();
-  const inicial = String(articulo?.descripcion_propia ?? articulo?.descripcion ?? articulo?.descripcion_original ?? '').trim();
-  const [texto, setTexto] = useState(inicial);
-  const [guardado, setGuardado] = useState(inicial);
+  // Lo que trae la fila sirve para pintar al instante; la del servidor (GET /articles/:id)
+  // manda, porque según desde dónde se abra el modal el objeto puede no traerla
+  // (Diego 12/11: #571 la tiene en MaxiRest y no aparecía).
+  const deFila = limpio(articulo?.descripcion_propia) || limpio(articulo?.descripcion_original) || limpio(articulo?.descripcion);
+  const [original, setOriginal] = useState(limpio(articulo?.descripcion_original));
+  const [texto, setTexto] = useState(deFila);
+  const [guardado, setGuardado] = useState(deFila);
   const [abierta, setAbierta] = useState(false);
   const [estado, setEstado] = useState(''); // '' | 'guardando' | 'error'
   const inputRef = useRef(null);
 
-  // Al navegar ‹ › a otro artículo, arranca de nuevo con la suya (cerrada).
-  useEffect(() => { setTexto(inicial); setGuardado(inicial); setAbierta(false); setEstado(''); },
-    [articulo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al abrir o navegar ‹ › a otro artículo: arranca cerrada con la suya y la confirma con el servidor.
+  useEffect(() => {
+    setTexto(deFila); setGuardado(deFila); setOriginal(limpio(articulo?.descripcion_original));
+    setAbierta(false); setEstado('');
+    const id = Number(articulo?.id);
+    if (!Number.isFinite(id) || !id) return undefined;
+    let vivo = true;
+    httpBiz(`/articles/${id}`, {}, businessId)
+      .then((r) => {
+        const a = r?.articulo;
+        if (!vivo || !a) return;
+        const orig = limpio(a.descripcion_original);
+        const usada = limpio(a.descripcion_propia) || orig;
+        setOriginal(orig);
+        setGuardado(usada);
+        setTexto((t) => (t === deFila ? usada : t)); // no pisar lo que ya esté escribiendo
+      })
+      .catch(() => { /* queda la de la fila */ });
+    return () => { vivo = false; };
+  }, [articulo?.id, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!articulo?.id) return null;
 
