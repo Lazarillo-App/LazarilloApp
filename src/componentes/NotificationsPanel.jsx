@@ -33,7 +33,17 @@ import { ScopeGestion } from '@/gestion/compat';
 import { ActividadContenido, useActividadNuevos } from '@/componentes/gestion/pagos/actividad-campana';
 import { agruparPorDia, horaDe } from '@/gestion/actividadFormato';
 
-const VerFactura = React.lazy(() => import('@/componentes/gestion/CargarFactura').then((m) => ({ default: m.VerFactura })));
+// VerFactura necesita el contexto del Panel (negocio activo) para traer los maestros de la carga.
+// La campana vive en el header, fuera del Panel: sin este envoltorio businessId quedaba null, los
+// maestros nunca se pedían y el modal se quedaba cargando para siempre (Diego 12/11/2026, Comercio).
+const VerFactura = React.lazy(() => Promise.all([
+  import('@/componentes/gestion/CargarFactura'),
+  import('@/componentes/gestion/FacturaEnRecetas'),
+]).then(([cf, fr]) => ({
+  default: function VerFacturaConContexto(props) {
+    return <fr.ConContextoGestion><cf.VerFactura {...props} /></fr.ConContextoGestion>;
+  },
+})));
 
 // Campana única (Diego 10/11/2026, opción A): una sola campana en el header con solapas por
 // módulo, que abre en el módulo donde estás. Resultados = Actividad (facturas cargadas, editadas,
