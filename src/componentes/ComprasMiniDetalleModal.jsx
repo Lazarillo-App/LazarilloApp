@@ -1473,7 +1473,9 @@ export function ComprasDetalleContenido({
           {(sortedItems.length > ULTIMAS_N || modoPeriodo === 'rango') && (
             <Box onClick={() => setModoPeriodo('ultimas')}
               sx={{
-                px: 1.5, py: 0.8, borderRadius: 1, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
+                // Mismo alto (40) que Fechas, Cargar factura y los selectores de la fila
+                height: 40, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center',
+                px: 1.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
                 border: '1px solid', borderColor: modoPeriodo === 'ultimas' ? themeColors.primary : 'divider',
                 bgcolor: modoPeriodo === 'ultimas' ? themeColors.primary : 'transparent',
                 color: modoPeriodo === 'ultimas' ? '#fff' : 'text.secondary',
@@ -1485,12 +1487,14 @@ export function ComprasDetalleContenido({
 
           {/* El selector de fechas queda tal cual estaba. */}
           {onCambiarRango && rango?.from && rango?.to && (
+            <Box sx={{ '& button': { height: 40 } }}>
             <SalesPickerIcon
               value={{ mode: 'custom', from: rango.from, to: rango.to }}
               onChange={(v) => { onCambiarRango({ from: v.from, to: v.to }); setModoPeriodo('rango'); }}
               labelOverride="Fechas"
               compact
             />
+            </Box>
           )}
 
           {/* Con un rango elegido a mano sí se muestra cuál es y cuántas
@@ -1502,8 +1506,8 @@ export function ComprasDetalleContenido({
           )}
         </Stack>
 
-        <Stack direction="row" spacing={1} alignItems="center">
-          {!isStaff && <BotonCargarFactura />}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ '& .MuiOutlinedInput-root': { height: 40 } }}>
+          {!isStaff && <Box sx={{ '& button': { height: 40, boxSizing: 'border-box' } }}><BotonCargarFactura /></Box>}
           {/* Selector de negocio */}
           {bizOptions.length > 1 && (
             <FormControl size="small" sx={{ minWidth: 180 }}>
