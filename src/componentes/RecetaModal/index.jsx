@@ -25,6 +25,7 @@ import {
   ToggleButton, ToggleButtonGroup, Slider, Popover, InputBase,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -100,6 +101,8 @@ export default function RecetaModal({
   onPriceConfigSave = null,
   onNavigate = null,
   canNavigate = { prev: false, next: false },
+  // ⓘ del encabezado: abre la ficha del artículo («Editar artículo») encima del modal (Diego 12/11/2026).
+  onVerFicha = null,
   // "Top por gasto" dentro de la pestaña Compras (solo modoInsumo): saltar a
   // otro insumo sin cerrar el modal. Recibe la fila del ranking {id, nombre, unidad_med}.
   onSaltarAInsumo = null,
@@ -158,6 +161,9 @@ export default function RecetaModal({
   const [reemplazarModalOpen, setReemplazarModalOpen] = useState(false);
   const [reemplazarAviso, setReemplazarAviso] = useState(false);
   const [nombre, setNombre] = useState('');
+  const [fichaArt, setFichaArt] = useState(null); // GET /articles/:id (lo trae DescripcionArticulo) → ⓘ del encabezado
+  useEffect(() => { setFichaArt(null); }, [articulo?.id]);
+  const fmtPrecio = (v) => `$${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
   const [rendimiento, setRendimiento] = useState(1);
   const [rendimientoUnidad, setRendimientoUnidad] = useState('porcion');
   const [rendimientoPeso, setRendimientoPeso] = useState(null);
@@ -1675,8 +1681,17 @@ export default function RecetaModal({
     }
 
     // ── Modo promo nueva: crear artículo-promo vía endpoint dedicado ──
-    if (modoPromoNueva || convertirEnPromo) {
+    // «Convertir en promo» un artículo que YA existe no crea otro: arma la promo sobre ese mismo artículo
+    // (rama de abajo, PUT). Antes hacía POST y quedaba un artículo manual duplicado con el mismo nombre
+    // (Diego 12/11/2026: «crear una promo duplicaba el producto»).
+    if (modoPromoNueva || (convertirEnPromo && !articulo?.id)) {
       if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
+      // Mismo nombre que un artículo que ya existe = duplicado (así quedaron 3 «Merienda kidspark alfajor negro»).
+      const yaExiste = (allArticulos || []).find(a => String(a.nombre || '').trim().toLowerCase() === nombre.trim().toLowerCase());
+      if (yaExiste) {
+        setError(`Ya existe «${String(yaExiste.nombre).trim()}» (#${yaExiste.id ?? yaExiste.articulo_id}). Para que sea promo, abrí ese artículo y pasalo a Promoción; si es otra promo, cambiale el nombre.`);
+        return;
+      }
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
         .filter(it => Number(it.articleRefId) !== Number(articulo?.id))   // nunca la promo dentro de sí misma
@@ -1734,7 +1749,7 @@ export default function RecetaModal({
     // Con itemsOverride (deshacer la promo → producto) NO: tiene que ir al guardado común, que deja
     // es_promo = FALSE. Antes esta rama lo agarraba igual y la volvía a guardar como promo (Diego 11/11/2026:
     // «si quiero deshacer la promo no me deja»).
-    if (esPromo && articulo?.id && !itemsOverride) {
+    if ((esPromo || convertirEnPromo) && articulo?.id && !itemsOverride) {
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
         .filter(it => Number(it.articleRefId) !== Number(articulo.id))   // nunca la promo dentro de sí misma
@@ -2429,8 +2444,8 @@ export default function RecetaModal({
             flexShrink: 0,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={1.5}>
-              {/* Flecha anterior — a la izquierda del nombre */}
-              {onNavigate && (
+              {/* Flecha anterior — a la izquierda del nombre (con foto en el header van pegadas al nombre, más abajo) */}
+              {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
                   onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
@@ -2440,13 +2455,46 @@ export default function RecetaModal({
 
               {fotoEnHeader ? (
                 <Box sx={{ minWidth: modoInsumo ? 150 : 260, flex: 1 }}>
-                  <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, display: 'block', lineHeight: 1.2 }}>
-                    {promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
-                  </Typography>
-                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo) */}
+                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ lineHeight: 1.2 }}>
+                    <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, lineHeight: 1.2 }}>
+                      {modoInsumo ? 'INSUMO' : promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
+                    </Typography>
+                    {/* ⓘ Ficha del artículo (Diego 12/11/2026): cómo se llama en MaxiRest, rubro y precio; al tocarla abre la ficha. */}
+                    {!modoInsumo && articulo?.id && (
+                      <Tooltip arrow placement="bottom-start" title={
+                        <Box sx={{ fontSize: 12, lineHeight: 1.5, p: 0.25 }}>
+                          {Number(articulo.id) > 0 ? (<>
+                            <div>En MaxiRest: <b>{fichaArt?.nombre_maxi || fichaArt?.nombre_original || fichaArt?.nombre || artNombre}</b></div>
+                            <div>Código MaxiRest: <b>{articulo.id}</b></div>
+                          </>) : <div>Artículo creado en Lazarillo (no está en MaxiRest)</div>}
+                          {fichaArt && (fichaArt.rubro || fichaArt.subrubro) && <div>Rubro: <b>{[fichaArt.rubro, fichaArt.subrubro].filter(Boolean).join(' › ')}</b></div>}
+                          {fichaArt && fichaArt.precio != null && <div>Precio de lista: <b>{fmtPrecio(fichaArt.precio)}</b></div>}
+                          {onVerFicha && <div style={{ marginTop: 4, opacity: 0.8 }}>Tocá para abrir la ficha</div>}
+                        </Box>}>
+                        <IconButton size="small" onClick={onVerFicha ? () => onVerFicha(articulo.id) : undefined}
+                          sx={{ p: '1px', color: 'inherit', opacity: 0.85, cursor: onVerFicha ? 'pointer' : 'default', '&:hover': { opacity: 1 } }}>
+                          <InfoOutlinedIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo). Las flechas ‹ › van pegadas
+                      al nombre (Diego 12/11): antes la › quedaba al final del encabezado y la ‹ corría la descripción. */}
+                  <Stack direction="row" alignItems="center" sx={{ ml: onNavigate ? '-4px' : 0, maxWidth: '100%' }}>
+                  {onNavigate && (
+                    <IconButton size="small" sx={{ p: 0.25, color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3, flexShrink: 0 }}
+                      disabled={!canNavigate.prev}
+                      onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
+                      <KeyboardArrowLeftIcon />
+                    </IconButton>
+                  )}
+                  <Box sx={{ display: 'inline-grid', minWidth: 0, maxWidth: '100%',
+                    // ancho = el del texto (truco del span espejo), así la › queda pegada al nombre
+                    '&::after': { content: 'attr(data-v)', gridArea: '1 / 1', visibility: 'hidden', whiteSpace: 'pre', fontWeight: 800, fontSize: '1.2rem', pr: '2px', overflow: 'hidden' } }}
+                    data-v={(nombre || artNombre || ' ') + (modoInsumo ? ' × XX' : '')}>
                   <InputBase value={nombre} onChange={e => setNombre(e.target.value)} placeholder={artNombre}
                     inputProps={{ 'aria-label': 'Nombre' }}
-                    sx={{ color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: modoInsumo ? 0 : 280,
+                    sx={{ gridArea: '1 / 1', color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: 120,
                       borderBottom: '1px dashed rgba(255,255,255,0.45)', '&:hover, &.Mui-focused': { borderBottomColor: '#fff' },
                       '& input': { p: 0, pb: '2px' }, '& input::placeholder': { color: 'inherit', opacity: 0.7 } }}
                     endAdornment={modoInsumo ? (() => {
@@ -2454,8 +2502,17 @@ export default function RecetaModal({
                       const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
                       return u ? <Box component="span" sx={{ fontWeight: 800, whiteSpace: 'nowrap', ml: 1 }}>× {canonicalUnit(u).toUpperCase()}</Box> : null;
                     })() : null} />
+                  </Box>
+                  {onNavigate && (
+                    <IconButton size="small" sx={{ p: 0.25, ml: 0.5, color: 'inherit', opacity: canNavigate.next ? 1 : 0.3, flexShrink: 0 }}
+                      disabled={!canNavigate.next}
+                      onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
+                      <KeyboardArrowRightIcon />
+                    </IconButton>
+                  )}
+                  </Stack>
                   {/* Descripción del artículo (Diego 12/11) — DescripcionArticulo.jsx */}
-                  {!modoInsumo && <DescripcionArticulo articulo={articulo} businessId={businessId} editable={!isStaff} />}
+                  {!modoInsumo && <DescripcionArticulo articulo={articulo} businessId={businessId} editable={!isStaff} onArticulo={setFichaArt} />}
                 </Box>
               ) : (
               <Box sx={{ minWidth: 260 }}>
@@ -2474,7 +2531,7 @@ export default function RecetaModal({
               </Box>
               )}
               {/* Flecha siguiente — a la derecha del nombre */}
-              {onNavigate && (
+              {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
                   onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>

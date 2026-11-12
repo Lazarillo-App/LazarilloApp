@@ -9,7 +9,8 @@ import { httpBiz } from '@/servicios/apiBusinesses';
 
 const limpio = (v) => String(v ?? '').trim();
 
-export default function DescripcionArticulo({ articulo, businessId, editable = true }) {
+// onArticulo: recibe la ficha que trae el servidor (la usa la ⓘ del encabezado, sin pedirla dos veces).
+export default function DescripcionArticulo({ articulo, businessId, editable = true, onArticulo }) {
   // Lo que trae la fila sirve para pintar al instante; la del servidor (GET /articles/:id)
   // manda, porque según desde dónde se abra el modal el objeto puede no traerla
   // (Diego 12/11: #571 la tiene en MaxiRest y no aparecía).
@@ -32,6 +33,7 @@ export default function DescripcionArticulo({ articulo, businessId, editable = t
       .then((r) => {
         const a = r?.articulo;
         if (!vivo || !a) return;
+        onArticulo?.(a);
         const orig = limpio(a.descripcion_original);
         const usada = limpio(a.descripcion_propia) || orig;
         setOriginal(orig);

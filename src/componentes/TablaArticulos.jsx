@@ -3063,6 +3063,7 @@ export default function TablaArticulos({
         <RecetaModal
           open={!!recetaArticulo} onClose={() => {setRecetaArticulo(null); }}
           articulo={recetaArticulo}
+          onVerFicha={(id) => setEditandoArticuloId(id)}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
           activeBizId={activeBizId}
