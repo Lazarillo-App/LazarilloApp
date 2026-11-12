@@ -656,12 +656,13 @@ export default function ArticulosMain(props) {
       },
     }));
 
-    // Refetch completo de costos para capturar los artículos vinculados
-    // que el backend acaba de actualizar via propagateRecipe
+    // Solo lo afectado (Diego 12/11): el artículo, sus gemelos (que el backend acaba de
+    // actualizar via propagateRecipe) y las promos que lo usan. Se mezcla con lo que ya
+    // está en pantalla: antes se pedían los costos de TODO el negocio en cada guardado.
     try {
       const bizId = Number(activeBizId);
-      const res = await RecetasAPI.getCostos(bizId);
-      if (res?.costos) setRecetasCostos(res.costos);
+      const res = await RecetasAPI.getCostos(bizId, { articleId: savedReceta.article_id });
+      if (res?.costos) setRecetasCostos(prev => ({ ...prev, ...res.costos }));
     } catch (e) {
       console.warn('[handleRecetaSaved] refetch costos falló:', e.message);
     }
