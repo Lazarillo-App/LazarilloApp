@@ -66,24 +66,41 @@ function ChipEstado({ empleado, onBaja, onReactivar }) {
 /* Chip de Cronogramas: muestra los espacios APRENDIDOS de los cronogramas (no se
    cargan a mano) y al tocarlo marca/desmarca "No aplica a cronogramas"
    (contador, dueño, usuarios técnicos). Al pasar el mouse dice qué va a hacer. */
-function ChipCrono({ empleado, onCambiar }) {
+function ChipCrono({ empleado, onCambiar, onBaja }) {
+  // Al tocarlo se abre ahí mismo (sin ventana) con las dos acciones: No aplica y Baja.
+  const [abierto, setAbierto] = useState(false);
   const [hover, setHover] = useState(false);
   const noAplica = !!empleado.noAplica;
+  const activo = empleado.activo !== false;
   const espacios = (empleado.espacios || []).map((x) => x.nombre).join(' · ');
   const sug = !!empleado.sugerirBaja;
-  const texto = hover
-    ? (noAplica ? 'Vuelve a cronogramas' : 'Marcar No aplica')
-    : noAplica ? 'No aplica' : sug ? 'Sin turnos hace 8+ sem' : (espacios || 'Sin turnos aún');
+  if (abierto) {
+    const accion = (color, borde) => ({ display: 'inline-block', cursor: 'pointer', fontFamily: FB, fontSize: 11, fontWeight: 700, color,
+      border: `1px ${borde} ${color}66`, background: color + '12', borderRadius: 7, padding: '1px 7px', whiteSpace: 'nowrap', verticalAlign: 'middle' });
+    return (
+      <span onClick={(ev) => ev.stopPropagation()} onMouseLeave={() => setAbierto(false)} style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+        <span onClick={() => { setAbierto(false); onCambiar(empleado, !noAplica); }} style={accion(noAplica ? T.accentTxt : T.text3, noAplica ? 'solid' : 'dashed')}
+          title={noAplica ? 'Vuelve a aparecer para asignar' : 'No aparece para asignar en Cronogramas'}>
+          {noAplica ? '↺ Vuelve' : '⊘ No aplica'}
+        </span>
+        {activo && onBaja && (
+          <span onClick={() => { setAbierto(false); onBaja(empleado); }} style={accion(T.bad, 'solid')} title="Dar de baja (fecha opcional)">Baja</span>
+        )}
+        <span onClick={() => setAbierto(false)} style={{ cursor: 'pointer', color: T.text3, fontSize: 12, padding: '0 2px' }} title="Cerrar">✕</span>
+      </span>
+    );
+  }
+  const texto = noAplica ? 'No aplica' : sug ? 'Sin turnos hace 8+ sem' : (espacios || 'Sin turnos aún');
   const color = hover ? T.accentTxt : noAplica ? T.text3 : sug ? T.warn : espacios ? T.accentTxt : T.vacio;
   return (
     <span
-      onClick={(ev) => { ev.stopPropagation(); onCambiar(empleado, !noAplica); }}
+      onClick={(ev) => { ev.stopPropagation(); setAbierto(true); }}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      title={noAplica ? 'No aparece para asignar en Cronogramas' : 'Se completa solo con los cronogramas de las últimas 8 semanas'}
+      title={noAplica ? 'No aparece para asignar en Cronogramas · tocá para cambiar o dar de baja' : 'Se completa solo con los cronogramas de las últimas 8 semanas · tocá para No aplica o Baja'}
       style={{ display: 'inline-block', cursor: 'pointer', fontFamily: FB, fontSize: 11, fontWeight: 700, color,
         border: `1px ${noAplica || (!espacios && !sug && !hover) ? 'dashed' : 'solid'} ${color}66`, background: hover || espacios || sug ? color + '12' : 'transparent',
         borderRadius: 7, padding: '1px 7px', whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', verticalAlign: 'middle' }}>
-      {texto}
+      {texto}{hover && <span style={{ marginLeft: 4 }}>▾</span>}
     </span>
   );
 }
@@ -470,7 +487,7 @@ export default function RrhhNomina() {
                   <tr key={e.id} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
                     <td style={{ ...td, fontWeight: 700 }}>{nombreDe(e) || '—'}</td>
                     <td style={{ ...td, color: T.text3, fontSize: 12 }}>{e.codigoMaxi || '—'}</td>
-                    <td style={{ ...td, maxWidth: 190 }}><ChipCrono empleado={e} onCambiar={cambiarNoAplica} /></td>
+                    <td style={{ ...td, maxWidth: 190 }}><ChipCrono empleado={e} onCambiar={cambiarNoAplica} onBaja={setBajaDeQuien} /></td>
                     <td style={td}>
                       {e.origen === 'maxirest' ? <Etiqueta color={T.accentTxt}>MaxiRest</Etiqueta> : <Etiqueta color={T.violet}>Manual</Etiqueta>}
                     </td>
