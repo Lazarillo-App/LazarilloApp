@@ -41,6 +41,53 @@ const Etiqueta = ({ color, children, title }) => (
 );
 const ddmmaaaa = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 const nombreDe = (e) => `${e.nombre || ''}${e.apellido ? ` ${e.apellido}` : ''}`.trim();
+const hoyIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const bajaDe = (e) => e.fechaBaja || e.bajaMaxi || null;
+
+/* Chip de estado clickeable: Activo → dar de baja · Inactivo → reactivar.
+   Al pasar el mouse dice qué va a hacer. */
+function ChipEstado({ empleado, onBaja, onReactivar }) {
+  const [hover, setHover] = useState(false);
+  const activo = empleado.activo !== false;
+  const baja = bajaDe(empleado);
+  const color = hover ? (activo ? T.bad : T.accentTxt) : (activo ? T.ok : T.text3);
+  return (
+    <span
+      onClick={(ev) => { ev.stopPropagation(); (activo ? onBaja : onReactivar)(empleado); }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={activo ? 'Dar de baja' : 'Reactivar'}
+      style={{ display: 'inline-block', cursor: 'pointer', fontFamily: FB, fontSize: 11, fontWeight: 700, color,
+        border: `1px solid ${color}55`, background: color + '12', borderRadius: 7, padding: '1px 7px', whiteSpace: 'nowrap', minWidth: 72, textAlign: 'center', boxSizing: 'border-box' }}>
+      {hover ? (activo ? 'Dar de baja' : 'Reactivar') : activo ? 'Activo' : `Inactivo${baja ? ` · baja ${ddmmaaaa(baja)}` : ''}`}
+    </span>
+  );
+}
+
+/* ───────── modal chico: fecha de baja ───────── */
+function ModalBaja({ empleado, onConfirmar, onCerrar }) {
+  const [fecha, setFecha] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const confirmar = async () => { setGuardando(true); try { await onConfirmar(fecha); } finally { setGuardando(false); } };
+  return (
+    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 340, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Dar de baja</div>
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+        </div>
+        <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text2, marginTop: 2 }}>{nombreDe(empleado)} deja de aparecer para asignar en los cronogramas.</div>
+        <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Fecha de baja</div>
+        <input type="date" value={fecha} max={hoyIso()} onChange={(e) => setFecha(e.target.value)} autoFocus
+          style={{ width: '100%', boxSizing: 'border-box', height: 40, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
+        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 6 }}>Si la dejás vacía, queda hoy ({ddmmaaaa(hoyIso())}).</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          <Boton onClick={onCerrar}>Cancelar</Boton>
+          <Boton peligro deshabilitado={guardando} onClick={confirmar}>{guardando ? 'Guardando…' : 'Dar de baja'}</Boton>
+        </div>
+      </div>
+    </div>
+  );
+}
 const normTxt = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 /* ───────── modal: alta / edición ───────── */
@@ -50,6 +97,7 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
   const [apellido, setApellido] = useState(empleado?.apellido || '');
   const [sector, setSector] = useState(empleado?.sector || '');
   const [activo, setActivo] = useState(empleado ? empleado.activo !== false : true);
+  const [fechaBaja, setFechaBaja] = useState(empleado?.fechaBaja || '');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const input = { width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
@@ -58,7 +106,7 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
     if (!nombre.trim()) { setError('Poné al menos el nombre.'); return; }
     setGuardando(true);
     try {
-      await onGuardar({ nombre: nombre.trim(), apellido: apellido.trim(), sector: sector.trim(), activo });
+      await onGuardar({ nombre: nombre.trim(), apellido: apellido.trim(), sector: sector.trim(), activo, ...(!activo && fechaBaja ? { fechaBaja } : {}) });
     } catch (e) {
       setError(e?.data?.message || e.message || 'No se pudo guardar.');
       setGuardando(false);
@@ -96,6 +144,14 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
           Activo
         </label>
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '2px 0 0 24px' }}>Los inactivos no aparecen para asignar en los cronogramas.</div>
+        {!activo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 0 24px' }}>
+            <span style={{ fontFamily: FB, fontSize: 12, color: T.text2 }}>Fecha de baja</span>
+            <input type="date" value={fechaBaja} max={hoyIso()} onChange={(e) => setFechaBaja(e.target.value)}
+              style={{ height: 32, fontFamily: FB, fontSize: 12.5, padding: '0 8px', borderRadius: 8, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
+            <span style={{ fontFamily: FB, fontSize: 11.5, color: T.text3 }}>vacía = hoy</span>
+          </div>
+        )}
         {empleado?.bajaMaxi && (
           <div style={{ fontFamily: FB, fontSize: 12, color: T.warn, marginTop: 6 }}>
             MaxiRest le dio la baja el {ddmmaaaa(empleado.bajaMaxi)}. Si lo reactivás, la sincronización lo respeta.
@@ -125,6 +181,7 @@ export default function RrhhNomina() {
   const { activeBusinessId } = useBusiness() || {};
   const cargaSeq = useRef(0);
   const [eligiendo, setEligiendo] = useState(false);
+  const [bajaDeQuien, setBajaDeQuien] = useState(null); // empleado al que se le está dando de baja
 
   const avisar = useCallback((msj, tipo = 'ok') => {
     setToast({ msj, tipo });
@@ -184,6 +241,27 @@ export default function RrhhNomina() {
       .filter((e) => !txt || normTxt(nombreDe(e)).includes(txt) || String(e.codigoMaxi || '').includes(txt) || normTxt(e.sector).includes(txt))
       .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
   }, [empleados, filtro, q]);
+
+  const reemplazar = (emp) => setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? emp : e)) }));
+  const darDeBaja = async (fecha) => {
+    try {
+      const r = await RrhhAPI.editarEmpleado(bajaDeQuien.id, { activo: false, ...(fecha ? { fechaBaja: fecha } : {}) });
+      reemplazar(r.empleado);
+      setBajaDeQuien(null);
+      avisar(`${nombreDe(r.empleado)} dado de baja · ${ddmmaaaa(r.empleado.fechaBaja)}`);
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo dar de baja.', 'error');
+    }
+  };
+  const reactivar = async (emp) => {
+    try {
+      const r = await RrhhAPI.editarEmpleado(emp.id, { activo: true });
+      reemplazar(r.empleado);
+      avisar(`${nombreDe(r.empleado)} reactivado ✓`);
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo reactivar.', 'error');
+    }
+  };
 
   const guardar = async (datos) => {
     if (editando === 'nuevo') {
@@ -285,11 +363,7 @@ export default function RrhhNomina() {
                       {e.origen === 'maxirest' ? <Etiqueta color={T.accentTxt}>MaxiRest</Etiqueta> : <Etiqueta color={T.violet}>Manual</Etiqueta>}
                     </td>
                     <td style={td}>
-                      {e.activo === false
-                        ? <Etiqueta color={T.text3} title={e.bajaMaxi ? `Baja en MaxiRest el ${ddmmaaaa(e.bajaMaxi)}` : 'Desactivado en Lazarillo'}>
-                          Inactivo{e.bajaMaxi ? ` · baja ${ddmmaaaa(e.bajaMaxi)}` : ''}
-                        </Etiqueta>
-                        : <Etiqueta color={T.ok}>Activo</Etiqueta>}
+                      <ChipEstado empleado={e} onBaja={setBajaDeQuien} onReactivar={reactivar} />
                     </td>
                     <td style={{ ...td, textAlign: 'right' }}><span style={{ color: T.accentTxt, fontWeight: 700, fontSize: 12.5 }}>✎ Editar</span></td>
                   </tr>
@@ -313,6 +387,7 @@ export default function RrhhNomina() {
           onCerrar={() => setEditando(null)}
         />
       )}
+      {bajaDeQuien && <ModalBaja empleado={bajaDeQuien} onConfirmar={darDeBaja} onCerrar={() => setBajaDeQuien(null)} />}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: T.band, border: `1px solid ${toast.tipo === 'error' ? T.bad : T.accent}88`, color: toast.tipo === 'error' ? T.bad : T.text, fontFamily: FB, fontSize: 13.5, fontWeight: 600, padding: '11px 18px', borderRadius: 12, boxShadow: T.sombra, zIndex: 60 }}>
           {toast.msj}
