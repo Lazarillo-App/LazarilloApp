@@ -50,12 +50,12 @@ export function NotasSidebar() {
             : estado === "guardado" ? "Guardado"
                 : estado === "error" ? "No se pudo guardar"
                     : "";
-    return (<div className="px-2 pb-2">
+    return (<div className="flex h-full min-h-0 flex-col px-2 pb-2">
       <div className="flex items-center justify-between px-2 pb-1.5 text-xs font-medium text-muted-foreground">
         <span>Notas</span>
         <span className={cn("text-[10px] font-normal", estado === "error" ? "text-red-600" : "text-muted-foreground")}>{leyenda}</span>
       </div>
       <textarea value={texto} disabled={estado === "cargando"} onChange={(e) => cambiar(e.target.value)} onBlur={() => { if (timer.current)
-        clearTimeout(timer.current); void guardar(texto); }} placeholder="Anotaciones rápidas…" maxLength={20000} className="block w-full min-h-[10rem] resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-snug outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"/>
+        clearTimeout(timer.current); void guardar(texto); }} placeholder="Anotaciones rápidas…" maxLength={20000} style={{ resize: "none" }} className="block w-full min-h-0 flex-1 rounded-md border border-border bg-background px-2.5 py-2 text-[13px] leading-snug outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"/>
     </div>);
 }
