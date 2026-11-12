@@ -2414,8 +2414,8 @@ export default function RecetaModal({
                   { id: 'receta', label: 'RECETA' },
                   { id: 'compras', label: 'COMPRAS' },
                   { id: 'merma', label: 'MERMA' },   // después de Compras (Diego 11/11/2026)
-                  { id: 'equivalencias', label: 'EQUIVALENCIAS' },
-                  { id: 'uso', label: 'USO' },
+                  // Equivalencias y Uso van en una sola pestaña (Diego 11/11/2026). 'uso' sigue valiendo como id.
+                  { id: 'equivalencias', label: 'USO' },
                 ].map(t => (
                   <Box
                     key={t.id}
@@ -2423,8 +2423,8 @@ export default function RecetaModal({
                     sx={{
                       px: 1.75, py: 0.9,
                       borderRadius: '8px 8px 0 0',
-                      bgcolor: tab === t.id ? 'background.paper' : 'rgba(255,255,255,0.25)',
-                      color: tab === t.id ? PRIMARY : ON_PRIMARY,
+                      bgcolor: (tab === t.id || (t.id === 'equivalencias' && tab === 'uso')) ? 'background.paper' : 'rgba(255,255,255,0.25)',
+                      color: (tab === t.id || (t.id === 'equivalencias' && tab === 'uso')) ? PRIMARY : ON_PRIMARY,
                       fontWeight: 800, fontSize: '0.72rem', letterSpacing: 0.4,
                       cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
                     }}
@@ -2570,7 +2570,12 @@ export default function RecetaModal({
                 rango={comprasRango}
                 onCambiarRango={setComprasRangoOverride}
               />
-) : modoInsumo && tab === 'equivalencias' ? (
+) : modoInsumo && (tab === 'equivalencias' || tab === 'uso') ? (
+              // Dos columnas: medidas a la izquierda, dónde se usa a la derecha (Diego 11/11/2026: los
+              // campos a lo ancho de todo el modal quedaban demasiado anchos).
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 6fr)' }, gap: 3, alignItems: 'start' }}>
+              <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Medidas</Typography>
               <TabEquivalenciasInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
@@ -2584,7 +2589,9 @@ export default function RecetaModal({
                   rendimientoUnidad,
                 }}
               />
-            ) : modoInsumo && tab === 'uso' ? (
+              </Box>
+              <Box sx={{ minWidth: 0, borderLeft: { md: '1px solid' }, borderColor: { md: 'divider' }, pl: { md: 3 } }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Dónde se usa</Typography>
               <TabUsoInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
@@ -2601,6 +2608,8 @@ export default function RecetaModal({
                   );
                 }}
               />
+              </Box>
+              </Box>
             ) : (() => {
               // Cartel de advertencia: insumo con compras que aún no tiene receta
               const insDat = insumos.find(i => String(i.id) === String(articulo?.id));
