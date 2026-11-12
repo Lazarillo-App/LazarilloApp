@@ -20,15 +20,18 @@ export function VerComoItems({ onElegido }) {
   useEffect(() => {
     if (rolReal !== 'owner') return;
     RolesAPI.listCompleto()
-      .then(({ roles, administracion }) => setOpciones([
+      .then(({ roles, administracion, staff }) => setOpciones([
         { id: 'admin', nombre: 'Administración', rol: 'admin',
           permisos: administracion?.ajustada ? { secciones: administracion.secciones, ocultos: administracion.ocultos } : null },
         ...roles.map((r) => ({ id: `rol:${r.id}`, nombre: r.nombre, rol: 'admin', permisos: { secciones: r.secciones, ocultos: r.ocultos } })),
-        { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null },
+        { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null, permisosStaff: { ...(staff?.base || {}) } },
+        // Subroles de Staff (Diego 11/11/2026): lo del Staff base + lo del subrol.
+        ...(staff?.subroles || []).map((sr) => ({ id: `staff:${sr.id}`, nombre: `└ ${sr.nombre}`, rol: 'staff', subrol: sr.nombre,
+          permisos: null, permisosStaff: { ...(staff?.base || {}), ...(sr.permisos || {}) } })),
       ]))
       .catch(() => setOpciones([
         { id: 'admin', nombre: 'Administración', rol: 'admin', permisos: null },
-        { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null },
+        { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null, permisosStaff: {} },
       ]));
   }, [rolReal]);
 
@@ -36,7 +39,7 @@ export function VerComoItems({ onElegido }) {
 
   const elegir = (o) => {
     onElegido?.();
-    setVerComo(o ? { id: o.id, nombre: o.nombre, rol: o.rol, permisos: o.permisos } : null);
+    setVerComo(o ? { id: o.id, nombre: o.nombre.replace(/^└\s*/, ''), rol: o.rol, subrol: o.subrol || null, permisos: o.permisos, permisosStaff: o.permisosStaff || null } : null);
     navigate('/inicio');
   };
 
@@ -85,7 +88,7 @@ export function VerComoBanner() {
       <span>
         {aviso
           ? 'No se guardó: en "Ver como" la app es solo para mirar.'
-          : <>Estás viendo la app como <b>{verComo.nombre}</b> · no se guardan cambios</>}
+          : <>Estás viendo la app como <b>{verComo.nombre}</b> · los cambios se guardan con tu usuario</>}
       </span>
       <Button size="small" onClick={volver} variant="contained" disableElevation
         sx={{ bgcolor: '#fff', color: '#111827', textTransform: 'none', fontWeight: 700, height: 26, '&:hover': { bgcolor: '#e5e7eb' } }}>

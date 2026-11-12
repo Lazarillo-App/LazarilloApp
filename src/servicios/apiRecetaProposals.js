@@ -1,6 +1,7 @@
 // src/servicios/apiRecetaProposals.js
 // Vista Operación — Fase 3: bandeja de aprobación de recetas propuestas por Staff.
 import { httpBiz } from './apiBusinesses';
+import { vistaPreviaActiva } from './vistaPrevia';
 
 // GET /api/businesses/:businessId/receta-proposals?status=pending,in_revision
 export async function listarPropuestas(businessId, status = 'pending,in_revision') {
@@ -57,5 +58,22 @@ export async function marcarARevision(businessId, items, comment, asignadoA = nu
   const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment, asignadoA } }, businessId);
   if (!resp?.ok) throw new Error(resp?.error || 'No se pudo marcar a revisión');
   try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento: el contador se actualiza al volver a abrir */ }
+  return resp;
+}
+
+// Jefe de cocina (Diego 11/11/2026): lo de su equipo que espera su OK.
+// GET /api/businesses/:businessId/receta-proposals/equipo
+export async function listarPropuestasEquipo(businessId) {
+  // En «Ver como › Jefe de cocina» el dueño ve todo lo que espera el OK de algún jefe.
+  const resp = await httpBiz(`/receta-proposals/equipo${vistaPreviaActiva() ? '?vista=jefe' : ''}`, { method: 'GET' }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'Error obteniendo los cambios de tu equipo');
+  return resp.proposals || [];
+}
+
+// POST /api/businesses/:businessId/receta-proposals/:id/jefe-ok — pasa al administrador
+export async function jefeOkPropuesta(businessId, id) {
+  const resp = await httpBiz(`/receta-proposals/${id}/jefe-ok`, { method: 'POST', body: {} }, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'No se pudo dar el OK');
+  try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento */ }
   return resp;
 }

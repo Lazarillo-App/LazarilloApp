@@ -13,7 +13,8 @@ import { useAccess } from '@/context/AccessContext';
  */
 export default function FilaResultadoInsumo({ ins, alertaSemanas, onClick, selected = false }) {
   // Staff: nada con valores de plata (usuaria 10/11). Pesos, %, contenidos y unidades quedan.
-  const { isStaff: sinPlata } = useAccess() || {};
+  const { veMontos = true } = useAccess() || {};
+  const sinPlata = !veMontos;
   const esElab = ins.es_elaborado === true || ins.tiene_receta === true;
   return (
     <Box

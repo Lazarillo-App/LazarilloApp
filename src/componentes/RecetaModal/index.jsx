@@ -22,7 +22,7 @@ import {
   InputAdornment, Select, MenuItem, FormControl,
   Checkbox, Stack, Dialog, DialogTitle, DialogContent,
   DialogActions, DialogContentText,
-  ToggleButton, ToggleButtonGroup, Slider, Popover,
+  ToggleButton, ToggleButtonGroup, Slider, Popover, InputBase,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -72,6 +72,7 @@ import TabComprasInsumo from './TabComprasInsumo';
 import { RankingChip } from '../ComprasMiniDetalleModal';
 import { useRankingPorGasto } from '@/hooks/useRankingPorGasto';
 import TabEquivalenciasInsumo from './TabEquivalenciasInsumo';
+import TabFichaInsumo from './TabFichaInsumo';
 import TabUsoInsumo from './TabUsoInsumo';
 import SelectorInsumo from './SelectorInsumo';
 import { useAccess } from '@/context/AccessContext';
@@ -102,6 +103,7 @@ export default function RecetaModal({
   priceConfig = { byArticle: {}, byRubro: {}, byAgrupacion: {} },
   allArticulos = [],
   promoIds = new Set(),
+  promoGroupIds = new Set(),   // artículos que VIVEN en la agrupación Promociones (movidos antes del 11/11)
   priceLists = [],
   priceListsByList = {},
   modoInsumo = false,
@@ -123,7 +125,9 @@ export default function RecetaModal({
   const comprasBizId = activeBizId || businessId;
   const { allBusinesses } = useOrganization() || {};
   const [receta, setReceta] = useState(null);
-  const [tab, setTab] = useState('receta'); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
+  const [tab, setTab] = useState('receta');
+  // Foto en el header (propuesta 11/11/2026): artículo/promo siempre; insumo solo en su pestaña Receta.
+  const [fotoChica, setFotoChica] = useState(false); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
   // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
   const [entradaElegida, setEntradaElegida] = useState(!modoInsumo || saltarSelector);
   // Rango de la pestaña Compras: por defecto los últimos 5 años, pero el botón
@@ -161,7 +165,7 @@ export default function RecetaModal({
   const [rendimientoManualOpen, setRendimientoManualOpen] = useState(null);
   // Leer config global del contexto — se actualiza automáticamente sin fetch propio
   const appConfig = useConfig();
-  const { isStaff } = useAccess() || {};
+  const { isStaff, veMontos = true } = useAccess() || {};
   // Marcar a revisión: modo con checks por ingrediente y nota al final
   const [marcarModo, setMarcarModo] = useState(false);
   const [marcarSel, setMarcarSel] = useState(() => new Set());
@@ -228,6 +232,17 @@ export default function RecetaModal({
   const [pasos, setPasos] = useState([]);
   const [almacenamientoFreezer, setAlmacenamientoFreezer] = useState('');
   const [almacenamientoHeladera, setAlmacenamientoHeladera] = useState('');
+  // Regla de precio de la promo (Diego 11/11/2026): 'margen' (costo ÷ objetivo, como siempre),
+  // 'off' (% off sobre la venta sin promo) o 'nxm' (llevás N, pagás M). En 'off' y 'nxm' el precio
+  // sale solo y queda atado al de sus artículos; no se edita a mano.
+  const [promoRegla, setPromoRegla] = useState('margen');
+  const [promoOffPct, setPromoOffPct] = useState('');
+  const [promoLlevas, setPromoLlevas] = useState('');
+  const [promoPagas, setPromoPagas] = useState('');
+  // Precio individual de los artículos de la promo editado desde el modal (Diego 11/11/2026: «cambio
+  // desde acá el precio de la Heineken y voy viendo cómo queda la promo, y al revés»). { [articleId]: precio }.
+  // Al guardar se graba como nuevo precio de ese artículo.
+  const [preciosArticuloPromo, setPreciosArticuloPromo] = useState({});
 
   // Base de la receta (articles/:id/receta o insumos/:id/receta, según el modo) —
   // misma resolución que ya usa handleSave para postUrl. Se reutiliza para
@@ -307,7 +322,15 @@ export default function RecetaModal({
   }, []);
 
   const artNombre = articulo?.nombre || '';
-  const precioActual = Number(articulo?.precio || 0);
+  // Nuevo precio del artículo común, puesto desde el pie (escrito o con + / −). Diego 11/11/2026: el
+  // objetivo no cambia y el nuevo precio pasa a ser el actual (se guarda como «nuevo precio», el mismo
+  // de la columna de la tabla).
+  const [precioNuevoProd, setPrecioNuevoProd] = useState(null);
+  useEffect(() => { setPrecioNuevoProd(null); }, [open, articulo?.id]);
+  const precioManualGuardado = Number(priceListsByList?._base?.byArticle?.[String(articulo?.id)]?.precioManual) || 0;
+  const precioActual = Number(precioNuevoProd) > 0
+    ? Number(precioNuevoProd)
+    : (precioManualGuardado > 0 ? precioManualGuardado : Number(articulo?.precio || 0));
 
   const [localRecetasElaborados, setLocalRecetasElaborados] = useState(recetasElaborados);
   const recetasElabRef = useRef(recetasElaborados);
@@ -341,6 +364,41 @@ export default function RecetaModal({
   // arreglando de a uno y volver a subir sin perder por dónde veníamos. autoSave() ya corre
   // antes de cada llamada a pushElaborado (ver cada onClick/onOpenRecetaElaborado), así que
   // lo que estaba editado en el nivel de arriba queda guardado antes de bajar un nivel más.
+  // Fila desde la que se tocó "+ Crear merma": la merma nueva queda aplicada ahí al volver.
+  // Se reaplica (60 s) si la receta se recarga del servidor antes de guardarse, y se guarda sola.
+  const mermaPendienteRef = useRef(null);   // { supplyId, index, antes:Set, nuevaId, hasta }
+  const [guardarMermaPendiente, setGuardarMermaPendiente] = useState(0);
+  const aplicarMermaPendiente = (lista) => {
+    const pend = mermaPendienteRef.current;
+    if (!pend?.nuevaId || Date.now() > pend.hasta) return lista;
+    let idx = (lista[pend.index] && String(lista[pend.index].supplyId) === pend.supplyId)
+      ? pend.index
+      : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
+    if (idx < 0) return lista;
+    const it = lista[idx];
+    const ya = Array.isArray(it.mermaIds) && it.mermaIds.length === 1 && Number(it.mermaIds[0]) === pend.nuevaId;
+    if (ya) return lista;
+    const copia = lista.slice();
+    copia[idx] = { ...it, mermaIds: [pend.nuevaId], mermaId: pend.nuevaId };
+    setGuardarMermaPendiente(t => t + 1);
+    return copia;
+  };
+  // Lo mismo con «+ Crear equivalencia» (Diego 11/11/2026): la equivalencia nueva pasa a ser la
+  // unidad de esa fila (reemplaza la que tenía) y se guarda sola (mismo disparador que la merma).
+  const eqPendienteRef = useRef(null);   // { supplyId, index, antes:Set(nombres), nueva, hasta }
+  const aplicarEqPendiente = (lista) => {
+    const pend = eqPendienteRef.current;
+    if (!pend?.nueva || Date.now() > pend.hasta) return lista;
+    const idx = (lista[pend.index] && String(lista[pend.index].supplyId) === pend.supplyId)
+      ? pend.index
+      : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
+    if (idx < 0 || lista[idx].unidad === pend.nueva) return lista;
+    const copia = lista.slice();
+    copia[idx] = { ...lista[idx], unidad: pend.nueva };
+    setGuardarMermaPendiente(t => t + 1);
+    return copia;
+  };
+
   const pushElaborado = useCallback((item) => {
     setElaboradosStack(prev => [...prev, item]);
   }, []);
@@ -591,7 +649,7 @@ export default function RecetaModal({
     setEntradaElegida(!modoInsumo || saltarSelector);
     // Buscador (lupa) del header: se abrió desde una pestaña puntual (ej. Merma) → se
     // mantiene esa misma pestaña en el insumo destino, en vez de re-adivinar Receta/Compras.
-    const TABS_VALIDOS = ['receta', 'merma', 'compras', 'equivalencias', 'uso'];
+    const TABS_VALIDOS = ['ficha', 'receta', 'merma', 'compras', 'equivalencias', 'uso'];
     if (modoInsumo && saltarSelector && TABS_VALIDOS.includes(initialTab)) {
       setTab(initialTab);
       tabResueltoParaRef.current = articulo?.id;
@@ -866,6 +924,8 @@ export default function RecetaModal({
 
   const getPrecioSinPromo = useCallback((articleRefId) => {
     if (!articleRefId) return null;
+    const editado = Number(preciosArticuloPromo[String(articleRefId)]);
+    if (editado > 0) return editado;
     const art = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === Number(articleRefId));
     if (!art) return 0;
     // Precio base (lista principal): nuevo precio si se definió en la tabla, sino el precio de venta
@@ -887,7 +947,7 @@ export default function RecetaModal({
       return Number(r?.precio) || precioBase;
     }
     return precioBase;
-  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList]);
+  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList, preciosArticuloPromo]);
 
   /* ── Cargar receta ── */
   useEffect(() => {
@@ -978,7 +1038,12 @@ export default function RecetaModal({
           setPasos(Array.isArray(rec.pasos) ? rec.pasos : []);
           setAlmacenamientoFreezer(rec.almacenamiento_freezer || '');
           setAlmacenamientoHeladera(rec.almacenamiento_heladera || '');
-          setItems((rec.items || []).map(it => {
+          setPromoRegla(['off', 'nxm'].includes(rec.promo_regla) ? rec.promo_regla : 'margen');
+          setPreciosArticuloPromo({});
+          setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
+          setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
+          setPromoPagas(rec.promo_pagas != null ? String(rec.promo_pagas) : '');
+          setItems(aplicarEqPendiente(aplicarMermaPendiente((rec.items || []).map(it => {
             const supplyMedidaRaw = it.supply_medida || it.unidad || 'u';
             const supplyMedida = canonicalUnit(supplyMedidaRaw);
             const unidadOriginal = it.unidad || supplyMedidaRaw;
@@ -1019,7 +1084,7 @@ export default function RecetaModal({
               })(),
               updatedAt: it.updated_at || it.updatedAt || null,
             };
-          }));
+          }))));
 
           // Costos de sub-recetas (elaborados) en una sola llamada; si falla, se piden de a 4
           const elaboradosIds = (rec.items || [])
@@ -1125,6 +1190,7 @@ export default function RecetaModal({
           setTemperatura('');
           setTiempoMin('');
           setPasos([]);
+          setPromoRegla('margen'); setPromoOffPct(''); setPromoLlevas(''); setPromoPagas('');
           setItems([]);
         }
       })
@@ -1439,20 +1505,6 @@ export default function RecetaModal({
   const costoXRendimiento = divisorRendCanonico > 0 ? costoTotalMostrado / divisorRendCanonico : 0;
   // Redondeado con el mismo criterio elegido en Configuración (múltiplo más cercano),
   // igual que los precios manuales/aumentos masivos en la tabla de artículos.
-  const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
-  const precioSugerido = precioSugeridoCrudo > 0
-    ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
-    : 0;
-  // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
-  // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
-  const commitPrecioSugerido = (val) => {
-    const precio = Number(val);
-    if (!(precio > 0) || !(costoXRendimiento > 0)) return;
-    commitObjetivo((costoXRendimiento / precio) * 100);
-  };
-  const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
-  const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
-
   // Venta sin promo: suma de los precios de venta de los componentes-artículo
   const ventaSinPromo = useMemo(() => {
     if (!promoMode) return 0;
@@ -1462,6 +1514,105 @@ export default function RecetaModal({
       return acc + (Number(p) || 0) * (Number(it.cantidad) || 0);
     }, 0);
   }, [items, promoMode, getPrecioSinPromo]);
+  const precioSugeridoCrudo = pctCostoIdeal > 0 ? costoXRendimiento / (pctCostoIdeal / 100) : 0;
+  const precioSugeridoMargen = precioSugeridoCrudo > 0
+    ? aplicarRedondeo(precioSugeridoCrudo, appConfig.redondeoPrecios)
+    : 0;
+  // Promo con regla '% off' o 'llevás N, pagás M': el precio sale de la venta sin promo, no del margen.
+  const reglaPromoActiva = promoMode && (promoRegla === 'off' || promoRegla === 'nxm') ? promoRegla : null;
+  // Llevás N, pagás M: «llevás» ES la cantidad del artículo de la promo (de ahí sale el costo), así que
+  // se muestran atados — cambiar uno cambia el otro (Diego 11/11/2026).
+  const idxArticuloPromo = items.findIndex(it => it.articleRefId);
+  const promoLlevasEf = promoRegla === 'nxm' && idxArticuloPromo >= 0
+    ? String(Number(items[idxArticuloPromo].cantidad) || '')
+    : promoLlevas;
+  const cambiarLlevas = (v) => {
+    setPromoLlevas(v);
+    if (promoRegla === 'nxm' && idxArticuloPromo >= 0 && Number(v) > 0) {
+      setItems(prev => prev.map((it, i) => (i === idxArticuloPromo ? { ...it, cantidad: Number(v) } : it)));
+    }
+  };
+  const precioPorRegla = (() => {
+    if (!reglaPromoActiva || !(ventaSinPromo > 0)) return 0;
+    if (reglaPromoActiva === 'off') {
+      const off = Number(promoOffPct);
+      if (!(off > 0 && off < 100)) return 0;
+      return aplicarRedondeo(ventaSinPromo * (1 - off / 100), appConfig.redondeoPrecios);
+    }
+    const n = Number(promoLlevasEf), m = Number(promoPagas);
+    if (!(n > 0 && m > 0 && m <= n)) return 0;
+    return aplicarRedondeo(ventaSinPromo * m / n, appConfig.redondeoPrecios);
+  })();
+  const etiquetaRegla = reglaPromoActiva === 'off'
+    ? `${fmt(Number(promoOffPct) || 0, 0)}% off`
+    : reglaPromoActiva === 'nxm' ? `${promoLlevasEf || 'N'}x${promoPagas || 'M'}` : null;
+  const precioSugerido = reglaPromoActiva ? precioPorRegla : precioSugeridoMargen;
+
+  // Precio de la promo y de su artículo, atados (solo % off y llevás N pagás M):
+  //  - un solo artículo: mover el precio de la promo recalcula el del artículo (y al revés);
+  //  - combo: mover el precio de la promo no toca los artículos, recalcula el % off; tope = venta sin promo.
+  // El paso de + / − es el redondeo de Configuración.
+  const pasoPrecio = Number(appConfig.redondeoPrecios) > 0 ? Number(appConfig.redondeoPrecios) : 100;
+  const articulosDePromo = items.filter(it => it.articleRefId);
+  const articuloUnicoPromo = articulosDePromo.length === 1 ? articulosDePromo[0] : null;
+  const factorRegla = (() => {
+    if (reglaPromoActiva === 'off') { const off = Number(promoOffPct); return off > 0 && off < 100 ? 1 - off / 100 : 0; }
+    if (reglaPromoActiva === 'nxm') { const n = Number(promoLlevasEf), m = Number(promoPagas); return n > 0 && m > 0 && m <= n ? m / n : 0; }
+    return 0;
+  })();
+  const precioArticuloUnico = articuloUnicoPromo ? Number(getPrecioSinPromo(articuloUnicoPromo.articleRefId)) || 0 : 0;
+  const cambiarPrecioArticuloPromo = (articleRefId, precio) => {
+    const v = aplicarRedondeo(Number(precio) || 0, appConfig.redondeoPrecios);
+    if (!(v > 0)) return;
+    setPreciosArticuloPromo(prev => ({ ...prev, [String(articleRefId)]: v }));
+  };
+  const fijarPrecioPromo = (precio) => {
+    let v = Number(precio) || 0;
+    if (!(v > 0) || !reglaPromoActiva) return;
+    if (articuloUnicoPromo) {
+      const cant = Number(articuloUnicoPromo.cantidad) || 0;
+      if (!(cant > 0) || !(factorRegla > 0)) return;
+      cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, v / (cant * factorRegla));
+    } else if (reglaPromoActiva === 'off' && ventaSinPromo > 0) {
+      v = Math.min(v, ventaSinPromo);   // un combo no puede costar más que sus artículos sueltos
+      const off = (1 - v / ventaSinPromo) * 100;
+      setPromoOffPct(String(Math.round(off * 10) / 10));
+    }
+  };
+  // Con un solo artículo el paso se da en el precio del artículo (si no, el redondeo del artículo puede
+  // devolver la promo al mismo precio y el botón «no hace nada»); en un combo, en el precio de la promo.
+  const ajustarPrecioPromo = (signo) => (articuloUnicoPromo
+    ? cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, precioArticuloUnico + signo * pasoPrecio)
+    : fijarPrecioPromo((precioSugerido || 0) + signo * pasoPrecio));
+  // Editar el precio sugerido "al revés": el usuario tipea el $ que quiere vender y
+  // se despeja qué % de costo implica — mismo guardado que la barrita (commitObjetivo).
+  // Artículo común: el precio que se escribe (cualquier importe) o se mueve con + / − (paso = redondeo)
+  // queda como nuevo precio; se guarda enseguida, con una pausa para no mandar un guardado por clic.
+  const esArticuloComun = !promoMode && !modoInsumo;
+  const guardarNuevoPrecioTimer = useRef(null);
+  const fijarPrecioNuevoProd = (precio) => {
+    const v = Math.round(Number(precio) || 0);
+    if (!(v > 0) || !articulo?.id) return;
+    setPrecioNuevoProd(v);
+    clearTimeout(guardarNuevoPrecioTimer.current);
+    guardarNuevoPrecioTimer.current = setTimeout(() => {
+      try { onPriceConfigSave?.({ scope: 'articulo', scopeId: String(articulo.id), precioManual: v }); } catch { }
+    }, 700);
+  };
+  const ajustarPrecioProd = (signo) => {
+    const base = Number(precioNuevoProd) > 0 ? Number(precioNuevoProd) : (precioSugerido || precioActual || 0);
+    fijarPrecioNuevoProd(aplicarRedondeo(base + signo * pasoPrecio, appConfig.redondeoPrecios));
+  };
+  const commitPrecioSugerido = (val) => {
+    const precio = Number(val);
+    if (reglaPromoActiva) { fijarPrecioPromo(precio); return; }
+    if (esArticuloComun) { fijarPrecioNuevoProd(precio); return; }
+    if (!(precio > 0) || !(costoXRendimiento > 0)) return;
+    commitObjetivo((costoXRendimiento / precio) * 100);
+  };
+  const pctCostoActual = precioActual > 0 ? (costoXRendimiento / precioActual) * 100 : null;
+  const estaPorDebajo = precioActual > 0 && precioSugerido > 0 && precioActual < precioSugerido;
+
   const sugeridoExcedeVenta = promoMode && ventaSinPromo > 0 && precioSugerido > ventaSinPromo;
 
   const handleSave = async ({ keepOpen = false, itemsOverride = null } = {}) => {
@@ -1476,7 +1627,8 @@ export default function RecetaModal({
     // costo_total nuevo. Sin esta excepción, clickear "Guardar" frente al aviso de
     // "el costo guardado no coincide" no hacía nada (el snapshot de campos daba
     // igual) y el aviso quedaba ahí para siempre.
-    if (!modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
+    // itemsOverride (deshacer la promo) siempre guarda: sin esto el snapshot daba «sin cambios» y no hacía nada.
+    if (!itemsOverride && !modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
       const snapshotActual = buildDirtySnapshot();
       if (snapshotActual === pristineSnapshotRef.current) {
         if (!keepOpen) onClose?.();
@@ -1489,6 +1641,7 @@ export default function RecetaModal({
       if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .filter(it => Number(it.articleRefId) !== Number(articulo?.id))   // nunca la promo dentro de sí misma
         .map(it => ({
           articleId: Number(it.articleRefId),
           cantidad: Number(it.cantidad) || 1,
@@ -1540,9 +1693,13 @@ export default function RecetaModal({
     // handleDelete), así que guardar una promo ya creada caía en el guardado
     // genérico de receta de más abajo — que no actualiza la promo real, por
     // eso los cambios no quedaban guardados.
-    if (esPromo && articulo?.id) {
+    // Con itemsOverride (deshacer la promo → producto) NO: tiene que ir al guardado común, que deja
+    // es_promo = FALSE. Antes esta rama lo agarraba igual y la volvía a guardar como promo (Diego 11/11/2026:
+    // «si quiero deshacer la promo no me deja»).
+    if (esPromo && articulo?.id && !itemsOverride) {
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
+        .filter(it => Number(it.articleRefId) !== Number(articulo.id))   // nunca la promo dentro de sí misma
         .map(it => ({
           articleId: Number(it.articleRefId),
           cantidad: Number(it.cantidad) || 1,
@@ -1592,7 +1749,7 @@ export default function RecetaModal({
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
     const itemsBase = itemsOverride || items;
     const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
-    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido) { setError('Agregá al menos un ingrediente'); return; }
+    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido && !itemsOverride) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
     // No guardar con un ingrediente a medio definir: si su unidad ya no es válida (la
     // sub-receta/equivalente de ese insumo cambió), hay que elegirle una unidad de nuevo
@@ -1660,6 +1817,12 @@ export default function RecetaModal({
       pasos,
       almacenamientoFreezer,
       almacenamientoHeladera,
+      ...(promoMode ? {
+        promoRegla,
+        promoOffPct: promoRegla === 'off' ? Number(promoOffPct) || null : null,
+        promoLlevas: promoRegla === 'nxm' ? Number(promoLlevasEf) || null : null,
+        promoPagas: promoRegla === 'nxm' ? Number(promoPagas) || null : null,
+      } : {}),
       items: itemsOrdenados.map(it => {
         let precioRefDbItem = Number(it.precioRefDB) || 0;
         // ── Costo unitario CON merma: derivado de calcCostoItem (única fuente de verdad
@@ -1737,6 +1900,18 @@ export default function RecetaModal({
       setReceta(saved);
       setSuccess(true);
 
+      // Promo atada (% off o llevás N pagás M): su nuevo precio es el que sale de la regla, directo
+      // (Diego 11/11/2026: «cambia, no propone, están atados»).
+      if (reglaPromoActiva && precioPorRegla > 0 && articulo?.id) {
+        try {
+          // Primero los artículos cuyo precio se cambió desde la promo, después la promo.
+          Object.entries(preciosArticuloPromo).forEach(([id, precio]) => {
+            if (Number(precio) > 0) onPriceConfigSave?.({ scope: 'articulo', scopeId: String(id), precioManual: Number(precio) });
+          });
+          onPriceConfigSave?.({ scope: 'articulo', scopeId: String(articulo.id), precioManual: precioPorRegla });
+        } catch { /* el guardado de la receta ya está hecho */ }
+      }
+
       // Avisar SIEMPRE que se guardó la receta de un insumo/elaborado (cambie o no
       // el nombre) — sin esto, la tabla de Insumos (InsumosMain.jsx) solo refrescaba
       // cuando además se renombraba, así que el costo y el estado "elaborado" quedaban
@@ -1782,21 +1957,9 @@ export default function RecetaModal({
         }
       }
 
-      // ── Promo: SOLO el dueño va a "Promociones", y solo si no está ya ahí.
-      //    Los componentes (article_ref_id) se referencian en la receta y NUNCA se mueven
-      //    de su agrupación de origen — igual que un insumo dentro de una receta. ──
-      const hayComponentesArticulo = payload.items
-        .some(it => it.articleRefId != null && Number(it.articleRefId) !== 0);
-      const dueñoYaEnPromo = promoIds.has(Number(articulo.id));
-      if (hayComponentesArticulo && !dueñoYaEnPromo) {
-        try {
-          // Solo el dueño. Ningún componente entra en ids.
-          await createOrMoveAgrupacion(businessId, { nombre: 'Promociones', ids: [Number(articulo.id)] });
-          window.dispatchEvent(new CustomEvent('articulos:updated'));
-        } catch (e) {
-          console.warn('[promo] no se pudo mover el dueño a Promociones:', e.message);
-        }
-      }
+      // ── Promo: el artículo se queda en su agrupación (Diego 11/11: antes se MOVÍA a
+      //    "Promociones"). Promociones es un resumen que lista las promos estén donde estén.
+      try { window.dispatchEvent(new CustomEvent('receta:saved', { detail: { articleId: articulo?.id } })); } catch { }
 
       // ← Propagar a gemelos si los hay
       if (gemelosGroup?.members?.length > 1) {
@@ -1953,6 +2116,13 @@ export default function RecetaModal({
     }
   }, [saving, deleting, modoInsumo, tab, items, notas, foto, hasDuplicates, handleSave, modoPromoNueva]);
 
+  // Merma creada desde una fila y aplicada al volver: se guarda sola (si no, la recarga de la
+  // receta desde el servidor la pisaba y la fila volvía a "No").
+  useEffect(() => {
+    if (!guardarMermaPendiente) return;
+    autoSave();
+  }, [guardarMermaPendiente]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const abrirDesdeLupa = useCallback(async (item) => {
     setLupaAnchor(null);
     setLupaQuery('');
@@ -1990,11 +2160,15 @@ export default function RecetaModal({
       // Devolver el dueño a su agrupación de origen si llegó a Promociones por el switch
       // (tiene fromGroupName); si ya vivía en Promociones desde siempre (sin origen), pasa
       // a "Sin Agrupación" como un artículo común — nunca se queda pegado en Promociones.
-      const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
-      try {
-        await createOrMoveAgrupacion(businessId, { nombre: origen || 'Sin Agrupación', ids: [artId] });
-      } catch (e) {
-        console.warn('[desactivarPromo] no se pudo mover a destino:', e.message);
+      // Desde el 11/11 una promo no se mueve de su agrupación: solo se reubica si quedó
+      // viviendo en "Promociones" por la lógica vieja.
+      if (promoGroupIds.has(artId)) {
+        const origen = articulo?.fromGroupName && String(articulo.fromGroupName).trim();
+        try {
+          await createOrMoveAgrupacion(businessId, { nombre: origen || 'Sin Agrupación', ids: [artId] });
+        } catch (e) {
+          console.warn('[desactivarPromo] no se pudo mover a destino:', e.message);
+        }
       }
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       setPromoMode(false);
@@ -2047,14 +2221,21 @@ export default function RecetaModal({
       insumoEquivalenciasList(insId, insumoBizId)
         .then(r => {
           const eqs = Array.isArray(r?.data) ? r.data : [];
-          setItems(prev => prev.map(it => {
+          // Equivalencia creada con «+ Crear equivalencia» desde una fila: la primera nueva
+          // queda como unidad de esa fila (una sola vez, válido 60 s).
+          const pend = eqPendienteRef.current;
+          if (pend && pend.supplyId === String(insId) && !pend.nueva) {
+            const nueva = eqs.find(e => e?.nombre && !pend.antes.has(e.nombre));
+            if (nueva) { pend.nueva = nueva.nombre; pend.hasta = Date.now() + 60000; }
+          }
+          setItems(prev => aplicarEqPendiente(prev.map(it => {
             if (String(it.supplyId) !== String(insId)) return it;
             return {
               ...it,
               equivalencias: eqs,
               unidad: resolverUnidadConEquivalencia(it.unidad, eqs, it.supplyMedida),
             };
-          }));
+          })));
         })
         .catch(() => { });
     };
@@ -2077,15 +2258,30 @@ export default function RecetaModal({
       insumoMermasList(insId, insumoBizId)
         .then(r => {
           const mermas = Array.isArray(r?.data) ? r.data : [];
-          setItems(prev => prev.map(it =>
-            String(it.supplyId) === String(insId) ? { ...it, mermas } : it
-          ));
+          const existe = new Set(mermas.map(m => Number(m.id)));
+          // Merma creada con "+ Crear merma" desde una fila: queda aplicada en esa fila
+          // (reemplaza la que tenía). Solo la primera nueva y una sola vez.
+          const pend = mermaPendienteRef.current;
+          if (pend && pend.supplyId === String(insId) && !pend.nuevaId) {
+            const nueva = mermas.find(m => !pend.antes.has(Number(m.id)));
+            if (nueva) { pend.nuevaId = Number(nueva.id); pend.hasta = Date.now() + 60000; }
+          }
+          setItems(prev => aplicarMermaPendiente(prev.map((it) => {
+            if (String(it.supplyId) !== String(insId)) return it;
+            // Una merma borrada no puede quedar elegida en la fila: si no, se seguía viendo
+            // (con su factor) y al guardar la receta fallaba la base (merma_id inexistente).
+            const ids = Array.isArray(it.mermaIds) ? it.mermaIds : (it.mermaId != null ? [it.mermaId] : []);
+            const validos = ids.map(Number).filter(id => existe.has(id));
+            return { ...it, mermas, mermaIds: validos, mermaId: validos[0] ?? null };
+          })));
         })
         .catch(() => { });
     };
     window.addEventListener('insumo:mermas-changed', handler);
     return () => window.removeEventListener('insumo:mermas-changed', handler);
-  }, [businessId, refrescarInsumoPuntual]);
+    // insumoBizId: los insumos pueden vivir en otro negocio de la organización; sin esta
+    // dependencia la lista se pedía al negocio equivocado y la fila quedaba con mermas viejas.
+  }, [businessId, insumoBizId, refrescarInsumoPuntual]);
 
   // Navegación por teclado: ← anterior, → siguiente.
   // Solo si el foco NO está en un input/textarea/select (para no interferir al escribir).
@@ -2118,13 +2314,15 @@ export default function RecetaModal({
     return () => window.removeEventListener('keydown', handler);
   }, [open, onNavigate, canNavigate, autoSave, hayOverlayEncima]);
 
+  const fotoEnHeader = !modoInsumo || (entradaElegida && tab === 'receta');
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
         <Box sx={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: { xs: '99vw', sm: '98vw', md: '1240px' },
+          width: { xs: '99vw', sm: '98vw', md: 'min(1240px, 98vw)' },
           maxWidth: '1340px',
           maxHeight: '94vh',
           minHeight: 'min(94vh, calc(60vh + 140px))',
@@ -2136,6 +2334,9 @@ export default function RecetaModal({
           {/* ── HEADER ── */}
           <Box sx={{
             px: 3, py: 1.5,
+            // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
+            ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
+            position: 'relative', zIndex: 2,
             bgcolor: PRIMARY, color: ON_PRIMARY,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             // `gap` asegura un mínimo entre los 3 grupos (nombre, pestañas,
@@ -2154,6 +2355,24 @@ export default function RecetaModal({
                 </IconButton>
               )}
 
+              {fotoEnHeader ? (
+                <Box sx={{ minWidth: modoInsumo ? 150 : 260, flex: 1 }}>
+                  <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, display: 'block', lineHeight: 1.2 }}>
+                    {promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
+                  </Typography>
+                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo) */}
+                  <InputBase value={nombre} onChange={e => setNombre(e.target.value)} placeholder={artNombre}
+                    inputProps={{ 'aria-label': 'Nombre' }}
+                    sx={{ color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: modoInsumo ? 0 : 280,
+                      borderBottom: '1px dashed rgba(255,255,255,0.45)', '&:hover, &.Mui-focused': { borderBottomColor: '#fff' },
+                      '& input': { p: 0, pb: '2px' }, '& input::placeholder': { color: 'inherit', opacity: 0.7 } }}
+                    endAdornment={modoInsumo ? (() => {
+                      const insData = insumos.find(i => String(i.id) === String(articulo?.id));
+                      const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
+                      return u ? <Box component="span" sx={{ fontWeight: 800, whiteSpace: 'nowrap', ml: 1 }}>× {canonicalUnit(u).toUpperCase()}</Box> : null;
+                    })() : null} />
+                </Box>
+              ) : (
               <Box sx={{ minWidth: 260 }}>
                 <Typography variant="subtitle1" fontWeight={800} lineHeight={1.1}>
                   {modoInsumo
@@ -2168,6 +2387,7 @@ export default function RecetaModal({
                   <Typography variant="caption" sx={{ opacity: 0.8 }}>#{articulo.id}</Typography>
                 )}
               </Box>
+              )}
               {/* Flecha siguiente — a la derecha del nombre */}
               {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
@@ -2179,7 +2399,7 @@ export default function RecetaModal({
             </Stack>
             {modoInsumo && entradaElegida && (
               <Stack direction="row" alignItems="center" spacing={1} sx={{ alignSelf: 'flex-end' }}>
-                {tab === 'compras' && onSaltarAInsumo && !isStaff && (
+                {tab === 'compras' && onSaltarAInsumo && veMontos && (
                   <RankingChip
                     ranking={comprasRanking}
                     loading={comprasRankingLoading}
@@ -2190,9 +2410,10 @@ export default function RecetaModal({
                 )}
                 <Stack direction="row" spacing={0.5}>
                 {[
-                  { id: 'merma', label: 'MERMA' },
+                  { id: 'ficha', label: 'FICHA' },   // datos del insumo + envases (Diego 11/11/2026)
                   { id: 'receta', label: 'RECETA' },
                   { id: 'compras', label: 'COMPRAS' },
+                  { id: 'merma', label: 'MERMA' },   // después de Compras (Diego 11/11/2026)
                   { id: 'equivalencias', label: 'EQUIVALENCIAS' },
                   { id: 'uso', label: 'USO' },
                 ].map(t => (
@@ -2214,10 +2435,11 @@ export default function RecetaModal({
                 </Stack>
               </Stack>
             )}
-            <Stack direction="row" alignItems="center" spacing={0.5}>
+            {/* Todo a 32 px: Marcar medía 29 y los íconos 30/34 (revisión de alineación 11/11/2026) */}
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ '& .MuiIconButton-root': { width: 32, height: 32 } }}>
               {!isStaff && !promoMode && (
                 <Button size="small" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
-                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0.25 }}>
+                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32 }}>
                   {marcarModo ? 'Listo' : 'Marcar'}
                 </Button>
               )}
@@ -2267,11 +2489,54 @@ export default function RecetaModal({
             </Stack>
           </Box>
 
+          {/* Foto que arranca en el header (artículo/promo, y la receta del insumo); al bajar la lista se achica */}
+          {fotoEnHeader && entradaElegida && (<>
+                    {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
+                    <Box
+                      ref={recFotoRef}
+                                            onClick={() => setNotasModalOpen(true)}
+                      sx={{
+                        display: 'flex', flexDirection: 'column', gap: 0.5,
+                        cursor: 'pointer',
+                        position: 'absolute', top: fotoChica ? 8 : 14, left: fotoChica ? 92 : 24, width: fotoChica ? 56 : 132, zIndex: 5,
+                        transition: 'all .2s ease',
+                        '& > div:first-of-type': { bgcolor: '#fff', border: '3px solid #fff', boxShadow: '0 4px 14px rgba(0,0,0,0.18)' },
+                        '& > .MuiTypography-root': { display: fotoChica ? 'none' : undefined },
+                        // Chica: solo la imagen o el ícono, sin el texto de adentro
+                        '& .MuiTypography-caption': { display: fotoChica ? 'none' : undefined },
+                      }}
+                    >
+                      <Box sx={{
+                        position: 'relative', width: '100%', aspectRatio: '1 / 1',
+                        borderRadius: 1.5, overflow: 'hidden',
+                        border: '1px solid', borderColor: 'divider',
+                        bgcolor: `${PRIMARY}08`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        '&:hover': { borderColor: PRIMARY },
+                        transition: 'border-color 0.15s',
+                      }}>
+                        {foto ? (
+                          <img src={foto} alt="Foto receta" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                        ) : (
+                          <Box sx={{ textAlign: 'center', px: 1 }}>
+                            <ImageIcon sx={{ fontSize: 32, color: `${PRIMARY}80` }} />
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontSize: '0.65rem', mt: 0.5 }}>
+                              Foto del producto
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.disabled', fontSize: '0.62rem' }}>
+                        {foto ? 'Tocá la foto para editar' : 'Tocá para agregar foto'}
+                      </Typography>
+                    </Box>
+
+          </>)}
           {/* ── BODY ── */}
           {/* minHeight 0: el cuerpo es lo que cede si no entra todo, así el pie y los botones
               siempre quedan a la vista. El alto mínimo de antes (cuerpo 60vh, que incluía el pie)
               ahora lo pone el Paper, para que el modal no cambie de alto entre recetas. */}
-          <Box ref={bodyRef} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
+          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -2281,6 +2546,12 @@ export default function RecetaModal({
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress />
               </Box>
+            ) : modoInsumo && tab === 'ficha' ? (
+              <TabFichaInsumo
+                insumoId={articulo?.id}
+                businessId={insumoBizId}
+                insumoData={insumos.find(i => String(i.id) === String(articulo?.id)) || articulo}
+              />
             ) : modoInsumo && tab === 'merma' ? (
               <TabMermaInsumo
                 insumoId={articulo?.id}
@@ -2359,13 +2630,13 @@ export default function RecetaModal({
                   {/* ── Datos generales con foto ── */}
                   <Box sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '150px 1fr' },
+                    gridTemplateColumns: { xs: '1fr', sm: fotoEnHeader ? '132px 1fr' : '150px 1fr' },
                     gap: 2, mb: 2,
                     alignItems: 'stretch',
                   }}>
-                    {/* Columna izquierda: FOTO */}
+                    {!fotoEnHeader ? (<>
+                    {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
                     <Box
-                      ref={recFotoRef}
                       onClick={() => setNotasModalOpen(true)}
                       sx={{
                         display: 'flex', flexDirection: 'column', gap: 0.5,
@@ -2397,6 +2668,7 @@ export default function RecetaModal({
                       </Typography>
                     </Box>
 
+                    </>) : <Box sx={{ minHeight: 84 }} />}
                     {/* Columna derecha: nombre + rendimiento + objetivo */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                       {modoInsumo && (() => {
@@ -2414,79 +2686,71 @@ export default function RecetaModal({
                         );
                       })()}
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                        <TextField
+                        {!fotoEnHeader ? <TextField
                           label={promoMode ? "Nombre" : "Nombre"}
                           value={nombre}
                           onChange={e => setNombre(e.target.value)}
                           placeholder={artNombre}
                           size="small"
                           sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }}
-                        />
-                        {!modoInsumo && (
-                          <ToggleButtonGroup
-                            value={promoMode ? 'promo' : 'producto'}
-                            exclusive
-                            size="small"
-                            onChange={(e, val) => {
-                              if (val == null) return;               // no permitir deseleccionar
-                              const quierePromo = val === 'promo';
-                              if (quierePromo === promoMode) return;  // sin cambio
-                              if (quierePromo) {
-                                setPromoMode(true);                   // activar: sin confirmación
-                                const artId = Number(articulo?.id);
-                                const viveEnPromo = promoIds.has(artId);
-                                // Artículo común → se convierte en promo v1: auto-agregarlo como primer componente.
-                                if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
-                                  setConvertirEnPromo(true);
-                                  const yaEsta = items.some(it => Number(it.articleRefId) === artId);
-                                  if (!yaEsta) {
-                                    // Costo real del artículo: buscar en allArticulos (trae costoTotal de receta).
-                                    // Jerarquía: costo total de receta > precio (mismo criterio que el backend).
-                                    const artFull = (allArticulos || []).find(a => Number(a.id ?? a.articulo_id) === artId) || {};
-                                    const costoArt = Number(artFull.costoTotal) || Number(articulo?.costoTotal) || Number(artFull.precio) || Number(articulo?.precio) || 0;
-                                    // La receta propia del artículo queda representada por su costo como componente;
-                                    // sus insumos NO se arrastran sueltos a la promo. Se reemplaza la lista por el artículo.
-                                    setItems([{
-                                      esArticulo: true,
-                                      articleRefId: artId,
-                                      supplyId: null,
-                                      supplyNombre: artNombre,
-                                      supplyMedida: 'u',
-                                      precioRefDB: costoArt,
-                                      codigoMaxi: articulo?.codigo || articulo?.codigo_maxi || '',
-                                      unidad: 'u',
-                                      cantidad: 1,
-                                      tipoCosto: 'total',
-                                      ultimaCompra: null,
-                                    }]);
-                                  }
-                                  // Nombre por defecto: el del artículo principal
-                                  if (!nombre.trim()) setNombre(artNombre);
-                                }
-                              } else {
-                                setConfirmarDesactivar(true);         // desactivar: pedir confirmación
-                              }
-                            }}
-                            disabled={saving || deleting}
-                            sx={{ flexShrink: 0 }}
-                          >
-                            <ToggleButton
-                              value="producto"
-                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
-                            >
-                              Producto
-                            </ToggleButton>
-                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
-                              Promoción
-                            </ToggleButton>
-                          </ToggleButtonGroup>
-                        )}
+                        /> : null}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        {promoMode && !isStaff && (() => {
+                    // Regla de precio de la promo (Diego 11/11/2026). Va en el lugar del rendimiento del lote (una promo no tiene rendimiento — Diego 11/11/2026); alto 40 como esa fila.
+                    const campo = (val, set, w, title) => (
+                      <TextField size="small" value={val} title={title}
+                        onChange={(e) => set(e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.'))}
+                        inputProps={{ inputMode: 'decimal', style: { textAlign: 'center', padding: '5px 6px', fontWeight: 700 } }}
+                        sx={{ width: w, '& .MuiOutlinedInput-root': { height: 40 } }} />
+                    );
+                    const unSoloArticulo = items.filter(it => it.articleRefId).length;
+                    return (
+                      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" sx={{ flex: 1, minWidth: 260, rowGap: 1 }}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ letterSpacing: '0.04em' }}>
+                          REGLA DE PRECIO
+                        </Typography>
+                        <ToggleButtonGroup exclusive size="small" value={promoRegla}
+                          onChange={(_, v) => v && setPromoRegla(v)}
+                          sx={{ '& .MuiToggleButton-root': { height: 40, px: 1.5, textTransform: 'none', fontSize: 13, fontWeight: 600 } }}>
+                          <ToggleButton value="off">% off</ToggleButton>
+                          <ToggleButton value="nxm">Llevás N, pagás M</ToggleButton>
+                          <ToggleButton value="margen">Margen</ToggleButton>
+                        </ToggleButtonGroup>
+                        {promoRegla === 'off' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            {campo(promoOffPct, setPromoOffPct, 64, '% de descuento sobre la venta sin promo')}
+                            <Typography variant="body2" color="text.secondary">% off sobre la venta sin promo</Typography>
+                          </Stack>
+                        )}
+                        {promoRegla === 'nxm' && (
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <Typography variant="body2" color="text.secondary">Llevás</Typography>
+                            {campo(promoLlevasEf, cambiarLlevas, 52, 'Unidades que se llevan (es la cantidad del artículo: de ahí sale el costo)')}
+                            <Typography variant="body2" color="text.secondary">pagás</Typography>
+                            {campo(promoPagas, setPromoPagas, 52, 'Unidades que se pagan')}
+                          </Stack>
+                        )}
+                        {promoRegla === 'margen' && (
+                          <Typography variant="body2" color="text.secondary">Precio = costo ÷ objetivo (también se escribe el precio con doble clic)</Typography>
+                        )}
+                        {reglaPromoActiva && !(ventaSinPromo > 0) && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            Para que tome el precio, los ingredientes tienen que ser artículos (no insumos): de ahí sale la venta sin promo.
+                          </Typography>
+                        )}
+                        {promoRegla === 'nxm' && unSoloArticulo > 1 && (
+                          <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 600, width: '100%' }}>
+                            «Llevás N, pagás M» es para un solo artículo: con varios, usá % off.
+                          </Typography>
+                        )}
+                      </Stack>
+                    );
+                        })()}
                         {/* ── Bloque rendimiento del lote — minimizado por default, se
                             expande solo si hace falta (mismo patrón que el panel de
                             gemelos, más abajo) ── */}
-                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
+                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff || promoMode ? 'none' : undefined }}>
                           <Box
                             onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
                             sx={{
@@ -2584,26 +2848,9 @@ export default function RecetaModal({
                             </Box>
                           )}
                         </Box>
-                        {/* Costo objetivo */}
-                        <TextField
-                          label="Costo Objetivo"
-                          type="text"
-                          inputMode="decimal"
-                          value={pctCostoIdeal}
-                          onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
-                          onBlur={(e) => commitObjetivo(e.target.value)}
-                          size="small"
-                          inputProps={{ min: 0, max: 150 }}
-                          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-                          sx={{ width: 96, flexShrink: 0, display: isStaff ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
-                        />
-                      </Box>
-                    </Box>
-                  </Box>
-
                   {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
                   {!esElaborado && !promoMode && (
-                    <Box ref={gemelosPanelRef} sx={{ mb: 1.5, display: isStaff ? 'none' : undefined }}>
+                    <Box ref={gemelosPanelRef} sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
                       {/* Header colapsable */}
                       <Box onClick={() => {
                         setGemelosOpen(v => !v);
@@ -2863,6 +3110,63 @@ export default function RecetaModal({
                     </Box>
                   )}
 
+                        {!modoInsumo && (
+                          <ToggleButtonGroup
+                            value={promoMode ? 'promo' : 'producto'}
+                            exclusive
+                            size="small"
+                            onChange={(e, val) => {
+                              if (val == null) return;               // no permitir deseleccionar
+                              const quierePromo = val === 'promo';
+                              if (quierePromo === promoMode) return;  // sin cambio
+                              if (quierePromo) {
+                                setPromoMode(true);                   // activar: sin confirmación
+                                const artId = Number(articulo?.id);
+                                const viveEnPromo = promoIds.has(artId);
+                                // Artículo común → se convierte en promo. Ya NO se agrega a sí mismo como componente
+                                // (Diego 11/11/2026: «eso no lo debe hacer más»): la promo se arma con los artículos
+                                // que se elijan.
+                                if (!viveEnPromo && artId !== 0 && !Number.isNaN(artId)) {
+                                  setConvertirEnPromo(true);
+                                  // Nombre por defecto: el del artículo principal
+                                  if (!nombre.trim()) setNombre(artNombre);
+                                }
+                              } else {
+                                setConfirmarDesactivar(true);         // desactivar: pedir confirmación
+                              }
+                            }}
+                            disabled={saving || deleting}
+                            sx={{ flexShrink: 0 }}
+                          >
+                            <ToggleButton
+                              value="producto"
+                              sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}
+                            >
+                              Producto
+                            </ToggleButton>
+                            <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
+                              Promoción
+                            </ToggleButton>
+                          </ToggleButtonGroup>
+                        )}
+                        {/* Costo objetivo */}
+                        <TextField
+                          label="Costo Objetivo"
+                          type="text"
+                          inputMode="decimal"
+                          value={pctCostoIdeal}
+                          onChange={e => setPctCostoIdeal(parseDecimal(e.target.value))}
+                          onBlur={(e) => commitObjetivo(e.target.value)}
+                          size="small"
+                          inputProps={{ min: 0, max: 150 }}
+                          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                          // Artículo y promo: el objetivo se edita en el pie, abajo del costo real (Diego 11/11/2026).
+                          sx={{ width: 124, flexShrink: 0, display: isStaff || !modoInsumo ? 'none' : undefined, '& .MuiOutlinedInput-root': { height: 40 } }}
+                        />
+                      </Box>
+                    </Box>
+                  </Box>
+
                   <Divider sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -2881,10 +3185,11 @@ export default function RecetaModal({
                     display: 'grid',
                     gridTemplateColumns: gridIngredientes,
                     gap: '4px', px: 0.5, mb: 0.5,
+                    alignItems: 'end',   // en promo "$ Sin Promo" ocupa 2 renglones: los demás títulos se apoyan abajo
                   }}>
                     {(promoMode
-                      ? ['', 'Ingrediente', 'Cantidad', 'Unidad', isStaff ? '' : '$ Costo Total', isStaff ? '' : '__SIN_PROMO__', '', 'Observaciones', '', '']
-                      : ['', 'Ingrediente', 'Cantidad', 'Unidad', isStaff ? '' : '$ Costo Total', '', 'Observaciones', '', '']
+                      ? ['', 'Ingrediente', 'Cantidad', 'Unidad', !veMontos ? '' : '$ Costo Total', !veMontos ? '' : '__SIN_PROMO__', '', 'Observaciones', '', '']
+                      : ['', 'Ingrediente', 'Cantidad', 'Unidad', !veMontos ? '' : '$ Costo Total', '', 'Observaciones', '', '']
                     ).map((col, i) => {
                       if (col === '__SIN_PROMO__') {
                         const listaActiva = listaSinPromo
@@ -2904,7 +3209,7 @@ export default function RecetaModal({
                                   $ Sin Promo
                                 </Box>
                                 <Box component="span" sx={{ fontSize: '0.62rem', fontWeight: 700, color: colorSinPromo }}>
-                                  {listaActiva?.name || listaActiva?.nombre || 'Principal'}
+                                  {listaActiva?.name || listaActiva?.nombre || 'Principal'} ▾
                                 </Box>
                               </Box>
                             )}
@@ -2926,8 +3231,8 @@ export default function RecetaModal({
                               },
                             }}
                             sx={{
-                              '& .MuiSelect-select': { py: 0, textAlign: 'center' },
-                              '& .MuiSvgIcon-root': { fontSize: 14, color: colorSinPromo },
+                              '& .MuiSelect-select': { py: 0, pr: '0 !important', textAlign: 'center' },
+                              '& .MuiSvgIcon-root': { display: 'none' },   // la flechita va pegada a la lista (centrada), no en el borde
                             }}
                           >
                             <MenuItem value="_base" sx={{ fontSize: '0.75rem', fontWeight: 700 }}>
@@ -3010,6 +3315,46 @@ export default function RecetaModal({
                                   id: it.supplyId,
                                   nombre: it.supplyNombre,
                                   precio: ins?.precio_ref || ins?.precio || 0,
+                                });
+                              }}
+                              onCrearMerma={async (it) => {
+                                // Recordar la fila: la merma que se cree allá queda aplicada acá al volver
+                                mermaPendienteRef.current = {
+                                  supplyId: String(it.supplyId),
+                                  index: realIndex,
+                                  antes: new Set((it.mermas || []).map(m => Number(m.id))),
+                                  nuevaId: null, hasta: 0,
+                                };
+                                await autoSave(); // guardar la receta antes de bajar al insumo
+                                const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+                                pushElaborado({
+                                  id: it.supplyId,
+                                  nombre: it.supplyNombre,
+                                  precio: ins?.precio_ref || ins?.precio || 0,
+                                  initialTab: 'merma',
+                                });
+                              }}
+                              onCrearEquivalencia={async (it) => {
+                                // Recordar la fila: la equivalencia que se cree allá queda como su unidad al volver
+                                eqPendienteRef.current = {
+                                  supplyId: String(it.supplyId),
+                                  index: realIndex,
+                                  antes: new Set((it.equivalencias || []).map(e => e?.nombre).filter(Boolean)),
+                                  nueva: null, hasta: 0,
+                                };
+                                // Las de la fila pueden no estar cargadas todavía: se toman las del servidor
+                                // para no confundir una equivalencia vieja con la nueva.
+                                try {
+                                  const r = await insumoEquivalenciasList(it.supplyId, insumoBizId);
+                                  (Array.isArray(r?.data) ? r.data : []).forEach(e => e?.nombre && eqPendienteRef.current?.antes.add(e.nombre));
+                                } catch { /* sigue con las de la fila */ }
+                                await autoSave(); // guardar la receta antes de bajar al insumo
+                                const ins = insumos.find(i => String(i.id) === String(it.supplyId));
+                                pushElaborado({
+                                  id: it.supplyId,
+                                  nombre: it.supplyNombre,
+                                  precio: ins?.precio_ref || ins?.precio || 0,
+                                  initialTab: 'equivalencias',
                                 });
                               }}
                               insumos={insumos}
@@ -3101,7 +3446,7 @@ export default function RecetaModal({
 
                   <Divider sx={{ mb: 2 }} />
 
-                  {costoGuardadoDesactualizado && !isStaff && (
+                  {costoGuardadoDesactualizado && veMontos && (
                     <Box sx={{
                       display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, px: 1.5,
                       bgcolor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 1.5,
@@ -3133,7 +3478,7 @@ export default function RecetaModal({
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
           {!(modoInsumo && !entradaElegida)
             && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
-            && !(modoInsumo && ['merma', 'compras', 'equivalencias', 'uso'].includes(tab))
+            && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
             && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada)
             && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
@@ -3151,6 +3496,19 @@ export default function RecetaModal({
               isStaff={isStaff}
               promoMode={promoMode}
               ventaSinPromo={ventaSinPromo}
+              etiquetaRegla={etiquetaRegla}
+              onAjustarPrecioPromo={reglaPromoActiva ? ajustarPrecioPromo : null}
+              onAjustarPrecio={esArticuloComun ? ajustarPrecioProd : null}
+              precioEsNuevo={esArticuloComun && Number(precioNuevoProd) > 0}
+              precioSugeridoObjetivo={precioSugerido}
+              onObjetivoMovido={esArticuloComun ? () => setPrecioNuevoProd(null) : null}
+              articuloPromo={reglaPromoActiva && articuloUnicoPromo ? {
+                nombre: articuloUnicoPromo.supplyNombre || articuloUnicoPromo.nombre || 'Artículo',
+                precio: precioArticuloUnico,
+                editado: Number(preciosArticuloPromo[String(articuloUnicoPromo.articleRefId)]) > 0,
+                onCambiar: (v) => cambiarPrecioArticuloPromo(articuloUnicoPromo.articleRefId, v),
+                paso: pasoPrecio,
+              } : null}
               colorSinPromo={colorSinPromo}
               editandoObjetivo={editandoObjetivo}
               setEditandoObjetivo={setEditandoObjetivo}
@@ -3159,12 +3517,13 @@ export default function RecetaModal({
               commitObjetivo={commitObjetivo}
               pctCostoIdeal={pctCostoIdeal}
               setPctCostoIdeal={setPctCostoIdeal}
+              cambiarObjetivo={(v) => { if (esArticuloComun) setPrecioNuevoProd(null); setPctCostoIdeal(parseDecimal(v)); }}
               editandoPrecioSugerido={editandoPrecioSugerido}
               setEditandoPrecioSugerido={setEditandoPrecioSugerido}
               precioSugeridoDraft={precioSugeridoDraft}
               setPrecioSugeridoDraft={setPrecioSugeridoDraft}
               commitPrecioSugerido={commitPrecioSugerido}
-              precioSugerido={precioSugerido}
+              precioSugerido={esArticuloComun && Number(precioNuevoProd) > 0 ? Number(precioNuevoProd) : precioSugerido}
               sugeridoExcedeVenta={sugeridoExcedeVenta}
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}

@@ -610,7 +610,7 @@ export function ComprasDetalleContenido({
   const verFactura = useVerFacturaDeCompra();
   const fichaProv = useFichaProveedorDeCompra();
   // Staff: ve las compras pero no carga ni abre facturas ni proveedores (eso es gestión, usuaria 10/11).
-  const { isStaff } = useAccess() || {};
+  const { isStaff, veMontos = true } = useAccess() || {};
 
   const [selectedBiz, setSelectedBiz] = useState('current');
   const [extraItems, setExtraItems] = useState([]);
@@ -1451,7 +1451,7 @@ export function ComprasDetalleContenido({
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
 
-          {onCambiarInsumo && !isStaff && (
+          {onCambiarInsumo && veMontos && (
             <RankingChip
               ranking={ranking}
               loading={rankingLoading}
@@ -1584,7 +1584,7 @@ export function ComprasDetalleContenido({
       {/* ───────── Franja de KPI / gráfico ─────────
           Reemplaza a los tres chips de totales. El switch de la derecha cambia
           números por evolución sin sumar altura: los dos modos miden casi lo mismo. */}
-      {!isStaff && !isLoading && itemsVisibles.length > 0 && (
+      {veMontos && !isLoading && itemsVisibles.length > 0 && (
         <Box sx={{
           border: '1px solid', borderColor: 'divider', borderRadius: 2,
           bgcolor: 'action.hover', display: 'flex', flexWrap: 'wrap', alignItems: 'stretch',
@@ -1742,7 +1742,7 @@ export function ComprasDetalleContenido({
       )}
 
       {/* Chip de bonificación: pasa a su propia línea, alineado a la derecha */}
-      {!isStaff && !isLoading && !bonifLoading && bonif && (
+      {veMontos && !isLoading && !bonifLoading && bonif && (
         <Stack direction="row" alignItems="center">
           <Box sx={{ flex: 1 }} />
           <Box ref={chipRef} sx={{ display: 'inline-flex' }}>
@@ -1813,14 +1813,14 @@ export function ComprasDetalleContenido({
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
-                {!isStaff && <TableCell sx={{ fontWeight: 700 }}>Comprobante</TableCell>}
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Fecha</TableCell>
+                {!isStaff && <TableCell align="center" sx={{ fontWeight: 700 }}>Comprobante</TableCell>}
                 <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
                 {showBizColumn && <TableCell sx={{ fontWeight: 700 }}>Negocio</TableCell>}
                 {showBranchColumn && <TableCell sx={{ fontWeight: 700 }}>Sucursal</TableCell>}
-                <TableCell align="right" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
-                {!isStaff && <TableCell align="right" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>}
-                {!isStaff && <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>}
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Cantidad</TableCell>
+                {veMontos && <TableCell align="center" sx={{ fontWeight: 700 }}>Precio unit.</TableCell>}
+                {veMontos && <TableCell align="center" sx={{ fontWeight: 700 }}>Total</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1868,7 +1868,7 @@ export function ComprasDetalleContenido({
                 return (
                   <React.Fragment key={i}>
                     {/* Banda de encabezado del grupo bonificado (spec §5.5) */}
-                    {!isStaff && esPrimeraDelGrupo && grupo && (
+                    {veMontos && esPrimeraDelGrupo && grupo && (
                       <TableRow sx={{ bgcolor: AMBER.bg }}>
                         <TableCell colSpan={colSpanTotal} sx={{ py: 0.5, borderBottom: 'none' }}>
                           <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.5}>
@@ -1896,8 +1896,8 @@ export function ComprasDetalleContenido({
                         transition: 'background 0.12s',
                       }}
                     >
-                      <TableCell>{fmtFecha(it.fecha)}</TableCell>
-                      {!isStaff && <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      <TableCell align="center">{fmtFecha(it.fecha)}</TableCell>
+                      {!isStaff && <TableCell align="center" sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                         {/* El comprobante es el vínculo a la factura y el proveedor a su ficha, como en
                             Detalle de compras (Diego 06/11/2026: sin botón "ver"). */}
                         {!isStaff && it.purchase_id && (!it._bizId || Number(it._bizId) === Number(businessId)) ? (
@@ -1940,7 +1940,7 @@ export function ComprasDetalleContenido({
                         </TableCell>
                       )}
 
-                      <TableCell align="right">
+                      <TableCell align="center">
                         {fmtNum(it.cantidad)}
                         {insumoUnidad && (
                           <Typography component="span" sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}>
@@ -1948,9 +1948,9 @@ export function ComprasDetalleContenido({
                           </Typography>
                         )}
                       </TableCell>
-                      {!isStaff && <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                      {veMontos && <TableCell align="center" sx={{ color: 'text.secondary' }}>
                         {esBonificada ? (
-                          <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
+                          <Stack direction="row" alignItems="center" justifyContent="center" spacing={0.75}>
                             <span style={{ color: '#94a3b8' }}>$ 0,00</span>
                             <Box component="span" sx={{
                               px: 0.6, py: 0.1, borderRadius: 0.75, fontSize: '0.62rem', fontWeight: 800,
@@ -1961,7 +1961,7 @@ export function ComprasDetalleContenido({
                           </Stack>
                         ) : (it.precio ? fmtMoney(it.precio) : '-')}
                       </TableCell>}
-                      {!isStaff && <TableCell align="right" sx={{
+                      {veMontos && <TableCell align="center" sx={{
                         fontWeight: 600,
                         color: esBonificada ? AMBER.strong : branchColor,
                       }}>

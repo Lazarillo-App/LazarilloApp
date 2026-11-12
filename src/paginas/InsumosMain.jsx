@@ -117,7 +117,7 @@ export default function InsumosMain() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   // Vista Operación, Fase 4: Staff solo ve elaborados, sin gestión.
-  const { isStaff } = useAccess() || {};
+  const { isStaff, veMontos = true } = useAccess() || {};
 
   // ── Listas de insumos + modo selección ────────────────────────────────────
   // NOTA: se inicializan con valores vacíos, se recargan después de resolvedBizId
@@ -150,9 +150,13 @@ export default function InsumosMain() {
     useFirstDate(businessId, 'purchases', effectiveBranchIdForFirst, firstDateKey);
   const [recetaInsumoModal, setRecetaInsumoModal] = useState(null);
 
+  // Ojito «solo con compras»: arranca ACTIVO la primera vez; después recuerda la última
+  // elección (apagado o prendido) en este navegador (Diego 11/11).
   const [soloConCompras, setSoloConCompras] = useState(() => {
-    try { return localStorage.getItem('insumosFiltroCon Compras') === 'true'; }
-    catch { return false; }
+    try {
+      const v = localStorage.getItem('insumosFiltroConCompras');
+      return v == null ? true : v === 'true';
+    } catch { return true; }
   });
 
   const toggleSoloConCompras = useCallback(() => {
@@ -540,6 +544,7 @@ export default function InsumosMain() {
     queryClient.invalidateQueries({ queryKey: ['insumo-groups', rBiz] });
     if (businessId && String(businessId) !== String(resolvedBizId)) {
       queryClient.invalidateQueries({ queryKey: ['insumo-groups', Number(businessId) || 0] });
+      queryClient.invalidateQueries({ queryKey: ['insumos-rubros', Number(businessId) || 0] }); // nombres propios del subnegocio
     }
   }, [resolvedBizId, businessId, queryClient]);
   const onMutateGroups = useCallback((action) => setGroups((prev) => applyMutation(prev, action)), []);
@@ -803,6 +808,9 @@ export default function InsumosMain() {
   const businessIdNum = Number(businessId) || 0;
 
   const { data: rubrosData } = useInsumosRubros(resolvedBizIdNum);
+  // Subnegocio: nombres PROPIOS de rubro (Diego 11/11: renombrar en Container FC no debe
+  // cambiar el Bar). Los insumos y los códigos son los del principal; solo cambia el nombre.
+  const { data: rubrosLocalData } = useInsumosRubros(isSubneg ? businessIdNum : 0);
   const { data: insumosListData, isFetching: insumosListFetching } = useInsumosList({
     page: 1, limit: 999999, search: '', bizIdOverride: resolvedBizIdNum,
   });
@@ -827,13 +835,21 @@ export default function InsumosMain() {
       setSelectedGroupId(null); setRubroSeleccionado(null);
       return;
     }
+    // codigo → nombre propio del subnegocio (solo rubros reales con código numérico)
+    const nombresLocales = new Map();
+    if (isSubneg && rubrosLocalData) {
+      (rubrosLocalData?.items || rubrosLocalData?.data || []).forEach((r) => {
+        if (r?.origen === 'manual' || r?.codigo == null || !String(r?.nombre || '').trim()) return;
+        nombresLocales.set(String(r.codigo), String(r.nombre).trim());
+      });
+    }
     if (rubrosData) {
       const items = rubrosData?.items || rubrosData?.data || [];
       const map = new Map();
       const idMap = new Map(); // id → info (por si insumos usan ID interno)
       items.forEach((rubro) => {
         const codigo = String(rubro.codigo);
-        const info = { codigo: rubro.codigo, nombre: rubro.nombre || String(codigo), es_elaborador: rubro.es_elaborador === true };
+        const info = { codigo: rubro.codigo, nombre: nombresLocales.get(codigo) || rubro.nombre || String(codigo), es_elaborador: rubro.es_elaborador === true };
         map.set(codigo, info);
         if (rubro.id != null) idMap.set(String(rubro.id), info);
       });
@@ -849,10 +865,15 @@ export default function InsumosMain() {
     }
     if (insumosListData) {
       const dataAll = Array.isArray(insumosListData?.data) ? insumosListData.data : [];
-      setAllInsumos(dataAll);
+      setAllInsumos(nombresLocales.size
+        ? dataAll.map((i) => {
+          const local = nombresLocales.get(String(i?.rubro_codigo ?? i?.rubro ?? ''));
+          return local ? { ...i, rubro_nombre: local } : i;
+        })
+        : dataAll);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, rubrosData, groupsData, insumosListData]);
+  }, [businessId, rubrosData, groupsData, insumosListData, rubrosLocalData, isSubneg]);
 
   useLayoutEffect(() => {
     if (!businessId) return;
@@ -1095,13 +1116,20 @@ export default function InsumosMain() {
   // filas en la tabla — antes el árbol de rubros del sidebar no se enteraba,
   // así que un rubro que se quedaba sin ningún insumo con compras seguía
   // apareciendo entero (con su conteo completo, ignorando el filtro).
+  // Excepción del ojito: un insumo dado de alta hace poco (DIAS_INSUMO_NUEVO) se ve
+  // aunque todavía no tenga compras — si no, el que se acaba de agregar desaparecía.
+  const DIAS_INSUMO_NUEVO = 30;
+  const pasaOjito = useCallback((insumo) => {
+    const c = comprasMap.get(Number(insumo?.id));
+    if (c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0) return true;
+    const alta = new Date(insumo?.created_at || insumo?.createdAt || 0).getTime();
+    return Number.isFinite(alta) && alta > 0 && (Date.now() - alta) <= DIAS_INSUMO_NUEVO * 86400000;
+  }, [comprasMap]);
+
   const rubrosTreeBase = useMemo(() => {
     if (!(soloConCompras && !isElaboradosView)) return filteredBase;
-    return filteredBase.filter((insumo) => {
-      const c = comprasMap.get(Number(insumo.id));
-      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
-    });
-  }, [filteredBase, soloConCompras, isElaboradosView, comprasMap]);
+    return filteredBase.filter(pasaOjito);
+  }, [filteredBase, soloConCompras, isElaboradosView, pasaOjito]);
 
   const rubrosTree = useMemo(() => {
     if (!rubrosTreeBase.length) return [];
@@ -1149,11 +1177,8 @@ export default function InsumosMain() {
 
   const tableRowsFiltrados = useMemo(() => {
     if (!soloConCompras) return tableRows;
-    return tableRows.filter(r => {
-      const c = comprasMap.get(Number(r.id));
-      return c && (Number(c.neto ?? 0) + Number(c.iva ?? 0)) > 0;
-    });
-  }, [tableRows, soloConCompras, comprasMap]);
+    return tableRows.filter(pasaOjito);
+  }, [tableRows, soloConCompras, pasaOjito]);
 
   const navRecetaInsumo = useMemo(() => {
     const idx = tableRowsFiltrados.findIndex((r) => Number(r.id) === Number(recetaInsumoModal?.id));
@@ -1791,12 +1816,14 @@ export default function InsumosMain() {
         <div id="insumos-scroll" ref={tourTablaRef} style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
             puestosTop20={puestosTop20Insumos}
-            branches={!isStaff && activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
+            branches={veMontos && activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}
             rows={tableRowsFiltrados}
             loading={false}
             onEdit={() => { }}
-            onOpenEditModal={(ins) => setInsumoEditando(ins)}
+            // El código abre el modal completo del insumo en su pestaña FICHA (Diego 11/11/2026);
+            // antes abría "Editar insumo" (EditarItemModal) solo con los datos.
+            onOpenEditModal={(ins) => handleOpenRecetaElaborado(ins, { initialTab: 'ficha', saltarSelector: true })}
             onItemsOrdenados={setInsumosOrdenados}
             onDelete={() => { }}
             noBusiness={!businessId}

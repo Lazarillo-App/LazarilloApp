@@ -3,7 +3,7 @@ import React from 'react';
 import {
   Grid, Stack, Tabs, Tab, Box, Button, Typography, Alert,
   TextField, InputAdornment, Chip, CircularProgress, Divider,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete,
 } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -316,6 +316,9 @@ export default function ConfigInsumosTab({
   setAlertasLoading,
   setAlertasInsumos,
   setAlertasTotal,
+  alertasRubros = [],
+  setAlertasRubros,
+  saveRubrosExcluidos,
   onNuevoInsumo,
   onUploadInsumos,
   onUploadInsumosRubros,
@@ -347,6 +350,23 @@ export default function ConfigInsumosTab({
     return [...map.entries()].map(([rubro, insumos]) => ({ rubro, insumos }));
   }, [alertasInsumos]);
 
+  // Rubros excluidos de la alerta: opciones = rubros de insumos usados en recetas;
+  // un excluido que ya no está en ninguna receta igual se muestra (por su código).
+  const rubrosExcluidosValor = React.useMemo(() => {
+    const porCodigo = new Map((alertasRubros || []).map(r => [String(r.codigo), r]));
+    return (config.alertas_rubros_excluidos || []).map(c => porCodigo.get(String(c)) || { codigo: String(c), nombre: `Rubro ${c}`, insumos: 0 });
+  }, [alertasRubros, config.alertas_rubros_excluidos]);
+
+  // Sugerencia: rubros (todavía no excluidos) donde la mayoría de los insumos está en
+  // alerta — suele ser algo que se compra cada mucho (vajilla, especias), no un faltante.
+  const rubrosSugeridos = React.useMemo(() => {
+    const excl = new Set((config.alertas_rubros_excluidos || []).map(String));
+    return (alertasRubros || [])
+      .filter(r => !excl.has(String(r.codigo)) && Number(r.enAlerta) >= 3 && Number(r.enAlerta) / Math.max(1, Number(r.insumos)) >= 0.5)
+      .sort((a, b) => Number(b.enAlerta) - Number(a.enAlerta))
+      .slice(0, 3);
+  }, [alertasRubros, config.alertas_rubros_excluidos]);
+
   const handleConfirm = () => {
     if (!confirmDlg) return;
     if (confirmDlg.type === 'costo_ideal') {
@@ -364,7 +384,7 @@ export default function ConfigInsumosTab({
   const refreshAlertas = () => {
     setAlertasLoading(true);
     RecetasAPI.getAlertas(Number(businessId))
-      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
+      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); setAlertasRubros?.(res?.rubrosEnRecetas || []); })
       .catch(() => { })
       .finally(() => setAlertasLoading(false));
   };
@@ -603,32 +623,95 @@ export default function ConfigInsumosTab({
           <Grid size={{ xs: 12 }}>
             <Card>
               <CardHeader icon={<WarningAmberIcon />} title="Umbral de alerta de compras"
-                subtitle="Semanas sin compra para marcar un insumo como vencido" />
+                subtitle="Cuándo un insumo de receta se marca con ⚠" />
               <CardBody>
-                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
-                  <Stack spacing={1.5} sx={{ flex: 1 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                      Si un insumo no fue comprado en N semanas y está en una receta activa, se marca como vencido y aparece en las alertas de abajo.
+                {/* Fila 1: semanas sin compra */}
+                <Stack spacing={1.5} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }}>
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Semanas sin compra
                     </Typography>
                     {Number(config.compras_alerta_semanas) > 0 && (
-                      <Alert severity="warning" sx={{ py: 0.5, fontSize: '0.78rem', borderRadius: 1.5 }}>
+                      <Alert severity="warning" sx={{ py: 0.5, px: 1.25, alignItems: 'center', fontSize: '0.78rem', borderRadius: 1.5,
+                        '& .MuiAlert-icon': { p: 0, mr: 1, fontSize: 18 }, '& .MuiAlert-message': { p: 0, lineHeight: 1.4 } }}>
                         Insumos sin compra en más de <strong>{config.compras_alerta_semanas} semanas</strong> aparecen como vencidos.
                       </Alert>
                     )}
                   </Stack>
-                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexShrink: 0 }}>
-                    <TextField size="small" type="number" label="Semanas sin compra"
+                  <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
+                    <TextField size="small" type="number"
                       value={config.compras_alerta_semanas}
                       onChange={e => setConfig(c => ({ ...c, compras_alerta_semanas: e.target.value }))}
-                      inputProps={{ min: 1, max: 52, step: 1 }}
-                      sx={{ width: 170 }}
+                      inputProps={{ min: 1, max: 52, step: 1, 'aria-label': 'Semanas sin compra' }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">semanas</InputAdornment> }}
+                      sx={{ flex: 1 }}
                     />
                     <Button variant="contained" size="small" disabled={!!saving.compras_alerta_semanas}
                       startIcon={saving.compras_alerta_semanas ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
                       onClick={() => saveConfig('compras_alerta_semanas')}
-                      sx={{ bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
+                      sx={{ height: 40, bgcolor: tc, boxShadow: 'none', '&:hover': { bgcolor: tc, filter: 'brightness(0.9)', boxShadow: 'none' } }}>
                       {saving.compras_alerta_semanas ? 'Guardando…' : 'Guardar'}
                     </Button>
+                  </Stack>
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                {/* Fila 2: rubros que no alertan (ej. Especias: se compran cada muchos meses) */}
+                <Stack spacing={1.5} direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }}>
+                  <Stack spacing={0.25} sx={{ flex: 1, pt: { sm: 0.5 } }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                      Rubros sin alerta
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                      Los que se compran cada mucho (ej. especias)
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1} sx={{ width: { xs: '100%', sm: 420 }, flexShrink: 0 }}>
+                    <Autocomplete
+                      multiple size="small" disableCloseOnSelect
+                      options={alertasRubros || []}
+                      value={rubrosExcluidosValor}
+                      isOptionEqualToValue={(o, v) => String(o.codigo) === String(v.codigo)}
+                      getOptionLabel={(o) => o?.nombre || ''}
+                      onChange={(_, nuevos) => saveRubrosExcluidos?.(nuevos.map(r => String(r.codigo)))}
+                      disabled={!!saving.alertas_rubros_excluidos}
+                      noOptionsText="No hay rubros en las recetas"
+                      renderOption={(props, o) => (
+                        <li {...props} key={o.codigo}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%', fontSize: '0.85rem' }}>
+                            <span>{o.nombre}</span>
+                            <Typography component="span" variant="caption"
+                              sx={{ color: Number(o.enAlerta) > 0 ? '#b45309' : 'text.secondary' }}>
+                              {Number(o.enAlerta) > 0
+                                ? `${o.enAlerta} de ${o.insumos} en alerta`
+                                : `${o.insumos} insumo${o.insumos === 1 ? '' : 's'}`}
+                            </Typography>
+                          </Stack>
+                        </li>
+                      )}
+                      renderInput={(params) => (
+                        <TextField {...params} inputProps={{ ...params.inputProps, 'aria-label': 'Rubros sin alerta' }}
+                          placeholder={rubrosExcluidosValor.length ? '' : 'Agregar rubro…'} />
+                      )}
+                    />
+                    {/* Sugeridos: rubros con casi todos sus insumos en alerta (el detalle va en el tooltip) */}
+                    {rubrosSugeridos.length > 0 && (
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography component="span" sx={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 700 }}>
+                          Sugeridos:
+                        </Typography>
+                        {rubrosSugeridos.map(r => (
+                          <Chip key={r.codigo} size="small" clickable
+                            title={`${r.enAlerta} de ${r.insumos} insumos de este rubro están en alerta. Tocá para sacarlo.`}
+                            disabled={!!saving.alertas_rubros_excluidos}
+                            onClick={() => saveRubrosExcluidos?.([...(config.alertas_rubros_excluidos || []), String(r.codigo)])}
+                            label={`+ ${r.nombre} · ${r.enAlerta}/${r.insumos}`}
+                            sx={{ height: 24, bgcolor: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: '0.72rem',
+                              '&:hover': { bgcolor: '#fef3c7' } }} />
+                        ))}
+                      </Stack>
+                    )}
                   </Stack>
                 </Stack>
               </CardBody>

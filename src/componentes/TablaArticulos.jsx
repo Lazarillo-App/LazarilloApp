@@ -10,7 +10,7 @@ import React, {
   useDeferredValue,
 } from "react";
 import { esFormula, limpiarFormula, evaluarFormula } from '@/utils/formulaPrecio';
-import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip } from "@mui/material";
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip, useMediaQuery } from "@mui/material";
 
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
@@ -26,10 +26,13 @@ import { IconButton, Tooltip } from "@mui/material";  // sumarlo al import de MU
 import TuneIcon from '@mui/icons-material/Tune';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { getRedondeoConfig, saveRedondeoConfig } from '@/utils/redondeoUtils';
+import { esVendenPocoGroup } from '@/utils/articuloGruposEspeciales';
+import { nombreAgrupacionVisible } from '@/utils/agrupacionNombre';
 import { useConfig } from '@/context/ConfigContext';
 import { BASE } from "@/servicios/apiBase";
 import RubroEditModal from './RubroEditModal';
 import { useOrganization } from '@/context/OrganizationContext';
+import { useAccess } from '@/context/AccessContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
@@ -127,6 +130,8 @@ const esTop20Group = (g) => {
   const n = String(g?.nombre || "").trim().toUpperCase();
   return n === "TOP 20";
 };
+// Top 20 y «Venden poco»: vistas automáticas por ventas, de solo lectura.
+const esVistaVentas = (g) => esTop20Group(g) || esVendenPocoGroup(g);
 
 const TABLE_TEXT = "#111827";
 const TABLE_MUTED = "#6b7280";
@@ -158,11 +163,11 @@ function BarraRentabilidad({ costoPct, objetivo, supera, individual, onFijar }) 
   const barColor = supera ? (excesoLeve ? naranja : rojo) : verde;
   const inkColor = supera ? (excesoLeve ? naranjaInk : rojoInk) : verdeInk;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 0 }}>
       <span style={{ fontWeight: 700, fontSize: '0.82rem', color: inkColor, fontVariantNumeric: 'tabular-nums' }}>
         {fmt(costoPct, 1)}%
       </span>
-      <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 0 ${RENT_BAR_W}px` }}>
+      <span style={{ position: 'relative', width: RENT_BAR_W, height: 7, background: '#E6EBEF', borderRadius: 4, flex: `0 1 ${RENT_BAR_W}px`, minWidth: 36 }}>
         <span style={{
           position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4,
           width: `${fillPct}%`, background: barColor, transition: 'width .25s ease, background .25s ease'
@@ -276,13 +281,42 @@ function ColOrderModal({ open, cols, onSave, onClose }) {
 
 // Vista Staff (Fase 4): columnas fijas, no configurables — código/nombre/ventas
 // ya están siempre fijos fuera de colConfig (ver header/filas más abajo).
-// Staff: sin plata (usuaria 10/11): ni costo ni precio; ve ventas en unidades y la última modificación.
 const STAFF_COLS = [
+  { id: 'costo', label: 'Costo', width: '.35fr', visible: true },
   { id: 'ultimaModificacion', label: 'Últ. modificación', width: '.4fr', visible: true },
+];
+// Staff según sus permisos (Diego 11/11/2026): precio y % de costo solo si el rol los habilita.
+// Montos en plata (costo y precio) solo con 'ver_precio' (usuaria 10/11: el staff común no ve
+// plata; ve ventas en unidades, el Top 20 y la última modificación).
+const staffColsDe = (puede) => [
+  ...(puede('ver_precio') ? [STAFF_COLS[0], { id: 'precio', label: 'Precio', width: '.35fr', visible: true }] : []),
+  ...(puede('ver_costo_pct') ? [{ id: 'rentabilidad', label: 'Costo %', width: puede('ver_objetivo') ? '250px' : '.35fr', visible: true }] : []),
+  STAFF_COLS[1],
 ];
 
 /* ---------------- componente principal ---------------- */
+/* Tooltip del ⚠ de la fila: qué insumos de la receta no se compran hace rato y desde cuándo.
+   Solo las filas con advertencia llevan tooltip (el nombre del artículo no lo necesita). */
+function textoAlertaReceta(recetaData) {
+  const semanas = Number(recetaData?.alertaSemanas) || null;
+  const lista = Array.isArray(recetaData?.alertas) ? recetaData.alertas : [];
+  const titulo = semanas
+    ? `La receta tiene insumos sin compras hace más de ${semanas} semana${semanas === 1 ? '' : 's'}:`
+    : 'La receta tiene insumos sin compras recientes';
+  if (!lista.length) return titulo;
+  const fecha = (iso) => {
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
+    return d && m && y ? `${d}/${m}/${y}` : iso;
+  };
+  const renglones = lista.map((x) => `• ${x.nombre} — ${x.fechaUltimaCompra ? `no se compra desde el ${fecha(x.fechaUltimaCompra)}` : 'sin compras registradas'}`);
+  return [titulo, ...renglones].join(String.fromCharCode(10)); // salto de línea del tooltip nativo
+}
+
 export default function TablaArticulos({
+  // Letra A/B/C por artículo según el ingreso del período (A = hasta el 80 % del ingreso,
+  // B = 80–95 %, C = último 5 %) y % acumulado, calculados en ArticulosMain.
+  abcVentas = null,
+  acumuladoVentas = null,
   isStaff = false,
   filtroBusqueda = "",
   agrupacionSeleccionada,
@@ -425,6 +459,8 @@ export default function TablaArticulos({
   const [promoComponentIds, setPromoComponentIds] = useState(() => new Set());
   const [promoIds, setPromoIds] = useState(() => new Set());
   const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
+  const { staffPuede = () => true } = useAccess() || {};
+  const staffVeObjetivo = !isStaff || staffPuede('ver_objetivo');
 
   // ── Definición canónica de columnas reordenables ──
   // "Últ. modificación" NO va acá a propósito: es una columna exclusiva de
@@ -475,7 +511,7 @@ export default function TablaArticulos({
   }, [agrupacionSeleccionada]);
 
   const visibleCols = useMemo(() => {
-    if (isStaff) return STAFF_COLS;
+    if (isStaff) return staffColsDe(staffPuede);
     const cols = colConfig.filter(c => c.visible);
     if (!estaEnPromociones) return cols;
     // Inyectar "$ Sin Promo" justo después de "costo" (o al inicio si no está)
@@ -483,7 +519,7 @@ export default function TablaArticulos({
     const sinPromoCol = { id: 'sinPromo', label: '$ Sin Promo', width: '.35fr', visible: true };
     if (idx === -1) return [sinPromoCol, ...cols];
     return [...cols.slice(0, idx + 1), sinPromoCol, ...cols.slice(idx + 1)];
-  }, [colConfig, estaEnPromociones, isStaff]);
+  }, [colConfig, estaEnPromociones, isStaff, staffPuede]);
 
   const openSnack = useCallback(
     (msg, type = "success") => setSnack({ open: true, msg, type }),
@@ -797,6 +833,8 @@ export default function TablaArticulos({
   // IDs de artículos que VIVEN en la agrupación "Promociones" (fuente de verdad de ubicación).
   // Se usa para tratar como promo a un artículo que está en esa agrupación aunque su receta
   // aún no tenga es_promo=TRUE (ej. recién movido, sin componentes todavía).
+  // Pantallas chicas: el chip PROMO pasa a «P» para dejarle lugar al nombre (Diego 11/11/2026).
+  const chipPromoCorto = useMediaQuery('(max-width: 1500px)');
   const promoGroupIds = useMemo(() => {
     const s = new Set();
     const norm = (x) => String(x ?? '').trim().toLowerCase();
@@ -1056,9 +1094,10 @@ export default function TablaArticulos({
     } else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
         base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
-      } else if (esTop20Group(agrupacionSeleccionada)) {
+      } else if (esVistaVentas(agrupacionSeleccionada) || estaEnPromociones) {
         // Top 20 es una agrupación virtual: no guarda articulos propios, la
         // membresía llega vía `visibleIds` (= filterIds más abajo).
+        // Promociones es un resumen: las promos siguen en su agrupación y llegan por visibleIds.
         base = allArticulos;
       } else {
         const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
@@ -1072,7 +1111,7 @@ export default function TablaArticulos({
     }
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
     return base;
-  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds]);
+  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones]);
 
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
@@ -1183,6 +1222,27 @@ export default function TablaArticulos({
 
   const esAgrupEspecifica = agrupacionSeleccionada && !esTodoGroup(agrupacionSeleccionada);
 
+  // «Venden poco»: a qué agrupación real pertenece cada artículo (la primera que lo tenga).
+  const agrupDeArticulo = useMemo(() => {
+    const m = new Map();
+    if (!esVendenPocoGroup(agrupacionSeleccionada)) return m;
+    const fuente = Array.isArray(agrupacionesAll) ? agrupacionesAll : agrupaciones;
+    for (const g of (fuente || [])) {
+      if (esTodoGroup(g) || esDiscontinuadosGroup(g) || esVistaVentas(g)) continue;
+      if (String(g?.nombre || '').trim().toLowerCase() === 'promociones') continue;
+      const nombre = nombreAgrupacionVisible(g);
+      for (const a of (g?.articulos || [])) {
+        const id = getId(a);
+        if (id && !m.has(id)) m.set(id, nombre);
+      }
+      for (const raw of (g?.app_articles_ids || [])) {
+        const id = Number(raw);
+        if (id && !m.has(id)) m.set(id, nombre);
+      }
+    }
+    return m;
+  }, [agrupacionSeleccionada, agrupacionesAll, agrupaciones]);
+
   // Total de ventas de todas las agrupaciones reales (excluye Sin Agrupación y Discontinuados)
   // Es el denominador correcto para el % del header de agrupación
   const totalTodasAgrupaciones = useMemo(() => {
@@ -1248,7 +1308,7 @@ export default function TablaArticulos({
 
     if (esAgrupEspecifica && sections.length > 0) {
       // Top 20 no guarda miembros (se calcula): sus artículos son los de la vista.
-      const todosIdsAgrup = (esTop20Group(agrupacionSeleccionada)
+      const todosIdsAgrup = (esVistaVentas(agrupacionSeleccionada)
         ? sections.flatMap((sec) => sec.arts)
         : (agrupacionSeleccionada?.articulos || []))
         .map(getId)
@@ -1275,7 +1335,7 @@ export default function TablaArticulos({
         ventasByBranch: agrupByBranch,
         nombre: agrupacionSeleccionada?.nombre || '',
         // Top 20: cuánto del ingreso total del período explica (pedido de Diego, 05/11)
-        pctDelPeriodo: esTop20Group(agrupacionSeleccionada) && totalVentasPeriodo > 0
+        pctDelPeriodo: esVistaVentas(agrupacionSeleccionada) && totalVentasPeriodo > 0
           ? (totalVentasAgrup / totalVentasPeriodo) * 100 : null,
       });
     }
@@ -1298,6 +1358,47 @@ export default function TablaArticulos({
           puesto: puesto.get(id),
           art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
         });
+      }
+      return rows;
+    }
+
+    // «Venden poco» (Diego 11/11): agrupados por agrupación, las agrupaciones y los
+    // artículos de mayor a menor venta ($).
+    if (esVendenPocoGroup(agrupacionSeleccionada)) {
+      const porAgrup = new Map();
+      for (const sec of sections) {
+        for (const a of sec.arts) {
+          const id = getId(a);
+          const nombre = agrupDeArticulo.get(id) || 'Sin agrupación';
+          if (!porAgrup.has(nombre)) porAgrup.set(nombre, []);
+          porAgrup.get(nombre).push({ a, sec });
+        }
+      }
+      const grupos = [...porAgrup.entries()].map(([nombre, lista]) => {
+        lista.sort((x, y) => getVentasAmount(getId(y.a)) - getVentasAmount(getId(x.a)));
+        const monto = lista.reduce((acc, { a }) => acc + getVentasAmount(getId(a)), 0);
+        return { nombre, lista, monto };
+      }).sort((x, y) => y.monto - x.monto);
+      for (const { nombre, lista, monto } of grupos) {
+        rows.push({
+          kind: "header",
+          key: `H|poco|${nombre}`,
+          categoria: '', subrubro: `poco:${nombre}`,
+          agrupLabel: nombre,
+          ids: lista.map(({ a }) => getId(a)),
+          __ventasMonto: monto,
+          __ventasByBranch: {},
+          agrupTotalVentas: totalVentasAgrup,
+        });
+        for (const { a, sec } of lista) {
+          const id = getId(a);
+          rows.push({
+            kind: "item",
+            key: `I|poco|${nombre}|${id}`,
+            categoria: sec.categoria, subrubro: sec.subrubro,
+            art: { ...a, id, precio: num(a.precio), costo: num(a.costo) },
+          });
+        }
       }
       return rows;
     }
@@ -1325,7 +1426,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
@@ -1507,13 +1608,28 @@ export default function TablaArticulos({
     // En Sin Agrupación, la columna de acciones también tiene que alojar el
     // botón de "Mover a X"/"Elegir agrupación" (texto, no solo el ⋮) — si no,
     // queda apretada contra la columna de "Nuevo precio" de al lado.
+    // Columnas en fr con mínimo 0: si no, cada «.35fr» crece hasta el ancho de su contenido
+    // (el input de Nuevo precio, «sug. $ 53.400»…) y se lo saca al Nombre — en pantallas chicas
+    // el Nombre quedaba en 2 letras y el encabezado (con otro contenido) no coincidía con las
+    // filas: títulos corridos de sus valores (Diego 11/11/2026). Costo % se achica hasta 140px.
     const dynCols = visibleCols
-      .map(c => (c.id === 'acciones' && isTodo ? '154px' : c.width))
+      .map(c => {
+        if (c.id === 'acciones' && isTodo) return '154px';
+        // Costo %: se achica antes que los montos (la barra mide 150 adentro).
+        if (c.id === 'rentabilidad' && c.width === '250px') return 'minmax(140px, .7fr)';
+        // Montos: nunca menos de lo que ocupa «sug. $ 53.400» en un renglón.
+        if (['costo', 'precio', 'sinPromo'].includes(c.id) && /fr$/.test(String(c.width))) return `minmax(88px, ${c.width})`;
+        // Nuevo precio: el input se achica hasta 116 (entra «USAR $ 32.584»); el espacio va al Nombre.
+        if (c.id === 'manual' && /fr$/.test(String(c.width))) return `minmax(116px, .3fr)`;
+        if (c.id === 'acciones' && /fr$/.test(String(c.width))) return `minmax(28px, ${c.width})`;
+        return /fr$/.test(String(c.width)) ? `minmax(0, ${c.width})` : c.width;
+      })
       .join(' ');
     // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
-    // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre.
-    const nombreCol = isTodo ? 'minmax(0, 1fr)' : 'minmax(0, .5fr)';
-    return `${check}minmax(56px, 90px) ${nombreCol} minmax(90px, 130px) ${branchCols}${dynCols}`;
+    // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre. Nunca menos de 140px.
+    const nombreCol = 'minmax(140px, 1fr)';
+    // Código más angosto (Diego 11/11/2026: «la veo muy ancha»): entra «L-1279» con su ícono.
+    return `${check}minmax(56px, 72px) ${nombreCol} minmax(72px, .4fr) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
   // Separación entre columnas de la grilla — sin esto, Código y Nombre (y el resto)
   // quedan pegados uno contra el otro con cero aire entre medio. Se aplica igual en
@@ -1525,7 +1641,7 @@ export default function TablaArticulos({
   const ITEM_H = 50;
   // Top 20 es una vista automática y de solo lectura — sin gestión manual
   // de ningún tipo, ni siquiera "quitar"/"mover" por artículo o por bloque.
-  const isTop20View = agrupSelView ? esTop20Group(agrupSelView) : false;
+  const isTop20View = agrupSelView ? esVistaVentas(agrupSelView) : false;
 
   const currentVisibleArticleIds = useMemo(
     () => flatRows.filter(r => r.kind === "item").map(r => getId(r.art)).filter(Boolean),
@@ -2064,7 +2180,7 @@ export default function TablaArticulos({
           if (sub) headerSr = sub;
         }
       }
-      const label = isRubroView ? `${headerSr} - ${headerCat}` : `${headerCat} - ${headerSr}`;
+      const label = row.agrupLabel || (isRubroView ? `${headerSr} - ${headerCat}` : `${headerCat} - ${headerSr}`);
       const groupKeyName = tableHeaderMode === "sr-first" ? headerCat : headerSr;
       const ids = row.ids || [];
       const totalQty = ids.reduce((acc, id) => acc + getVentasQty(id), 0);
@@ -2090,11 +2206,16 @@ export default function TablaArticulos({
             )}
           </div>
           <div
+            title={label}
             style={{
               gridColumn: "2 / 4",
-              cursor: 'pointer',
+              cursor: row.agrupLabel ? 'default' : 'pointer',
+              fontWeight: row.agrupLabel ? 700 : undefined,
+              // Un solo renglón: los rubros largos («Promociones no-rec - Festejos comidas») van con «…»
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
             }}
             onClick={() => {
+              if (row.agrupLabel) return; // «Venden poco»: el encabezado es una agrupación, no un rubro
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
               const cfgRubro = priceConfig.byRubro?.[rubroKey] || {};
               setRubroEditModal({
@@ -2108,13 +2229,13 @@ export default function TablaArticulos({
                 rubroNombreActual: rubroKey,
               });
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseEnter={(e) => { if (!row.agrupLabel) e.currentTarget.style.textDecoration = 'underline'; }}
             onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
           >
             {label}
             {(() => {
               const rubroKey = tableHeaderMode === "cat-first" ? (row.subrubro || '') : (row.categoria || '');
-              const objR = priceConfig.byRubro?.[rubroKey]?.objetivo;
+              const objR = row.agrupLabel ? null : priceConfig.byRubro?.[rubroKey]?.objetivo;
               return objR != null ? (
                 <span style={{ marginLeft: 8, fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
                   · objetivo {fmt(objR, 0)}%
@@ -2168,7 +2289,7 @@ export default function TablaArticulos({
                 <React.Fragment key="manual">
                 <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>
-                    {tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO'}
+                    {row.agrupLabel ? 'AJUSTAR' : (tableHeaderMode === "cat-first" ? 'AJUSTAR RUBRO' : 'AJUSTAR SUBRUBRO')}
                   </span>
                 </div>
                 <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2284,7 +2405,8 @@ export default function TablaArticulos({
     const sugerido = sugeridoCrudo > 0
       ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
       : 0;
-    const superaObjetivo = costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    // Staff (y el jefe de cocina) no marca precios: el objetivo no le dice nada (Diego 11/11/2026).
+    const superaObjetivo = staffVeObjetivo && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
     const selectedStyle = isSelected ? { background: "color-mix(in srgb, var(--color-primary) 10%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)", position: "relative" } : null;
@@ -2329,7 +2451,7 @@ export default function TablaArticulos({
           <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>
             {/* Top 20: puesto por facturación, en gris */}
             {row.puesto != null && !(!isStaff && selectionMode !== 'link' && isLinked) && (
-              <span title="Puesto en el Top 20 por facturación ($)" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
+              <span title={`Puesto ${row.puesto} por facturación ($)${acumuladoVentas?.get?.(Number(id)) != null ? ` · acumulado ${acumuladoVentas.get(Number(id)).toLocaleString('es-AR', { maximumFractionDigits: 1 })} % del ingreso` : ''}`} style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{row.puesto}</span>
             )}
             {!isStaff && selectionMode !== 'link' && isLinked && (
               <>
@@ -2366,7 +2488,7 @@ export default function TablaArticulos({
           setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
         }}
           style={{ cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', gap: 4 }}
-          title={hayReceta ? `Receta cargada — costo $${fmt(costoArticulo, 0)}` : `Cargar receta de ${a.nombre}`}>
+          title={hayAlertaInsumo ? textoAlertaReceta(recetaData) : undefined}>
           <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem', marginTop: 2 }}>
             {hayAlertaInsumo ? <span style={{ color: '#f59e0b' }}>⚠</span>
               : hayReceta ? <span style={{ color: '#6366f1' }}>●</span>
@@ -2376,8 +2498,18 @@ export default function TablaArticulos({
               achica y con una sola línea el nombre quedaba cortado demasiado pronto. */}
           <span style={{
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0,
-          }} title={a.nombre}>{a.nombre}</span>
+            whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2, minWidth: 0, flex: 1,
+          }}>{a.nombre}</span>
+          {/* Chip PROMO: marca las promociones en la tabla (Diego 11/11/2026). Mismo violeta que el buscador. */}
+          {(a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)))) && (
+            <span title="Promoción" style={{
+              // Contra el borde derecho de la celda (el nombre ocupa el resto), alineado en todas las filas
+              marginLeft: 'auto', marginRight: 0,
+              flexShrink: 0, marginTop: 1, padding: '0 5px', borderRadius: 4, lineHeight: '15px',
+              fontSize: '0.6rem', fontWeight: 800, letterSpacing: 0.3,
+              color: '#6d28d9', background: 'rgba(124,58,237,0.12)',
+            }}>{chipPromoCorto ? 'P' : 'PROMO'}</span>
+          )}
         </div>
 
         <div style={{ ...cellNum, textAlign: 'center' }}>
@@ -2414,7 +2546,7 @@ export default function TablaArticulos({
                 <div key="precio" style={{ ...cellNum, textAlign: 'center', lineHeight: 1.15 }}>
                   <div>{fmtCurrency(num(a.precio))}</div>
                   {costoArticulo > 0 && (
-                    <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600 }}>
+                    <div style={{ fontSize: '0.68rem', color: gananciaAct < 0 ? '#ef4444' : TABLE_MUTED, fontWeight: 600, whiteSpace: 'nowrap' }}>
                       gan. {fmtCurrency(gananciaAct)}
                     </div>
                   )}
@@ -2423,7 +2555,7 @@ export default function TablaArticulos({
             }
             case 'sinPromo': {
               const vsp = ventaSinPromoMap?.[Number(getId(a))] ?? 0;
-              return <div key="sinPromo" style={{ ...cellNum, color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
+              return <div key="sinPromo" style={{ ...cellNum, textAlign: 'center', color: '#7c3aed', fontWeight: 700 }}>{vsp > 0 ? fmtCurrency(vsp) : '—'}</div>;
             }
 
             case 'costo': {
@@ -2433,8 +2565,8 @@ export default function TablaArticulos({
               return (
                 <div key="costo" style={{ ...cellNum, textAlign: 'center', color: TABLE_TEXT, lineHeight: 1.15 }}>
                   <div>{costoArticulo > 0 ? fmtCurrency(costoArticulo) : <span style={{ color: TABLE_MUTED }}>—</span>}</div>
-                  {sugerido > 0 && (
-                    <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600 }}>
+                  {sugerido > 0 && (!isStaff || staffPuede('ver_sugerido')) && (
+                    <div style={{ fontSize: '0.68rem', color: TABLE_MUTED, fontWeight: 600, whiteSpace: 'nowrap' }}>
                       sug. {fmtCurrency(sugerido)}
                     </div>
                   )}
@@ -2453,6 +2585,12 @@ export default function TablaArticulos({
             }
 
             case 'rentabilidad':
+              // Staff sin «ver costo objetivo»: solo el % de costo, sin barra ni objetivo.
+              if (!staffVeObjetivo) return (
+                <div key="rentabilidad" style={{ ...cellNum, color: TABLE_TEXT }}>
+                  {costoPct > 0 ? `${fmt(costoPct, 1)}%` : <span style={{ color: TABLE_MUTED }}>—</span>}
+                </div>
+              );
               return (
                 <div key="rentabilidad" style={{ ...cellNum }}>
                   <BarraRentabilidad
@@ -2460,7 +2598,7 @@ export default function TablaArticulos({
                     objetivo={objetivoArticulo}
                     supera={superaObjetivo}
                     individual={tieneObjetivoIndividual(id)}
-                    onFijar={(nuevoObj) => fijarObjetivoEnCostoActual(id, costoPct)}
+                    onFijar={isStaff ? undefined : (nuevoObj) => fijarObjetivoEnCostoActual(id, costoPct)}
                   />
                 </div>
               );
@@ -2689,7 +2827,7 @@ export default function TablaArticulos({
                   <div key="manual" style={{ ...cellNum, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     {/* Contenedor de ancho fijo: input centrado, botones absolutos a los lados.
                         El layout no cambia entre estados — solo aparece/desaparece contenido. */}
-                    <div style={{ position: 'relative', width: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'relative', width: '100%', maxWidth: 150, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {/* Paso − (izquierda, absoluto): solo con valor, visible en hover de fila.
                           tabIndex=-1: fuera del orden de tabulación — Tab desde el input de
                           precio debe ir derecho al input de la fila de abajo, no pasar por
@@ -2711,7 +2849,7 @@ export default function TablaArticulos({
                         </button>
                       ) : (
                         /* Input (centrado, ancho fijo) */
-                        <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${tieneValor ? '#86efac' : '#d1d5db'}`, borderRadius: 6, overflow: 'hidden', background: tieneValor ? '#f0fdf4' : '#fff', width: 160 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${tieneValor ? '#86efac' : '#d1d5db'}`, borderRadius: 6, overflow: 'hidden', background: tieneValor ? '#f0fdf4' : '#fff', width: '100%', maxWidth: 160 }}>
                           <span style={{ padding: '0 6px', fontSize: '0.75rem', color: TABLE_MUTED, background: '#f9fafb', borderRight: '1px solid #e5e7eb', lineHeight: '28px', userSelect: 'none' }}>$</span>
                           <input
                             type="text"
@@ -2857,6 +2995,7 @@ export default function TablaArticulos({
                     priceListsByList={priceListsByList}
                     priceConfig={priceConfig}
                     promoIds={new Set([...promoIds, ...promoGroupIds])}
+                    promoGroupIds={promoGroupIds}
                   />
                 </div>
               );
@@ -3097,20 +3236,24 @@ export default function TablaArticulos({
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.5)' }} />
                             Fila ámbar: costo poco confiable
                           </span>
+                          {staffVeObjetivo && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.4)' }} />
                             Fila roja: excedido sobre el objetivo
                           </span>
+                          )}
                         </span>
                       }>
                         <span style={{ cursor: 'help' }}>Costo %{sortBy === 'costoPct' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                       </Tooltip>
+                      {staffVeObjetivo && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED }}>
                         <span style={{ width: 14, height: 4, borderRadius: 2, background: '#57BB7F', display: 'inline-block' }} />
                         costo actual
                         <span style={{ width: 2, height: 10, background: '#4A555F', display: 'inline-block', margin: '0 1px' }} />
                         objetivo
                       </span>
+                      )}
                     </div>
                   );
                   case 'manual': {
@@ -3178,6 +3321,7 @@ export default function TablaArticulos({
                   }}>
                     {(() => {
                       const hr = seccionSticky.headerRow;
+                      if (hr.agrupLabel) return hr.agrupLabel;
                       const cat = hr.categoria || '';
                       const sr = hr.subrubro || '';
                       return isRubroView ? `${sr} - ${cat}` : `${cat} - ${sr}`;

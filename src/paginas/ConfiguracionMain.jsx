@@ -91,17 +91,40 @@ export default function ConfiguracionMain() {
   const themeColor = 'var(--color-primary, #3b82f6)';
 
   // ── Tabs ──
+  // Al cambiar de negocio la pantalla se desmonta un instante (se recargan los permisos)
+  // y perdía la pestaña: se recuerda en sessionStorage (por pestaña del navegador).
+  const leerPantalla = (clave) => {
+    try { const v = Number(sessionStorage.getItem(`lz-config-${clave}`)); return Number.isFinite(v) && v >= 0 ? v : 0; }
+    catch { return 0; }
+  };
   const [tab, setTab] = useState(() => {
-    const t = Number(searchParams.get('tab'));
-    return Number.isFinite(t) && t >= 0 && t <= 7 ? t : 0;
+    const raw = searchParams.get('tab');
+    const t = Number(raw);
+    if (raw != null && Number.isFinite(t) && t >= 0 && t <= 7) return t;
+    const g = leerPantalla('tab');
+    return g <= 7 ? g : 0;
   });
   // Si ya está abierta y llega otro ?tab= (ej. desde un aviso de aprobación), cambia de pestaña
   useEffect(() => {
-    const t = Number(searchParams.get('tab'));
-    if (Number.isFinite(t) && t >= 0 && t <= 7) setTab(t);
+    const raw = searchParams.get('tab');
+    const t = Number(raw);
+    // Sin ?tab= no se toca (Number(null) daba 0 y mandaba siempre a la primera pestaña)
+    if (raw != null && Number.isFinite(t) && t >= 0 && t <= 7) setTab(t);
   }, [searchParams]);
-  const [subTabArt, setSubTabArt] = useState(0);
-  const [subTabIns, setSubTabIns] = useState(0);
+  const [subTabArt, setSubTabArt] = useState(() => leerPantalla('subArt'));
+  const [subTabIns, setSubTabIns] = useState(() => leerPantalla('subIns'));
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('lz-config-tab', String(tab));
+      sessionStorage.setItem('lz-config-subArt', String(subTabArt));
+      sessionStorage.setItem('lz-config-subIns', String(subTabIns));
+    } catch { /* sin storage: arranca en la primera pestaña */ }
+  }, [tab, subTabArt, subTabIns]);
+  // Si la pestaña recordada no existe en este negocio (otro rol), vuelve a la primera
+  useEffect(() => {
+    if (tab >= 4 && !puedeGestionarNegocio) setTab(0);
+    else if (tab === 7 && !verConexiones) setTab(0);
+  }, [tab, puedeGestionarNegocio, verConexiones]);
 
   // ── Config global ──
   const [config, setConfig] = useState({
@@ -129,6 +152,8 @@ export default function ConfiguracionMain() {
   const [alertasInsumos, setAlertasInsumos] = useState([]);
   const [alertasLoading, setAlertasLoading] = useState(false);
   const [alertasTotal, setAlertasTotal] = useState(0);
+  // Rubros de los insumos usados en recetas (para elegir cuáles no alertan)
+  const [alertasRubros, setAlertasRubros] = useState([]);
   const [alertaExpanded, setAlertaExpanded] = useState(null);
   const [recetaModalData, setRecetaModalData] = useState(null);
 
@@ -191,6 +216,7 @@ export default function ConfiguracionMain() {
           redondeo_precios: cfg.redondeo_precios ?? localRedondeo?.valor ?? null,
           redondeo_mostrar_modal: cfg.redondeo_mostrar_modal ?? localRedondeo?.mostrarModal ?? true,
           notificar_alta_articulo_insumo: cfg.notificar_alta_articulo_insumo ?? true,
+          alertas_rubros_excluidos: Array.isArray(cfg.alertas_rubros_excluidos) ? cfg.alertas_rubros_excluidos.map(String) : [],
         });
         if (cfg.redondeo_precios !== undefined) {
           const local = getRedondeoConfig(businessId);
@@ -241,10 +267,32 @@ export default function ConfiguracionMain() {
     if (tab !== 1 || subTabIns !== 0 || !businessId) return;
     setAlertasLoading(true);
     RecetasAPI.getAlertas(Number(businessId))
-      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); })
+      .then(res => { setAlertasInsumos(res?.insumos || []); setAlertasTotal(res?.total || 0); setAlertasRubros(res?.rubrosEnRecetas || []); })
       .catch(() => setAlertasInsumos([]))
       .finally(() => setAlertasLoading(false));
   }, [tab, subTabIns, businessId]);
+
+  // ── Rubros de insumo que no generan la alerta de compras (se guarda al elegir) ──
+  const saveRubrosExcluidos = useCallback(async (lista) => {
+    if (!businessId) return;
+    const limpia = [...new Set((lista || []).map(String))];
+    setConfig(c => ({ ...c, alertas_rubros_excluidos: limpia }));
+    setSaving(s => ({ ...s, alertas_rubros_excluidos: true }));
+    try {
+      await BusinessesAPI.update(businessId, { props: { alertas_rubros_excluidos: limpia } });
+      const res = await RecetasAPI.getAlertas(Number(businessId)).catch(() => null);
+      if (res) {
+        setAlertasInsumos(res.insumos || []);
+        setAlertasTotal(res.total || 0);
+        setAlertasRubros(res.rubrosEnRecetas || []);
+      }
+      notify('Rubros sin alerta guardados');
+    } catch (e) {
+      notify('Error al guardar: ' + (e.message || e), 'error');
+    } finally {
+      setSaving(s => ({ ...s, alertas_rubros_excluidos: false }));
+    }
+  }, [businessId, notify]);
 
   // ── Guardar config ──
   const saveConfig = useCallback(async (key) => {
@@ -579,6 +627,9 @@ export default function ConfiguracionMain() {
               setAlertasLoading={setAlertasLoading}
               setAlertasInsumos={setAlertasInsumos}
               setAlertasTotal={setAlertasTotal}
+              alertasRubros={alertasRubros}
+              setAlertasRubros={setAlertasRubros}
+              saveRubrosExcluidos={saveRubrosExcluidos}
               onNuevoInsumo={() => setShowNuevoInsumo(true)}
               onUploadInsumos={() => setShowUploadInsumos(true)}
               onOpenReceta={rec => setRecetaModalData({ id: rec.articleId, nombre: rec.nombre })}

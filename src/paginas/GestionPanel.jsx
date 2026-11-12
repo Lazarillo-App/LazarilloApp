@@ -14,7 +14,6 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
-import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import GroupsIcon from '@mui/icons-material/Groups';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
@@ -43,7 +42,7 @@ import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
 import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
-import { Popover as MuiPopover } from '@mui/material';
+import { Drawer } from '@mui/material';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
@@ -228,7 +227,9 @@ function GestionPanelContenido() {
   const columnas = estado.meses.length ? estado.meses : MESES_IDX;
   // Impagas y Sin carga: en la Económica sin búsqueda están en la tarjeta "Para mirar"; si no, en la barra.
   const pdvId = lugarDe(activeBusinessId, sucursalCaja);
-  const enParaMirar = estado.modo === 'economica' && !busquedaActiva && pdvId != null && estado.mostrarTarjetas;
+  // Las tarjetas se ven siempre (Diego 11/11/2026: sacamos «ocultar tarjetas», lo resuelve el maximizar).
+  const mostrarTarjetas = true;
+  const enParaMirar = estado.modo === 'economica' && !busquedaActiva && pdvId != null && mostrarTarjetas;
   const { data: locales } = useFetchQuery(['locales'], '/api/locales', { staleTime: 5 * 60_000 });
 
   const paramsCompras = useMemo(() => ({
@@ -291,12 +292,12 @@ function GestionPanelContenido() {
     const ro = new ResizeObserver(medir);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [estado.mostrarTarjetas, verPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mostrarTarjetas, verPanel]); // eslint-disable-line react-hooks/exhaustive-deps
   const pasosTour = [
     { k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> },
     ...(!sinEcoFin ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
     { k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> },
-    ...(estado.mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
+    ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
@@ -346,19 +347,15 @@ function GestionPanelContenido() {
               <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
             </IconButton>
           </Tooltip>
-          <MuiPopover open={!!anclaNotas} anchorEl={anclaNotas} onClose={() => setAnclaNotas(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
-            <ScopeGestion><Box sx={{ width: 320, pt: 1 }}><NotasSidebar /></Box></ScopeGestion>
-          </MuiPopover>
-          {/* Ocultar / mostrar las tarjetas: quedan título, filtros, buscador y la tabla. */}
-          <Tooltip title={estado.mostrarTarjetas ? 'Ocultar tarjetas' : 'Mostrar tarjetas'}>
-            <IconButton
-              size="small" onClick={() => cambiar({ mostrarTarjetas: !estado.mostrarTarjetas })}
-              aria-pressed={!estado.mostrarTarjetas}
-              sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider', ...(estado.mostrarTarjetas ? {} : { bgcolor: 'grey.100', color: 'text.primary' }) }}
-            >
-              <ViewQuiltOutlinedIcon sx={{ fontSize: 17 }} />
-            </IconButton>
-          </Tooltip>
+          {/* Notas en un cajón a la derecha, igual que «corregir» de Sin rubro (Diego 11/11/2026). zIndex de
+              modal para que se vea también con el panel maximizado. */}
+          <Drawer anchor="right" open={!!anclaNotas} onClose={() => setAnclaNotas(null)} sx={{ zIndex: 1300 }} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)' } } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: '1px solid #e8e8e6' }}>
+              <Box sx={{ fontWeight: 700, fontSize: 15 }}>Notas</Box>
+              <IconButton size="small" onClick={() => setAnclaNotas(null)} aria-label="Cerrar" sx={{ ml: 'auto' }}><CloseIcon fontSize="small" /></IconButton>
+            </Box>
+            <ScopeGestion><Box sx={{ pt: 1 }}><NotasSidebar /></Box></ScopeGestion>
+          </Drawer>
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
           {verPanel && !sinEcoFin && (
           <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
@@ -378,9 +375,6 @@ function GestionPanelContenido() {
                 {!oculto('btn.sin_carga') && <BloqueSeguro nombre="Sin carga" compacto><SinCargaBoton /></BloqueSeguro>}
               </ScopeGestion>
             )}
-            {!verPanel || !puedeVer('resultados', 'editar') ? null : estado.tab === 'resultados'
-              ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
-              : <RubrosConfig key="dash" />}
             {verPanel && <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
               <SearchIcon sx={{ fontSize: 15 }} />
               <span>Buscar</span>
@@ -392,7 +386,7 @@ function GestionPanelContenido() {
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {verPanel && estado.mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
+      {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
       {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
         // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
@@ -427,9 +421,13 @@ function GestionPanelContenido() {
               )}
             </Stack>
           )}
+          {/* Filtro de rubros a la izquierda de pantalla completa (Diego 11/11/2026). */}
+          {estado.tab !== 'ventas' && puedeVer('resultados', 'editar') && (estado.tab === 'resultados'
+            ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
+            : <RubrosConfig key="dash" />)}
           <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
             <IconButton size="small" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
-              sx={{ width: 34, height: 34, borderRadius: 2, border: 1, borderColor: "divider" }}>
+              sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: "divider" }}>
               {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 16 }} /> : <OpenInFullIcon sx={{ fontSize: 16 }} />}
             </IconButton>
           </Tooltip>

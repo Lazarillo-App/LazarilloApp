@@ -33,13 +33,17 @@ const tc = 'var(--color-primary, #3b82f6)';
 /* ─── Fila de un negocio con acceso: ver, editar rol/sector, o quitar ─── */
 const ROL_LABEL = { owner: 'Dueño', admin: 'Administración', staff: 'Staff' };
 // Valor del selector: 'admin' | 'staff' | 'rol:<id>' (rol a medida, se guarda como admin + customRoleId).
-const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : n.role);
+// Subroles de Staff (Diego 11/11/2026): 'staff:<id>' = subrol a medida (Jefe de cocina, Cocinero…).
+const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : (n.role === 'staff' && n.customRoleId ? `staff:${n.customRoleId}` : n.role));
+const CREAR_SUBROL = '__crear_subrol';
 
 function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const { isOwner, businesses = [] } = useAccess() || {};
   const [editando, setEditando] = useState(false);
   const [rol, setRol] = useState(valorRol(n));
   const [rolesMedida, setRolesMedida] = useState([]);
+  const [subroles, setSubroles] = useState([]);
+  const [creando, setCreando] = useState(null); // null | '' | nombre en edición
   const [sectorIds, setSectorIds] = useState(() => new Set(n.sectorIds || []));
   const [sectores, setSectores] = useState([]);
   const [guardando, setGuardando] = useState(false);
@@ -47,17 +51,33 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const [gestionando, setGestionando] = useState(false);
 
   // Roles a medida de la organización de este acceso (solo los asigna el dueño).
+  const bizDeFila = n.scopeType === 'business'
+    ? n.scopeId
+    : businesses.find((b) => Number(b.organization_id) === Number(n.scopeId))?.id;
+  const cargarSubroles = () => RolesAPI.listStaff(bizDeFila).then((st) => { setSubroles(st?.subroles || []); return st?.subroles || []; }).catch(() => []);
   useEffect(() => {
-    if (!editando || !isOwner) return;
-    const bizDeFila = n.scopeType === 'business'
-      ? n.scopeId
-      : businesses.find((b) => Number(b.organization_id) === Number(n.scopeId))?.id;
-    if (!bizDeFila) return;
-    RolesAPI.list(bizDeFila).then(setRolesMedida).catch(() => setRolesMedida([]));
+    if (!editando || !bizDeFila) return;
+    if (isOwner) RolesAPI.list(bizDeFila).then(setRolesMedida).catch(() => setRolesMedida([]));
+    cargarSubroles();
   }, [editando, isOwner, n.scopeType, n.scopeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const crearSubrol = async () => {
+    const nombre = String(creando || '').trim();
+    if (!nombre) return;
+    try {
+      const res = await RolesAPI.createStaff(nombre, bizDeFila);
+      await cargarSubroles();
+      if (res?.subrol?.id) setRol(`staff:${res.subrol.id}`);
+      setCreando(null);
+    } catch (e) {
+      const err = e?.response?.data?.error || e?.data?.error || e?.message;
+      setErrorEdit(err === 'nombre_repetido' ? 'Ya hay un rol con ese nombre.' : err === 'nombre_reservado' ? 'Ese nombre lo usa un rol fijo.' : (err || 'No se pudo crear'));
+    }
+  };
+  const subrolElegido = rol.startsWith('staff:') ? subroles.find((x) => `staff:${x.id}` === rol) : null;
+
   const cargarSectores = () => {
-    if (rol !== 'staff' || n.scopeType !== 'business') { setSectores([]); return; }
+    if (!rol.startsWith('staff') || n.scopeType !== 'business') { setSectores([]); return; }
     listarSectores(n.scopeId)
       .then((list) => setSectores(Array.isArray(list) ? list : []))
       .catch(() => setSectores([]));
@@ -80,9 +100,10 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
     setGuardando(true); setErrorEdit(null);
     try {
       const esMedida = rol.startsWith('rol:');
-      const role = esMedida ? 'admin' : rol;
+      const role = esMedida ? 'admin' : (rol.startsWith('staff') ? 'staff' : rol);
       await updateAssignment(n.assignmentId, {
         role,
+        ...(role === 'staff' ? { customRoleId: rol.startsWith('staff:') ? Number(rol.slice(6)) : null } : {}),
         sectorIds: role === 'staff' ? Array.from(sectorIds) : [],
         // Solo el dueño toca el rol a medida (null = Administración completa).
         ...(isOwner && role === 'admin' ? { customRoleId: esMedida ? Number(rol.slice(4)) : null } : {}),
@@ -107,7 +128,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           {n.scopeName}
         </Typography>
         {!editando && (
-          <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
+          <Chip label={(n.role === 'staff' && n.customRoleNombre ? `Staff · ${n.customRoleNombre}` : n.customRoleNombre) || ROL_LABEL[n.role] || n.role} size="small"
             sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
         )}
         {n.account_status === 'invited' && (
@@ -139,14 +160,28 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
               select label="Rol" size="small" value={rol}
-              onChange={(e) => setRol(e.target.value)}
+              onChange={(e) => { if (e.target.value === CREAR_SUBROL) { setCreando(''); return; } setRol(e.target.value); }}
               sx={{ width: 190 }}
             >
+              {/* Acción primero, en franja gris (patrón de desplegables con acción). */}
+              <MenuItem value={CREAR_SUBROL} divider
+                sx={{ bgcolor: 'action.hover', color: 'primary.main', fontWeight: 600, fontSize: '0.85rem', '&:hover': { bgcolor: 'action.selected' } }}>
+                + Crear subrol de Staff
+              </MenuItem>
               {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
               {puedeInvitarAdmin && rolesMedida.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
               {/* Si el rol a medida ya no está en la lista (otra organización), igual se muestra. */}
               {rol.startsWith('rol:') && !rolesMedida.some((r) => `rol:${r.id}` === rol) && <MenuItem value={rol}>{n.customRoleNombre || 'Rol a medida'}</MenuItem>}
               <MenuItem value="staff">Staff</MenuItem>
+              {subroles.map((x) => (
+                <MenuItem key={x.id} value={`staff:${x.id}`} sx={{ pl: 3.5 }}>
+                  <Typography component="span" sx={{ fontSize: 'inherit', color: 'text.secondary', mr: 0.75 }}>└</Typography>{x.nombre}
+                </MenuItem>
+              ))}
+              {/* Si el subrol ya no está en la lista, igual se muestra. */}
+              {rol.startsWith('staff:') && !subroles.some((x) => `staff:${x.id}` === rol) && (
+                <MenuItem value={rol} sx={{ pl: 3.5 }}>└ {n.customRoleNombre || 'Subrol'}</MenuItem>
+              )}
             </TextField>
             <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
             <Button size="small" variant="contained" onClick={guardar} disabled={guardando}
@@ -155,11 +190,16 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
             </Button>
           </Stack>
 
-          {rol === 'staff' && n.scopeType === 'business' && (
+          {rol.startsWith('staff') && n.scopeType === 'business' && (
             <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1 }}>
               <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                SECTOR DENTRO DE {n.scopeName}
+                {subrolElegido?.permisos?.aprobar_equipo ? `SECTORES QUE CONDUCE EN ${n.scopeName}` : `SECTOR DENTRO DE ${n.scopeName}`}
               </Typography>
+              {subrolElegido?.permisos?.aprobar_equipo && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Da el OK a los cambios de su equipo de estos sectores antes de que lleguen a vos. Qué ve se configura en Roles.
+                </Typography>
+              )}
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
                 {sectores.map((s) => {
                   const activo = sectorIds.has(s.id);
@@ -199,6 +239,20 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           )}
         </Box>
       )}
+      <Dialog open={creando !== null} onClose={() => setCreando(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Nuevo subrol de Staff</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth size="small" placeholder="Ej. Cocinero, Mozo, Jefe de barra" value={creando || ''}
+            onChange={(e) => setCreando(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') crearSubrol(); }} sx={{ mt: 0.5 }} />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Nace con lo básico del Staff. Qué más puede hacer se tilda en Mi perfil › Equipo › Roles.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreando(null)}>Cancelar</Button>
+          <Button variant="contained" disabled={!String(creando || '').trim()} onClick={crearSubrol} sx={{ bgcolor: tc }}>Crear</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

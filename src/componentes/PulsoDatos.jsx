@@ -25,6 +25,18 @@
 // solo aparece un aviso si Lazarillo no tomó lo que subió (Recetas atrás de las fechas del kit en
 // esa sucursal, o Balance sin leer desde la última subida). El punto del header = la peor.
 // Con una sucursal elegida en el header, solo esa.
+//
+// Diego, 11/11: "el pulso debería ser para saber cuándo se subió el último lote a Render, no para
+// saber cuándo se cargó la última compra". Cada renglón muestra SOLO cuándo subió esa PC (sin
+// "ventas al / compras al"). El aviso de Recetas ya no compara fechas (una factura cargada en
+// MaxiRest al día siguiente de su fecha daba un falso "no tomó lo último"): avisa si la PC subió
+// lo que lee Recetas (12/25/80) y Recetas no pasó después (leidoVentas/leidoCompras), con 1 h 15
+// de margen para la pasada de cada hora.
+//
+// Diego, 11/11 (después): "si la información está subida, el resto es problema nuestro… tenemos que
+// trabajar en que no suceda". Sin avisos de Recetas ni de Balance en el pulso: solo la subida de cada
+// PC. Lazarillo lee lo subido apenas la PC termina (back: services/kit/despuesDeSubir.js) y una
+// lectura que falla queda en el log del servidor, no en la pantalla del cliente.
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
@@ -40,8 +52,6 @@ const PESO = { al_dia: 0, atrasado: 1, viejo: 2 };
 
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
 const fechas = (f) => [f.ventas && `última venta ${ddmm(f.ventas)}`, f.compras && `última compra ${ddmm(f.compras)}`]
-  .filter(Boolean).join(' · ');
-const fechas2 = (x) => [x.ventas && `ventas al ${ddmm(x.ventas)}`, x.compras && `compras al ${ddmm(x.compras)}`]
   .filter(Boolean).join(' · ');
 const hm = (d) => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
@@ -64,36 +74,16 @@ const porSubida = (iso) => {
 };
 const peorDe = (estados) => estados.reduce((a, b) => (PESO[b] > PESO[a] ? b : a), 'al_dia');
 
-// Renglones por sucursal (data.kit.sucursales) + avisos de lo que Lazarillo no tomó todavía.
+// Renglones por sucursal (data.kit.sucursales): cuándo subió cada PC.
 function porSucursal(data, filtro) {
   let filas = data.kit.sucursales;
   if (filtro?.mode === 'main') filas = filas.filter((x) => x.branchId == null);
   else if (filtro?.mode === 'branch') filas = filas.filter((x) => Number(x.branchId) === Number(filtro.branchId));
   if (!filas.length) return null;
   const conNombre = filas.length > 1; // con una sola (o una elegida) el nombre ya está en el título
-  const avisos = [];
-  const recetasAtras = filas.filter((x) => x.recetas && (
-    (x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas))
-    || (x.compras && (!x.recetas.compras || x.recetas.compras < x.compras))));
-  if (recetasAtras.length) {
-    const det = recetasAtras.map((x) => {
-      const f = x.ventas && (!x.recetas.ventas || x.recetas.ventas < x.ventas)
-        ? (x.recetas.ventas ? `ventas al ${ddmm(x.recetas.ventas)}` : 'sin ventas')
-        : (x.recetas.compras ? `compras al ${ddmm(x.recetas.compras)}` : 'sin compras');
-      return conNombre ? `${x.nombre}: ${f}` : f;
-    }).join(' · ');
-    avisos.push(`Recetas todavía no tomó lo último (${det})`);
-  }
-  const imp = data.balance?.importado;
-  const subidaMax = filas.reduce((a, x) => (x.subida && (!a || x.subida > a) ? x.subida : a), null);
-  // Balance lee lo del kit cada hora (minuto 5): recién avisa si pasó más de 1 h 15 desde la subida.
-  if (data.balance && subidaMax && (!imp || imp < subidaMax) && horasDesde(subidaMax) > 1.25) {
-    avisos.push('Balance todavía no leyó lo último');
-  }
   const conEstado = filas.map((x) => ({ ...x, estado: porSubida(x.subida) }));
-  let peor = peorDe(conEstado.map((x) => x.estado));
-  if (avisos.length && peor === 'al_dia') peor = 'atrasado';
-  return { filas: conEstado, avisos, peor, conNombre };
+  const peor = peorDe(conEstado.map((x) => x.estado));
+  return { filas: conEstado, peor, conNombre };
 }
 
 // "hoy 11:37" / "ayer 08:02" / "05/11 08:01"
@@ -201,20 +191,16 @@ export default function PulsoDatos({ puedeActualizar = false }) {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 12, lineHeight: 1.45, py: 0.25 }}>
           <Box sx={{ fontWeight: 600 }}>{nombre} · {LEYENDA[peor]}</Box>
           {suc && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${suc.conNombre ? 4 : 3}, max-content)`, justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${suc.conNombre ? 3 : 2}, max-content)`, justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
               {suc.filas.map((x) => (
                 <React.Fragment key={x.pdv}>
                   <Punto estado={x.estado} size={9} />
                   {suc.conNombre && <Box component="span" sx={{ fontWeight: 600 }}>{x.nombre}</Box>}
                   <span>{x.subida ? `${horasDesde(x.subida) > 26 ? 'no sube desde' : 'subió'} ${cuando(x.subida, hoy)}` : 'todavía no subió'}</span>
-                  <Box component="span" sx={{ opacity: 0.8 }}>{fechas2(x)}</Box>
                 </React.Fragment>
               ))}
             </Box>
           )}
-          {suc?.avisos.map((a) => (
-            <Box key={a} sx={{ color: '#fbbf24', whiteSpace: 'nowrap' }}>⚠ {a}</Box>
-          ))}
           {!suc && data?.kit?.subida && (
             <Box sx={{ opacity: 0.85, whiteSpace: 'nowrap' }}>
               {(Date.now() - new Date(data.kit.subida).getTime()) / 3_600_000 > 26 ? 'El kit no sube desde' : 'El kit subió'} {cuando(data.kit.subida, hoy)}

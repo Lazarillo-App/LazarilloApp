@@ -62,7 +62,27 @@ function CardHeader({ icon, title, subtitle, action, tc }) {
 
 const TODAS = Object.fromEntries(SECCIONES.map((s) => [s.id, 'editar']));
 const DUENIO = { id: 'duenio', nombre: 'Dueño', fijo: true, nota: 'Ve y edita todo', secciones: TODAS, ocultos: [] };
-const STAFF = { id: 'staff', nombre: 'Staff', fijo: true, nota: 'Vista operativa · por sectores', secciones: {}, ocultos: [] };
+// Staff y sus subroles (Diego 11/11/2026): por defecto restringidos; el dueño habilita lo que quiera.
+// Las claves son las de AccessContext.staffPuede y las del back (services/auth/permisos.js).
+const PERMISOS_STAFF = [
+  { grupo: 'Recetas', items: [
+    ['ver_precio', 'Ver el precio de venta'],
+    ['ver_costo_pct', 'Ver el % de costo'],
+    ['ver_objetivo', 'Ver el costo objetivo'],
+    ['ver_sugerido', 'Ver el precio sugerido'],
+    ['mover_agrupacion', 'Mover de Sin agrupación a otras agrupaciones'],
+    ['ver_menu', 'Ver el Menú (vista diseño de la carta)'],
+  ] },
+  { grupo: 'Equipo', items: [
+    ['aprobar_equipo', 'Dar el OK a los cambios de su equipo (es el jefe de sus sectores)'],
+  ] },
+];
+const staffBaseDe = (permisos) => ({ id: 'staff', staff: true, esBase: true, nombre: 'Staff', nota: 'Vista operativa · por sectores',
+  permisos: { ...(permisos || {}) }, secciones: {}, ocultos: [] });
+const subrolDe = (sr) => ({ id: `staff:${sr.id}`, staffId: sr.id, staff: true, nombre: sr.nombre, personas: sr.personas ?? 0,
+  nota: 'Subrol de Staff', permisos: { ...(sr.permisos || {}) }, secciones: {}, ocultos: [] });
+const SUBROL_NUEVO = { id: 'staff:nuevo', staff: true, nombre: '', personas: 0, nota: 'Subrol de Staff', permisos: {}, secciones: {}, ocultos: [] };
+const STAFF = staffBaseDe({});
 // Administración: editable por el dueño (vale para todos los admins sin rol a medida).
 // Sin ajustar, ve todo.
 const adminDe = (a) => ({
@@ -73,6 +93,10 @@ const NUEVO = { id: 'nuevo', nombre: '', secciones: { resultados: 'ver' }, ocult
 
 function resumen(rol) {
   if (rol.fijo) return rol.nota;
+  if (rol.staff) {
+    const n = Object.entries(rol.permisos || {}).filter(([k, v]) => v && k !== 'aprobar_equipo').length;
+    return `${rol.permisos?.aprobar_equipo ? 'Jefe · ' : ''}${n ? `${n} habilitado${n !== 1 ? 's' : ''}` : 'lo básico'}`;
+  }
   if (rol.base && !rol.ajustada) return 'Ve y edita todo';
   const vis = SECCIONES.filter((s) => rol.secciones[s.id]).map((s) => s.nombre);
   const parcial = rol.ocultos.length ? ` · ${rol.ocultos.length} oculto${rol.ocultos.length !== 1 ? 's' : ''}` : '';
@@ -102,21 +126,23 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const cargar = async (elegir) => {
     setCargando(true); setError(null);
     try {
-      const { roles: lista, administracion } = await RolesAPI.listCompleto();
+      const { roles: lista, administracion, staff } = await RolesAPI.listCompleto();
       const adm = adminDe(administracion);
-      setRoles(lista); setAdmin(adm);
+      const sr = [staffBaseDe(staff?.base), ...(staff?.subroles || []).map(subrolDe)];
+      setRoles(lista); setAdmin(adm); setStaffRoles(sr);
       const id = elegir ?? rolId ?? 'admin';
-      elegirRol(id, lista, adm);
+      elegirRol(id, lista, adm, sr);
     } catch (e) { setError(mensajeDe(e)); } finally { setCargando(false); }
   };
   useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const todos = useMemo(() => [DUENIO, admin, STAFF, ...roles], [roles, admin]);
-  function elegirRol(id, lista = roles, adm = admin) {
-    const r = id === 'nuevo' ? NUEVO : [DUENIO, adm, STAFF, ...lista].find((x) => x.id === id);
+  const [staffRoles, setStaffRoles] = useState([STAFF]);
+  const todos = useMemo(() => [DUENIO, admin, ...staffRoles, ...roles], [roles, admin, staffRoles]);
+  function elegirRol(id, lista = roles, adm = admin, sr = staffRoles) {
+    const r = id === 'nuevo' ? NUEVO : id === 'staff:nuevo' ? SUBROL_NUEVO : [DUENIO, adm, ...sr, ...lista].find((x) => x.id === id);
     if (!r) return;
     setRolId(id);
-    setBorrador({ ...r, secciones: { ...r.secciones }, ocultos: [...r.ocultos] });
+    setBorrador({ ...r, secciones: { ...r.secciones }, ocultos: [...r.ocultos], ...(r.permisos ? { permisos: { ...r.permisos } } : {}) });
     setError(null);
   }
 
@@ -124,8 +150,9 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const seccion = SECCIONES.find((s) => s.id === seccionId);
   const ocultos = useMemo(() => new Set(rol?.ocultos || []), [rol]);
   const editable = !!rol && !rol.fijo && !soloLectura;
-  const original = rolId === 'nuevo' ? NUEVO : todos.find((x) => x.id === rolId);
-  const cambiado = !!rol && JSON.stringify([rol.nombre, rol.secciones, [...rol.ocultos].sort()]) !== JSON.stringify([original?.nombre, original?.secciones, [...(original?.ocultos || [])].sort()]);
+  const original = rolId === 'nuevo' ? NUEVO : rolId === 'staff:nuevo' ? SUBROL_NUEVO : todos.find((x) => x.id === rolId);
+  const normPerm = (p) => Object.keys(p || {}).filter((k) => p[k]).sort();
+  const cambiado = !!rol && JSON.stringify([rol.nombre, rol.secciones, [...rol.ocultos].sort(), normPerm(rol.permisos)]) !== JSON.stringify([original?.nombre, original?.secciones, [...(original?.ocultos || [])].sort(), normPerm(original?.permisos)]);
 
   const cambiar = (fn) => setBorrador((r) => fn(r));
   const toggleSeccion = (id) => cambiar((r) => {
@@ -140,6 +167,13 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const guardar = async () => {
     setGuardando(true); setError(null);
     try {
+      if (rol.staff) {
+        if (rol.esBase) { await RolesAPI.setStaffBase(rol.permisos); await cargar('staff'); onCambio?.(); return; }
+        let id = rol.staffId;
+        if (!id) { const res = await RolesAPI.createStaff(rol.nombre.trim()); id = res?.subrol?.id; }
+        await RolesAPI.updateStaff(id, rol.nombre.trim(), rol.permisos);
+        await cargar(`staff:${id}`); onCambio?.(); return;
+      }
       const body = { nombre: rol.nombre.trim(), secciones: rol.secciones, ocultos: rol.ocultos };
       if (rolId === 'admin') {
         await RolesAPI.setAdministracion(body);
@@ -159,10 +193,13 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
   };
   const borrar = async () => {
-    if (rolId === 'nuevo') { elegirRol(roles[0]?.id ?? 'staff'); return; }
+    if (rolId === 'nuevo' || rolId === 'staff:nuevo') { elegirRol(roles[0]?.id ?? 'staff'); return; }
     if (!(await showConfirm(`¿Borrar el rol "${original?.nombre}"?`, { danger: true, confirmText: 'Borrar' }))) return;
     setGuardando(true); setError(null);
-    try { await RolesAPI.remove(rolId); setRolId(null); await cargar(roles.find((r) => r.id !== rolId)?.id ?? 'staff'); onCambio?.(); }
+    try {
+      await RolesAPI.remove(rol.staff ? rol.staffId : rolId); setRolId(null);
+      await cargar(rol.staff ? 'staff' : (roles.find((r) => r.id !== rolId)?.id ?? 'staff')); onCambio?.();
+    }
     catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
   };
 
@@ -176,7 +213,21 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
       <Card>
         <CardHeader tc={tc} icon={<ShieldOutlinedIcon />} title="Roles" subtitle={`${todos.length} roles`}
           action={!soloLectura && <Button size="small" variant="contained" startIcon={<AddIcon />} disableElevation sx={{ bgcolor: tc }} onClick={() => elegirRol('nuevo')}>Nuevo</Button>} />
-        {[...todos, ...(rolId === 'nuevo' ? [{ ...rol, id: 'nuevo', nombre: rol.nombre || 'Rol nuevo' }] : [])].map((r) => (
+        {[...todos, ...(rolId === 'nuevo' ? [{ ...rol, id: 'nuevo', nombre: rol.nombre || 'Rol nuevo' }] : [])]
+          .flatMap((r) => {
+            // Subrol nuevo: debajo de los subroles de Staff. «+ Subrol de Staff» al final del grupo.
+            const ultimoStaff = r.staff && staffRoles[staffRoles.length - 1]?.id === r.id;
+            if (!ultimoStaff) return [r];
+            return [r, ...(rolId === 'staff:nuevo' ? [{ ...rol, id: 'staff:nuevo', nombre: rol.nombre || 'Subrol nuevo' }] : []),
+              ...(soloLectura ? [] : [{ id: 'accion:subrol', accion: true }])];
+          })
+          .map((r) => r.accion ? (
+          <Box key={r.id} onClick={() => elegirRol('staff:nuevo')}
+            sx={{ pl: 4.5, pr: 2.5, py: 1, cursor: 'pointer', borderBottom: '1px solid #f3f4f6', bgcolor: 'action.hover',
+              color: 'primary.main', fontSize: '0.78rem', fontWeight: 600, '&:hover': { bgcolor: 'action.selected' } }}>
+            + Crear subrol de Staff
+          </Box>
+        ) : (
           <Box key={r.id} onClick={() => elegirRol(r.id)}
             sx={{
               px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', borderBottom: '1px solid #f3f4f6',
@@ -185,12 +236,12 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
             }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Stack direction="row" alignItems="center" gap={0.75}>
-                <Typography fontWeight={700} sx={{ fontSize: '0.82rem' }}>{r.nombre}</Typography>
+                <Typography fontWeight={700} sx={{ fontSize: '0.82rem' }}>{r.staff && !r.esBase ? <span style={{ color: '#9ca3af', fontWeight: 400, marginRight: 4 }}>└</span> : null}{r.nombre}</Typography>
                 {r.fijo && <LockOutlinedIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
               </Stack>
               <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', fontSize: '0.72rem' }}>{resumen(r)}</Typography>
             </Box>
-            {!r.fijo && <Chip size="small" label={`${r.personas ?? 0}`} variant="outlined" sx={{ height: 20, fontSize: '0.7rem', minWidth: 28 }} />}
+            {!r.fijo && !r.esBase && <Chip size="small" label={`${r.personas ?? 0}`} variant="outlined" sx={{ height: 20, fontSize: '0.7rem', minWidth: 28 }} />}
           </Box>
         ))}
       </Card>
@@ -198,39 +249,61 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
       {/* ── Editor del rol ── */}
       <Card>
         <CardHeader tc={tc} icon={<ShieldOutlinedIcon />}
-          title={editable && !rol.base ? (
-            <TextField size="small" variant="standard" placeholder="Nombre del rol" value={rol.nombre} autoFocus={rolId === 'nuevo'}
+          title={editable && !rol.base && !rol.esBase ? (
+            <TextField size="small" variant="standard" placeholder={rol.staff ? 'Nombre del subrol (ej. Cocinero)' : 'Nombre del rol'} value={rol.nombre} autoFocus={rolId === 'nuevo' || rolId === 'staff:nuevo'}
               onChange={(e) => cambiar((r) => ({ ...r, nombre: e.target.value }))}
               InputProps={{ sx: { fontSize: '0.85rem', fontWeight: 700 } }} sx={{ width: 240 }} />
           ) : rol.nombre}
-          subtitle={rol.fijo ? `Rol fijo · ${rol.nota}`
+          subtitle={rol.fijo ? `Rol fijo · ${rol.nota}` : rol.staff ? (rol.esBase ? 'Lo que puede todo el Staff · los subroles suman lo suyo' : `Subrol de Staff · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`)
             : rol.base ? `${original?.ajustada ? 'Ajustado' : 'Ve y edita todo'} · vale para quienes tienen Administración${rol.personas ? ` (${rol.personas})` : ''}`
             : `Basado en Administración · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`}
           action={editable && (
             <Stack direction="row" gap={1} alignItems="center">
-              {rol.base ? (
+              {rol.esBase ? null : rol.base ? (
                 original?.ajustada && <Button size="small" onClick={volverATodo} disabled={guardando} sx={{ color: 'text.secondary' }}>Volver a todo</Button>
               ) : (
               <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={borrar} disabled={guardando}>
-                {rolId === 'nuevo' ? 'Descartar' : 'Borrar'}
+                {rolId === 'nuevo' || rolId === 'staff:nuevo' ? 'Descartar' : 'Borrar'}
               </Button>
               )}
               <Button size="small" variant="contained" disableElevation sx={{ bgcolor: tc }} onClick={guardar}
-                disabled={guardando || !cambiado || !rol.nombre.trim()}>
+                disabled={guardando || !cambiado || !String(rol.nombre || '').trim()}>
                 {guardando ? 'Guardando…' : 'Guardar'}
               </Button>
             </Stack>
           )} />
         {error && <Alert severity="error" sx={{ m: 2, mb: 0 }} onClose={() => setError(null)}>{error}</Alert>}
 
-        {rol.id === 'staff' ? (
-          <Box sx={{ p: 4, minHeight: 480 }}>
-            <Typography fontWeight={700} sx={{ fontSize: '0.9rem', mb: 1 }}>La vista Staff queda como está</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560, lineHeight: 1.6 }}>
-              Es la vista operativa para cocina y barra: ve las recetas de su sector sin costos, propone cambios que
-              aprobás vos y no entra a Resultados ni a Carga de gastos. Qué recetas ve cada persona se elige con
-              los <b>sectores</b>, en Editar acceso.
+        {rol.staff ? (
+          <Box sx={{ py: 1.5, px: 2.5, minHeight: 480 }}>
+            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              QUÉ PUEDE HACER · TILDÁ PARA HABILITAR
             </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.78rem' }}>
+              Ve las recetas de sus sectores (se eligen en Editar acceso) y propone cambios que aprobás vos. No entra a Resultados ni a Carga de gastos.
+              {!rol.esBase && ' Además de esto, tiene todo lo que tenga habilitado el Staff.'}
+            </Typography>
+            {PERMISOS_STAFF.map((g, gi) => (
+              <Box key={g.grupo} sx={{ mb: 1.5 }}>
+                {gi > 0 && <Divider sx={{ mb: 1.5 }} />}
+                <Typography fontWeight={700} sx={{ fontSize: '0.78rem', mb: 0.5 }}>{g.grupo}</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', columnGap: 2 }}>
+                  {g.items.map(([k, label]) => {
+                    const fijo = rol.esBase && k === 'aprobar_equipo';
+                    const on = !!rol.permisos?.[k];
+                    return (
+                      <Stack key={k} direction="row" alignItems="center" sx={{ minHeight: 34 }}>
+                        <Checkbox size="small" checked={on} disabled={!editable || fijo}
+                          onChange={() => cambiar((r) => ({ ...r, permisos: { ...r.permisos, [k]: !r.permisos?.[k] } }))}
+                          sx={{ p: 0.5, mr: 0.5, '&.Mui-checked': { color: tc } }} />
+                        <Typography sx={{ fontSize: '0.78rem', minWidth: 0, color: on ? 'text.primary' : 'text.disabled' }}>{label}</Typography>
+                        {fijo && <LockOutlinedIcon sx={{ fontSize: 13, color: 'text.disabled', ml: 0.75 }} titleAccess="Solo en un subrol" />}
+                      </Stack>
+                    );
+                  })}
+                </Box>
+              </Box>
+            ))}
           </Box>
         ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: '340px 1fr', minHeight: 480 }}>

@@ -175,6 +175,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           sectorIds: Array.isArray(r.sector_ids) ? r.sector_ids.map(Number) : [],
           customRoleId: r.custom_role_id != null ? Number(r.custom_role_id) : null,
           customRoleNombre: r.custom_role_nombre || null,
+          subrol: r.subrol || null,
         });
       }
       // Rol más alto por persona (para el chip principal)
@@ -188,7 +189,11 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         const admins = p.negocios.filter((n) => n.role === 'admin');
         const medida = rolMasAlto === 'admin' && admins.length && admins.every((n) => n.customRoleNombre)
           ? [...new Set(admins.map((n) => n.customRoleNombre))].join(' / ') : null;
-        return { ...p, rolMasAlto, rolNombre: medida || ROL_LABEL[rolMasAlto] || rolMasAlto };
+        // Subrol de Staff (Diego 11/11/2026): el nombre del subrol si todos sus accesos de staff lo tienen.
+        const staffs = p.negocios.filter((n) => n.role === 'staff');
+        const jefe = rolMasAlto === 'staff' && staffs.length && staffs.every((n) => n.customRoleNombre)
+          ? [...new Set(staffs.map((n) => n.customRoleNombre))].join(' / ') : null;
+        return { ...p, rolMasAlto, rolNombre: medida || jefe || ROL_LABEL[rolMasAlto] || rolMasAlto };
       });
       setMembers(lista);
     } catch (e) {

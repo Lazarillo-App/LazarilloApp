@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box, Typography, TextField, IconButton, Tooltip, Chip,
   Select, MenuItem, Checkbox, InputAdornment,
+  Popover,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchIcon from '@mui/icons-material/Search';
@@ -43,6 +44,8 @@ export default function ItemRow({
   businessId,
   insumosBizId,
   onOpenRecetaElaborado,
+  onCrearMerma,
+  onCrearEquivalencia,
   colorSinPromo = '#7c3aed',
   searchOpen,
   onSearchOpen,
@@ -62,8 +65,10 @@ export default function ItemRow({
 }) {
   // Staff: nada con valores de plata (usuaria 10/11): sin $/unidad, sin costo de la línea, sin precios
   // en el buscador ni el tipo de costo. Cantidad, unidad, merma y notas quedan igual.
-  const { isStaff: sinPlata } = useAccess() || {};
+  const { veMontos = true } = useAccess() || {};
+  const sinPlata = !veMontos;
   const [search, setSearch] = useState('');
+  const [selectorEl, setSelectorEl] = useState(null);   // ancla del desplegable de búsqueda (Popover)
   const [crearInsumoOpen, setCrearInsumoOpen] = useState(false);
   const [editarInsumoOpen, setEditarInsumoOpen] = useState(false);
   // Insumo de la fila (no artículo ni promo) — lo edita el ícono de lápiz chico
@@ -483,7 +488,7 @@ export default function ItemRow({
         </Tooltip>
 
         {/* ── Selector insumo ── */}
-        <Box sx={{ position: 'relative', minWidth: 0 }}>
+        <Box ref={setSelectorEl} sx={{ position: 'relative', minWidth: 0 }}>
           <Box
             sx={{
               border: '1px solid',
@@ -580,9 +585,13 @@ export default function ItemRow({
                     ? (rendUnid === 'porcion' ? 'porción' : canonicalUnit(rendUnid))
                     : canonicalUnit(item.supplyMedida || 'u');
 
+                  // Mismo precio que usa el costo de la fila (calcCostoUnitarioItem) y el servidor:
+                  // precio_ref del insumo (o el del local). La última compra solo para un elaborado
+                  // marcado "costear por compra". Antes acá un insumo comprado mostraba la última
+                  // compra y la fila costeaba con otro número (Diego 11/11: Heineken $4.334,58/u vs $4.303,07).
                   const precioMostrado = item.articleRefId
                     ? precioArt
-                    : forzarCompra
+                    : (forzarCompra && !!elaboradoData)
                       ? (Number(insumoData?.precio_ultima_compra) || Number(item.precioRefDB) || 0)
                       : (Number(item.precioRefDB) || 0);
                   const tienePrecio = esElab
@@ -662,8 +671,22 @@ export default function ItemRow({
           </Box>
 
           {/* Dropdown búsqueda */}
-          {searchOpen && (
-            <Box data-search-dropdown sx={{ position: 'absolute', top: '100%', left: 0, zIndex: 20, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, boxShadow: 6, minWidth: 340, mt: 0.5 }}>
+          {/* Flota por ENCIMA de todo (pie de costos, botones y bordes del modal): antes era un Box
+              absoluto dentro del cuerpo que scrollea y quedaba cortado (Diego 11/11). Popover = capa
+              propia del modal (MUI respeta el foco del de más arriba); si no entra abajo, se abre arriba. */}
+          {searchOpen && selectorEl && (
+            <Popover
+              open
+              anchorEl={selectorEl}
+              onClose={onSearchClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              disableAutoFocus
+              disableRestoreFocus
+              marginThreshold={8}
+              slotProps={{ paper: { sx: { mt: 0.5, borderRadius: 1.5, boxShadow: 6, border: '1px solid', borderColor: 'divider', overflow: 'visible' } } }}
+            >
+            <Box data-search-dropdown sx={{ bgcolor: 'background.paper', borderRadius: 1.5, minWidth: Math.max(340, selectorEl.offsetWidth || 0) }}>
               <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <TextField autoFocus inputRef={searchInputRef} size="small" fullWidth placeholder="Código o nombre…"
                   value={search}
@@ -846,7 +869,10 @@ export default function ItemRow({
                           // iba precio_ref primero y el buscador mostraba otro número que la fila
                           // (Diego 10/11/2026: GATORADE 1.25 MANZANA $2.018,14 en la lista, $2.490,79 al elegirlo).
                           const pRef = Number(ins.precio_ref) || Number(ins.precio_promedio_periodo) || Number(ins.precio_promedio) || Number(ins.precio_ultima_compra) || Number(ins.precio) || 0;
-                          const p = ins.costo_efectivo_origen === 'compra' ? (Number(ins.precio_ultima_compra) || pRef) : pRef;
+                          // Insumo comprado → precio_ref (el del local, ya resuelto en la lista); última compra solo
+                          // para un elaborado marcado "costear por compra" (igual que calcCostoUnitarioItem).
+                          const esElabBusq = !!localRecetasElaborados[String(ins.id)] || !!ins.es_elaborado || !!ins.tiene_receta;
+                          const p = (ins.costo_efectivo_origen === 'compra' && esElabBusq) ? (Number(ins.precio_ultima_compra) || pRef) : pRef;
                           // Alerta si no hay compra reciente (dentro del período de config)
                           const sinCompraReciente = !!getAlertaColor(ins.fecha_ultima_compra, alertaSemanas, false);
                           // Tiene compras registradas y al día → verde; desactualizado → rojo; sin compras → base
@@ -874,11 +900,12 @@ export default function ItemRow({
                 })}
               </Box>
             </Box>
+            </Popover>
           )}
         </Box>
 
         {/* ── Cantidad con flechitas de step progresivo ── */}
-        <Box sx={{ display: 'flex', alignItems: 'stretch', gap: '2px' }}>
+        <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
           <TextField
             inputRef={cantidadRef}
             size="small"
@@ -904,31 +931,43 @@ export default function ItemRow({
               inputMode: 'decimal',
               style: { textAlign: 'center', fontSize: '0.78rem', padding: '0 6px' }
             }}
-            sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 32 } }}
+            InputProps={{
+              // Las flechitas van ADENTRO del campo: así la caja ocupa toda la columna y queda
+              // centrada bajo "Cantidad" (antes quedaban afuera y corrían la caja 8px).
+              endAdornment: (
+                <InputAdornment position="end" sx={{ ml: 0, mr: '-8px', height: 'auto', maxHeight: 'none' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <IconButton
+                    size="small" tabIndex={-1}
+                    onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, +1) })}
+                    sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
+                  >
+                    <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▲</Box>
+                  </IconButton>
+                  <IconButton
+                    size="small" tabIndex={-1}
+                    onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, -1) })}
+                    sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
+                  >
+                    <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▼</Box>
+                  </IconButton>
+                </Box>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ width: '100%', minWidth: 0, '& .MuiOutlinedInput-root': { height: 32, pr: 1 } }}
           />
-          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <IconButton
-              size="small" tabIndex={-1}
-              onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, +1) })}
-              sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
-            >
-              <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▲</Box>
-            </IconButton>
-            <IconButton
-              size="small" tabIndex={-1}
-              onClick={() => onChange(index, { cantidad: stepCantidad(item.cantidad, -1) })}
-              sx={{ p: 0, height: 15, width: 16, color: 'text.secondary', '&:hover': { color: PRIMARY } }}
-            >
-              <Box component="span" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>▼</Box>
-            </IconButton>
-          </Box>
         </Box>
 
         {/* ── Unidad ── */}
         <Select MenuProps={downwardMenuProps()}
           size="small"
           value={unidadActual}
-          onChange={e => onChange(index, { unidad: e.target.value })}
+          onChange={e => {
+            // "+ Crear equivalencia": abre el insumo en su pestaña Equivalencias (no es una unidad)
+            if (e.target.value === '__crear_eq') { onCrearEquivalencia?.(item); return; }
+            onChange(index, { unidad: e.target.value });
+          }}
           onKeyDown={e => {
             // Typeahead manual: saltar a la primera unidad que empiece con la tecla
             if (e.key.length === 1 && /[a-z]/i.test(e.key)) {
@@ -960,7 +999,19 @@ export default function ItemRow({
             // (deshabilitada, marcada ⚠) — así el combo NUNCA queda en blanco: siempre
             // se ve algo, aunque sea "esto está roto, elegí otra unidad".
             const opciones = unidadEsValida ? unidadOpciones : [unidadActual, ...unidadOpciones];
-            return opciones.map((u, idx) => {
+            // Acción primero, después la lista — mismo patrón que «+ Crear merma» / SelectorBuscable.
+            // Lleva al insumo, pestaña Equivalencias; al volver la fila recarga sus equivalencias
+            // (listener insumo:equivalencias-changed del modal).
+            const crearEq = onCrearEquivalencia && item.supplyId && !item.articleRefId && !item.esArticulo ? [
+              <MenuItem key="__crear_eq" value="__crear_eq" sx={{
+                fontSize: '0.82rem', fontWeight: 600, color: 'primary.main', justifyContent: 'center',
+                bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider',
+                '&:hover': { bgcolor: 'action.selected' },
+              }}>
+                + Crear equivalencia
+              </MenuItem>,
+            ] : [];
+            return [...crearEq, ...opciones.map((u, idx) => {
               const esRota = !unidadEsValida && idx === 0;
               const eqData = (item.equivalencias || []).find(e => e.nombre === u);
               const seleccionada = u === unidadActual;
@@ -975,7 +1026,7 @@ export default function ItemRow({
                   {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u)}
                 </MenuItem>
               );
-            });
+            })];
           })()}
         </Select>
 
@@ -1171,7 +1222,10 @@ export default function ItemRow({
               value={Array.isArray(item.mermaIds) ? item.mermaIds : (item.mermaId != null ? [item.mermaId] : [])}
               onChange={e => {
                 const v = e.target.value;
-                onChange(index, { mermaIds: (typeof v === 'string' ? v.split(',') : v).map(Number) });
+                const lista = typeof v === 'string' ? v.split(',') : v;
+                // "+ Crear merma": abre el insumo en su pestaña Merma (no es una merma a tildar)
+                if (lista.includes('__crear')) { onCrearMerma?.(item); return; }
+                onChange(index, { mermaIds: lista.map(Number) });
               }}
               renderValue={(sel) => {
                 if (!sel || sel.length === 0) return 'No';
@@ -1188,6 +1242,18 @@ export default function ItemRow({
               }}
               sx={{ fontSize: '0.75rem', minWidth: 140, '& .MuiSelect-select': { py: '2px', fontSize: '0.75rem' } }}
             >
+              {/* Acción primero, después la lista — mismo patrón que SelectorBuscable ("+ Crear …" arriba,
+                  fondo gris, separada de las opciones). Lleva al insumo, pestaña Merma; al volver se
+                  recargan las mermas de la fila. */}
+              {onCrearMerma && item.supplyId && (
+                <MenuItem value="__crear" sx={{
+                  fontSize: '0.82rem', fontWeight: 600, color: 'primary.main',
+                  bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider',
+                  '&:hover': { bgcolor: 'action.selected' },
+                }}>
+                  + Crear merma
+                </MenuItem>
+              )}
               {(item.mermas || []).map(m => {
                 const factor = (Number(m.peso_final) > 0 && Number(m.peso_inicial) > 0) ? (Number(m.peso_inicial) / Number(m.peso_final)) : 1;
                 const sel = Array.isArray(item.mermaIds) ? item.mermaIds : [];

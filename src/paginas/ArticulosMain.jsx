@@ -14,7 +14,7 @@ import { BusinessesAPI, httpBiz, RecetasAPI, PriceConfigAPI } from "../servicios
 import { BASE, api } from "../servicios/apiBase";
 import { applyCreateGroup, applyAppend, applyRemove, applyMove } from '../utils/groupMutations';
 import { obtenerAgrupaciones, actualizarAgrupacion, eliminarAgrupacion } from "../servicios/apiAgrupaciones";
-import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group } from '../utils/articuloGruposEspeciales';
+import { esTodoGroup, esDiscontinuadosGroup as isDiscontinuadosGroup, esTop20Group, esPromoGroup, esVendenPocoGroup, esVistaVentas } from '../utils/articuloGruposEspeciales';
 import { ensureTop20 } from '../servicios/apiAgrupacionesTodo';
 import { emitGroupsChanged } from "../utils/groupsBus";
 import { buildAgrupacionesIndex, findGroupsForQuery } from '../servicios/agrupacionesIndex';
@@ -41,7 +41,7 @@ import {
   notifyGroupFavoriteChanged,
   notifyGroupCreated,
 } from '../servicios/notifyGroupActions';
-import { saveRedondeoConfig, getRedondeoConfig } from '@/utils/redondeoUtils';
+import { saveRedondeoConfig, getRedondeoConfig, aplicarRedondeo } from '@/utils/redondeoUtils';
 import { useArticleSelection } from '@/hooks/useArticleSelection';
 import SelectionToolbar from '@/componentes/SelectionToolbar';
 import { usePersistUiActions } from '@/hooks/usePersistUiActions';
@@ -97,7 +97,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -112,7 +112,7 @@ const isRealTodoGroup = (g, todoId) => {
 const esTodoGroupByName = (g) => {
   if (!g) return false;
   const n = String(g.nombre || g.name || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupar' || n === 'sin grupo';
 };
 
@@ -365,7 +365,7 @@ export default function ArticulosMain(props) {
       const bid = activeBizId;
       const groupId = Number(g?.id);
 
-      if (bid && Number.isFinite(groupId)) {
+      if (bid && Number.isFinite(groupId) && groupId > 0) {
         setViewModeByGroup((prev) => ({
           ...prev,
           [groupId]: mode,
@@ -679,6 +679,48 @@ export default function ArticulosMain(props) {
   // un estado anterior (el "a veces no lo hace" al borrar). priceConfigSaveSeqRef
   // descarta cualquier respuesta que no sea la del último guardado disparado.
   const priceConfigSaveSeqRef = useRef(0);
+  // Promos atadas al precio de sus artículos (Diego 11/11/2026: «si cambio la Heineken, la promo
+  // que la incluya se adapta al nuevo precio según la regla; cambia, no propone»). Después de guardar
+  // el precio de uno o más artículos, se recalculan las promos con regla '% off' o 'llevás N, pagás M'
+  // que los usan y se les guarda el nuevo precio. Mismo cálculo que el modal de receta: venta sin
+  // promo = Σ cantidad × (nuevo precio del artículo o, si no tiene, su precio de venta).
+  const metaByIdRef = useRef(null);
+  const recalcularPromosAtadas = React.useCallback(async (bizId, byArticle, cambiados) => {
+    if (!bizId || !cambiados?.size) return false;
+    try {
+      const token = localStorage.getItem('token') || '';
+      const resp = await fetch(`${BASE}/businesses/${bizId}/promos-reglas`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(bizId) },
+      });
+      const data = await resp.json().catch(() => ({}));
+      const promos = (data?.promos || []).filter((p) => (p.componentes || []).some((c) => cambiados.has(Number(c.articleId))));
+      if (!promos.length) return false;
+      const redondeo = getRedondeoConfig(bizId)?.valor ?? null;
+      const precioDe = (id) => {
+        const manual = Number(byArticle?.[String(id)]?.precioManual);
+        if (manual > 0) return manual;
+        return Number(metaByIdRef.current?.get?.(Number(id))?.precio) || 0;
+      };
+      let guardadas = 0;
+      for (const p of promos) {
+        const venta = p.componentes.reduce((acc, c) => acc + precioDe(c.articleId) * (Number(c.cantidad) || 0), 0);
+        if (!(venta > 0)) continue;
+        let precio = 0;
+        if (p.regla === 'off' && p.offPct > 0 && p.offPct < 100) precio = venta * (1 - p.offPct / 100);
+        if (p.regla === 'nxm' && p.llevas > 0 && p.pagas > 0 && p.pagas <= p.llevas) precio = venta * p.pagas / p.llevas;
+        precio = precio > 0 ? aplicarRedondeo(precio, redondeo) : 0;
+        if (!(precio > 0)) continue;
+        if (Number(byArticle?.[String(p.articleId)]?.precioManual) === precio) continue;
+        await PriceConfigAPI.save(bizId, { scope: 'articulo', scopeId: String(p.articleId), precioManual: precio });
+        guardadas++;
+      }
+      return guardadas > 0;
+    } catch (e) {
+      console.error('[recalcularPromosAtadas]', e);
+      return false;
+    }
+  }, []);
+
   const handlePriceConfigSave = React.useCallback((body) => {
     const bizId = Number(activeBizId);
     const mySeq = ++priceConfigSaveSeqRef.current;
@@ -702,7 +744,12 @@ export default function ArticulosMain(props) {
     const doSave = async () => {
       try {
         await PriceConfigAPI.save(bizId, body);
-        const r = await PriceConfigAPI.getAll(bizId);
+        let r = await PriceConfigAPI.getAll(bizId);
+        // Cambió el precio de un artículo: las promos atadas a él se recalculan.
+        if (body?.scope === 'articulo' && body?.scopeId != null && (body.precioManual != null || body._deleteManual)) {
+          const hubo = await recalcularPromosAtadas(bizId, r?.byArticle || {}, new Set([Number(body.scopeId)]));
+          if (hubo) r = await PriceConfigAPI.getAll(bizId);
+        }
         if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
         setPriceConfig({
           byArticle: r?.byArticle || {},
@@ -721,7 +768,7 @@ export default function ArticulosMain(props) {
     };
 
     doSave();
-  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists, recalcularPromosAtadas]);
 
   const handleBulkManualSave = React.useCallback(async (updates) => {
     const bizId = Number(activeBizId);
@@ -767,7 +814,10 @@ export default function ArticulosMain(props) {
         },
         body: JSON.stringify({ updates: realUpdates, deletes }),
       });
-      const r = await PriceConfigAPI.getAll(bizId);
+      let r = await PriceConfigAPI.getAll(bizId);
+      // Promos atadas a los artículos que cambiaron de precio.
+      const cambiados = new Set([...realUpdates, ...deletes].map(({ artId }) => Number(artId)));
+      if (await recalcularPromosAtadas(bizId, r?.byArticle || {}, cambiados)) r = await PriceConfigAPI.getAll(bizId);
       if (mySeq !== priceConfigSaveSeqRef.current) return; // superado por un guardado más nuevo
       setPriceConfig({
         byArticle: r?.byArticle || {},
@@ -779,7 +829,7 @@ export default function ArticulosMain(props) {
     } catch (e) {
       console.error('[handleBulkManualSave]', e);
     }
-  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists]);
+  }, [activeBizId, setPriceConfig, queryClient, reloadPriceLists, recalcularPromosAtadas]);
 
   // Escuchar ui:undo para restaurar el objetivo previo
   React.useEffect(() => {
@@ -832,9 +882,25 @@ export default function ArticulosMain(props) {
     };
     window.addEventListener('recetas:bulk-deleted', handler);
     window.addEventListener('recetas:bulk-added', handler);
+    // Crear/editar/borrar una merma recalcula en el servidor las recetas que la usan:
+    // sin esto la tabla seguía mostrando el costo viejo hasta abrir y cerrar la receta.
+    // Se piden SOLO los artículos afectados por ese insumo (directo o vía elaborados) y se
+    // mezclan con lo que ya había — no se recarga la tabla entera (navegación fluida).
+    const onMermas = async (e) => {
+      const insumoId = Number(e?.detail?.insumoId);
+      if (!Number.isFinite(insumoId) || insumoId <= 0) return handler();
+      try {
+        const res = await RecetasAPI.getCostos(Number(activeBizId), { insumoId });
+        if (res?.costos) setRecetasCostos(prev => ({ ...prev, ...res.costos }));
+      } catch (err) {
+        console.warn('[insumo:mermas-changed] refetch parcial falló:', err.message);
+      }
+    };
+    window.addEventListener('insumo:mermas-changed', onMermas);
     return () => {
       window.removeEventListener('recetas:bulk-deleted', handler);
       window.removeEventListener('recetas:bulk-added', handler);
+      window.removeEventListener('insumo:mermas-changed', onMermas);
     };
   }, [activeBizId, queryClient]);
 
@@ -1291,6 +1357,7 @@ export default function ArticulosMain(props) {
     );
     return m;
   }, [categorias]);
+  metaByIdRef.current = metaById;
 
   const agrupacionesRich = useMemo(() => {
     return (agrupaciones || []).map(g => ({
@@ -1531,23 +1598,89 @@ export default function ArticulosMain(props) {
     return localDiscIds;
   }, [discIds, localDiscIds]);
 
-  // Membresía de "Top 20": hasta 20 artículos por facturación ($) del período
-  // YA elegido arriba (periodo/ventasMap, no uno propio), sin discontinuados.
-  const top20Ids = useMemo(() => {
-    if (!ventasMap || !ventasMap.size) return new Set();
+  // Top 20 (Diego 11/11: volvió al Top 20 después de probar el 80/20): los 20 artículos que
+  // más facturaron en el período elegido arriba, sin discontinuados. Se calcula además la
+  // letra A/B/C de cada artículo (A = hasta el 80 % del ingreso, B = 80–95 %, C = último 5 %)
+  // y la curva acumulada que muestra el panel lateral.
+  const rankingVentas = useMemo(() => {
     const pares = [];
-    // ventasMap trae cada artículo con clave numérica Y de texto (ver
-    // getVentasFromMap/useSalesData.js) — solo se recorren las numéricas
-    // para no contar cada uno 2 veces.
-    ventasMap.forEach((v, k) => {
-      if (typeof k !== 'number') return;
-      if (effectiveDiscIds.has(k)) return;
-      const amount = Number(v?.amount) || 0;
-      if (amount > 0) pares.push([k, amount]);
-    });
+    let total = 0;
+    if (ventasMap && ventasMap.size) {
+      // ventasMap trae cada artículo con clave numérica Y de texto — solo las numéricas.
+      ventasMap.forEach((v, k) => {
+        if (typeof k !== 'number') return;
+        const amount = Number(v?.amount) || 0;
+        if (amount <= 0) return;
+        total += amount;
+        if (!effectiveDiscIds.has(k)) pares.push([k, amount]);
+      });
+      // Las ventas sin artículo (id 0 de MaxiRest) también cuentan en el total (Diego 10/11).
+      total += Number(ventasMap.get?.('__sinArticulo')?.amount) || 0;
+    }
     pares.sort((a, b) => b[1] - a[1]);
-    return new Set(pares.slice(0, 20).map(([id]) => id));
+    const abc = new Map();
+    const acumulado = new Map();   // id → % acumulado del ingreso hasta ese artículo
+    const curva = [];               // % acumulado por puesto (para el gráfico)
+    let cum = 0;
+    let nC = 0;
+    for (const [id, amt] of pares) {
+      const antes = total > 0 ? (cum / total) * 100 : 0;
+      cum += amt;
+      const pct = total > 0 ? (cum / total) * 100 : 0;
+      const letra = antes < 80 ? 'A' : antes < 95 ? 'B' : 'C';
+      if (letra === 'C') nC++;
+      abc.set(id, letra);
+      acumulado.set(id, pct);
+      curva.push(pct);
+    }
+    const cuantosPara = (meta) => {
+      const i = curva.findIndex((p) => p >= meta - 1e-9);
+      return i >= 0 ? i + 1 : curva.length;
+    };
+    return { pares, total, abc, acumulado, curva, n50: cuantosPara(50), nUltimo5: nC, cuantosPara };
   }, [ventasMap, effectiveDiscIds]);
+
+  const top20Ids = useMemo(
+    () => new Set(rankingVentas.pares.slice(0, 20).map(([id]) => id)),
+    [rankingVentas]);
+
+  // «Venden poco» (Diego 11/11): los de letra C = suman el último 5 % del ingreso.
+  // Solo los que vendieron en el período (pares ya excluye los que están en 0 y los discontinuados).
+  const vendenPocoIds = useMemo(() => {
+    const s = new Set();
+    rankingVentas.abc.forEach((letra, id) => { if (letra === 'C') s.add(id); });
+    return s;
+  }, [rankingVentas]);
+
+  // Números del panel lateral del Top 20. El % se calcula sobre los artículos que
+  // VENDIERON en el período (los que están en 0 no cuentan, Diego 11/11).
+  const resumenTop20 = useMemo(() => {
+    const n = top20Ids.size;
+    const monto = rankingVentas.pares.slice(0, n).reduce((acc, [, a]) => acc + a, 0);
+    const conVentas = rankingVentas.pares.length;
+    return {
+      n,
+      monto,
+      pctIngreso: rankingVentas.total > 0 ? (monto / rankingVentas.total) * 100 : 0,
+      conVentas,
+      pctConVentas: conVentas > 0 ? (n / conVentas) * 100 : 0,
+      n50: rankingVentas.n50,
+      nUltimo5: rankingVentas.nUltimo5,
+      curva: rankingVentas.curva,
+    };
+  }, [top20Ids, rankingVentas]);
+
+  // Números del panel lateral de «Venden poco».
+  const resumenVendenPoco = useMemo(() => {
+    let monto = 0;
+    for (const [id, a] of rankingVentas.pares) if (vendenPocoIds.has(id)) monto += a;
+    return {
+      n: vendenPocoIds.size,
+      monto,
+      pctIngreso: rankingVentas.total > 0 ? (monto / rankingVentas.total) * 100 : 0,
+      conVentas: rankingVentas.pares.length,
+    };
+  }, [vendenPocoIds, rankingVentas]);
 
   // Modo organización: el principal solo tiene Sin Agrupacion/Discontinuados
   // y hay subnegocios creados (created_from === 'from_group')
@@ -1835,12 +1968,47 @@ export default function ArticulosMain(props) {
     return s;
   }, [allIds, idsAsignados]);
 
+  // Artículos cuya receta es una promo (para el resumen de la agrupación Promociones)
+  const [promoIdsResumen, setPromoIdsResumen] = useState(() => new Set());
+  const [promoIdsTick, setPromoIdsTick] = useState(0);
+  useEffect(() => {
+    if (!activeBizId) { setPromoIdsResumen(new Set()); return; }
+    let cancel = false;
+    RecetasAPI.getPromoIds(Number(activeBizId))
+      .then(r => { if (!cancel) setPromoIdsResumen(new Set((r?.ids || []).map(Number))); })
+      .catch(() => { });
+    return () => { cancel = true; };
+  }, [activeBizId, promoIdsTick]);
+  useEffect(() => {
+    const h = () => setPromoIdsTick(t => t + 1);
+    window.addEventListener('articulos:updated', h);
+    window.addEventListener('receta:saved', h);
+    return () => { window.removeEventListener('articulos:updated', h); window.removeEventListener('receta:saved', h); };
+  }, []);
+
   const visibleIds = useMemo(() => {
     const sel = agrupacionSeleccionada;
     if (!sel) return null;
 
+    // Promociones es un RESUMEN (Diego 11/11): muestra todas las promos estén donde estén
+    // (receta con componentes = es_promo), más lo que ya viva en esa agrupación.
+    if (esPromoGroup(sel)) {
+      const s = new Set();
+      const selFresh = (agrupaciones || []).find(g => Number(g.id) === Number(sel.id)) || sel;
+      for (const a of getGroupItemsRaw(selFresh)) {
+        const id = getArtId(a);
+        if (id != null && !discIds.has(id)) s.add(id);
+      }
+      for (const id of promoIdsResumen) if (!discIds.has(id)) s.add(id);
+      return s;
+    }
+
     if (esTop20Group(sel)) {
       return top20Ids;
+    }
+
+    if (esVendenPocoGroup(sel)) {
+      return vendenPocoIds;
     }
 
     if (isDiscontinuadosGroup(sel)) {
@@ -1879,7 +2047,7 @@ export default function ArticulosMain(props) {
       s.add(id);
     }
     return s;
-  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids]);
+  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, vendenPocoIds, promoIdsResumen]);
 
   // Si hay lista activa en el sidebar → usar esos IDs como filtro
   const effectiveVisibleIds = useMemo(() => {
@@ -1912,7 +2080,7 @@ export default function ArticulosMain(props) {
         }
       }
 
-      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const normN = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
       const esGlobalGroup = (gid) => {
         const g = allGroups.find(x => Number(x.id) === Number(gid));
         const n = normN(g?.nombre);
@@ -2291,7 +2459,7 @@ export default function ArticulosMain(props) {
   //   - está en sus agrupaciones locales, O
   //   - NO está asignado a ningún subnegocio (está en sin agrupar del principal)
   const idsNegocioActivo = useMemo(() => {
-    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const normNombre = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
     const esGlobal = (g) => {
       const n = normNombre(g?.nombre);
       return n === 'sin agrupacion' || n === 'discontinuados' || n === 'descontinuados';
@@ -2630,14 +2798,14 @@ export default function ArticulosMain(props) {
       setFiltroBusqueda('');
       return;
     }
-    if (currentSel && (isDiscontinuadosGroup(currentSel) || esTop20Group(currentSel))) return;
+    if (currentSel && (isDiscontinuadosGroup(currentSel) || esVistaVentas(currentSel))) return;
 
     // ── Si ya hay una agrupación real seleccionada y válida → no tocar ──
     // Esto evita que cualquier mutación que cambie agrupacionesRich fuerce
     // la navegación a Sin Agrupación mientras el usuario está trabajando.
     const selEsAgrupacionReal = currentSel &&
       !isDiscontinuadosGroup(currentSel) &&
-      !esTop20Group(currentSel) &&
+      !esVistaVentas(currentSel) &&
       todoId && Number(currentSel.id) !== Number(todoId) &&
       (agrupacionesRich || []).some(g => Number(g.id) === Number(currentSel.id));
 
@@ -3019,6 +3187,8 @@ export default function ArticulosMain(props) {
             height: '100%',
           }}>
           <SidebarCategorias
+            resumenTop20={resumenTop20}
+            resumenVendenPoco={resumenVendenPoco}
             staff={!!isStaff}
             businessId={activeBizId}
             categorias={categorias}
@@ -3084,6 +3254,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
+            abcVentas={rankingVentas.abc}
+            acumuladoVentas={rankingVentas.acumulado}
             isStaff={isStaff}
             branches={[]}
             ventasMapByBranch={{}}
@@ -3235,7 +3407,7 @@ export default function ArticulosMain(props) {
           // Discontinuados), pasa a "Todos" para que el artículo recién creado se vea (10/11).
           const sel = agrupSelRef.current;
           const todoId = todoInfo?.todoGroupId;
-          if (todoId && (!sel || esTop20Group(sel) || isDiscontinuadosGroup(sel))) {
+          if (todoId && (!sel || esVistaVentas(sel) || isDiscontinuadosGroup(sel))) {
             setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
             setCategoriaSeleccionada(null);
             setFiltroBusqueda('');

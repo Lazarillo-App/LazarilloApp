@@ -20,6 +20,7 @@ import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
+import PlazasBoton from './plazas/PlazasBoton';
 import PulsoDatos from './PulsoDatos';
 import { VerComoItems } from '@/componentes/VerComo';
 
@@ -92,7 +93,9 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner, isStaff, puedeVer = () => true, rolReal } = useAccess() || {};
+  const { isOwner, isStaff, puedeVer = () => true, rolReal, staffPuede = () => false } = useAccess() || {};
+  // Menú (vista diseño, la carta): el Staff no lo usa; se habilita por rol con «ver_menu» (Diego 11/11/2026).
+  const veMenuDiseno = !isStaff || staffPuede('ver_menu');
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
@@ -222,8 +225,8 @@ export default function Navbar() {
 
   // Nunca a "/" (landing de marketing): este navbar solo se muestra logueada,
   // así que el logo tiene que llevar siempre adentro de la app.
-  // Staff: su casa son los artículos (no ve Inicio ni módulos, usuaria 10/11).
-  const homeTo = isAppAdmin ? '/admin' : isStaff ? '/menu' : '/inicio';
+  // Staff no tiene Inicio ni menú de módulos: su casa es Recetas (11/11).
+  const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/insumos' : '/inicio');
 
   return (
     <>
@@ -356,7 +359,7 @@ export default function Navbar() {
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && !isStaff && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
+                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -474,7 +477,7 @@ export default function Navbar() {
                             component={NavLink} to="/insumos">
                             Insumos
                           </Button>
-                          {!isStaff && (
+                          {veMenuDiseno && (
                             <>
                               <Box component="span" aria-hidden
                                 sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
@@ -485,6 +488,12 @@ export default function Navbar() {
                               </Button>
                             </>
                           )}
+                          {/* Plazas de despacho: el Staff la ve donde el dueño ve «Menú» (Diego 11/11/2026). */}
+                          {isStaff && !veMenuDiseno && (
+                            <Box component="span" aria-hidden
+                              sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                          )}
+                          <PlazasBoton activeSx={activeSx} />
                         </>
                       );
                     })()}
@@ -677,7 +686,6 @@ export default function Navbar() {
           sin agregar otro color nuevo. */}
       {/* En el asistente de alta no hay módulos que abrir todavía (09/11). */}
       {/* Tampoco en Inicio: ahí los módulos ya están en pantalla (09/11). */}
-      {/* Staff: sin menú de módulos; trabaja solo en Artículos, Insumos y Recetas (usuaria 10/11). */}
       {!modulosOpen && !enAlta && !isStaff && location.pathname !== '/inicio' && (
         <Tooltip title="Módulos" placement="right">
           <Box

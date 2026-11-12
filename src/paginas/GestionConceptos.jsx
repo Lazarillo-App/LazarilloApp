@@ -67,7 +67,7 @@ export function Formulario({ inicial, proximo, rubros, conceptos, onCerrar, onGu
         ? await GestionAPI.editarConcepto(inicial.codigo, cuerpo)
         : await GestionAPI.crearConcepto(cuerpo);
       onAviso({ sev: 'success', txt: editando ? `Concepto ${inicial.codigo} actualizado` : `Concepto ${d?.codigo} creado` });
-      onGuardado();
+      onGuardado(d);   // con lo creado: el que lo llamó desde un desplegable lo deja elegido
     } catch (e) {
       setError(e?.data?.error ?? 'No se pudo guardar');
     } finally {

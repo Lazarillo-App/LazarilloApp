@@ -20,6 +20,8 @@ import { MeAPI } from '../servicios/apiMe';
 import { setVistaPrevia } from '../servicios/vistaPrevia';
 
 const AccessCtx = createContext(null);
+const SIN_PERMISOS = Object.freeze({});
+
 export const useAccess = () => useContext(AccessCtx);
 
 // Matriz mínima de permisos por rol. Se puede expandir sin tocar el resto del front.
@@ -150,6 +152,18 @@ export function AccessProvider({ children }) {
   const isOwner = currentRole === 'owner';
   const isAdmin = currentRole === 'admin';
   const isStaff = currentRole === 'staff';
+  // Jefe de cocina: subrol de Staff (Diego 11/11/2026). Ve precios y % de costo y da el OK a su equipo.
+  // Con «Ver como › Jefe de cocina» el dueño ve la vista del jefe (Diego 11/11/2026).
+  // Permisos de Staff (Diego 11/11/2026): por defecto restringidos; el dueño los habilita por subrol
+  // en Roles. Clave → ¿lo puede este staff? (admin/dueño siempre true). Ver como usa los del rol elegido.
+  const staffPermisos = (verComoActivo ? verComoActivo.permisosStaff : currentBusiness?.staffPermisos) || SIN_PERMISOS;
+  const staffPuede = useCallback((clave) => !isStaff || !!staffPermisos[clave], [isStaff, staffPermisos]);
+  // Jefe: el subrol que da el OK a los cambios de su equipo (ej. Jefe de cocina).
+  const isJefe = isStaff && !!staffPermisos.aprobar_equipo;
+  // Montos en plata (costos, precios, totales): dueño y admin siempre; el staff solo con
+  // «Ver el precio de venta» (ej. jefe de cocina). Usuaria 10/11: el staff común no ve plata.
+  const veMontos = !isStaff || !!staffPermisos.ver_precio;
+  const subrolNombre = isStaff ? (verComoActivo ? verComoActivo.subrol || null : currentBusiness?.subrol || null) : null;
 
   // Setear negocio activo en backend + disparar evento
   const switchToBusiness = useCallback(async (bizId) => {
@@ -178,6 +192,10 @@ export function AccessProvider({ children }) {
     isOwner,
     isAdmin,
     isStaff,
+    isJefe,
+    veMontos,
+    staffPuede,
+    subrolNombre,
     switchToBusiness,
     permisos,
     puedeVer,
@@ -188,7 +206,7 @@ export function AccessProvider({ children }) {
   }), [
     loading, error, refetch, data,
     businesses, currentBusiness, currentRole, highestRole, currentAlias,
-    canDo, isOwner, isAdmin, isStaff, switchToBusiness,
+    canDo, isOwner, isAdmin, isStaff, isJefe, staffPuede, subrolNombre, switchToBusiness,
     permisos, puedeVer, oculto, rolReal, verComoActivo, setVerComo,
   ]);
 

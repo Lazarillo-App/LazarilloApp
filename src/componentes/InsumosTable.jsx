@@ -19,6 +19,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useConfig } from '@/context/ConfigContext';
 import UsoInsumoCell from './UsoInsumoCell';
 import { esTodoGroup, esDiscontinuadosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
+import { useAccess } from '@/context/AccessContext';
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -477,7 +478,9 @@ const InsumosTable = forwardRef(function InsumosTable({
   // Al final: branches dinámicas + acciones(.4fr)
   // Staff: sin plata (usuaria 10/11) — la columna de precio queda en 0 de ancho y vacía (así no se
   // corren los gridColumn de las filas de rubro).
-  const colPrecio = isStaff ? '0px' : '.7fr';
+  const { veMontos = true } = useAccess() || {};
+  const sinPrecio = isStaff && !veMontos;
+  const colPrecio = sinPrecio ? '0px' : '.7fr';
   const fixedStartElab = `${checkCol}.4fr 2fr .45fr ${colPrecio}`;
   const fixedStartNoElab = `${checkCol}.4fr 2fr .35fr ${colPrecio}`;
   const dynCols = visibleCols.map(c => c.width).join(' ');
@@ -1041,7 +1044,7 @@ const InsumosTable = forwardRef(function InsumosTable({
             <div onClick={() => toggleSort("unidad")} className="col-sortable">
               U. medida {sortIcon("unidad")}
             </div>
-            {isStaff ? <div /> : (
+            {sinPrecio ? <div /> : (
             <div onClick={() => toggleSort("precio")} className="col-sortable">
               {precioHeaderLabel} {sortIcon("precio")}
             </div>
@@ -1455,7 +1458,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                   </div>
 
                   <div>{r.unidad_med || "-"}</div>
-                  {isStaff ? <div /> : (
+                  {sinPrecio ? <div /> : (
                   <div
                     title={
                       r.precio_promedio
@@ -1503,7 +1506,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         return null;
                       })}
 
-                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {!isTop20View && <InsumoAccionesMenu
                           insumo={r}
                           groups={groups}
@@ -1595,7 +1598,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                           </div>
                         );
                       })}
-                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="c-keep" style={{ textAlign: "center", display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {!isTop20View && <InsumoAccionesMenu
                             insumo={r}
                             groups={groups}
