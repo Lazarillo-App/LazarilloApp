@@ -62,6 +62,22 @@ const cargarLogo = () => {
   }
   return logoProm;
 };
+// Logo del negocio (Cloudinary). Con crossOrigin la imagen no «ensucia» el canvas; si no carga,
+// la imagen sale igual sin logo.
+const logosNeg = new Map();
+const cargarLogoNegocio = (url) => {
+  if (!url) return Promise.resolve(null);
+  if (!logosNeg.has(url)) {
+    logosNeg.set(url, new Promise((ok) => {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      const t = setTimeout(() => ok(null), 4000);
+      im.onload = () => { clearTimeout(t); ok(im); }; im.onerror = () => { clearTimeout(t); ok(null); };
+      im.src = url;
+    }));
+  }
+  return logosNeg.get(url);
+};
 function lienzo(H) {
   const cv = document.createElement('canvas');
   cv.width = IMG.W * IMG.S; cv.height = Math.round(H * IMG.S);
@@ -70,10 +86,21 @@ function lienzo(H) {
   return { cv, ctx };
 }
 const CAB_H = 46;
-function cabeceraImg(ctx, titulo, sub) {
-  const { P } = IMG;
-  ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "700 18px Sora, sans-serif"; ctx.fillText(titulo, P, P + 15);
-  ctx.fillStyle = IMG.gris; ctx.font = "500 11.5px Archivo, sans-serif"; ctx.fillText(sub, P, P + 32);
+// Encabezado: logo del negocio (si tiene) + título + negocio · sucursal · semana
+function cabeceraImg(ctx, titulo, sub, logoNeg) {
+  const { P } = IMG; let x = P;
+  if (logoNeg) {
+    const L = 38; const y0 = P - 2;
+    ctx.save(); rrect(ctx, x, y0, L, L, 9); ctx.clip();
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y0, L, L);
+    const k = Math.min(L / logoNeg.width, L / logoNeg.height); const w = logoNeg.width * k; const h = logoNeg.height * k;
+    ctx.drawImage(logoNeg, x + (L - w) / 2, y0 + (L - h) / 2, w, h);
+    ctx.restore();
+    ctx.strokeStyle = IMG.linea; ctx.lineWidth = 1; rrect(ctx, x + 0.5, y0 + 0.5, L - 1, L - 1, 9); ctx.stroke();
+    x += L + 11;
+  }
+  ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "700 18px Sora, sans-serif"; ctx.fillText(titulo, x, P + 15);
+  ctx.fillStyle = IMG.gris; ctx.font = "500 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, sub, IMG.W - P - x), x, P + 32);
 }
 const PIE_H = 26;
 function pieImg(ctx, H, logo) {
@@ -87,7 +114,7 @@ function pieImg(ctx, H, logo) {
   }
 }
 // grupos: [{ turno:{nombre,entrada}, filas:[{ nombre, celdas:{dia:{puesto,hora,colorHora}} }] }] · dias: [{nro, dc, ev}]
-function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
+function dibujarCronograma({ titulo, sub, dias, grupos, logo, logoNeg }) {
   const gs = grupos.filter((g) => g.filas.length);
   if (!gs.length) return null;
   const { W, P } = IMG;
@@ -97,7 +124,7 @@ function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
   const DIAS_H = hayEv ? 32 : 22;
   const H = P + CAB_H + gs.reduce((a, g) => a + 22 + DIAS_H + g.filas.length * (FILA + GAP) + 12, 0) + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, sub);
+  cabeceraImg(ctx, titulo, sub, logoNeg);
   let y = P + CAB_H;
   gs.forEach((g) => {
     ctx.textAlign = 'left'; ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif";
@@ -143,13 +170,13 @@ function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
   return cv;
 }
 // items: [{ n, txt }]
-function dibujarFrancos({ titulo, sub, items, logo }) {
+function dibujarFrancos({ titulo, sub, items, logo, logoNeg }) {
   if (!items.length) return null;
   const { W, P } = IMG;
   const filas = Math.ceil(items.length / 2); const RF = 22;
   const H = P + CAB_H + 22 + filas * RF + 10 + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, sub);
+  cabeceraImg(ctx, titulo, sub, logoNeg);
   let y = P + CAB_H;
   ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif"; ctx.textAlign = 'left';
   ctx.fillText('FRANCOS DE LA SEMANA', P, y + 13);
@@ -169,7 +196,7 @@ function dibujarFrancos({ titulo, sub, items, logo }) {
 const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
-function ModalExportar({ espacio, puestos = [], negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
+function ModalExportar({ espacio, puestos = [], negocio, sucursal = '', logoNegocio = null, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
   const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
   const [urlCrono, setUrlCrono] = useState(null);
   const [urlFrancos, setUrlFrancos] = useState(null);
@@ -201,15 +228,16 @@ function ModalExportar({ espacio, puestos = [], negocio, semanaId, rango, diasIS
       .filter(([, t]) => t.semCnt > 0 && t.francos.length <= 3)
       .map(([id, t]) => ({ n: nombreFila(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
       .sort((a, b) => a.n.localeCompare(b.n));
-    const sub = (negocio ? negocio + ' · ' : '') + rango;
-    cargarLogo().then((logo) => {
+    // negocio · sucursal (si hay más de una) · semana
+    const sub = [negocio, sucursal, rango].filter(Boolean).join(' · ');
+    Promise.all([cargarLogo(), cargarLogoNegocio(logoNegocio)]).then(([logo, logoNeg]) => {
       if (!vivo) return;
       try {
-        const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre, sub, dias, grupos, logo });
+        const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre, sub, dias, grupos, logo, logoNeg });
         setUrlCrono(cv ? cv.toDataURL('image/png') : null);
       } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
       try {
-        const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre, sub, items, logo });
+        const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre, sub, items, logo, logoNeg });
         setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
       } catch (e) { setUrlFrancos(null); }
     });
@@ -217,7 +245,7 @@ function ModalExportar({ espacio, puestos = [], negocio, semanaId, rango, diasIS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tildados]);
 
-  const base = slug(espacio.nombre) + (negocio ? '_' + slug(negocio) : '') + '_sem' + String(semanaId).slice(-2);
+  const base = slug(espacio.nombre) + (negocio ? '_' + slug(negocio) : '') + (sucursal ? '_' + slug(sucursal) : '') + '_sem' + String(semanaId).slice(-2);
   const nombreCrono = 'cronograma_' + base +
     (incluidos.length === (espacio.turnos || []).length ? '' : '_' + incluidos.map((t) => slug(t.nombre)).join('_')) + '.png';
   // Un botón por imagen: cada click es un gesto del usuario (los navegadores bloquean descargas encadenadas).
