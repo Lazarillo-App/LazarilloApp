@@ -69,6 +69,7 @@ import VistaPreviaFotoModal from './VistaPreviaFotoModal';
 import VistaCocinaModal from './VistaCocinaModal';
 import ItemRow from './ItemRow';
 import PieCostos from './PieCostos';
+import { BotonesReceta, RecorridoReceta, DialogosReceta } from './AccionesReceta';
 import ModalReemplazarInsumo from './ModalReemplazarInsumo';
 import TabMermaInsumo from './TabMermaInsumo';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
@@ -2412,6 +2413,23 @@ export default function RecetaModal({
       .filter(x => (vistos.has(x.id) ? false : (vistos.add(x.id), true)));
   })();
 
+
+  // Pie de costos visible (misma condición de antes, ahora con nombre para usarla también en el footer).
+  const pieVisible = !(modoInsumo && !entradaElegida)
+    && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
+    && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
+    && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada);
+  // PR 2 del pie (Diego 10/11): en ARTÍCULOS los botones van en la misma franja que los costos y
+  // desaparece el renglón del footer. Elaborado, promo, staff y el modo «Marcar» quedan como estaban.
+  const accionesEnPie = pieVisible && esArticuloComun && !isStaff && !marcarModo;
+  const botonesReceta = (enPie = false) => (
+    <BotonesReceta
+      enPie={enPie} receta={receta} promoMode={promoMode} modoPromoNueva={modoPromoNueva}
+      saving={saving} deleting={deleting} loading={loading} hasDuplicates={hasDuplicates}
+      onBorrar={() => setConfirmDelete(true)} onCancel={handleCancel} onSave={() => handleSave()} guardarRef={recGuardarRef}
+    />
+  );
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
@@ -3305,11 +3323,7 @@ export default function RecetaModal({
 
           {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
-          {!(modoInsumo && !entradaElegida)
-            && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
-            && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
-            && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada)
-            && (
+          {pieVisible && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
               modoInsumo={modoInsumo}
@@ -3357,6 +3371,7 @@ export default function RecetaModal({
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}
               pctCostoActual={pctCostoActual}
+              acciones={accionesEnPie ? botonesReceta(true) : null}
             />
             </Box>
           )}
@@ -3373,68 +3388,20 @@ export default function RecetaModal({
               </Button>
             </Box>
           )}
-          {/* ── FOOTER ── */}
-          <Box sx={{
+          {/* ── FOOTER ── (en artículos los botones van en el pie de costos) */}
+          {!accionesEnPie && <Box sx={{
             px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexShrink: 0, bgcolor: 'background.paper',
           }}>
             <Stack direction="row" spacing={1} alignItems="center">
             </Stack>
-            {!(modoInsumo && tab !== 'receta') && <Stack direction="row" spacing={1} alignItems="center">
-              {/* Borrar receta — solo si ya existe */}
-              {receta && (
-                <Button
-                  size="small"
-                  color="error"
-                  variant="outlined"
-                  disabled={saving || deleting}
-                  startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  {promoMode ? 'Borrar' : 'Borrar'}
-                </Button>
-              )}
-              <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
-                Cancelar
-              </Button>
-
-              <Button
-                ref={recGuardarRef}
-                onClick={() => handleSave()}
-                variant="contained"
-                size="small"
-                disabled={saving || deleting || loading || hasDuplicates}
-                startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-                sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}
-              >
-                {saving ? 'Guardando…' : (modoPromoNueva ? 'Guardar' : 'Guardar')}
-              </Button>
-            </Stack>}
-          </Box>
+            {!(modoInsumo && tab !== 'receta') && botonesReceta()}
+          </Box>}
         </Box >
       </Modal >
 
-      {rec.visible && rec.paso === 1 && (
-        <SpotlightTour targetRef={recResumenRef} pose="presenta" {...rec.props(1)}
-          text={<>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué porcentaje del precio se lleva el costo (<b>food cost</b>).</>} />
-      )}
-      {rec.visible && rec.paso === 2 && (
-        <SpotlightTour targetRef={recAgregarRef} pose="senala" {...rec.props(2)}
-          text={<>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</>} />
-      )}
-      {rec.visible && rec.paso === 3 && (
-        <SpotlightTour targetRef={recIngredientesRef} pose="investiga" {...rec.props(3)}
-          text={<>En cada ingrediente poné <b>cuánto lleva</b> por porción y en qué <b>unidad</b> (gr, ml, unidad). El costo se calcula solo.</>} />
-      )}
-      {rec.visible && rec.paso === 4 && (
-        <SpotlightTour targetRef={recFotoRef} pose="presenta" {...rec.props(4)}
-          text={<>Acá va la <b>foto</b> del plato terminado y el <b>paso a paso</b> de la preparación.</>} />
-      )}
-      {rec.visible && rec.paso === 5 && (
-        <SpotlightTour targetRef={recGuardarRef} pose="saluda" {...rec.props(5)}
-          text="Cuando termines, guardá. Si cambia el precio de un insumo, el costo de la receta se actualiza solo." />
-      )}
+      <RecorridoReceta rec={rec} recResumenRef={recResumenRef} recAgregarRef={recAgregarRef} recIngredientesRef={recIngredientesRef} recFotoRef={recFotoRef} recGuardarRef={recGuardarRef} />
 
       {/* ── Modal notas + foto ── */}
       {
@@ -3526,93 +3493,12 @@ export default function RecetaModal({
         />
       )}
 
-      {/* ── Aviso: cambiar el rendimiento/Equivalente de este elaborado deja sin unidad
-          válida a otras recetas que lo usan ── */}
-      <Dialog open={!!confirmRompeRotos} onClose={() => resolverConfirmRompe(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, color: '#ea580c' }}>⚠ Esto va a romper otras recetas</DialogTitle>
-        <DialogContent>
-          <DialogContentText component="div">
-            Este cambio deja sin una unidad válida a {confirmRompeRotos?.length}{' '}
-            {confirmRompeRotos?.length === 1 ? 'receta' : 'recetas'} que usan este insumo:
-            <Box sx={{ my: 1.5, pl: 0.5 }}>
-              {(confirmRompeRotos || []).map((u, i) => (
-                <Typography key={i} variant="body2" sx={{ color: 'text.primary' }}>
-                  • {u.nombre} (usa "{u.unidad}")
-                </Typography>
-              ))}
-            </Box>
-            Van a quedar marcadas para revisar la próxima vez que se abran — no se arreglan solas.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => resolverConfirmRompe(false)} color="inherit" size="small">Cancelar</Button>
-          <Button onClick={() => resolverConfirmRompe(true)} variant="contained" size="small" sx={{ bgcolor: '#ea580c', '&:hover': { bgcolor: '#c2410c' } }}>
-            Guardar igual
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Confirmar borrar ── */}
-      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>¿Borrar receta?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Esta acción eliminará permanentemente la receta de <strong>{artNombre}</strong>.
-            Los costos calculados dejarán de mostrarse.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDelete(false)} color="inherit" size="small">Cancelar</Button>
-          <Button
-            onClick={handleDelete}
-            color="error" variant="contained" size="small"
-            startIcon={deleting ? <CircularProgress size={14} color="inherit" /> : <DeleteForeverIcon />}
-            disabled={deleting}
-          >
-            {deleting ? 'Borrando…' : 'Sí, borrar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Confirmación al desactivar promo (switch Promoción → Producto) ── */}
-      <Dialog open={confirmarDesactivar} onClose={() => setConfirmarDesactivar(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>
-          ¿Deshacer la promoción?
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {Number(articulo?.id) < 0
-              ? <>Esto eliminará por completo la promoción <strong>{artNombre}</strong>: se borra la promo y sus componentes dejan de estar vinculados. Esta acción no se puede deshacer.</>
-              : <>Esto quitará todos los artículos agregados a <strong>{artNombre}</strong> y la devolverá a producto normal. Sus insumos propios se conservan. ¿Continuar?</>}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmarDesactivar(false)} color="inherit" size="small">
-            Cancelar
-          </Button>
-          <Button
-            onClick={async () => {
-              setConfirmarDesactivar(false);
-              await desactivarPromo();
-            }}
-            color="error"
-            variant="contained"
-            size="small"
-          >
-            Sí, deshacer
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={reemplazarAviso} onClose={() => setReemplazarAviso(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700 }}>Reemplazar insumo</DialogTitle>
-        <DialogContent>
-          <DialogContentText>Esta función está en construcción. Pronto vas a poder reemplazar el insumo en todas las recetas.</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReemplazarAviso(false)}>Entendido</Button>
-        </DialogActions>
-      </Dialog>
+      <DialogosReceta
+        confirmRompeRotos={confirmRompeRotos} resolverConfirmRompe={resolverConfirmRompe}
+        confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete} handleDelete={handleDelete} deleting={deleting} artNombre={artNombre}
+        confirmarDesactivar={confirmarDesactivar} setConfirmarDesactivar={setConfirmarDesactivar} desactivarPromo={desactivarPromo} articulo={articulo}
+        reemplazarAviso={reemplazarAviso} setReemplazarAviso={setReemplazarAviso}
+      />
 
       {/* Popover de búsqueda de la lupa */}
       <Popover
