@@ -18,7 +18,8 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación', icon: '⚙️',
     modules: [
-      { id: 'tableros', label: 'Tableros', emoji: '📈', desc: 'Vista integral de tus negocios.', to: null },
+      // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
+      { id: 'tableros', label: 'Tableros', emoji: '📋', desc: 'La lámina de armado de cada plaza.', to: '/tableros' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Cronogramas del personal.', to: '/rrhh/cronogramas' },
     ],
   },
@@ -59,7 +60,7 @@ function getUserName() {
 }
 
 // Módulo → sección de los roles a medida.
-const SECCION_DE_MODULO = { resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh', recetas: 'recetas' };
+const SECCION_DE_MODULO = { resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh', recetas: 'recetas', tableros: 'recetas' };
 
 export default function Inicio() {
   const navigate = useNavigate();
