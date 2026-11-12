@@ -765,6 +765,8 @@ function PerfilContenido() {
     email_in_use: 'Ese email ya lo usa otra cuenta',
     password_required: 'Escribí tu contraseña actual',
   };
+  // El error va debajo del campo que hay que corregir (clave o email)
+  const errorEsDeClave = emailError === ERR_EMAIL.wrong_password || emailError === ERR_EMAIL.password_required;
   const ejecutarEmail = useCallback(async () => {
     setEmailGuardando(true); setEmailError('');
     try {
@@ -976,7 +978,8 @@ function PerfilContenido() {
               label="Email nuevo"
               value={emailNuevo}
               onChange={(e) => { setEmailNuevo(e.target.value); setEmailError(''); }}
-              helperText="Es tu usuario para entrar a Lazarillo"
+              error={!!emailError && !errorEsDeClave}
+              helperText={(!errorEsDeClave && emailError) || 'Es tu usuario para entrar a Lazarillo'}
             />
             <TextField
               fullWidth size="small" type="password"
@@ -984,8 +987,8 @@ function PerfilContenido() {
               value={emailPass}
               onChange={(e) => { setEmailPass(e.target.value); setEmailError(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && emailPass && emailNuevo.trim()) ejecutarEmail(); }}
-              error={!!emailError}
-              helperText={emailError || 'Para confirmar que sos vos'}
+              error={!!emailError && errorEsDeClave}
+              helperText={(errorEsDeClave && emailError) || 'Para confirmar que sos vos'}
             />
           </Stack>
         </DialogContent>
