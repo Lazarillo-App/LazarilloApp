@@ -19,6 +19,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import LinkIcon from '@mui/icons-material/Link';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import EditIcon from '@mui/icons-material/Edit';
@@ -230,6 +231,21 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
     setMenuRow(null); setMenuAnchor(null);
   };
 
+  // Enlace de invitación para compartir a mano (WhatsApp, etc.): el back regenera el
+  // token y devuelve el link siempre; se copia al portapapeles y se muestra para copiar.
+  const handleCopiarEnlace = async (assignmentId) => {
+    setMenuRow(null); setMenuAnchor(null);
+    try {
+      const res = await resendInvitation(assignmentId);
+      if (!res?.link) { showAlert('No se pudo generar el enlace.', 'error'); return; }
+      try { await navigator.clipboard.writeText(res.link); } catch { /* sin permiso: queda el prompt */ }
+      await showPrompt('Enlace de invitación (ya copiado). El anterior deja de funcionar:', res.link);
+      fetchMembers();
+    } catch (e) {
+      showAlert(`Error: ${e?.message || 'no_se_pudo_generar'}`, 'error');
+    }
+  };
+
   // Elimina a la persona del equipo por completo: revoca TODOS sus accesos
   // (uno por negocio/org donde tenga assignment), no solo uno a la vez como
   // "Editar acceso" → "Quitar acceso". El backend igual protege al owner y
@@ -411,14 +427,18 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           />
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
-                          label={invitacionVencida ? 'Invitación vencida' : estaInvitado ? 'Invitación pendiente' : 'Activo'}
+                          label={invitacionVencida ? 'Vencida' : estaInvitado ? 'Pendiente' : 'Activo'}
                           size="small"
                           color={invitacionVencida ? 'error' : estaInvitado ? 'warning' : 'success'}
                           variant={estaInvitado ? 'outlined' : 'filled'}
-                          sx={{ fontSize: '0.7rem' }}
-                          title={invitacionVencida ? 'El link venció — hay que reenviarla' : undefined}
+                          sx={{ fontSize: '0.7rem', minWidth: 76, '& .MuiChip-label': { px: 1.25, overflow: 'visible' } }}
+                          title={invitacionVencida
+                            ? 'La invitación venció — hay que reenviarla'
+                            : estaInvitado
+                              ? `Invitación pendiente${m.invitation_expires_at ? ` · vence el ${new Date(m.invitation_expires_at).toLocaleDateString('es-AR')}` : ''}`
+                              : undefined}
                         />
                       </TableCell>
                       <TableCell align="right" sx={{ ...COL_ACCIONES, backgroundColor: 'inherit' }}>
@@ -482,6 +502,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           <MenuItem onClick={() => handleResend(menuRow.negocios[0].assignmentId)}>
             <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
             Reenviar invitación
+          </MenuItem>
+        )}
+        {menuRow?.account_status === 'invited' && menuRow?.negocios?.[0]?.assignmentId && (
+          <MenuItem onClick={() => handleCopiarEnlace(menuRow.negocios[0].assignmentId)}>
+            <LinkIcon fontSize="small" sx={{ mr: 1 }} />
+            Copiar enlace
           </MenuItem>
         )}
         {menuRow?.rolMasAlto !== 'owner' && menuRow?.email !== propioEmail && (
