@@ -48,9 +48,13 @@ const VerFactura = React.lazy(() => Promise.all([
 // Campana única (Diego 10/11/2026, opción A): una sola campana en el header con solapas por
 // módulo, que abre en el módulo donde estás. Resultados = Actividad (facturas cargadas, editadas,
 // eliminadas); Recetas = los avisos de artículos/insumos; Cuenta = pedidos de acceso.
+// RRHH (Diego 12/11/2026, «todo ABM queda en Notificaciones»): altas, bajas, cambios de la
+// nómina y de los cronogramas, con su propia solapa.
 const moduloDeRuta = (p) => (p.startsWith('/gestion') ? 'resultados'
+  : p.startsWith('/rrhh') ? 'rrhh'
   : (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) ? 'recetas' : null);
 const esDeCuenta = (n) => n?.kind === 'access_request';
+const esDeRrhh = (n) => String(n?.kind || '').startsWith('rrhh_');
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
@@ -462,17 +466,23 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   // ✅ Badge: UI notifs + no leídas del backend (pedidos de acceso, sync, etc.)
   const badgeCount = unreadUiCount + (unreadCount || 0);
-  const noLeidaRecetas = (n) => !n.read && !esDeCuenta(n);
+  const noLeidaRecetas = (n) => !n.read && !esDeCuenta(n) && !esDeRrhh(n);
   const nRecetas = useMemo(() => merged.filter(noLeidaRecetas).length, [merged]); // eslint-disable-line react-hooks/exhaustive-deps
   const nCuenta = useMemo(() => merged.filter((n) => !n.read && esDeCuenta(n)).length, [merged]);
+  const nRrhh = useMemo(() => merged.filter((n) => !n.read && esDeRrhh(n)).length, [merged]);
+  const hayRrhh = merged.some(esDeRrhh);
+  // solapa a la que pertenece cada aviso
+  const enSolapa = (n, sol) => (sol === 'cuenta' ? esDeCuenta(n) : sol === 'rrhh' ? esDeRrhh(n) : !esDeCuenta(n) && !esDeRrhh(n));
   const hayCuenta = merged.some(esDeCuenta);
   // El número de la campana es el del módulo donde estás; fuera de un módulo, el total.
   const numeroCampana = moduloActual === 'resultados' ? actividad.nuevos
     : moduloActual === 'recetas' ? nRecetas
-      : nRecetas + nCuenta + (verResultados ? actividad.nuevos : 0);
+      : moduloActual === 'rrhh' ? nRrhh
+        : nRecetas + nCuenta + nRrhh + (verResultados ? actividad.nuevos : 0);
   const abrirCampana = () => {
     setSolapa(moduloActual === 'resultados' && verResultados ? 'resultados'
       : moduloActual === 'recetas' ? 'recetas'
+      : moduloActual === 'rrhh' ? 'rrhh'
         : (verResultados && actividad.nuevos > 0 && nRecetas === 0) ? 'resultados' : 'recetas');
     setVistoAlAbrir(actividad.visto);
     setOpen(true);
@@ -699,6 +709,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           {[
             verResultados && { id: 'resultados', nombre: 'Resultados', n: actividad.nuevos },
             { id: 'recetas', nombre: 'Recetas', n: nRecetas },
+            (hayRrhh || moduloActual === 'rrhh') && { id: 'rrhh', nombre: 'RRHH', n: nRrhh },
             hayCuenta && { id: 'cuenta', nombre: 'Cuenta', n: nCuenta },
           ].filter(Boolean).map((m) => (
             <Box key={m.id} component="button" type="button" onClick={() => setSolapa(m.id)}
@@ -712,11 +723,11 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
               {m.n > 0 && <Box component="span" sx={{ bgcolor: '#ef4444', color: '#fff', borderRadius: 999, px: 0.75, fontSize: 10.5, fontWeight: 700, lineHeight: '16px' }}>{m.n > 99 ? '99+' : m.n}</Box>}
             </Box>
           ))}
-          {solapa === 'recetas' && merged.some(deEquipo) && (() => {
+          {(solapa === 'recetas' || solapa === 'rrhh') && merged.some((n) => enSolapa(n, solapa) && deEquipo(n)) && (() => {
             const opciones = [
               { id: 'todas', nombre: 'Todas' },
-              { id: 'mias', nombre: 'Mías', n: merged.filter((n) => !n.read && !esDeCuenta(n) && !deEquipo(n)).length },
-              { id: 'equipo', nombre: 'Del equipo', n: merged.filter((n) => !n.read && !esDeCuenta(n) && deEquipo(n)).length },
+              { id: 'mias', nombre: 'Mías', n: merged.filter((n) => !n.read && enSolapa(n, solapa) && !deEquipo(n)).length },
+              { id: 'equipo', nombre: 'Del equipo', n: merged.filter((n) => !n.read && enSolapa(n, solapa) && deEquipo(n)).length },
             ];
             return (
               <Box sx={{ ml: 'auto', display: 'inline-flex', alignItems: 'center', height: 26, boxSizing: 'border-box', border: '1px solid #e3e6eb', borderRadius: 999, p: '2px' }}>
@@ -745,8 +756,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           ) : loading ? (
             <Box sx={{ display: 'grid', placeItems: 'center', py: 3 }}><CircularProgress size={20} /></Box>
           ) : (() => {
-            const lista = merged.filter((n) => (solapa === 'cuenta' ? esDeCuenta(n)
-              : !esDeCuenta(n) && (quien === 'todas' || !merged.some(deEquipo) || (quien === 'equipo') === deEquipo(n))));
+            const hayEquipo = merged.some((n) => enSolapa(n, solapa) && deEquipo(n));
+            const lista = merged.filter((n) => enSolapa(n, solapa)
+              && (solapa === 'cuenta' || quien === 'todas' || !hayEquipo || (quien === 'equipo') === deEquipo(n)));
             if (!lista.length) return <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center', fontSize: 12.5 }}>No hay notificaciones</Typography>;
             return agruparPorDia(lista.map((n) => ({ ...n, creadoEn: n.created_at }))).map((g) => (
               <Box key={g.dia}>
