@@ -19,7 +19,7 @@ import {
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { mesAnteriorConValor } from '@/gestion/cargaUtils';
-import { ScopeGestion, useDashboard } from '@/gestion/compat';
+import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
 import { ConceptoFijoEmpleado, useConceptosEmpleado } from './apertura/concepto-fijo';
 import { ChipCorregir } from './SinRubro';
 import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
@@ -30,7 +30,7 @@ import {
   PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
 } from './piezasPivot';
 import { useAccess } from '@/context/AccessContext';
-import { habitualRubro, estadoMes, millones, colorCompletitud, rangoMeses } from '@/gestion/completitud';
+import { habitualRubro, estadoMes, millones, colorCompletitud, rangoMeses, colorNumero, anchoBarra, nombreTramo, TOPE_BARRA, pendientesPorMes } from '@/gestion/completitud';
 
 // Rubro "Gastos En Personal": los "proveedores" suelen ser personas de planilla con nombres
 // ambiguos — ahí se antepone el código del ERP (constants.ts de gestion).
@@ -83,7 +83,6 @@ const Punto = ({ color, title }) => (
 
 export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
-  historiaPrev = null, // pivot del año anterior (solo roles sin totales por rubro): lo habitual cruza el año
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
   // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
@@ -95,6 +94,11 @@ export default function PivotCompras({
   const sinColTotal = oculto('tabla.col_total');
   const aperturaPanel = useAperturaPanel();
   const { pdvId: lugarPanel } = useDashboard();
+  // Sin carga (misma clave de caché que el botón «Sin carga»: no repite el pedido) → los meses con
+  // gastos pendientes de carga en un rubro no se ven completos en la fila de completitud.
+  const { data: sinCargaData } = useFetchQuery(['sin-carga', lugarPanel ?? null],
+    sinTotalesRubro && lugarPanel && !oculto('btn.sin_carga') ? `/api/sin-carga?pdvId=${lugarPanel}` : null, { staleTime: 60_000 });
+  const pendientes = useMemo(() => pendientesPorMes(sinCargaData), [sinCargaData]);
   const { data: conceptosFijos } = useConceptosEmpleado(lugarPanel);
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
@@ -154,8 +158,6 @@ export default function PivotCompras({
   }, [data, porProveedor, sort, expanded, mostrar]);
 
   if (isLoading) return <PivotLoading />;
-  // Meses del año anterior por rubro, para comparar en enero/febrero/marzo con el año pasado.
-  const prevPorRubro = new Map((historiaPrev?.rows || []).map((r) => [r.rubroCodigo, r.values || {}]));
   if (error) return <PivotError />;
   if (!data || data.rows.length === 0) return <PivotEmpty />;
 
@@ -182,20 +184,22 @@ export default function PivotCompras({
   // se cargó contra lo habitual (ver gestion/completitud.js). Mes vacío que suele tener gastos:
   // «sin cargar». Sin historia suficiente solo el número.
   const celdaCompletitud = (rubro, mes, sinRubro, habitual) => {
-    const e = estadoMes(rubro.values, mes, year, habitual);
+    const pend = pendientes[`${year}-${String(mes).padStart(2, '0')}`]?.[String(rubro.nombre || '').trim().toLowerCase()] ?? null;
+    const e = estadoMes(rubro.values, mes, year, habitual, new Date(), pend);
     const v = rubro.values[mes];
     const bg = sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25);
-    const color = e.tipo === 'valor' ? colorCompletitud(e.pct) : null;
+    const color = e.tipo === 'valor' ? colorCompletitud(e) : null;
+    const txtPend = e.pendiente?.n ? ` · faltan cargar ${e.pendiente.n} ${e.pendiente.n === 1 ? 'gasto' : 'gastos'} (~${millones(e.pendiente.importe) || '<0,1'} M, según Sin carga)` : '';
     const ref = habitual ? `lo habitual: ${millones(habitual.importe)} M (mediana de ${rangoMeses(habitual.meses)})` : 'sin comparar: el rubro todavía no tiene historia o no es de todos los meses';
-    const tip = e.tipo === 'vacio' ? `Nada cargado este mes · ${ref}`
-      : e.tipo === 'valor' ? `${fmtARS(v)}${e.pct != null ? ` · ${Math.round(e.pct * 100)}% de ${ref}` : ` · ${ref}`}`
+    const tip = e.tipo === 'vacio' ? `Nada cargado este mes${txtPend} · ${ref}`
+      : e.tipo === 'valor' ? `${fmtARS(v)} · ${nombreTramo(e)}${txtPend}${e.pct != null ? ` · ${Math.round(e.pct * 100)}% de ${ref}` : ` · ${ref}`}`
         : '';
     return (
       <TableCell key={mes} {...clic(v, { mes, rubroCodigo: rubro.rubroCodigo })}
         sx={{ ...sxNum, px: 1.5, py: 1.25, position: 'relative', bgcolor: bg, ...sxDe(v) }}>
         {e.tipo === 'valor' && (
           <Tooltip title={tip} placement="top">
-            <Box component="span" sx={{ whiteSpace: 'nowrap', color: color && color !== '#5BC2EA' ? color : 'text.primary' }}>{millones(v)}</Box>
+            <Box component="span" sx={{ whiteSpace: 'nowrap', color: colorNumero(e) || 'text.primary' }}>{millones(v)}</Box>
           </Tooltip>
         )}
         {e.tipo === 'vacio' && (
@@ -203,9 +207,11 @@ export default function PivotCompras({
             <Box component="span" sx={{ whiteSpace: 'nowrap', fontSize: 12, fontWeight: 500, color: '#ef4444' }}>sin cargar</Box>
           </Tooltip>
         )}
-        {e.tipo === 'valor' && e.pct != null && (
-          <Box sx={{ position: 'absolute', left: 12, right: 12, bottom: 5, height: 3, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-            <Box sx={{ width: `${Math.min(e.pct, 1) * 100}%`, height: '100%', bgcolor: color, borderRadius: 2 }} />
+        {e.tipo === 'valor' && (e.pct != null || e.completo != null) && (
+          <Box sx={{ position: 'absolute', left: 12, right: 12, bottom: 5, height: 3, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.06)' }}>
+            <Box sx={{ width: `${anchoBarra(e.pct ?? e.completo) * 100}%`, height: '100%', bgcolor: color, borderRadius: 2 }} />
+            {/* marca de «lo habitual» (100%) */}
+            <Box sx={{ position: 'absolute', left: `${100 / TOPE_BARRA}%`, top: -2, width: 2, height: 7, bgcolor: 'rgba(0,0,0,0.35)', borderRadius: 1 }} />
           </Box>
         )}
       </TableCell>
@@ -216,7 +222,7 @@ export default function PivotCompras({
   // Sin rubro (Diego 06/11/2026): siempre primero, en ámbar y con «corregir» (abre el porqué).
   const filaRubro = (rubro) => {
     const sinRubro = rubro.rubroCodigo === '__sin_rubro';
-    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year, new Date(), prevPorRubro.get(rubro.rubroCodigo) || null) : null;
+    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year) : null;
     return (
     <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
@@ -412,7 +418,7 @@ export default function PivotCompras({
             <TableRow>
               <TableCell colSpan={colSpan} sx={{ bgcolor: MUTED, pt: 0, pb: 0.75, px: 0, borderBottom: 0 }}>
                 <Box sx={{ ...sxStickyNombre(MUTED), display: 'inline-block', px: 2, fontSize: 11.5, color: 'text.disabled', whiteSpace: 'nowrap' }}>
-                  Rubros en millones · la barra compara con lo habitual del rubro (meses de hace 3 o más, aunque sean del año anterior)
+                  Rubros en millones · la barra compara cada mes con lo que el rubro suele tener (meses de hace 3 o más; los rubros esporádicos no se comparan)
                 </Box>
               </TableCell>
             </TableRow>
