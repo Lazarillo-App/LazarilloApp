@@ -20,6 +20,18 @@ import { useRecorrido } from "@/hooks/useRecorrido";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
+// Tipos viejos o abreviados (FCA, A, Tic, Z…) al valor del desplegable: si no, el select queda
+// en un valor que no existe y el botón Generar no aparece (Diego 12/11/2026).
+const normTipo = (t) => {
+  const c = String(t || "").trim(); if (!c || TIPOS_CPB.includes(c)) return c;
+  const u = c.toUpperCase().replace(/[^A-Z]/g, "");
+  if (u.startsWith("NC")) return "NC-A";
+  if (u === "A" || u === "FCA" || u === "FA") return "FcA";
+  if (u === "B" || u === "FCB" || u === "FB") return "FcB";
+  if (u === "C" || u === "FCC" || u === "FC") return "FcC";
+  if (u === "Z" || u.startsWith("TIC") || u === "T") return "Ticket";
+  return c;
+};
 const TIPOS_PERCEPCION = ["Perc. IIBB PBA", "Perc. IIBB CABA", "Perc. IVA RG 3337", "Perc. Ganancias"];
 const ALICUOTAS = [21, 10.5, 27, 0];
 // reparto efectivo de una linea: [{pdv, frac}] (sin reparto = 100% a su PDV)
@@ -714,7 +726,7 @@ function ModalNuevaCarga(props) {
   const [prov, setProv] = useState(ctx.prov || (ctx.proveedorId && (proveedores.find((p) => p.id === ctx.proveedorId) || {}).nombre) || (rde && rde.prov) || (ede && ede.prov) || "");
   const [altaProv, setAltaProv] = useState(null); // {nombre, razon, cuit, tel, dir}
   // ctx.tipoCpb / prefijo / numero / fecha: precarga desde "Sin carga ARCA" (Diego 28/10/2026).
-  const [tipoCpb, setTipoCpb] = useState((rde && (rde.tipoCpb || (rde.comp || "").split(" ")[0])) || (ede && (ede.tipoCpb || partesComp(ede.comp)[0])) || ctx.tipoCpb || "");
+  const [tipoCpb, setTipoCpb] = useState(normTipo((rde && (rde.tipoCpb || (rde.comp || "").split(" ")[0])) || (ede && (ede.tipoCpb || partesComp(ede.comp)[0])) || ctx.tipoCpb || ""));
   const [compPref, setCompPref] = useState(ede ? partesComp(ede.comp)[1] : ctx.prefijo || "");
   const [compNum, setCompNum] = useState(ede ? partesComp(ede.comp)[2] : ctx.numero || "");
   const pad = (v, n) => (v.trim() === "" ? "" : v.replace(/\D/g, "").slice(-n).padStart(n, "0"));
@@ -736,8 +748,15 @@ function ModalNuevaCarga(props) {
   const [iiPieTxt, setIiPieTxt] = useState(null); // edición del II de la factura en la fila de totales
   // Precarga (Repetir / última factura): el primer registro queda abierto para corregir el
   // neto; al confirmarlo se abre el siguiente (Diego 27/10). Los demás quedan con ⚠.
-  const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
-  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
+  // Ticket de MaxiRest: ahí no se discrimina IVA y viene con 0%. Al precargar/repetir no se arrastra
+  // ese 0: va el IVA recordado del ítem o 21% (Diego 12/11/2026). Se puede cambiar igual.
+  const ivaPrecarga = (l, comp) => {
+    if (!(Number(l.alic) === 0 && normTipo(String(comp || "").split(" ")[0]) === "Ticket")) return l.alic;
+    const r = l.tipo === "insumo" ? (MAESTRO_INSUMOS.find((x) => x.nombre === l.item) || {}) : (recDe("concepto", codConcepto(l.item)) || {});
+    return r.alic != null ? r.alic : 21;
+  };
+  const abrirPrecarga = (ls, comp) => ls.map((l, ix) => ({ ...l, alic: ivaPrecarga(l, comp), editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
+  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
   // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
   // valor ("Está bien así").
   //  - Insumo: el unitario contra el último precio del maestro (por unidad base).
@@ -899,6 +918,17 @@ function ModalNuevaCarga(props) {
   useEffect(() => { if (ede && !totalCtrl && totalFactura > 0) setTotalCtrl(fmtNum(Math.round(totalFactura * 100) / 100)); }, []);
   const descGImporte = netoSinG - netoTotal;
   const totCtrl = parseImp(totalCtrl);
+  // Primer registro con el total de la factura (opción B de Diego, 12/11/2026): total − percepciones
+  // − imp. internos, sin IVA. Sigue al total y al IVA hasta que se toca el importe o se agrega otro registro.
+  useEffect(() => {
+    if (lineas.length !== 1 || !lineas[0].autoNeto) return;
+    const l = lineas[0];
+    const objetivo = totCtrl - percTotal - impIntTotal;
+    if (!(objetivo > 0)) return;
+    const v = (Math.round(objetivo / (1 + (Number(l.alic) || 0) / 100) * 100) / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (l.tipo === "insumo") { if (!parseImp(l.unit) && l.ntot !== v) setLineas((ls) => ls.map((x, ix) => ix === 0 ? { ...x, ntot: v } : x)); }
+    else if (l.neto !== v) setLineas((ls) => ls.map((x, ix) => ix === 0 ? { ...x, neto: v } : x));
+  }, [totCtrl, percTotal, impIntTotal, lineas]); // eslint-disable-line react-hooks/exhaustive-deps
   const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
   // II de toda la factura (proveedores que lo pasan solo por factura): se reparte entre los registros con II
   // (o entre todos si ninguno lo lleva) en proporción a su neto; el último absorbe el redondeo.
@@ -922,7 +952,7 @@ function ModalNuevaCarga(props) {
       return { ...x, impint: nuevos[ix] > 0 ? fmtNum(nuevos[ix]) : "", iiu: x.tipo === "insumo" ? (c > 0 && nuevos[ix] > 0 ? fmtNum(Math.round(nuevos[ix] / c * 100) / 100) : "") : undefined };
     }));
   };
-  const cuerpoVacio = lineas.every((l) => !l.item && !(netoBase(l) > 0)) && percepciones.length === 0 && !impIntG && !descG;
+  const cuerpoVacio = lineas.every((l) => !l.item && (l.autoNeto || !(netoBase(l) > 0))) && percepciones.length === 0 && !impIntG && !descG;
   // Vaciar en dos pasos (Diego 05/11/2026): primero el cuerpo; con el cuerpo vacío, todo (como recién abierto).
   // Borrador (Diego 05/11/2026): una factura a medio cargar queda guardada en este navegador para
   // seguirla después (interrupciones, facturas con muchos ítems). Se borra al guardar o al vaciar todo.
@@ -945,7 +975,7 @@ function ModalNuevaCarga(props) {
   const retomarBorrador = () => {
     const b = borrPend; if (!b) return;
     provAnterior.current = b.prov || "";
-    setProv(b.prov || ""); setTipoCpb(b.tipoCpb || ""); setCompPref(b.compPref || ""); setCompNum(b.compNum || ""); setFecha(b.fecha || fechaDefault);
+    setProv(b.prov || ""); setTipoCpb(normTipo(b.tipoCpb || "")); setCompPref(b.compPref || ""); setCompNum(b.compNum || ""); setFecha(b.fecha || fechaDefault);
     setObs(b.obs || ""); setPeriodoF(b.periodoF || null); setTotalCtrl(b.totalCtrl || ""); setDescG(b.descG || ""); setDescGTipo(b.descGTipo || "%"); setImpIntG(b.impIntG || "");
     setPercepciones(b.percepciones || []); setOrigenPre(b.origenPre || null);
     setLineas((b.lineas || []).map((l) => ({ ...l, foco: false })));
@@ -955,7 +985,7 @@ function ModalNuevaCarga(props) {
     setConfVaciar(false); setErrores([]); setAvisosAlGuardar(null);
     setLineas([]); setPercepciones([]); setImpIntG(""); setDescG(""); setOrigenPre(null);
     if (!cuerpoVacio) {
-      setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
+      setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
       return;
     }
     provAnterior.current = "";
@@ -1016,12 +1046,12 @@ function ModalNuevaCarga(props) {
     // foco:false — la línea aparece apenas hay proveedor, tipo, Nº y fecha: si se llevaba el foco,
     // cortaba el Nº de comprobante al primer dígito (FALLA de Diego 05/11/2026).
     if (modo === "factura" && cuerpoVisible && lineas.length === 0 && !existente)
-      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
+      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
   }, [cuerpoVisible]);
   const precargarDe = (f) => {
     // La cabecera ya está completa (tipo, Nº, fecha y total): no se pisa; el foco va al primer registro.
     setOrigenPre(f.comp);
-    setLineas(abrirPrecarga(f.lineas));
+    setLineas(abrirPrecarga(f.lineas, f.comp));
     setPercepciones((f.percepciones || []).map((p) => ({ ...p })));
     const tieneImpLinea = f.lineas.some((l) => parseImp(l.impint) > 0);
     setImpIntG(!tieneImpLinea && f.impInt > 0 ? fmtNum(f.impInt) : "");
@@ -1304,7 +1334,7 @@ function ModalNuevaCarga(props) {
                   {TIPOS_CPB.map((t) => <option key={t}>{t}</option>)}
                 </select></div>
               <div><span style={lab}>Nº comprobante</span>
-                {tipoCpb === "" ? (
+                {tipoCpb === "" || (tipoCpb === "Ticket" && !compNum && !compPref) ? (
                   <button type="button" title="Genera un comprobante interno tipo Ticket: hora y minutos + fecha de hoy"
                     onClick={() => { const ahora = new Date();
                       setTipoCpb("Ticket");
@@ -1377,7 +1407,7 @@ function ModalNuevaCarga(props) {
             )}
             {cuerpoVisible && (<>
             {(() => {
-              const uf = !existente && !origenPre && prov && !lineas.some((l) => netoDe(l) > 0) ? ultConLineas(prov) : null;
+              const uf = !existente && !origenPre && prov && !lineas.some((l) => !l.autoNeto && netoDe(l) > 0) ? ultConLineas(prov) : null;
               if (!uf) return null;
               return (
                 <div style={{ margin: "12px 14px 0", border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1594,9 +1624,9 @@ function ModalNuevaCarga(props) {
                             title="Total neto de la línea: con la cantidad puesta, el unitario se calcula solo"
                             onChange={(e) => {
                               const ntot = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
-                              setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
+                              setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, autoNeto: false, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
                             }} />
-                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value, e.nativeEvent))}
+                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, neto: v, autoNeto: false } : x)); }}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }} />}
                       {/* Impuestos internos: por unidad ⇄ total del registro (los proveedores lo pasan de las dos formas). */}
                       {esIns
@@ -1793,10 +1823,11 @@ function ModalNuevaCarga(props) {
                     // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo).
                     // Va PRIMERO, pegado a los títulos de las columnas (Diego 05/11/2026).
                     const ult = ls[0];
-                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false }))];
+                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false, autoNeto: false }))];
                   }); }}
                   style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
                 {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
+                {confirmable && lineas.length === 1 && lineas[0].autoNeto && <span style={{ fontSize: 11.5, color: "#999" }}>El importe sale del total de la factura (sin IVA ni percepciones). Si no va, cambialo.</span>}
               </div>
                 );
               })()}
