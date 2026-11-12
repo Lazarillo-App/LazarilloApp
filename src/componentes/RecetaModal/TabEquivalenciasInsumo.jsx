@@ -255,7 +255,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontSize: '0.72rem' }}>
             Cuánto trae 1 unidad de este insumo. Ej: 1 botella = 750 ml. Con esto podés usarlo por ml/gr en las recetas.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
             <Typography variant="body2" sx={{ color: 'text.secondary', flexShrink: 0 }}>1 unidad =</Typography>
             <TextField
               type="text"
@@ -297,7 +297,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
                 ? (precioRef / cont) / factorChicaAGrande
                 : 0;
               return (
-                <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+                <Box sx={{ ml: 'auto', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {cont > 0 && (
                     <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                       Costo por {String(envase.contenido)} {uCh} = ${fmtAR(precioRef)}
@@ -317,7 +317,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
 
       {/* Header */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, mb: 0.5 }}>
         {['Nombre', 'Contenido', 'Unidad', sinPlata ? '' : 'Costo', ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.68rem', textAlign: i === 0 ? 'left' : 'center' }}>{h}</Typography>
         ))}
@@ -328,7 +328,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       ) : (
         <>
           {lista.map(eq => (
-            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
               <TextField size="small" defaultValue={eq.nombre}
                 onBlur={e => { if (e.target.value.trim() && e.target.value !== eq.nombre) editar(eq, 'nombre', e.target.value.trim()); }}
                 inputProps={{ style: { fontSize: '0.8rem' } }} />
@@ -356,7 +356,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               // Guardar solo cuando el foco sale de TODA la fila (no al saltar entre sus campos)
               if (!e.currentTarget.contains(e.relatedTarget)) guardarNueva();
             }}
-            sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+            sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <TextField size="small" placeholder="Ej: Cucharada sopera" value={nuevo.nombre}
               onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}
