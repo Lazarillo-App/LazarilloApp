@@ -1278,10 +1278,9 @@ export default function RecetaModal({
     [items]
   );
 
-  const hasDuplicates = useMemo(() =>
-    items.some((it, i) => it.supplyId && items.findIndex(x => String(x.supplyId) === String(it.supplyId)) !== i),
-    [items]
-  );
+  // El mismo insumo puede ir más de una vez (Diego 12/11/2026: 20 g con mamadera para decorar y 50 g
+  // en un dip aparte); cada renglón con su cantidad y su observación. Ya no se bloquea el guardado.
+  const hasDuplicates = false;
 
   // ── Ítems con "unidad rota": la unidad guardada ya no es una opción válida para su
   // insumo/elaborado (ej. se corrigió el rendimiento de una sub-receta y la unidad con la
