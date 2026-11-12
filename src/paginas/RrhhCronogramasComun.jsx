@@ -105,6 +105,39 @@ function duenoDe(fila) {
   return mejor;
 }
 
+/* ── horario propio de una celda (entrada y salida opcional) ──
+   Cada horario distinto de la semana lleva su color de chip: si a alguien le
+   cambia la hora, se nota (pedido de Diego 12/11/2026). */
+const PALETA_HORAS = ['#8B5CF6', '#E07B39', '#0F9AA8', '#D6457A', '#4F5BD5', '#1FA866', '#C8912B', '#8A6A4F'];
+// texto del chip o null si la celda entra con el turno y no tiene salida
+function horarioDe(c, turno) {
+  if (!c) return null;
+  const ent = c.entrada || turno?.entrada || '';
+  if (c.salida) return `${ent || '?'}–${c.salida}`;
+  if (c.entrada && c.entrada !== turno?.entrada) return c.entrada;
+  return null;
+}
+// mapa horario → color, ordenado por hora, para todas las celdas de la semana
+function coloresHorarios(filas, turnos) {
+  const tPorId = new Map((turnos || []).map((t) => [t.id, t]));
+  const set = new Set();
+  (filas || []).forEach((f) => Object.values(f.celdas || {}).forEach((c) => {
+    const h = horarioDe(c, tPorId.get(f.turnoId));
+    if (h) set.add(h);
+  }));
+  const m = new Map();
+  [...set].sort().forEach((h, i) => m.set(h, PALETA_HORAS[i % PALETA_HORAS.length]));
+  return m;
+}
+// horas entre dos 'HH:MM' (cruza medianoche)
+function horasEntre(a, b) {
+  if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return null;
+  const mi = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
+  let d = mi(b) - mi(a);
+  if (d <= 0) d += 1440;
+  return Math.round((d / 60) * 2) / 2;
+}
+
 // ¿es habitual de este espacio? Se aprende de los cronogramas de las últimas
 // 8 semanas (back: empleado.espacios); el sector de la nómina queda de respaldo.
 // Los marcados "No aplica a cronogramas" nunca lo son.
@@ -205,4 +238,7 @@ export {
   duenoDe,
   esHabitual,
   GrillaEjemplo,
+  horarioDe,
+  coloresHorarios,
+  horasEntre,
 };
