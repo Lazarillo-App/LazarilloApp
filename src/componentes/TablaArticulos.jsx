@@ -572,7 +572,6 @@ export default function TablaArticulos({
     if (recetaArticulo === null);
   }, [recetaArticulo]);
   const listRef = useRef(null);
-  const lastJumpedIdRef = useRef(null);
 
   // Alto real de la lista virtualizada: medido del contenedor (no un "100vh -
   // N px" fijo) para que siempre llegue hasta abajo sin importar el zoom, el
@@ -1531,43 +1530,57 @@ export default function TablaArticulos({
   const idToIndexRef = useRef(idToIndex);
   useEffect(() => { idToIndexRef.current = idToIndex; }, [idToIndex]);
 
+  // Salto al artículo buscado (Diego 12/11/2026: «a veces anda y a veces no»). Dos causas:
+  //  1) ArticulosMain pone jumpToArticleId en null a los 800 ms; el cleanup de ese cambio
+  //     cancelaba los reintentos, así que si la agrupación nueva tardaba más en cargar
+  //     (viniendo de Insumos, o con ventas cargando) el salto se perdía sin aviso.
+  //  2) Si después del salto la lista se reordenaba (llegan las ventas y se ordena por
+  //     Ventas), el artículo cambiaba de índice y quedaba fuera de la vista.
+  // Ahora el pedido queda guardado en un ref (independiente de que la prop vuelva a null),
+  // se reintenta hasta 6 s y, durante 2 s después de llegar, si el artículo cambia de lugar
+  // se vuelve a centrar.
+  const saltoRef = useRef(null); // { id, hasta, idx, resaltado }
+  const saltoTimerRef = useRef(null);
+  const intentarSalto = useCallback(() => {
+    const p = saltoRef.current;
+    if (!p) return;
+    if (Date.now() > p.hasta) { saltoRef.current = null; return; }
+    const path = findPath(categoriasRef.current, p.id);
+    const idx = idToIndexRef.current.get(p.id);
+    if (!path || idx == null || !listRef.current) return; // todavía no está: reintenta
+    if (p.idx === idx) return; // ya está centrado en su lugar
+    const primera = p.idx == null;
+    p.idx = idx;
+    if (primera) p.hasta = Math.min(p.hasta, Date.now() + 2000);
+    setExpandedRubro(path.rubroName);
+    setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
+    setTimeout(() => {
+      if (saltoRef.current !== p) return;
+      listRef.current?.scrollToIndex(idx);
+      if (p.resaltado) return;
+      setTimeout(() => {
+        const el = document.querySelector(`[data-article-id="${p.id}"]`);
+        if (el) { p.resaltado = true; el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); }
+      }, 350);
+    }, 50);
+  }, [findPath]);
+
   useEffect(() => {
     const id = Number(jumpToArticleId);
-    // Los artículos manuales usan id negativo a propósito (esManual = id < 0,
-    // ver ArticuloAccionesMenu.jsx) — antes este guard los descartaba acá mismo
-    // (id <= 0), por eso el buscador los encontraba y seleccionaba la agrupación
-    // bien, pero el scroll nunca se disparaba.
+    // Los artículos manuales usan id negativo a propósito (esManual = id < 0).
     if (!Number.isFinite(id) || id === 0) return;
-    if (lastJumpedIdRef.current === id) return;
-
-    let cancelled = false;
-    let tries = 0;
-    const tick = () => {
-      if (cancelled) return;
-      const path = findPath(categoriasRef.current, id);
-      const idx = idToIndexRef.current.get(id);
-      if (!path || idx == null) {
-        tries += 1;
-        if (tries > 25) return; // ~2s, damos por perdido
-        setTimeout(tick, 80);
-        return;
-      }
-      lastJumpedIdRef.current = id;
-      setExpandedRubro(path.rubroName);
-      setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
-      setTimeout(() => {
-        listRef.current?.scrollToIndex(idx);
-        setTimeout(() => {
-          const el = document.querySelector(`[data-article-id="${id}"]`);
-          if (el) { el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); }
-        }, 40);
-      }, 50);
-    };
-    const t0 = setTimeout(tick, 40);
-    return () => { cancelled = true; clearTimeout(t0); };
-  }, [jumpToArticleId, findPath]);
-
-  useEffect(() => { if (!jumpToArticleId) lastJumpedIdRef.current = null; }, [jumpToArticleId]);
+    saltoRef.current = { id, hasta: Date.now() + 6000, idx: null, resaltado: false };
+    if (!saltoTimerRef.current) {
+      saltoTimerRef.current = setInterval(() => {
+        intentarSalto();
+        if (!saltoRef.current) { clearInterval(saltoTimerRef.current); saltoTimerRef.current = null; }
+      }, 100);
+    }
+    intentarSalto();
+  }, [jumpToArticleId, intentarSalto]);
+  // Reacomodo de la lista (carga de la agrupación, orden por ventas): reintentar en el acto.
+  useEffect(() => { intentarSalto(); }, [flatRows, intentarSalto]);
+  useEffect(() => () => { if (saltoTimerRef.current) clearInterval(saltoTimerRef.current); }, []);
 
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
