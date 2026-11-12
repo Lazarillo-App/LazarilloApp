@@ -83,6 +83,14 @@ export default function PlazaPage() {
     setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, mostrar } : r)) })) }));
     try { await PlazasAPI.guardarColor(ref, undefined, mostrar); } catch (e) { setError(e.message); }
   };
+  // Ojito: el ingrediente queda «Oculto» en todas sus recetas (no solo en esta plaza).
+  const ocultarIngrediente = async (ref, oculto) => {
+    setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, oculto } : r)) })) }));
+    try {
+      const r = await PlazasAPI.ocultar(id, ref, oculto);
+      if (r?.renglones > 1) setAviso(`${oculto ? 'Oculto' : 'Visible'} en ${r.renglones} recetas`);
+    } catch (e) { setError(e.message); }
+  };
   // Alias: solo cambia cómo se ve el ingrediente en las plazas (no la receta).
   const aliasIngrediente = async (ref, alias) => {
     setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, alias } : r)) })) }));
@@ -146,7 +154,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Se asignan en ⚙ Configuración › Sectores.</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente}
+        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
