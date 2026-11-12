@@ -130,7 +130,7 @@ function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
         const colH = c.hora ? (c.colorHora || IMG.acc) : IMG.ink;
         if (c.puesto) {
           ctx.fillStyle = colH; ctx.font = "700 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, h, colW - 6), x + colW / 2, y + 13);
-          ctx.fillStyle = IMG.acc; ctx.font = "700 9.5px Sora, sans-serif"; ctx.fillText(recortar(ctx, c.puesto, colW - 6), x + colW / 2, y + 25);
+          ctx.fillStyle = IMG.acc; ctx.font = "600 9.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, c.puesto, colW - 8), x + colW / 2, y + 25);
         } else {
           ctx.fillStyle = colH; ctx.font = "700 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, h, colW - 6), x + colW / 2, y + FILA / 2 + 4);
         }
@@ -169,7 +169,7 @@ function dibujarFrancos({ titulo, sub, items, logo }) {
 const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
-function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
+function ModalExportar({ espacio, puestos = [], negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
   const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
   const [urlCrono, setUrlCrono] = useState(null);
   const [urlFrancos, setUrlFrancos] = useState(null);
@@ -183,13 +183,15 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
     });
     // mismos colores que la grilla: se calculan sobre toda la semana, no solo los turnos tildados
     const colHoras = coloresHorarios(filas, espacio.turnos);
+    // en la imagen va el nombre del puesto entero (Encargado, no E); si no está en la lista, el código
+    const nomPuesto = new Map((puestos || []).map((p) => [p.codigo, p.nombre || p.codigo]));
     const grupos = incluidos.map((t) => ({
       turno: t,
       // una fila por empleado (regla: una fila = un empleado); las filas vacías no salen
       filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
         const celdas = {}; let emp = null;
         Object.entries(f.celdas).forEach(([dia, c]) => {
-          if (c?.empleadoId) { emp = emp || c.empleadoId; const h = horarioDe(c, t); celdas[dia] = { puesto: c.puesto, hora: h, colorHora: h ? colHoras.get(h) : null }; }
+          if (c?.empleadoId) { emp = emp || c.empleadoId; const h = horarioDe(c, t); celdas[dia] = { puesto: c.puesto ? (nomPuesto.get(c.puesto) || c.puesto) : null, hora: h, colorHora: h ? colHoras.get(h) : null }; }
         });
         const dueno = f.ownerEmpleadoId || emp;
         return dueno ? { nombre: nombreFila(empleadosMap.get(dueno)), celdas } : null;
