@@ -2140,6 +2140,14 @@ export default function ArticulosMain(props) {
         setFiltroBusqueda('');
       }
 
+      // Si hay un rubro elegido en la barra lateral y el artículo no está en él, se suelta el
+      // rubro: si no, la tabla filtrada nunca muestra el artículo y el salto no llega
+      // (Diego 12/11/2026). Si el artículo cambia de agrupación, el rubro ya se suelta abajo.
+      if (categoriaSeleccionada && !(categoriaSeleccionada.categorias || [])
+        .some((c) => (c.articulos || []).some((a) => Number(a?.article_id ?? a?.articulo_id ?? a?.articuloId ?? a?.id) === id))) {
+        setCategoriaSeleccionada(null);
+      }
+
       setSelectedArticleId(id);
       // Pasar siempre por null antes de volver a poner el mismo id: si ya
       // estábamos en ese artículo (buscarlo de nuevo, típico con un
@@ -2160,6 +2168,7 @@ export default function ArticulosMain(props) {
       agIndex,
       todoInfo?.todoGroupId,
       agrupacionSeleccionada,
+      categoriaSeleccionada,
       agrupacionesRich,
       markManualPick,
       setAgrupacionSeleccionada,
