@@ -409,6 +409,10 @@ export default function RecetaModal({
     const cantidad = a && b && a.f === b.f && b.v > 0 && Number.isFinite(cant)
       ? Math.round((cant * a.v / b.v) * 1000) / 1000 : lista[idx].cantidad;
     copia[idx] = { ...lista[idx], unidad: pend.nueva, cantidad };
+    // Una sola vez: después llegan más avisos del insumo (el «Reemplazar en las recetas que
+    // usan esa medida», la recarga tras guardar) y volver a convertir partía la cantidad de
+    // nuevo (1 media porción → 0,004). FALLA Diego 12/11/2026, reproducida en Negocio DEMO.
+    eqPendienteRef.current = null;
     setGuardarMermaPendiente(t => t + 1);
     return copia;
   };
