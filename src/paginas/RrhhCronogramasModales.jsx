@@ -24,6 +24,7 @@ import {
   semanasDelMes,
   colorCat,
   normSector,
+  esHabitual,
   Chip,
   Boton,
   nombreDe,
@@ -131,7 +132,7 @@ function dibujarFrancos({ titulo, rango, items }) {
   pieImg(ctx, H);
   return cv;
 }
-const slug = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
 function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
@@ -432,12 +433,13 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
 
   const lista = useMemo(() => {
     const txt = q.trim().toLowerCase();
-    const activos = empleados.filter((e) => e.activo !== false);
+    // "No aplica a cronogramas" no se ofrece (salvo que ya esté en esta celda/fila)
+    const actual = ctx.celda?.empleadoId || ctx.ownerEmpleadoId || null;
+    const activos = empleados.filter((e) => e.activo !== false && (!e.noAplica || e.id === actual));
     const filtra = (e) => !txt || nombreDe(e).toLowerCase().includes(txt) || String(e.codigoMaxi || '').includes(txt);
-    const sectorEsp = normSector(espacio?.sectorNomina);
-    const esDelSector = (e) => sectorEsp && e.sector && normSector(e.sector) === sectorEsp;
-    const propios = activos.filter((e) => esDelSector(e) && filtra(e));
-    const resto = activos.filter((e) => !esDelSector(e) && filtra(e));
+    // primero los habituales del espacio (aprendidos de los cronogramas)
+    const propios = activos.filter((e) => esHabitual(e, espacio) && filtra(e));
+    const resto = activos.filter((e) => !esHabitual(e, espacio) && filtra(e));
     return { propios, resto };
   }, [q, empleados, espacio]);
 
@@ -449,7 +451,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
       color: empId === e.id ? T.ink : T.text, borderBottom: `1px solid ${T.border}`,
     }}>
       <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
-      <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{e.sector || ''}</span>
+      <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{(e.espacios || []).map((x) => x.nombre).join(' · ') || e.sector || ''}</span>
     </div>
   );
 
@@ -472,15 +474,23 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
           style={{ width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
         />
         <div style={{ maxHeight: 190, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 8 }}>
+          {lista.propios.length > 0 && lista.resto.length > 0 && (
+            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Habituales de {espacio?.nombre}</div>
+          )}
           {lista.propios.map((e) => <Fila key={e.id} e={e} />)}
           {lista.propios.length > 0 && lista.resto.length > 0 && (
-            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Otros sectores</div>
+            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Otros</div>
           )}
           {lista.resto.map((e) => <Fila key={e.id} e={e} />)}
           {lista.propios.length === 0 && lista.resto.length === 0 && (
             <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: T.text3 }}>Sin resultados en la nómina.</div>
           )}
         </div>
+        {lista.propios.length === 0 && lista.resto.length > 0 && !q.trim() && (
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 6 }}>
+            Cuando armes cronogramas, los habituales de {espacio?.nombre} van a aparecer primero.
+          </div>
+        )}
 
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

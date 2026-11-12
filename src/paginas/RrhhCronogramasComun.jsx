@@ -57,7 +57,7 @@ const semanasDelMes = (mes) => {
 };
 const colorCat = (tipo) => { const t = tipoNorm(tipo); return t === 'cerrado' ? T.bad : t === 'evento' ? T.violet : T.warn; };
 // "Salón" (espacio) y "SALON" (MaxiRest) son el mismo sector
-const normSector = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+const normSector = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
 
 /* ───────── piezas chicas (estilo del mockup) ───────── */
 const Chip = ({ color, children, onClick, title, activoBg }) => (
@@ -105,6 +105,71 @@ function duenoDe(fila) {
   return mejor;
 }
 
+// ¿es habitual de este espacio? Se aprende de los cronogramas de las últimas
+// 8 semanas (back: empleado.espacios); el sector de la nómina queda de respaldo.
+// Los marcados "No aplica a cronogramas" nunca lo son.
+function esHabitual(emp, espacio) {
+  if (!emp || !espacio || emp.noAplica) return false;
+  if ((emp.espacios || []).some((x) => Number(x.id) === Number(espacio.id))) return true;
+  const sec = normSector(espacio.sectorNomina);
+  return !!(sec && emp.sector && normSector(emp.sector) === sec);
+}
+
+/* ───────── vista previa de EJEMPLO (estado sin datos) ─────────
+   Solo se dibuja: no se guarda nunca ni se puede tocar. Muestra cómo se va a
+   ver una semana armada mientras el negocio todavía no tiene cronogramas. */
+const EJ = {
+  turnos: [
+    { nombre: 'Día · entra 10:00', filas: [['Ana', 'K', [1, 1, 0, 1, 1, 1, 0]], ['Lucas', 'B', [0, 1, 1, 1, 0, 1, 1]]] },
+    { nombre: 'Noche · entra 19:00', filas: [['Sofía', '1', [1, 0, 1, 1, 1, 1, 1]], ['Juan', 'Ru', [1, 1, 1, 0, 0, 1, 1]], ['Mara', '2', [0, 0, 1, 1, 1, 1, 1]]] },
+  ],
+};
+function GrillaEjemplo({ children }) {
+  const celda = { height: 40, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, textAlign: 'center', fontFamily: FB, fontSize: 12 };
+  return (
+    <div style={{ position: 'relative', background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+      <div aria-hidden style={{ opacity: 0.38, pointerEvents: 'none', userSelect: 'none', filter: 'grayscale(0.2)' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ ...celda, width: 132, textAlign: 'left', padding: '0 10px', fontSize: 10.5, color: T.text3, background: T.head }}>FILA / EMPLEADO</th>
+              {DC.map((d, i) => <th key={d} style={{ ...celda, background: T.head, fontFamily: FT, color: T.text2 }}>{d} {i + 1}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {EJ.turnos.map((t) => (
+              <React.Fragment key={t.nombre}>
+                <tr><td colSpan={8} style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 11.5, color: T.accentTxt, background: T.head, letterSpacing: 1, textTransform: 'uppercase', borderBottom: `1px solid ${T.border}` }}>{t.nombre}</td></tr>
+                {t.filas.map(([nom, tag, dias]) => (
+                  <tr key={nom}>
+                    <td style={{ ...celda, textAlign: 'left', padding: '0 10px', fontWeight: 700, color: T.text }}>{nom}</td>
+                    {dias.map((on, i) => (
+                      <td key={i} style={celda}>
+                        {on ? (
+                          <div style={{ margin: 3, borderRadius: 8, background: T.card, lineHeight: '15px', padding: '2px 0' }}>
+                            <div style={{ fontWeight: 700, color: T.text }}>{nom}</div>
+                            <div style={{ fontSize: 10, color: T.accentTxt }}>{tag}</div>
+                          </div>
+                        ) : null}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ width: 460, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 24, textAlign: 'center', boxSizing: 'border-box' }}>
+          <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ATRÁS, UN EJEMPLO</span>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export {
   T,
   FT,
@@ -138,4 +203,6 @@ export {
   nuevaKey,
   duenoEnTurno,
   duenoDe,
+  esHabitual,
+  GrillaEjemplo,
 };
