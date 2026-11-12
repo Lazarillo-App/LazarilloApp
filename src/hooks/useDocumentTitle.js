@@ -1,87 +1,54 @@
 // src/hooks/useDocumentTitle.js
 //
-// Maneja el título de la pestaña del browser:
-// - En cada ruta: "Lazarillo | <vista>"
-// - Cuando el usuario cambia de pestaña: rota un mensaje personalizado
-//   ej. "¡Volvé Juan! 👋"
-// - Cuando vuelve a la pestaña: restaura el título original
+// Título de la pestaña del navegador: «<pantalla> · <módulo>» (ej. «Nómina · RRHH»,
+// «Insumos · Recetas»). La pantalla va PRIMERO porque la pestaña corta el final: con varias
+// pestañas abiertas se ve de un vistazo dónde está cada una (Diego 12/11/2026).
+// Antes, al salir de la pestaña el título rotaba mensajes («¡Volvé Diego! 👋») y todas las
+// pestañas de fondo quedaban iguales: se sacó.
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
 
-// Mapeo de paths a títulos legibles
-const ROUTE_TITLES = {
-    '/': 'Lazarillo',
-    '/menu': 'Menú',
-    '/insumos': 'Insumos',
-    '/perfil': 'Perfil',
-    '/configuracion': 'Configuración',
-    '/login': 'Iniciar sesión',
-    '/register': 'Registro',
-    '/activar': 'Activar cuenta',
-    '/forgot-password': 'Recuperar contraseña',
-    '/reset-password': 'Nueva contraseña',
-    '/aceptar-invitacion': 'Activar cuenta',
-    '/seleccionar-negocio': 'Seleccionar negocio',
-    '/admin': 'Admin',
-};
+// [prefijo de ruta, pantalla, módulo]. Gana el prefijo más largo que coincida.
+const RUTAS = [
+    ['/inicio', 'Inicio', null],
+    ['/menu', 'Artículos', 'Recetas'],
+    ['/insumos', 'Insumos', 'Recetas'],
+    ['/agrupacioneslist', 'Agrupaciones', 'Recetas'],
+    ['/tableros', 'Tableros', 'Operación'],
+    ['/plaza', 'Tableros', 'Operación'],
+    ['/rrhh/cronogramas', 'Cronogramas', 'RRHH'],
+    ['/rrhh/nomina', 'Nómina', 'RRHH'],
+    ['/rrhh', 'RRHH', null],
+    ['/gestion/conceptos', 'Conceptos de caja', 'Resultados'],
+    ['/gestion/medios-pago', 'Medios de pago', 'Resultados'],
+    ['/gestion', 'Resultados', null],
+    ['/m', 'Resultados', null],
+    ['/configuracion', 'Configuración', null],
+    ['/perfil', 'Perfil', null],
+    ['/alta', 'Asistente de alta', null],
+    ['/admin', 'Admin', null],
+    ['/login', 'Iniciar sesión', null],
+    ['/register', 'Registro', null],
+    ['/activar', 'Activar cuenta', null],
+    ['/forgot-password', 'Recuperar contraseña', null],
+    ['/reset-password', 'Nueva contraseña', null],
+    ['/aceptar-invitacion', 'Activar cuenta', null],
+    ['/seleccionar-negocio', 'Seleccionar negocio', null],
+].sort((a, b) => b[0].length - a[0].length);
 
-// Resuelve el título según la ruta. Maneja paths con sub-segmentos.
-function resolveRouteTitle(pathname) {
-    if (ROUTE_TITLES[pathname]) return ROUTE_TITLES[pathname];
-
-    // Coincidencia por prefijo (ej /admin/users → "Admin")
-    for (const [path, title] of Object.entries(ROUTE_TITLES)) {
-        if (path !== '/' && pathname.startsWith(path)) return title;
-    }
-    return null;
+function tituloDe(pathname, search) {
+    const r = RUTAS.find(([p]) => pathname === p || pathname.startsWith(`${p}/`));
+    if (!r) return 'Lazarillo';
+    let [, pantalla, modulo] = r;
+    // Menú › vista Diseño (la carta) vive en /menu?vista=diseno.
+    if (r[0] === '/menu' && new URLSearchParams(search).get('vista') === 'diseno') pantalla = 'Menú';
+    return modulo ? `${pantalla} · ${modulo}` : `${pantalla} · Lazarillo`;
 }
-
-// Mensajes para "volver" — rotan random
-const COME_BACK_MESSAGES = [
-    (name) => `¡Volvé ${name}! 👋`,
-    (name) => `${name}, te espero 🌟`,
-    (name) => `${name}... Volvé a la acción! 🚀`,
-    (name) => `Seguí gestionando, ${name} 💪`,
-];
 
 export function useDocumentTitle() {
     const location = useLocation();
-    const { user } = useAuth() || {};
-    const originalTitleRef = useRef('Lazarillo');
-
-    // Nombre a usar en el mensaje (prioriza display_name)
-    const userName = (user?.display_name || user?.name || '').trim().split(' ')[0] || null;
-
-    // Actualizar título cuando cambia la ruta
     useEffect(() => {
-        const sectionTitle = resolveRouteTitle(location.pathname);
-        const title = sectionTitle && sectionTitle !== 'Lazarillo'
-            ? `Lazarillo | ${sectionTitle}`
-            : 'Lazarillo';
-        document.title = title;
-        originalTitleRef.current = title;
-    }, [location.pathname]);
-
-    // Listener de visibilidad: cambia título cuando el user sale/vuelve
-    useEffect(() => {
-        const onVisibilityChange = () => {
-            if (document.hidden) {
-                // Usuario salió de la pestaña → mensaje personalizado
-                if (userName) {
-                    const msgFn = COME_BACK_MESSAGES[Math.floor(Math.random() * COME_BACK_MESSAGES.length)];
-                    document.title = msgFn(userName);
-                } else {
-                    document.title = '¡Volvé pronto! 👋';
-                }
-            } else {
-                // Volvió → restaurar el título de la ruta
-                document.title = originalTitleRef.current;
-            }
-        };
-
-        document.addEventListener('visibilitychange', onVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-    }, [userName]);
+        document.title = tituloDe(location.pathname, location.search);
+    }, [location.pathname, location.search]);
 }
