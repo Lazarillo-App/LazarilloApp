@@ -1343,7 +1343,7 @@ function ModalNuevaCarga(props) {
         </div>
 
         {/* ── Cuerpo: lo único que scrollea ── */}
-        <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? {} : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
+        <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? { marginBottom: 16 } : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
             reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
@@ -2182,6 +2182,18 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
       ))}
     </div>
   );
+  // Pie igual al de Factura y Gastos Varios (Diego 12/11/2026): barra gris a todo el ancho, total a la
+  // izquierda y acciones a la derecha, fija abajo y separada del borde del modal.
+  const totalPie = sub === "sueldo" ? totalN : parseImp(importeA);
+  const pie = (
+    <div style={{ gridColumn: "1 / -1", position: "sticky", bottom: 0, zIndex: 3, marginTop: 4, background: C.fondo, border: `1px solid ${C.borde}`, borderRadius: 12, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 13.5 }}>TOTAL <b style={{ fontSize: 16 }}>{$fmt(totalPie || 0)}</b> <span style={{ color: "#999", fontSize: 12 }}>· {sub === "sueldo" ? "Sueldo" : "Adelanto"}{emp ? ` de ${[emp.nombre, emp.apellido].filter(Boolean).join(" ")}` : ""}</span></span>
+      <span style={{ flex: 1 }} />
+      <button type="button" style={btn(false)} onClick={onCerrar}>Cancelar</button>
+      <button type="button" style={btn(false)} disabled={guardando} onClick={() => guardar(true)}>Guardar y cargar otro empleado</button>
+      <button type="button" style={{ ...btn(true), opacity: guardando ? 0.5 : 1 }} disabled={guardando} onClick={() => guardar(false)}>{guardando ? "Guardando…" : "Guardar"}</button>
+    </div>
+  );
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 16, alignItems: "start" }}>
       <div>
@@ -2289,11 +2301,6 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             {errores.map((e, i) => <div key={i} style={{ fontSize: 12.5, color: C.rojo }}>• {e}</div>)}
           </div>
         )}
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <button style={{ ...btn(true), opacity: guardando ? 0.5 : 1 }} disabled={guardando} onClick={() => guardar(false)}>{guardando ? "Guardando…" : "Guardar"}</button>
-          <button style={btn(false)} disabled={guardando} onClick={() => guardar(true)}>Guardar y cargar otro empleado</button>
-          <button style={btn(false)} onClick={onCerrar}>Cancelar</button>
-        </div>
       </div>
 
       {/* Cuenta del empleado por período */}
@@ -2329,6 +2336,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
                   <BtnEliminar onConfirmar={() => anular(c.id)} style={{ fontSize: 11.5, color: C.rojo }} /></div>))}
             </div>))}
       </div>
+      {pie}
     </div>
   );
 }
