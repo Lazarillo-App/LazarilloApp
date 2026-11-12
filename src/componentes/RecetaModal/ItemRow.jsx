@@ -1281,7 +1281,8 @@ export default function ItemRow({
             </Typography>
           </Box>
 
-          {/* Secreto — no se muestra en la vista de cocina (solo control de costos del dueño/admin) */}
+          {/* Oculto (antes «Secreto», Diego 12/11/2026) — no se muestra en la vista de cocina ni en los Tableros.
+              El ojito del tablero lo cambia en todas las recetas que usan el ingrediente. */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Checkbox
               size="small"
@@ -1289,10 +1290,10 @@ export default function ItemRow({
               onChange={e => onChange(index, { secreto: e.target.checked })}
               sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
             />
-            <Tooltip title="Secreto: no se mostrará en la vista de cocina (solo para control de costos)">
+            <Tooltip title="Oculto: no se muestra en la vista de cocina ni en los Tableros (sigue sumando al costo)">
               <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
                 onClick={() => onChange(index, { secreto: item.secreto !== true })}>
-                Secreto
+                Oculto
               </Typography>
             </Tooltip>
           </Box>
