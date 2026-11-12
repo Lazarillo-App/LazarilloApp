@@ -34,9 +34,11 @@ const fmtCant = (c, u) => {
 
 const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arrastreActivo, onOcultar, onBorrar, onColor, onAgarrar }, ref) {
   const c = PALETA[(Number(r.color) || 0) % PALETA.length];
-  // Peso de la receta u observación del renglón, según lo elegido para ese ingrediente (vale en
-  // todas las recetas). Si se eligió observación y esta receta no la tiene, va el peso.
-  const cant = r.mostrar === 'obs' && r.obs ? r.obs : fmtCant(r.cantidad, r.unidad);
+  // Peso, observación o ambos, según lo elegido para ese ingrediente (vale en todas las recetas).
+  // La observación va en otro renglón con «↳», como en la vista cocina (Diego 12/11/2026). Si se eligió
+  // solo observación y esta receta no la tiene, va el peso.
+  const conObs = (r.mostrar === 'obs' || r.mostrar === 'ambos') && !!String(r.obs || '').trim();
+  const cant = r.mostrar === 'obs' && conObs ? '' : fmtCant(r.cantidad, r.unidad);
   if (!armando && r.oculto) return null;
   return (
     <Box ref={ref} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: '5px', opacity: r.oculto && !levantado ? 0.35 : 1,
@@ -54,12 +56,17 @@ const Renglon = React.forwardRef(function Renglon({ r, armando, levantado, arras
       )}
       <Box onClick={armando ? onColor : undefined} sx={{
         flex: 1, minWidth: 0, bgcolor: c.bg, color: c.fg, border: c.borde ? '1.5px solid #111827' : '1px solid rgba(0,0,0,.08)',
-        borderRadius: '3px', px: 0.75, py: 0.4, minHeight: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: '3px', px: 0.75, py: 0.4, minHeight: 30, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         textAlign: 'center', cursor: armando ? 'pointer' : 'default',
       }}>
         <Typography sx={{ fontWeight: 800, fontStyle: 'italic', fontSize: '0.86rem', letterSpacing: '.02em', textTransform: 'uppercase', lineHeight: 1.1 }}>
           {cant ? <span style={{ marginRight: 6 }}>{cant}</span> : null}{r.alias || r.nombre}
         </Typography>
+        {conObs && (
+          <Typography sx={{ fontStyle: 'italic', fontWeight: 600, fontSize: '0.74rem', lineHeight: 1.15, mt: '2px', opacity: 0.9 }}>
+            ↳ {r.obs}
+          </Typography>
+        )}
       </Box>
       {armando && (r.extra ? (
         <Tooltip title="Quitar renglón"><IconButton size="small" onClick={onBorrar} sx={{ p: 0.25 }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
@@ -81,7 +88,8 @@ const lbl = { fontSize: '0.68rem', fontWeight: 700, color: 'text.secondary', let
 const campo = { height: 40, border: '1px solid', borderColor: 'divider', borderRadius: '6px', px: 1.25, fontSize: '0.85rem', width: '100%',
   '&.Mui-focused': { borderColor: '#5BC2EA', boxShadow: '0 0 0 2px rgba(91,194,234,.25)' } };
 function PanelIngrediente({ r, producto, onCambiar, onEditarItem, onCrearEquivalencia }) {
-  const [alias, setAlias] = useState(r.alias || '');
+  // El alias arranca con el nombre del ingrediente, listo para editar (Diego 12/11/2026).
+  const [alias, setAlias] = useState(r.alias || r.nombre || '');
   const [cantidad, setCantidad] = useState(r.cantidad != null ? String(r.cantidad).replace('.', ',') : '');
   const [obs, setObs] = useState(r.obs || '');
   const [unidad, setUnidad] = useState(r.unidad || '');
@@ -101,8 +109,14 @@ function PanelIngrediente({ r, producto, onCambiar, onEditarItem, onCrearEquival
     }
     setUnidad(nueva);
   };
-  const guardarAlias = () => { const a = alias.trim(); if (a !== (r.alias || '')) onCambiar({ alias: a }); };
-  const actual = r.mostrar === 'obs' ? 'obs' : 'peso';
+  // Igual al nombre (o vacío) = sin alias.
+  const guardarAlias = () => {
+    const a = alias.trim();
+    const nuevo = !a || a.toLowerCase() === String(r.nombre || '').trim().toLowerCase() ? '' : a;
+    if (nuevo !== (r.alias || '')) onCambiar({ alias: nuevo });
+    if (!a) setAlias(r.nombre || '');
+  };
+  const actual = ['obs', 'ambos'].includes(r.mostrar) ? r.mostrar : 'peso';
   const cambioReceta = cantidad !== (r.cantidad != null ? String(r.cantidad).replace('.', ',') : '') || obs !== (r.obs || '') || unidad !== (r.unidad || '');
   return (
     <Box sx={{ p: 1.5, width: 300 }}>
@@ -166,6 +180,7 @@ function PanelIngrediente({ r, producto, onCambiar, onEditarItem, onCrearEquival
             sx={{ mb: 1, '& .MuiToggleButton-root': { height: 34, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600 } }}>
             <ToggleButton value="peso">Peso</ToggleButton>
             <ToggleButton value="obs">Observación</ToggleButton>
+            <ToggleButton value="ambos">Ambos</ToggleButton>
           </ToggleButtonGroup>
         </>
       )}
