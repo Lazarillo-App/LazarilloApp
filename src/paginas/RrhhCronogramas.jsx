@@ -16,7 +16,7 @@
 // drag & drop entre celdas y totales del MES (días dentro del mes de la semana).
 // Tema y helpers en RrhhCronogramasComun.jsx; modales e imagen en RrhhCronogramasModales.jsx.
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { RrhhAPI, negocioActual } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +26,7 @@ import SpotlightTour from '../componentes/SpotlightTour';
 import { useRecorrido } from '../hooks/useRecorrido';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {
   T,
   FT,
@@ -295,6 +296,111 @@ export default function RrhhCronogramas() {
   const mutarFilas = useCallback((fn) => {
     setFilas((prev) => { const next = fn(prev); filasRef.current = next; programarGuardado(next); return next; });
   }, [programarGuardado]);
+
+  /* ── mover un empleado (fila) de lugar: arrastrando la manija ⋮⋮ (Diego 12/11/2026) ──
+     Pointer events (mouse y touch). Mientras se arrastra, la grilla se reordena EN VIVO: la fila
+     levantada ocupa el lugar exacto donde va a quedar (borde celeste + sombra) y las demás se
+     corren con animación. Puede pasar a otro turno del mismo espacio (si esa persona no tiene
+     ya una fila ahí). Lo que se ve al soltar es lo que se guarda. Esc cancela. */
+  const [arrastreFila, setArrastreFila] = useState(null); // { key, turnoOrig, turno, pos, mids, heads }
+  const arrastreFilaRef = useRef(null);
+  arrastreFilaRef.current = arrastreFila;
+  const nodosFila = useRef(new Map());   // key de fila → <tr>
+  const nodosTurno = useRef(new Map());  // turnoId → <tr> del encabezado
+  const topsAntes = useRef(new Map());   // para la animación (FLIP)
+  // filas reordenadas: saca la fila y la pone en el turno destino, en la posición pos
+  const moverFila = (fs, key, turnoId, pos) => {
+    const f = fs.find((x) => x.key === key);
+    if (!f) return fs;
+    const resto = fs.filter((x) => x.key !== key);
+    const delTurno = resto.filter((x) => x.turnoId === turnoId);
+    const movida = { ...f, turnoId };
+    if (pos < delTurno.length) {
+      const i = resto.indexOf(delTurno[pos]);
+      return [...resto.slice(0, i), movida, ...resto.slice(i)];
+    }
+    const ult = delTurno.length ? resto.indexOf(delTurno[delTurno.length - 1]) + 1 : resto.length;
+    return [...resto.slice(0, ult), movida, ...resto.slice(ult)];
+  };
+  const filasVista = arrastreFila ? moverFila(filas, arrastreFila.key, arrastreFila.turno, arrastreFila.pos) : filas;
+  const medirFilas = () => {
+    const m = new Map();
+    nodosFila.current.forEach((el, k) => { if (el) m.set(k, el.getBoundingClientRect().top); });
+    return m;
+  };
+  useLayoutEffect(() => {
+    const antes = topsAntes.current;
+    if (!antes.size) return;
+    nodosFila.current.forEach((el, k) => {
+      if (!el || !antes.has(k) || k === arrastreFila?.key) return;
+      const dy = antes.get(k) - el.getBoundingClientRect().top;
+      if (!dy) return;
+      el.style.transition = 'none';
+      el.style.translate = `0 ${dy}px`;
+      requestAnimationFrame(() => { el.style.transition = 'translate .15s ease'; el.style.translate = '0 0'; });
+    });
+    topsAntes.current = new Map();
+  }, [arrastreFila?.pos, arrastreFila?.turno]); // eslint-disable-line react-hooks/exhaustive-deps
+  const agarrarFila = (e, fila) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    // posiciones al agarrar: centro de cada fila visible y arriba de cada encabezado de turno
+    const mids = [];
+    filas.forEach((f) => {
+      const b = nodosFila.current.get(f.key)?.getBoundingClientRect();
+      if (b) mids.push({ key: f.key, turnoId: f.turnoId, mid: b.top + b.height / 2 });
+    });
+    const heads = (espacio?.turnos || [])
+      .filter((t) => !minimizados[`${espacioId}:${t.id}`])
+      .map((t) => ({ turnoId: t.id, top: nodosTurno.current.get(t.id)?.getBoundingClientRect().top ?? Infinity }))
+      .sort((a, b) => a.top - b.top);
+    const pos = filas.filter((f) => f.turnoId === fila.turnoId).findIndex((f) => f.key === fila.key);
+    setArrastreFila({ key: fila.key, turnoOrig: fila.turnoId, turno: fila.turnoId, pos, mids, heads });
+  };
+  useEffect(() => {
+    if (!arrastreFila) return undefined;
+    const alMover = (e) => {
+      const a = arrastreFilaRef.current;
+      if (!a) return;
+      const y = e.clientY;
+      // turno destino: el último encabezado que quedó arriba del puntero
+      let turno = a.heads.length ? a.heads[0].turnoId : a.turnoOrig;
+      a.heads.forEach((h) => { if (h.top <= y) turno = h.turnoId; });
+      // una fila = un empleado por turno: si ya tiene fila en ese turno, se queda en el suyo
+      const fila = filasRef.current.find((f) => f.key === a.key);
+      const dueno = fila ? duenoDe(fila) : null;
+      if (turno !== a.turnoOrig && dueno && duenoEnTurno(filasRef.current, turno, dueno, a.key)) turno = a.turnoOrig;
+      const pos = a.mids.reduce((n, m) => (m.key !== a.key && m.turnoId === turno && m.mid < y ? n + 1 : n), 0);
+      if (pos !== a.pos || turno !== a.turno) { topsAntes.current = medirFilas(); setArrastreFila({ ...a, turno, pos }); }
+    };
+    const alSoltar = () => {
+      const a = arrastreFilaRef.current;
+      setArrastreFila(null);
+      if (!a) return;
+      const posOrig = filasRef.current.filter((f) => f.turnoId === a.turnoOrig).findIndex((f) => f.key === a.key);
+      if (a.turno === a.turnoOrig && a.pos === posOrig) return;
+      mutarFilas((fs) => moverFila(fs, a.key, a.turno, a.pos));
+      if (a.turno !== a.turnoOrig) {
+        const tn = (espacio?.turnos || []).find((t) => t.id === a.turno);
+        avisar(`Pasó al turno ${tn?.nombre || ''} ✓`);
+      }
+    };
+    const alTecla = (e) => { if (e.key === 'Escape') setArrastreFila(null); };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', alMover);
+    window.addEventListener('pointerup', alSoltar);
+    window.addEventListener('pointercancel', alSoltar);
+    window.addEventListener('keydown', alTecla);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', alMover);
+      window.removeEventListener('pointerup', alSoltar);
+      window.removeEventListener('pointercancel', alSoltar);
+      window.removeEventListener('keydown', alTecla);
+    };
+  }, [!!arrastreFila]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── acciones de grilla ── */
   const abrirCelda = (fila, dia, turno) => {
@@ -674,7 +780,7 @@ export default function RrhhCronogramas() {
   // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
   // encabezado van en el color de contraste del tema, si no los días no se leían (Diego 07/11/2026).
   const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: TH_TXT, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
-  const colFila = { width: 132, minWidth: 132, maxWidth: 132, boxSizing: 'border-box' };
+  const colFila = { width: 152, minWidth: 152, maxWidth: 152, boxSizing: 'border-box' }; // +20 por la manija ⋮⋮
   // nombres largos: hasta 2 renglones y recién ahí "…"
   const dosRenglones = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '15px', maxHeight: 30, wordBreak: 'break-word' };
   const thSup = { position: 'sticky', top: 0, zIndex: 3, height: 26, boxSizing: 'border-box', padding: '4px 6px', fontSize: 11 };
@@ -833,12 +939,12 @@ export default function RrhhCronogramas() {
               </thead>
               <tbody>
                 {(espacio?.turnos || []).map((t) => {
-                  const slots = filas.filter((f) => f.turnoId === t.id);
+                  const slots = filasVista.filter((f) => f.turnoId === t.id);
                   const kMin = `${espacioId}:${t.id}`;
                   const minim = !!minimizados[kMin];
                   return (
                     <React.Fragment key={t.id}>
-                      <tr>
+                      <tr ref={(el) => { if (el) nodosTurno.current.set(t.id, el); else nodosTurno.current.delete(t.id); }}>
                         <td colSpan={14} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
                           style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: 50, zIndex: 2, cursor: 'pointer', userSelect: 'none' }}>
                           <span style={{ display: 'inline-block', width: 18 }}>{minim ? '▸' : '▾'}</span>
@@ -855,12 +961,22 @@ export default function RrhhCronogramas() {
                         const tot = dueno ? totales.get(dueno) : null;
                         const francos = tot?.francos || [];
                         const totMes = dueno ? totalesMes.get(dueno) : null;
+                        const levantada = arrastreFila?.key === f.key;
                         return (
-                          <tr key={f.key}>
+                          <tr key={f.key}
+                            ref={(el) => { if (el) nodosFila.current.set(f.key, el); else nodosFila.current.delete(f.key); }}
+                            style={levantada ? { position: 'relative', zIndex: 4, outline: `2px solid ${T.accent}`, outlineOffset: -2, boxShadow: '0 8px 18px rgba(0,0,0,.18)', background: T.band } : undefined}>
                             <td onClick={() => abrirFila(f, t)}
-                              style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, cursor: 'pointer' }}
+                              style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: levantada ? T.band : T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px 4px 2px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, cursor: 'pointer' }}
                               title={`${dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'} · clic: cambiar empleado, puesto, entrada u horas de toda la fila`}>
-                              <div style={dosRenglones}>{dueno ? nombreFila(empleadosMap.get(dueno)) : 'Fila libre'}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <span onPointerDown={(e) => agarrarFila(e, f)} onClick={(e) => e.stopPropagation()}
+                                  title="Arrastrar para mover de lugar (también a otro turno)"
+                                  style={{ width: 25, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: levantada ? 'grabbing' : 'grab', touchAction: 'none', color: levantada ? T.accentTxt : T.text3, userSelect: 'none' }}>
+                                  <DragIndicatorIcon style={{ fontSize: 19 }} />
+                                </span>
+                                <div style={dosRenglones}>{dueno ? nombreFila(empleadosMap.get(dueno)) : 'Fila libre'}</div>
+                              </div>
                             </td>
                             {diasISO.map((iso, dia) => {
                               const c = f.celdas[dia];
