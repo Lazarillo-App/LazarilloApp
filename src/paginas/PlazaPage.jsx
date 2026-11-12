@@ -6,6 +6,7 @@ import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar } fro
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
+import { PLAZAS_EJEMPLO } from '@/componentes/plazas/ejemploPlaza';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 import { useBusiness } from '@/context/BusinessContext';
 import RecetaModal from '@/componentes/RecetaModal';
@@ -25,20 +26,52 @@ export function TablerosInicio() {
   const [t, setT] = useState(null);
   const [creando, setCreando] = useState(false);
   const [nueva, setNueva] = useState(null);
+  const [conReceta, setConReceta] = useState(null); // productos con receta del negocio (dato real del primer paso)
+  const [ej, setEj] = useState(0); // qué tablero de ejemplo se muestra
   useEffect(() => { setT(null); PlazasAPI.tablero().then(setT).catch(() => setT({ plazas: [], puedeCrear: false, sectores: [] })); }, [activeId]);
+  useEffect(() => {
+    if (!t || t.plazas.length) return;
+    PlazasAPI.articulos().then((r) => setConReceta(r.articulos.length)).catch(() => setConReceta(null));
+  }, [t]);
   if (nueva) return <Navigate to={`/tableros/${nueva}`} replace />;
   if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
   if (t.plazas.length) return <Navigate to={`/tableros/${t.plazas[0].id}`} replace />;
+  // Sin plazas (negocio nuevo): tarjeta del primer paso + tableros de EJEMPLO atenuados que no se
+  // pueden tocar y no se guardan (regla del proyecto para pantallas vacías). Se ve el diseño real
+  // de la lámina —colores, pesos, observaciones— para que se entienda qué se va a armar.
+  const ejemplo = PLAZAS_EJEMPLO[ej];
   return (
-    <Stack alignItems="center" spacing={1.5} sx={{ py: 10, bgcolor: '#fff', minHeight: '100%' }}>
-      <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.1rem' }}>Todavía no hay plazas</Typography>
-      <Typography color="text.secondary" sx={{ fontSize: '0.9rem', textAlign: 'center', maxWidth: 420 }}>
-        Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
-      </Typography>
-      {t.puedeCrear && <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>}
+    <Box sx={{ px: 2, py: 2, bgcolor: '#fff', minHeight: '100%' }}>
+      <Box sx={{ maxWidth: 720, mx: 'auto', mb: 3, p: 2.5, borderRadius: 2, border: '1px solid #5BC2EA', bgcolor: 'rgba(91,194,234,.06)', textAlign: 'center' }}>
+        <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.1rem' }}>Armá tu primera plaza</Typography>
+        <Typography color="text.secondary" sx={{ fontSize: '0.9rem', mt: 0.75, mb: 1.5 }}>
+          Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
+        </Typography>
+        {t.puedeCrear && <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>}
+        {conReceta != null && (
+          <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', mt: 1 }}>
+            {conReceta > 0
+              ? `Tenés ${conReceta} producto${conReceta === 1 ? '' : 's'} con receta listo${conReceta === 1 ? '' : 's'} para sumar.`
+              : 'Primero cargá la receta de tus productos en Recetas › Artículos: la plaza los muestra tal cual.'}
+          </Typography>
+        )}
+      </Box>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <Box component="span" sx={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: 'text.secondary', border: '1px solid #d8dde6', borderRadius: 1, px: 1, py: 0.25 }}>EJEMPLO</Box>
+        {PLAZAS_EJEMPLO.map((pz, i) => (
+          <Box key={pz.nombre} component="button" type="button" onClick={() => setEj(i)}
+            sx={{ border: 0, bgcolor: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 14, fontWeight: i === ej ? 700 : 500, color: i === ej ? 'text.primary' : 'text.secondary', px: 0.5, borderBottom: i === ej ? '2px solid #5BC2EA' : '2px solid transparent' }}>
+            {pz.nombre}
+          </Box>
+        ))}
+        <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>· {ejemplo.sector} · así se ve un tablero, no se guarda</Typography>
+      </Stack>
+      <Box aria-hidden sx={{ opacity: 0.85, pointerEvents: 'none', userSelect: 'none' }}>
+        <VistaPlaza productos={ejemplo.productos} />
+      </Box>
       <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
         onGuardado={(id) => { setCreando(false); if (id) setNueva(id); }} />
-    </Stack>
+    </Box>
   );
 }
 // Atajo viejo /plaza/:id → /tableros/:id
