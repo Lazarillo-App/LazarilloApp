@@ -1,5 +1,5 @@
 // src/paginas/PlazaPage.jsx — /plaza/:id: la vista «diseño» de una plaza de despacho (Diego 11/11/2026).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import EditorPlaza from '@/componentes/plazas/EditorPlaza';
 import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar } from '@mui/material';
@@ -65,7 +65,12 @@ export default function PlazaPage() {
     setError(null);
     try { setData(await PlazasAPI.vista(id)); } catch (e) { setError(e.message); }
   }, [id]);
-  useEffect(() => { setData(null); setArmando(false); cargar(); }, [cargar, activeId]);
+  // Al cambiar de negocio, la plaza abierta es del negocio anterior (daba «not_found», Diego 12/11/2026):
+  // se vuelve a /tableros, que entra a la primera plaza del negocio nuevo.
+  const negocioInicial = useRef(activeId);
+  if (negocioInicial.current == null && activeId != null) negocioInicial.current = activeId;
+  const cambioNegocio = negocioInicial.current != null && activeId != null && String(activeId) !== String(negocioInicial.current);
+  useEffect(() => { if (cambioNegocio) return; setData(null); setArmando(false); cargar(); }, [cargar, activeId, cambioNegocio]);
 
   // Se actualiza al toque en pantalla y se guarda atrás (sin recargar la plaza).
   const cambiar = async (articleId, renglones) => {
@@ -106,6 +111,9 @@ export default function PlazaPage() {
     } catch (e) { setError(e.message); return false; }
   };
 
+  if (cambioNegocio) return <Navigate to="/tableros" replace />;
+  // La plaza no existe (borrada, o es de otro negocio): a la primera del negocio actual.
+  if (error && !data && /not_found|no encontrad/i.test(String(error))) return <Navigate to="/tableros" replace />;
   if (error && !data) return <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>;
   if (!data) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
 
