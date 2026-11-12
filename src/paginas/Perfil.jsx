@@ -756,7 +756,7 @@ function PerfilContenido() {
   const [emailError, setEmailError] = useState('');
   const [emailGuardando, setEmailGuardando] = useState(false);
   const openEmail = useCallback(() => {
-    setEmailNuevo(me?.email || ''); setEmailPass(''); setEmailError(''); setEmailOpen(true);
+    setEmailNuevo(''); setEmailPass(''); setEmailError(''); setEmailOpen(true);
   }, [me]);
   const ERR_EMAIL = {
     invalid_email: 'Ese email no es válido',
@@ -973,6 +973,8 @@ function PerfilContenido() {
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Cambiar tu email</DialogTitle>
         <DialogContent sx={{ pt: '12px !important' }}>
           <Stack spacing={2}>
+            {/* El actual se ve pero no se toca; el nuevo arranca vacío (Diego 12/11/2026). */}
+            <TextField fullWidth size="small" label="Email actual" value={me?.email || ''} disabled />
             <TextField
               autoFocus fullWidth size="small" type="email"
               label="Email nuevo"
