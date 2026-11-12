@@ -1469,6 +1469,11 @@ export default function RecetaModal({
   }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera, pctCostoIdeal, items]);
 
   const pristineSnapshotRef = useRef(null);
+  // Lo último que se autoguardó sin cerrar (keepOpen: cambio de pestaña, flechas, cascada).
+  // Ese guardado no avisa al padre; si después se cierra «sin cambios», se avisa con esto
+  // para que la tabla / el tablero refresquen (Diego 12/11/2026: borraba un ingrediente, se
+  // autoguardaba y al cerrar no se actualizaba la pantalla de atrás).
+  const autoguardadoSinAvisarRef = useRef(null);
   // Bump-only: fuerza a re-evaluar hayCambiosSinGuardar DESPUÉS de que el efecto de
   // abajo actualiza pristineSnapshotRef — un ref no dispara re-render por sí solo, así
   // que sin esto, el primer render tras cargar/guardar comparaba el snapshot NUEVO
@@ -1648,7 +1653,14 @@ export default function RecetaModal({
     if (!itemsOverride && !modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
       const snapshotActual = buildDirtySnapshot();
       if (snapshotActual === pristineSnapshotRef.current) {
-        if (!keepOpen) onClose?.();
+        if (!keepOpen) {
+          if (autoguardadoSinAvisarRef.current) {
+            const aviso = autoguardadoSinAvisarRef.current;
+            autoguardadoSinAvisarRef.current = null;
+            onSaved?.(aviso);
+          }
+          onClose?.();
+        }
         return;
       }
     }
@@ -1999,8 +2011,19 @@ export default function RecetaModal({
       }
 
       // En autoguardado (keepOpen) no propagamos onSaved: el padre refetchea/cierra
-      // y desmonta el modal en medio de la edición. Solo propagamos al guardar de verdad.
+      // y desmonta el modal en medio de la edición. Solo propagamos al guardar de verdad
+      // (lo autoguardado se avisa al cerrar: ver autoguardadoSinAvisarRef).
+      const avisoGuardado = {
+          ...saved,
+          article_id: articulo.id,
+          costo_total: saved?.costo_total ?? costoTotal,
+          costo_por_porcion: saved?.costo_unitario ?? costoXRendimiento,
+          precio_sugerido: json?.precio_sugerido ?? precioSugerido,
+          porciones: Math.max(1, Number(rendimiento) || 1),
+      };
+      if (keepOpen) autoguardadoSinAvisarRef.current = avisoGuardado;
       if (!keepOpen) {
+        autoguardadoSinAvisarRef.current = null;
         onSaved?.({
           ...saved,
           article_id: articulo.id,
@@ -2113,6 +2136,11 @@ export default function RecetaModal({
     if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId && !it.articleRefId)) {
       await handleSave();
     } else {
+      if (autoguardadoSinAvisarRef.current) {
+        const aviso = autoguardadoSinAvisarRef.current;
+        autoguardadoSinAvisarRef.current = null;
+        onSaved?.(aviso);
+      }
       onClose();
     }
   }, [saving, deleting, items, notas, foto, hasDuplicates, handleSave]);
