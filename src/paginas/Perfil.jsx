@@ -376,7 +376,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             <TableHead>
               <TableRow>
                 {['Alias', 'Email', 'Rol', 'Negocios', 'Estado', ''].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', ...(h === '' ? COL_ACCIONES : {}) }}>{h}</TableCell>
+                  <TableCell key={h} align={h === 'Alias' || h === '' ? 'left' : 'center'} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', ...(h === '' ? COL_ACCIONES : {}) }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -391,20 +391,20 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                 return (
                   <React.Fragment key={m.email}>
                     <TableRow>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
+                      <TableCell sx={{ whiteSpace: 'nowrap', maxWidth: 220 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
                           <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc, flexShrink: 0 }}>
                             {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
                           </Avatar>
-                          <Typography variant="body2" fontWeight={600} noWrap>
+                          <Typography variant="body2" fontWeight={600} noWrap title={m.alias || m.name || ''} sx={{ minWidth: 0 }}>
                             {m.alias || m.name || '—'}
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell title={m.email} sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <TableCell align="center" title={m.email} sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {m.email}
                       </TableCell>
-                      <TableCell>
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
                           label={m.rolNombre}
                           size="small"
@@ -412,7 +412,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           sx={{ fontSize: '0.7rem', bgcolor: `${tc}15`, color: tc, fontWeight: 600 }}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell align="center">
                         {unSoloNegocio ? (
                           <Typography variant="body2" sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                             {m.negocios[0].scopeName}
@@ -427,7 +427,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           />
                         )}
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
                           label={invitacionVencida ? 'Vencida' : estaInvitado ? 'Pendiente' : 'Activo'}
                           size="small"
@@ -749,7 +749,7 @@ function PerfilContenido() {
     }
   }, [renameValue, me, setUser]);
 
-  const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  const userInitials = (meName.match(/[\p{L}\p{N}]+/gu) || []).map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
   // Rol mostrado en el perfil: el MÁS ALTO entre todos los negocios (estable, no cambia
   // al switchear de negocio). El perfil es una vista global del usuario, no del negocio activo.
