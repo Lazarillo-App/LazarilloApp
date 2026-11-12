@@ -1375,10 +1375,12 @@ export default function TablaArticulos({
         }
       }
       const grupos = [...porAgrup.entries()].map(([nombre, lista]) => {
-        lista.sort((x, y) => getVentasAmount(getId(y.a)) - getVentasAmount(getId(x.a)));
+        // Dentro de cada agrupación, el orden elegido en los títulos de la tabla
+        // (por defecto ventas de mayor a menor) — Diego 12/11.
+        lista.sort((x, y) => cmp(x.a, y.a));
         const monto = lista.reduce((acc, { a }) => acc + getVentasAmount(getId(a)), 0);
         return { nombre, lista, monto };
-      }).sort((x, y) => y.monto - x.monto);
+      }).sort((x, y) => (sortBy === 'ventas' && sortDir === 'asc') ? x.monto - y.monto : y.monto - x.monto);
       for (const { nombre, lista, monto } of grupos) {
         rows.push({
           kind: "header",
@@ -1426,7 +1428,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo, sortBy, sortDir]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
