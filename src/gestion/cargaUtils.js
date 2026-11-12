@@ -7,6 +7,7 @@ export const TIPOS_MEDIO = [
   { valor: 'caja', etiqueta: 'Caja' },
   { valor: 'banco', etiqueta: 'Banco' },
   { valor: 'tarjeta', etiqueta: 'Tarjeta' },
+  { valor: 'descuento', etiqueta: 'Descuento' }, // salda deuda sin mover plata; viene en todos los negocios (Diego 12/11/2026)
   { valor: 'otro', etiqueta: 'Otro' },
 ];
 export const etiquetaTipoMedio = (t) => TIPOS_MEDIO.find((x) => x.valor === t)?.etiqueta ?? 'Otro';
