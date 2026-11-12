@@ -19,7 +19,7 @@ import { insumoEquivalenciasList, insumoMermasList, insumoUpdate } from '@/servi
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
-  canonicalUnit, unidadesParaInsumo, getAlertaColor, opcionesUnidadItem,
+  canonicalUnit, unidadesParaInsumo, getAlertaColor, opcionesUnidadItem, etiquetaUnidadRend, ETIQUETA_REND,
 } from './helpers';
 import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
@@ -581,7 +581,7 @@ export default function ItemRow({
                     : 0;
                   // Etiqueta: 'porcion' se muestra como 'porción'
                   const unidadBaseStr = esElab
-                    ? (rendUnid === 'porcion' ? 'porción' : canonicalUnit(rendUnid))
+                    ? etiquetaUnidadRend(rendUnid)
                     : canonicalUnit(item.supplyMedida || 'u');
 
                   // Mismo precio que usa el costo de la fila (calcCostoUnitarioItem) y el servidor:
@@ -855,7 +855,7 @@ export default function ItemRow({
                             const conRendimiento = porc > 1;
                             const valor = conRendimiento ? costoUnit : costoTot;
                             const etiqueta = conRendimiento
-                              ? (rendU === 'porcion' ? '/porción' : `/${canonicalUnit(rendU)}`)
+                              ? `/${etiquetaUnidadRend(rendU)}`
                               : '';   // sin rendimiento: costo total, sin sufijo de unidad
                             return (
                               <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a', fontSize: '0.8rem' }}>
@@ -998,6 +998,10 @@ export default function ItemRow({
             // (deshabilitada, marcada ⚠) — así el combo NUNCA queda en blanco: siempre
             // se ve algo, aunque sea "esto está roto, elegí otra unidad".
             const opciones = unidadEsValida ? unidadOpciones : [unidadActual, ...unidadOpciones];
+            // Elaborado que rinde en porción / media porción: la opción 'u' se muestra con ese
+            // nombre (Diego 12/11). Por dentro sigue siendo 'u', el costo no cambia.
+            const ruElab = insumoData?.receta_rend_unidad || elaborado?.rendimientoUnidad || '';
+            const etiquetaU = elaborado || insumoData?.receta_rend_unidad ? ETIQUETA_REND[ruElab] : null;
             // Acción primero, después la lista — mismo patrón que «+ Crear merma» / SelectorBuscable.
             // Lleva al insumo, pestaña Equivalencias; al volver la fila recarga sus equivalencias
             // (listener insumo:equivalencias-changed del modal).
@@ -1022,7 +1026,7 @@ export default function ItemRow({
                   bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}25`) : 'transparent',
                   '&:hover': { bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}35`) : 'action.hover' },
                 }}>
-                  {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u)}
+                  {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : (u === 'u' && etiquetaU ? etiquetaU : u))}
                 </MenuItem>
               );
             })];
