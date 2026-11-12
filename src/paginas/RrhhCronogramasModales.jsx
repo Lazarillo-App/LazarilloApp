@@ -93,7 +93,7 @@ function dibujarCronograma({ titulo, rango, dias, grupos }) {
       g.filas.forEach((f) => {
         const c = f.celdas[j];
         if (!c) return;
-        const tag = c.puesto ? ' ·' + c.puesto : '';
+        const tag = (c.puesto ? ' ·' + c.puesto : '') + (c.entrada ? ' ' + c.entrada : '');
         ctx.font = "600 8.5px Archivo, sans-serif";
         const nom = recortar(ctx, c.nombre, colW - 6 - (tag ? ctx.measureText(tag).width : 0));
         const wN = ctx.measureText(nom).width; const wT = tag ? ctx.measureText(tag).width : 0;
@@ -152,7 +152,7 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
       filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
         const celdas = {};
         Object.entries(f.celdas).forEach(([dia, c]) => {
-          if (c?.empleadoId) celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto };
+          if (c?.empleadoId) celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto, entrada: c.entrada && c.entrada !== t.entrada ? c.entrada : null };
         });
         return { celdas };
       }),
@@ -430,6 +430,10 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
   // modo fila: si los días tienen puestos/horas distintos arranca en "como están" (no se pisan)
   const [tag, setTag] = useState(ctx.puestoMixto ? '__mixto' : (ctx.celda?.puesto || ctx.puestoFila || ''));
   const [horas, setHoras] = useState(ctx.horasMixtas ? '' : (ctx.celda?.horas != null ? ctx.celda.horas : JORNADA_HS));
+  // hora de entrada propia: vacía = la del turno. En modo fila con horas distintas,
+  // si no se toca cada día conserva la suya.
+  const [entrada, setEntrada] = useState(ctx.entradaMixta ? '' : (ctx.celda ? (ctx.celda.entrada || '') : (ctx.entradaFila || '')));
+  const [entradaTocada, setEntradaTocada] = useState(false);
 
   const lista = useMemo(() => {
     const txt = q.trim().toLowerCase();
@@ -464,7 +468,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '2px 0 12px' }}>
           {ctx.modoFila
             ? (ctx.diasCargados
-              ? `Lo que elijas se aplica a los ${ctx.diasCargados} ${ctx.diasCargados === 1 ? 'día cargado' : 'días cargados'} de la fila: empleado, puesto u horas.`
+              ? `Lo que elijas se aplica a los ${ctx.diasCargados} ${ctx.diasCargados === 1 ? 'día cargado' : 'días cargados'} de la fila: empleado, puesto, hora de entrada u horas.`
               : 'La fila no tiene días cargados: queda reservada para el empleado que elijas.')
             : 'Una fila por empleado por turno — el mismo empleado puede estar en otro turno.'}
         </div>
@@ -501,12 +505,26 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
           ))}
         </div>
 
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Horas de la jornada</div>
-        <input
-          type="number" min="1" max="16" step="0.5" value={horas} placeholder={ctx.horasMixtas ? 'como están' : ''}
-          onChange={(e) => setHoras(e.target.value === '' ? '' : Number(e.target.value))}
-          style={{ width: 90, fontFamily: FB, fontSize: 13, padding: '7px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 12, margin: '12px 0 0' }}>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Entra</div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Horas de la jornada</div>
+          <input
+            type="time" value={entrada} title={ctx.turnoEntrada ? `Vacía = la del turno (${ctx.turnoEntrada})` : 'Vacía = la del turno'}
+            onChange={(e) => { setEntrada(e.target.value); setEntradaTocada(true); }}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${entrada ? T.violet + '88' : T.border2}`, outline: 'none', color: entrada ? T.text : T.text3, background: T.head, textAlign: 'center' }}
+          />
+          <input
+            type="number" min="1" max="16" step="0.5" value={horas} placeholder={ctx.horasMixtas ? 'como están' : ''}
+            onChange={(e) => setHoras(e.target.value === '' ? '' : Number(e.target.value))}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head, textAlign: 'center' }}
+          />
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5, textAlign: 'center' }}>
+            {entrada
+              ? <span onClick={() => { setEntrada(''); setEntradaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>Usar la del turno{ctx.turnoEntrada ? ` (${ctx.turnoEntrada})` : ''}</span>
+              : ctx.entradaMixta && !entradaTocada ? 'Cada día conserva la suya' : `Con el turno${ctx.turnoEntrada ? ` · ${ctx.turnoEntrada}` : ''}`}
+          </div>
+          <div />
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
           {ctx.modoFila ? (
@@ -520,6 +538,8 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
               empleadoId: empId,
               puesto: tag === '__mixto' ? undefined : (tag || null),          // undefined = cada día conserva el suyo
               horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
+              // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
+              entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
             })}>{ctx.modoFila ? 'Aplicar a la fila' : 'Guardar'}</Boton>
           </div>
         </div>
