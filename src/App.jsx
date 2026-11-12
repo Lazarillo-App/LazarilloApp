@@ -173,13 +173,16 @@ export default function App() {
       }
     };
 
-    window.addEventListener('storage', syncBiz);
+    // Otra pestaña cerró o abrió sesión: esta se entera (antes seguía mostrando el header de la app
+    // y, al navegar, caía en el login con el header arriba).
+    const syncStorage = (e) => { if (!e || e.key === 'token' || e.key === null) syncAuth(); else syncBiz(); };
+    window.addEventListener('storage', syncStorage);
     window.addEventListener('business:switched', syncBiz);
     window.addEventListener('auth:login', syncAuth);
     window.addEventListener('auth:logout', syncAuth);
 
     return () => {
-      window.removeEventListener('storage', syncBiz);
+      window.removeEventListener('storage', syncStorage);
       window.removeEventListener('business:switched', syncBiz);
       window.removeEventListener('auth:login', syncAuth);
       window.removeEventListener('auth:logout', syncAuth);
