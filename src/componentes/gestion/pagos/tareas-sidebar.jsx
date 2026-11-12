@@ -9,6 +9,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { gestionFetch } from '@/servicios/apiGestion';
 import { useBusiness } from '@/context/BusinessContext';
+import { ScopeGestion } from '@/gestion/compat';
+import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
 
 const CELESTE = '#5BC2EA';
 
@@ -177,7 +179,8 @@ export function TareasSidebar() {
   );
 }
 
-// «Mis pendientes» desde el menú del perfil (Diego 12/11/2026): las mismas tareas, desde cualquier pantalla.
+// «Mis pendientes» desde el menú del perfil (Diego 12/11/2026): lo mismo que el cajón de Notas del Panel
+// (notas arriba, tareas abajo, media pantalla cada uno), desde cualquier pantalla.
 export function MisPendientesDrawer({ open, onClose }) {
   return (
     <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: 1300 }}
@@ -186,7 +189,16 @@ export function MisPendientesDrawer({ open, onClose }) {
         <Box sx={{ fontWeight: 700, fontSize: 15 }}>Mis pendientes</Box>
         <IconButton size="small" onClick={onClose} aria-label="Cerrar" sx={{ ml: 'auto' }}><CloseIcon fontSize="small" /></IconButton>
       </Box>
-      {open && <TareasSidebar />}
+      {open && (
+        <>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pt: 1 }}>
+            <ScopeGestion><Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><NotasSidebar /></Box></ScopeGestion>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #e8e8e6' }}>
+            <TareasSidebar />
+          </Box>
+        </>
+      )}
     </Drawer>
   );
 }
