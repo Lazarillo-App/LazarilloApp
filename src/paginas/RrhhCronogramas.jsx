@@ -53,6 +53,8 @@ import {
   nuevaKey,
   duenoEnTurno,
   duenoDe,
+  esHabitual,
+  GrillaEjemplo,
 } from './RrhhCronogramasComun';
 import {
   ModalExportar,
@@ -89,6 +91,7 @@ export default function RrhhCronogramas() {
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
   const { active: negocioActivo, activeBusinessId } = useBusiness() || {};
   const [sinReplica, setSinReplica] = useState(false);   // el negocio no tiene MaxiRest conectado
+  const [ejemploVisto, setEjemploVisto] = useState(false); // ya tocó "Armar la semana" sobre el ejemplo
   const [eligiendoNomina, setEligiendoNomina] = useState(false);
   const [turnoSel, setTurnoSel] = useState(null);         // turno en edición
   const [destelloHoy, setDestelloHoy] = useState(false);  // al apretar HOY la columna se ilumina un momento
@@ -542,13 +545,15 @@ export default function RrhhCronogramas() {
     [semanasIdx, espacioId]
   );
 
+  // Habituales del espacio (aprendidos de los cronogramas) sin turno esta semana.
+  // Sin historia no hay habituales: no se deduce nada (estado sin datos).
   const sinJornadas = useMemo(() => {
-    const sec = normSector(espacio?.sectorNomina);
-    if (!sec) return [];
+    if (!espacio) return [];
     return (config?.empleados || [])
-      .filter((e) => e.activo !== false && normSector(e.sector) === sec && !totales.has(e.id))
+      .filter((e) => e.activo !== false && esHabitual(e, espacio) && !totales.has(e.id))
       .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
   }, [config, espacio, totales]);
+  const sinHistoria = !(config?.historia?.semanas > 0);
 
   /* ── estilos compartidos de la tabla ── */
   // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
@@ -587,6 +592,9 @@ export default function RrhhCronogramas() {
   }
 
   const sinNomina = !(config?.empleados || []).length;
+  // Vista previa de EJEMPLO: el negocio nunca cargó un turno y esta semana no existe.
+  const verEjemplo = !sinNomina && sinHistoria && !semanaExiste && !cargandoSemana && !ejemploVisto;
+  const listos = (config?.empleados || []).filter((e) => e.activo !== false && !e.noAplica).length;
 
   return (
     <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box' }}>
@@ -626,7 +634,7 @@ export default function RrhhCronogramas() {
 
       {/* arranque sin nómina */}
       {sinNomina ? (
-        <div style={{ maxWidth: 520, margin: '60px auto', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 28, textAlign: 'center' }}>
+        <GrillaEjemplo>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
             {sinReplica
@@ -644,6 +652,19 @@ export default function RrhhCronogramas() {
               onVinculado={(o) => { setEligiendoNomina(false); avisar(`Ahora usás la nómina de ${o?.nombre || 'ese negocio'} ✓`); cargarTodo(); }}
             />
           )}
+        </GrillaEjemplo>
+      ) : verEjemplo ? (
+        <div ref={refsTour.grilla}>
+          <GrillaEjemplo>
+            <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 19, color: T.text, marginBottom: 6 }}>Así se va a ver tu semana</div>
+            <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 6 }}>
+              Tenés <b>{listos} {listos === 1 ? 'empleado listo' : 'empleados listos'}</b> en la nómina para armar {espacio?.nombre || 'el espacio'}.
+            </div>
+            <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text3, marginBottom: 16 }}>
+              Cada fila es una persona por turno: tocás una celda, elegís quién y su puesto, y se guarda solo.
+            </div>
+            <Boton grande activo onClick={() => setEjemploVisto(true)}>Armar la semana {String(semanaId).slice(4)}</Boton>
+          </GrillaEjemplo>
         </div>
       ) : (
         <>
@@ -791,12 +812,16 @@ export default function RrhhCronogramas() {
             {cargandoSemana && <div style={{ padding: 14, fontFamily: FB, fontSize: 12.5, color: T.text3 }}>Cargando la semana…</div>}
           </div>
 
-          {sinJornadas.length > 0 && (
+          {sinJornadas.length > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-              <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Sin jornadas en la semana {String(semanaId).slice(4)}:</span>
+              <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Habituales de {espacio?.nombre} sin jornadas en la semana {String(semanaId).slice(4)}:</span>
               {sinJornadas.map((e) => <Chip key={e.id} color={T.text3}>{nombreDe(e)}</Chip>)}
             </div>
-          )}
+          ) : sinHistoria ? (
+            <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 10 }}>
+              Acá vas a ver a los habituales de {espacio?.nombre} que no tengan turno en la semana: se arma solo a medida que cargás cronogramas.
+            </div>
+          ) : null}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>
             {(config?.puestos || []).map((p) => <Chip key={p.codigo} color={T.accentTxt}>{p.codigo} · {p.nombre}</Chip>)}
