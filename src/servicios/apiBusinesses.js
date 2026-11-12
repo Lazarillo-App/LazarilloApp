@@ -240,7 +240,12 @@ export async function http(
           ? `not_found: ${path}`
           : (text || res.statusText || `HTTP ${res.status}`));
 
-      throw new Error(msg);
+      // El status viaja en el error: así quien llama distingue «sesión vencida» (401) de una caída
+      // o lentitud del servidor (AuthContext no cierra la sesión por un 502 o un timeout).
+      const err = new Error(msg);
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
 
     return data;
