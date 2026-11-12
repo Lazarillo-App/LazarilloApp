@@ -394,7 +394,20 @@ function ArticuloAccionesMenu({
     const toId = Number(nuevoRubro.slice(0, sep));
     const destino = nuevoRubro.slice(sep + 1).trim();
     if (!destino || !Number.isFinite(toId)) { setDlgMoverRubroOpen(false); return; }
-    if (!Number.isFinite(currentGroupId)) {
+    // Origen = la agrupación donde el artículo está guardado. La vista elegida puede no
+    // tenerlo (Promociones es un resumen, Diego 11/11): entonces se busca su agrupación real.
+    const contiene = (g) => {
+      const ids = [
+        ...(Array.isArray(g?.articulos) ? g.articulos : []).map((a) => Number(a?.id ?? a?.articulo_id)),
+        ...(Array.isArray(g?.app_articles_ids) ? g.app_articles_ids : []).map(Number),
+      ];
+      return ids.includes(articuloIdNum);
+    };
+    const esVista = (g) => esTop20Group(g) || norm(g?.nombre) === 'promociones' || Number(g?.id) < 0;
+    const sel = (agrupaciones || []).find((g) => Number(g.id) === currentGroupId);
+    const real = (agrupaciones || []).find((g) => !esVista(g) && contiene(g));
+    const fromId = sel && contiene(sel) && !esVista(sel) ? currentGroupId : Number(real?.id ?? currentGroupId);
+    if (!Number.isFinite(fromId)) {
       notify?.('No se pudo determinar la agrupación de origen', 'error');
       return;
     }
@@ -403,11 +416,16 @@ function ArticuloAccionesMenu({
       // moveItemsBetweenGroups mueve el artículo a la agrupación destino (toId) y,
       // con subrubro, reescribe el rubro (UI) en las 3 capas: maxi_articles (fuente de
       // verdad, no toca subrubro_maxi → sync respeta), jsonb de la agrupación y agrupacion_articulos.
-      await moveItemsBetweenGroups(effectiveBusinessId, currentGroupId, {
+      const r = await moveItemsBetweenGroups(effectiveBusinessId, fromId, {
         toId,
         ids: [articuloIdNum],
         subrubro: destino,
       });
+      // moved 0 = el artículo no estaba en la agrupación de origen: no se movió nada.
+      if (r && r.moved === 0) {
+        notify?.('No se pudo mover: el artículo no está en esa agrupación', 'error');
+        return;
+      }
       notify?.(`Movido a "${destino}"`, 'success');
       window.dispatchEvent(new CustomEvent('articulos:updated'));
       onAfterMutation?.([articuloIdNum]);
@@ -418,7 +436,7 @@ function ArticuloAccionesMenu({
     } finally {
       setMovingRubro(false);
     }
-  }, [nuevoRubro, articuloIdNum, currentGroupId, effectiveBusinessId, notify, onAfterMutation]);
+  }, [nuevoRubro, articuloIdNum, currentGroupId, agrupaciones, effectiveBusinessId, notify, onAfterMutation]);
 
   // ── Negocios filtrados para el modal Mover ─────────────────────────────────
   const negociosFiltrados = useMemo(() => {
