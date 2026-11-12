@@ -190,7 +190,7 @@ export default function RrhhCronogramas() {
           (r.semana.turnos || []).forEach((t) => {
             (t.filas || []).forEach((f) => {
               const celdas = {};
-              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS }; });
+              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null }; });
               fs.push({ key: nuevaKey(), idBack: f.id, turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
             });
           });
@@ -218,7 +218,7 @@ export default function RrhhCronogramas() {
         ownerEmpleadoId: f.ownerEmpleadoId || duenoDe(f) || null,
         celdas: Object.entries(f.celdas)
           .filter(([, c]) => c && c.empleadoId)
-          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS })),
+          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS, entrada: c.entrada || null })),
       });
     });
     return {
@@ -289,14 +289,15 @@ export default function RrhhCronogramas() {
       const patron = Object.values(fila.celdas).find((c) => c && c.empleadoId === fila.ownerEmpleadoId);
       if (patron) {
         mutarFilas((fs) => fs.map((f) => f.key === fila.key
-          ? { ...f, celdas: { ...f.celdas, [dia]: { empleadoId: patron.empleadoId, puesto: patron.puesto, horas: patron.horas } } }
+          ? { ...f, celdas: { ...f.celdas, [dia]: { empleadoId: patron.empleadoId, puesto: patron.puesto, horas: patron.horas, entrada: patron.entrada || null } } }
           : f));
         return;
       }
     }
     const patronFila = Object.values(fila.celdas).find((c) => c && c.puesto);
     setCeldaSel({
-      filaKey: fila.key, dia, turnoId: turno.id, turnoNombre: turno.nombre,
+      filaKey: fila.key, dia, turnoId: turno.id, turnoNombre: turno.nombre, turnoEntrada: turno.entrada || '',
+      entradaFila: patronFila?.entrada || Object.values(fila.celdas).find((c) => c?.entrada)?.entrada || '',
       nroDia: new Date(diasISO[dia] + 'T12:00:00').getDate(),
       celda, ownerEmpleadoId: fila.ownerEmpleadoId, puestoFila: patronFila?.puesto || '',
     });
@@ -307,10 +308,12 @@ export default function RrhhCronogramas() {
     const cs = Object.values(fila.celdas).filter((c) => c?.empleadoId);
     const puestos = new Set(cs.map((c) => c.puesto || ''));
     const horas = new Set(cs.map((c) => Number(c.horas) || JORNADA_HS));
+    const entradas = new Set(cs.map((c) => c.entrada || ''));
     setCeldaSel({
-      modoFila: true, filaKey: fila.key, turnoId: turno.id, turnoNombre: turno.nombre,
+      modoFila: true, filaKey: fila.key, turnoId: turno.id, turnoNombre: turno.nombre, turnoEntrada: turno.entrada || '',
+      entradaMixta: entradas.size > 1,
       diasCargados: cs.length, ownerEmpleadoId: duenoDe(fila),
-      celda: { empleadoId: duenoDe(fila), puesto: puestos.size === 1 ? [...puestos][0] || null : null, horas: horas.size === 1 ? [...horas][0] : JORNADA_HS },
+      celda: { empleadoId: duenoDe(fila), puesto: puestos.size === 1 ? [...puestos][0] || null : null, horas: horas.size === 1 ? [...horas][0] : JORNADA_HS, entrada: entradas.size === 1 ? [...entradas][0] || null : null },
       puestoMixto: puestos.size > 1, horasMixtas: horas.size > 1,
     });
   };
@@ -330,6 +333,7 @@ export default function RrhhCronogramas() {
           empleadoId: valor.empleadoId,
           puesto: valor.puesto === undefined ? (c.puesto || null) : valor.puesto,
           horas: valor.horas === undefined ? c.horas : valor.horas,
+          entrada: valor.entrada === undefined ? (c.entrada || null) : valor.entrada,
         };
       });
       return { ...f, celdas, ownerEmpleadoId: valor.empleadoId };
@@ -349,7 +353,7 @@ export default function RrhhCronogramas() {
     mutarFilas((fs) => fs.map((f) => {
       if (f.key !== filaKey) return f;
       const celdas = { ...f.celdas };
-      if (valor) celdas[dia] = { ...valor, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS }; else delete celdas[dia];
+      if (valor) celdas[dia] = { ...valor, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null }; else delete celdas[dia];
       const owner = !Object.keys(celdas).length ? null : f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
@@ -737,7 +741,7 @@ export default function RrhhCronogramas() {
                           <tr key={f.key}>
                             <td onClick={() => abrirFila(f, t)}
                               style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, cursor: 'pointer' }}
-                              title={`${dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'} · clic: cambiar empleado, puesto u horas de toda la fila`}>
+                              title={`${dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'} · clic: cambiar empleado, puesto, entrada u horas de toda la fila`}>
                               <div style={dosRenglones}>{dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'}</div>
                             </td>
                             {diasISO.map((iso, dia) => {
@@ -769,6 +773,7 @@ export default function RrhhCronogramas() {
                                         <div style={{ ...dosRenglones, fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 90, textAlign: 'center' }}>{nombreCorto(emp)}</div>
                                         <div style={{ height: 16, display: 'flex', gap: 3, alignItems: 'center' }}>
                                           {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px' }}>{c.puesto}</span>}
+                                          {c.entrada && c.entrada !== t.entrada && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.violet, border: `1px solid ${T.violet}55`, borderRadius: 6, padding: '0 4px' }} title={`Entra ${c.entrada} (el turno entra ${t.entrada || '—'})`}>{c.entrada}</span>}
                                           {c.horas !== JORNADA_HS && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
                                         </div>
                                       </>
