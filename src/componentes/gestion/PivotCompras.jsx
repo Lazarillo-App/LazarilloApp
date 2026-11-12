@@ -190,7 +190,10 @@ export default function PivotCompras({
     const bg = sinRubro ? '#fff8eb' : (t) => alpha(t.palette.grey[100], 0.25);
     const color = e.tipo === 'valor' ? colorCompletitud(e) : null;
     const txtPend = e.pendiente?.n ? ` · faltan cargar ${e.pendiente.n} ${e.pendiente.n === 1 ? 'gasto' : 'gastos'} (~${millones(e.pendiente.importe) || '<0,1'} M, según Sin carga)` : '';
-    const ref = habitual ? `lo habitual: ${millones(habitual.importe)} M (mediana de ${rangoMeses(habitual.meses)})` : 'sin comparar: el rubro todavía no tiene historia o no es de todos los meses';
+    const ref = !habitual ? 'sin comparar: el rubro todavía no tiene historia o no es de todos los meses'
+      : habitual.porVentas
+        ? `lo habitual para lo que se vendió: ${millones(e.esperado ?? habitual.importe) || '<0,1'} M (el rubro sigue a las ventas: ${(habitual.pct * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}% de lo vendido, mediana de ${rangoMeses(habitual.meses)})`
+        : `lo habitual: ${millones(habitual.importe)} M (mediana de ${rangoMeses(habitual.meses)})`;
     const tip = e.tipo === 'vacio' ? `Nada cargado este mes${txtPend} · ${ref}`
       : e.tipo === 'valor' ? `${fmtARS(v)} · ${nombreTramo(e)}${txtPend}${e.pct != null ? ` · ${Math.round(e.pct * 100)}% de ${ref}` : ` · ${ref}`}`
         : '';
@@ -222,7 +225,7 @@ export default function PivotCompras({
   // Sin rubro (Diego 06/11/2026): siempre primero, en ámbar y con «corregir» (abre el porqué).
   const filaRubro = (rubro) => {
     const sinRubro = rubro.rubroCodigo === '__sin_rubro';
-    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year) : null;
+    const habitual = sinTotalesRubro ? habitualRubro(rubro.values, months, year, new Date(), ingresosReady ? ingresosPorMes : null) : null;
     return (
     <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
