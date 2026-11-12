@@ -403,6 +403,43 @@ function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onCerrar }) {
 }
 
 /* ───────── modal: editar turno (clic en el nombre del turno) ───────── */
+/* Campo de hora 24 h que se escribe de corrido (Diego 12/11/2026: el input nativo dejaba
+   los minutos en "--" y había que completarlos). "11" → 11:00 · "930" → 09:30 · "1130" → 11:30
+   · "11:3" → 11:30. Mientras se escribe ya informa la hora válida; al salir queda prolija. */
+function normHora(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2})(?::?(\d{0,2}))?$/);
+  if (!m) return null;
+  let h; let mi;
+  if (!t.includes(':') && t.length >= 3) { h = Number(t.slice(0, t.length - 2)); mi = t.slice(-2); }
+  else { h = Number(m[1]); mi = m[2] || ''; }
+  mi = mi.length === 0 ? '00' : mi.length === 1 ? mi + '0' : mi;
+  if (h > 23 || Number(mi) > 59) return null;
+  return String(h).padStart(2, '0') + ':' + mi;
+}
+function CampoHora({ value, onChange, style, title, placeholder = '--:--' }) {
+  const [raw, setRaw] = useState(value || '');
+  const [foco, setFoco] = useState(false);
+  useEffect(() => { if (!foco) setRaw(value || ''); }, [value, foco]);
+  const invalida = raw && normHora(raw) === null;
+  return (
+    <input
+      type="text" inputMode="numeric" maxLength={5} value={raw} placeholder={placeholder} title={title}
+      onFocus={(e) => { setFoco(true); e.target.select(); }}
+      onChange={(e) => {
+        const v = e.target.value.replace(/[^\d:]/g, '');
+        setRaw(v);
+        const n = normHora(v);
+        if (n !== null) onChange(n);
+      }}
+      onBlur={() => { setFoco(false); const n = normHora(raw); setRaw(n === null ? (value || '') : n); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      style={{ ...style, ...(invalida ? { borderColor: T.bad } : {}) }}
+    />
+  );
+}
+
 function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
   const [nombre, setNombre] = useState(turno.nombre || '');
   const [entrada, setEntrada] = useState(turno.entrada || '');
@@ -424,7 +461,7 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
         </div>
         <div style={{ width: 120 }}>
           <div style={{ ...rotulo, marginTop: 0 }}>Entra</div>
-          <input type="time" value={entrada} onChange={(e) => setEntrada(e.target.value)} style={input} />
+          <CampoHora value={entrada} onChange={setEntrada} style={{ ...input, textAlign: 'center' }} />
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
@@ -577,14 +614,14 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Entra</div>
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Sale <span style={{ textTransform: 'none', color: T.text3 }}>(opc.)</span></div>
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Horas</div>
-          <input
-            type="time" value={entrada} title={ctx.turnoEntrada ? `Vacía = la del turno (${ctx.turnoEntrada})` : 'Vacía = la del turno'}
-            onChange={(e) => { setEntrada(e.target.value); setEntradaTocada(true); if (salida) recalcularHoras(e.target.value, salida); }}
+          <CampoHora
+            value={entrada} placeholder={ctx.turnoEntrada || '--:--'} title={ctx.turnoEntrada ? `Vacía = la del turno (${ctx.turnoEntrada})` : 'Vacía = la del turno'}
+            onChange={(v) => { setEntrada(v); setEntradaTocada(true); if (salida && v) recalcularHoras(v, salida); }}
             style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${entrada ? T.violet + '88' : T.border2}`, outline: 'none', color: entrada ? T.text : T.text3, background: T.head, textAlign: 'center' }}
           />
-          <input
-            type="time" value={salida} title="Opcional: si la cargás, la celda muestra entrada–salida"
-            onChange={(e) => { setSalida(e.target.value); setSalidaTocada(true); if (e.target.value) recalcularHoras(entrada, e.target.value); }}
+          <CampoHora
+            value={salida} title="Opcional: si la cargás, la celda muestra entrada–salida"
+            onChange={(v) => { setSalida(v); setSalidaTocada(true); if (v) recalcularHoras(entrada, v); }}
             style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${salida ? T.violet + '88' : T.border2}`, outline: 'none', color: salida ? T.text : T.text3, background: T.head, textAlign: 'center' }}
           />
           <input
