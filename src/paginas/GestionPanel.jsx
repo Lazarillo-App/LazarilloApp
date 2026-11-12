@@ -253,6 +253,17 @@ function GestionPanelContenido() {
     queryFn: () => GestionAPI.pivot(paramsCompras),
     staleTime: 60 * 1000,
   });
+  // Rol sin totales por rubro: la fila del rubro compara cada mes con lo habitual, y lo habitual
+  // puede venir del año anterior (Diego 12/11/2026: «el año no es barrera»). Un pedido más, solo
+  // para esos roles, por rubro y sin búsqueda; cacheado 10 min.
+  const sinTotalesRubro = oculto('tabla.totales_rubro');
+  const paramsComprasPrev = useMemo(() => ({ ...paramsCompras, year: estado.year - 1, months: [] }), [paramsCompras, estado.year]);
+  const comprasPrev = useQuery({
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras' && sinTotalesRubro && !busquedaActiva,
+    queryKey: ['gestionPivot', activeBusinessId, paramsComprasPrev],
+    queryFn: () => GestionAPI.pivot(paramsComprasPrev),
+    staleTime: 10 * 60 * 1000,
+  });
   const operacion = useQuery({
     enabled: !!activeBusinessId && verPanel && estado.tab === 'resultados',
     queryKey: ['gestionPivot', activeBusinessId, paramsOperacion],
@@ -458,6 +469,7 @@ function GestionPanelContenido() {
             modoCelda={estado.modoCelda}
             sort={estado.sort}
             onSort={ordenar}
+            historiaPrev={sinTotalesRubro && !busquedaActiva ? comprasPrev.data : null}
           />
           </BloqueSeguro>
         )}
