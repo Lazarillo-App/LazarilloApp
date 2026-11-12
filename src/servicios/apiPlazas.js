@@ -7,7 +7,12 @@ export const PlazasAPI = {
   // Plazas + si la persona puede crear (dueño/admin, o jefe en sus sectores) y en qué sectores.
   async tablero() { const r = ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas'); return { plazas: r.plazas || [], puedeCrear: !!r.puedeCrear, sectores: r.sectores || [] }; },
   async listar() { return ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas').plazas || []; },
-  async articulos(q = '') { return ok(await httpBiz(`/plazas/articulos?q=${encodeURIComponent(q)}`, { method: 'GET', cache: false }), 'No se pudieron cargar los artículos').articulos || []; },
+  // Artículos con receta, por ventas (90 días) de mayor a menor, con rubro/subrubro y agrupaciones; y las
+  // agrupaciones para filtrar.
+  async articulos(q = '') {
+    const r = ok(await httpBiz(`/plazas/articulos?q=${encodeURIComponent(q)}`, { method: 'GET', cache: false }), 'No se pudieron cargar los artículos');
+    return { articulos: r.articulos || [], agrupaciones: r.agrupaciones || [] };
+  },
   async crear(sectorId, nombre, articleIds) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds } }), 'No se pudo crear la plaza'); },
   async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
