@@ -55,6 +55,7 @@ import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
 import PanelGemelos from './PanelGemelos';
 import BloqueRendimiento from './BloqueRendimiento';
+import DescripcionArticulo from './DescripcionArticulo';
 import { aplicarRedondeo } from '@/utils/redondeoUtils';
 import { mapConLimite } from '@/utils/mapConLimite';
 
@@ -2433,6 +2434,8 @@ export default function RecetaModal({
                       const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
                       return u ? <Box component="span" sx={{ fontWeight: 800, whiteSpace: 'nowrap', ml: 1 }}>× {canonicalUnit(u).toUpperCase()}</Box> : null;
                     })() : null} />
+                  {/* Descripción del artículo (Diego 12/11) — DescripcionArticulo.jsx */}
+                  {!modoInsumo && <DescripcionArticulo articulo={articulo} businessId={businessId} editable={!isStaff} />}
                 </Box>
               ) : (
               <Box sx={{ minWidth: 260 }}>
