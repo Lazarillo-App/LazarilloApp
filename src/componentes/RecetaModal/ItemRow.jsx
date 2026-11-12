@@ -152,9 +152,8 @@ export default function ItemRow({
     }
   }, [focusedIndex]);
 
-  const isDuplicate = item.supplyId &&
-    usedSupplyIds.has(String(item.supplyId)) &&
-    usedSupplyIds.get(String(item.supplyId)) !== index;
+  // Repetir un insumo está permitido (otro renglón, otra cantidad u observación): ya no se marca en rojo.
+  const isDuplicate = false;
 
   const filtrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -808,13 +807,13 @@ export default function ItemRow({
                         outlineColor: focusedIndex === idx ? 'primary.main' : 'transparent',
                         outlineOffset: -2,
                         '&:hover': { bgcolor: focusedIndex === idx ? 'action.selected' : 'action.hover' },
-                        ...(yaUsado && { opacity: 0.6 }),
+
                       }}>
                       <Box>
                         <Typography component="span" variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem', display: 'block' }}>
                           {ins.nombre}
                           {!esElab && <Chip label="Insumo" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: `${PRIMARY}15`, color: PRIMARY }} />}
-                          {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
+                          {yaUsado && <Chip label="Ya está en la receta" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
                           {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
                           {/* Editar insumo: solo en el que ya está en uso en esta fila (va
                               primero en la lista) — para corregirlo sin salir del buscador. */}
