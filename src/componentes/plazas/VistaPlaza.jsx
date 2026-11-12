@@ -189,7 +189,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -291,7 +291,11 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
           ref={(el) => { if (el) nodos.current.set(r.key, el); else nodos.current.delete(r.key); }}
           levantado={arrastre?.key === r.key} arrastreActivo={!!arrastre}
           onAgarrar={(e) => agarrar(e, p.renglones.findIndex((x) => x.key === r.key))}
-          onOcultar={() => guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, oculto: !x.oculto } : x)))}
+          // Ojito: si es un ingrediente de la receta, se oculta en TODAS sus recetas (Diego 12/11/2026);
+          // los renglones sin insumo siguen guardándose en la ficha de la plaza.
+          onOcultar={() => (onOcultarIngrediente && /^[ia]:/.test(r.ref || '')
+            ? onOcultarIngrediente(r.ref, !r.oculto)
+            : guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, oculto: !x.oculto } : x))))}
           onBorrar={() => guardar(p.renglones.filter((x) => x.key !== r.key))}
           onColor={(e) => setPaleta({ anchor: e.currentTarget, renglon: r })} />
       ))}
@@ -327,12 +331,12 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
         <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
-          onAliasIngrediente={onAliasIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
+          onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       ))}
     </Box>
   );

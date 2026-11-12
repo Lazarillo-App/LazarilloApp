@@ -20,6 +20,8 @@ export const PlazasAPI = {
     if (!r?.ok) throw new Error(r?.message || r?.error || 'No se pudo guardar en la receta');
     return r;
   },
+  // Ojito: oculta / muestra el ingrediente en TODAS las recetas (queda como «Oculto» en cada receta).
+  async ocultar(id, ref, oculto) { return ok(await httpBiz(`/plazas/${id}/ocultar`, { method: 'PUT', body: { ref, oculto } }), 'No se pudo ocultar'); },
   // color, mostrar ('peso' | 'obs') y/o alias ('' lo borra): lo que no se manda queda como estaba.
   async guardarColor(ref, color, mostrar, alias) { return ok(await httpBiz('/plazas/colores', { method: 'PUT', body: { ref, color, mostrar, alias } }), 'No se pudo guardar el ingrediente'); },
 };

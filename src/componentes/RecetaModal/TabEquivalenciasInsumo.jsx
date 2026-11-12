@@ -9,8 +9,9 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   insumoGet, insumoEquivalenciasList, insumoEquivalenciaCreate,
-  insumoEquivalenciaUpdate, insumoEquivalenciaDelete, insumoUpdate,
+  insumoEquivalenciaUpdate, insumoEquivalenciaDelete, insumoUpdate, insumoEquivalenciaAplicar,
 } from '@/servicios/apiInsumos';
+import { showConfirm } from '@/servicios/appConfirm';
 import { sanitizeDecimal } from '@/utils/decimales';
 import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
@@ -136,7 +137,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
   const cargar = useCallback(() => {
     if (!insumoId || !businessId) return;
     setLoading(true);
-    insumoEquivalenciasList(insumoId, businessId)
+    insumoEquivalenciasList(insumoId, businessId, { coincidencias: true })
       .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
       // No hay aviso en pantalla: la mayoría de los insumos no tiene equivalencias
       // cargadas todavía, y eso no es un error — se ve como lista vacía. Una falla
@@ -164,15 +165,19 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
     setGuardando(true);
     setError('');
     try {
-      await insumoEquivalenciaCreate(insumoId, {
+      const creada = await insumoEquivalenciaCreate(insumoId, {
         nombre,
         contenido,
         unidad: nuevo.unidad,
       }, businessId);
       setNuevo({ nombre: '', contenido: '', unidad: '' });
-      cargar();
       try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
       try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId } })); } catch { }
+      // Recetas que usan EXACTAMENTE esa medida: pregunta si las pasa a «1 <equivalencia>» (Diego 12/11/2026).
+      if (creada?.data && Array.isArray(creada.coincidencias) && creada.coincidencias.length) {
+        await usarEnRecetas({ ...creada.data, coincidencias: creada.coincidencias });
+      }
+      cargar();
     } catch (e) {
       setError(e.message || 'No se pudo agregar');
     } finally {
@@ -180,6 +185,24 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       setGuardando(false);
     }
   }, [nuevo, guardando, insumoId, businessId, cargar, UNIDADES_EQ]);
+
+  // Pasa a «1 <equivalencia>» las recetas que usan exactamente esa medida (el costo no cambia).
+  const usarEnRecetas = async (eq) => {
+    const c = eq.coincidencias || [];
+    if (!c.length) return;
+    const medida = `${Number(eq.contenido).toLocaleString('es-AR', { maximumFractionDigits: 3 })} ${eq.unidad}`;
+    const nombres = c.map((x) => x.receta).slice(0, 6).join(', ') + (c.length > 6 ? ` y ${c.length - 6} más` : '');
+    const ok = await showConfirm(
+      `${c.length} receta${c.length !== 1 ? 's usan' : ' usa'} exactamente ${medida} de este insumo (${nombres}). ¿Reemplazar por «1 ${eq.nombre}»? El costo no cambia.`,
+      { confirmText: 'Reemplazar' });
+    if (!ok) return;
+    try {
+      await insumoEquivalenciaAplicar(insumoId, eq.id, c.map((x) => x.itemId), businessId);
+      try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
+      try { window.dispatchEvent(new CustomEvent('insumo:uso-changed', { detail: { insumoId } })); } catch { }
+      cargar();
+    } catch (e) { setError(e.message || 'No se pudo reemplazar'); }
+  };
 
   const editar = async (eq, campo, valor) => {
     // Optimistic: actualizar en local, persistir onBlur
@@ -347,6 +370,12 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               <IconButton size="small" onClick={() => setABorrar({ id: eq.id, nombre: eq.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                 <DeleteOutlineIcon sx={{ fontSize: 16 }} />
               </IconButton>
+              {eq.coincidencias?.length > 0 && (
+                <Typography onClick={() => usarEnRecetas(eq)}
+                  sx={{ gridColumn: '1 / -1', fontSize: '0.74rem', color: PRIMARY, cursor: 'pointer', mt: -0.25, '&:hover': { textDecoration: 'underline' } }}>
+                  {eq.coincidencias.length} receta{eq.coincidencias.length !== 1 ? 's usan' : ' usa'} exactamente {Number(eq.contenido).toLocaleString('es-AR', { maximumFractionDigits: 3 })} {eq.unidad} · Pasarlas a «1 {eq.nombre}»
+                </Typography>
+              )}
             </Box>
           ))}
 

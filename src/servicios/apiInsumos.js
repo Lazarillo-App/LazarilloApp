@@ -745,8 +745,9 @@ export const toggleInsumosElaboradosBulk = async (insumoIds, esElaborado, bizId)
 };
 
 // ── Equivalencias de insumo ──
-export const insumoEquivalenciasList = async (insumoId, bizId) => {
-  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias`, {
+// { coincidencias: true } → cada equivalencia trae las recetas que usan exactamente esa medida.
+export const insumoEquivalenciasList = async (insumoId, bizId, { coincidencias = false } = {}) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias${coincidencias ? '?coincidencias=1' : ''}`, {
     headers: authHeaders(bizId),
   });
   const data = await res.json().catch(() => null);
@@ -765,6 +766,20 @@ export const insumoEquivalenciaCreate = async (insumoId, payload, bizId) => {
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && data.ok === false)) {
     throw new Error((data && data.error) || 'Error al crear equivalencia');
+  }
+  return data;
+};
+
+// Pasa esos renglones de receta (cantidad exacta) a «1 <equivalencia>» sin cambiar su costo.
+export const insumoEquivalenciaAplicar = async (insumoId, eqId, itemIds, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${insumoId}/equivalencias/${eqId}/aplicar`, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+    body: JSON.stringify({ itemIds }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || (data && data.ok === false)) {
+    throw new Error((data && data.error) || 'No se pudo reemplazar en las recetas');
   }
   return data;
 };
