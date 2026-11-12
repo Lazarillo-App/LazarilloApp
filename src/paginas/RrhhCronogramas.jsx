@@ -690,7 +690,7 @@ export default function RrhhCronogramas() {
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
             {sinReplica
-              ? 'Este negocio no tiene MaxiRest conectado, así que la nómina no entra sola: usá la de otro negocio de tu cartera o cargala a mano.'
+              ? 'Este negocio no está integrado con tu PDV, así que la nómina no entra sola: usá la de otro negocio de tu cartera o cargala a mano.'
               : 'Todavía no hay empleados. La nómina de MaxiRest entra sola; si falta alguien, dalo de alta en Nómina.'}
           </div>
           {!eligiendoNomina ? (
