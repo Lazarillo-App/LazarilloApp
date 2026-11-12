@@ -131,15 +131,26 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
   const [sector, setSector] = useState(empleado?.sector || '');
   const [activo, setActivo] = useState(empleado ? empleado.activo !== false : true);
   const [fechaBaja, setFechaBaja] = useState(empleado?.fechaBaja || '');
+  // Fecha de alta y DNI (Diego 12/11/2026). El DNI no es obligatorio todavía: va a ser la clave
+  // única de cada persona para accesos y fichajes.
+  const [fechaAlta, setFechaAlta] = useState(empleado?.fechaAlta || (empleado ? '' : hoyIso()));
+  const [dni, setDni] = useState(empleado?.dni || '');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
-  const input = { width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
+  const input = { width: '100%', height: 40, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
   const rotulo = { fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 };
   const guardar = async () => {
     if (!nombre.trim()) { setError('Poné al menos el nombre.'); return; }
     setGuardando(true);
     try {
-      await onGuardar({ nombre: nombre.trim(), apellido: apellido.trim(), sector: sector.trim(), activo, ...(!activo && fechaBaja ? { fechaBaja } : {}) });
+      const dniLimpio = dni.replace(/\D/g, '');
+      await onGuardar({
+        nombre: nombre.trim(), apellido: apellido.trim(), sector: sector.trim(), activo,
+        ...(!activo && fechaBaja ? { fechaBaja } : {}),
+        fechaAlta,
+        // Solo si cambió: el servidor controla que no se repita en la nómina.
+        ...(dniLimpio !== (empleado?.dni || '') ? { dni: dniLimpio } : {}),
+      });
     } catch (e) {
       setError(e?.data?.message || e.message || 'No se pudo guardar.');
       setGuardando(false);
@@ -153,7 +164,7 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
           <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
         </div>
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 2 }}>
-          {nuevo ? 'Alta propia de Lazarillo (sin código de MaxiRest).'
+          {nuevo ? 'Alta propia de Lazarillo (sin código de tu PDV).'
             : empleado.origen === 'maxirest' ? `Código MaxiRest ${empleado.codigoMaxi} · lo que cambies acá no lo pisa la sincronización.`
               : 'Alta propia de Lazarillo.'}
         </div>
@@ -171,6 +182,23 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
         <div style={rotulo}>Sector</div>
         <input value={sector} onChange={(e) => setSector(e.target.value)} list="rrhh-sectores" placeholder="Ej.: Salón, Cocina" style={input} />
         <datalist id="rrhh-sectores">{sectores.map((s) => <option key={s} value={s} />)}</datalist>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={rotulo}>Fecha de alta</div>
+            <input type="date" value={fechaAlta} max={hoyIso()} onChange={(e) => setFechaAlta(e.target.value)} style={input} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={rotulo}>DNI</div>
+            <input value={dni} inputMode="numeric" onChange={(e) => { setDni(e.target.value.replace(/[^\d.\s]/g, '')); setError(''); }} placeholder="Opcional" style={input} />
+          </div>
+        </div>
+        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 6 }}>
+          {empleado?.origen === 'maxirest'
+            ? 'Si están en tu PDV, la fecha de alta y el DNI se completan solos; lo que cargues acá no se pisa. '
+            : ''}
+          El DNI no es obligatorio por ahora: más adelante va a ser la clave única de cada persona para entrar al sistema y fichar.
+        </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: FB, fontSize: 13, color: T.text, cursor: 'pointer', marginTop: 14 }}>
           <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} style={{ accentColor: T.accent }} />
@@ -324,7 +352,7 @@ export default function RrhhNomina() {
 
   const guardar = async (datos) => {
     if (editando === 'nuevo') {
-      const r = await RrhhAPI.crearEmpleado({ nombre: datos.nombre, apellido: datos.apellido, sector: datos.sector || null });
+      const r = await RrhhAPI.crearEmpleado({ nombre: datos.nombre, apellido: datos.apellido, sector: datos.sector || null, fechaAlta: datos.fechaAlta || null, dni: datos.dni || null });
       let emp = r.empleado;
       if (!datos.activo && emp) emp = (await RrhhAPI.editarEmpleado(emp.id, { activo: false })).empleado;
       setConfig((c) => ({ ...c, empleados: [...c.empleados, emp] }));
@@ -370,7 +398,7 @@ export default function RrhhNomina() {
         ) : sync === null && !empleados.length && !eligiendo ? null : sync === null ? (
           <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <span>Este negocio no tiene MaxiRest conectado: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length ? '.' : ', o usá la de otro negocio.'}</span>
+              <span>Este negocio no está integrado con tu PDV: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length ? '.' : ', o usá la de otro negocio.'}</span>
               {!empleados.length && !eligiendo && (
                 <span onClick={() => setEligiendo(true)} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Usar la nómina de otro negocio</span>
               )}
@@ -473,7 +501,7 @@ export default function RrhhNomina() {
                   <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>Cargá a tu equipo</div>
                   <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: 16 }}>
                     {sync === null
-                      ? 'Este negocio no tiene MaxiRest: das de alta a cada uno o usás la nómina de otro negocio de tu cartera.'
+                      ? 'Este negocio no está integrado con tu PDV: das de alta a cada uno o usás la nómina de otro negocio de tu cartera.'
                       : 'La nómina de MaxiRest entra sola al abrir RRHH; si falta alguien, dalo de alta acá.'}
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
