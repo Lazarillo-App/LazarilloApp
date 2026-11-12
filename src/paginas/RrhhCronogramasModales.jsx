@@ -424,8 +424,22 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
-function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar }) {
+function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onGuardar, onCerrar }) {
   const [q, setQ] = useState('');
+  const [hoverId, setHoverId] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const buscadorRef = React.useRef(null);
+  const crear = async () => {
+    if (!q.trim()) { buscadorRef.current?.focus(); return; }
+    if (creando || !onCrear) return;
+    setCreando(true);
+    const emp = await onCrear(q.trim());
+    setCreando(false);
+    // queda elegido y filtrado por su nombre, así se ve seleccionado
+    if (emp) { setEmpId(emp.id); setQ(nombreDe(emp)); }
+  };
+  // si ya hay alguien con ese nombre exacto no se ofrece crear (evita duplicados)
+  const yaExiste = !!q.trim() && empleados.some((e) => nombreDe(e).toLowerCase() === q.trim().toLowerCase());
   const [empId, setEmpId] = useState(ctx.celda?.empleadoId || ctx.ownerEmpleadoId || null);
   // modo fila: si los días tienen puestos/horas distintos arranca en "como están" (no se pisan)
   const [tag, setTag] = useState(ctx.puestoMixto ? '__mixto' : (ctx.celda?.puesto || ctx.puestoFila || ''));
@@ -448,14 +462,20 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
   }, [q, empleados, espacio]);
 
   const Fila = ({ e }) => (
-    <div key={e.id} onClick={() => setEmpId(e.id)} style={{
+    <div key={e.id} onClick={() => setEmpId(e.id)}
+      onMouseEnter={() => setHoverId(e.id)} onMouseLeave={() => setHoverId((h) => (h === e.id ? null : h))} style={{
       padding: '7px 10px', cursor: 'pointer', fontFamily: FB, fontSize: 13, display: 'flex',
       justifyContent: 'space-between', alignItems: 'center',
       background: empId === e.id ? T.accent : 'transparent',
       color: empId === e.id ? T.ink : T.text, borderBottom: `1px solid ${T.border}`,
     }}>
       <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
-      <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{(e.espacios || []).map((x) => x.nombre).join(' · ') || e.sector || ''}</span>
+      {hoverId === e.id && empId !== e.id && onNoAplica ? (
+        <span onClick={(ev) => { ev.stopPropagation(); onNoAplica(e); }} title="No aparece más para asignar (se deshace desde Nómina o en el aviso)"
+          style={{ fontSize: 11, fontWeight: 700, color: T.text3, border: `1px dashed ${T.text3}88`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>⊘ No aplica</span>
+      ) : (
+        <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{(e.espacios || []).map((x) => x.nombre).join(' · ') || e.sector || ''}</span>
+      )}
     </div>
   );
 
@@ -474,10 +494,18 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
         </div>
 
         <input
-          autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la nómina…"
+          ref={buscadorRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la nómina…"
           style={{ width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
         />
-        <div style={{ maxHeight: 190, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 8 }}>
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 8, overflow: 'hidden' }}>
+        {/* acción primero, fija entre el buscador y la lista (patrón de SelectorBuscable) */}
+        {onCrear && !yaExiste && (
+          <div onClick={crear} title={q.trim() ? 'Alta en la nómina con este nombre' : 'Escribí el nombre en el buscador'}
+            style={{ padding: '7px 10px', fontFamily: FB, fontSize: 13, fontWeight: 700, color: T.accentTxt, background: 'rgba(0,0,0,0.04)', borderBottom: `1px solid ${T.border2}`, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {creando ? 'Creando…' : q.trim() ? `+ Crear "${q.trim()}" en la nómina` : '+ Crear empleado'}
+          </div>
+        )}
+        <div style={{ maxHeight: 190, overflowY: 'auto' }}>
           {lista.propios.length > 0 && lista.resto.length > 0 && (
             <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Habituales de {espacio?.nombre}</div>
           )}
@@ -489,6 +517,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
           {lista.propios.length === 0 && lista.resto.length === 0 && (
             <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: T.text3 }}>Sin resultados en la nómina.</div>
           )}
+        </div>
         </div>
         {lista.propios.length === 0 && lista.resto.length > 0 && !q.trim() && (
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 6 }}>
