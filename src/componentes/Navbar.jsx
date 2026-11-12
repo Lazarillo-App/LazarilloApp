@@ -23,6 +23,7 @@ import ModulosDrawer from './ModulosDrawer';
 import TablerosBotonera from './plazas/TablerosBotonera';
 import PulsoDatos from './PulsoDatos';
 import { VerComoItems } from '@/componentes/VerComo';
+import { MisPendientesDrawer, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
 
 /* ==== helpers ==== */
 const hexToRgb = (hex) => {
@@ -94,6 +95,11 @@ export default function Navbar() {
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
   const { isOwner, isStaff, puedeVer = () => true, rolReal, staffPuede = () => false } = useAccess() || {};
+  // Mis pendientes (Diego 12/11/2026): tareas del cajón de Notas; globito en el avatar e ítem en el menú.
+  // La API de tareas es del Panel (owner/admin): staff no la pide.
+  const conPendientes = logged && !isAppAdmin && !isStaff && (rolReal === 'owner' || rolReal === 'admin');
+  const tareasPendientes = useTareasPendientes(conPendientes);
+  const [verPendientes, setVerPendientes] = useState(false);
   // Menú (vista diseño, la carta): el Staff no lo usa; se habilita por rol con «ver_menu» (Diego 11/11/2026).
   const veMenuDiseno = !isStaff || staffPuede('ver_menu');
 
@@ -557,6 +563,8 @@ export default function Navbar() {
                   sx={{ p: 0, color: 'inherit' }}
                   aria-label="Abrir menú de perfil"
                 >
+                  <Badge badgeContent={conPendientes ? tareasPendientes : 0} color="error" max={99} overlap="circular"
+                    sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', fontWeight: 700, minWidth: 18, height: 18, border: '2px solid var(--color-primary)' } }}>
                   <Avatar
                     src={userAvatar || undefined}
                     className="navbar-user-avatar"
@@ -571,6 +579,7 @@ export default function Navbar() {
                   >
                     {!userAvatar && userInitials}
                   </Avatar>
+                  </Badge>
                 </IconButton>
               </Tooltip>
 
@@ -601,6 +610,17 @@ export default function Navbar() {
                           <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserMenuOpen(false)}>
                             Perfil
                           </MenuItem>,
+                          ...(conPendientes ? [
+                            <MenuItem key="pendientes" onClick={() => { setUserMenuOpen(false); setVerPendientes(true); }}>
+                              <Box component="span" sx={{ flex: 1 }}>Mis pendientes</Box>
+                              {tareasPendientes > 0 && (
+                                <Box component="span" sx={{ ml: 2, minWidth: 20, height: 20, px: 0.75, borderRadius: 10, bgcolor: 'error.main', color: '#fff',
+                                  fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {tareasPendientes > 99 ? '99+' : tareasPendientes}
+                                </Box>
+                              )}
+                            </MenuItem>,
+                          ] : []),
                           // Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión.
                           ...(!isAppAdmin && rolReal === 'owner' ? [
                             <Divider key="div-vercomo" sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
@@ -627,6 +647,7 @@ export default function Navbar() {
                 </ClickAwayListener>
               )}
             </Box>
+            {conPendientes && <MisPendientesDrawer open={verPendientes} onClose={() => setVerPendientes(false)} />}
             {/* 🔔 Notificaciones (no en el asistente de alta: todavía no hay negocio; pedido de la usuaria 09/11). */}
             {!isAppAdmin && logged && !enAlta && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>

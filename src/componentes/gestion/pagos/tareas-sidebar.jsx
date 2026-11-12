@@ -4,7 +4,7 @@
 // cuándo se dio de baja. El botón de Notas del Panel lleva el número de pendientes (useTareasPendientes).
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Checkbox, IconButton, InputBase, Tooltip } from '@mui/material';
+import { Box, Checkbox, Drawer, IconButton, InputBase, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { gestionFetch } from '@/servicios/apiGestion';
@@ -20,19 +20,21 @@ async function pedir(ruta, opciones) {
 
 const clave = (businessId) => ['gestion', 'tareas', businessId ?? null];
 
-function useTareas() {
+function useTareas(habilitado = true) {
   const { activeBusinessId } = useBusiness() || {};
   return useQuery({
     queryKey: clave(activeBusinessId),
     queryFn: () => pedir('/api/tareas'),
-    enabled: !!activeBusinessId,
+    enabled: !!activeBusinessId && habilitado,
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
-// Para el globito del botón: lee la misma caché que la lista (un solo pedido).
-export function useTareasPendientes() {
-  const q = useTareas();
+// Para los globitos (botón de Notas del Panel y avatar del perfil): leen la misma caché que la
+// lista, así hay un solo pedido y los números siempre coinciden.
+export function useTareasPendientes(habilitado = true) {
+  const q = useTareas(habilitado);
   return q.data?.pendientes?.length ?? 0;
 }
 
@@ -165,11 +167,26 @@ export function TareasSidebar() {
                 cursor: 'pointer', fontSize: 12, color: 'text.secondary', fontFamily: 'inherit', '&:hover': { color: 'text.primary' } }}>
               <ExpandMoreIcon sx={{ fontSize: 16, transition: 'transform .15s', transform: verHechas ? 'none' : 'rotate(-90deg)' }} />
               Hechas ({hechas.length})
+              <Box component="span" sx={{ ml: 0.5, color: 'text.disabled' }}>· quedan 60 días y desaparecen</Box>
             </Box>
             {verHechas && hechas.map(fila)}
           </>
         )}
       </Box>
     </Box>
+  );
+}
+
+// «Mis pendientes» desde el menú del perfil (Diego 12/11/2026): las mismas tareas, desde cualquier pantalla.
+export function MisPendientesDrawer({ open, onClose }) {
+  return (
+    <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: 1300 }}
+      slotProps={{ paper: { sx: { width: 'min(480px, 100vw)', display: 'flex', flexDirection: 'column' } } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: '1px solid #e8e8e6' }}>
+        <Box sx={{ fontWeight: 700, fontSize: 15 }}>Mis pendientes</Box>
+        <IconButton size="small" onClick={onClose} aria-label="Cerrar" sx={{ ml: 'auto' }}><CloseIcon fontSize="small" /></IconButton>
+      </Box>
+      {open && <TareasSidebar />}
+    </Drawer>
   );
 }
