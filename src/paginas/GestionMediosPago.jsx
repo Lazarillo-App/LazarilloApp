@@ -46,12 +46,15 @@ function Fila({ inicial, onCerrar, onGuardado, onAviso }) {
           slotProps={{ htmlInput: { maxLength: 40 } }}
           onChange={(e) => setF({ ...f, nombre: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') onCerrar(); }}
-          sx={{ width: 224 }}
+          sx={{ width: 224, '& .MuiInputBase-root': { height: 40 } }}
         />
       </TableCell>
       <TableCell>
-        <Select size="small" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
-          {TIPOS_MEDIO.map((t) => <MenuItem key={t.valor} value={t.valor}>{t.etiqueta}</MenuItem>)}
+        {/* El menú va por portal y quedaba DETRÁS del modal de medios (z 1500): se ve arriba (Diego 12/11/2026). */}
+        <Select size="small" value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })}
+          sx={{ width: 140, height: 40 }}
+          MenuProps={{ sx: { zIndex: 1600 }, slotProps: { paper: { sx: { mt: 0.5, borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,.12)' } } } }}>
+          {TIPOS_MEDIO.map((t) => <MenuItem key={t.valor} value={t.valor} sx={{ minHeight: 36 }}>{t.etiqueta}</MenuItem>)}
         </Select>
       </TableCell>
       <TableCell>
@@ -132,7 +135,7 @@ export function ContenidoMediosPago() {
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     <Box component="button" type="button" onClick={() => cambiarActivo(m)} sx={{ all: 'unset', cursor: 'pointer', mr: 1.5, fontSize: 12, color: 'text.secondary', '&:hover': { textDecoration: 'underline' } }}>{m.activo ? 'Desactivar' : 'Activar'}</Box>
                     <IconButton size="small" title="Editar" onClick={() => setForm({ id: m.id, nombre: m.nombre, tipo: m.tipo, pideId: m.pideId })}><EditIcon sx={{ fontSize: 15 }} /></IconButton>
-                    {m.usos === 0
+                    {m.usos === 0 && m.tipo !== 'descuento'
                       ? <IconButton size="small" title="Borrar" onClick={() => borrar(m)} sx={{ '&:hover': { color: 'error.main' } }}><DeleteOutlineIcon sx={{ fontSize: 16 }} /></IconButton>
                       : <Box component="span" sx={{ display: 'inline-block', width: 28 }} />}
                   </TableCell>
