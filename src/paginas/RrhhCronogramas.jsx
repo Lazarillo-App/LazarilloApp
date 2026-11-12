@@ -966,7 +966,9 @@ export default function RrhhCronogramas() {
         <ModalExportar
           espacio={espacio}
           puestos={config?.puestos || []}
-          negocio={variasSucursales && sucursalNombre ? sucursalNombre : nombreNegocio}
+          negocio={nombreNegocio}
+          sucursal={variasSucursales && sucursalNombre && sucursalNombre !== nombreNegocio ? sucursalNombre : ''}
+          logoNegocio={negocioActivo?.props?.branding?.logo_url || negocioActivo?.branding?.logo_url || null}
           semanaId={semanaId}
           rango={rangoLargo(fechaInicio)}
           diasISO={diasISO}
