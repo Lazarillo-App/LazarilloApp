@@ -27,6 +27,7 @@ import { obtenerAgrupaciones, moveItemsBetweenGroups } from '../servicios/apiAgr
 import ExcluirListasModal from './ExcluirListasModal';
 import { SX_BOTON_2L, LineaDestino } from './ChipNegocio';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import MoverRubroDialog from './MoverRubroDialog';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -282,8 +283,7 @@ function ArticuloAccionesMenu({
   const [dlgEliminarOpen, setDlgEliminarOpen] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [dlgMoverRubroOpen, setDlgMoverRubroOpen] = useState(false);
-  const [nuevoRubro, setNuevoRubro] = useState('');
-  const [movingRubro, setMovingRubro] = useState(false);
+  const [movingRubro, setMovingRubro] = useState(null); // clave `${toId}|${rubro}` mientras mueve
 
   const [treeLocal, setTreeLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(false);
@@ -382,20 +382,13 @@ function ArticuloAccionesMenu({
   }, [articulo]);
 
   const openMoverRubro = useCallback(() => {
-    setNuevoRubro('');
     handleClose();
     setTimeout(() => setDlgMoverRubroOpen(true), 0);
   }, [handleClose]);
 
-  const ejecutarMoverRubro = useCallback(async () => {
-    // nuevoRubro llega como `${agrupacionIdDestino}|${subrubro}`
-    if (!nuevoRubro) { setDlgMoverRubroOpen(false); return; }
-    const sep = nuevoRubro.indexOf('|');
-    const toId = Number(nuevoRubro.slice(0, sep));
-    const destino = nuevoRubro.slice(sep + 1).trim();
-    if (!destino || !Number.isFinite(toId)) { setDlgMoverRubroOpen(false); return; }
-    // Origen = la agrupación donde el artículo está guardado. La vista elegida puede no
-    // tenerlo (Promociones es un resumen, Diego 11/11): entonces se busca su agrupación real.
+  // Origen = la agrupación donde el artículo está guardado. La vista elegida puede no
+  // tenerlo (Promociones es un resumen, Diego 11/11): entonces se busca su agrupación real.
+  const origenMover = useMemo(() => {
     const contiene = (g) => {
       const ids = [
         ...(Array.isArray(g?.articulos) ? g.articulos : []).map((a) => Number(a?.id ?? a?.articulo_id)),
@@ -405,19 +398,41 @@ function ArticuloAccionesMenu({
     };
     const esVista = (g) => esTop20Group(g) || norm(g?.nombre) === 'promociones' || Number(g?.id) < 0;
     const sel = (agrupaciones || []).find((g) => Number(g.id) === currentGroupId);
+    if (sel && !esVista(sel) && contiene(sel)) return { id: currentGroupId, nombre: sel.nombre || '' };
     const real = (agrupaciones || []).find((g) => !esVista(g) && contiene(g));
-    const fromId = sel && contiene(sel) && !esVista(sel) ? currentGroupId : Number(real?.id ?? currentGroupId);
+    if (real) return { id: Number(real.id), nombre: real.nombre || '' };
+    return Number.isFinite(currentGroupId) ? { id: currentGroupId, nombre: sel?.nombre || '' } : null;
+  }, [agrupaciones, currentGroupId, articuloIdNum]);
+
+  // Cantidad de artículos por rubro (para el modal de mover).
+  const conteosRubro = useMemo(() => {
+    const m = new Map();
+    for (const g of (agrupaciones || [])) {
+      for (const a of (g?.articulos || [])) {
+        const r = String(a?.subrubro || '').trim();
+        if (!r) continue;
+        const k = `${Number(g.id)}|${r}`;
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+    }
+    return m;
+  }, [agrupaciones]);
+
+  const moverARubro = useCallback(async (toId, destinoRaw) => {
+    const destino = String(destinoRaw || '').trim();
+    if (!destino || !Number.isFinite(Number(toId))) return;
+    const fromId = origenMover?.id;
     if (!Number.isFinite(fromId)) {
       notify?.('No se pudo determinar la agrupación de origen', 'error');
       return;
     }
-    setMovingRubro(true);
+    setMovingRubro(`${Number(toId)}|${destino}`);
     try {
       // moveItemsBetweenGroups mueve el artículo a la agrupación destino (toId) y,
       // con subrubro, reescribe el rubro (UI) en las 3 capas: maxi_articles (fuente de
       // verdad, no toca subrubro_maxi → sync respeta), jsonb de la agrupación y agrupacion_articulos.
       const r = await moveItemsBetweenGroups(effectiveBusinessId, fromId, {
-        toId,
+        toId: Number(toId),
         ids: [articuloIdNum],
         subrubro: destino,
       });
@@ -434,9 +449,9 @@ function ArticuloAccionesMenu({
       console.error('MOVER_RUBRO_ARTICULO_ERROR', e);
       notify?.('No se pudo mover el rubro', 'error');
     } finally {
-      setMovingRubro(false);
+      setMovingRubro(null);
     }
-  }, [nuevoRubro, articuloIdNum, currentGroupId, agrupaciones, effectiveBusinessId, notify, onAfterMutation]);
+  }, [origenMover, articuloIdNum, effectiveBusinessId, notify, onAfterMutation]);
 
   // ── Negocios filtrados para el modal Mover ─────────────────────────────────
   const negociosFiltrados = useMemo(() => {
@@ -1021,45 +1036,18 @@ function ArticuloAccionesMenu({
         notify={notify}
       />
 
-      {/* ── Diálogo mover a otro rubro ── */}
-      <Dialog open={dlgMoverRubroOpen} onClose={() => !movingRubro && setDlgMoverRubroOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Mover a otro rubro</DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
-          <TextField
-            select fullWidth size="small" autoFocus
-            label="Rubro destino"
-            value={nuevoRubro}
-            onChange={(e) => setNuevoRubro(e.target.value)}
-            helperText={rubroActual ? `Actual: ${rubroActual}` : undefined}
-            SelectProps={{ MenuProps: downwardMenuProps(40) }}
-          >
-            {rubrosDisponibles.map((r) => {
-              const val = `${r.agrupacionId}|${r.subrubro}`;
-              const esActual = r.subrubro === rubroActual
-                && Number(r.agrupacionId) === Number(currentGroupId);
-              return (
-                <MenuItem key={val} value={val} disabled={esActual}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                    <span>{r.subrubro}</span>
-                    {r.agrupacionNombre && (
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {r.agrupacionNombre}
-                      </Typography>
-                    )}
-                  </Box>
-                </MenuItem>
-              );
-            })}
-          </TextField>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDlgMoverRubroOpen(false)} disabled={movingRubro}>Cancelar</Button>
-          <Button onClick={ejecutarMoverRubro} variant="contained"
-            disabled={movingRubro || !nuevoRubro}>
-            {movingRubro ? 'Moviendo…' : 'Mover'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* ── Mover a otro rubro (MoverRubroDialog.jsx) ── */}
+      <MoverRubroDialog
+        open={dlgMoverRubroOpen}
+        onClose={() => setDlgMoverRubroOpen(false)}
+        articuloNombre={articuloDisplayName}
+        rubroActual={rubroActual}
+        origen={origenMover}
+        rubros={rubrosDisponibles}
+        conteos={conteosRubro}
+        movingKey={movingRubro}
+        onMover={moverARubro}
+      />
 
       {/* ── Diálogo de confirmación de eliminación ── */}
       <Dialog open={dlgEliminarOpen} onClose={() => !eliminando && setDlgEliminarOpen(false)} maxWidth="xs" fullWidth>
