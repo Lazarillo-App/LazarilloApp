@@ -42,7 +42,8 @@ import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
 import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
-import { Drawer } from '@mui/material';
+import { TareasSidebar, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
+import { Badge, Drawer } from '@mui/material';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
@@ -111,6 +112,8 @@ function GestionPanelContenido() {
   // Celda vacía tocada en la tabla: la atiende CargarFactura.
   const [pedidoCarga, setPedidoCarga] = useState(null);
   const [anclaNotas, setAnclaNotas] = useState(null);
+  // Tareas pendientes (to-do del cajón de Notas): el número va en el botón (Diego 12/11/2026).
+  const tareasPendientes = useTareasPendientes();
   const limpiarPedido = useCallback(() => setPedidoCarga(null), []);
   // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
   const [params, setParams] = useSearchParams();
@@ -342,19 +345,28 @@ function GestionPanelContenido() {
         />
         </Box>
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-          <Tooltip title="Notas">
+          <Tooltip title={tareasPendientes ? `Notas · ${tareasPendientes} tarea${tareasPendientes === 1 ? '' : 's'} pendiente${tareasPendientes === 1 ? '' : 's'}` : 'Notas y tareas'}>
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
-              <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
+              <Badge badgeContent={tareasPendientes} color="error" max={99}
+                sx={{ '& .MuiBadge-badge': { top: -5, right: -7, height: 16, minWidth: 16, px: 0.5, fontSize: 10, fontWeight: 700 } }}>
+                <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
+              </Badge>
             </IconButton>
           </Tooltip>
           {/* Notas en un cajón a la derecha, igual que «corregir» de Sin rubro (Diego 11/11/2026). zIndex de
               modal para que se vea también con el panel maximizado. */}
-          <Drawer anchor="right" open={!!anclaNotas} onClose={() => setAnclaNotas(null)} sx={{ zIndex: 1300 }} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)' } } }}>
+          <Drawer anchor="right" open={!!anclaNotas} onClose={() => setAnclaNotas(null)} sx={{ zIndex: 1300 }} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)', display: 'flex', flexDirection: 'column' } } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: '1px solid #e8e8e6' }}>
-              <Box sx={{ fontWeight: 700, fontSize: 15 }}>Notas</Box>
+              <Box sx={{ fontWeight: 700, fontSize: 15 }}>Notas y tareas</Box>
               <IconButton size="small" onClick={() => setAnclaNotas(null)} aria-label="Cerrar" sx={{ ml: 'auto' }}><CloseIcon fontSize="small" /></IconButton>
             </Box>
-            <ScopeGestion><Box sx={{ pt: 1 }}><NotasSidebar /></Box></ScopeGestion>
+            {/* Media pantalla cada uno (Diego 12/11/2026): notas arriba, tareas abajo. */}
+            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pt: 1 }}>
+              <ScopeGestion><Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><NotasSidebar /></Box></ScopeGestion>
+            </Box>
+            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #e8e8e6' }}>
+              <TareasSidebar />
+            </Box>
           </Drawer>
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
           {verPanel && !sinEcoFin && (
