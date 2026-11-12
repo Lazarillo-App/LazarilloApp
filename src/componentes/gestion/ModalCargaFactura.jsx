@@ -3,7 +3,7 @@
 // Modal de carga de factura y gastos varios, igual a lazarillo_gestion/components/facturas/
 // modal-carga-factura.jsx (estilos propios del modal incluidos). Cambios: datos de Lazarillo (un
 // "PDV" es la principal o una sucursal del negocio) y "Crear y usar" guarda el proveedor de verdad.
-import React, { useState, useRef, useEffect } from "react";
+import React, { Fragment, useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
@@ -296,8 +296,11 @@ function Chev({ abierto }) {
 }
 
 // extra(o): texto adicional por el que también se busca y que se muestra debajo (razón social · CUIT).
-function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra }) {
+// fuera: opciones de otro grupo (p. ej. conceptos de otro rubro) que aparecen al buscar, debajo de un
+// separador «Fuera de este rubro» (Diego 12/11/2026: si quedó un rubro elegido, igual tiene que encontrarlos).
+function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra, fuera, tituloFuera = "Fuera de este rubro" }) {
   const opciones = [...new Set(opcionesCrudas)];
+  const otras = fuera ? [...new Set(fuera)].filter((o) => !opciones.includes(o)) : [];
   const [texto, setTexto] = useState(valor || "");
   const [abierto, setAbierto] = useState(false);
   // Opción marcada con las flechas (Diego 27/10: tipear "carn" + ↓ tiene que navegar la lista).
@@ -328,10 +331,12 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
     return x.toLowerCase().includes(q) || (qDig.length >= 3 && qDig.length === q.replace(/[\s.\-\/]/g, "").length && x.replace(/\D/g, "").includes(qDig));
   };
   const filtradas = (buscando ? opciones.filter(coincide) : opciones).slice(0, 12);
-  const hayExacta = opciones.some((o) => o.toLowerCase() === texto.toLowerCase());
+  const fueraF = buscando ? otras.filter(coincide).slice(0, 8) : [];
+  const hayExacta = [...opciones, ...otras].some((o) => o.toLowerCase() === texto.toLowerCase());
   // "Crear …" primero y siempre visible en los maestros (Diego 05/11/2026); si no, al final y solo tipeando.
   const conCrear = !!(onCrear && (crearPrimero || texto.trim()) && !hayExacta);
-  const items = [...(conCrear && crearPrimero ? [null] : []), ...filtradas, ...(conCrear && !crearPrimero ? [null] : [])];
+  const items = [...(conCrear && crearPrimero ? [null] : []), ...filtradas, ...fueraF, ...(conCrear && !crearPrimero ? [null] : [])];
+  const inicioFuera = fueraF.length ? (conCrear && crearPrimero ? 1 : 0) + filtradas.length : -1;
   const total = items.length;
   const porDefecto = conCrear && crearPrimero && filtradas.length > 0 && buscando ? 1 : 0;
   const marcado = Math.min(activo == null ? porDefecto : activo, Math.max(0, total - 1));
@@ -341,7 +346,7 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
     else if (conCrear) { setAbierto(false); onCrear(buscando ? texto.trim() : ""); }
   };
   useEffect(() => {
-    const el = listaRef.current && listaRef.current.children[marcado];
+    const el = listaRef.current && listaRef.current.querySelector(`[data-ix="${marcado}"]`);
     if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
   }, [marcado, abierto]);
   return (
@@ -365,18 +370,23 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
           setAbierto(false);
           const actual = valorRef.current;
           if (actual !== valor) return; // cambió el valor mientras tanto: manda el nuevo
-          const exacta = opciones.find((o) => o.toLowerCase() === texto.trim().toLowerCase());
+          const exacta = [...opciones, ...otras].find((o) => o.toLowerCase() === texto.trim().toLowerCase());
           if (exacta && exacta !== actual) { setTexto(exacta); onElegir(exacta); }
           else if (!exacta) setTexto(actual || ""); // solo se aceptan ítems de la lista
         }, 180)} />
       {abierto && total > 0 && (
         <div ref={listaRef} style={{ position: "absolute", top: "105%", left: 0, right: 0, background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.10)", zIndex: 80, maxHeight: 230, overflow: "auto" }}>
           {items.map((o, ix) => o != null ? (
-            <div key={o} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
+            <Fragment key={o}>
+            {ix === inicioFuera && (
+              <div style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, letterSpacing: .3, textTransform: "uppercase", color: C.gris, background: "#f6f6f4", borderBottom: "1px solid #ececea", borderTop: ix > 0 ? "1px solid #ececea" : "none" }}>{tituloFuera}</div>
+            )}
+            <div data-ix={ix} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>{o}
               {extra && extra(o) ? <span style={{ display: "block", fontSize: 11.5, color: C.gris }}>{extra(o)}</span> : null}</div>
+            </Fragment>
           ) : (
-            <div key="__crear" onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
+            <div key="__crear" data-ix={ix} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", color: C.cel, fontWeight: 600, borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>
               + {crearPrimero ? `Crear ${crearPrimero}` : "Crear"}{buscando ? ` «${texto.trim()}»` : ""}</div>
           ))}
@@ -446,6 +456,25 @@ function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo
 // empleado: por período, con lo habitual (mediana de las últimas 6) y un atajo para usar el último.
 function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar, onPeriodo }) {
   const [filas, setFilas] = useState(null);
+  // Eliminar desde acá cualquier carga de Lazarillo (Diego 12/11/2026). Las de MaxiRest se borran en
+  // MaxiRest: si se borraran acá volverían con la próxima importación.
+  const qc = useQueryClient();
+  const [borrar, setBorrar] = useState(null); // { rowId, pagos?: total pagado, enCurso? }
+  const eliminarFila = async (f, conPagos) => {
+    setBorrar({ rowId: f.rowId, enCurso: true });
+    const emp = /^emp-(\d+)-/.exec(f.rowId || "");
+    const url = emp ? `/api/empleados/${emp[1]}` : `/api/facturas/${encodeURIComponent(f.rowId)}${conPagos ? "?conPagos=1" : ""}`;
+    try {
+      const r = await gestionFetch(url, { method: "DELETE" });
+      const d = await r.json().catch(() => null);
+      if (!r.ok && d && d.tienePagos) { setBorrar({ rowId: f.rowId, pagos: d.tienePagos.total || true }); return; }
+      if (!r.ok) { setBorrar(null); toast.error((d && d.error) || "No se pudo eliminar"); return; }
+      setBorrar(null);
+      setFilas((xs) => (xs || []).filter((x) => x.rowId !== f.rowId));
+      toast.success("Carga eliminada", { description: `${f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} · ` : ""}${$fmt(f.importe)}` });
+      refrescarCompras(qc);
+    } catch { setBorrar(null); toast.error("Error de red: no se eliminó."); }
+  };
   useEffect(() => {
     setFilas(null);
     if (!codigo || pdvId == null) return undefined;
@@ -481,11 +510,26 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
               <b style={{ display: "block" }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
               {g.filas.map((f, k) => (
                 // Columnas fijas: texto | origen (L = Lazarillo, MX = MaxiRest) | importe — siempre alineados.
-                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 24px 104px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "2px 0" }}>
-                  <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 24px 104px 20px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "2px 0" }}>
+                  {borrar && borrar.rowId === f.rowId && f.rowId ? (
+                    <span onClick={(e) => e.stopPropagation()} style={{ gridColumn: "1 / -1", fontSize: 11.5, lineHeight: "18px", textAlign: "right" }}>
+                      <span style={{ color: "#555", float: "left" }}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} · ` : ""}{$fmt(f.importe)}</span>
+                      {borrar.enCurso ? <span style={{ color: C.gris }}>Eliminando…</span> : (<>
+                        <span style={{ color: C.rojo, fontWeight: 700 }}>{borrar.pagos ? `Tiene ${typeof borrar.pagos === "number" ? `${$fmt(borrar.pagos)} pagados` : "pagos"} · ¿eliminar con el pago?` : "¿Eliminar?"}</span>{" "}
+                        <span role="button" onClick={() => eliminarFila(f, !!borrar.pagos)} style={{ color: C.rojo, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí</span>
+                        {" · "}<span role="button" onClick={() => setBorrar(null)} style={{ color: C.gris, cursor: "pointer" }}>No</span></>)}
+                    </span>
+                  ) : <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>}
+                  {!(borrar && borrar.rowId === f.rowId && f.rowId) && (<>
                   <span title={f.lazarillo ? "Cargado en Lazarillo" : "Viene de MaxiRest"} style={{ textAlign: "center", fontSize: 9.5, fontWeight: 700, borderRadius: 4, lineHeight: "15px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
                   <b style={{ whiteSpace: "nowrap", textAlign: "right" }}>{$fmt(f.importe)}</b>
+                  {f.lazarillo && f.rowId ? (
+                    <span role="button" title="Eliminar esta carga" onClick={(e) => { e.stopPropagation(); setBorrar({ rowId: f.rowId }); }}
+                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 15, lineHeight: "18px", borderRadius: 4 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = C.rojo; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#b5b5b5"; }}>×</span>
+                  ) : <span title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 15, lineHeight: "18px", cursor: "default" }}>×</span>}
+                  </>)}
                 </div>
               ))}
             </div>
@@ -1792,7 +1836,7 @@ function ModalNuevaCarga(props) {
             </div>
             {/* Primero el concepto (el rubro se completa solo), después el rubro (Diego, 28/10/2026). */}
             <div><span style={lab}>Concepto</span>
-              <Combo opciones={conceptosDe(rubroV)} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
+              <Combo opciones={conceptosDe(rubroV)} fuera={rubroV ? conceptosDe(null) : undefined} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
             <div><span style={lab}>Rubro</span>
               <Combo opciones={rubros} valor={rubroV} placeholder="Buscar rubro..." onElegir={(r) => { setRubroV(r); if (rubroDe(conceptoV) !== r) setConceptoV(""); }} /></div>
             <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Detalle</span>
@@ -2042,6 +2086,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   useEffect(() => { if (perAnt.current !== periodo) { perAnt.current = periodo; setLineas(null); } }, [periodo]);
   const [importeA, setImporteA] = useState("");
   const [medioA, setMedioA] = useState("");
+  const [obsA, setObsA] = useState(""); // observación del adelanto (Diego 12/11/2026)
   const [reparto, setReparto] = useState(null); // null = la regla del empleado
   const [editRep, setEditRep] = useState(false);
   const [errores, setErrores] = useState([]);
@@ -2088,7 +2133,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     return sub === "sueldo"
       ? { tipo: "sueldo", pdvId, codigo, periodo, fechaPago, total: totalN, reparto: rep, forzar: !!forzar,
           conceptos: ls.map((l) => ({ conceptoCodigo: codDe(l.concepto), importe: parseImp(l.importe), pagos: l.pagos.filter((p) => parseImp(p.importe) > 0).map((p) => ({ medio: p.medio, importe: parseImp(p.importe) })) })) }
-      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDef, reparto: rep, forzar: !!forzar };
+      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDef, observacion: obsA.trim() || null, reparto: rep, forzar: !!forzar };
   };
   const faltan = () => {
     const out = [];
@@ -2101,7 +2146,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     if (!out.length) out.push(...validarSueldo(p, adelantos));
     return out;
   };
-  const limpiar = () => { setCodigo(""); setTotal(null); setLineas(null); setImporteA(""); setReparto(null); setEditRep(false); setParecido(null); setErrores([]); };
+  const limpiar = () => { setCodigo(""); setTotal(null); setLineas(null); setImporteA(""); setObsA(""); setReparto(null); setEditRep(false); setParecido(null); setErrores([]); };
   const guardar = async (otro, forzar) => {
     const f = faltan();
     if (f.length) { setErrores(f); return; }
@@ -2177,6 +2222,8 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value, e.nativeEvent))} /></div>
             <div><span style={lab}>Forma de pago</span>
               <select style={sel} value={medioA || medioDef} onChange={abmMedios.alElegir(setMedioA)}>{abmMedios.opcion}{medios.map((m) => <option key={m}>{m}</option>)}</select>{abmMedios.dialogo}</div>
+            <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Observación</span>
+              <input style={inp} value={obsA} maxLength={200} placeholder="Opcional · ej. pedido por viaje, a descontar en 2 cuotas" onChange={(e) => setObsA(e.target.value)} /></div>
             <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#888" }}>Concepto fijo: <b>{nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.nombre : "Adelanto Sueldo"}</b> · va a la cuenta del empleado en {nombrePeriodo(periodo)} y se descuenta del sueldo.</div>
           </div>
         ) : (
@@ -2267,7 +2314,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
               <div style={{ fontWeight: 700 }}>{nombrePeriodo(p.periodo)}</div>
               {verCuenta === "concepto" ? p.movimientos.map((m, k) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px dashed #eee", padding: "2px 0" }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmy(m.fecha)} · {m.concepto}{m.origen === "lazarillo" ? " ·L" : ""}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmy(m.fecha)} · {m.concepto}{m.observacion && !/\(Lazarillo\)$/.test(m.observacion) ? ` · ${m.observacion}` : ""}{m.origen === "lazarillo" ? " ·L" : ""}</span>
                   <b style={{ color: m.cod === cuenta.codigoAdelanto ? C.rojo : C.neg, whiteSpace: "nowrap" }}>{$fmt(m.importe)}</b></div>))
                 : Object.entries(p.movimientos.reduce((acc, m) => { const k = (m.medio || "Sin dato").trim() || "Sin dato"; acc[k] = (acc[k] || 0) + m.importe; return acc; }, {}))
                   .sort((a, b) => b[1] - a[1]).map(([medio, imp]) => (
