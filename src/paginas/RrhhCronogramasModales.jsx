@@ -23,6 +23,9 @@ import {
   enMes,
   semanasDelMes,
   colorCat,
+  horarioDe,
+  coloresHorarios,
+  horasEntre,
   normSector,
   esHabitual,
   Chip,
@@ -68,9 +71,10 @@ function dibujarCronograma({ titulo, rango, dias, grupos }) {
   const colW = (W - P * 2 - GAP * 6) / 7;
   const extraEv = dias.some((d) => d.ev) ? 11 : 0; // línea pareja para el nombre del feriado/evento
   const altos = grupos.map((g) => {
-    let maxN = 0;
-    for (let j = 0; j < 7; j++) maxN = Math.max(maxN, g.filas.filter((f) => f.celdas[j]).length);
-    const celH = Math.max(40, 17 + extraEv + maxN * 12 + 5);
+    // cada empleado ocupa 12px, y 9px más si tiene horario propio (va en su renglón)
+    let maxAlto = 0;
+    for (let j = 0; j < 7; j++) maxAlto = Math.max(maxAlto, g.filas.reduce((a, f) => a + (f.celdas[j] ? 12 + (f.celdas[j].hora ? 9 : 0) : 0), 0));
+    const celH = Math.max(40, 17 + extraEv + maxAlto + 5);
     return { celH, total: 20 + celH + 8 };
   });
   const H = P + 34 + altos.reduce((a, x) => a + x.total, 0) + 18 + P;
@@ -93,13 +97,19 @@ function dibujarCronograma({ titulo, rango, dias, grupos }) {
       g.filas.forEach((f) => {
         const c = f.celdas[j];
         if (!c) return;
-        const tag = (c.puesto ? ' ·' + c.puesto : '') + (c.entrada ? ' ' + c.entrada : '');
+        const tag = c.puesto ? ' ·' + c.puesto : '';
         ctx.font = "600 8.5px Archivo, sans-serif";
         const nom = recortar(ctx, c.nombre, colW - 6 - (tag ? ctx.measureText(tag).width : 0));
         const wN = ctx.measureText(nom).width; const wT = tag ? ctx.measureText(tag).width : 0;
         const x0 = x + colW / 2 - (wN + wT) / 2;
         ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.fillText(nom, x0, yy);
         if (tag) { ctx.fillStyle = IMG.acc; ctx.fillText(tag, x0 + wN, yy); }
+        // el horario propio va abajo, en su color: si a alguien le cambia la hora, se nota
+        if (c.hora) {
+          ctx.font = "700 7.5px Archivo, sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = c.colorHora || IMG.acc;
+          ctx.fillText(recortar(ctx, c.hora, colW - 6), x + colW / 2, yy + 9);
+          yy += 9;
+        }
         yy += 12;
       });
     }
@@ -147,12 +157,14 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
       const f = fechasMap.get(iso);
       return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || etiquetaTipo(f.tipo)) : '' };
     });
+    // mismos colores que la grilla: se calculan sobre toda la semana, no solo los turnos tildados
+    const colHoras = coloresHorarios(filas, espacio.turnos);
     const grupos = incluidos.map((t) => ({
       turno: t,
       filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
         const celdas = {};
         Object.entries(f.celdas).forEach(([dia, c]) => {
-          if (c?.empleadoId) celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto, entrada: c.entrada && c.entrada !== t.entrada ? c.entrada : null };
+          if (c?.empleadoId) { const h = horarioDe(c, t); celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto, hora: h, colorHora: h ? colHoras.get(h) : null }; }
         });
         return { celdas };
       }),
@@ -424,7 +436,9 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
-function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onGuardar, onCerrar }) {
+function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onGuardar, onCerrar }) {
+  const [bajaDe, setBajaDe] = useState(null);     // empleado al que se le da de baja desde la lista
+  const [fechaBaja, setFechaBaja] = useState('');
   const [q, setQ] = useState('');
   const [hoverId, setHoverId] = useState(null);
   const [creando, setCreando] = useState(false);
@@ -448,6 +462,13 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
   // si no se toca cada día conserva la suya.
   const [entrada, setEntrada] = useState(ctx.entradaMixta ? '' : (ctx.celda ? (ctx.celda.entrada || '') : (ctx.entradaFila || '')));
   const [entradaTocada, setEntradaTocada] = useState(false);
+  // salida opcional: si se carga, las horas se calculan solas (se pueden corregir)
+  const [salida, setSalida] = useState(ctx.salidaMixta ? '' : (ctx.celda ? (ctx.celda.salida || '') : (ctx.salidaFila || '')));
+  const [salidaTocada, setSalidaTocada] = useState(false);
+  const recalcularHoras = (ent, sal) => {
+    const h = horasEntre(ent || ctx.turnoEntrada, sal);
+    if (h) setHoras(h);
+  };
 
   const lista = useMemo(() => {
     const txt = q.trim().toLowerCase();
@@ -471,8 +492,14 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
     }}>
       <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
       {hoverId === e.id && empId !== e.id && onNoAplica ? (
-        <span onClick={(ev) => { ev.stopPropagation(); onNoAplica(e); }} title="No aparece más para asignar (se deshace desde Nómina o en el aviso)"
-          style={{ fontSize: 11, fontWeight: 700, color: T.text3, border: `1px dashed ${T.text3}88`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>⊘ No aplica</span>
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <span onClick={(ev) => { ev.stopPropagation(); onNoAplica(e); }} title="No aparece más para asignar (se deshace desde Nómina o en el aviso)"
+            style={{ fontSize: 11, fontWeight: 700, color: T.text3, border: `1px dashed ${T.text3}88`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>⊘ No aplica</span>
+          {onBaja && (
+            <span onClick={(ev) => { ev.stopPropagation(); setBajaDe(e); setFechaBaja(''); }} title="Dar de baja (fecha opcional)"
+              style={{ fontSize: 11, fontWeight: 700, color: T.bad, border: `1px solid ${T.bad}55`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>Baja</span>
+          )}
+        </span>
       ) : (
         <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{(e.espacios || []).map((x) => x.nombre).join(' · ') || e.sector || ''}</span>
       )}
@@ -524,6 +551,18 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
             Cuando armes cronogramas, los habituales de {espacio?.nombre} van a aparecer primero.
           </div>
         )}
+        {bajaDe && (
+          <div style={{ marginTop: 8, border: `1px solid ${T.bad}55`, background: T.bad + '0D', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text, fontWeight: 700, marginBottom: 6 }}>Dar de baja a {nombreDe(bajaDe)}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="date" value={fechaBaja} onChange={(e) => setFechaBaja(e.target.value)} autoFocus
+                style={{ height: 40, boxSizing: 'border-box', flex: 1, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band }} />
+              <Boton onClick={() => setBajaDe(null)}>Cancelar</Boton>
+              <Boton peligro onClick={async () => { const ok = await onBaja(bajaDe, fechaBaja); if (ok) { if (empId === bajaDe.id) setEmpId(null); setBajaDe(null); } }}>Dar de baja</Boton>
+            </div>
+            <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5 }}>Si dejás la fecha vacía, queda hoy.</div>
+          </div>
+        )}
 
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -534,13 +573,19 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 12, margin: '12px 0 0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', columnGap: 10, margin: '12px 0 0' }}>
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Entra</div>
-          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Horas de la jornada</div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Sale <span style={{ textTransform: 'none', color: T.text3 }}>(opc.)</span></div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Horas</div>
           <input
             type="time" value={entrada} title={ctx.turnoEntrada ? `Vacía = la del turno (${ctx.turnoEntrada})` : 'Vacía = la del turno'}
-            onChange={(e) => { setEntrada(e.target.value); setEntradaTocada(true); }}
+            onChange={(e) => { setEntrada(e.target.value); setEntradaTocada(true); if (salida) recalcularHoras(e.target.value, salida); }}
             style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${entrada ? T.violet + '88' : T.border2}`, outline: 'none', color: entrada ? T.text : T.text3, background: T.head, textAlign: 'center' }}
+          />
+          <input
+            type="time" value={salida} title="Opcional: si la cargás, la celda muestra entrada–salida"
+            onChange={(e) => { setSalida(e.target.value); setSalidaTocada(true); if (e.target.value) recalcularHoras(entrada, e.target.value); }}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${salida ? T.violet + '88' : T.border2}`, outline: 'none', color: salida ? T.text : T.text3, background: T.head, textAlign: 'center' }}
           />
           <input
             type="number" min="1" max="16" step="0.5" value={horas} placeholder={ctx.horasMixtas ? 'como están' : ''}
@@ -549,8 +594,13 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           />
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5, textAlign: 'center' }}>
             {entrada
-              ? <span onClick={() => { setEntrada(''); setEntradaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>Usar la del turno{ctx.turnoEntrada ? ` (${ctx.turnoEntrada})` : ''}</span>
-              : ctx.entradaMixta && !entradaTocada ? 'Cada día conserva la suya' : `Con el turno${ctx.turnoEntrada ? ` · ${ctx.turnoEntrada}` : ''}`}
+              ? <span onClick={() => { setEntrada(''); setEntradaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>{ctx.turnoEntrada ? `Volver a ${ctx.turnoEntrada}` : 'Usar la del turno'}</span>
+              : ctx.entradaMixta && !entradaTocada ? 'Como están' : `Con el turno${ctx.turnoEntrada ? ` · ${ctx.turnoEntrada}` : ''}`}
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5, textAlign: 'center' }}>
+            {salida
+              ? <span onClick={() => { setSalida(''); setSalidaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>Quitar salida</span>
+              : ctx.salidaMixta && !salidaTocada ? 'Como están' : 'Sin informar'}
           </div>
           <div />
         </div>
@@ -569,6 +619,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
               horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
               // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
               entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
+              salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
             })}>{ctx.modoFila ? 'Aplicar a la fila' : 'Guardar'}</Boton>
           </div>
         </div>

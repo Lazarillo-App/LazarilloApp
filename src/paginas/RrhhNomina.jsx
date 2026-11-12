@@ -234,7 +234,8 @@ export default function RrhhNomina() {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState('');
   const [config, setConfig] = useState(null);
-  const [filtro, setFiltro] = useState('activos'); // activos | inactivos | todos
+  // activos (van en cronogramas) | noaplica (activos que no van) | bajas | todos | sugeridos
+  const [filtro, setFiltro] = useState('activos');
   const [q, setQ] = useState('');
   const [editando, setEditando] = useState(null);   // null | 'nuevo' | empleado
   const [toast, setToast] = useState(null);
@@ -287,8 +288,9 @@ export default function RrhhNomina() {
   const sugeridos = useMemo(() => empleados.filter((e) => e.sugerirBaja), [empleados]);
   const historia = config?.historia || { semanas: 0, alcanza: false };
   const cuenta = useMemo(() => ({
-    activos: empleados.filter((e) => e.activo !== false).length,
-    inactivos: empleados.filter((e) => e.activo === false).length,
+    activos: empleados.filter((e) => e.activo !== false && !e.noAplica).length,
+    noaplica: empleados.filter((e) => e.activo !== false && e.noAplica).length,
+    bajas: empleados.filter((e) => e.activo === false).length,
     todos: empleados.length,
   }), [empleados]);
   const sectores = useMemo(() => {
@@ -300,7 +302,11 @@ export default function RrhhNomina() {
   const visibles = useMemo(() => {
     const txt = normTxt(q.trim());
     return empleados
-      .filter((e) => (filtro === 'todos' ? true : filtro === 'sugeridos' ? e.sugerirBaja : filtro === 'activos' ? e.activo !== false : e.activo === false))
+      .filter((e) => (filtro === 'todos' ? true
+        : filtro === 'sugeridos' ? e.sugerirBaja
+        : filtro === 'activos' ? e.activo !== false && !e.noAplica
+        : filtro === 'noaplica' ? e.activo !== false && e.noAplica
+        : e.activo === false))
       .filter((e) => !txt || normTxt(nombreDe(e)).includes(txt) || String(e.codigoMaxi || '').includes(txt) || normTxt(e.sector).includes(txt))
       .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
   }, [empleados, filtro, q]);
@@ -385,7 +391,8 @@ export default function RrhhNomina() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginRight: 6 }}>Nómina</div>
           <Boton activo={filtro === 'activos'} onClick={() => setFiltro('activos')}>Activos · {cuenta.activos}</Boton>
-          <Boton activo={filtro === 'inactivos'} onClick={() => setFiltro('inactivos')}>Inactivos · {cuenta.inactivos}</Boton>
+          <Boton activo={filtro === 'noaplica'} onClick={() => setFiltro('noaplica')} title="Activos que no van en cronogramas (contador, dueño, usuarios del POS)">No aplica · {cuenta.noaplica}</Boton>
+          <Boton activo={filtro === 'bajas'} onClick={() => setFiltro('bajas')}>Bajas · {cuenta.bajas}</Boton>
           <Boton activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>Todos · {cuenta.todos}</Boton>
           <div style={{ flex: 1 }} />
           <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>

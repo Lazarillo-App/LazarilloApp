@@ -57,6 +57,8 @@ import {
   duenoDe,
   esHabitual,
   GrillaEjemplo,
+  horarioDe,
+  coloresHorarios,
 } from './RrhhCronogramasComun';
 import {
   ModalExportar,
@@ -201,7 +203,7 @@ export default function RrhhCronogramas() {
           (r.semana.turnos || []).forEach((t) => {
             (t.filas || []).forEach((f) => {
               const celdas = {};
-              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null }; });
+              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
               fs.push({ key: nuevaKey(), idBack: f.id, turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
             });
           });
@@ -229,7 +231,7 @@ export default function RrhhCronogramas() {
         ownerEmpleadoId: f.ownerEmpleadoId || duenoDe(f) || null,
         celdas: Object.entries(f.celdas)
           .filter(([, c]) => c && c.empleadoId)
-          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS, entrada: c.entrada || null })),
+          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null })),
       });
     });
     return {
@@ -300,7 +302,7 @@ export default function RrhhCronogramas() {
       const patron = Object.values(fila.celdas).find((c) => c && c.empleadoId === fila.ownerEmpleadoId);
       if (patron) {
         mutarFilas((fs) => fs.map((f) => f.key === fila.key
-          ? { ...f, celdas: { ...f.celdas, [dia]: { empleadoId: patron.empleadoId, puesto: patron.puesto, horas: patron.horas, entrada: patron.entrada || null } } }
+          ? { ...f, celdas: { ...f.celdas, [dia]: { empleadoId: patron.empleadoId, puesto: patron.puesto, horas: patron.horas, entrada: patron.entrada || null, salida: patron.salida || null } } }
           : f));
         return;
       }
@@ -309,6 +311,7 @@ export default function RrhhCronogramas() {
     setCeldaSel({
       filaKey: fila.key, dia, turnoId: turno.id, turnoNombre: turno.nombre, turnoEntrada: turno.entrada || '',
       entradaFila: patronFila?.entrada || Object.values(fila.celdas).find((c) => c?.entrada)?.entrada || '',
+      salidaFila: Object.values(fila.celdas).find((c) => c?.salida)?.salida || '',
       nroDia: new Date(diasISO[dia] + 'T12:00:00').getDate(),
       celda, ownerEmpleadoId: fila.ownerEmpleadoId, puestoFila: patronFila?.puesto || '',
     });
@@ -320,11 +323,12 @@ export default function RrhhCronogramas() {
     const puestos = new Set(cs.map((c) => c.puesto || ''));
     const horas = new Set(cs.map((c) => Number(c.horas) || JORNADA_HS));
     const entradas = new Set(cs.map((c) => c.entrada || ''));
+    const salidas = new Set(cs.map((c) => c.salida || ''));
     setCeldaSel({
       modoFila: true, filaKey: fila.key, turnoId: turno.id, turnoNombre: turno.nombre, turnoEntrada: turno.entrada || '',
-      entradaMixta: entradas.size > 1,
+      entradaMixta: entradas.size > 1, salidaMixta: salidas.size > 1,
       diasCargados: cs.length, ownerEmpleadoId: duenoDe(fila),
-      celda: { empleadoId: duenoDe(fila), puesto: puestos.size === 1 ? [...puestos][0] || null : null, horas: horas.size === 1 ? [...horas][0] : JORNADA_HS, entrada: entradas.size === 1 ? [...entradas][0] || null : null },
+      celda: { empleadoId: duenoDe(fila), puesto: puestos.size === 1 ? [...puestos][0] || null : null, horas: horas.size === 1 ? [...horas][0] : JORNADA_HS, entrada: entradas.size === 1 ? [...entradas][0] || null : null, salida: salidas.size === 1 ? [...salidas][0] || null : null },
       puestoMixto: puestos.size > 1, horasMixtas: horas.size > 1,
     });
   };
@@ -345,6 +349,7 @@ export default function RrhhCronogramas() {
           puesto: valor.puesto === undefined ? (c.puesto || null) : valor.puesto,
           horas: valor.horas === undefined ? c.horas : valor.horas,
           entrada: valor.entrada === undefined ? (c.entrada || null) : valor.entrada,
+          salida: valor.salida === undefined ? (c.salida || null) : valor.salida,
         };
       });
       return { ...f, celdas, ownerEmpleadoId: valor.empleadoId };
@@ -364,7 +369,7 @@ export default function RrhhCronogramas() {
     mutarFilas((fs) => fs.map((f) => {
       if (f.key !== filaKey) return f;
       const celdas = { ...f.celdas };
-      if (valor) celdas[dia] = { ...valor, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null }; else delete celdas[dia];
+      if (valor) celdas[dia] = { ...valor, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null, salida: valor.salida ?? null }; else delete celdas[dia];
       const owner = !Object.keys(celdas).length ? null : f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
@@ -398,6 +403,28 @@ export default function RrhhCronogramas() {
     } catch (e) {
       poner(!valor);
       avisar(e?.data?.message || e.message || 'No se pudo guardar.', 'error');
+    }
+  };
+
+  // Dar de baja desde la lista de asignar: fecha opcional (vacía = hoy en el servidor).
+  const bajaRapida = async (emp, fecha) => {
+    try {
+      const r = await RrhhAPI.editarEmpleado(emp.id, { activo: false, ...(fecha ? { fechaBaja: fecha } : {}) });
+      setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? { ...e, ...r.empleado, sugerirBaja: false } : e)) }));
+      avisar(`${nombreDe(emp)} dado de baja`, 'ok', {
+        label: 'Deshacer',
+        fn: async () => {
+          try {
+            const r2 = await RrhhAPI.editarEmpleado(emp.id, { activo: true });
+            setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? { ...e, ...r2.empleado } : e)) }));
+            avisar(`${nombreDe(emp)} reactivado ✓`);
+          } catch (e) { avisar(e?.data?.message || e.message || 'No se pudo reactivar.', 'error'); }
+        },
+      });
+      return true;
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudo dar de baja.', 'error');
+      return false;
     }
   };
 
@@ -599,6 +626,8 @@ export default function RrhhCronogramas() {
       .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
   }, [config, espacio, totales]);
   const sinHistoria = !(config?.historia?.semanas > 0);
+  // un color por horario distinto de la semana (mismo mapa que la imagen de WhatsApp)
+  const colHoras = useMemo(() => coloresHorarios(filas, espacio?.turnos), [filas, espacio]);
 
   /* ── estilos compartidos de la tabla ── */
   // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
@@ -821,8 +850,14 @@ export default function RrhhCronogramas() {
                                         <div style={{ ...dosRenglones, fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 90, textAlign: 'center' }}>{nombreCorto(emp)}</div>
                                         <div style={{ height: 16, display: 'flex', gap: 3, alignItems: 'center' }}>
                                           {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px' }}>{c.puesto}</span>}
-                                          {c.entrada && c.entrada !== t.entrada && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.violet, border: `1px solid ${T.violet}55`, borderRadius: 6, padding: '0 4px' }} title={`Entra ${c.entrada} (el turno entra ${t.entrada || '—'})`}>{c.entrada}</span>}
-                                          {c.horas !== JORNADA_HS && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
+                                          {(() => {
+                                            const h = horarioDe(c, t);
+                                            if (!h) return null;
+                                            const col = colHoras.get(h) || T.violet;
+                                            return <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: col, background: col + '14', border: `1px solid ${col}66`, borderRadius: 6, padding: '0 4px', whiteSpace: 'nowrap' }}
+                                              title={c.salida ? `Entra ${c.entrada || t.entrada || '—'} · sale ${c.salida}` : `Entra ${c.entrada} (el turno entra ${t.entrada || '—'})`}>{h}</span>;
+                                          })()}
+                                          {c.horas !== JORNADA_HS && !c.salida && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
                                         </div>
                                       </>
                                     ) : (
@@ -947,6 +982,7 @@ export default function RrhhCronogramas() {
           espacio={espacio}
           onCrear={crearEmpleadoRapido}
           onNoAplica={marcarNoAplica}
+          onBaja={bajaRapida}
           onGuardar={guardarCelda}
           onCerrar={() => setCeldaSel(null)}
         />
