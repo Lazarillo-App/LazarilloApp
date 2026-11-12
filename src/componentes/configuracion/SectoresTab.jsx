@@ -20,76 +20,9 @@ import { listarPendientes, aprobarPendiente, rechazarPendiente } from '@/servici
 import { showAlert } from '@/servicios/appAlert';
 import { showConfirm } from '@/servicios/appConfirm';
 import { PlazasAPI } from '@/servicios/apiPlazas';
+import EditorPlaza from '@/componentes/plazas/EditorPlaza';
 
-/* ─── Plazas de despacho (Diego 11/11/2026): subsectores con sus productos ─── */
-function EditorPlaza({ abierto, sector, plaza, onCerrar, onGuardado }) {
-  const [nombre, setNombre] = React.useState('');
-  const [elegidos, setElegidos] = React.useState([]); // [{ id, nombre }]
-  const [q, setQ] = React.useState('');
-  const [articulos, setArticulos] = React.useState([]);
-  const [guardando, setGuardando] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!abierto) return;
-    setNombre(plaza?.nombre || '');
-    setElegidos((plaza?.productos || []).map((p) => ({ id: p.articleId, nombre: p.nombre || `#${p.articleId}` })));
-    setQ('');
-    PlazasAPI.articulos('').then(setArticulos).catch(() => setArticulos([]));
-  }, [abierto, plaza]);
-
-  const ids = new Set(elegidos.map((e) => Number(e.id)));
-  const filtrados = articulos.filter((a) => !q.trim() || String(a.nombre).toLowerCase().includes(q.trim().toLowerCase()));
-  const toggle = (a) => setElegidos((prev) => (ids.has(Number(a.id)) ? prev.filter((e) => Number(e.id) !== Number(a.id)) : [...prev, { id: Number(a.id), nombre: a.nombre }]));
-
-  const guardar = async () => {
-    setGuardando(true);
-    try {
-      const articleIds = elegidos.map((e) => Number(e.id));
-      if (plaza?.id) await PlazasAPI.editar(plaza.id, nombre.trim(), articleIds);
-      else await PlazasAPI.crear(sector.id, nombre.trim(), articleIds);
-      try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
-      onGuardado();
-    } catch (e) {
-      showAlert(e?.message || 'No se pudo guardar la plaza', 'error');
-    } finally { setGuardando(false); }
-  };
-
-  return (
-    <Dialog open={abierto} onClose={onCerrar} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
-        {plaza?.id ? 'Editar plaza' : 'Nueva plaza'} <Typography component="span" color="text.secondary" sx={{ fontSize: '0.85rem' }}>· {sector?.nombre}</Typography>
-      </DialogTitle>
-      <DialogContent>
-        <TextField autoFocus fullWidth size="small" label="Nombre" placeholder="Ej. Ensaladas, Freidora, Tostados" value={nombre}
-          onChange={(e) => setNombre(e.target.value)} sx={{ mt: 1, mb: 2 }} />
-        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-          PRODUCTOS DE LA PLAZA ({elegidos.length})
-        </Typography>
-        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1.5, minHeight: 24 }}>
-          {elegidos.map((e) => <Chip key={e.id} label={e.nombre} size="small" onDelete={() => toggle(e)} sx={{ height: 24, fontSize: '0.72rem' }} />)}
-          {!elegidos.length && <Typography variant="caption" color="text.secondary">Tildá abajo los productos que se arman en esta plaza.</Typography>}
-        </Stack>
-        <TextField fullWidth size="small" placeholder="Buscar producto con receta…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Box sx={{ maxHeight: 280, overflowY: 'auto', mt: 0.5, border: '1px solid #eef0f4', borderRadius: 1.5 }}>
-          {filtrados.slice(0, 200).map((a) => (
-            <Stack key={a.id} direction="row" alignItems="center" onClick={() => toggle(a)}
-              sx={{ px: 1, minHeight: 34, cursor: 'pointer', borderBottom: '1px solid #f5f6f8', '&:hover': { bgcolor: 'action.hover' } }}>
-              <Checkbox size="small" checked={ids.has(Number(a.id))} sx={{ p: 0.5, mr: 0.5 }} />
-              <Typography sx={{ fontSize: '0.8rem' }}>{a.nombre}</Typography>
-            </Stack>
-          ))}
-          {!filtrados.length && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', p: 1.5 }}>Sin resultados</Typography>}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onCerrar}>Cancelar</Button>
-        <Button variant="contained" disableElevation disabled={guardando || !nombre.trim()} onClick={guardar}>
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
+/* EditorPlaza vive en componentes/plazas/EditorPlaza.jsx (también lo usa Operación › Tableros). */
 
 const COLORES = ['#3b82f6', '#f59e0b', '#22c55e', '#a855f7', '#ef4444', '#64748b'];
 

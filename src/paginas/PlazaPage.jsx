@@ -1,6 +1,7 @@
 // src/paginas/PlazaPage.jsx — /plaza/:id: la vista «diseño» de una plaza de despacho (Diego 11/11/2026).
 import React, { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
+import EditorPlaza from '@/componentes/plazas/EditorPlaza';
 import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
@@ -17,6 +18,34 @@ const fichaDe = (renglones) => ({
   ocultos: renglones.filter((r) => r.oculto && !r.extra).map((r) => r.key),
   extras: renglones.filter((r) => r.extra).map((r) => ({ id: r.key, texto: r.nombre, color: r.color })),
 });
+
+// /tableros: entra a la primera plaza; si no hay, lo dice (y deja crear si se puede).
+export function TablerosInicio() {
+  const { activeId } = useBusiness() || {};
+  const [t, setT] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const [nueva, setNueva] = useState(null);
+  useEffect(() => { setT(null); PlazasAPI.tablero().then(setT).catch(() => setT({ plazas: [], puedeCrear: false, sectores: [] })); }, [activeId]);
+  if (nueva) return <Navigate to={`/tableros/${nueva}`} replace />;
+  if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
+  if (t.plazas.length) return <Navigate to={`/tableros/${t.plazas[0].id}`} replace />;
+  return (
+    <Stack alignItems="center" spacing={1.5} sx={{ py: 10, bgcolor: '#fff', minHeight: '100%' }}>
+      <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.1rem' }}>Todavía no hay plazas</Typography>
+      <Typography color="text.secondary" sx={{ fontSize: '0.9rem', textAlign: 'center', maxWidth: 420 }}>
+        Una plaza es un puesto de cocina o barra (Ensaladas, Freidora, Tragos) con la lámina de armado de sus productos.
+      </Typography>
+      {t.puedeCrear && <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>}
+      <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
+        onGuardado={(id) => { setCreando(false); if (id) setNueva(id); }} />
+    </Stack>
+  );
+}
+// Atajo viejo /plaza/:id → /tableros/:id
+export function PlazaViejaRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/tableros/${id}`} replace />;
+}
 
 export default function PlazaPage() {
   const { id } = useParams();

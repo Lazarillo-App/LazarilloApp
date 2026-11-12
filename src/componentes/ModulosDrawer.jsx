@@ -8,7 +8,7 @@ import { useAccess } from '@/context/AccessContext';
 // Módulo → sección de los roles a medida (lo que el rol no ve, no aparece).
 const SECCION_DE_MODULO = {
   resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh',
-  recetas: 'recetas', 'gestion-conceptos': 'conceptos', 'gestion-medios': 'medios',
+  recetas: 'recetas', tableros: 'recetas', 'gestion-conceptos': 'conceptos', 'gestion-medios': 'medios',
 };
 
 /**
@@ -26,6 +26,8 @@ const GROUPS = [
     id: 'operacion', label: 'Operación',
     modules: [
       // Medios de pago salió del menú (Diego 10/11/2026): se gestionan desde el desplegable de cada pago.
+      // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
+      { id: 'tableros', label: 'Tableros', emoji: '📋', to: '/tableros' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
     ],
   },
