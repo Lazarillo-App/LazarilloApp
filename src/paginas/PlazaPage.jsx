@@ -56,6 +56,7 @@ export default function PlazaPage() {
   const [receta, setReceta] = useState(null); // { id, nombre } del producto abierto
   const [insumoEq, setInsumoEq] = useState(null); // { id, nombre, articleId }: «+ Crear equivalencia»
   const [aviso, setAviso] = useState('');
+  const [sumando, setSumando] = useState(false); // «+ Productos»: el editor de la plaza
   // Negocio donde viven los insumos (el principal de la organización), igual que InsumosMain.
   const { rootBusiness, organization } = useOrganization() || {};
   const enOrg = (organization?.businesses || []).some((b) => String(b.id) === String(activeId));
@@ -128,6 +129,12 @@ export default function PlazaPage() {
           </Typography>
         </Box>
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ py: 0 }}>{error}</Alert>}
+        {/* «+ Productos» (Diego 12/11/2026): sumar o sacar productos sin ir a Configuración. */}
+        {data.puedeArmar && (
+          <Button size="small" variant="outlined" disableElevation onClick={() => setSumando(true)} sx={{ height: 34, whiteSpace: 'nowrap' }}>
+            + Productos
+          </Button>
+        )}
         {data.puedeArmar && (
           <Button size="small" variant={armando ? 'contained' : 'outlined'} disableElevation
             startIcon={armando ? <CheckIcon /> : <EditOutlinedIcon />} onClick={() => setArmando((v) => !v)}
@@ -163,6 +170,10 @@ export default function PlazaPage() {
           saveRecetaUrl={`${BASE}/businesses/${insumosBizId}/insumos/${insumoEq.id}/receta`}
           onSaved={() => {}} />
       )}
+      <EditorPlaza abierto={sumando} onCerrar={() => setSumando(false)}
+        sector={{ id: data.plaza.sectorId, nombre: data.plaza.sectorNombre }}
+        plaza={{ id: data.plaza.id, nombre: data.plaza.nombre, productos: data.productos.map((p) => ({ articleId: p.articleId, nombre: p.nombre })) }}
+        onGuardado={() => { setSumando(false); cargar(); }} />
       <Snackbar open={!!aviso} autoHideDuration={3500} onClose={() => setAviso('')} message={aviso}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
