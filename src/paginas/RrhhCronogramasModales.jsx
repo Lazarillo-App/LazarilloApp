@@ -124,7 +124,14 @@ function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
         ctx.fillStyle = c ? IMG.celda : IMG.libre; rrect(ctx, x, y, colW, FILA, 6); ctx.fill();
         ctx.textAlign = 'center';
         if (!c) { ctx.fillStyle = '#A9B6C6'; ctx.font = "500 10px Archivo, sans-serif"; ctx.fillText('franco', x + colW / 2, y + FILA / 2 + 3.5); continue; }
-        const linea1 = c.puesto || '✓';
+        // sin puesto: va la hora a la que entra (la propia en su color, o la del turno en gris)
+        if (!c.puesto) {
+          const h = c.hora || g.turno.entrada || 'Trabaja';
+          ctx.fillStyle = c.hora ? (c.colorHora || IMG.acc) : IMG.gris; ctx.font = "700 11.5px Archivo, sans-serif";
+          ctx.fillText(recortar(ctx, h, colW - 6), x + colW / 2, y + FILA / 2 + 4);
+          continue;
+        }
+        const linea1 = c.puesto;
         if (c.hora) {
           ctx.fillStyle = IMG.ink; ctx.font = "700 11px Sora, sans-serif"; ctx.fillText(recortar(ctx, linea1, colW - 6), x + colW / 2, y + 12.5);
           ctx.fillStyle = c.colorHora || IMG.acc; ctx.font = "700 10px Archivo, sans-serif"; ctx.fillText(recortar(ctx, c.hora, colW - 6), x + colW / 2, y + 25);
