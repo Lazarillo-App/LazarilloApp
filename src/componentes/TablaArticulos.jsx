@@ -572,6 +572,10 @@ export default function TablaArticulos({
     if (recetaArticulo === null);
   }, [recetaArticulo]);
   const listRef = useRef(null);
+  // Artículo buscado que tiene que verse aunque el filtro «solo con ventas» (👁) lo esconda:
+  // un artículo nuevo o sin ventas en el período no estaba en la lista y el salto nunca lo
+  // encontraba (Diego 12/11/2026, «Brioche Ribswich»). Queda visible hasta el próximo salto.
+  const [visibleForzadoId, setVisibleForzadoId] = useState(null);
 
   // Alto real de la lista virtualizada: medido del contenedor (no un "100vh -
   // N px" fijo) para que siempre llegue hasta abajo sin importar el zoom, el
@@ -1126,11 +1130,11 @@ export default function TablaArticulos({
     if (soloConVentas) {
       base = base.filter((a) => {
         const qty = getVentasQty(a);
-        return Number(qty) > 0;
+        return Number(qty) > 0 || (visibleForzadoId != null && Number(getId(a)) === Number(visibleForzadoId));
       });
     }
     return base;
-  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds]);
+  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds, visibleForzadoId]);
 
   const isRubroView = tableHeaderMode === "cat-first";
 
@@ -1570,6 +1574,7 @@ export default function TablaArticulos({
     // Los artículos manuales usan id negativo a propósito (esManual = id < 0).
     if (!Number.isFinite(id) || id === 0) return;
     saltoRef.current = { id, hasta: Date.now() + 6000, idx: null, resaltado: false };
+    setVisibleForzadoId(id);
     if (!saltoTimerRef.current) {
       saltoTimerRef.current = setInterval(() => {
         intentarSalto();
