@@ -31,6 +31,10 @@ export const MeAPI = {
    * PUT /api/auth/me
    * Actualiza el perfil del usuario logueado. Acepta: name, displayName.
    */
+  // Cambiar el email (usuario de ingreso). Pide la contraseña actual; devuelve { user, token }.
+  async changeEmail({ email, password }) {
+    return http('/auth/me/email', { method: 'PUT', body: { email, password }, withBusinessId: false, noAuthRedirect: true });
+  },
   async updateMe({ displayName, name } = {}) {
     return http('/auth/me', {
       method: 'PUT',

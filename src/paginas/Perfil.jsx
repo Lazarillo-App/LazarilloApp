@@ -749,6 +749,39 @@ function PerfilContenido() {
     }
   }, [renameValue, me, setUser]);
 
+  // ── Cambiar email (Diego 12/11/2026): pide la contraseña actual ──
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailNuevo, setEmailNuevo] = useState('');
+  const [emailPass, setEmailPass] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailGuardando, setEmailGuardando] = useState(false);
+  const openEmail = useCallback(() => {
+    setEmailNuevo(me?.email || ''); setEmailPass(''); setEmailError(''); setEmailOpen(true);
+  }, [me]);
+  const ERR_EMAIL = {
+    invalid_email: 'Ese email no es válido',
+    wrong_password: 'La contraseña no es correcta',
+    same_email: 'Es el mismo email que ya tenés',
+    email_in_use: 'Ese email ya lo usa otra cuenta',
+    password_required: 'Escribí tu contraseña actual',
+  };
+  const ejecutarEmail = useCallback(async () => {
+    setEmailGuardando(true); setEmailError('');
+    try {
+      const r = await MeAPI.changeEmail({ email: emailNuevo.trim(), password: emailPass });
+      if (r?.token) { try { localStorage.setItem('token', r.token); } catch { } }
+      const newUser = { ...me, email: r?.user?.email || emailNuevo.trim().toLowerCase() };
+      setUser?.(newUser);
+      try { localStorage.setItem('user', JSON.stringify(newUser)); } catch { }
+      setSnack({ open: true, msg: 'Email actualizado: desde ahora entrás con ' + newUser.email, type: 'success' });
+      setEmailOpen(false);
+    } catch (e) {
+      setEmailError(ERR_EMAIL[e?.message] || 'No se pudo cambiar el email');
+    } finally {
+      setEmailGuardando(false);
+    }
+  }, [emailNuevo, emailPass, me, setUser]);
+
   const userInitials = (meName.match(/[\p{L}\p{N}]+/gu) || []).map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
   // Rol mostrado en el perfil: el MÁS ALTO entre todos los negocios (estable, no cambia
@@ -821,6 +854,11 @@ function PerfilContenido() {
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
                       {me.email}
                     </Typography>
+                    <Tooltip title="Cambiar email">
+                      <IconButton size="small" onClick={openEmail} sx={{ p: 0.25, color: tc }}>
+                        <EditIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Tooltip>
                   </Stack>
                 )}
 
@@ -924,6 +962,38 @@ function PerfilContenido() {
           <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
           <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
             {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo cambiar email */}
+      <Dialog open={emailOpen} onClose={() => !emailGuardando && setEmailOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Cambiar tu email</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <Stack spacing={2}>
+            <TextField
+              autoFocus fullWidth size="small" type="email"
+              label="Email nuevo"
+              value={emailNuevo}
+              onChange={(e) => { setEmailNuevo(e.target.value); setEmailError(''); }}
+              helperText="Es tu usuario para entrar a Lazarillo"
+            />
+            <TextField
+              fullWidth size="small" type="password"
+              label="Tu contraseña actual"
+              value={emailPass}
+              onChange={(e) => { setEmailPass(e.target.value); setEmailError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && emailPass && emailNuevo.trim()) ejecutarEmail(); }}
+              error={!!emailError}
+              helperText={emailError || 'Para confirmar que sos vos'}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setEmailOpen(false)} disabled={emailGuardando}>Cancelar</Button>
+          <Button onClick={ejecutarEmail} variant="contained"
+            disabled={emailGuardando || !emailPass || !emailNuevo.trim() || emailNuevo.trim().toLowerCase() === String(me?.email || '').toLowerCase()}>
+            {emailGuardando ? 'Guardando…' : 'Cambiar email'}
           </Button>
         </DialogActions>
       </Dialog>

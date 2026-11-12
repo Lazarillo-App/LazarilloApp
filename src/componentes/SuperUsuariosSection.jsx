@@ -41,7 +41,7 @@ function FilaUsuario({ u, yo, accion }) {
           {u.email}
         </Typography>
       </Box>
-      {u.protegido && <Chip label="Dueño" size="small" sx={{ height: 30, width: 108, borderRadius: 1, fontSize: '0.75rem', fontWeight: 600 }} />}
+      {u.protegido && <Chip label="Founder" size="small" sx={{ height: 30, width: 108, borderRadius: 1, fontSize: '0.75rem', fontWeight: 600 }} />}
       {Number(u.id) === Number(yo) && !u.protegido && <Chip label="Vos" size="small" sx={{ height: 30, width: 108, borderRadius: 1, fontSize: '0.75rem', fontWeight: 600 }} />}
       {accion}
     </Stack>
