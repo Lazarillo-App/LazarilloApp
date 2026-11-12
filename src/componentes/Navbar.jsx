@@ -20,7 +20,7 @@ import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
-import PlazasBoton from './plazas/PlazasBoton';
+import TablerosBotonera from './plazas/TablerosBotonera';
 import PulsoDatos from './PulsoDatos';
 import { VerComoItems } from '@/componentes/VerComo';
 
@@ -160,6 +160,7 @@ export default function Navbar() {
     if (p.startsWith('/gestion')) return 'Resultados';
     if (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) return 'Recetas';
     if (p.startsWith('/rrhh')) return 'RRHH';
+    if (p.startsWith('/tableros')) return 'Tableros';
     return null;
   })();
 
@@ -403,6 +404,8 @@ export default function Navbar() {
                     </Button>
                   );
                 }
+                // Operación › Tableros (Diego 12/11/2026): una pestaña por plaza y «+» para agregar.
+                if (path.startsWith('/tableros')) return <TablerosBotonera activeSx={activeSx} />;
                 if (path.startsWith('/rrhh')) {
                   const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
                   return (
@@ -488,12 +491,19 @@ export default function Navbar() {
                               </Button>
                             </>
                           )}
-                          {/* Plazas de despacho: el Staff la ve donde el dueño ve «Menú» (Diego 11/11/2026). */}
-                          {isStaff && !veMenuDiseno && (
-                            <Box component="span" aria-hidden
-                              sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                          {/* Las plazas viven en Operación › Tableros (Diego 12/11/2026). El Staff no tiene menú de
+                              módulos: llega desde acá. */}
+                          {isStaff && (
+                            <>
+                              {!veMenuDiseno && (
+                                <Box component="span" aria-hidden
+                                  sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                              )}
+                              <Button color="inherit" component={NavLink} to="/tableros" sx={{ color: 'inherit', position: 'relative' }}>
+                                Tableros
+                              </Button>
+                            </>
                           )}
-                          <PlazasBoton activeSx={activeSx} />
                         </>
                       );
                     })()}
