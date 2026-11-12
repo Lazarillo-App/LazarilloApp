@@ -33,7 +33,7 @@ export function TablerosInicio() {
     <Stack alignItems="center" spacing={1.5} sx={{ py: 10, bgcolor: '#fff', minHeight: '100%' }}>
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.1rem' }}>Todavía no hay plazas</Typography>
       <Typography color="text.secondary" sx={{ fontSize: '0.9rem', textAlign: 'center', maxWidth: 420 }}>
-        Una plaza es un puesto de cocina o barra (Ensaladas, Freidora, Tragos) con la lámina de armado de sus productos.
+        Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
       </Typography>
       {t.puedeCrear && <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>}
       <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
