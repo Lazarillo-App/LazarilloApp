@@ -63,6 +63,39 @@ function ChipEstado({ empleado, onBaja, onReactivar }) {
   );
 }
 
+/* Chip de Cronogramas: muestra los espacios APRENDIDOS de los cronogramas (no se
+   cargan a mano) y al tocarlo marca/desmarca "No aplica a cronogramas"
+   (contador, dueño, usuarios técnicos). Al pasar el mouse dice qué va a hacer. */
+function ChipCrono({ empleado, onCambiar }) {
+  const [hover, setHover] = useState(false);
+  const noAplica = !!empleado.noAplica;
+  const espacios = (empleado.espacios || []).map((x) => x.nombre).join(' · ');
+  const sug = !!empleado.sugerirBaja;
+  const texto = hover
+    ? (noAplica ? 'Vuelve a cronogramas' : 'Marcar No aplica')
+    : noAplica ? 'No aplica' : sug ? 'Sin turnos hace 8+ sem' : (espacios || 'Sin turnos aún');
+  const color = hover ? T.accentTxt : noAplica ? T.text3 : sug ? T.warn : espacios ? T.accentTxt : T.vacio;
+  return (
+    <span
+      onClick={(ev) => { ev.stopPropagation(); onCambiar(empleado, !noAplica); }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={noAplica ? 'No aparece para asignar en Cronogramas' : 'Se completa solo con los cronogramas de las últimas 8 semanas'}
+      style={{ display: 'inline-block', cursor: 'pointer', fontFamily: FB, fontSize: 11, fontWeight: 700, color,
+        border: `1px ${noAplica || (!espacios && !sug && !hover) ? 'dashed' : 'solid'} ${color}66`, background: hover || espacios || sug ? color + '12' : 'transparent',
+        borderRadius: 7, padding: '1px 7px', whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box', verticalAlign: 'middle' }}>
+      {texto}
+    </span>
+  );
+}
+
+// Vista previa de EJEMPLO (nómina vacía): solo se dibuja, nunca se guarda.
+const EJEMPLO_NOMINA = [
+  ['Ana López', '12', 'MaxiRest', 'Salón · Cocina'],
+  ['Juan Pérez', '15', 'MaxiRest', 'Salón'],
+  ['Mara Díaz', '21', 'Manual', 'Cocina'],
+  ['Estudio contable', '—', 'Manual', 'No aplica'],
+];
+
 /* ───────── modal chico: fecha de baja ───────── */
 function ModalBaja({ empleado, onConfirmar, onCerrar }) {
   const [fecha, setFecha] = useState('');
@@ -88,7 +121,7 @@ function ModalBaja({ empleado, onConfirmar, onCerrar }) {
     </div>
   );
 }
-const normTxt = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const normTxt = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /* ───────── modal: alta / edición ───────── */
 function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
@@ -223,6 +256,8 @@ export default function RrhhNomina() {
       avisar(e?.data?.message || e.message || 'No se pudo dejar de compartir.', 'error');
     }
   };
+  const sugeridos = useMemo(() => empleados.filter((e) => e.sugerirBaja), [empleados]);
+  const historia = config?.historia || { semanas: 0, alcanza: false };
   const cuenta = useMemo(() => ({
     activos: empleados.filter((e) => e.activo !== false).length,
     inactivos: empleados.filter((e) => e.activo === false).length,
@@ -237,16 +272,40 @@ export default function RrhhNomina() {
   const visibles = useMemo(() => {
     const txt = normTxt(q.trim());
     return empleados
-      .filter((e) => (filtro === 'todos' ? true : filtro === 'activos' ? e.activo !== false : e.activo === false))
+      .filter((e) => (filtro === 'todos' ? true : filtro === 'sugeridos' ? e.sugerirBaja : filtro === 'activos' ? e.activo !== false : e.activo === false))
       .filter((e) => !txt || normTxt(nombreDe(e)).includes(txt) || String(e.codigoMaxi || '').includes(txt) || normTxt(e.sector).includes(txt))
       .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
   }, [empleados, filtro, q]);
 
-  const reemplazar = (emp) => setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? emp : e)) }));
+  // el PATCH devuelve el empleado sin lo aprendido (espacios, sugerencia): se conserva lo que ya estaba
+  const reemplazar = (emp, extra = {}) => setConfig((c) => ({
+    ...c, empleados: c.empleados.map((e) => (e.id === emp.id ? { ...e, ...emp, ...extra } : e)),
+  }));
+  const cambiarNoAplica = async (emp, noAplica) => {
+    reemplazar({ ...emp, noAplica }, { sugerirBaja: noAplica ? false : emp.sugerirBaja }); // optimista
+    try {
+      const r = await RrhhAPI.editarEmpleado(emp.id, { noAplica });
+      reemplazar(r.empleado);
+      avisar(noAplica ? `${nombreDe(emp)} no va en cronogramas` : `${nombreDe(emp)} vuelve a cronogramas ✓`);
+    } catch (e) {
+      reemplazar(emp);
+      avisar(e?.data?.message || e.message || 'No se pudo guardar.', 'error');
+    }
+  };
+  const sigueActivo = async (emp) => {
+    reemplazar(emp, { sugerirBaja: false });
+    try {
+      await RrhhAPI.editarEmpleado(emp.id, { silenciarBaja: true });
+      avisar(`${nombreDe(emp)} sigue activo: no se vuelve a sugerir por 8 semanas.`);
+    } catch (e) {
+      reemplazar(emp);
+      avisar(e?.data?.message || e.message || 'No se pudo guardar.', 'error');
+    }
+  };
   const darDeBaja = async (fecha) => {
     try {
       const r = await RrhhAPI.editarEmpleado(bajaDeQuien.id, { activo: false, ...(fecha ? { fechaBaja: fecha } : {}) });
-      reemplazar(r.empleado);
+      reemplazar(r.empleado, { sugerirBaja: false });
       setBajaDeQuien(null);
       avisar(`${nombreDe(r.empleado)} dado de baja · ${ddmmaaaa(r.empleado.fechaBaja)}`);
     } catch (e) {
@@ -272,7 +331,7 @@ export default function RrhhNomina() {
       avisar(`${nombreDe(emp)} dado de alta ✓`);
     } else {
       const r = await RrhhAPI.editarEmpleado(editando.id, datos);
-      setConfig((c) => ({ ...c, empleados: c.empleados.map((e) => (e.id === r.empleado.id ? r.empleado : e)) }));
+      reemplazar(r.empleado);
       avisar(`${nombreDe(r.empleado)} guardado ✓`);
     }
     setEditando(null);
@@ -308,7 +367,7 @@ export default function RrhhNomina() {
             <span>Nómina compartida con <b>{compartidaCon.nombre}</b>: las altas, bajas y cambios se ven en los dos negocios.</span>
             <span onClick={dejarDeCompartir} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Dejar de compartir</span>
           </div>
-        ) : sync === null ? (
+        ) : sync === null && !empleados.length && !eligiendo ? null : sync === null ? (
           <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <span>Este negocio no tiene MaxiRest conectado: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length ? '.' : ', o usá la de otro negocio.'}</span>
@@ -335,7 +394,25 @@ export default function RrhhNomina() {
           </div>
         )}
 
-        <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+        {empleados.length > 0 && (
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '-6px 0 12px' }}>
+            {historia.semanas > 0
+              ? `Cronogramas: los espacios se completan solos con las últimas 8 semanas. ${historia.alcanza ? '' : `Las sugerencias de baja aparecen cuando haya 8 semanas de cronogramas (van ${historia.semanas}).`}`
+              : 'Cronogramas: el espacio de cada uno se completa solo cuando lo pongas en un cronograma. Si alguien no va en cronogramas (contador, dueño), tocá su chip y marcalo No aplica.'}
+          </div>
+        )}
+        {(sugeridos.length > 0 || filtro === 'sugeridos') && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
+            <span>{sugeridos.length
+              ? <><b>{sugeridos.length} {sugeridos.length === 1 ? 'empleado activo' : 'empleados activos'}</b> sin turnos hace más de 8 semanas: ¿{sugeridos.length === 1 ? 'le' : 'les'} cargás la baja?</>
+              : 'Ya no quedan empleados sin turnos para revisar ✓'}</span>
+            <span onClick={() => setFiltro(filtro === 'sugeridos' ? 'activos' : 'sugeridos')} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+              {filtro === 'sugeridos' ? 'Ver todos' : 'Revisar'}
+            </span>
+          </div>
+        )}
+
+        <div style={{ position: 'relative', background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
           {/* buscador pegado a la lista (filtra solo esta tabla) */}
           <div style={{ padding: 10, borderBottom: `1px solid ${T.border}` }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, código o sector…"
@@ -347,7 +424,7 @@ export default function RrhhNomina() {
                 <tr>
                   <th style={th}>Empleado</th>
                   <th style={{ ...th, width: 90 }}>Código</th>
-                  <th style={{ ...th, width: 160 }}>Sector</th>
+                  <th style={{ ...th, width: 190 }}>Cronogramas</th>
                   <th style={{ ...th, width: 110 }}>Origen</th>
                   <th style={{ ...th, width: 220 }}>Estado</th>
                   <th style={{ ...th, width: 70 }} />
@@ -358,24 +435,55 @@ export default function RrhhNomina() {
                   <tr key={e.id} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
                     <td style={{ ...td, fontWeight: 700 }}>{nombreDe(e) || '—'}</td>
                     <td style={{ ...td, color: T.text3, fontSize: 12 }}>{e.codigoMaxi || '—'}</td>
-                    <td style={{ ...td, color: T.text2 }}>{e.sector || <span style={{ color: T.vacio }}>sin sector</span>}</td>
+                    <td style={{ ...td, maxWidth: 190 }}><ChipCrono empleado={e} onCambiar={cambiarNoAplica} /></td>
                     <td style={td}>
                       {e.origen === 'maxirest' ? <Etiqueta color={T.accentTxt}>MaxiRest</Etiqueta> : <Etiqueta color={T.violet}>Manual</Etiqueta>}
                     </td>
                     <td style={td}>
                       <ChipEstado empleado={e} onBaja={setBajaDeQuien} onReactivar={reactivar} />
+                      {e.sugerirBaja && (
+                        <span onClick={(ev) => { ev.stopPropagation(); sigueActivo(e); }} title="No se vuelve a sugerir por 8 semanas"
+                          style={{ marginLeft: 8, fontFamily: FB, fontSize: 11.5, fontWeight: 700, color: T.warn, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Sigue activo</span>
+                      )}
                     </td>
-                    <td style={{ ...td, textAlign: 'right' }}><span style={{ color: T.accentTxt, fontWeight: 700, fontSize: 12.5 }}>✎ Editar</span></td>
+                    <td style={{ ...td, textAlign: 'right' }}><span style={{ color: T.accentTxt, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>✎ Editar</span></td>
                   </tr>
                 ))}
-                {!visibles.length && (
-                  <tr><td colSpan={6} style={{ ...td, color: T.text3, textAlign: 'center', padding: 28 }}>
-                    {empleados.length ? 'Nadie coincide con el filtro.' : 'Todavía no hay empleados: agregá el primero con "+ Nuevo empleado".'}
-                  </td></tr>
+                {!visibles.length && empleados.length > 0 && (
+                  <tr><td colSpan={6} style={{ ...td, color: T.text3, textAlign: 'center', padding: 28 }}>Nadie coincide con el filtro.</td></tr>
                 )}
+                {!empleados.length && EJEMPLO_NOMINA.map(([nom, cod, origen, crono]) => (
+                  <tr key={nom} aria-hidden style={{ opacity: 0.38, pointerEvents: 'none' }}>
+                    <td style={{ ...td, fontWeight: 700 }}>{nom}</td>
+                    <td style={{ ...td, color: T.text3, fontSize: 12 }}>{cod}</td>
+                    <td style={td}><Etiqueta color={crono === 'No aplica' ? T.text3 : T.accentTxt}>{crono}</Etiqueta></td>
+                    <td style={td}><Etiqueta color={origen === 'MaxiRest' ? T.accentTxt : T.violet}>{origen}</Etiqueta></td>
+                    <td style={td}><Etiqueta color={T.ok}>Activo</Etiqueta></td>
+                    <td style={td} />
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+          {!empleados.length && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px 22px' }}>
+                <div style={{ width: 440, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 22, textAlign: 'center', boxSizing: 'border-box' }}>
+                  <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ARRIBA, UN EJEMPLO</span>
+                  <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>Cargá a tu equipo</div>
+                  <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: 16 }}>
+                    {sync === null
+                      ? 'Este negocio no tiene MaxiRest: das de alta a cada uno o usás la nómina de otro negocio de tu cartera.'
+                      : 'La nómina de MaxiRest entra sola al abrir RRHH; si falta alguien, dalo de alta acá.'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>
+                    {sync === null && !compartidaCon && <Boton onClick={() => setEligiendo(true)}>Usar la de otro negocio</Boton>}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
