@@ -2316,6 +2316,14 @@ export default function RecetaModal({
 
   const fotoEnHeader = !modoInsumo || (entradaElegida && tab === 'receta');
 
+  // Ingredientes-insumo de esta receta, en su orden, para las flechas del insumo abierto desde acá.
+  const insumosDeLaReceta = (() => {
+    const vistos = new Set();
+    return (items || []).filter(it => it.supplyId && !it.articleRefId)
+      .map(it => ({ id: Number(it.supplyId), nombre: it.supplyNombre || '' }))
+      .filter(x => (vistos.has(x.id) ? false : (vistos.add(x.id), true)));
+  })();
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
@@ -2336,7 +2344,9 @@ export default function RecetaModal({
             px: 3, py: 1.5,
             // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
             ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
-            position: 'relative', zIndex: 2,
+            // zIndex 4: por encima del encabezado fijo de las tablas del cuerpo (z 2–3). Con 2, el
+            // desplegable del ranking de compras quedaba tapado por la cabecera de la tabla (FALLA 12/11).
+            position: 'relative', zIndex: 4,
             bgcolor: PRIMARY, color: ON_PRIMARY,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             // `gap` asegura un mínimo entre los 3 grupos (nombre, pestañas,
@@ -2350,7 +2360,7 @@ export default function RecetaModal({
               {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
-                  onClick={async () => { await autoSave(); onNavigate('prev'); }}>
+                  onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowLeftIcon />
                 </IconButton>
               )}
@@ -2392,7 +2402,7 @@ export default function RecetaModal({
               {onNavigate && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
-                  onClick={async () => { await autoSave(); onNavigate('next'); }}>
+                  onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowRightIcon />
                 </IconButton>
               )}
@@ -3880,6 +3890,23 @@ export default function RecetaModal({
             // key de abajo incluye el id, así que cambiarlo remonta limpio el
             // modal ya en la pestaña Compras, igual que el salto de nivel
             // superior en InsumosMain.jsx (ver `saltarAInsumo`).
+            // ‹ › en el insumo abierto desde la receta: recorren los ingredientes-insumo de ESTA receta,
+            // manteniendo la pestaña en la que estás (Diego 12/11/2026).
+            onNavigate={elaborado.esArticulo ? undefined : (dir, tabActual) => {
+              const lista = insumosDeLaReceta;
+              const idx = lista.findIndex(x => Number(x.id) === Number(elaborado.id));
+              const sig = lista[dir === 'prev' ? idx - 1 : idx + 1];
+              if (idx === -1 || !sig) return;
+              setElaboradosStack((prev) => {
+                const next = prev.slice();
+                next[stackIdx] = { id: sig.id, nombre: sig.nombre, precio: 0, initialTab: tabActual || elaborado.initialTab || null };
+                return next;
+              });
+            }}
+            canNavigate={(() => {
+              const idx = insumosDeLaReceta.findIndex(x => Number(x.id) === Number(elaborado.id));
+              return { prev: idx > 0, next: idx >= 0 && idx < insumosDeLaReceta.length - 1 };
+            })()}
             onSaltarAInsumo={(item) => {
               if (!item?.id) return;
               setElaboradosStack((prev) => {
