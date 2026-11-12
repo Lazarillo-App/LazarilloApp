@@ -83,7 +83,18 @@ const Boton = ({ children, onClick, activo, grande, peligro, deshabilitado, prox
 
 /* ───────── helpers de dominio ───────── */
 const nombreDe = (emp) => (emp ? `${emp.nombre || ''}${emp.apellido ? ` ${emp.apellido}` : ''}`.trim() : '—');
-const nombreCorto = (emp) => (emp ? `${emp.nombre || ''}${emp.apellido ? ` ${String(emp.apellido)[0]}.` : ''}`.trim() : '—');
+// En el cronograma alcanza con el primer nombre (Diego 12/11/2026: sin segundos nombres).
+const primerNombre = (emp) => String(emp?.nombre || '').trim().split(/\s+/)[0] || '';
+const nombreCorto = (emp) => (emp ? `${primerNombre(emp)}${emp.apellido ? ` ${String(emp.apellido).trim()[0]}.` : ''}`.trim() : '—');
+// fila: primer nombre + apellido completo
+const nombreFila = (emp) => (emp ? `${primerNombre(emp)}${emp.apellido ? ` ${String(emp.apellido).trim()}` : ''}`.trim() : '—');
+// dueño de la fila después de sacar una celda: si su dueño ya no tiene días, pasa a quien quede
+function duenoTras(celdas, owner) {
+  const cs = Object.values(celdas || {}).filter((c) => c?.empleadoId);
+  if (!cs.length) return null;
+  if (owner && cs.some((c) => c.empleadoId === owner)) return owner;
+  return duenoDe({ celdas, ownerEmpleadoId: null });
+}
 let keySeq = 1;
 const nuevaKey = () => `f${keySeq++}_${Date.now() % 100000}`;
 
@@ -233,6 +244,8 @@ export {
   Boton,
   nombreDe,
   nombreCorto,
+  nombreFila,
+  duenoTras,
   nuevaKey,
   duenoEnTurno,
   duenoDe,

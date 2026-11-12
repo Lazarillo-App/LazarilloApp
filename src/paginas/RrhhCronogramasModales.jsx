@@ -473,7 +473,26 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
-function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onGuardar, onCerrar }) {
+function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onPuestos, onGuardar, onCerrar }) {
+  // Una fila = un empleado: si la fila ya tiene días de alguien, la celda es suya (no se elige otro).
+  const bloqueado = !ctx.modoFila && !!ctx.duenoConDias;
+  const empBloqueado = bloqueado ? empleados.find((e) => e.id === ctx.duenoConDias) : null;
+  // Puestos gestionables desde acá (alta y baja)
+  const [editPuestos, setEditPuestos] = useState(false);
+  const [nuevoCod, setNuevoCod] = useState('');
+  const [nuevoNom, setNuevoNom] = useState('');
+  const [errPuesto, setErrPuesto] = useState('');
+  const agregarPuesto = async () => {
+    const codigo = nuevoCod.trim(); const nombre = nuevoNom.trim();
+    if (!codigo || !nombre) { setErrPuesto('Poné código y nombre'); return; }
+    if (puestos.some((p) => p.codigo.toLowerCase() === codigo.toLowerCase())) { setErrPuesto(`Ya existe el código ${codigo}`); return; }
+    const ok = await onPuestos([...puestos.map(({ codigo: c, nombre: n }) => ({ codigo: c, nombre: n })), { codigo, nombre }]);
+    if (ok) { setNuevoCod(''); setNuevoNom(''); setErrPuesto(''); setTag(codigo); }
+  };
+  const quitarPuesto = async (codigo) => {
+    await onPuestos(puestos.filter((p) => p.codigo !== codigo).map(({ codigo: c, nombre: n }) => ({ codigo: c, nombre: n })));
+    if (tag === codigo) setTag('');
+  };
   const [bajaDe, setBajaDe] = useState(null);     // empleado al que se le da de baja desde la lista
   const [fechaBaja, setFechaBaja] = useState('');
   const [q, setQ] = useState('');
@@ -545,7 +564,7 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
 
   return (
     <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 400, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}` }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 520, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}` }}>
         <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>
           {ctx.modoFila ? `Toda la fila · ${ctx.turnoNombre}` : `${DIAS[ctx.dia]} ${ctx.nroDia} · ${ctx.turnoNombre}`}
         </div>
@@ -557,6 +576,12 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
             : 'Una fila por empleado por turno — el mismo empleado puede estar en otro turno.'}
         </div>
 
+        {bloqueado ? (
+          <div style={{ border: `1px solid ${T.border}`, background: T.head, borderRadius: 10, padding: '8px 12px' }}>
+            <div style={{ fontFamily: FB, fontSize: 13.5, fontWeight: 700, color: T.text }}>{nombreDe(empBloqueado)}</div>
+            <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 1 }}>La fila es suya: para cambiar de empleado, tocá el nombre de la fila.</div>
+          </div>
+        ) : (<>
         <input
           ref={buscadorRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la nómina…"
           style={{ width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
@@ -601,14 +626,43 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           </div>
         )}
 
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ctx.puestoMixto && <Chip color={T.text3} activoBg={tag === '__mixto'} onClick={() => setTag('__mixto')} title="Cada día conserva su puesto">Como están</Chip>}
-          <Chip color={!tag ? T.accentTxt : T.text3} activoBg={!tag} onClick={() => setTag('')}>Sin puesto</Chip>
-          {puestos.map((p) => (
-            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)} title={p.nombre}>{p.codigo} · {p.nombre}</Chip>
-          ))}
+        </>)}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '12px 0 6px' }}>
+          <span style={{ fontFamily: FB, fontSize: 12, color: T.text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</span>
+          {onPuestos && (
+            <span onClick={() => { setEditPuestos((v) => !v); setErrPuesto(''); }} style={{ fontFamily: FB, fontSize: 11.5, fontWeight: 700, color: T.accentTxt, cursor: 'pointer' }}>
+              {editPuestos ? 'Listo' : '✎ Puestos'}
+            </span>
+          )}
         </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {ctx.puestoMixto && !editPuestos && <Chip color={T.text3} activoBg={tag === '__mixto'} onClick={() => setTag('__mixto')} title="Cada día conserva su puesto">Como están</Chip>}
+          {!editPuestos && <Chip color={!tag ? T.accentTxt : T.text3} activoBg={!tag} onClick={() => setTag('')}>Sin puesto</Chip>}
+          {puestos.map((p) => (editPuestos ? (
+            <Chip key={p.codigo} color={T.text3} title="Quitar (si está en uso en algún cronograma no se borra)">
+              {p.codigo} · {p.nombre}
+              <span onClick={() => quitarPuesto(p.codigo)} style={{ cursor: 'pointer', color: T.bad, fontWeight: 800, marginLeft: 2 }}>×</span>
+            </Chip>
+          ) : (
+            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)} title={p.nombre}>{p.codigo} · {p.nombre}</Chip>
+          )))}
+        </div>
+        {editPuestos && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input value={nuevoCod} onChange={(e) => setNuevoCod(e.target.value.slice(0, 4))} placeholder="Cód." maxLength={4}
+                style={{ width: 64, height: 40, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head, textAlign: 'center' }} />
+              <input value={nuevoNom} onChange={(e) => setNuevoNom(e.target.value)} placeholder="Nombre del puesto (ej. Vereda)"
+                onKeyDown={(e) => { if (e.key === 'Enter') agregarPuesto(); }}
+                style={{ flex: 1, height: 40, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
+              <button type="button" onClick={agregarPuesto} style={{ height: 40, boxSizing: 'border-box', padding: '0 14px', borderRadius: 10, border: `1px solid ${T.accent}`, background: T.accent, color: T.ink, fontFamily: FB, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar</button>
+            </div>
+            <div style={{ fontFamily: FB, fontSize: 11.5, color: errPuesto ? T.bad : T.text3, marginTop: 5 }}>
+              {errPuesto || 'El código es lo que se ve en la celda (1 a 4 letras). Los que están en uso no se pueden quitar.'}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', columnGap: 10, margin: '12px 0 0' }}>
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Entra</div>
@@ -650,14 +704,33 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton onClick={onCerrar}>Cancelar</Boton>
-            <Boton activo deshabilitado={!empId} onClick={() => empId && onGuardar({
-              empleadoId: empId,
-              puesto: tag === '__mixto' ? undefined : (tag || null),          // undefined = cada día conserva el suyo
-              horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
-              // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
-              entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
-              salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
-            })}>{ctx.modoFila ? 'Aplicar a la fila' : 'Guardar'}</Boton>
+            {(() => {
+              const id = bloqueado ? ctx.duenoConDias : empId;
+              const valor = (alcance) => ({
+                empleadoId: id, alcance,
+                puesto: tag === '__mixto' ? undefined : (tag || null),          // undefined = cada día conserva el suyo
+                horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
+                // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
+                entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
+                salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
+              });
+              if (ctx.modoFila) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Aplicar a la fila</Boton>;
+              // fila vacía: ¿solo este día o toda la semana? (después se sacan los francos)
+              if (!ctx.celda && !ctx.duenoConDias) {
+                return (<>
+                  <Boton deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Solo este día</Boton>
+                  <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('semana'))} title="Carga los 7 días: después sacá los francos con click derecho">Toda la semana</Boton>
+                </>);
+              }
+              // editando un día de una fila con más días: ¿solo este o todos?
+              if (ctx.otrosDias > 0) {
+                return (<>
+                  <Boton deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Solo este día</Boton>
+                  <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('fila'))}>Aplicar a los {ctx.otrosDias + 1} días</Boton>
+                </>);
+              }
+              return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Guardar</Boton>;
+            })()}
           </div>
         </div>
       </div>

@@ -52,6 +52,8 @@ import {
   Boton,
   nombreDe,
   nombreCorto,
+  nombreFila,
+  duenoTras,
   nuevaKey,
   duenoEnTurno,
   duenoDe,
@@ -314,6 +316,9 @@ export default function RrhhCronogramas() {
       salidaFila: Object.values(fila.celdas).find((c) => c?.salida)?.salida || '',
       nroDia: new Date(diasISO[dia] + 'T12:00:00').getDate(),
       celda, ownerEmpleadoId: fila.ownerEmpleadoId, puestoFila: patronFila?.puesto || '',
+      // regla: una fila = un empleado. Si la fila ya tiene días de alguien, la celda es de esa persona.
+      duenoConDias: Object.values(fila.celdas).some((c) => c?.empleadoId) ? duenoDe(fila) : null,
+      otrosDias: Object.entries(fila.celdas).filter(([d, c]) => Number(d) !== dia && c?.empleadoId).length,
     });
   };
 
@@ -360,20 +365,43 @@ export default function RrhhCronogramas() {
 
   const guardarCelda = (valor) => {
     if (celdaSel?.modoFila) { guardarFila(valor); return; }
-    const { filaKey, dia, turnoId } = celdaSel;
+    const { filaKey, dia, turnoId, duenoConDias } = celdaSel;
+    if (valor && duenoConDias && valor.empleadoId !== duenoConDias) {
+      avisar(`La fila es de ${nombreCorto(empleadosMap.get(duenoConDias))}: para cambiar de empleado tocá el nombre de la fila.`, 'error');
+      return;
+    }
     if (valor && duenoEnTurno(filasRef.current, turnoId, valor.empleadoId, filaKey)) {
       const emp = empleadosMap.get(valor.empleadoId);
       avisar(`${nombreCorto(emp)} ya tiene una fila en este turno: cargale los días ahí.`, 'error');
       return;
     }
+    // alcance: 'dia' (solo esta celda) · 'semana' (los 7 días; después se sacan los francos)
+    //          · 'fila' (lo editado se aplica a todos los días cargados de la fila)
+    const alcance = valor?.alcance || 'dia';
+    const nueva = valor ? { empleadoId: valor.empleadoId, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null, salida: valor.salida ?? null } : null;
     mutarFilas((fs) => fs.map((f) => {
       if (f.key !== filaKey) return f;
-      const celdas = { ...f.celdas };
-      if (valor) celdas[dia] = { ...valor, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null, salida: valor.salida ?? null }; else delete celdas[dia];
-      const owner = !Object.keys(celdas).length ? null : f.ownerEmpleadoId || (valor ? valor.empleadoId : null);
+      let celdas = { ...f.celdas };
+      if (!nueva) delete celdas[dia];
+      else if (alcance === 'semana') { for (let d = 0; d < 7; d++) if (!celdas[d]) celdas[d] = { ...nueva }; celdas[dia] = { ...nueva }; }
+      else if (alcance === 'fila') {
+        celdas[dia] = { ...nueva };
+        Object.keys(celdas).forEach((d) => {
+          const c = celdas[d];
+          if (!c?.empleadoId) return;
+          celdas[d] = { ...c,
+            puesto: valor.puesto === undefined ? c.puesto : nueva.puesto,
+            horas: valor.horas === undefined ? c.horas : nueva.horas,
+            entrada: valor.entrada === undefined ? c.entrada : nueva.entrada,
+            salida: valor.salida === undefined ? c.salida : nueva.salida };
+        });
+      } else celdas[dia] = { ...nueva };
+      const owner = nueva ? (f.ownerEmpleadoId && duenoConDias ? f.ownerEmpleadoId : nueva.empleadoId) : duenoTras(celdas, f.ownerEmpleadoId);
       return { ...f, celdas, ownerEmpleadoId: owner };
     }));
     setCeldaSel(null);
+    if (alcance === 'semana') avisar('Cargado los 7 días: sacá los francos con click derecho.');
+    if (alcance === 'fila' && celdaSel.otrosDias) avisar(`Aplicado a los ${celdaSel.otrosDias + 1} días de la fila ✓`);
   };
 
   /* ── acciones de Nómina desde la lista de asignar ── */
@@ -434,8 +462,9 @@ export default function RrhhCronogramas() {
       if (f.key !== fila.key) return f;
       const celdas = { ...f.celdas };
       delete celdas[dia];
-      // sin días cargados la fila vuelve a quedar libre (si no, el empleado seguía «pegado» a la fila)
-      return { ...f, celdas, ownerEmpleadoId: Object.keys(celdas).length ? f.ownerEmpleadoId : null };
+      // sin días cargados la fila queda libre; si el dueño ya no tiene días, pasa a quien quede
+      // (antes el empleado sacado seguía «pegado» y no se lo podía poner en otra fila)
+      return { ...f, celdas, ownerEmpleadoId: duenoTras(celdas, f.ownerEmpleadoId) };
     }));
   };
 
@@ -539,6 +568,18 @@ export default function RrhhCronogramas() {
   };
 
   /* ── fechas especiales (PUT /config manda la colección completa) ── */
+  // Referencias de puestos desde el modal de asignar (alta y baja; lo que está en uso no se borra)
+  const guardarPuestos = async (puestos) => {
+    try {
+      const r = await RrhhAPI.putConfig({ puestos }, sucursalId);
+      if (r?.config) setConfig(r.config);
+      if (r?.avisos?.length) avisar(r.avisos.join(' '), 'error');
+      return true;
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudieron guardar los puestos.', 'error');
+      return false;
+    }
+  };
   const guardarFechas = async (fechas, msj) => {
     try {
       const r = await RrhhAPI.putConfig({ fechas }, sucursalId);
@@ -819,7 +860,7 @@ export default function RrhhCronogramas() {
                             <td onClick={() => abrirFila(f, t)}
                               style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, cursor: 'pointer' }}
                               title={`${dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'} · clic: cambiar empleado, puesto, entrada u horas de toda la fila`}>
-                              <div style={dosRenglones}>{dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'}</div>
+                              <div style={dosRenglones}>{dueno ? nombreFila(empleadosMap.get(dueno)) : 'Fila libre'}</div>
                             </td>
                             {diasISO.map((iso, dia) => {
                               const c = f.celdas[dia];
@@ -983,6 +1024,7 @@ export default function RrhhCronogramas() {
           onCrear={crearEmpleadoRapido}
           onNoAplica={marcarNoAplica}
           onBaja={bajaRapida}
+          onPuestos={guardarPuestos}
           onGuardar={guardarCelda}
           onCerrar={() => setCeldaSel(null)}
         />
