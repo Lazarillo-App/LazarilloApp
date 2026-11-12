@@ -31,20 +31,36 @@ import {
   Chip,
   Boton,
   nombreDe,
-  nombreCorto,
+  nombreFila,
 } from './RrhhCronogramasComun';
+import logoLazarillo from '@/assets/brand/logo-dark.png';
 
 /* ───────── imagen para WhatsApp (Canvas, siempre en modo día) ─────────
  * Dos PNG por espacio y semana: 1) cronograma de los turnos tildados,
  * 2) francos de la semana (sin eventuales, cuyo chip ya está en la grilla).
  */
-const IMG = { W: 540, S: 2, P: 16, bg: '#FFFFFF', celda: '#EAF1F8', ink: '#15213E', acc: '#1E87B5', gris: '#5a6a82', pie: '#8aa0b5', esp: '#B97700', logo: '#5BC2EA' };
+// Tabla clásica: una fila por empleado, una columna por día. Cada uno encuentra su renglón
+// sin nombres cortados; el día vacío es franco. Logo real (wordmark) en el pie.
+const IMG = { W: 760, S: 2, P: 20, bg: '#FFFFFF', celda: '#E4F4FB', libre: '#F4F6F9', ink: '#15213E', acc: '#1E87B5', gris: '#5a6a82', pie: '#8aa0b5', esp: '#B97700', linea: '#E3E8EF' };
 const rrect = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
 const recortar = (ctx, txt, ancho) => {
   if (ctx.measureText(txt).width <= ancho) return txt;
   let t = txt;
   while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
   return t + '…';
+};
+// «milagros» → «Milagros» (en la imagen todos los nombres igual)
+const titular = (t) => String(t || '').toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+let logoProm = null;
+const cargarLogo = () => {
+  if (!logoProm) {
+    logoProm = new Promise((ok) => {
+      const im = new Image();
+      im.onload = () => ok(im); im.onerror = () => ok(null);
+      im.src = logoLazarillo;
+    });
+  }
+  return logoProm;
 };
 function lienzo(H) {
   const cv = document.createElement('canvas');
@@ -53,93 +69,98 @@ function lienzo(H) {
   ctx.fillStyle = IMG.bg; ctx.fillRect(0, 0, IMG.W, H);
   return { cv, ctx };
 }
-function cabeceraImg(ctx, titulo, rango) {
+const CAB_H = 46;
+function cabeceraImg(ctx, titulo, sub) {
   const { P } = IMG;
-  ctx.fillStyle = IMG.logo; rrect(ctx, P, P, 24, 24, 7); ctx.fill();
-  ctx.fillStyle = IMG.ink; ctx.font = "800 15px Sora, sans-serif"; ctx.textAlign = 'center'; ctx.fillText('L', P + 12, P + 17);
-  ctx.textAlign = 'left'; ctx.font = "700 13px Sora, sans-serif"; ctx.fillText(titulo, P + 32, P + 10);
-  ctx.fillStyle = IMG.gris; ctx.font = "400 10px Archivo, sans-serif"; ctx.fillText(rango, P + 32, P + 22);
+  ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "700 18px Sora, sans-serif"; ctx.fillText(titulo, P, P + 15);
+  ctx.fillStyle = IMG.gris; ctx.font = "500 11.5px Archivo, sans-serif"; ctx.fillText(sub, P, P + 32);
 }
-function pieImg(ctx, H) {
-  ctx.fillStyle = IMG.pie; ctx.font = "400 8.5px Archivo, sans-serif"; ctx.textAlign = 'right';
-  ctx.fillText('Lazarillo Gestión · lazarillo.com.ar', IMG.W - IMG.P, H - IMG.P + 4);
+const PIE_H = 26;
+function pieImg(ctx, H, logo) {
+  const { W, P } = IMG; const y = H - P - 4;
+  ctx.strokeStyle = IMG.linea; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(P, y - 14); ctx.lineTo(W - P, y - 14); ctx.stroke();
+  ctx.fillStyle = IMG.pie; ctx.font = "400 9px Archivo, sans-serif"; ctx.textAlign = 'left';
+  ctx.fillText('Hecho con Lazarillo Gestión · lazarillo.com.ar', P, y);
+  if (logo) {
+    const h = 10; const w = h * (logo.width / logo.height);
+    ctx.globalAlpha = 0.55; ctx.drawImage(logo, W - P - w, y - h + 1, w, h); ctx.globalAlpha = 1;
+  }
 }
-// grupos: [{ turno:{nombre,entrada}, filas:[{celdas:{dia:{nombre,puesto}}}] }] · dias: [{nro, dc, ev}]
-function dibujarCronograma({ titulo, rango, dias, grupos }) {
-  if (!grupos.length) return null;
-  const { W, P } = IMG; const GAP = 2;
-  const colW = (W - P * 2 - GAP * 6) / 7;
-  const extraEv = dias.some((d) => d.ev) ? 11 : 0; // línea pareja para el nombre del feriado/evento
-  const altos = grupos.map((g) => {
-    // cada empleado ocupa 12px, y 9px más si tiene horario propio (va en su renglón)
-    let maxAlto = 0;
-    for (let j = 0; j < 7; j++) maxAlto = Math.max(maxAlto, g.filas.reduce((a, f) => a + (f.celdas[j] ? 12 + (f.celdas[j].hora ? 9 : 0) : 0), 0));
-    const celH = Math.max(40, 17 + extraEv + maxAlto + 5);
-    return { celH, total: 20 + celH + 8 };
-  });
-  const H = P + 34 + altos.reduce((a, x) => a + x.total, 0) + 18 + P;
+// grupos: [{ turno:{nombre,entrada}, filas:[{ nombre, celdas:{dia:{puesto,hora,colorHora}} }] }] · dias: [{nro, dc, ev}]
+function dibujarCronograma({ titulo, sub, dias, grupos, logo }) {
+  const gs = grupos.filter((g) => g.filas.length);
+  if (!gs.length) return null;
+  const { W, P } = IMG;
+  const NOM = 178; const GAP = 3; const FILA = 30;
+  const colW = (W - P * 2 - NOM - GAP * 7) / 7;
+  const hayEv = dias.some((d) => d.ev);
+  const DIAS_H = hayEv ? 32 : 22;
+  const H = P + CAB_H + gs.reduce((a, g) => a + 22 + DIAS_H + g.filas.length * (FILA + GAP) + 12, 0) + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, rango);
-  let y = P + 34;
-  grupos.forEach((g, gi) => {
-    ctx.fillStyle = IMG.acc; ctx.font = "700 10px Sora, sans-serif"; ctx.textAlign = 'left';
-    ctx.fillText((g.turno.nombre + (g.turno.entrada ? ' · ' + g.turno.entrada : '')).toUpperCase(), P, y + 12);
-    y += 20;
-    const { celH } = altos[gi];
-    for (let j = 0; j < 7; j++) {
-      const x = P + j * (colW + GAP);
-      const d = dias[j];
-      ctx.fillStyle = IMG.celda; rrect(ctx, x, y, colW, celH, 6); ctx.fill();
-      ctx.fillStyle = d.ev ? IMG.esp : IMG.gris; ctx.font = "700 9px Sora, sans-serif"; ctx.textAlign = 'center';
-      ctx.fillText(d.dc + ' ' + d.nro + (d.ev ? ' ★' : ''), x + colW / 2, y + 12);
-      if (d.ev) { ctx.font = "600 7px Archivo, sans-serif"; ctx.fillText(recortar(ctx, d.ev, colW - 8), x + colW / 2, y + 21); }
-      let yy = y + 23 + extraEv;
-      g.filas.forEach((f) => {
-        const c = f.celdas[j];
-        if (!c) return;
-        const tag = c.puesto ? ' ·' + c.puesto : '';
-        ctx.font = "600 8.5px Archivo, sans-serif";
-        const nom = recortar(ctx, c.nombre, colW - 6 - (tag ? ctx.measureText(tag).width : 0));
-        const wN = ctx.measureText(nom).width; const wT = tag ? ctx.measureText(tag).width : 0;
-        const x0 = x + colW / 2 - (wN + wT) / 2;
-        ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.fillText(nom, x0, yy);
-        if (tag) { ctx.fillStyle = IMG.acc; ctx.fillText(tag, x0 + wN, yy); }
-        // el horario propio va abajo, en su color: si a alguien le cambia la hora, se nota
-        if (c.hora) {
-          ctx.font = "700 7.5px Archivo, sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = c.colorHora || IMG.acc;
-          ctx.fillText(recortar(ctx, c.hora, colW - 6), x + colW / 2, yy + 9);
-          yy += 9;
-        }
-        yy += 12;
-      });
+  cabeceraImg(ctx, titulo, sub);
+  let y = P + CAB_H;
+  gs.forEach((g) => {
+    ctx.textAlign = 'left'; ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif";
+    const tt = g.turno.nombre.toUpperCase(); ctx.fillText(tt, P, y + 13);
+    if (g.turno.entrada) {
+      const w = ctx.measureText(tt).width;
+      ctx.fillStyle = IMG.gris; ctx.font = "500 11px Archivo, sans-serif"; ctx.fillText(`  entra ${g.turno.entrada}`, P + w, y + 13);
     }
-    y += celH + 8;
+    y += 22;
+    // encabezado de días
+    for (let j = 0; j < 7; j++) {
+      const x = P + NOM + GAP + j * (colW + GAP); const d = dias[j];
+      ctx.textAlign = 'center'; ctx.fillStyle = d.ev ? IMG.esp : IMG.gris; ctx.font = "700 11px Sora, sans-serif";
+      ctx.fillText(`${d.dc} ${d.nro}${d.ev ? ' ★' : ''}`, x + colW / 2, y + 13);
+      if (d.ev) { ctx.font = "600 8.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, d.ev, colW - 4), x + colW / 2, y + 25); }
+    }
+    y += DIAS_H;
+    g.filas.forEach((f, fi) => {
+      if (fi % 2 === 1) { ctx.fillStyle = '#FAFBFD'; ctx.fillRect(P, y - 1, W - P * 2, FILA + 2); }
+      ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "600 12.5px Archivo, sans-serif";
+      ctx.fillText(recortar(ctx, titular(f.nombre), NOM - 8), P + 2, y + FILA / 2 + 4.5);
+      for (let j = 0; j < 7; j++) {
+        const x = P + NOM + GAP + j * (colW + GAP); const c = f.celdas[j];
+        ctx.fillStyle = c ? IMG.celda : IMG.libre; rrect(ctx, x, y, colW, FILA, 6); ctx.fill();
+        ctx.textAlign = 'center';
+        if (!c) { ctx.fillStyle = '#A9B6C6'; ctx.font = "500 10px Archivo, sans-serif"; ctx.fillText('franco', x + colW / 2, y + FILA / 2 + 3.5); continue; }
+        const linea1 = c.puesto || '✓';
+        if (c.hora) {
+          ctx.fillStyle = IMG.ink; ctx.font = "700 11px Sora, sans-serif"; ctx.fillText(recortar(ctx, linea1, colW - 6), x + colW / 2, y + 12.5);
+          ctx.fillStyle = c.colorHora || IMG.acc; ctx.font = "700 10px Archivo, sans-serif"; ctx.fillText(recortar(ctx, c.hora, colW - 6), x + colW / 2, y + 25);
+        } else {
+          ctx.fillStyle = IMG.ink; ctx.font = "700 12px Sora, sans-serif"; ctx.fillText(recortar(ctx, linea1, colW - 6), x + colW / 2, y + FILA / 2 + 4.5);
+        }
+      }
+      y += FILA + GAP;
+    });
+    y += 12;
   });
-  pieImg(ctx, H);
+  pieImg(ctx, H, logo);
   return cv;
 }
 // items: [{ n, txt }]
-function dibujarFrancos({ titulo, rango, items }) {
+function dibujarFrancos({ titulo, sub, items, logo }) {
   if (!items.length) return null;
   const { W, P } = IMG;
-  const filas = Math.ceil(items.length / 2);
-  const H = P + 34 + 24 + filas * 17 + 8 + 16 + P;
+  const filas = Math.ceil(items.length / 2); const RF = 22;
+  const H = P + CAB_H + 22 + filas * RF + 10 + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, rango);
-  let y = P + 34;
-  ctx.fillStyle = IMG.acc; ctx.font = "700 11px Sora, sans-serif"; ctx.textAlign = 'left';
-  ctx.fillText('🌴 FRANCOS DE LA SEMANA', P, y + 13);
-  y += 24;
+  cabeceraImg(ctx, titulo, sub);
+  let y = P + CAB_H;
+  ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif"; ctx.textAlign = 'left';
+  ctx.fillText('FRANCOS DE LA SEMANA', P, y + 13);
+  y += 22;
   const colF = (W - P * 2) / 2;
   items.forEach((f, i) => {
-    const cx = P + (i % 2) * colF; const cy = y + Math.floor(i / 2) * 17 + 11;
-    ctx.textAlign = 'left'; ctx.font = "600 10.5px Archivo, sans-serif";
-    const nom = recortar(ctx, f.n, colF * 0.55); const wN = ctx.measureText(nom).width;
+    const cx = P + (i % 2) * colF; const cy = y + Math.floor(i / 2) * RF + 14;
+    ctx.textAlign = 'left'; ctx.font = "600 12.5px Archivo, sans-serif";
+    const nom = recortar(ctx, titular(f.n), colF * 0.55); const wN = ctx.measureText(nom).width;
     ctx.fillStyle = IMG.ink; ctx.fillText(nom, cx, cy);
-    ctx.font = "400 10.5px Archivo, sans-serif"; ctx.fillStyle = IMG.gris;
+    ctx.font = "400 12.5px Archivo, sans-serif"; ctx.fillStyle = IMG.gris;
     ctx.fillText(recortar(ctx, '  ' + f.txt, colF - wN - 14), cx + wN, cy);
   });
-  pieImg(ctx, H);
+  pieImg(ctx, H, logo);
   return cv;
 }
 const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -149,10 +170,10 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
   const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
   const [urlCrono, setUrlCrono] = useState(null);
   const [urlFrancos, setUrlFrancos] = useState(null);
-  const sufijo = negocio ? ' · ' + negocio : '';
-  const incluidos = (espacio.turnos || []).filter((t) => tildados[t.id]);
+    const incluidos = (espacio.turnos || []).filter((t) => tildados[t.id]);
 
   useEffect(() => {
+    let vivo = true;
     const dias = diasISO.map((iso, j) => {
       const f = fechasMap.get(iso);
       return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || etiquetaTipo(f.tipo)) : '' };
@@ -161,26 +182,33 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
     const colHoras = coloresHorarios(filas, espacio.turnos);
     const grupos = incluidos.map((t) => ({
       turno: t,
+      // una fila por empleado (regla: una fila = un empleado); las filas vacías no salen
       filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
-        const celdas = {};
+        const celdas = {}; let emp = null;
         Object.entries(f.celdas).forEach(([dia, c]) => {
-          if (c?.empleadoId) { const h = horarioDe(c, t); celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto, hora: h, colorHora: h ? colHoras.get(h) : null }; }
+          if (c?.empleadoId) { emp = emp || c.empleadoId; const h = horarioDe(c, t); celdas[dia] = { puesto: c.puesto, hora: h, colorHora: h ? colHoras.get(h) : null }; }
         });
-        return { celdas };
-      }),
+        const dueno = f.ownerEmpleadoId || emp;
+        return dueno ? { nombre: nombreFila(empleadosMap.get(dueno)), celdas } : null;
+      }).filter(Boolean),
     }));
     const items = [...totales.entries()]
       .filter(([, t]) => t.semCnt > 0 && t.francos.length <= 3)
-      .map(([id, t]) => ({ n: nombreDe(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
+      .map(([id, t]) => ({ n: nombreFila(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
       .sort((a, b) => a.n.localeCompare(b.n));
-    try {
-      const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre + sufijo, rango, dias, grupos });
-      setUrlCrono(cv ? cv.toDataURL('image/png') : null);
-    } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
-    try {
-      const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre + sufijo, rango, items });
-      setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
-    } catch (e) { setUrlFrancos(null); }
+    const sub = (negocio ? negocio + ' · ' : '') + rango;
+    cargarLogo().then((logo) => {
+      if (!vivo) return;
+      try {
+        const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre, sub, dias, grupos, logo });
+        setUrlCrono(cv ? cv.toDataURL('image/png') : null);
+      } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
+      try {
+        const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre, sub, items, logo });
+        setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
+      } catch (e) { setUrlFrancos(null); }
+    });
+    return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tildados]);
 
