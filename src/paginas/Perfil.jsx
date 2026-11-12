@@ -754,10 +754,8 @@ function PerfilContenido() {
   // Rol mostrado en el perfil: el MÁS ALTO entre todos los negocios (estable, no cambia
   // al switchear de negocio). El perfil es una vista global del usuario, no del negocio activo.
   const rolPerfil = highestRole || currentRole;
-  const roleLabel = rolPerfil === 'admin' ? 'Administrador'
-    : rolPerfil === 'owner' ? 'Propietario'
-      : rolPerfil === 'staff' ? 'Staff'
-        : 'Usuario';
+  // Misma palabra que en la tabla de Equipo (antes arriba decía «Propietario» y abajo «Dueño»).
+  const roleLabel = ROL_LABEL[rolPerfil] || 'Usuario';
 
   return (
     <Box className="zoom-reset" sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -830,7 +828,7 @@ function PerfilContenido() {
                   <Stack direction="row" alignItems="center" spacing={0.75} mt={0.25}>
                     <BusinessIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                      {organization.name}
+                      {organization.name}{isStaff && currentBusiness?.name ? ` · ${currentBusiness.name}` : ''}
                     </Typography>
                   </Stack>
                 )}
@@ -891,17 +889,6 @@ function PerfilContenido() {
             }
           }}
         />
-
-        <Section icon={<PersonIcon />} title="Información personal"
-        >
-          <Stack divider={<Divider flexItem />}>
-            <DataRow label="Nombre" value={meName} />
-            <DataRow label="Email" value={me?.email} />
-            <DataRow label="Rol" value={roleLabel} />
-            {isStaff && currentBusiness?.name && <DataRow label="Negocio" value={currentBusiness.name} />}
-            {organization?.name && <DataRow label="Organización" value={organization.name} />}
-          </Stack>
-        </Section>
 
         {/* Staff: no ve gestión de equipo (es de otras cuentas, no de la propia),
             pero sí Seguridad — cambiar su contraseña es de su propia cuenta,
