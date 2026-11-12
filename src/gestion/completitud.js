@@ -24,15 +24,43 @@ function mediana(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Lo habitual del rubro: { importe, meses: [números de mes usados] } o null si no hay historia. */
-export function habitualRubro(values, months, anio, hoy = new Date()) {
+// Coeficiente de variación (qué tanto se mueve una serie respecto de su promedio).
+function variacion(xs) {
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  if (!(m > 0)) return Infinity;
+  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / xs.length) / m;
+}
+// Un rubro «sigue a las ventas» si medido como % de las ventas se mueve claramente menos que en
+// pesos (Mercaderías, Servicios para eventos…). Lo decide la historia de cada rubro, no una lista.
+export const MARGEN_VENTAS = 0.8;
+
+/**
+ * Lo habitual del rubro, o null si no hay historia:
+ *  { importe, meses, porVentas: false }                       rubro fijo: mediana en pesos
+ *  { importe, meses, porVentas: true, pct, importeMes(mes) }  rubro que sigue a las ventas:
+ *     lo habitual de cada mes = mediana del % sobre ventas × las ventas de ese mes
+ * (Diego 12/11/2026: «los rubros variables dependen mucho de la facturación»).
+ */
+export function habitualRubro(values, months, anio, hoy = new Date(), ingresosPorMes = null) {
   const corte = indice(hoy.getFullYear(), hoy.getMonth() + 1) - MESES_ATRAS;
   // Desde el primer mes con carga del rubro (un negocio que arrancó a mitad de año no es «esporádico»).
   const primero = months.find((m) => tieneValor(values?.[m]));
   const cerrados = months.filter((m) => primero != null && m >= primero && indice(anio, m) <= corte);
   const refs = cerrados.filter((m) => tieneValor(values?.[m]));
   if (refs.length < MIN_REFERENCIAS || refs.length < cerrados.length * MIN_REGULARIDAD) return null;
-  return { importe: mediana(refs.map((m) => values[m])), meses: refs };
+  const importe = mediana(refs.map((m) => values[m]));
+  const conVentas = ingresosPorMes && refs.every((m) => Number(ingresosPorMes[m]) > 0);
+  if (conVentas && refs.length >= 3) {
+    const ratios = refs.map((m) => values[m] / ingresosPorMes[m]);
+    if (variacion(ratios) < variacion(refs.map((m) => values[m])) * MARGEN_VENTAS) {
+      const pct = mediana(ratios);
+      return {
+        importe, meses: refs, porVentas: true, pct,
+        importeMes: (mes) => (Number(ingresosPorMes[mes]) > 0 ? pct * ingresosPorMes[mes] : importe),
+      };
+    }
+  }
+  return { importe, meses: refs, porVentas: false };
 }
 
 /**
@@ -46,11 +74,12 @@ export function estadoMes(values, mes, anio, habitual, hoy = new Date(), pendien
   if (indice(anio, mes) > indice(hoy.getFullYear(), hoy.getMonth() + 1)) return { tipo: 'futuro' };
   const v = values?.[mes];
   if (!tieneValor(v)) return { tipo: habitual || pendiente?.n ? 'vacio' : 'sin_dato', pendiente };
-  const pct = habitual && habitual.importe > 0 ? v / habitual.importe : null;
+  const esperado = habitual ? (habitual.porVentas ? habitual.importeMes(mes) : habitual.importe) : null;
+  const pct = esperado > 0 ? v / esperado : null;
   // Con gastos de «Sin carga» pendientes en ese rubro y mes (Diego 12/11: «octubre debería estar
   // más en amarillo, tiene gastos pendientes de carga»): manda cuánto falta, y nunca se ve completo.
   const completo = pendiente?.importe > 0 ? v / (v + pendiente.importe) : null;
-  return { tipo: 'valor', pct, completo, pendiente };
+  return { tipo: 'valor', pct, completo, pendiente, esperado };
 }
 
 /** Suma Sin carga por mes ('YYYY-MM') y rubro → { 'YYYY-MM': { rubro: { n, importe } } }. */
