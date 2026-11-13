@@ -65,6 +65,7 @@ import {
 } from './RrhhCronogramasComun';
 import {
   ModalExportar,
+  EditorPuestos,
   ModalFecha,
   ModalNuevaSemana,
   ModalVaciar,
@@ -116,6 +117,7 @@ export default function RrhhCronogramas() {
     return () => { window.removeEventListener('resize', f); window.removeEventListener('orientationchange', f); };
   }, []);
   const [menuCel, setMenuCel] = useState(false);
+  const [puestosCel, setPuestosCel] = useState(false);
   useEffect(() => {
     if (!maximizado) return undefined;
     const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[data-rrhh-modal]')) setMaximizado(false); };
@@ -690,9 +692,11 @@ export default function RrhhCronogramas() {
 
   /* ── fechas especiales (PUT /config manda la colección completa) ── */
   // Referencias de puestos desde el modal de asignar (alta y baja; lo que está en uso no se borra)
-  const guardarPuestos = async (puestos) => {
+  const guardarPuestos = async (puestos, renombres = []) => {
     try {
-      const r = await RrhhAPI.putConfig({ puestos }, sucursalId);
+      // si cambia un código, primero se guarda lo pendiente de la semana: después se recarga con el código nuevo
+      if (renombres.length) await Promise.resolve(flushRef.current());
+      const r = await RrhhAPI.putConfig({ puestos, ...(renombres.length ? { renombres } : {}) }, sucursalId);
       if (r?.config) setConfig(r.config);
       if (r?.avisos?.length) avisar(r.avisos.join(' '), 'error');
       return true;
@@ -879,10 +883,22 @@ export default function RrhhCronogramas() {
           <Boton onClick={() => setMenuCel((v) => !v)} title="Más">⋯</Boton>
           {menuCel && (
             <div onClick={() => setMenuCel(false)} style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, background: T.band, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: T.sombra, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
+              <Boton deshabilitado={sinNomina} onClick={() => setPuestosCel(true)}>✎ Puestos</Boton>
               <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana}>+ Semana</Boton>
               <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)}>Vaciar</Boton>
             </div>
           )}
+        </div>
+      )}
+      {cel && puestosCel && (
+        <div data-rrhh-modal onClick={() => setPuestosCel(false)} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 16, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Puestos</div>
+              <span onClick={() => setPuestosCel(false)} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+            </div>
+            <EditorPuestos puestos={config?.puestos || []} onGuardar={guardarPuestos} />
+          </div>
         </div>
       )}
       {/* barra del módulo — fila 1: espacios + acciones · fila 2: semana */}
@@ -1140,9 +1156,8 @@ export default function RrhhCronogramas() {
             </div>
           ) : null}
           {!cel && (<>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-            <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>
-            {(config?.puestos || []).map((p) => <Chip key={p.codigo} color={T.accentTxt}>{p.codigo} · {p.nombre}</Chip>)}
+          <div style={{ marginTop: 8 }}>
+            <EditorPuestos puestos={config?.puestos || []} onGuardar={guardarPuestos} />
           </div>
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 8 }}>
             Click en una celda carga un empleado · arrastrala para moverla · click derecho la saca · click en el día carga un feriado o evento · click en el nombre de la fila cambia toda la fila · click en el turno lo edita (▾ lo minimiza) · los cambios se guardan solos.
