@@ -1154,6 +1154,7 @@ export default function RrhhCronogramas() {
       {/* modales y toast */}
       {exportOpen && espacio && (
         <ModalExportar
+          cel={cel}
           espacio={espacio}
           puestos={config?.puestos || []}
           negocio={nombreNegocio}
