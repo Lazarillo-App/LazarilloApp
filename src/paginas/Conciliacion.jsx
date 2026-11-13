@@ -11,6 +11,9 @@ import { useBranch } from '@/hooks/useBranch';
 import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
 import { Link as RouterLink } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
+import { showConfirm } from '@/servicios/appConfirm';
+
+const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : ''); // 2026-11-01 → 01/11
 
 const iniciales = (nombre) => String(nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
 
@@ -89,6 +92,13 @@ export default function Conciliacion() {
     pagT.current = setTimeout(() => { ConciliacionAPI.guardarPagadores(bid, suc, mapa).catch(() => {}); }, 1500);
   }, [bid, suc]);
 
+  // Sacar los movimientos del banco cargados (ej. se trajo una cuenta equivocada de Mercado Pago).
+  const borrarBanco = async () => {
+    if (!(await showConfirm('¿Borrar todos los movimientos del banco cargados en esta sucursal? Lo que esté conciliado con ellos vuelve a pendiente. Después podés volver a subir el extracto o traer los cobros.'))) return;
+    try { await ConciliacionAPI.borrarFuente(bid, suc, 'banco'); avisar('Movimientos del banco borrados'); setVer((n) => n + 1); }
+    catch { avisar('No se pudieron borrar. Probá de nuevo.', 6000); }
+  };
+
   if (!bid) return <div style={{ padding: 32 }}>Elegí un negocio para conciliar.</div>;
 
   // "Todas" no se concilia junto: cada sucursal tiene su cuenta de Mercado Pago.
@@ -139,6 +149,15 @@ export default function Conciliacion() {
         </div>
       )}
       <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
+      {inicial.fuentes.banco?.length > 0 && (
+        <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', textAlign: 'right' }}>
+          <button type="button" onClick={borrarBanco}
+            title="Saca todos los movimientos del banco cargados en esta sucursal (por archivo o traídos de Mercado Pago)"
+            style={{ border: 'none', background: 'none', color: '#8a93a3', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline' }}>
+            Borrar los movimientos del banco cargados ({inicial.fuentes.banco.length})
+          </button>
+        </div>
+      )}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
       <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
         pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} />
@@ -181,7 +200,7 @@ function BarraMercadoPago({ bid, suc, sucNombre, mp, onTraido, avisar }) {
   return (
     <div style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
       <span style={{ fontWeight: 700 }}>🏦 Mercado Pago</span>
-      <span style={{ color: '#5b6577' }}>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · último: ${mp.ultimo_sync_desde} a ${mp.ultimo_sync_hasta}` : ''}</span>
+      <span style={{ color: '#5b6577' }}>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}</span>
       <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inp} />
         <span>a</span>
