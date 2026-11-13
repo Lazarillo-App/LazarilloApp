@@ -101,6 +101,21 @@ export default function RrhhCronogramas() {
   const [ejemploVisto, setEjemploVisto] = useState(false); // ya tocó "Armar la semana" sobre el ejemplo
   // Pantalla completa (como el Panel de Gestión): el módulo tapa el header de la app; Esc sale.
   const [maximizado, setMaximizado] = useState(false);
+  // Celular (Diego 12/11/2026): siempre en pantalla completa y con el celu acostado; parado,
+  // se pide girarlo. La vista compacta saca lo que no entra (totales, leyenda, nombre repetido).
+  const medirCel = () => {
+    if (typeof window === 'undefined' || !window.matchMedia) return { cel: false, vertical: false };
+    const tactil = window.matchMedia('(pointer: coarse)').matches;
+    const cel = tactil && Math.min(window.innerWidth, window.innerHeight) < 600;
+    return { cel, vertical: cel && window.innerHeight > window.innerWidth };
+  };
+  const [{ cel, vertical }, setModoCel] = useState(medirCel);
+  useEffect(() => {
+    const f = () => setModoCel(medirCel());
+    window.addEventListener('resize', f); window.addEventListener('orientationchange', f);
+    return () => { window.removeEventListener('resize', f); window.removeEventListener('orientationchange', f); };
+  }, []);
+  const [menuCel, setMenuCel] = useState(false);
   useEffect(() => {
     if (!maximizado) return undefined;
     const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[data-rrhh-modal]')) setMaximizado(false); };
@@ -780,12 +795,21 @@ export default function RrhhCronogramas() {
   // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
   // encabezado van en el color de contraste del tema, si no los días no se leían (Diego 07/11/2026).
   const thDia = { padding: '7px 4px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: TH_TXT, borderBottom: `1px solid ${T.border2}`, borderLeft: `1px solid ${T.border}`, background: T.head, textAlign: 'center' };
-  const colFila = { width: 152, minWidth: 152, maxWidth: 152, boxSizing: 'border-box' }; // +20 por la manija ⋮⋮
+  const colFila = cel
+    ? { width: 118, minWidth: 118, maxWidth: 118, boxSizing: 'border-box' }
+    : { width: 152, minWidth: 152, maxWidth: 152, boxSizing: 'border-box' }; // +20 por la manija ⋮⋮
   // nombres largos: hasta 2 renglones y recién ahí "…"
   const dosRenglones = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '15px', maxHeight: 30, wordBreak: 'break-word' };
   const thSup = { position: 'sticky', top: 0, zIndex: 3, height: 26, boxSizing: 'border-box', padding: '4px 6px', fontSize: 11 };
   const thSub = { position: 'sticky', top: 26, zIndex: 3, height: 24, boxSizing: 'border-box', padding: '3px 6px', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, minWidth: 34 };
   const celTot = { padding: '4px 6px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, fontFamily: FB, fontSize: 12, color: T.text2, background: T.head };
+
+  // «8 al 14 nov» (barra del celular)
+  const rangoCorto = (start) => {
+    const a = new Date(start + 'T12:00:00'); const b = new Date(sumarDias(start, 6) + 'T12:00:00');
+    const m = (d) => MESES_C[d.getMonth()].toLowerCase();
+    return a.getMonth() === b.getMonth() ? `${a.getDate()} al ${b.getDate()} ${m(b)}` : `${a.getDate()} ${m(a)} al ${b.getDate()} ${m(b)}`;
+  };
 
   /* ── Recorrido de Anthony la primera vez (10/11): solo con nómina (si no, la grilla no está). ── */
   const refsTour = { semana: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
@@ -818,14 +842,51 @@ export default function RrhhCronogramas() {
   const listos = (config?.empleados || []).filter((e) => e.activo !== false && !e.noAplica).length;
 
   return (
-    <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: '14px 18px 40px', boxSizing: 'border-box',
+    <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: cel ? '6px 8px 6px' : '14px 18px 40px', boxSizing: 'border-box',
       // maximizado: ocupa toda la ventana; los modales y avisos son hijos, así que quedan encima
-      ...(maximizado ? { position: 'fixed', inset: 0, zIndex: 1250, overflow: 'auto', minHeight: 0 } : {}) }}>
+      ...(maximizado || cel ? { position: 'fixed', inset: 0, zIndex: 1250, overflow: 'auto', minHeight: 0 } : {}) }}>
+      {/* celular parado: la grilla de 7 días no entra → pedir que lo giren */}
+      {vertical && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1300, background: T.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 28, textAlign: 'center', gap: 14 }}>
+          <div style={{ fontSize: 54, lineHeight: 1, transform: 'rotate(-90deg)' }}>📱</div>
+          <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text }}>Girá el celu</div>
+          <div style={{ fontFamily: FB, fontSize: 14, color: T.text2, maxWidth: 280 }}>El cronograma muestra los 7 días: acostado se ve entero.</div>
+          <Boton onClick={() => navigate(-1)}>Volver</Boton>
+        </div>
+      )}
       {recCrono.visible && pasoTour && (
         <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
           text={pasoTour.t} {...recCrono.props(recCrono.paso)} />
       )}
+      {/* barra del celular: una sola fila; lo que se usa poco va en ⋯ */}
+      {cel && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, position: 'relative' }}>
+          <Boton onClick={() => navigate(-1)} title="Salir">✕</Boton>
+          {(config?.espacios || []).map((e) => (
+            <Boton key={e.id} activo={e.id === espacioId} onClick={() => setEspacioId(e.id)}>{e.nombre}</Boton>
+          ))}
+          <div style={{ flex: 1 }} />
+          <Boton onClick={() => setSemanaId((s) => s - 1)} title="Semana anterior">‹</Boton>
+          <div onClick={() => setCalOpen(true)} style={{ textAlign: 'center', cursor: 'pointer', minWidth: 112 }}>
+            <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 13, color: T.text, whiteSpace: 'nowrap' }}>Semana {String(semanaId).slice(4)}</div>
+            <div style={{ fontFamily: FB, fontSize: 10.5, color: T.text3, whiteSpace: 'nowrap' }}>{rangoCorto(fechaInicio)}</div>
+          </div>
+          <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
+          <Boton onClick={() => { setSemanaId(idDeSemana(domingoDeHoy())); setDestelloHoy(true); setTimeout(() => setDestelloHoy(false), 1600); }}>HOY</Boton>
+          <div style={{ flex: 1 }} />
+          <span title={guardado === 'error' ? 'Sin guardar' : 'Guardado'} style={{ width: 8, height: 8, borderRadius: 4, background: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }} />
+          <Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen para WhatsApp">🖼</Boton>
+          <Boton onClick={() => setMenuCel((v) => !v)} title="Más">⋯</Boton>
+          {menuCel && (
+            <div onClick={() => setMenuCel(false)} style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, background: T.band, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: T.sombra, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
+              <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana}>+ Semana</Boton>
+              <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)}>Vaciar</Boton>
+            </div>
+          )}
+        </div>
+      )}
       {/* barra del módulo — fila 1: espacios + acciones · fila 2: semana */}
+      {!cel && (<>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginRight: 6 }}>Cronogramas</div>
         {(config?.espacios || []).map((e) => (
@@ -859,6 +920,7 @@ export default function RrhhCronogramas() {
         <span ref={refsTour.copiar} style={{ display: 'inline-flex' }}><Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton></span>
         <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)} title="Vaciar esta semana">Vaciar</Boton>
       </div>
+      </>)}
 
       {/* arranque sin nómina */}
       {sinNomina ? (
@@ -902,40 +964,42 @@ export default function RrhhCronogramas() {
             </div>
           )}
 
-          <div ref={refsTour.grilla} style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: maximizado ? 'calc(100vh - 150px)' : 'calc(100vh - 225px)' }}>
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 980 }}>
+          <div ref={refsTour.grilla} style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'auto', maxHeight: cel ? 'calc(100vh - 50px)' : maximizado ? 'calc(100vh - 150px)' : 'calc(100vh - 225px)' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: cel ? 0 : 980, tableLayout: cel ? 'fixed' : 'auto' }}>
               <thead>
                 <tr>
-                  <th rowSpan={2} style={{ ...thDia, ...colFila, position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
+                  <th rowSpan={cel ? 1 : 2} style={{ ...thDia, ...colFila, ...(cel ? { padding: '4px 6px', fontSize: 9.5 } : {}), position: 'sticky', top: 0, left: 0, zIndex: 4, textAlign: 'left', fontFamily: FB, fontSize: 10.5, color: TH_TXT, opacity: 0.85, textTransform: 'uppercase', letterSpacing: 0.5, verticalAlign: 'bottom' }}>Fila / empleado</th>
                   {diasISO.map((iso, i) => {
                     const esp = fechasMap.get(iso);
                     const d = new Date(iso + 'T12:00:00');
                     return (
-                      <th key={iso} rowSpan={2} onClick={() => setFechaSel(iso)}
+                      <th key={iso} rowSpan={cel ? 1 : 2} onClick={() => setFechaSel(iso)}
                         title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
-                        style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
+                        style={{ ...thDia, ...(cel ? { padding: '4px 2px', fontSize: 11.5 } : {}), position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
                         <div style={{ color: TH_TXT, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                           {DC[i]} {d.getDate()}
                           {iso === hoyIso && <span style={{ fontFamily: FB, fontSize: 9.5, fontWeight: 800, lineHeight: '15px', padding: '0 6px', borderRadius: 8, background: '#fff', color: T.accentTxt }}>HOY</span>}
                         </div>
                         {/* la fecha especial va en una pastilla blanca: se lee sobre cualquier color de negocio */}
-                        <div style={{ height: 16, fontFamily: FB, fontWeight: 700, fontSize: 10, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '2px auto 0',
+                        {(!cel || esp) && <div style={{ height: 16, fontFamily: FB, fontWeight: 700, fontSize: 10, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '2px auto 0',
                           ...(esp ? { display: 'inline-block', padding: '0 7px', borderRadius: 8, background: '#fff', color: colorCat(esp.tipo) } : { color: TH_TXT, opacity: 0.7 }) }}>
                           {esp ? (esp.nombre || etiquetaTipo(esp.tipo)) : '+ especial'}
-                        </div>
+                        </div>}
                       </th>
                     );
                   })}
+                  {!cel && (<>
                   <th colSpan={2} style={{ ...thDia, ...thSup, borderLeft: `2px solid ${T.border2}` }}>Semana</th>
                   <th colSpan={2} style={{ ...thDia, ...thSup }} title={`Días dentro de ${MESES_L[mesRef.m]} (todas las semanas del mes en este espacio)`}>{MESES_C[mesRef.m]}</th>
                   <th rowSpan={2} style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 100 }} title="Días sin turno esta semana">Francos</th>
                   <th rowSpan={2} style={{ ...thDia, position: 'sticky', top: 0, zIndex: 3, minWidth: 26 }} />
+                  </>)}
                 </tr>
-                <tr>
+                {!cel && <tr>
                   {['Días', 'Hs', 'Días', 'Hs'].map((h, i) => (
                     <th key={i} style={{ ...thDia, ...thSub, borderLeft: i === 0 ? `2px solid ${T.border2}` : thDia.borderLeft }}>{h}</th>
                   ))}
-                </tr>
+                </tr>}
               </thead>
               <tbody>
                 {(espacio?.turnos || []).map((t) => {
@@ -945,8 +1009,8 @@ export default function RrhhCronogramas() {
                   return (
                     <React.Fragment key={t.id}>
                       <tr ref={(el) => { if (el) nodosTurno.current.set(t.id, el); else nodosTurno.current.delete(t.id); }}>
-                        <td colSpan={14} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
-                          style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: 50, zIndex: 2, cursor: 'pointer', userSelect: 'none' }}>
+                        <td colSpan={cel ? 8 : 14} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
+                          style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: cel ? 26 : 50, zIndex: 2, cursor: 'pointer', userSelect: 'none', ...(cel ? { padding: '3px 8px', fontSize: 11 } : {}) }}>
                           <span style={{ display: 'inline-block', width: 18 }}>{minim ? '▸' : '▾'}</span>
                           <span onClick={(e) => { e.stopPropagation(); setTurnoSel({ turnoId: t.id }); }} title="Editar el turno (nombre y hora de entrada)" style={{ cursor: 'pointer' }}>
                             {t.nombre}
@@ -975,7 +1039,11 @@ export default function RrhhCronogramas() {
                                   style={{ width: 25, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: levantada ? 'grabbing' : 'grab', touchAction: 'none', color: levantada ? T.accentTxt : T.text3, userSelect: 'none' }}>
                                   <DragIndicatorIcon style={{ fontSize: 19 }} />
                                 </span>
-                                <div style={dosRenglones}>{dueno ? nombreFila(empleadosMap.get(dueno)) : 'Fila libre'}</div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={cel ? { ...dosRenglones, fontSize: 12, lineHeight: '14px', maxHeight: 28 } : dosRenglones}>{dueno ? (cel ? nombreCorto(empleadosMap.get(dueno)) : nombreFila(empleadosMap.get(dueno))) : 'Fila libre'}</div>
+                                  {/* celular: los totales van debajo del nombre (no entran las columnas) */}
+                                  {cel && tot && <div style={{ fontFamily: FB, fontWeight: 600, fontSize: 10, color: tot.semCnt >= 6 ? T.warn : T.text3, whiteSpace: 'nowrap' }}>{tot.semCnt}d · {tot.hs}h</div>}
+                                </div>
                               </div>
                             </td>
                             {diasISO.map((iso, dia) => {
@@ -995,16 +1063,18 @@ export default function RrhhCronogramas() {
                                   title={c ? `${nombreDe(emp)} · arrastrá para mover · click derecho: sacar` : 'Cargar empleado'}
                                   style={{
                                     padding: '4px 2px', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`,
-                                    cursor: c ? 'grab' : 'pointer', minWidth: 78,
+                                    cursor: c ? 'grab' : 'pointer', minWidth: cel ? 0 : 78,
                                     background: iso === hoyIso ? (c ? T.accent + (destelloHoy ? '55' : '2E') : T.accent + (destelloHoy ? '40' : '14')) : (c ? T.card : 'transparent'),
                                     transition: 'background .4s',
                                     outline: dropSobre === `${f.key}:${dia}` ? `2px dashed ${T.accent}` : 'none', outlineOffset: -3,
                                   }}
                                 >
-                                  <div style={{ minHeight: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                                  <div style={{ minHeight: cel ? 34 : 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                                     {c ? (
                                       <>
-                                        <div style={{ ...dosRenglones, fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 90, textAlign: 'center' }}>{nombreCorto(emp)}</div>
+                                        {/* en el celu no se repite el nombre: la fila ya es de esa persona */}
+                                        {!cel && <div style={{ ...dosRenglones, fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 90, textAlign: 'center' }}>{nombreCorto(emp)}</div>}
+                                        {cel && !c.puesto && !horarioDe(c, t) && <span style={{ color: T.accentTxt, fontWeight: 800, fontSize: 14 }}>✓</span>}
                                         <div style={{ height: 16, display: 'flex', gap: 3, alignItems: 'center' }}>
                                           {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px' }}>{c.puesto}</span>}
                                           {(() => {
@@ -1024,6 +1094,7 @@ export default function RrhhCronogramas() {
                                 </td>
                               );
                             })}
+                            {!cel && (<>
                             <td style={{ ...celTot, borderLeft: `2px solid ${T.border2}`, fontFamily: FT, fontWeight: 700, fontSize: 13, color: tot && tot.semCnt >= 6 ? T.warn : T.accentTxt }}>{tot ? tot.semCnt : '—'}</td>
                             <td style={celTot}>{tot ? tot.hs : '—'}</td>
                             <td style={{ ...celTot, fontFamily: FT, fontWeight: 700, fontSize: 13, color: T.accentTxt }}>{totMes ? totMes.dias : '—'}</td>
@@ -1037,12 +1108,13 @@ export default function RrhhCronogramas() {
                             <td style={{ ...celTot, cursor: 'pointer' }} onClick={() => quitarFila(f)} title="Quitar fila (solo si está vacía)">
                               <span style={{ color: T.text3 }}>✕</span>
                             </td>
+                            </>)}
                           </tr>
                         );
                       })}
                       {!minim && (
                         <tr>
-                          <td colSpan={14} style={{ padding: '6px 12px', borderBottom: `1px solid ${T.border}` }}>
+                          <td colSpan={cel ? 8 : 14} style={{ padding: '6px 12px', borderBottom: `1px solid ${T.border}` }}>
                             <span onClick={() => agregarFila(t.id)} style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: T.accentTxt, cursor: 'pointer' }}>
                               + Agregar empleado en {t.nombre}
                             </span>
@@ -1067,6 +1139,7 @@ export default function RrhhCronogramas() {
               Acá vas a ver a los habituales de {espacio?.nombre} que no tengan turno en la semana: se arma solo a medida que cargás cronogramas.
             </div>
           ) : null}
+          {!cel && (<>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>
             {(config?.puestos || []).map((p) => <Chip key={p.codigo} color={T.accentTxt}>{p.codigo} · {p.nombre}</Chip>)}
@@ -1074,6 +1147,7 @@ export default function RrhhCronogramas() {
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 8 }}>
             Click en una celda carga un empleado · arrastrala para moverla · click derecho la saca · click en el día carga un feriado o evento · click en el nombre de la fila cambia toda la fila · click en el turno lo edita (▾ lo minimiza) · los cambios se guardan solos.
           </div>
+          </>)}
         </>
       )}
 
