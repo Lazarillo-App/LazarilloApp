@@ -121,7 +121,11 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .cgrid .big.txt{font-size:24px;line-height:1.15;}
 .cgrid .lbl{font-size:15px;}
 .integra{padding:80px 0;background:var(--paper);}
-.igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.igrid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
+.iotro{border-style:dashed;cursor:pointer;text-align:left;font:inherit;}
+.iotro:hover{border-color:var(--sky);}
+.iotro .mk{color:var(--skydeep);}
+@media(max-width:1100px){.igrid{grid-template-columns:repeat(2,1fr);}}
 .icard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:16px;}
 .icard .mk{width:52px;height:52px;border-radius:14px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;color:var(--ink);font-size:16px;flex:none;}
 .icard .t{font-family:'Sora',system-ui,sans-serif;font-weight:700;color:var(--ink);font-size:17px;line-height:1.2;}
@@ -218,12 +222,13 @@ const logosClientes = [
 // Integraciones: con qué se conecta. Estados a confirmar.
 const integraciones = [
   { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
+  { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'on' },
+  { mk: 'ML', t: 'Mercado Libre', d: 'Compras de insumos', st: 'on' },
   { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
   { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
   { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
-  { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
-];
+]
 
 // Asesores (Florencia se suma cuando confirme).
 const asesores = [
@@ -527,8 +532,11 @@ export default function LazarilloLanding() {
                 <div><div className="t">{i.t}</div><div className="d">{i.d}</div><span className={`st ${i.st}`}>{i.st === 'on' ? 'Conectado' : 'Próximamente'}</span></div>
               </div>
             ))}
+            <button type="button" className="icard iotro" onClick={openModal}>
+              <div className="mk">+</div>
+              <div><div className="t">¿Usás otro sistema?</div><div className="d">Contanos cuál y lo sumamos.</div></div>
+            </button>
           </div>
-          <p className="note">¿Usás otro sistema? <a onClick={openModal}>Contanos cuál</a> y lo sumamos.</p>
         </div>
       </section>
 
