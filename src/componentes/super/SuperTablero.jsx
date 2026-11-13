@@ -218,7 +218,7 @@ function Detalle({ id, equipo, yo, onCerrar, onCambio, onBorrada }) {
 }
 
 /* ───────── tablero ───────── */
-export default function SuperTablero() {
+export default function SuperTablero({ tareaInicial = null }) {
   const movil = useMediaQuery('(max-width:700px)');
   const [tareas, setTareas] = useState(null);
   const [equipo, setEquipo] = useState([]);
@@ -226,7 +226,7 @@ export default function SuperTablero() {
   const [nueva, setNueva] = useState('');
   const [filtro, setFiltro] = useState('todas');
   const [colMovil, setColMovil] = useState('pendiente');
-  const [abierta, setAbierta] = useState(null);
+  const [abierta, setAbierta] = useState(tareaInicial);
   const [creando, setCreando] = useState(false);
 
   useEffect(() => { cargarFuentes(); }, []);

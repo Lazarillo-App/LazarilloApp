@@ -32,6 +32,7 @@ import { useAuth } from '@/context/AuthContext';
 import { ScopeGestion } from '@/gestion/compat';
 import { ActividadContenido, useActividadNuevos } from '@/componentes/gestion/pagos/actividad-campana';
 import { agruparPorDia, horaDe } from '@/gestion/actividadFormato';
+import { useAvisosAdmins, AvisosAdminsContenido, rutaDeAviso } from '@/componentes/super/AvisosAdmins';
 
 // VerFactura necesita el contexto del Panel (negocio activo) para traer los maestros de la carga.
 // La campana vive en el header, fuera del Panel: sin este envoltorio businessId quedaba null, los
@@ -51,6 +52,7 @@ const VerFactura = React.lazy(() => Promise.all([
 // RRHH (Diego 12/11/2026, «todo ABM queda en Notificaciones»): altas, bajas, cambios de la
 // nómina y de los cronogramas, con su propia solapa.
 const moduloDeRuta = (p) => (p.startsWith('/gestion') ? 'resultados'
+  : p.startsWith('/super') ? 'admins'
   : p.startsWith('/rrhh') ? 'rrhh'
   : (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) ? 'recetas' : null);
 const esDeCuenta = (n) => n?.kind === 'access_request';
@@ -125,6 +127,10 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   const miId = Number(user?.id) || null;
   const [quien, setQuien] = useState('todas');
   const [vistoAlAbrir, setVistoAlAbrir] = useState('');
+  // Solapa "Admins" (usuaria 13/11/2026): lo que hace el equipo en el panel de super usuarios.
+  const esSuper = user?.es_superusuario === true;
+  const admins = useAvisosAdmins(esSuper);
+  const [vistoAdminsAlAbrir, setVistoAdminsAlAbrir] = useState(null);
   const [verFactura, setVerFactura] = useState(null);
 
   // El panel solo se abre por interacción del usuario (clic en el ícono) o
@@ -478,18 +484,24 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   const numeroCampana = moduloActual === 'resultados' ? actividad.nuevos
     : moduloActual === 'recetas' ? nRecetas
       : moduloActual === 'rrhh' ? nRrhh
-        : nRecetas + nCuenta + nRrhh + (verResultados ? actividad.nuevos : 0);
+        : moduloActual === 'admins' && esSuper ? admins.nuevos
+          : nRecetas + nCuenta + nRrhh + (verResultados ? actividad.nuevos : 0) + admins.nuevos;
   const abrirCampana = () => {
     setSolapa(moduloActual === 'resultados' && verResultados ? 'resultados'
       : moduloActual === 'recetas' ? 'recetas'
       : moduloActual === 'rrhh' ? 'rrhh'
-        : (verResultados && actividad.nuevos > 0 && nRecetas === 0) ? 'resultados' : 'recetas');
+        : moduloActual === 'admins' && esSuper ? 'admins'
+          : (verResultados && actividad.nuevos > 0 && nRecetas === 0) ? 'resultados'
+            : (esSuper && admins.nuevos > 0 && nRecetas === 0) ? 'admins' : 'recetas');
     setVistoAlAbrir(actividad.visto);
+    setVistoAdminsAlAbrir(admins.visto_hasta);
+    if (esSuper) admins.cargar();
     setOpen(true);
   };
   const cerrarCampana = () => {
     setOpen(false);
     if (verResultados) actividad.marcarVisto();
+    if (esSuper && solapa === 'admins') admins.marcarVisto();
   };
 
   const handleNotifClick = useCallback((notif) => {
@@ -711,6 +723,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
             { id: 'recetas', nombre: 'Recetas', n: nRecetas },
             (hayRrhh || moduloActual === 'rrhh') && { id: 'rrhh', nombre: 'RRHH', n: nRrhh },
             hayCuenta && { id: 'cuenta', nombre: 'Cuenta', n: nCuenta },
+            esSuper && { id: 'admins', nombre: 'Admins', n: admins.nuevos },
           ].filter(Boolean).map((m) => (
             <Box key={m.id} component="button" type="button" onClick={() => setSolapa(m.id)}
               sx={{
@@ -747,7 +760,10 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         </Box>
         <Divider />
         <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
-          {solapa === 'resultados' ? (
+          {solapa === 'admins' ? (
+            <AvisosAdminsContenido avisos={admins} miId={miId} vistoAlAbrir={vistoAdminsAlAbrir}
+              onIr={(a) => { cerrarCampana(); navigate(rutaDeAviso(a)); }} />
+          ) : solapa === 'resultados' ? (
             <ScopeGestion>
               <Box sx={{ pt: 1 }}>
                 <ActividadContenido vistoAlAbrir={vistoAlAbrir} onVer={(v) => { setVerFactura(v); cerrarCampana(); }} />
@@ -768,7 +784,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
             ));
           })()}
         </Box>
-        {solapa !== 'resultados' && badgeCount > 0 && (
+        {solapa !== 'resultados' && solapa !== 'admins' && badgeCount > 0 && (
           <Box sx={{ borderTop: 1, borderColor: 'divider', px: 2, py: 1 }}>
             <Button size="small" startIcon={<CheckIcon />} onClick={markAllUiAsRead} sx={{ textTransform: 'none', fontWeight: 600 }}>
               Marcar como leídas ({badgeCount})

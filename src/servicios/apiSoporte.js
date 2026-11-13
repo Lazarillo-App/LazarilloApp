@@ -41,6 +41,9 @@ export const SuperAPI = {
   borrarAjuste: (id) => http(`/superusuarios/ajustes/${id}`, { method: 'DELETE', withBusinessId: false }),
   buscarAlcance: (tipo, q) => http(`/superusuarios/buscar-alcance${qs({ tipo, q })}`, { withBusinessId: false, cache: false }),
   superusuarios: () => http('/superusuarios', { withBusinessId: false, cache: false }),
+  // Avisos del panel (solapa "Admins" de la campana).
+  actividad: () => http('/superusuarios/actividad', { withBusinessId: false, cache: false }),
+  actividadVista: () => http('/superusuarios/actividad/visto', { method: 'POST', withBusinessId: false }),
   // Tablero de tareas del equipo (13/11/2026).
   tareas: () => http('/superusuarios/tareas', { withBusinessId: false, cache: false }),
   tarea: (id) => http(`/superusuarios/tareas/${id}`, { withBusinessId: false, cache: false }),

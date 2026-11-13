@@ -20,7 +20,8 @@ export default function SuperPanel() {
   const { user } = useAuth() || {};
   const [params, setParams] = useSearchParams();
   const pedido = Number(params.get('pedido')) || null;
-  const tab = PESTANAS.some(([k]) => k === params.get('tab')) ? params.get('tab') : 'pedidos';
+  const tarea = Number(params.get('tarea')) || null;
+  const tab = PESTANAS.some(([k]) => k === params.get('tab')) ? params.get('tab') : (tarea ? 'tareas' : 'pedidos');
   const [catalogo, setCatalogo] = useState([]);
 
   // El catálogo de claves lo necesitan tanto Ajustes como el detalle de un pedido.
@@ -50,7 +51,7 @@ export default function SuperPanel() {
           minHeight: 40, color: T.text2, '&.Mui-selected': { color: T.text } }} />)}
       </Tabs>
       {tab === 'pedidos' && <SuperPedidos pedidoInicial={pedido} onPedidoAbierto={alAbrirPedido} catalogo={catalogo} />}
-      {tab === 'tareas' && <SuperTablero />}
+      {tab === 'tareas' && <SuperTablero key={tarea || 'tablero'} tareaInicial={tarea} />}
       {tab === 'ajustes' && <SuperAjustes catalogo={catalogo} onCatalogo={setCatalogo} />}
       {tab === 'chat' && <SuperChatConfig />}
       {tab === 'super' && <SuperUsuariosSection />}
