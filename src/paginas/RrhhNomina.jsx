@@ -145,7 +145,7 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
   const nuevo = !empleado;
   const [nombre, setNombre] = useState(empleado?.nombre || '');
   const [apellido, setApellido] = useState(empleado?.apellido || '');
-  const [sector, setSector] = useState(empleado?.sector || '');
+  const [sector] = useState(empleado?.sector || '');
   const [activo, setActivo] = useState(empleado ? empleado.activo !== false : true);
   const [fechaBaja, setFechaBaja] = useState(empleado?.fechaBaja || '');
   // Fecha de alta y DNI (Diego 12/11/2026). El DNI no es obligatorio todavía: va a ser la clave
@@ -196,10 +196,8 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
             <input value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder="Ej.: Cancino" style={input} />
           </div>
         </div>
-        <div style={rotulo}>Sector</div>
-        <input value={sector} onChange={(e) => setSector(e.target.value)} list="rrhh-sectores" placeholder="Ej.: Salón, Cocina" style={input} />
-        <datalist id="rrhh-sectores">{sectores.map((s) => <option key={s} value={s} />)}</datalist>
-
+        {/* Sin «Sector» (Diego 13/11/2026): el lugar de cada persona sale de los cronogramas
+            (espacios aprendidos). El sector que ya tenga se conserva sin tocarlo. */}
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={rotulo}>Fecha de alta</div>
