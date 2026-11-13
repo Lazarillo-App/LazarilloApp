@@ -34,6 +34,7 @@ import {
   nombreFila,
 } from './RrhhCronogramasComun';
 import logoLazarillo from '@/assets/brand/logo-dark.png';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 
 /* ───────── imagen para WhatsApp (Canvas, siempre en modo día) ─────────
  * Dos PNG por espacio y semana: 1) cronograma de los turnos tildados,
@@ -271,7 +272,9 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
     };
     return [aFile(urlCrono, nombreCrono), aFile(urlFrancos, 'francos_' + base + '.png')].filter(Boolean);
   }, [urlCrono, urlFrancos]); // eslint-disable-line react-hooks/exhaustive-deps
-  const puedeCompartir = typeof navigator !== 'undefined' && !!navigator.canShare && archivos.length > 0
+  // En la compu va directo a WhatsApp Web (Diego 13/11/2026: el menú de compartir de la compu fallaba);
+  // el menú del sistema se usa solo en el celu.
+  const puedeCompartir = cel && typeof navigator !== 'undefined' && !!navigator.canShare && archivos.length > 0
     && (() => { try { return navigator.canShare({ files: archivos }); } catch (e) { return false; } })();
   const copiarImagen = async (archivo) => {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': archivo })]);
@@ -284,20 +287,22 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
       }
       return;
     }
+    const pegar = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '') ? 'Cmd+V' : 'Ctrl+V';
     try {
       await copiarImagen(archivos[0]);
-      window.open('https://web.whatsapp.com/', '_blank', 'noopener');
-      avisar('Imagen del cronograma copiada: en WhatsApp abrí el chat y pegala con Ctrl+V.', 'ok',
-        archivos[1] ? { label: 'Copiar francos', fn: () => copiarImagen(archivos[1]).then(() => avisar('Francos copiados: pegalos con Ctrl+V.')).catch(() => avisar('No se pudo copiar.', 'error')) } : null);
+      // misma pestaña de WhatsApp Web si ya está abierta (si no está vinculado, pide el QR)
+      window.open('https://web.whatsapp.com/', 'whatsapp_web');
+      avisar(`Imagen del cronograma copiada: en WhatsApp Web abrí el chat y pegala con ${pegar}.`, 'ok',
+        archivos[1] ? { label: 'Copiar francos', fn: () => copiarImagen(archivos[1]).then(() => avisar(`Francos copiados: pegalos con ${pegar}.`)).catch(() => avisar('No se pudo copiar.', 'error')) } : null);
     } catch (e) {
       avisar('Este navegador no deja compartir ni copiar la imagen: bajala y adjuntala en WhatsApp.', 'error');
     }
   };
   const botones = (
     <div style={{ display: 'flex', gap: 8 }}>
-      <button onClick={compartir} disabled={!archivos.length} title="Manda la imagen (no un link)"
-        style={{ fontFamily: FB, fontWeight: 700, fontSize: 12.5, padding: '6px 12px', borderRadius: 10, border: '1px solid #1FAF55', background: '#25D366', color: '#fff', cursor: archivos.length ? 'pointer' : 'default', opacity: archivos.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
-        Compartir por WhatsApp
+      <button onClick={compartir} disabled={!archivos.length} title="Compartir por WhatsApp (manda la imagen, no un link)" aria-label="Compartir por WhatsApp"
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 10px', borderRadius: 10, border: '1px solid #1FAF55', background: '#25D366', color: '#fff', cursor: archivos.length ? 'pointer' : 'default', opacity: archivos.length ? 1 : 0.5 }}>
+        <WhatsAppIcon style={{ fontSize: 19 }} />
       </button>
       <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
       {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
@@ -311,11 +316,11 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
       <div onClick={(e) => e.stopPropagation()} style={{ width: cel ? 560 : 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Así sale la imagen</div>
-          {/* en el celu las descargas van arriba, a mano sin scrollear (Diego 13/11/2026) */}
-          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+          {/* acciones arriba, a mano sin scrollear (Diego 13/11/2026: celu y compu) */}
+          <div style={{ flex: 1 }} />
+          {botones}
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18, marginLeft: 12 }}>✕</span>
         </div>
-        {/* en el celu las acciones van arriba, a mano sin scrollear (Diego 13/11/2026) */}
-        {cel && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>{botones}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ ...rotulo, marginBottom: 0 }}>Turnos</span>
           {(espacio.turnos || []).map((t) => (
@@ -341,11 +346,7 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
             <img src={urlFrancos} alt="Imagen de los francos de la semana" style={imgSt} />
           </div>
         )}
-        {!cel && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 12 }}>
-            {botones}
-          </div>
-        )}
+
       </div>
     </div>
   );
@@ -848,7 +849,62 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
   );
 }
 
+/* ───────── puestos: agregar, editar y borrar desde el calendario (Diego 13/11/2026) ─────────
+ * Un toque en el chip lo edita (código y nombre) o lo borra; «+ Puesto» agrega. Si cambia el
+ * código, los turnos ya cargados con el código viejo pasan al nuevo (lo hace el servidor). */
+function EditorPuestos({ puestos = [], onGuardar }) {
+  const [ed, setEd] = useState(null); // { orig: codigo|null, codigo, nombre }
+  const [err, setErr] = useState('');
+  const limpio = (lista) => lista.map(({ codigo, nombre }) => ({ codigo, nombre }));
+  const guardar = async () => {
+    const codigo = ed.codigo.trim(); const nombre = ed.nombre.trim();
+    if (!codigo || !nombre) { setErr('Poné código y nombre'); return; }
+    if (puestos.some((p) => p.codigo.toLowerCase() === codigo.toLowerCase() && p.codigo !== ed.orig)) { setErr(`Ya existe el código ${codigo}`); return; }
+    const lista = ed.orig
+      ? puestos.map((p) => (p.codigo === ed.orig ? { codigo, nombre } : p))
+      : [...puestos, { codigo, nombre }];
+    const renombres = ed.orig && ed.orig !== codigo ? [{ de: ed.orig, a: codigo }] : [];
+    if (await onGuardar(limpio(lista), renombres)) { setEd(null); setErr(''); }
+  };
+  const borrar = async () => {
+    if (await onGuardar(limpio(puestos.filter((p) => p.codigo !== ed.orig)), [])) { setEd(null); setErr(''); }
+  };
+  const campo = { height: 31, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band };
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>
+        {puestos.map((p) => (
+          <Chip key={p.codigo} color={T.accentTxt} activoBg={ed?.orig === p.codigo} title="Tocá para editar o borrar"
+            onClick={() => { setEd({ orig: p.codigo, codigo: p.codigo, nombre: p.nombre }); setErr(''); }}>
+            {p.codigo} · {p.nombre}
+          </Chip>
+        ))}
+        <Chip color={T.text3} activoBg={ed && !ed.orig} onClick={() => { setEd({ orig: null, codigo: '', nombre: '' }); setErr(''); }}>+ Puesto</Chip>
+      </div>
+      {ed && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input autoFocus value={ed.codigo} maxLength={4} placeholder="Cód." onChange={(e) => setEd({ ...ed, codigo: e.target.value.slice(0, 4) })}
+              style={{ ...campo, width: 64, textAlign: 'center', padding: '0 6px' }} />
+            <input value={ed.nombre} placeholder="Nombre del puesto (ej. Vereda)" onChange={(e) => setEd({ ...ed, nombre: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEd(null); }}
+              style={{ ...campo, width: 220, padding: '0 10px' }} />
+            <Boton activo onClick={guardar}>{ed.orig ? 'Guardar' : '+ Agregar'}</Boton>
+            {ed.orig && <Boton peligro onClick={borrar} title="Si está en uso en algún cronograma no se borra">Borrar</Boton>}
+            <Boton onClick={() => { setEd(null); setErr(''); }}>Cancelar</Boton>
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: err ? T.bad : T.text3, marginTop: 5 }}>
+            {err || (ed.orig ? 'Si cambiás el código, los turnos ya cargados pasan al nuevo. Los que están en uso no se pueden borrar.' : 'El código es lo que se ve en la celda (1 a 4 letras).')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export {
+  EditorPuestos,
   ModalExportar,
   ModalFecha,
   ModalNuevaSemana,
