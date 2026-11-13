@@ -44,7 +44,7 @@ import { ensureTodo } from '@/servicios/apiAgrupacionesTodo';
 import {
   listMembers, resendInvitation, revokeAssignment,
 } from '@/servicios/apiTeam';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import AsistenteOnboarding from '@/componentes/asistente/AsistenteOnboarding';
 import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
 import SpotlightTour from '@/componentes/SpotlightTour';
@@ -891,7 +891,16 @@ function PerfilContenido() {
         <SecuritySection />
 
         {/* ── Super usuarios (solo cuentas con es_superusuario) ── */}
-        {me?.es_superusuario === true && <SuperUsuariosSection />}
+        {me?.es_superusuario === true && (
+          <>
+            {/* Panel de super usuarios (13/11): pedidos de los clientes, ajustes a medida, chat y avisos. */}
+            <Button variant="outlined" component={RouterLink} to="/super"
+              sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}>
+              Abrir el panel de super usuarios (pedidos de clientes y ajustes)
+            </Button>
+            <SuperUsuariosSection />
+          </>
+        )}
 
       </Stack>
       {/* Diálogo editar nombre */}

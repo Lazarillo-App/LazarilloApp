@@ -54,6 +54,8 @@ import AdminApp from './admin/AdminApp';
 import AceptarInvitacion from './paginas/AceptarInvitacion';
 import AltaPorQR from './paginas/AltaPorQR';
 import SelectorNegocio from './paginas/SelectorNegocio';
+import SuperPanel from './paginas/SuperPanel';
+import AvisoAjuste from './componentes/soporte/AvisoAjuste';
 
 import './css/global.css';
 import './css/theme-layout.css';
@@ -242,6 +244,8 @@ export default function App() {
       {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
       {/* Chat "Que lo haga Lazarillo": también en el alta (ahí el widget no se muestra). */}
       {isLogged && role !== 'app_admin' && <AnthonyChat />}
+      {/* Ajuste a medida "aviso_cliente": mensaje del equipo para este cliente/negocio (13/11). */}
+      {isLogged && role !== 'app_admin' && !enAppMovil && <AvisoAjuste />}
 
       <Routes>
         <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
@@ -271,6 +275,8 @@ export default function App() {
                    (el selector justamente sirve para elegir negocio cuando
                     hay varios y aún no se seleccionó uno) ── */}
               <Route path="/seleccionar-negocio" element={<SelectorNegocio />} />
+              {/* Panel de super usuarios (13/11): no depende de tener negocio; lo valida la página y el back. */}
+              <Route path="/super" element={<SuperPanel />} />
 
               <Route element={<OnboardingGuard />}>
                 {/* Menú e Insumos comparten la barra (no se recarga al pasar de una a otra) */}

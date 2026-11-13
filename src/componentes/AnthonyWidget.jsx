@@ -7,11 +7,11 @@
 // Se puede minimizar (el "–" sobre el botón): queda una pestañita pegada al borde derecho que no
 // tapa datos, y al tocarla vuelve. Se recuerda por navegador (solo comodidad: sin storage,
 // arranca visible).
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 import { useLocation } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
-import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
+import { abrirChatAnthony, SIN_LEER } from '@/componentes/asistente/chatEvento';
 
 // Número de soporte temporal — se reemplaza por el definitivo más adelante.
 const SOPORTE_WHATSAPP = '541130211649';
@@ -28,6 +28,16 @@ export default function AnthonyWidget() {
   const [open, setOpen] = useState(false);
   const [minimizado, setMinimizado] = useState(leerMinimizado);
   const minimizar = (v) => { setMinimizado(v); setOpen(false); guardarMinimizado(v); };
+  // Respuestas del equipo sin leer (las cuenta AnthonyChat): globito rojo y acceso a Mis pedidos (13/11).
+  const [sinLeer, setSinLeer] = useState(0);
+  useEffect(() => {
+    const al = (e) => setSinLeer(Number(e.detail?.n) || 0);
+    window.addEventListener(SIN_LEER, al);
+    return () => window.removeEventListener(SIN_LEER, al);
+  }, []);
+  const globito = sinLeer > 0 ? (
+    <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, background: '#dc2626', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 1px 4px rgba(0,0,0,.3)' }}>{sinLeer}</span>
+  ) : null;
   // Logueado: ofrece volver al asistente de alta (Diego, 08/11), salvo si ya está en él.
   const logueado = (() => { try { return !!localStorage.getItem('token'); } catch { return false; } })();
   const enAsistente = typeof window !== 'undefined' && /^\/(alta|perfil)/.test(window.location.pathname);
@@ -42,6 +52,7 @@ export default function AnthonyWidget() {
     // Pestañita en el borde derecho: asoma la cabeza de Anthony.
     return (
       <button
+        data-no-captura=""
         onClick={() => minimizar(false)}
         aria-label="Mostrar a Anthony"
         title="Mostrar a Anthony"
@@ -52,12 +63,13 @@ export default function AnthonyWidget() {
         }}
       >
         <img src={ANT.saluda} alt="" style={{ height: 40, width: 'auto', objectFit: 'cover', objectPosition: 'left', marginLeft: 2 }} />
+        {sinLeer > 0 && <span style={{ position: 'absolute', top: 3, left: 3, width: 9, height: 9, borderRadius: '50%', background: '#dc2626' }} />}
       </button>
     );
   }
 
   return (
-    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+    <div data-no-captura="" style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
       {open && (
         <div style={{
           width: 280, background: '#fff', borderRadius: 16, boxShadow: '0 10px 40px rgba(0,0,0,.28)',
@@ -108,6 +120,19 @@ export default function AnthonyWidget() {
                 ✉ Escribirle al equipo
               </button>
             )}
+            {logueado && (
+              <button
+                type="button"
+                onClick={() => { setOpen(false); abrirChatAnthony({ vista: 'pedidos' }); }}
+                style={{
+                  marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: '#fff', color: '#15213E', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: 13.5,
+                  borderRadius: 10, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                📋 Mis pedidos{sinLeer > 0 ? ` (${sinLeer} respuesta${sinLeer === 1 ? '' : 's'} nueva${sinLeer === 1 ? '' : 's'})` : ''}
+              </button>
+            )}
             <a
               href={`https://wa.me/${SOPORTE_WHATSAPP}`}
               target="_blank"
@@ -148,6 +173,7 @@ export default function AnthonyWidget() {
       >
         <img src={ANT.saluda} alt="" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
       </button>
+      {globito}
       </div>
     </div>
   );

@@ -64,10 +64,6 @@ export const AdminAPI = {
   getMaintenance: () => http('/admin/maintenance'),
   setMaintenance: (enabled, message) => http('/admin/maintenance', { method:'POST', body: { enabled, message } }),
 
-  // Chat de Anthony: mails que reciben, WhatsApp y menú/respuestas; últimos mensajes recibidos.
-  getSoporteConfig: () => http('/admin/soporte/config'),
-  saveSoporteConfig: (config) => http('/admin/soporte/config', { method: 'PUT', body: { config } }),
-  listSoporteMensajes: () => http('/admin/soporte/mensajes'),
 
   // Super-admins: lista para todos; dar/quitar solo la cuenta de control, con código por mail.
   listSuperadmins: () => http('/admin/superadmins'),

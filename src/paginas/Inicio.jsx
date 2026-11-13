@@ -4,6 +4,7 @@ import { altaEnCurso } from '@/componentes/asistente/altaEstado';
 import anthonyImg from '@/assets/brand/anthony.png';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
+import { useAjuste } from '@/hooks/useAjustes';
 
 /**
  * Inicio — Home de la app (a donde se entra al iniciar sesión): muestra todos los módulos operativos agrupados
@@ -65,11 +66,14 @@ export default function Inicio() {
   const navigate = useNavigate();
   const { active } = useBusiness() || {};
   const { isStaff, puedeVer } = useAccess() || {};
+  // Ajuste a medida (13/11): módulos que el equipo ocultó para este cliente/negocio.
+  const ocultos = useAjuste('modulos_ocultos', []);
+  const oculto = (id) => Array.isArray(ocultos) && ocultos.includes(id);
   // Staff no entra a Resultados ni a la carga (RequireAdminOrOwner): no se le muestran.
   // Un rol a medida tampoco ve los módulos de las secciones que no tiene.
   const grupos = GROUPS.map((g) => ({
     ...g,
-    modules: g.modules.filter((m) => !(isStaff && m.soloAdmin) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]))),
+    modules: g.modules.filter((m) => !oculto(m.id) && !(isStaff && m.soloAdmin) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]))),
   }));
 
   const userName = getUserName();

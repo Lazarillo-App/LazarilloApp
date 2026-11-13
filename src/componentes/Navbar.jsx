@@ -591,6 +591,12 @@ export default function Navbar() {
                           <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserMenuOpen(false)}>
                             Perfil
                           </MenuItem>,
+                          // Panel de super usuarios (13/11): pedidos de los clientes y ajustes a medida.
+                          ...(getUser()?.es_superusuario === true ? [
+                            <MenuItem key="super" component={NavLink} to="/super" onClick={() => setUserMenuOpen(false)}>
+                              Panel de super usuarios
+                            </MenuItem>,
+                          ] : []),
                           // Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión.
                           ...(!isAppAdmin && rolReal === 'owner' ? [
                             <Divider key="div-vercomo" sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,

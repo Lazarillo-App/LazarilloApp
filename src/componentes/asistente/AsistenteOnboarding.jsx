@@ -13,6 +13,7 @@ import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 import AltaManual from "./AltaManual";
 import { abrirChatAnthony } from "./chatEvento";
 import { POS_BASE, POS_OTRO, POS_NINGUNO } from "./posLista";
+import { useAjuste } from "@/hooks/useAjustes";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
 // alguien sube un PDF acá — se carga con import() dinámico para no engordar
@@ -1284,6 +1285,8 @@ async function completarDesdeWeb(body) {
 }
 const PERFIL_VACIO = () => ({ descWeb: false, horarios: [], canales: { salon: false, takeAway: false, delivery: false, eventos: false }, sirve: { desayuno: false, almuerzo: false, cena: false, cerveza: false, vino: false, tragos: false }, fotos: [], portada: "", google: null, descGoogle: false, deGoogle: { horarios: false, canales: false, sirve: false } });
 function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
+  // El link a Google Imágenes se prende desde el panel de super usuarios (ajuste logo_google_imagenes).
+  const verLinkGoogleImagenes = useAjuste("logo_google_imagenes", MOSTRAR_LINK_GOOGLE_IMAGENES) === true;
   const [ws, setWs] = useState(0);
   const [query, setQuery] = useState("");
   const [buscando, setBuscando] = useState(false);
@@ -1613,7 +1616,7 @@ function DatosNegocio({ onDone, onBrand, creando, errCrear, inicial = null }) {
                     {/* Locales sin web: el logo casi siempre aparece en Google Imágenes (Instagram,
                         Facebook). Se abre la búsqueda en otra pestaña — gratis, sin API — y el
                         usuario pega la dirección de la imagen o la sube (usuaria 11/11). */}
-                    {MOSTRAR_LINK_GOOGLE_IMAGENES && !(buscandoLogos || buscandoWeb) && d.nombre?.trim() && (
+                    {verLinkGoogleImagenes && !(buscandoLogos || buscandoWeb) && d.nombre?.trim() && (
                       <div style={{ marginTop: 14, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
                         ¿No está? <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${d.nombre.trim()} logo${d.ciudad ? ` ${d.ciudad}` : ""}`)}`}
                           target="_blank" rel="noopener noreferrer" style={{ color: brand.primary, fontWeight: 700 }}>Buscalo en Google Imágenes ↗</a>
