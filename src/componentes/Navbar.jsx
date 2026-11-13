@@ -22,7 +22,7 @@ import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
 import TablerosBotonera from './plazas/TablerosBotonera';
 import PulsoDatos from './PulsoDatos';
-import { VerComoItems } from '@/componentes/VerComo';
+import MenuPerfil from '@/componentes/MenuPerfil';
 import { MisPendientesDrawer, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
 
 /* ==== helpers ==== */
@@ -585,71 +585,27 @@ export default function Navbar() {
 
               {userMenuOpen && (
                 <ClickAwayListener onClickAway={() => setUserMenuOpen(false)}>
-                  <Box
-                    sx={{
-                      position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
-                      minWidth: 200, zIndex: 1300, borderRadius: 1, boxShadow: 6, overflow: 'hidden',
-                      bgcolor: 'var(--color-primary)', color: 'var(--on-primary)',
-                    }}
-                  >
-                    <MenuList dense sx={{ color: 'inherit' }} aria-label="Opciones de perfil">
-                      {logged ? (
-                        [
-                          <Box key="user-header" sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
-                            <Box sx={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.2 }}>
-                              {getUser()?.name || getUser()?.nombre || 'Usuario'}
-                            </Box>
-                          </Box>,
-                          <Divider
-                            key="div-header"
-                            sx={{
-                              my: 0.5,
-                              borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
-                            }}
-                          />,
-                          <MenuItem key="perfil" component={NavLink} to="/perfil" onClick={() => setUserMenuOpen(false)}>
-                            Perfil
-                          </MenuItem>,
-                          // Panel de super usuarios (13/11): pedidos de los clientes y ajustes a medida.
-                          ...(getUser()?.es_superusuario === true ? [
-                            <MenuItem key="super" component={NavLink} to="/super" onClick={() => setUserMenuOpen(false)}>
-                              Panel de super usuarios
-                            </MenuItem>,
-                          ] : []),
-                          ...(conPendientes ? [
-                            <MenuItem key="pendientes" onClick={() => { setUserMenuOpen(false); setVerPendientes(true); }}>
-                              <Box component="span" sx={{ flex: 1 }}>Mis pendientes</Box>
-                              {tareasPendientes > 0 && (
-                                <Box component="span" sx={{ ml: 2, minWidth: 20, height: 20, px: 0.75, borderRadius: 10, bgcolor: 'error.main', color: '#fff',
-                                  fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {tareasPendientes > 99 ? '99+' : tareasPendientes}
-                                </Box>
-                              )}
-                            </MenuItem>,
-                          ] : []),
-                          // Ver como (solo el dueño): ver la app como otro rol sin cerrar sesión.
-                          ...(!isAppAdmin && rolReal === 'owner' ? [
-                            <Divider key="div-vercomo" sx={{ my: 0.5, borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
-                            <VerComoItems key="vercomo" onElegido={() => setUserMenuOpen(false)} />,
-                          ] : []),
-                          <Divider
-                            key="div"
-                            sx={{
-                              my: 0.5,
-                              borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)',
-                            }}
-                          />,
-                          <MenuItem key="salir" onClick={logout}>
-                            Salir
-                          </MenuItem>,
-                        ]
-                      ) : (
-                        <MenuItem component={NavLink} to="/login" onClick={() => setUserMenuOpen(false)}>
-                          Login
-                        </MenuItem>
-                      )}
-                    </MenuList>
-                  </Box>
+                  {logged ? (
+                    <MenuPerfil
+                      nombre={getUser()?.name || getUser()?.nombre}
+                      email={getUser()?.email}
+                      avatar={userAvatar}
+                      iniciales={userInitials}
+                      esSuper={getUser()?.es_superusuario === true}
+                      conPendientes={conPendientes}
+                      pendientes={tareasPendientes}
+                      verComo={!isAppAdmin && rolReal === 'owner'}
+                      onPendientes={() => setVerPendientes(true)}
+                      onCerrar={() => setUserMenuOpen(false)}
+                      onSalir={logout}
+                    />
+                  ) : (
+                    <Box sx={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1300, borderRadius: 1, boxShadow: 6, bgcolor: 'background.paper' }}>
+                      <MenuList dense>
+                        <MenuItem component={NavLink} to="/login" onClick={() => setUserMenuOpen(false)}>Login</MenuItem>
+                      </MenuList>
+                    </Box>
+                  )}
                 </ClickAwayListener>
               )}
             </Box>
