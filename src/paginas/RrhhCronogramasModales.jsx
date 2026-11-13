@@ -196,7 +196,7 @@ function dibujarFrancos({ titulo, sub, items, logo, logoNeg }) {
 const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
-function ModalExportar({ espacio, puestos = [], negocio, sucursal = '', logoNegocio = null, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
+function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal = '', logoNegocio = null, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
   const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
   const [urlCrono, setUrlCrono] = useState(null);
   const [urlFrancos, setUrlFrancos] = useState(null);
@@ -256,15 +256,24 @@ function ModalExportar({ espacio, puestos = [], negocio, sucursal = '', logoNego
     document.body.appendChild(a); a.click(); a.remove();
     avisar(`${label} descargado ✓ · si no bajó: click derecho sobre la imagen → Guardar imagen como…`);
   };
+  const botones = (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
+      {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
+    </div>
+  );
   const rotulo = { fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 };
   const imgSt = { width: '100%', display: 'block', borderRadius: 12, border: `1px solid ${T.border2}`, background: '#FFFFFF' };
 
   return (
     <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: cel ? 560 : 460, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Así sale la imagen</div>
-          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+          {/* en el celu las descargas van arriba, a mano sin scrollear (Diego 13/11/2026) */}
+          {cel && <div style={{ flex: 1 }} />}
+          {cel && botones}
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18, marginLeft: cel ? 10 : 0 }}>✕</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ ...rotulo, marginBottom: 0 }}>Turnos</span>
@@ -291,12 +300,11 @@ function ModalExportar({ espacio, puestos = [], negocio, sucursal = '', logoNego
             <img src={urlFrancos} alt="Imagen de los francos de la semana" style={imgSt} />
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
-            {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
+        {!cel && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 12 }}>
+            {botones}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
