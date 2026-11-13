@@ -256,8 +256,49 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
     document.body.appendChild(a); a.click(); a.remove();
     avisar(`${label} descargado ✓ · si no bajó: click derecho sobre la imagen → Guardar imagen como…`);
   };
+  // Compartir la IMAGEN (no un link) por WhatsApp (Diego 13/11/2026). Celu y navegadores que lo
+  // permiten: menú de compartir del sistema con los archivos → se elige WhatsApp. Compu sin eso:
+  // se copia la imagen y se abre WhatsApp Web para pegarla (Ctrl+V).
+  // Los archivos se arman antes del clic: el navegador exige que share() salga directo del toque.
+  const archivos = useMemo(() => {
+    const aFile = (url, nombre) => {
+      if (!url) return null;
+      try {
+        const bin = atob(url.split(',')[1]); const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return new File([u8], nombre, { type: 'image/png' });
+      } catch (e) { return null; }
+    };
+    return [aFile(urlCrono, nombreCrono), aFile(urlFrancos, 'francos_' + base + '.png')].filter(Boolean);
+  }, [urlCrono, urlFrancos]); // eslint-disable-line react-hooks/exhaustive-deps
+  const puedeCompartir = typeof navigator !== 'undefined' && !!navigator.canShare && archivos.length > 0
+    && (() => { try { return navigator.canShare({ files: archivos }); } catch (e) { return false; } })();
+  const copiarImagen = async (archivo) => {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': archivo })]);
+  };
+  const compartir = async () => {
+    if (!archivos.length) { avisar('La imagen todavía no se generó.', 'error'); return; }
+    if (puedeCompartir) {
+      try { await navigator.share({ files: archivos, title: `Cronograma ${espacio.nombre}` }); } catch (e) {
+        if (e?.name !== 'AbortError') avisar('No se pudo compartir: bajá la imagen y adjuntala.', 'error');
+      }
+      return;
+    }
+    try {
+      await copiarImagen(archivos[0]);
+      window.open('https://web.whatsapp.com/', '_blank', 'noopener');
+      avisar('Imagen del cronograma copiada: en WhatsApp abrí el chat y pegala con Ctrl+V.', 'ok',
+        archivos[1] ? { label: 'Copiar francos', fn: () => copiarImagen(archivos[1]).then(() => avisar('Francos copiados: pegalos con Ctrl+V.')).catch(() => avisar('No se pudo copiar.', 'error')) } : null);
+    } catch (e) {
+      avisar('Este navegador no deja compartir ni copiar la imagen: bajala y adjuntala en WhatsApp.', 'error');
+    }
+  };
   const botones = (
     <div style={{ display: 'flex', gap: 8 }}>
+      <button onClick={compartir} disabled={!archivos.length} title="Manda la imagen (no un link)"
+        style={{ fontFamily: FB, fontWeight: 700, fontSize: 12.5, padding: '6px 12px', borderRadius: 10, border: '1px solid #1FAF55', background: '#25D366', color: '#fff', cursor: archivos.length ? 'pointer' : 'default', opacity: archivos.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+        Compartir por WhatsApp
+      </button>
       <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
       {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
     </div>
@@ -267,14 +308,14 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
 
   return (
     <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: cel ? 560 : 460, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: cel ? 560 : 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Así sale la imagen</div>
           {/* en el celu las descargas van arriba, a mano sin scrollear (Diego 13/11/2026) */}
-          {cel && <div style={{ flex: 1 }} />}
-          {cel && botones}
-          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18, marginLeft: cel ? 10 : 0 }}>✕</span>
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
         </div>
+        {/* en el celu las acciones van arriba, a mano sin scrollear (Diego 13/11/2026) */}
+        {cel && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>{botones}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ ...rotulo, marginBottom: 0 }}>Turnos</span>
           {(espacio.turnos || []).map((t) => (
